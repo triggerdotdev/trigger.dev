@@ -29,10 +29,7 @@ type LegacySeedContext = {
   environmentId: string;
 };
 
-async function seedLegacyParents(
-  prisma: PrismaClient,
-  slug: string
-): Promise<LegacySeedContext> {
+async function seedLegacyParents(prisma: PrismaClient, slug: string): Promise<LegacySeedContext> {
   const organization = await prisma.organization.create({
     data: { title: `org-${slug}`, slug: `org-${slug}` },
   });
@@ -105,15 +102,35 @@ describe("WaitpointTagListPresenter read-route", () => {
 
       await prisma.waitpointTag.createMany({
         data: [
-          { id: "ct000000000000000000001", name: "alpha", environmentId: ctx.environmentId, projectId: ctx.projectId },
-          { id: "ct000000000000000000002", name: "beta", environmentId: ctx.environmentId, projectId: ctx.projectId },
-          { id: "ct000000000000000000003", name: "gamma", environmentId: ctx.environmentId, projectId: ctx.projectId },
+          {
+            id: "ct000000000000000000001",
+            name: "alpha",
+            environmentId: ctx.environmentId,
+            projectId: ctx.projectId,
+          },
+          {
+            id: "ct000000000000000000002",
+            name: "beta",
+            environmentId: ctx.environmentId,
+            projectId: ctx.projectId,
+          },
+          {
+            id: "ct000000000000000000003",
+            name: "gamma",
+            environmentId: ctx.environmentId,
+            projectId: ctx.projectId,
+          },
         ],
       });
 
-      const legacyThrows = new Proxy({}, {
-        get() { throw new Error("legacy handle must not be touched in passthrough"); },
-      }) as unknown as PrismaClient;
+      const legacyThrows = new Proxy(
+        {},
+        {
+          get() {
+            throw new Error("legacy handle must not be touched in passthrough");
+          },
+        }
+      ) as unknown as PrismaClient;
 
       const presenter = new WaitpointTagListPresenter(prisma, prisma, {
         runOpsLegacyReplica: legacyThrows,
@@ -145,8 +162,18 @@ describe("WaitpointTagListPresenter read-route", () => {
 
       await (prisma14 as PrismaClient).waitpointTag.createMany({
         data: [
-          { id: "mt000000000000000000004", name: "delta-stale", environmentId: envId, projectId: projId },
-          { id: "mt000000000000000000003", name: "charlie", environmentId: envId, projectId: projId },
+          {
+            id: "mt000000000000000000004",
+            name: "delta-stale",
+            environmentId: envId,
+            projectId: projId,
+          },
+          {
+            id: "mt000000000000000000003",
+            name: "charlie",
+            environmentId: envId,
+            projectId: projId,
+          },
           { id: "mt000000000000000000002", name: "bravo", environmentId: envId, projectId: projId },
           { id: "mt000000000000000000001", name: "alpha", environmentId: envId, projectId: projId },
         ],

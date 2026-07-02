@@ -22,10 +22,17 @@ vi.mock("~/db.server", async () => {
   };
 });
 
-import { heteroPostgresTest, heteroRunOpsPostgresTest, postgresTest } from "@internal/testcontainers";
+import {
+  heteroPostgresTest,
+  heteroRunOpsPostgresTest,
+  postgresTest,
+} from "@internal/testcontainers";
 import { Prisma, PrismaClient, type WaitpointStatus } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
-import { WaitpointListPresenter, type WaitpointListOptions } from "~/presenters/v3/WaitpointListPresenter.server";
+import {
+  WaitpointListPresenter,
+  type WaitpointListOptions,
+} from "~/presenters/v3/WaitpointListPresenter.server";
 
 vi.setConfig({ testTimeout: 90_000 });
 
@@ -116,7 +123,12 @@ function baseOptions(
 }
 
 // The exact presenter scan SQL, run directly for the byte-identity / ORDER-BY proof.
-function rawScan(prisma: PrismaClient, environmentId: string, direction: "forward" | "backward", limit: number) {
+function rawScan(
+  prisma: PrismaClient,
+  environmentId: string,
+  direction: "forward" | "backward",
+  limit: number
+) {
   const schema = Prisma.sql(["public"]);
   return prisma.$queryRaw`
     SELECT
@@ -155,7 +167,11 @@ describe("WaitpointListPresenter read-route", () => {
       outputIsError: false,
       tags: ["b", "a"],
     });
-    await seedWaitpoint(prisma, ctx, { id: "wp00000000000000000000003", status: "COMPLETED", outputIsError: true });
+    await seedWaitpoint(prisma, ctx, {
+      id: "wp00000000000000000000003",
+      status: "COMPLETED",
+      outputIsError: true,
+    });
     // Non-MANUAL row that must be excluded by w.type = 'MANUAL'.
     await seedWaitpoint(prisma, ctx, { id: "wp00000000000000000000099", type: "RUN" });
 
@@ -176,7 +192,10 @@ describe("WaitpointListPresenter read-route", () => {
     if (!result.success) return;
 
     // Page of 2, id DESC (forward).
-    expect(result.tokens.map((t) => t.id)).toEqual(["wp_wp00000000000000000000003", "wp_wp00000000000000000000002"]);
+    expect(result.tokens.map((t) => t.id)).toEqual([
+      "wp_wp00000000000000000000003",
+      "wp_wp00000000000000000000002",
+    ]);
     expect(result.pagination.next).toBe("wp00000000000000000000002");
     expect(result.pagination.previous).toBeUndefined();
     expect(result.hasAnyTokens).toBe(true);
@@ -203,11 +222,39 @@ describe("WaitpointListPresenter read-route", () => {
     "keyset scan byte-identical + identical ORDER-BY on PG14 and PG17",
     async ({ prisma14, prisma17 }) => {
       const corpus: SeedWaitpoint[] = [
-        { id: "wp10000000000000000000001", status: "PENDING", tags: ["alpha", "beta"], createdAt: new Date("2024-01-01T00:00:00Z") },
-        { id: "wp10000000000000000000002", status: "COMPLETED", outputIsError: false, idempotencyKey: "key-2", userProvidedIdempotencyKey: true, inactiveIdempotencyKey: "old-2", createdAt: new Date("2024-02-01T00:00:00Z") },
-        { id: "wp10000000000000000000003", status: "COMPLETED", outputIsError: true, tags: ["gamma"], createdAt: new Date("2024-03-01T00:00:00Z") },
-        { id: "wp10000000000000000000004", status: "PENDING", createdAt: new Date("2024-04-01T00:00:00Z") },
-        { id: "wp10000000000000000000005", status: "COMPLETED", outputIsError: false, createdAt: new Date("2024-05-01T00:00:00Z") },
+        {
+          id: "wp10000000000000000000001",
+          status: "PENDING",
+          tags: ["alpha", "beta"],
+          createdAt: new Date("2024-01-01T00:00:00Z"),
+        },
+        {
+          id: "wp10000000000000000000002",
+          status: "COMPLETED",
+          outputIsError: false,
+          idempotencyKey: "key-2",
+          userProvidedIdempotencyKey: true,
+          inactiveIdempotencyKey: "old-2",
+          createdAt: new Date("2024-02-01T00:00:00Z"),
+        },
+        {
+          id: "wp10000000000000000000003",
+          status: "COMPLETED",
+          outputIsError: true,
+          tags: ["gamma"],
+          createdAt: new Date("2024-03-01T00:00:00Z"),
+        },
+        {
+          id: "wp10000000000000000000004",
+          status: "PENDING",
+          createdAt: new Date("2024-04-01T00:00:00Z"),
+        },
+        {
+          id: "wp10000000000000000000005",
+          status: "COMPLETED",
+          outputIsError: false,
+          createdAt: new Date("2024-05-01T00:00:00Z"),
+        },
         // excluded
         { id: "wp10000000000000000000099", type: "RUN" },
       ];
@@ -264,7 +311,11 @@ describe("WaitpointListPresenter read-route", () => {
       // New (PG17): the two most-recent (highest id) MANUAL tokens. ...004 carries the
       // authoritative post-migration status (COMPLETED) and also exists on legacy as PENDING.
       await seedWaitpoint(prisma17, ctx17, { id: "wp20000000000000000000005" });
-      await seedWaitpoint(prisma17, ctx17, { id: "wp20000000000000000000004", status: "COMPLETED", outputIsError: false });
+      await seedWaitpoint(prisma17, ctx17, {
+        id: "wp20000000000000000000004",
+        status: "COMPLETED",
+        outputIsError: false,
+      });
       // Legacy (PG14): older in-retention tokens (lower ids), interleaved across the keyset order,
       // plus a stale mid-migration copy of ...004 that the de-dupe must discard.
       await seedWaitpoint(prisma14, ctx17, { id: "wp20000000000000000000004", status: "PENDING" });
@@ -339,61 +390,64 @@ describe("WaitpointListPresenter read-route", () => {
 
   // Empty-state probe is dual-DB during the window (no false-empty), and reads only
   // _replica when split is off.
-  heteroPostgresTest("empty-state probe is dual-DB during the window", async ({ prisma14, prisma17 }) => {
-    setDbClient(prisma17);
-    const ctx = await seedParents(prisma17, "probe17");
-    await seedParentsWithEnvId(prisma14, "probe14", ctx.environmentId, ctx.projectId);
+  heteroPostgresTest(
+    "empty-state probe is dual-DB during the window",
+    async ({ prisma14, prisma17 }) => {
+      setDbClient(prisma17);
+      const ctx = await seedParents(prisma17, "probe17");
+      await seedParentsWithEnvId(prisma14, "probe14", ctx.environmentId, ctx.projectId);
 
-    // Zero MANUAL on NEW, exactly one on LEGACY.
-    await seedWaitpoint(prisma14, ctx, { id: "wp30000000000000000000001" });
+      // Zero MANUAL on NEW, exactly one on LEGACY.
+      await seedWaitpoint(prisma14, ctx, { id: "wp30000000000000000000001" });
 
-    // Filter yields an empty page (no token has this idempotencyKey) so the probe runs.
-    const splitPresenter = new WaitpointListPresenter(prisma17, prisma17, {
-      runOpsNew: prisma17,
-      runOpsLegacyReplica: prisma14,
-      splitEnabled: true,
-    });
-    const r1 = await splitPresenter.call(
-      baseOptions(ctx.environmentId, { idempotencyKey: "no-such-key" })
-    );
-    expect(r1.success).toBe(true);
-    if (r1.success) {
-      // Probe found the legacy row => not false-empty.
-      expect(r1.tokens).toEqual([]);
-      expect(r1.hasAnyTokens).toBe(true);
-    }
-
-    // Zero on both => empty (post-termination / past-retention normal response).
-    await prisma14.waitpoint.deleteMany({ where: { environmentId: ctx.environmentId } });
-    const r2 = await splitPresenter.call(
-      baseOptions(ctx.environmentId, { idempotencyKey: "no-such-key" })
-    );
-    expect(r2.success).toBe(true);
-    if (r2.success) {
-      expect(r2.hasAnyTokens).toBe(false);
-    }
-
-    // split off => probe reads only _replica, never the legacy handle (throws if touched).
-    const legacyThrows = new Proxy(
-      {},
-      {
-        get() {
-          throw new Error("legacy handle must never be touched when split is off");
-        },
+      // Filter yields an empty page (no token has this idempotencyKey) so the probe runs.
+      const splitPresenter = new WaitpointListPresenter(prisma17, prisma17, {
+        runOpsNew: prisma17,
+        runOpsLegacyReplica: prisma14,
+        splitEnabled: true,
+      });
+      const r1 = await splitPresenter.call(
+        baseOptions(ctx.environmentId, { idempotencyKey: "no-such-key" })
+      );
+      expect(r1.success).toBe(true);
+      if (r1.success) {
+        // Probe found the legacy row => not false-empty.
+        expect(r1.tokens).toEqual([]);
+        expect(r1.hasAnyTokens).toBe(true);
       }
-    ) as unknown as PrismaClient;
-    const passthroughPresenter = new WaitpointListPresenter(prisma17, prisma17, {
-      runOpsLegacyReplica: legacyThrows,
-    });
-    const r3 = await passthroughPresenter.call(
-      baseOptions(ctx.environmentId, { idempotencyKey: "no-such-key" })
-    );
-    expect(r3.success).toBe(true);
-    if (r3.success) {
-      // Nothing on the new DB and split off => empty.
-      expect(r3.hasAnyTokens).toBe(false);
+
+      // Zero on both => empty (post-termination / past-retention normal response).
+      await prisma14.waitpoint.deleteMany({ where: { environmentId: ctx.environmentId } });
+      const r2 = await splitPresenter.call(
+        baseOptions(ctx.environmentId, { idempotencyKey: "no-such-key" })
+      );
+      expect(r2.success).toBe(true);
+      if (r2.success) {
+        expect(r2.hasAnyTokens).toBe(false);
+      }
+
+      // split off => probe reads only _replica, never the legacy handle (throws if touched).
+      const legacyThrows = new Proxy(
+        {},
+        {
+          get() {
+            throw new Error("legacy handle must never be touched when split is off");
+          },
+        }
+      ) as unknown as PrismaClient;
+      const passthroughPresenter = new WaitpointListPresenter(prisma17, prisma17, {
+        runOpsLegacyReplica: legacyThrows,
+      });
+      const r3 = await passthroughPresenter.call(
+        baseOptions(ctx.environmentId, { idempotencyKey: "no-such-key" })
+      );
+      expect(r3.success).toBe(true);
+      if (r3.success) {
+        // Nothing on the new DB and split off => empty.
+        expect(r3.hasAnyTokens).toBe(false);
+      }
     }
-  });
+  );
 
   heteroRunOpsPostgresTest(
     "scan against dedicated RunOpsPrismaClient (splitEnabled): returns waitpoints from new DB",
@@ -427,7 +481,12 @@ describe("WaitpointListPresenter read-route", () => {
       });
 
       const result = await presenter.call({
-        environment: { id: envId, type: "PRODUCTION", project: { id: projId, engine: "V2" }, apiKey: "tr_prod_rawscan" },
+        environment: {
+          id: envId,
+          type: "PRODUCTION",
+          project: { id: projId, engine: "V2" },
+          apiKey: "tr_prod_rawscan",
+        },
       });
 
       expect(result.success).toBe(true);

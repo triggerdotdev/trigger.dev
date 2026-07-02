@@ -13,7 +13,11 @@ vi.mock("~/db.server", () => ({
   sqlDatabaseSchema: Prisma.sql(["public"]),
 }));
 
-import { heteroPostgresTest, heteroRunOpsPostgresTest, postgresTest } from "@internal/testcontainers";
+import {
+  heteroPostgresTest,
+  heteroRunOpsPostgresTest,
+  postgresTest,
+} from "@internal/testcontainers";
 import { PrismaClient } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
@@ -34,7 +38,12 @@ type SeedContext = {
 // against a direct $queryRaw of the identical SQL on each DB version.
 function rawScan(
   prisma: PrismaClient,
-  opts: { environmentId: string; pageSize: number; direction: "forward" | "backward"; cursor?: string }
+  opts: {
+    environmentId: string;
+    pageSize: number;
+    direction: "forward" | "backward";
+    cursor?: string;
+  }
 ) {
   const { environmentId, pageSize, direction, cursor } = opts;
   const sqlDatabaseSchema = Prisma.sql(["public"]);
@@ -178,7 +187,10 @@ async function createBatch(
   });
 }
 
-const baseCall = (ctx: SeedContext, overrides: Partial<BatchListOptions> = {}): BatchListOptions => ({
+const baseCall = (
+  ctx: SeedContext,
+  overrides: Partial<BatchListOptions> = {}
+): BatchListOptions => ({
   projectId: ctx.projectId,
   environmentId: ctx.environmentId,
   userId: ctx.userId,
@@ -201,7 +213,8 @@ function spyClient(
             if (trProp === "findMany") {
               return (...args: any[]) => {
                 counts.findMany++;
-                if (opts.throwOnQueryRaw) throw new Error("batchTaskRun.findMany must not be invoked on this handle");
+                if (opts.throwOnQueryRaw)
+                  throw new Error("batchTaskRun.findMany must not be invoked on this handle");
                 return (trTarget as any).findMany(...args);
               };
             }
@@ -286,7 +299,11 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
       // The TS codepoint comparator reproduces the DB ORDER BY over the seeded id set.
       const allIds = ids.map((i) => `batch_${i}`);
       const dbForward = (
-        await rawScan(prisma17, { environmentId: ctx17.environmentId, pageSize: 50, direction: "forward" })
+        await rawScan(prisma17, {
+          environmentId: ctx17.environmentId,
+          pageSize: 50,
+          direction: "forward",
+        })
       ).map((r) => r.id);
       expect(dbForward).toEqual([...allIds].sort(desc));
     }
@@ -389,7 +406,9 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
       expect(page.hasAnyBatches).toBe(true);
 
       // Now wipe legacy too => both empty => hasAnyBatches false.
-      await prisma14.batchTaskRun.deleteMany({ where: { runtimeEnvironmentId: ctx.environmentId } });
+      await prisma14.batchTaskRun.deleteMany({
+        where: { runtimeEnvironmentId: ctx.environmentId },
+      });
       const page2 = await presenter.call(baseCall(ctx, { friendlyId: "fr_does_not_exist" }));
       expect(page2.batches).toHaveLength(0);
       expect(page2.hasAnyBatches).toBe(false);

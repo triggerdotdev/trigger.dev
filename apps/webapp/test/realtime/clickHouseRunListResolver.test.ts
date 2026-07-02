@@ -362,7 +362,11 @@ describe("ClickHouseRunListResolver (realtime run-list id-set, split-neutral)", 
       const otherEnvId = await seedSecondEnvironment(prisma, ctx, "envscope");
 
       const inEnv = await createRun(prisma, ctx, { friendlyId: "run_inEnv" });
-      await createRun(prisma, { ...ctx, environmentId: otherEnvId }, { friendlyId: "run_otherEnv" });
+      await createRun(
+        prisma,
+        { ...ctx, environmentId: otherEnvId },
+        { friendlyId: "run_otherEnv" }
+      );
 
       await setTimeout(1500);
 

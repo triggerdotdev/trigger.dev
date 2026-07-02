@@ -82,10 +82,7 @@ async function seedEnv(prisma: PrismaClient, slug: string) {
   return { organization, project, environment };
 }
 
-async function seedWorker(
-  prisma: PrismaClient,
-  ctx: { environmentId: string; projectId: string }
-) {
+async function seedWorker(prisma: PrismaClient, ctx: { environmentId: string; projectId: string }) {
   const queue = await prisma.taskQueue.create({
     data: {
       friendlyId: `queue_${idGenerator()}`,

@@ -124,46 +124,49 @@ async function seedRun(
 }
 
 describe("RunPresenter run read seam (single-DB, real PG)", () => {
-  postgresTest("passthrough resolves the run-detail header via the singleton", async ({ prisma }) => {
-    setCurrentPrisma(prisma);
+  postgresTest(
+    "passthrough resolves the run-detail header via the singleton",
+    async ({ prisma }) => {
+      setCurrentPrisma(prisma);
 
-    const suffix = uniqueSuffix("pt");
-    const { user, organization, project, runtimeEnvironment } = await seedOrgProjectEnvMember(
-      prisma,
-      suffix
-    );
+      const suffix = uniqueSuffix("pt");
+      const { user, organization, project, runtimeEnvironment } = await seedOrgProjectEnvMember(
+        prisma,
+        suffix
+      );
 
-    const id = generateKsuidId();
-    const friendlyId = `run_${id}`;
-    const run = await seedRun(
-      prisma,
-      { id, friendlyId },
-      {
-        runtimeEnvironmentId: runtimeEnvironment.id,
-        projectId: project.id,
-        organizationId: organization.id,
-      }
-    );
+      const id = generateKsuidId();
+      const friendlyId = `run_${id}`;
+      const run = await seedRun(
+        prisma,
+        { id, friendlyId },
+        {
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+        }
+      );
 
-    const presenter = new RunPresenter(prisma);
-    const result = await presenter.call({
-      userId: user.id,
-      projectSlug: project.slug,
-      environmentSlug: runtimeEnvironment.slug,
-      runFriendlyId: friendlyId,
-      showDeletedLogs: false,
-      showDebug: false,
-    });
+      const presenter = new RunPresenter(prisma);
+      const result = await presenter.call({
+        userId: user.id,
+        projectSlug: project.slug,
+        environmentSlug: runtimeEnvironment.slug,
+        runFriendlyId: friendlyId,
+        showDeletedLogs: false,
+        showDebug: false,
+      });
 
-    // Header served through the store seam (singleton → Proxy → real container).
-    expect(result.run.id).toBe(id);
-    expect(result.run.friendlyId).toBe(friendlyId);
-    expect(result.run.number).toBe(run.number);
-    expect(result.run.status).toBe("COMPLETED_SUCCESSFULLY");
-    expect(result.run.environment.slug).toBe(runtimeEnvironment.slug);
-    // logsDeletedAt is set → early return, no trace.
-    expect(result.trace).toBeUndefined();
-  });
+      // Header served through the store seam (singleton → Proxy → real container).
+      expect(result.run.id).toBe(id);
+      expect(result.run.friendlyId).toBe(friendlyId);
+      expect(result.run.number).toBe(run.number);
+      expect(result.run.status).toBe("COMPLETED_SUCCESSFULLY");
+      expect(result.run.environment.slug).toBe(runtimeEnvironment.slug);
+      // logsDeletedAt is set → early return, no trace.
+      expect(result.trace).toBeUndefined();
+    }
+  );
 
   postgresTest(
     "run read is NOT pinned to the constructor client (served via the seam)",

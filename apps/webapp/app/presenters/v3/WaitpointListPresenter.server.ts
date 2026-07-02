@@ -170,7 +170,8 @@ export class WaitpointListPresenter extends BasePresenter {
     }
     if (from !== undefined) {
       const fromDate = new Date(from);
-      createdAtGte = createdAtGte === undefined ? fromDate : fromDate > createdAtGte ? fromDate : createdAtGte;
+      createdAtGte =
+        createdAtGte === undefined ? fromDate : fromDate > createdAtGte ? fromDate : createdAtGte;
     }
     const createdAtLte: Date | undefined = to !== undefined ? new Date(to) : undefined;
 
@@ -180,9 +181,7 @@ export class WaitpointListPresenter extends BasePresenter {
           where: {
             environmentId: environment.id,
             type: "MANUAL",
-            ...(cursor
-              ? { id: direction === "forward" ? { lt: cursor } : { gt: cursor } }
-              : {}),
+            ...(cursor ? { id: direction === "forward" ? { lt: cursor } : { gt: cursor } } : {}),
             ...(id ? { friendlyId: id } : {}),
             ...(statusesToFilter.length ? { status: { in: statusesToFilter } } : {}),
             ...(filterOutputIsError !== undefined ? { outputIsError: filterOutputIsError } : {}),

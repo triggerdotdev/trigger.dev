@@ -511,5 +511,4 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
       }
     }
   );
-
 });

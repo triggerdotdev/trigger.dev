@@ -333,27 +333,28 @@ describe("BatchPresenter single-DB passthrough", () => {
   // TaskRuns — the dangling-reference gate over members is owned by the migration / dangling-gate
   // units, not this presenter. This unit's contribution is "batch detail loads regardless of
   // which run-ops store holds the batch row."
-  containerTest("e2e #3 proxy: a batch spanning migrated + abandoned runs still resolves", async ({
-    prisma,
-  }) => {
-    const ctx = await seedEnvironment(prisma, "e2e3");
-    await seedBatch(prisma, ctx.environmentId, {
-      friendlyId: "batch_e2e3",
-      runCount: 10, // implies members spanning migrated + abandoned runs
-    });
+  containerTest(
+    "e2e #3 proxy: a batch spanning migrated + abandoned runs still resolves",
+    async ({ prisma }) => {
+      const ctx = await seedEnvironment(prisma, "e2e3");
+      await seedBatch(prisma, ctx.environmentId, {
+        friendlyId: "batch_e2e3",
+        runCount: 10, // implies members spanning migrated + abandoned runs
+      });
 
-    const presenter = new BatchPresenter(prisma, prisma, {
-      splitEnabled: false,
-      newClient: prisma,
-      resolveDisplayableEnvironment: makeEnvResolver(prisma),
-    });
+      const presenter = new BatchPresenter(prisma, prisma, {
+        splitEnabled: false,
+        newClient: prisma,
+        resolveDisplayableEnvironment: makeEnvResolver(prisma),
+      });
 
-    const result = await presenter.call({
-      environmentId: ctx.environmentId,
-      batchId: "batch_e2e3",
-    });
+      const result = await presenter.call({
+        environmentId: ctx.environmentId,
+        batchId: "batch_e2e3",
+      });
 
-    expect(result.friendlyId).toBe("batch_e2e3");
-    expect(result.runCount).toBe(10);
-  });
+      expect(result.friendlyId).toBe("batch_e2e3");
+      expect(result.runCount).toBe(10);
+    }
+  );
 });

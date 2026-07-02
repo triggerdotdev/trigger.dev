@@ -374,7 +374,6 @@ describe("WaitpointPresenter connected-runs hydrate routed through read-through 
       }
     }
   );
-
 });
 
 describe("WaitpointPresenter bare-ctor production default activates readThroughRun", () => {

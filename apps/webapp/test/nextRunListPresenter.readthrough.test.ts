@@ -206,7 +206,11 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
           splitEnabled: true,
         });
 
-        const result = await presenter.call(ctx.organizationId, ctx.environmentId, callOptions(ctx));
+        const result = await presenter.call(
+          ctx.organizationId,
+          ctx.environmentId,
+          callOptions(ctx)
+        );
 
         // CH id-set is empty within the page window, but the legacy probe finds the row.
         expect(result.runs).toHaveLength(0);
@@ -253,7 +257,11 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
         });
 
         // If the legacy spy were invoked, this would throw — the test passing IS the proof.
-        const result = await presenter.call(ctx.organizationId, ctx.environmentId, callOptions(ctx));
+        const result = await presenter.call(
+          ctx.organizationId,
+          ctx.environmentId,
+          callOptions(ctx)
+        );
 
         expect(result.runs).toHaveLength(0);
         expect(result.hasAnyRuns).toBe(true);
@@ -291,7 +299,11 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
           splitEnabled: true,
         });
 
-        const result = await presenter.call(ctx.organizationId, ctx.environmentId, callOptions(ctx));
+        const result = await presenter.call(
+          ctx.organizationId,
+          ctx.environmentId,
+          callOptions(ctx)
+        );
 
         expect(result.runs).toHaveLength(0);
         expect(result.hasAnyRuns).toBe(false);
@@ -392,7 +404,11 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
           splitEnabled: true,
         });
 
-        const result = await presenter.call(ctx.organizationId, ctx.environmentId, callOptions(ctx));
+        const result = await presenter.call(
+          ctx.organizationId,
+          ctx.environmentId,
+          callOptions(ctx)
+        );
 
         const expectedIds = [migratedA.id, migratedB.id, legacyOnlyA.id, legacyOnlyB.id].sort(
           (a, b) => (a < b ? 1 : a > b ? -1 : 0)

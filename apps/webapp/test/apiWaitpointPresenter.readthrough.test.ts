@@ -225,7 +225,10 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         newClient: recording(prisma17).handle,
         legacyReplica: newLegacy.handle,
       });
-      const migratedResult = await migratedPresenter.call(environmentArg(newEnv.environment), newId);
+      const migratedResult = await migratedPresenter.call(
+        environmentArg(newEnv.environment),
+        newId
+      );
       expect(migratedResult.id).toBe(`waitpoint_${newId}`);
       expect(newLegacy.calls.length).toBe(0);
 
@@ -241,7 +244,10 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         newClient: recording(prisma17).handle,
         legacyReplica: recording(prisma14).handle,
       });
-      const retentionResult = await retentionPresenter.call(environmentArg(oldEnv.environment), oldId);
+      const retentionResult = await retentionPresenter.call(
+        environmentArg(oldEnv.environment),
+        oldId
+      );
       expect(retentionResult.id).toBe(`waitpoint_${oldId}`);
     }
   );

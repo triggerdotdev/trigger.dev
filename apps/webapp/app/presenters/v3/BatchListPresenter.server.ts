@@ -197,43 +197,38 @@ export class BatchListPresenter extends BasePresenter {
     }
     const createdAtLte: Date | undefined = time.to;
 
-    const batches = await this.#scanBatchTaskRun(
-      pageSize,
-      direction,
-      (client) =>
-        client.batchTaskRun.findMany({
-          where: {
-            runtimeEnvironmentId: environmentId,
-            ...(cursor
-              ? { id: direction === "forward" ? { lt: cursor } : { gt: cursor } }
-              : {}),
-            ...(friendlyId ? { friendlyId } : {}),
-            ...(statuses && statuses.length > 0
-              ? { status: { in: statuses }, batchVersion: { not: "v1" } }
-              : {}),
-            ...(createdAtGte !== undefined || createdAtLte !== undefined
-              ? {
-                  createdAt: {
-                    ...(createdAtGte !== undefined ? { gte: createdAtGte } : {}),
-                    ...(createdAtLte !== undefined ? { lte: createdAtLte } : {}),
-                  },
-                }
-              : {}),
-          },
-          orderBy: { id: direction === "forward" ? "desc" : "asc" },
-          take: pageSize + 1,
-          select: {
-            id: true,
-            friendlyId: true,
-            runtimeEnvironmentId: true,
-            status: true,
-            createdAt: true,
-            updatedAt: true,
-            completedAt: true,
-            runCount: true,
-            batchVersion: true,
-          },
-        })
+    const batches = await this.#scanBatchTaskRun(pageSize, direction, (client) =>
+      client.batchTaskRun.findMany({
+        where: {
+          runtimeEnvironmentId: environmentId,
+          ...(cursor ? { id: direction === "forward" ? { lt: cursor } : { gt: cursor } } : {}),
+          ...(friendlyId ? { friendlyId } : {}),
+          ...(statuses && statuses.length > 0
+            ? { status: { in: statuses }, batchVersion: { not: "v1" } }
+            : {}),
+          ...(createdAtGte !== undefined || createdAtLte !== undefined
+            ? {
+                createdAt: {
+                  ...(createdAtGte !== undefined ? { gte: createdAtGte } : {}),
+                  ...(createdAtLte !== undefined ? { lte: createdAtLte } : {}),
+                },
+              }
+            : {}),
+        },
+        orderBy: { id: direction === "forward" ? "desc" : "asc" },
+        take: pageSize + 1,
+        select: {
+          id: true,
+          friendlyId: true,
+          runtimeEnvironmentId: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          completedAt: true,
+          runCount: true,
+          batchVersion: true,
+        },
+      })
     );
 
     const hasMore = batches.length > pageSize;
