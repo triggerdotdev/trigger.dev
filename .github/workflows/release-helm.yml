@@ -23,7 +23,7 @@ env:
 
 jobs:
   lint-and-test:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: read
     steps:
@@ -68,7 +68,7 @@ jobs:
     # on the owner's charts namespace. Defaults to enabled; the lint-and-test
     # job above always runs regardless.
     if: ${{ vars.ENABLE_HELM_PRERELEASE != 'false' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: write # for gh-release
       packages: write

@@ -18,7 +18,7 @@ concurrency:
 jobs:
   release-pr:
     name: Create Release PR
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: write
       pull-requests: write

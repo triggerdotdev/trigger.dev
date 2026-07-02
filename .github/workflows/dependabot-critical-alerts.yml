@@ -29,7 +29,7 @@ jobs:
     # the Dependabot alert/summary notifiers — e.g. forks/mirrors that lack the
     # DEPENDABOT_ALERTS_TOKEN / SLACK_BOT_TOKEN secrets. Defaults to enabled.
     if: ${{ vars.ENABLE_DEPENDABOT_ALERTS != 'false' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     environment: dependabot-summary
     env:
       SEVERITY: ${{ inputs.severity || 'critical' }}

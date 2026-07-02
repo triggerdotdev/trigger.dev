@@ -15,7 +15,7 @@ permissions:
 jobs:
   changes:
     name: Detect changes
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     outputs:
       code: ${{ steps.code_filter.outputs.code }}
       typecheck_self: ${{ steps.filter.outputs.typecheck_self }}
@@ -168,7 +168,7 @@ jobs:
       - e2e
       - sdk-compat
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Verify all checks
         run: |
