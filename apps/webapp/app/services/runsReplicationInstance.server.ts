@@ -151,7 +151,7 @@ function initializeRunsReplicationInstance() {
   ]);
 
   if (env.RUN_REPLICATION_ENABLED === "1") {
-    // Shape B (construct-after-gate): resolve the async split gate ONCE at boot, and
+    // Construct-after-gate: resolve the async split gate ONCE at boot, and
     // when both sources are enabled rebuild `service` with sources[] before starting.
     // The legacy-only instance above is never started in the dual path (no slot/lock
     // taken). runsReplicationService.server.ts is untouched. The create route also calls

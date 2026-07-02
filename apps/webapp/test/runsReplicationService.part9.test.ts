@@ -200,7 +200,7 @@ describe("RunsReplicationService (part 9/9) - per-source replication-lag attribu
     }
   );
 
-  // Step 1.4: single-source passthrough. When a single source is used, the lag
+  // Single-source passthrough. When a single source is used, the lag
   // histogram records exactly one `source` label value (the source's id).
   replicationContainerTest(
     "records a single source label in single-source mode",

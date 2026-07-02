@@ -194,7 +194,7 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
     }
   );
 
-  // Case A - reverse-order independence (Step 4.1).
+  // Case A - reverse-order independence.
   // Same run in both sources, but we flush the NEW (gen-1) snapshot FIRST, then the LEGACY
   // (gen-0) snapshot. The gen-1 winner must survive regardless of arrival order - the collapse
   // is FINAL-time and ordered by _version (composed origin generation), not by arrival time.
@@ -362,7 +362,7 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
     }
   );
 
-  // Case B - per-source independence / no cross-contamination (Step 4.2).
+  // Case B - per-source independence / no cross-contamination.
   // Two DIFFERENT runs: run X lives ONLY in the legacy/gen-0 DB, run Y lives ONLY in the
   // new/gen-1 DB. BOTH must appear in ClickHouse exactly once with their own status. This proves
   // (a) BOTH sources became leader and streamed (a single-leader regression would drop one run),
