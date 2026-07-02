@@ -151,6 +151,49 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
     }
   );
 
+  heteroRunOpsPostgresTest(
+    "bare caller (no deps) resolves a NEW-resident waitpoint via the safe run-ops defaults",
+    async ({ prisma17, prisma14 }) => {
+      // The bare wait route passes NO `deps`; the `defaults` DI seam models old vs new
+      // fallback against containers, avoiding the real db.server topology.
+      const id = generateKsuidId();
+      expect(id.length).toBe(27);
+      const environmentId = generateKsuidId();
+      const projectId = generateKsuidId();
+      const seeded = await seedWaitpoint(prisma17, id, { id: environmentId, projectId });
+
+      // FAIL-BEFORE: old default pinned newClient to control-plane ($replica ≈ prisma14) → miss.
+      const oldDefaultResult = await resolveWaitpointThroughReadThrough({
+        waitpointId: id,
+        environmentId,
+        read: read(id, environmentId),
+        defaults: {
+          newClient: prisma14 as unknown as PrismaReplicaClient,
+          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
+          splitEnabled: true,
+        },
+      });
+      expect(oldDefaultResult).toBeNull();
+
+      // PASS-AFTER: safe default routes newClient to the run-ops replica (runOpsNewReplica ≈ prisma17).
+      const safeDefaultResult = await resolveWaitpointThroughReadThrough({
+        waitpointId: id,
+        environmentId,
+        read: read(id, environmentId),
+        defaults: {
+          newClient: prisma17 as unknown as PrismaReplicaClient,
+          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
+          splitEnabled: true,
+        },
+      });
+
+      expect(safeDefaultResult).not.toBeNull();
+      expect(safeDefaultResult!.id).toBe(seeded.id);
+      expect(safeDefaultResult!.projectId).toBe(projectId);
+      expect(safeDefaultResult!.environmentId).toBe(environmentId);
+    }
+  );
+
   heteroRunOpsPostgresTest("not-found maps to null (no throw)", async ({ prisma17, prisma14 }) => {
     const id = generateLegacyCuid();
     const { environment } = await seedOrgProjectEnv(prisma14, "nf");
