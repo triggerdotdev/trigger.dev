@@ -189,10 +189,10 @@ function dedupProbe(
 }
 
 describe("RoutingRunStore — cross-DB idempotency dedup probe", () => {
-  // case A: the matching run + its associated waitpoint live on #legacy (cuid, full schema). The
+  // the matching run + its associated waitpoint live on #legacy (cuid, full schema). The
   // probe fans out NEW (miss) → LEGACY (hit) and must hydrate the waitpoint via the legacy include.
   heteroRunOpsPostgresTest(
-    "case A: a cuid run on #legacy is found by the id-less probe with associatedWaitpoint hydrated",
+    "a cuid run on #legacy is found by the id-less probe with associatedWaitpoint hydrated",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma14, "legacy", "cg2_a");
@@ -240,11 +240,11 @@ describe("RoutingRunStore — cross-DB idempotency dedup probe", () => {
     }
   );
 
-  // case B: the matching run + its associated waitpoint live on #new (ksuid, dedicated subset). The
+  // the matching run + its associated waitpoint live on #new (ksuid, dedicated subset). The
   // probe hits the NEW leg first; the SCALAR-ONLY store must strip the `associatedWaitpoint` relation
   // and re-hydrate it from `Waitpoint.completedByTaskRunId`.
   heteroRunOpsPostgresTest(
-    "case B: a ksuid run on #new is found by the id-less probe with associatedWaitpoint hydrated from scalar",
+    "a ksuid run on #new is found by the id-less probe with associatedWaitpoint hydrated from scalar",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "cg2_b");
@@ -291,13 +291,13 @@ describe("RoutingRunStore — cross-DB idempotency dedup probe", () => {
     }
   );
 
-  // case C (duplicate-guard contract): a run with the SAME (env, idempotencyKey, taskIdentifier)
+  // duplicate-guard contract: a run with the SAME (env, idempotencyKey, taskIdentifier)
   // exists on BOTH DBs. The per-DB unique constraint allows one row each (it cannot enforce cross-DB
   // uniqueness); the probe MUST still resolve to exactly ONE run, deterministically the NEW (ksuid)
   // one per #findRunUnrouted (NEW-first). The duplicate itself is prevented upstream by
   // probe-before-mint plus the per-DB unique constraint; this locks the read tie-break contract.
   heteroRunOpsPostgresTest(
-    "case C: the same (env, key) on BOTH DBs resolves deterministically to the NEW run",
+    "the same (env, key) on BOTH DBs resolves deterministically to the NEW run",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       // ONE logical environment id shared by both DBs (the run-ops envId is the same scalar on each).

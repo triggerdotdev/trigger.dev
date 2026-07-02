@@ -152,7 +152,7 @@ function normalizeSnapshot(row: Record<string, unknown>) {
 }
 
 describe("RunStore run-ops persistence — snapshots", () => {
-  // S-A: an identical run + ≥2 snapshots (one invalid, one valid) seeded on #legacy (full schema)
+  // an identical run + ≥2 snapshots (one invalid, one valid) seeded on #legacy (full schema)
   // and #new (dedicated subset) yield a deep-equal `findLatestExecutionSnapshot` row, and it is the
   // valid one — proving the dedicated store's group-A hydration does not perturb the scalar columns.
   heteroRunOpsPostgresTest(
@@ -231,7 +231,7 @@ describe("RunStore run-ops persistence — snapshots", () => {
     }
   );
 
-  // S-B: completedWaitpoints round-trips through the join (implicit `_completedWaitpoints` on legacy,
+  // completedWaitpoints round-trips through the join (implicit `_completedWaitpoints` on legacy,
   // explicit `CompletedWaitpoint` on the dedicated subset), and the derived completedWaitpointOrder
   // preserves the supplied index order, on both stores.
   heteroRunOpsPostgresTest(
@@ -304,7 +304,7 @@ describe("RunStore run-ops persistence — snapshots", () => {
     }
   );
 
-  // S-C: a collation-sensitive ORDER BY over a text column pinned to the shared ICU collation
+  // a collation-sensitive ORDER BY over a text column pinned to the shared ICU collation
   // (`und-x-icu`, present on both the #legacy container and the #new container) returns the
   // identical sequence of snapshot descriptions on #legacy and #new. The pin keeps the comparison a
   // proof of the split rather than of a default-collation difference between the two DBs.

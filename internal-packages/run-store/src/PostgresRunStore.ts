@@ -99,16 +99,16 @@ export type PostgresRunStoreOptions = {
 // A caller sub-select for a relation: `{ select?, include? }` or `true` for a bare `key: true`.
 type SubProjection = { select?: any; include?: any } | true | undefined;
 
-// Hydrates one group-A relation for a single parent row, honoring the caller's sub-projection.
-type GroupAHydrator = (
+// Hydrates one dedicated-schema relation for a single parent row, honoring the caller's sub-projection.
+type DedicatedRelationHydrator = (
   client: RunOpsCapableClient,
   parent: Record<string, unknown>,
   projection: { select?: any; include?: any } | undefined,
   store: PostgresRunStore
 ) => Promise<unknown>;
 
-// The group-A relation keys (with hydrators) for a single Prisma model on the dedicated schema.
-type DedicatedRelationSpec = Record<string, GroupAHydrator>;
+// The dedicated-schema relation keys (with hydrators) for a single Prisma model.
+type DedicatedRelationSpec = Record<string, DedicatedRelationHydrator>;
 
 // Normalize a caller sub-projection to `{ select | include }` (or undefined for `true`).
 function projectionOf(sub: SubProjection): { select?: any; include?: any } | undefined {
@@ -135,7 +135,7 @@ function applyProjection<T extends Record<string, unknown> | null>(
 }
 
 /**
- * Split a caller `{ select | include }` into the args to send Prisma (group-A keys removed,
+ * Split a caller `{ select | include }` into the args to send Prisma (dedicated-schema relation keys removed,
  * `id` ensured present so hydrators can key off it) and the `requested` map of stripped keys
  * to their sub-projection. Both `select` and `include` are handled: with `select` the parent
  * scalars must be explicitly kept, with `include` they come back by default.
@@ -175,10 +175,10 @@ function stripGroupARelations(
   return { stripped: args, requested };
 }
 
-// --- per-model group-A hydrators (dedicated schema) ---
+// --- per-model dedicated-schema relation hydrators ---
 
 // Waitpoint where completedByTaskRunId = run.id (the @unique scalar back-pointer); at most one.
-const hydrateAssociatedWaitpoint: GroupAHydrator = async (client, parent, projection) => {
+const hydrateAssociatedWaitpoint: DedicatedRelationHydrator = async (client, parent, projection) => {
   const wp = (await client.waitpoint.findFirst({
     where: { completedByTaskRunId: parent.id as string },
   })) as Record<string, unknown> | null;
@@ -186,7 +186,7 @@ const hydrateAssociatedWaitpoint: GroupAHydrator = async (client, parent, projec
 };
 
 // Display connections for a run: WaitpointRunConnection → Waitpoint rows.
-const hydrateConnectedWaitpoints: GroupAHydrator = async (client, parent, projection) => {
+const hydrateConnectedWaitpoints: DedicatedRelationHydrator = async (client, parent, projection) => {
   const join = client.waitpointRunConnection;
   if (!join) {
     return [];
@@ -205,7 +205,7 @@ const hydrateConnectedWaitpoints: GroupAHydrator = async (client, parent, projec
 };
 
 // Completed waitpoints for a snapshot: CompletedWaitpoint join → Waitpoint rows.
-const hydrateCompletedWaitpoints: GroupAHydrator = async (client, parent, projection) => {
+const hydrateCompletedWaitpoints: DedicatedRelationHydrator = async (client, parent, projection) => {
   const join = client.completedWaitpoint;
   if (!join) {
     return [];
@@ -225,7 +225,7 @@ const hydrateCompletedWaitpoints: GroupAHydrator = async (client, parent, projec
 
 // Runs a waitpoint is blocking: TaskRunWaitpoint rows keyed by waitpointId. A nested `taskRun`
 // select (the run-engine's getWaitpoint shape) is resolved from the scalar TaskRunWaitpoint.taskRunId.
-const hydrateBlockingTaskRuns: GroupAHydrator = async (client, parent, projection) => {
+const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parent, projection) => {
   const edges = (await client.taskRunWaitpoint.findMany({
     where: { waitpointId: parent.id as string },
   })) as Record<string, unknown>[];
@@ -245,7 +245,7 @@ const hydrateBlockingTaskRuns: GroupAHydrator = async (client, parent, projectio
 };
 
 // Display connections for a waitpoint: WaitpointRunConnection → TaskRun rows.
-const hydrateConnectedRuns: GroupAHydrator = async (client, parent, projection) => {
+const hydrateConnectedRuns: DedicatedRelationHydrator = async (client, parent, projection) => {
   const join = client.waitpointRunConnection;
   if (!join) {
     return [];
@@ -264,7 +264,7 @@ const hydrateConnectedRuns: GroupAHydrator = async (client, parent, projection) 
 };
 
 // Snapshots that completed a waitpoint: CompletedWaitpoint join → TaskRunExecutionSnapshot rows.
-const hydrateCompletedExecutionSnapshots: GroupAHydrator = async (client, parent, projection) => {
+const hydrateCompletedExecutionSnapshots: DedicatedRelationHydrator = async (client, parent, projection) => {
   const join = client.completedWaitpoint;
   if (!join) {
     return [];
@@ -284,7 +284,7 @@ const hydrateCompletedExecutionSnapshots: GroupAHydrator = async (client, parent
 
 // The waitpoint a block edge points at, resolved from the edge's scalar `waitpointId`. The edge's
 // own client only finds a co-resident token; the router re-resolves cross-DB.
-const hydrateEdgeWaitpoint: GroupAHydrator = async (client, parent, projection) => {
+const hydrateEdgeWaitpoint: DedicatedRelationHydrator = async (client, parent, projection) => {
   const waitpointId = parent.waitpointId as string | undefined;
   if (!waitpointId) {
     return null;
@@ -296,7 +296,7 @@ const hydrateEdgeWaitpoint: GroupAHydrator = async (client, parent, projection) 
 };
 
 // The run a block edge belongs to, resolved from the edge's scalar `taskRunId`.
-const hydrateEdgeTaskRun: GroupAHydrator = async (client, parent, projection) => {
+const hydrateEdgeTaskRun: DedicatedRelationHydrator = async (client, parent, projection) => {
   const taskRunId = parent.taskRunId as string | undefined;
   if (!taskRunId) {
     return null;
@@ -312,7 +312,7 @@ const TASK_RUN_GROUP_A: DedicatedRelationSpec = {
   connectedWaitpoints: hydrateConnectedWaitpoints,
 };
 
-// Group-A relations on the TaskRunWaitpoint (block edge) model. The dedicated subset has only the
+// Dedicated-schema relations on the TaskRunWaitpoint (block edge) model. The dedicated subset has only the
 // scalar `waitpointId`/`taskRunId`, so a caller `select`/`include` naming these relations must be
 // stripped and hydrated.
 const TASK_RUN_WAITPOINT_GROUP_A: DedicatedRelationSpec = {
@@ -1856,8 +1856,8 @@ export class PostgresRunStore implements RunStore {
   }
 
   /**
-   * Run `taskRun.update` honoring a caller `{ select | include }` that may name group-A relation
-   * keys. Legacy passes through unchanged; dedicated strips + hydrates via the shared adapter.
+   * Run `taskRun.update` honoring a caller `{ select | include }` that may name dedicated-schema
+   * relation keys. Legacy passes through unchanged; dedicated strips + hydrates via the shared adapter.
    */
   #updateTaskRunWithSelect(
     prisma: RunOpsCapableClient,
@@ -1876,7 +1876,7 @@ export class PostgresRunStore implements RunStore {
     );
   }
 
-  /** Run `taskRun.findFirst`/`findFirstOrThrow` honoring a caller select/include (group-A aware). */
+  /** Run `taskRun.findFirst`/`findFirstOrThrow` honoring a caller select/include (dedicated-schema-relation aware). */
   #findTaskRunWithSelect(
     prisma: ReadClient | RunOpsCapableClient,
     method: "findFirst" | "findFirstOrThrow",
@@ -1896,11 +1896,12 @@ export class PostgresRunStore implements RunStore {
   }
 
   // --- dedicated-schema caller-select adapter (P2-store-bodies-2) ---
-  // On the dedicated subset the group-A relation keys the run-engine selects don't exist. We strip
+  // On the dedicated subset the relation keys the run-engine selects don't exist (they're stripped on
+  // the dedicated schema and hydrated from scalars/joins). We strip
   // them from the caller's select/include, run the query, then hydrate from the scalar/join model
   // and merge back so the returned shape is unchanged. Legacy passes the keys through unchanged.
 
-  // Strip group-A keys, run the single-result delegate query, then hydrate the stripped keys back.
+  // Strip the dedicated-schema relation keys, run the single-result delegate query, then hydrate the stripped keys back.
   async #runDedicatedSelect(
     client: RunOpsCapableClient,
     runQuery: (strippedArgs: { select?: any; include?: any }) => Promise<any>,
@@ -1916,7 +1917,7 @@ export class PostgresRunStore implements RunStore {
     return row;
   }
 
-  // Hydrate each requested group-A key onto `row` in place, honoring the caller's sub-select.
+  // Hydrate each requested dedicated-schema relation key onto `row` in place, honoring the caller's sub-select.
   async #hydrateGroupARelations(
     client: RunOpsCapableClient,
     row: Record<string, unknown>,
