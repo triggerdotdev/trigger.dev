@@ -1,7 +1,7 @@
 import { type LoaderFunctionArgs } from "@remix-run/node";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
@@ -42,7 +42,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // Authorize on the control-plane DB, keyed by the run's project — a non-member (or
   // unresolvable project) is indistinguishable from not-found (both 404), matching the
   // original scoped where.
-  const authorizedProject = await $replica.project.findFirst({
+  const authorizedProject = await prisma.project.findFirst({
     where: { id: run.projectId, organization: { members: { some: { userId } } } },
     select: { id: true },
   });

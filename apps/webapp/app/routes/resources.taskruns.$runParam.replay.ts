@@ -282,7 +282,20 @@ async function resolveRunOrganizationId(runParam: string): Promise<string | null
     return entry.orgId;
   }
 
-  return null;
+  // Replica lag with the buffer entry already drained: the run can exist in the
+  // primary while both lookups above miss. Fall back to the primary so the RBAC
+  // scope is never resolved without an org (which would let the role check run
+  // unscoped under the RBAC plugin). Keyed by friendlyId so routing still applies.
+  const primaryRun = await runStore.findRun(
+    { friendlyId: runParam },
+    { select: { runtimeEnvironmentId: true } },
+    prisma
+  );
+  if (!primaryRun) {
+    return null;
+  }
+  const primaryEnv = await controlPlaneResolver.resolveEnv(primaryRun.runtimeEnvironmentId);
+  return primaryEnv?.organizationId ?? null;
 }
 
 export const action = dashboardAction(

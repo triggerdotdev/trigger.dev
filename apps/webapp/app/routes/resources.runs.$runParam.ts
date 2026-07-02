@@ -3,7 +3,7 @@ import { prettyPrintPacket, TaskRunError } from "@trigger.dev/core/v3";
 import type { UseDataFunctionReturn } from "remix-typedjson";
 import { typedjson } from "remix-typedjson";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
@@ -83,7 +83,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Not found", { status: 404 });
   }
 
-  const authorizedProject = await $replica.project.findFirst({
+  const authorizedProject = await prisma.project.findFirst({
     where: { id: run.projectId, organization: { members: { some: { userId } } } },
     select: { id: true },
   });

@@ -1,5 +1,5 @@
 import { type ActionFunction, json } from "@remix-run/node";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { jsonWithErrorMessage, jsonWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
@@ -31,7 +31,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       return jsonWithErrorMessage({}, request, "Run not found");
     }
 
-    const authorizedProject = await $replica.project.findFirst({
+    const authorizedProject = await prisma.project.findFirst({
       where: { id: taskRun.projectId, organization: { members: { some: { userId } } } },
       select: { id: true },
     });
