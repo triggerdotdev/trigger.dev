@@ -414,14 +414,17 @@ const dedicatedUrl = process.env.CROSS_VERSION_DEDICATED_URL;
 const describeDedicated = dedicatedUrl ? describe : describe.skip;
 
 describeDedicated("real dedicated-DB cross-version corpus (env-gated)", () => {
-  heteroPostgresTest("CTE + join/round-trip + keyset vs real dedicated run-ops DB", async ({ prisma14 }) => {
-    const dedicated = new PrismaClient({ datasources: { db: { url: dedicatedUrl! } } });
-    try {
-      await assertBlockWaitpointCteIdentical(prisma14, dedicated);
-      await assertCompletedWaitpointsRoundtripIdentical(prisma14, dedicated);
-      await assertKeysetOrderIdentical(prisma14, dedicated);
-    } finally {
-      await dedicated.$disconnect();
+  heteroPostgresTest(
+    "CTE + join/round-trip + keyset vs real dedicated run-ops DB",
+    async ({ prisma14 }) => {
+      const dedicated = new PrismaClient({ datasources: { db: { url: dedicatedUrl! } } });
+      try {
+        await assertBlockWaitpointCteIdentical(prisma14, dedicated);
+        await assertCompletedWaitpointsRoundtripIdentical(prisma14, dedicated);
+        await assertKeysetOrderIdentical(prisma14, dedicated);
+      } finally {
+        await dedicated.$disconnect();
+      }
     }
-  });
+  );
 });
