@@ -65,12 +65,6 @@ export class ApiWaitpointPresenter extends BasePresenter {
             completedAfter: true,
             completedAt: true,
             createdAt: true,
-            connectedRuns: {
-              select: {
-                friendlyId: true,
-              },
-              take: 5,
-            },
             tags: true,
           },
         });

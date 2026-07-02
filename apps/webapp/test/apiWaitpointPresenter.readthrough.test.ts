@@ -2,7 +2,12 @@
 // The DB is never mocked: reads hit the two real containers. Only pure boundaries
 // (splitEnabled, isPastRetention) and recording client wrappers are
 // injected. heteroPostgresTest runs the legacy and new databases on different major versions.
-import { heteroPostgresTest, postgresTest } from "@internal/testcontainers";
+import {
+  heteroPostgresTest,
+  heteroRunOpsPostgresTest,
+  postgresTest,
+} from "@internal/testcontainers";
+import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { PrismaClient, WaitpointType } from "@trigger.dev/database";
 import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, vi } from "vitest";
@@ -22,7 +27,7 @@ function generateLegacyCuid() {
 
 // A read client whose waitpoint.findFirst is recorded; throws if used after being marked
 // forbidden, so we can prove a store was NEVER read.
-function recording(client: PrismaClient, opts: { forbidden?: boolean } = {}) {
+function recording(client: PrismaClient | RunOpsPrismaClient, opts: { forbidden?: boolean } = {}) {
   const calls: unknown[] = [];
   const waitpoint = {
     findFirst: (args: unknown) => {
@@ -249,6 +254,45 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         oldId
       );
       expect(retentionResult.id).toBe(`waitpoint_${oldId}`);
+    }
+  );
+});
+
+// Regression: the split-mode NEW client is the REAL scalar-only run-ops client (prisma17). A cuid
+// classifies LEGACY, so readThroughRun probes NEW first — a relation in hydrate() (connectedRuns)
+// throws PrismaClientValidationError there (the 500) before the legacy fallback runs.
+describe("ApiWaitpointPresenter read-through (dedicated scalar-only run-ops NEW client)", () => {
+  heteroRunOpsPostgresTest(
+    "cuid token: hydrate() select is valid against the scalar-only run-ops client, resolves via legacy",
+    async ({ prisma17, prisma14 }) => {
+      const id = generateLegacyCuid();
+      expect(id.length).toBe(25);
+
+      const { project, environment } = await seedOrgProjectEnv(prisma14, "scalar-legacy");
+      const seeded = await seedWaitpoint(
+        prisma14,
+        id,
+        { id: environment.id, projectId: project.id },
+        { tags: ["p", "q"], output: JSON.stringify({ ok: true }) }
+      );
+
+      const newClient = recording(prisma17);
+      const legacy = recording(prisma14);
+
+      const presenter = new ApiWaitpointPresenter(undefined, undefined, {
+        splitEnabled: true,
+        newClient: newClient.handle,
+        legacyReplica: legacy.handle,
+      });
+
+      // Must NOT throw PrismaClientValidationError; resolves the token off the legacy side.
+      const result = await presenter.call(environmentArg(environment), id);
+
+      expect(result.id).toBe(seeded.friendlyId);
+      expect(result.tags).toEqual(["p", "q"]);
+      expect(result.output).toBe(JSON.stringify({ ok: true }));
+      expect(newClient.calls.length).toBe(1);
+      expect(legacy.calls.length).toBe(1);
     }
   );
 });
