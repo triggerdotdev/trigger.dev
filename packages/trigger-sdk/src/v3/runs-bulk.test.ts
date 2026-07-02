@@ -85,8 +85,7 @@ describe("runs.bulk", () => {
       runs.bulk.replay({
         filter: { status: "FAILED", taskIdentifier: ["task-a", "task-b"] },
         name: "Replay failed tasks",
-        region: "eu_1",
-        emailNotification: true,
+        targetRegion: "eu_1",
       })
     );
 
@@ -97,8 +96,7 @@ describe("runs.bulk", () => {
       action: "replay",
       filter: { status: "FAILED", taskIdentifier: ["task-a", "task-b"] },
       name: "Replay failed tasks",
-      region: "eu_1",
-      emailNotification: true,
+      targetRegion: "eu_1",
     });
   });
 

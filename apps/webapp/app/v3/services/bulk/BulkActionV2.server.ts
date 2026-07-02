@@ -67,6 +67,7 @@ export class BulkActionService extends BaseService {
   }
 
   public async create(input: CreateBulkActionInput) {
+    const { organizationId, projectId, environmentId, userId } = input;
     const filters = freezeRunListFilters(input.filters);
 
     // Region is a replay-only override that re-routes the replayed runs. It's
@@ -78,7 +79,7 @@ export class BulkActionService extends BaseService {
       // region surfaces as a user-input (400) error rather than a 500.
       const [regionError] = await tryCatch(
         new WorkerGroupService({ prisma: this._prisma }).getDefaultWorkerGroupForProject({
-          projectId: input.projectId,
+          projectId,
           regionOverride: replayRegion,
         })
       );
@@ -95,7 +96,7 @@ export class BulkActionService extends BaseService {
 
     // Count the runs that will be affected by the bulk action
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-      input.organizationId,
+      organizationId,
       "standard"
     );
     const runsRepository = new RunsRepository({
@@ -103,9 +104,9 @@ export class BulkActionService extends BaseService {
       prisma: this._replica as PrismaClient,
     });
     const count = await runsRepository.countRuns({
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      environmentId: input.environmentId,
+      organizationId,
+      projectId,
+      environmentId,
       ...filters,
     });
 
@@ -115,9 +116,9 @@ export class BulkActionService extends BaseService {
       data: {
         id,
         friendlyId,
-        projectId: input.projectId,
-        environmentId: input.environmentId,
-        userId: input.userId,
+        projectId,
+        environmentId,
+        userId,
         name: input.title,
         type: input.action === "cancel" ? BulkActionType.CANCEL : BulkActionType.REPLAY,
         params,

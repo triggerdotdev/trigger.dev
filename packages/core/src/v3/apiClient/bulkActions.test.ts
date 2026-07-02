@@ -67,8 +67,7 @@ describe("ApiClient bulk actions", () => {
       action: "replay",
       filter: { status: ["FAILED"], taskIdentifier: "my-task" },
       name: "Replay failures",
-      region: "eu_1",
-      emailNotification: true,
+      targetRegion: "eu_1",
     });
 
     expect(result).toEqual({ id: "bulk_created" });
@@ -80,8 +79,7 @@ describe("ApiClient bulk actions", () => {
       action: "replay",
       filter: { status: ["FAILED"], taskIdentifier: "my-task" },
       name: "Replay failures",
-      region: "eu_1",
-      emailNotification: true,
+      targetRegion: "eu_1",
     });
   });
 

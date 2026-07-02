@@ -42,8 +42,7 @@ const { action } = createActionApiRoute(
         userId: authentication.actor?.sub ?? null,
         action: body.action,
         title: body.name,
-        region: body.region,
-        emailNotification: body.emailNotification,
+        region: body.targetRegion,
         filters: body.runIds
           ? { runId: body.runIds }
           : bulkActionFilterToRunListFilters(body.filter),

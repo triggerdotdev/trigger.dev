@@ -1246,15 +1246,25 @@ const BulkActionFilterRequestBody = z.object({
   region: StringOrStringArray.optional(),
 });
 
+const BulkActionSelectionRequestBody = {
+  filter: BulkActionFilterRequestBody.optional(),
+  runIds: z.array(z.string()).min(1).optional(),
+  name: z.string().optional(),
+};
+
 export const CreateBulkActionRequestBody = z
-  .object({
-    action: z.enum(["cancel", "replay"]),
-    filter: BulkActionFilterRequestBody.optional(),
-    runIds: z.array(z.string()).min(1).optional(),
-    name: z.string().optional(),
-    region: z.string().optional(),
-    emailNotification: z.boolean().optional(),
-  })
+  .discriminatedUnion("action", [
+    z.object({
+      action: z.literal("cancel"),
+      targetRegion: z.never().optional(),
+      ...BulkActionSelectionRequestBody,
+    }),
+    z.object({
+      action: z.literal("replay"),
+      targetRegion: z.string().optional(),
+      ...BulkActionSelectionRequestBody,
+    }),
+  ])
   .refine((body) => (body.filter ? 1 : 0) + (body.runIds ? 1 : 0) === 1, {
     message: "Exactly one of filter or runIds must be provided",
   });
