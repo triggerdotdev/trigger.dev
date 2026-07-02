@@ -90,7 +90,7 @@ function recording(client: PrismaClient, opts: { forbidden?: boolean } = {}) {
 
 describe("CancelDevSessionRunsService store routing (hetero)", () => {
   heteroPostgresTest(
-    "Test B: a NEW run (ksuid) resolves on the new store via read-through, by friendlyId and by id",
+    "a NEW run (ksuid) resolves on the new store via read-through, by friendlyId and by id",
     async ({ prisma17, prisma14 }) => {
       const id = generateKsuidId();
       expect(id.length).toBe(27);
@@ -156,7 +156,7 @@ describe("CancelDevSessionRunsService store routing (hetero)", () => {
   );
 
   heteroPostgresTest(
-    "Test C: an OLD in-retention run (cuid) resolves off the LEGACY replica, never a legacy primary",
+    "an OLD in-retention run (cuid) resolves off the LEGACY replica, never a legacy primary",
     async ({ prisma17, prisma14 }) => {
       const id = generateLegacyCuid();
       expect(id.length).toBe(25);
@@ -202,7 +202,7 @@ describe("CancelDevSessionRunsService store routing (hetero)", () => {
 
 describe("CancelDevSessionRunsService passthrough (single-DB)", () => {
   postgresTest(
-    "Test A: with no read-through deps, the run is read from the single DB and session reads stay on it",
+    "with no read-through deps, the run is read from the single DB and session reads stay on it",
     async ({ prisma }) => {
       const id = generateKsuidId();
       const friendlyId = `run_${id}`;

@@ -89,7 +89,7 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
       const id = generateKsuidId();
       expect(id.length).toBe(27);
 
-      // [TEST-NEWSEED] The dedicated run-ops DB has no control-plane tables; the waitpoint's
+      // The dedicated run-ops DB has no control-plane tables; the waitpoint's
       // environment/project FKs are synthetic scalar ids.
       const environmentId = generateKsuidId();
       const projectId = generateKsuidId();

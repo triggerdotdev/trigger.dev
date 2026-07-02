@@ -35,7 +35,7 @@ async function seedControlPlane(prisma: PrismaClient) {
   return { organization, project, environment };
 }
 
-// [TEST-NEWSEED] The run lives on the dedicated run-ops client; control-plane FKs are synthetic
+// The run lives on the dedicated run-ops client; control-plane FKs are synthetic
 // scalar ids pointing at PG14 rows (the dedicated DB has no control-plane tables).
 async function seedRunOpsRun(
   prisma: RunOpsPrismaClient,

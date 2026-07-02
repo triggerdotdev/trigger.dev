@@ -216,7 +216,7 @@ async function dropTaskRunCrossSeamFks(prisma: PrismaClient) {
 
 describe("PerformTaskRunAlertsService store routing (hetero)", () => {
   heteroPostgresTest(
-    "Test B: env type resolves via the control-plane resolver (distinct DB) while the run resolves on the run-ops store",
+    "env type resolves via the control-plane resolver (distinct DB) while the run resolves on the run-ops store",
     async ({ prisma17, prisma14 }) => {
       const id = generateKsuidId();
       const friendlyId = `run_${id}`;
@@ -308,7 +308,7 @@ describe("PerformTaskRunAlertsService store routing (hetero)", () => {
 
 describe("PerformTaskRunAlertsService passthrough (single-DB)", () => {
   postgresTest(
-    "Test A: with the default store, run read + alert-channel read both resolve on the single DB",
+    "with the default store, run read + alert-channel read both resolve on the single DB",
     async ({ prisma }) => {
       const id = generateKsuidId();
       const friendlyId = `run_${id}`;
