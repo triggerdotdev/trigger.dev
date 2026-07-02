@@ -30,6 +30,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       },
       include: {
         organization: true,
+        defaultWorkerGroup: { select: { name: true } },
       },
     });
 
@@ -43,6 +44,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       name: project.name,
       slug: project.slug,
       createdAt: project.createdAt,
+      defaultRegion: project.defaultWorkerGroup?.name ?? null,
       organization: {
         id: project.organization.id,
         title: project.organization.title,

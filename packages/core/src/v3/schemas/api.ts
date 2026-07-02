@@ -38,6 +38,9 @@ export const GetProjectResponseBody = z.object({
   name: z.string(),
   slug: z.string(),
   createdAt: z.coerce.date(),
+  // Worker-group name of the project's default region, or null when unset
+  // (the project falls back to the global platform default).
+  defaultRegion: z.string().nullable(),
   organization: z.object({
     id: z.string(),
     title: z.string(),

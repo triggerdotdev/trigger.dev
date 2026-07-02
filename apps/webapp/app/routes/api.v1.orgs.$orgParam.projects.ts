@@ -41,6 +41,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       },
       include: {
         organization: true,
+        defaultWorkerGroup: { select: { name: true } },
       },
     });
 
@@ -54,6 +55,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       name: project.name,
       slug: project.slug,
       createdAt: project.createdAt,
+      defaultRegion: project.defaultWorkerGroup?.name ?? null,
       organization: {
         id: project.organization.id,
         title: project.organization.title,
@@ -117,12 +119,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Failed to create project" }, { status: 400 });
     }
 
+    // Derive from the stored id rather than assuming new projects are unset,
+    // so this stays correct if project creation ever inherits a default region.
+    const defaultRegion = project.defaultWorkerGroupId
+      ? (
+          await prisma.workerInstanceGroup.findFirst({
+            where: { id: project.defaultWorkerGroupId },
+            select: { name: true },
+          })
+        )?.name ?? null
+      : null;
+
     const result: GetProjectResponseBody = {
       id: project.id,
       externalRef: project.externalRef,
       name: project.name,
       slug: project.slug,
       createdAt: project.createdAt,
+      defaultRegion,
       organization: {
         id: project.organization.id,
         title: project.organization.title,
