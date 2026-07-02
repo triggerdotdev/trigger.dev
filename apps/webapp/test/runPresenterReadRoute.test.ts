@@ -11,16 +11,53 @@ import { describe, expect, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-// Hoisted alongside the vi.mock factory. `setCurrentPrisma` is called at the start
-// of each test to point the delegating Proxy at the real testcontainer client.
+// Hoisted alongside the vi.mock factory. `setCurrentPrisma` points the delegating
+// Proxy at each test's container. The RunStore singleton is built ONCE at import and
+// its error-normalizing wrapper memoizes each Prisma model delegate on first access;
+// returning `current.taskRun` directly would freeze the store onto the first test's
+// container ("Database test_0 does not exist" on later tests). So object-valued
+// delegates return a STABLE per-key sub-proxy the store can safely cache, which
+// re-delegates to the live `current[key]` on every access; functions/scalars pass
+// through to the live client.
 const { delegating, setCurrentPrisma } = vi.hoisted(() => {
   let current: any = undefined;
+  const subProxyCache = new Map<string, unknown>();
+
+  const getSubProxy = (prop: string) => {
+    const cached = subProxyCache.get(prop);
+    if (cached) {
+      return cached;
+    }
+    const subProxy = new Proxy(
+      {},
+      {
+        get(_st, key) {
+          if (!current) {
+            throw new Error("currentPrisma not set");
+          }
+          const delegate = current[prop];
+          const value = delegate?.[key];
+          return typeof value === "function" ? value.bind(delegate) : value;
+        },
+      }
+    );
+    subProxyCache.set(prop, subProxy);
+    return subProxy;
+  };
+
   const proxy = new Proxy(
     {},
     {
       get(_t, prop) {
         if (!current) {
           throw new Error("currentPrisma not set");
+        }
+        if (typeof prop === "string") {
+          const value = current[prop];
+          if (value != null && typeof value === "object") {
+            return getSubProxy(prop);
+          }
+          return value;
         }
         return current[prop];
       },
