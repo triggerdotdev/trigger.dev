@@ -287,6 +287,12 @@ async function findRunForEventCreation(runId: string) {
   );
 
   if (!environment) {
+    // Run exists but its environment could not be resolved (e.g. a lagging replica
+    // under split); distinguish this from a genuinely missing run.
+    logger.warn("Run found but environment unresolved for event creation", {
+      runId,
+      runtimeEnvironmentId: foundRun.runtimeEnvironmentId,
+    });
     return null;
   }
 

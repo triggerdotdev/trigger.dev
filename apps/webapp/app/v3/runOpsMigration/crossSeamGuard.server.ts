@@ -1,4 +1,4 @@
-import { ownerEngine, UnclassifiableRunId } from "@trigger.dev/core/v3/isomorphic";
+import { ownerEngine } from "@trigger.dev/core/v3/isomorphic";
 import { isSplitEnabled } from "./splitMode.server";
 import type {
   CrossSeamGuardDecision,
@@ -56,16 +56,8 @@ export function selectStoreForWaitpoint(
 
   const classify = deps?.classify ?? ownerEngine;
 
-  let residency: RunOpsResidency;
-  try {
-    residency = classify(input.waitpointId);
-  } catch (error) {
-    // Loud on ambiguity: rethrow with context, never catch-and-default.
-    if (error instanceof UnclassifiableRunId) {
-      throw new UnclassifiableRunId(`${input.waitpointId} (routeKind=${input.routeKind})`);
-    }
-    throw error;
-  }
+  // Loud on ambiguity: classify throws UnclassifiableRunId with the real id; never catch-and-default.
+  const residency: RunOpsResidency = classify(input.waitpointId);
 
   const pinnedReason = applyPinningRules(input);
   const store: StoreTarget = pinnedReason ? "legacy" : storeForResidency(residency);

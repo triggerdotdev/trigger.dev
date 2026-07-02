@@ -132,7 +132,8 @@ const EnvironmentSchema = z
     // Explicit positive opt-in. Split behavior is unreachable unless this is true
     // AND the distinct-DB sentinel confirms the two URLs are physically distinct DBs.
     RUN_OPS_SPLIT_ENABLED: BoolEnv.default(false),
-    // Canonical URL for the dedicated run-ops DB. Takes precedence over TASK_RUN_DATABASE_URL.
+    // Datasource URL for the dedicated run-ops Prisma schema (migrations/generation).
+    // The webapp runtime pool is driven by TASK_RUN_DATABASE_URL, not this var.
     RUN_OPS_DATABASE_URL: z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_URL is invalid")

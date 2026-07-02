@@ -238,7 +238,8 @@ export function selectRunOpsTopology(
 // singletons use (captureInfrastructureErrors(tagDatasource(role, raw))).
 const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
   const newUrl = env.TASK_RUN_DATABASE_URL;
-  const splitEnabled = !!newUrl && !!env.TASK_RUN_LEGACY_DATABASE_URL;
+  // Gate on the opt-in flag too: the distinct-DB sentinel only runs when the flag is on.
+  const splitEnabled = env.RUN_OPS_SPLIT_ENABLED && !!newUrl && !!env.TASK_RUN_LEGACY_DATABASE_URL;
 
   return selectRunOpsTopology(
     {
