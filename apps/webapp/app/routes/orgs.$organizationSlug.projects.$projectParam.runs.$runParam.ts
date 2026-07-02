@@ -46,7 +46,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
-  if (environment.project.slug !== projectParam || environment.organization.slug !== organizationSlug) {
+  if (
+    environment.project.slug !== projectParam ||
+    environment.organization.slug !== organizationSlug
+  ) {
     throw new Response("Not Found", { status: 404 });
   }
 

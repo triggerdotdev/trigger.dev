@@ -17,11 +17,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 type CrossSeamGuard = ConstructorParameters<typeof RunEngine>[0]["crossSeamGuard"];
 
-function buildEngine(opts: {
-  prisma: any;
-  redisOptions: any;
-  crossSeamGuard?: CrossSeamGuard;
-}) {
+function buildEngine(opts: { prisma: any; redisOptions: any; crossSeamGuard?: CrossSeamGuard }) {
   return new RunEngine({
     prisma: opts.prisma,
     ...(opts.crossSeamGuard ? { crossSeamGuard: opts.crossSeamGuard } : {}),
