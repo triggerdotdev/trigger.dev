@@ -1397,6 +1397,9 @@ importers:
 
   internal-packages/run-store:
     dependencies:
+      '@internal/run-ops-database':
+        specifier: workspace:*
+        version: link:../run-ops-database
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
