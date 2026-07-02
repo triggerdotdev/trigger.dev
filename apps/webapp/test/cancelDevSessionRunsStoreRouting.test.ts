@@ -226,6 +226,7 @@ describe("CancelDevSessionRunsService passthrough (single-DB)", () => {
       // control-plane read runs on the same prisma.
       const service = new CancelDevSessionRunsService({
         prisma,
+        replica: prisma,
         readThroughDeps: {
           splitEnabled: false,
           newClient: prisma as unknown as PrismaReplicaClient,

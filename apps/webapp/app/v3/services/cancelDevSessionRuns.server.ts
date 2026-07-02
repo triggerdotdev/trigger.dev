@@ -43,7 +43,7 @@ export class CancelDevSessionRunsService extends BaseService {
       : undefined;
 
     if (cancelledSession) {
-      const latestSession = await findLatestSession(cancelledSession.environmentId);
+      const latestSession = await findLatestSession(cancelledSession.environmentId, this._replica);
 
       if (
         latestSession &&

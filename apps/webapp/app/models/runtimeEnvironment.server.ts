@@ -358,8 +358,11 @@ export async function disconnectSession(environmentId: string) {
   return session;
 }
 
-export async function findLatestSession(environmentId: string) {
-  const session = await $replica.runtimeEnvironmentSession.findFirst({
+export async function findLatestSession(
+  environmentId: string,
+  client: PrismaClientOrTransaction = $replica
+) {
+  const session = await client.runtimeEnvironmentSession.findFirst({
     where: {
       environmentId,
     },

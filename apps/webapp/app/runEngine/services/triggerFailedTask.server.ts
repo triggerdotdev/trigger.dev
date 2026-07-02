@@ -13,6 +13,7 @@ import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedM
 import { getEventRepository } from "~/v3/eventRepository/index.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import type { RunStore } from "@internal/run-store";
+import type { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
 import type { TriggerTaskRequest } from "../types";
@@ -65,17 +66,22 @@ export class TriggerFailedTaskService {
   // singleton (in production the same store the engine writes through). Injected in
   // tests so the read resolves on the same store the engine wrote to.
   private readonly runStore: RunStore;
+  // Defaults to getEventRepository's org-flag resolution, which reads through the
+  // global prisma client; tests inject a repository bound to their testcontainer DB.
+  private readonly eventRepository?: { repository: IEventRepository; store: string };
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
     engine: RunEngine;
     replicaPrisma?: PrismaClientOrTransaction;
     runStore?: RunStore;
+    eventRepository?: { repository: IEventRepository; store: string };
   }) {
     this.prisma = opts.prisma;
     this.replicaPrisma = opts.replicaPrisma ?? opts.prisma;
     this.engine = opts.engine;
     this.runStore = opts.runStore ?? defaultRunStore;
+    this.eventRepository = opts.eventRepository;
   }
 
   // Mint a failed run's friendlyId. The id-kind decides which store the run is
@@ -122,11 +128,13 @@ export class TriggerFailedTaskService {
       });
       mintedFriendlyId = failedRunFriendlyId;
 
-      const { repository, store } = await getEventRepository(
-        request.environment.organization.id,
-        request.environment.organization.featureFlags as Record<string, unknown>,
-        undefined
-      );
+      const { repository, store } =
+        this.eventRepository ??
+        (await getEventRepository(
+          request.environment.organization.id,
+          request.environment.organization.featureFlags as Record<string, unknown>,
+          undefined
+        ));
 
       // Resolve parent run for rootTaskRunId and depth (same as triggerTask.server.ts)
       const parentRun = request.parentRunId

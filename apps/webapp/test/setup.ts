@@ -6,6 +6,12 @@ import { vi } from "vitest";
 
 config({ path: path.resolve(__dirname, "../.env") });
 
+// CI has no .env and no REDIS_HOST/REDIS_PORT, so import-time guards like
+// autoIncrementCounter.server.ts throw and their suites fail to collect. Default
+// the pair — the ioredis mock below forces lazyConnect, so nothing ever dials.
+process.env.REDIS_HOST ??= "localhost";
+process.env.REDIS_PORT ??= "6379";
+
 // Worker singletons construct a RedisWorker at import time whose ioredis client
 // connects eagerly, so any test importing the service graph opens real Redis
 // connections on import — which floods and fails in CI (no Redis). Mock them to

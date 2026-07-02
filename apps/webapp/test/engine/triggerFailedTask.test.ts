@@ -6,8 +6,30 @@ import { containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
 import { RunId, classifyKind, generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
 import { TriggerFailedTaskService } from "../../app/runEngine/services/triggerFailedTask.server";
+import { EventRepository } from "../../app/v3/eventRepository/eventRepository.server";
 
 vi.setConfig?.({ testTimeout: 60_000 });
+
+// Bind the service's trace-event writes to the testcontainer DB. Without this,
+// call() resolves the repository via getEventRepository → global prisma, which
+// points at a database that doesn't exist in CI.
+function makeService(prisma: any, engine: RunEngine) {
+  return new TriggerFailedTaskService({
+    prisma,
+    engine,
+    // Read the parent through the same store the engine wrote it to.
+    runStore: engine.runStore,
+    eventRepository: {
+      repository: new EventRepository(prisma, prisma, {
+        batchSize: 100,
+        batchInterval: 1000,
+        retentionInDays: 30,
+        partitioningEnabled: false,
+      }),
+      store: "taskEvent",
+    },
+  });
+}
 
 function makeEngine(prisma: any, redisOptions: any) {
   return new RunEngine({
@@ -40,12 +62,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
       const taskIdentifier = "failed-residency-task";
       await setupBackgroundWorker(engine, environment, taskIdentifier);
 
-      const service = new TriggerFailedTaskService({
-        prisma,
-        engine,
-        // Read the parent through the same store the engine wrote it to.
-        runStore: engine.runStore,
-      });
+      const service = makeService(prisma, engine);
 
       const friendlyId = await service.call({
         taskId: taskIdentifier,
@@ -95,12 +112,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
         prisma
       );
 
-      const service = new TriggerFailedTaskService({
-        prisma,
-        engine,
-        // Read the parent through the same store the engine wrote it to.
-        runStore: engine.runStore,
-      });
+      const service = makeService(prisma, engine);
 
       const friendlyId = await service.call({
         taskId: taskIdentifier,
@@ -153,12 +165,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
         prisma
       );
 
-      const service = new TriggerFailedTaskService({
-        prisma,
-        engine,
-        // Read the parent through the same store the engine wrote it to.
-        runStore: engine.runStore,
-      });
+      const service = makeService(prisma, engine);
 
       const friendlyId = await service.call({
         taskId: taskIdentifier,
@@ -200,12 +207,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
         prisma
       );
 
-      const service = new TriggerFailedTaskService({
-        prisma,
-        engine,
-        // Read the parent through the same store the engine wrote it to.
-        runStore: engine.runStore,
-      });
+      const service = makeService(prisma, engine);
 
       const friendlyId = await service.callWithoutTraceEvents({
         environmentId: environment.id,
@@ -232,12 +234,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
       const taskIdentifier = "failed-residency-task";
       await setupBackgroundWorker(engine, environment, taskIdentifier);
 
-      const service = new TriggerFailedTaskService({
-        prisma,
-        engine,
-        // Read the parent through the same store the engine wrote it to.
-        runStore: engine.runStore,
-      });
+      const service = makeService(prisma, engine);
 
       // A well-formed ksuid parent friendlyId that was NEVER triggered → no row.
       // Exercises the missing-parent fallback in callWithoutTraceEvents.
