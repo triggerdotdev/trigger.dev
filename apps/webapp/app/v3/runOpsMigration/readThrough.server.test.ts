@@ -40,7 +40,7 @@ function toHttpish<T>(result: ReadThroughResult<T>): { status: number; value?: T
 
 describe("readThroughRun (legacy replica + new DB)", () => {
   heteroPostgresTest(
-    "Step 1: old in-retention run is served from the legacy REPLICA, never a primary",
+    "old in-retention run is served from the legacy REPLICA, never a primary",
     async ({ prisma14, prisma17 }) => {
       // legacy hit, new miss. The layer has NO legacy-writer handle at all — the
       // read resolving through `legacyReplica` (prisma14) IS the structural guarantee
@@ -63,7 +63,7 @@ describe("readThroughRun (legacy replica + new DB)", () => {
   );
 
   heteroPostgresTest(
-    "Step 3: post-termination past-retention returns the normal not-found surface",
+    "post-termination past-retention returns the normal not-found surface",
     async ({ prisma14, prisma17 }) => {
       const pastRetentionResult = await readThroughRun({
         runId: LEGACY_RUN_ID,
@@ -102,7 +102,7 @@ describe("readThroughRun (legacy replica + new DB)", () => {
   );
 
   heteroPostgresTest(
-    "Step 4: single-DB passthrough — only readNew runs, legacy never touched",
+    "single-DB passthrough — only readNew runs, legacy never touched",
     async ({ prisma14, prisma17 }) => {
       const throwingLegacy = vi.fn(async (): Promise<{ marker: number } | null> => {
         throw new Error("readLegacy must never run in single-DB mode");
@@ -128,7 +128,7 @@ describe("readThroughRun (legacy replica + new DB)", () => {
   );
 
   heteroPostgresTest(
-    "Step 5: new-residency fast-path — legacy replica is never touched",
+    "new-residency fast-path — legacy replica is never touched",
     async ({ prisma14, prisma17 }) => {
       const throwingLegacy = vi.fn(async (): Promise<{ marker: number } | null> => {
         throw new Error("readLegacy must never run for a NEW-residency id");

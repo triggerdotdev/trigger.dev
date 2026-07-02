@@ -151,7 +151,7 @@ function failure(index: number, errorCode: string, extra?: Record<string, unknow
 }
 
 describe("runEngineHandlers read-through", () => {
-  // Test A: a NEW run resolves via read-through against the new store.
+  // A NEW run resolves via read-through against the new store.
   containerTest("event read resolves a NEW run via read-through", async ({ prisma }) => {
     const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
     const { organization, project, environment } = await seedEnvironment(prisma, "a");
@@ -181,7 +181,7 @@ describe("runEngineHandlers read-through", () => {
     expect(run!.taskEventStore).toBe("taskEvent");
   });
 
-  // Test C: single-DB short-circuit — readLegacy must never be invoked.
+  // Single-DB short-circuit — readLegacy must never be invoked.
   containerTest("single-DB short-circuit never touches a legacy handle", async ({ prisma }) => {
     const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
     const { organization, project, environment } = await seedEnvironment(prisma, "c");
@@ -237,8 +237,8 @@ describe("runEngineHandlers read-through", () => {
 });
 
 describe("runEngineHandlers read-through cross-version", () => {
-  // Test B (heterogeneous recast): an OLD in-retention run is served off the LEGACY
-  // REPLICA only, and the legacy primary/writer is structurally absent.
+  // An OLD in-retention run is served off the LEGACY REPLICA only, and the legacy
+  // primary/writer is structurally absent.
   heteroPostgresTest(
     "event read resolves an OLD in-retention run via the legacy replica",
     async ({ prisma14, prisma17 }) => {
@@ -378,7 +378,7 @@ describe("runEngineHandlers batch completion", () => {
     expect(batch.processingCompletedAt).toBeNull();
   });
 
-  // Test E: callback retry is idempotent via skipDuplicates.
+  // Callback retry is idempotent via skipDuplicates.
   containerTest("batch txn is idempotent on callback retry", async ({ prisma }) => {
     const { environment } = await seedEnvironment(prisma, "e");
     const batchId = "e".repeat(25);
@@ -404,7 +404,7 @@ describe("runEngineHandlers batch completion", () => {
     expect(errors).toHaveLength(2);
   });
 
-  // Test I: aggregate fast-path collapses same-errorCode failures to one row.
+  // Aggregate fast-path collapses same-errorCode failures to one row.
   containerTest("aggregate fast-path collapses queue-size-limit failures", async ({ prisma }) => {
     const { environment } = await seedEnvironment(prisma, "i");
     const batchId = "f".repeat(25);
@@ -510,8 +510,8 @@ describe("runEngineHandlers batch residency routing", () => {
     expect(writer).toBe(prisma);
   });
 
-  // Test G (heterogeneous recast): a legacy-resident batch (row only on the legacy DB) commits on
-  // the LEGACY writer; the NEW DB is left with zero rows for the batch.
+  // A legacy-resident batch (row only on the legacy DB) commits on the LEGACY writer;
+  // the NEW DB is left with zero rows for the batch.
   heteroPostgresTest(
     "legacy-resident batch routes to the LEGACY writer, new DB untouched",
     async ({ prisma14, prisma17 }) => {
@@ -617,8 +617,7 @@ describe("runEngineHandlers batch residency routing", () => {
     }
   );
 
-  // Test H (heterogeneous recast): a new batch (row only on the new DB) commits on the NEW
-  // writer; the LEGACY DB is untouched.
+  // A new batch (row only on the new DB) commits on the NEW writer; the LEGACY DB is untouched.
   heteroPostgresTest(
     "new batch routes to the NEW writer, legacy DB untouched",
     async ({ prisma14, prisma17 }) => {

@@ -1,4 +1,4 @@
-// Dedicated run-ops proof: Shape-1 run-detail loaders read the run by friendlyId on the dedicated
+// Dedicated run-ops proof: the run-detail page loaders read the run by friendlyId on the dedicated
 // run-ops client (PG17, subset schema with no control-plane tables), then authorize membership +
 // resolve env on PG14. Neither DB joins the other.
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
@@ -48,8 +48,8 @@ async function seedAll(prisma: PrismaClient) {
   return { organization, project, environment, member, stranger };
 }
 
-// [TEST-NEWSEED] The run lives on the dedicated run-ops client; its control-plane FKs are synthetic
-// scalar ids pointing at rows that exist only on PG14 (the dedicated DB has no such tables).
+// The run lives on the dedicated run-ops client; its control-plane FKs are synthetic scalar ids
+// pointing at rows that exist only on PG14 (the dedicated DB has no such tables).
 async function seedKsuidRun(prisma17: RunOpsPrismaClient, cp: Awaited<ReturnType<typeof seedAll>>) {
   const k = n++;
   return prisma17.taskRun.create({
@@ -61,10 +61,10 @@ async function seedKsuidRun(prisma17: RunOpsPrismaClient, cp: Awaited<ReturnType
       runtimeEnvironmentId: cp.environment.id,
       projectId: cp.project.id,
       organizationId: cp.organization.id,
-      taskIdentifier: "shape1-task",
+      taskIdentifier: "run-detail-task",
       payload: "{}",
       payloadType: "application/json",
-      queue: "task/shape1-task",
+      queue: "task/run-detail-task",
       idempotencyKey: "idem-1",
       spanId: `sp_${k}`,
       traceId: `tr_${k}`,
@@ -89,7 +89,7 @@ function wire(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
   return { runStore, resolver };
 }
 
-describe("Shape-1 run-detail loaders cross-DB read-through (dedicated run-ops client)", () => {
+describe("run-detail loaders cross-DB read-through (dedicated run-ops client)", () => {
   heteroRunOpsPostgresTest(
     "ksuid run resolves: friendlyId read on the dedicated run-ops DB + membership/env auth on PG14 (resources.runs.$runParam shape)",
     async ({ prisma14, prisma17 }) => {
