@@ -118,7 +118,10 @@ describe("run-detail loaders cross-DB read-through (dedicated run-ops client)", 
       expect(found!.id).toBe(run.id);
 
       const authorized = await cp14.project.findFirst({
-        where: { id: found!.projectId, organization: { members: { some: { userId: cp.member.id } } } },
+        where: {
+          id: found!.projectId,
+          organization: { members: { some: { userId: cp.member.id } } },
+        },
         select: { id: true },
       });
       expect(authorized).not.toBeNull();
@@ -148,7 +151,10 @@ describe("run-detail loaders cross-DB read-through (dedicated run-ops client)", 
       expect(found).not.toBeNull();
 
       const authorized = await cp14.project.findFirst({
-        where: { id: found!.projectId, organization: { members: { some: { userId: cp.stranger.id } } } },
+        where: {
+          id: found!.projectId,
+          organization: { members: { some: { userId: cp.stranger.id } } },
+        },
         select: { id: true },
       });
       expect(authorized).toBeNull();
@@ -165,7 +171,15 @@ describe("run-detail loaders cross-DB read-through (dedicated run-ops client)", 
 
       const found = await runStore.findRun(
         { friendlyId: run.friendlyId },
-        { select: { id: true, idempotencyKey: true, taskIdentifier: true, projectId: true, runtimeEnvironmentId: true } }
+        {
+          select: {
+            id: true,
+            idempotencyKey: true,
+            taskIdentifier: true,
+            projectId: true,
+            runtimeEnvironmentId: true,
+          },
+        }
       );
       const env = await resolver.resolveAuthenticatedEnv(found!.runtimeEnvironmentId);
       expect(env!.slug).toBe(cp.environment.slug);

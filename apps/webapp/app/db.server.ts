@@ -156,7 +156,9 @@ function tagDatasourceRunOps(
 // Same wrapper as captureInfrastructureErrors, bridged via double cast because
 // that helper is constrained to T extends @trigger.dev/database.PrismaClient.
 function captureInfraErrorsRunOps(client: RunOpsPrismaClient): RunOpsPrismaClient {
-  return captureInfrastructureErrors(client as unknown as PrismaClient) as unknown as RunOpsPrismaClient;
+  return captureInfrastructureErrors(
+    client as unknown as PrismaClient
+  ) as unknown as RunOpsPrismaClient;
 }
 
 export const prisma = singleton("prisma", () =>
@@ -261,8 +263,10 @@ export const runOpsNewPrismaClient: RunOpsPrismaClient = runOpsTopology.newRunOp
 export const runOpsNewReplicaClient: RunOpsPrismaClient = runOpsTopology.newRunOps.replica;
 // Legacy-typed aliases kept for the remaining consumers that still expect PrismaClient /
 // PrismaReplicaClient (idempotency residency, read-through, handlers, cascade cleanup).
-export const runOpsNewPrisma: PrismaClient = runOpsTopology.newRunOps.writer as unknown as PrismaClient;
-export const runOpsNewReplica: PrismaReplicaClient = runOpsTopology.newRunOps.replica as unknown as PrismaReplicaClient;
+export const runOpsNewPrisma: PrismaClient = runOpsTopology.newRunOps
+  .writer as unknown as PrismaClient;
+export const runOpsNewReplica: PrismaReplicaClient = runOpsTopology.newRunOps
+  .replica as unknown as PrismaReplicaClient;
 export const runOpsLegacyPrisma: PrismaClient = runOpsTopology.legacyRunOps.writer;
 export const runOpsLegacyReplica: PrismaReplicaClient = runOpsTopology.legacyRunOps.replica;
 

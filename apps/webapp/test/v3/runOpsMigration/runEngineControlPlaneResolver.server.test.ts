@@ -119,25 +119,28 @@ async function seedWorker(
 }
 
 describe("RunEngineControlPlaneResolver adapter", () => {
-  heteroPostgresTest("resolveEnv maps app ResolvedEnv onto ResolvedEngineEnv", async ({ prisma14 }) => {
-    const { organization, project, environment } = await seedEnv(prisma14, "PRODUCTION");
-    const adapter = new RunEngineControlPlaneResolver(buildAppResolver(prisma14));
+  heteroPostgresTest(
+    "resolveEnv maps app ResolvedEnv onto ResolvedEngineEnv",
+    async ({ prisma14 }) => {
+      const { organization, project, environment } = await seedEnv(prisma14, "PRODUCTION");
+      const adapter = new RunEngineControlPlaneResolver(buildAppResolver(prisma14));
 
-    const env = await adapter.resolveEnv(environment.id);
-    expect(env).not.toBeNull();
-    expect(env!.id).toBe(environment.id);
-    expect(env!.type).toBe("PRODUCTION");
-    expect(env!.projectId).toBe(project.id);
-    expect(env!.organizationId).toBe(organization.id);
-    // Nested + concurrency fields the run-engine MinimalAuthenticatedEnvironment requires.
-    expect(env!.project.id).toBe(project.id);
-    expect(env!.organization.id).toBe(organization.id);
-    expect(env!.maximumConcurrencyLimit).toBe(9);
-    expect(env!.concurrencyLimitBurstFactor.toNumber()).toBe(2);
-    expect(env!.archivedAt).toBeNull();
+      const env = await adapter.resolveEnv(environment.id);
+      expect(env).not.toBeNull();
+      expect(env!.id).toBe(environment.id);
+      expect(env!.type).toBe("PRODUCTION");
+      expect(env!.projectId).toBe(project.id);
+      expect(env!.organizationId).toBe(organization.id);
+      // Nested + concurrency fields the run-engine MinimalAuthenticatedEnvironment requires.
+      expect(env!.project.id).toBe(project.id);
+      expect(env!.organization.id).toBe(organization.id);
+      expect(env!.maximumConcurrencyLimit).toBe(9);
+      expect(env!.concurrencyLimitBurstFactor.toNumber()).toBe(2);
+      expect(env!.archivedAt).toBeNull();
 
-    expect(await adapter.resolveEnv("env_missing")).toBeNull();
-  });
+      expect(await adapter.resolveEnv("env_missing")).toBeNull();
+    }
+  );
 
   heteroPostgresTest(
     "resolveWorkerVersion (deployed, no workerId) resolves the promoted MANAGED deployment",
@@ -156,7 +159,9 @@ describe("RunEngineControlPlaneResolver adapter", () => {
       });
       expect(version).not.toBeNull();
       expect(version!.worker.id).toBe(seeded.worker.id);
-      expect(version!.deployment?.id).toBe("deployment" in seeded ? seeded.deployment.id : undefined);
+      expect(version!.deployment?.id).toBe(
+        "deployment" in seeded ? seeded.deployment.id : undefined
+      );
       expect(version!.tasks.map((t) => t.slug)).toContain("my-task");
     }
   );
@@ -182,13 +187,14 @@ describe("RunEngineControlPlaneResolver adapter", () => {
     }
   );
 
-  heteroPostgresTest("assertEnvExists resolves for a present env, rejects for a missing one", async ({
-    prisma14,
-  }) => {
-    const { environment } = await seedEnv(prisma14, "PRODUCTION");
-    const adapter = new RunEngineControlPlaneResolver(buildAppResolver(prisma14));
+  heteroPostgresTest(
+    "assertEnvExists resolves for a present env, rejects for a missing one",
+    async ({ prisma14 }) => {
+      const { environment } = await seedEnv(prisma14, "PRODUCTION");
+      const adapter = new RunEngineControlPlaneResolver(buildAppResolver(prisma14));
 
-    await expect(adapter.assertEnvExists(environment.id)).resolves.toBeUndefined();
-    await expect(adapter.assertEnvExists("env_missing")).rejects.toThrow();
-  });
+      await expect(adapter.assertEnvExists(environment.id)).resolves.toBeUndefined();
+      await expect(adapter.assertEnvExists("env_missing")).rejects.toThrow();
+    }
+  );
 });

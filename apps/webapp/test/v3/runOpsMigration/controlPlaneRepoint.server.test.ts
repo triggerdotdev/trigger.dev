@@ -127,26 +127,23 @@ heteroPostgresTest(
 
 // --- Relaxed-cache (no latency regression) -------------------------
 
-heteroPostgresTest(
-  "relaxed (longer TTL) cache still hits on the new DB",
-  async ({ prisma17 }) => {
-    const { environment } = await seedControlPlane(prisma17);
-    const { client: counting, reads } = countQueries(prisma17);
-    const resolver = new ControlPlaneResolver({
-      controlPlanePrimary: counting,
-      controlPlaneReplica: counting,
-      // Relaxed: a much longer TTL than the default — same-provider resolution is cheap.
-      cache: new ControlPlaneCache({ ttlMs: 300_000, maxEntries: 10_000 }),
-      splitEnabled: () => true,
-    });
+heteroPostgresTest("relaxed (longer TTL) cache still hits on the new DB", async ({ prisma17 }) => {
+  const { environment } = await seedControlPlane(prisma17);
+  const { client: counting, reads } = countQueries(prisma17);
+  const resolver = new ControlPlaneResolver({
+    controlPlanePrimary: counting,
+    controlPlaneReplica: counting,
+    // Relaxed: a much longer TTL than the default — same-provider resolution is cheap.
+    cache: new ControlPlaneCache({ ttlMs: 300_000, maxEntries: 10_000 }),
+    splitEnabled: () => true,
+  });
 
-    expect(await resolver.resolveEnv(environment.id)).toMatchObject({ id: environment.id });
-    expect(reads()).toBe(1);
-    // Second read served from the relaxed cache — no extra DB round-trip.
-    await resolver.resolveEnv(environment.id);
-    expect(reads()).toBe(1);
-  }
-);
+  expect(await resolver.resolveEnv(environment.id)).toMatchObject({ id: environment.id });
+  expect(reads()).toBe(1);
+  // Second read served from the relaxed cache — no extra DB round-trip.
+  await resolver.resolveEnv(environment.id);
+  expect(reads()).toBe(1);
+});
 
 // --- Cross-version transition (legacy DB -> new DB) -----------------------
 

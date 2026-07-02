@@ -6,10 +6,7 @@ import type {
 } from "@internal/run-engine";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { $replica } from "~/db.server";
-import {
-  authIncludeWithParent,
-  toAuthenticated,
-} from "~/models/runtimeEnvironment.server";
+import { authIncludeWithParent, toAuthenticated } from "~/models/runtimeEnvironment.server";
 import {
   ControlPlaneResolver as AppControlPlaneResolver,
   controlPlaneResolver,
@@ -64,9 +61,7 @@ export class RunEngineControlPlaneResolver implements EngineControlPlaneResolver
     });
   }
 
-  async resolveAuthenticatedEnv(
-    environmentId: string
-  ): Promise<ResolvedAuthenticatedEnv | null> {
+  async resolveAuthenticatedEnv(environmentId: string): Promise<ResolvedAuthenticatedEnv | null> {
     // Mirror findEnvironmentById's data source ($replica) and auth shape, but the
     // engine needs `git` too. A single findFirst with `include: authIncludeWithParent`
     // returns all RuntimeEnvironment scalars (including `git`) on the row, so we map
@@ -94,4 +89,6 @@ export class RunEngineControlPlaneResolver implements EngineControlPlaneResolver
 }
 
 // Module-level singleton over the app resolver singleton.
-export const runEngineControlPlaneResolver = new RunEngineControlPlaneResolver(controlPlaneResolver);
+export const runEngineControlPlaneResolver = new RunEngineControlPlaneResolver(
+  controlPlaneResolver
+);

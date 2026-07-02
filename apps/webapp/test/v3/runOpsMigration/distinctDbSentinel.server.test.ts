@@ -37,7 +37,9 @@ describe("probeDistinctDatabases", () => {
     async ({ postgresContainer14, uri14 }) => {
       const otherDb = `sentinel_other_${Date.now()}`;
       const admin = new PrismaClient({
-        datasources: { db: { url: urlWithDatabase(postgresContainer14.getConnectionUri(), "postgres") } },
+        datasources: {
+          db: { url: urlWithDatabase(postgresContainer14.getConnectionUri(), "postgres") },
+        },
       });
       try {
         await admin.$executeRawUnsafe(`CREATE DATABASE "${otherDb}"`);
