@@ -37,6 +37,9 @@ vi.mock("~/db.server", async () => {
     runOpsNewPrisma: lazyProxy(replicaHolder, "replicaHolder.client"),
     runOpsNewReplica: lazyProxy(replicaHolder, "replicaHolder.client"),
     runOpsLegacyReplica: lazyProxy(replicaHolder, "replicaHolder.client"),
+    // The route's read-through helper reads this off `~/db.server`; split-on routes ksuid (NEW)
+    // ids to the `runOpsNewReplica` proxy, which points at the seeded container.
+    runOpsSplitReadEnabled: true,
     sqlDatabaseSchema: Prisma.sql([`public`]),
   };
 });
