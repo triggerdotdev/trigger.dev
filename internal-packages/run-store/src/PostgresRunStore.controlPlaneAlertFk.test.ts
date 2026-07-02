@@ -53,7 +53,10 @@ describe("ProjectAlert control-plane → run-subgraph FK reconciliation", () => 
     "creating a TASK_RUN alert with a ksuid taskRunId (run only on the run-ops DB) succeeds on control-plane",
     async ({ prisma14, prisma17 }) => {
       const suffix = "alert-ksuid";
-      const { project, environment, channel } = await seedControlPlaneAlertPrereqs(prisma14, suffix);
+      const { project, environment, channel } = await seedControlPlaneAlertPrereqs(
+        prisma14,
+        suffix
+      );
 
       // The run exists ONLY on the dedicated run-ops DB (prisma17), never on control-plane.
       await (prisma17 as RunOpsPrismaClient).taskRun.create({
@@ -103,7 +106,10 @@ describe("ProjectAlert control-plane → run-subgraph FK reconciliation", () => 
     "creating a TASK_RUN_ATTEMPT alert with a ksuid taskRunAttemptId (attempt only on the run-ops DB) succeeds on control-plane",
     async ({ prisma14 }) => {
       const suffix = "alert-ksuid-attempt";
-      const { project, environment, channel } = await seedControlPlaneAlertPrereqs(prisma14, suffix);
+      const { project, environment, channel } = await seedControlPlaneAlertPrereqs(
+        prisma14,
+        suffix
+      );
 
       // A ksuid attempt id with no matching control-plane TaskRunAttempt row. With the FK present
       // this throws P2003; after the FK is dropped it succeeds.
