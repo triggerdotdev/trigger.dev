@@ -83,7 +83,7 @@ describe("SpanPresenter cross-DB read-through", () => {
       await dropTaskRunCrossSeamFks(prisma17 as unknown as PrismaClient);
       const cp = await seedControlPlaneWithWorker(prisma14 as unknown as PrismaClient);
 
-      const run = await (prisma17 as unknown as PrismaClient).taskRun.create({
+      const _run = await (prisma17 as unknown as PrismaClient).taskRun.create({
         data: {
           id: `run_${n++}_pg17`,
           engine: "V2",

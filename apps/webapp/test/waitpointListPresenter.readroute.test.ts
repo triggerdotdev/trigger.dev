@@ -27,8 +27,8 @@ import {
   heteroRunOpsPostgresTest,
   postgresTest,
 } from "@internal/testcontainers";
-import { Prisma, PrismaClient, type WaitpointStatus } from "@trigger.dev/database";
-import { RunOpsPrismaClient } from "@internal/run-ops-database";
+import { Prisma, type PrismaClient, type WaitpointStatus } from "@trigger.dev/database";
+import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
   WaitpointListPresenter,
   type WaitpointListOptions,

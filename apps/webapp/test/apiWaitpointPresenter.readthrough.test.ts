@@ -181,7 +181,7 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
     "not-found maps to the existing ServiceValidationError surface",
     async ({ prisma17, prisma14 }) => {
       const id = generateLegacyCuid();
-      const { project, environment } = await seedOrgProjectEnv(prisma14, "nf");
+      const { environment } = await seedOrgProjectEnv(prisma14, "nf");
 
       const presenter = new ApiWaitpointPresenter(undefined, undefined, {
         splitEnabled: true,
@@ -199,7 +199,7 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
     "past-retention maps to the same not-found surface",
     async ({ prisma17, prisma14 }) => {
       const id = generateLegacyCuid();
-      const { project, environment } = await seedOrgProjectEnv(prisma14, "pr");
+      const { environment } = await seedOrgProjectEnv(prisma14, "pr");
 
       const presenter = new ApiWaitpointPresenter(undefined, undefined, {
         splitEnabled: true,

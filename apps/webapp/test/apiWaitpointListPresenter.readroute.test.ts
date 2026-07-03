@@ -25,7 +25,7 @@ vi.mock("~/db.server", async () => {
 });
 
 import { postgresTest } from "@internal/testcontainers";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { ApiWaitpointListPresenter } from "~/presenters/v3/ApiWaitpointListPresenter.server";
 
 vi.setConfig({ testTimeout: 120_000 });

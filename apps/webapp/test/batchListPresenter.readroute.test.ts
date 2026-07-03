@@ -18,8 +18,8 @@ import {
   heteroRunOpsPostgresTest,
   postgresTest,
 } from "@internal/testcontainers";
-import { PrismaClient } from "@trigger.dev/database";
-import { RunOpsPrismaClient } from "@internal/run-ops-database";
+import type { PrismaClient } from "@trigger.dev/database";
+import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
   type BatchListOptions,
   BatchListPresenter,

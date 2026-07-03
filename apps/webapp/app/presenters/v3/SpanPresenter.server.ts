@@ -36,7 +36,6 @@ import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/tas
 import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
-import type { SpanDetail } from "~/v3/eventRepository/eventRepository.types";
 import {
   controlPlaneResolver,
   type ResolvedRunLockedWorker,
@@ -94,7 +93,6 @@ export type Span = NonNullable<NonNullable<Result>["span"]>;
 type FindRunResult = NonNullable<
   Awaited<ReturnType<InstanceType<typeof SpanPresenter>["findRun"]>>
 >;
-type GetSpanResult = SpanDetail;
 
 // Run-ops TaskRun reads (parent run in `call`, hydrate in `findRun`, children in
 // `#getSpan`) go through the `runStore` seam; split routing is the RoutingRunStore's
