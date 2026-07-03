@@ -1,6 +1,9 @@
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
-import type { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
+import type {
+  PrismaClient,
+  PrismaReplicaClient,
+  RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import { prisma, $replica } from "~/db.server";
 import { env } from "~/env.server";
 import {
@@ -10,9 +13,9 @@ import {
   type ResolvedAuthenticatedEnv,
   type ResolvedEnv,
   type ResolvedWorkerVersion,
+  type ResolvedRunLockedWorker,
 } from "./controlPlaneCache.server";
 import { authIncludeWithParent, toAuthenticated } from "~/models/runtimeEnvironment.server";
-import type { ResolvedRunLockedWorker } from "./controlPlaneCache.server";
 
 /**
  * App-level control-plane resolution + cache layer. Replaces the run-ops -> control-plane

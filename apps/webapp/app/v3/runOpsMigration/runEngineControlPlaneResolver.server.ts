@@ -5,10 +5,8 @@ import type {
   ResolvedWorkerVersion,
 } from "@internal/run-engine";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import {
-  ControlPlaneResolver as AppControlPlaneResolver,
-  controlPlaneResolver,
-} from "./controlPlaneResolver.server";
+import type { ControlPlaneResolver as AppControlPlaneResolver } from "./controlPlaneResolver.server";
+import { controlPlaneResolver } from "./controlPlaneResolver.server";
 
 /**
  * Adapter that presents the webapp's cross-DB cached ControlPlaneResolver as the

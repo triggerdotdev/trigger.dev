@@ -6,7 +6,7 @@
  */
 import type { CompleteBatchResult } from "@internal/run-engine";
 import type { RunStore } from "@internal/run-store";
-import { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
+import type { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
 import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";

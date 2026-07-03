@@ -3,7 +3,6 @@ import { SpanKind } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { createJsonErrorObject, sanitizeError, TaskRunErrorCodes } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import type { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
 import {
   $replica,
   prisma,
