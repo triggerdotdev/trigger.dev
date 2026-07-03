@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # One environment at a time: parallel deploys of the same project race.
+      max-parallel: 1
       matrix:
         environment: [staging, prod]
     # Per-environment reviewer gate + source of the scoped deploy PAT.
