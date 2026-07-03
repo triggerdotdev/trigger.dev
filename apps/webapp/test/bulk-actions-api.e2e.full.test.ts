@@ -199,6 +199,79 @@ describe("Bulk actions API", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: "Failed to create bulk action" });
   });
+
+  it("blocks a new replay once the concurrent-replay limit is reached", async () => {
+    const server = getTestServer();
+    const { apiKey, project, environment } = await seedTestEnvironment(server.prisma);
+
+    // Fill the per-environment concurrent-replay slots with fresh, in-flight replays.
+    // The guard runs before the ClickHouse count, so this asserts cleanly without it.
+    for (let i = 0; i < 3; i++) {
+      await seedBulkAction(server.prisma, project, environment, {
+        type: BulkActionType.REPLAY,
+        status: BulkActionStatus.PENDING,
+      });
+    }
+
+    const response = await server.webapp.fetch("/api/v1/bulk-actions", {
+      method: "POST",
+      headers: authHeaders(apiKey),
+      body: JSON.stringify({ action: "replay", filter: { status: "FAILED" } }),
+    });
+
+    expect(response.status).toBe(429);
+    // The cap is a semantic limit, not a transient rate limit, so the SDK must not retry it.
+    expect(response.headers.get("x-should-retry")).toBe("false");
+    const body = await response.json();
+    expect(body.error).toContain("bulk replays at a time");
+  });
+
+  it("does not count stale replays that have stopped making progress", async () => {
+    const server = getTestServer();
+    const { apiKey, project, environment } = await seedTestEnvironment(server.prisma);
+
+    for (let i = 0; i < 3; i++) {
+      await seedBulkAction(server.prisma, project, environment, {
+        type: BulkActionType.REPLAY,
+        status: BulkActionStatus.PENDING,
+      });
+    }
+
+    // Backdate updatedAt past the in-flight window so these look like dead replays.
+    // (updatedAt is @updatedAt, so it can only be set via raw SQL, not on create.)
+    await server.prisma.$executeRawUnsafe(
+      `UPDATE "BulkActionGroup" SET "updatedAt" = now() - interval '31 minutes' WHERE "environmentId" = $1`,
+      environment.id
+    );
+
+    const response = await server.webapp.fetch("/api/v1/bulk-actions", {
+      method: "POST",
+      headers: authHeaders(apiKey),
+      body: JSON.stringify({ action: "replay", filter: { status: "FAILED" } }),
+    });
+
+    // Stale replays don't hold a slot, so the guard lets the request through and it
+    // reaches the count step, which fails (no ClickHouse in this suite) with a 500 rather
+    // than being blocked by the concurrency guard's 429.
+    expect(response.status).toBe(500);
+  });
+
+  it("rejects create requests with more runIds than the allowed maximum", async () => {
+    const server = getTestServer();
+    const { apiKey } = await seedTestEnvironment(server.prisma);
+
+    const runIds = Array.from({ length: 501 }, (_, i) => `run_${i}`);
+
+    const response = await server.webapp.fetch("/api/v1/bulk-actions", {
+      method: "POST",
+      headers: authHeaders(apiKey),
+      body: JSON.stringify({ action: "cancel", runIds }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain("Too many runIds");
+  });
 });
 
 function authHeaders(apiKey: string) {
