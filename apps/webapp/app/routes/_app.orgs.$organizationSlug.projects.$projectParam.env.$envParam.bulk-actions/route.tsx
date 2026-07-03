@@ -370,7 +370,7 @@ function BulkActionActionsCell({
                 LeadingIcon={NoSymbolIcon}
                 leadingIconClassName="text-error"
               >
-                <span className="text-text-bright">Abort</span>
+                <span className="text-text-bright">Abort…</span>
               </Button>
             </DialogTrigger>
             <AbortBulkActionDialog formAction={path} />
@@ -383,7 +383,7 @@ function BulkActionActionsCell({
             disabled
             tooltip="You don't have permission to abort bulk actions"
           >
-            <span className="text-text-bright">Abort</span>
+            <span className="text-text-bright">Abort…</span>
           </Button>
         )
       }

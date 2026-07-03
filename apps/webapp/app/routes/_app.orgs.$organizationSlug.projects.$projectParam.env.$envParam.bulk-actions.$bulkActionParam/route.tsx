@@ -372,7 +372,7 @@ function ControlledAbortBulkActionDialog({
           disabled={!canAbort}
           tooltip={canAbort ? undefined : "You don't have permission to abort bulk actions"}
         >
-          Abort bulk action
+          Abort…
         </Button>
       </DialogTrigger>
       <AbortBulkActionDialog formAction={formAction} onAbortSubmitted={() => setOpen(false)} />
