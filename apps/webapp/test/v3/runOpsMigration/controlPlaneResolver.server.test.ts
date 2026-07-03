@@ -335,10 +335,10 @@ heteroPostgresTest(
 );
 
 heteroPostgresTest(
-  "assertEnvExists passthrough (split OFF) still validates a real env",
+  "assertEnvExists passthrough (split OFF) is a no-op: never reads, never throws",
   async ({ prisma14 }) => {
     const { environment } = await seedControlPlane(prisma14);
-    const { client: counting } = countQueries(prisma14);
+    const { client: counting, reads } = countQueries(prisma14);
     const resolver = new ControlPlaneResolver({
       controlPlaneReplica: counting,
       controlPlanePrimary: counting,
@@ -346,10 +346,11 @@ heteroPostgresTest(
       splitEnabled: () => false,
     });
 
+    // Split OFF = single DB, run and env co-located, so there is nothing to assert
+    // and the hot-path read is skipped entirely — resolves for present and missing.
     await expect(resolver.assertEnvExists(environment.id)).resolves.toBeUndefined();
-    await expect(resolver.assertEnvExists("env_missing")).rejects.toBeInstanceOf(
-      ControlPlaneReferenceError
-    );
+    await expect(resolver.assertEnvExists("env_missing")).resolves.toBeUndefined();
+    expect(reads()).toBe(0);
   }
 );
 

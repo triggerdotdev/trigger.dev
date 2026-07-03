@@ -205,10 +205,14 @@ describe("RunEngineControlPlaneResolver adapter", () => {
   );
 
   heteroPostgresTest(
-    "assertEnvExists resolves for a present env, rejects for a missing one",
+    "assertEnvExists (split ON) resolves for a present env, rejects for a missing one",
     async ({ prisma14 }) => {
       const { environment } = await seedEnv(prisma14, "PRODUCTION");
-      const adapter = new RunEngineControlPlaneResolver(buildAppResolver(prisma14));
+      // split ON: the only mode where assertEnvExists asserts (split OFF is a no-op,
+      // covered in controlPlaneResolver.server.test.ts).
+      const adapter = new RunEngineControlPlaneResolver(
+        buildAppResolver(prisma14, { splitEnabled: true })
+      );
 
       await expect(adapter.assertEnvExists(environment.id)).resolves.toBeUndefined();
       await expect(adapter.assertEnvExists("env_missing")).rejects.toThrow();

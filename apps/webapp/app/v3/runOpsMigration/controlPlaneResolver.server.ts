@@ -394,12 +394,8 @@ export class ControlPlaneResolver {
 
   async assertEnvExists(environmentId: string): Promise<void> {
     if (!this.splitEnabled()) {
-      const exists = await this.#queryEnvExists(this.controlPlanePrimary, environmentId);
-      if (!exists) {
-        throw new ControlPlaneReferenceError(
-          `Referenced environment does not exist: ${environmentId}`
-        );
-      }
+      // Split OFF = single DB, so run and env are co-located and there is no FK/check
+      // to replace (matches main). Skip the hot-path read entirely.
       return;
     }
 
