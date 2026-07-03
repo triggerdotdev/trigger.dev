@@ -255,7 +255,13 @@
           },
           {
             "group": "Using the Dashboard",
-            "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
+            "pages": [
+              "run-tests",
+              "troubleshooting-alerts",
+              "billing-limits",
+              "replaying",
+              "bulk-actions"
+            ]
           },
           {
             "group": "Troubleshooting",
