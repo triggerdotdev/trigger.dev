@@ -6,9 +6,9 @@ export const triggerDarkTheme: ThemeRegistrationAny = {
   name: "trigger-dark",
   type: "dark",
   colors: {
-    "editor.background": "#212327",
-    "editor.foreground": "#878C99",
-    "editorLineNumber.foreground": "#484c54",
+    "editor.background": "var(--color-code-background)",
+    "editor.foreground": "var(--color-code-foreground)",
+    "editorLineNumber.foreground": "var(--color-code-line-number)",
   },
   tokenColors: [
     // Control flow keywords: pink-purple
@@ -20,17 +20,17 @@ export const triggerDarkTheme: ThemeRegistrationAny = {
         "keyword.other.operator",
         "entity.name.operator",
       ],
-      settings: { foreground: "#E888F8" },
+      settings: { foreground: "var(--color-code-keyword)" },
     },
     // Storage type (const, let, var, function, class): purple
     {
       scope: "storage.type",
-      settings: { foreground: "#8271ED" },
+      settings: { foreground: "var(--color-code-storage)" },
     },
     // Storage modifiers (async, export, etc.): purple
     {
       scope: ["storage.modifier", "keyword.operator.noexcept"],
-      settings: { foreground: "#8271ED" },
+      settings: { foreground: "var(--color-code-storage)" },
     },
     // Keyword operator expressions (new, typeof, instanceof, etc.): purple
     {
@@ -43,7 +43,7 @@ export const triggerDarkTheme: ThemeRegistrationAny = {
         "keyword.operator.logical.python",
         "keyword.operator.wordlike",
       ],
-      settings: { foreground: "#8271ED" },
+      settings: { foreground: "var(--color-code-storage)" },
     },
     // Types and namespaces: hot pink
     {
@@ -56,12 +56,12 @@ export const triggerDarkTheme: ThemeRegistrationAny = {
         "entity.name.class",
         "entity.other.inherited-class",
       ],
-      settings: { foreground: "#F770C6" },
+      settings: { foreground: "var(--color-code-type)" },
     },
     // Functions: lime/yellow-green
     {
       scope: ["entity.name.function", "support.function"],
-      settings: { foreground: "#D9F07C" },
+      settings: { foreground: "var(--color-code-function)" },
     },
     // Variables and parameters: light lavender
     {
@@ -72,27 +72,27 @@ export const triggerDarkTheme: ThemeRegistrationAny = {
         "entity.name.variable",
         "constant.other.placeholder",
       ],
-      settings: { foreground: "#CCCBFF" },
+      settings: { foreground: "var(--color-code-variable)" },
     },
     // Constants and enums: medium purple
     {
       scope: ["variable.other.constant", "variable.other.enummember"],
-      settings: { foreground: "#9C9AF2" },
+      settings: { foreground: "var(--color-code-constant)" },
     },
     // this/self: purple-blue
     {
       scope: "variable.language",
-      settings: { foreground: "#9B99FF" },
+      settings: { foreground: "var(--color-code-language)" },
     },
     // Object literal keys: medium purple-blue
     {
       scope: "meta.object-literal.key",
-      settings: { foreground: "#8B89FF" },
+      settings: { foreground: "var(--color-code-object-key)" },
     },
     // Strings: sage green
     {
       scope: ["string", "meta.embedded.assembly"],
-      settings: { foreground: "#AFEC73" },
+      settings: { foreground: "var(--color-code-string)" },
     },
     // String interpolation punctuation: blue-purple
     {
@@ -101,27 +101,27 @@ export const triggerDarkTheme: ThemeRegistrationAny = {
         "punctuation.definition.template-expression.end",
         "punctuation.section.embedded",
       ],
-      settings: { foreground: "#7A78EA" },
+      settings: { foreground: "var(--color-code-template-punctuation)" },
     },
     // Template expression reset
     {
       scope: "meta.template.expression",
-      settings: { foreground: "#d4d4d4" },
+      settings: { foreground: "var(--color-code-plain)" },
     },
     // Operators: gray (same as foreground)
     {
       scope: "keyword.operator",
-      settings: { foreground: "#878C99" },
+      settings: { foreground: "var(--color-code-foreground)" },
     },
     // Comments: olive gray
     {
       scope: "comment",
-      settings: { foreground: "#6f736d" },
+      settings: { foreground: "var(--color-code-comment)" },
     },
     // Language constants (true, false, null, undefined): purple-blue
     {
       scope: "constant.language",
-      settings: { foreground: "#9B99FF" },
+      settings: { foreground: "var(--color-code-language)" },
     },
     // Numeric constants: light green
     {
@@ -130,42 +130,42 @@ export const triggerDarkTheme: ThemeRegistrationAny = {
         "keyword.operator.plus.exponent",
         "keyword.operator.minus.exponent",
       ],
-      settings: { foreground: "#b5cea8" },
+      settings: { foreground: "var(--color-code-number)" },
     },
     // Regex: dark red
     {
       scope: "constant.regexp",
-      settings: { foreground: "#646695" },
+      settings: { foreground: "var(--color-code-regexp-constant)" },
     },
     // HTML/JSX tags: purple-blue
     {
       scope: "entity.name.tag",
-      settings: { foreground: "#9B99FF" },
+      settings: { foreground: "var(--color-code-language)" },
     },
     // Tag brackets: dark gray
     {
       scope: "punctuation.definition.tag",
-      settings: { foreground: "#5F6570" },
+      settings: { foreground: "var(--color-code-muted)" },
     },
     // HTML/JSX attributes: light purple
     {
       scope: "entity.other.attribute-name",
-      settings: { foreground: "#C39EFF" },
+      settings: { foreground: "var(--color-code-attribute)" },
     },
     // Escape characters: gold
     {
       scope: "constant.character.escape",
-      settings: { foreground: "#d7ba7d" },
+      settings: { foreground: "var(--color-code-escape)" },
     },
     // Regex string: dark red
     {
       scope: "string.regexp",
-      settings: { foreground: "#d16969" },
+      settings: { foreground: "var(--color-code-regexp)" },
     },
     // Storage: purple-blue
     {
       scope: "storage",
-      settings: { foreground: "#9B99FF" },
+      settings: { foreground: "var(--color-code-language)" },
     },
     // TS-specific: type casts, math/dom/json constants
     {
@@ -176,47 +176,47 @@ export const triggerDarkTheme: ThemeRegistrationAny = {
         "support.constant.dom",
         "support.constant.json",
       ],
-      settings: { foreground: "#9B99FF" },
+      settings: { foreground: "var(--color-code-language)" },
     },
     // Markdown headings: purple-blue bold
     {
       scope: "markup.heading",
-      settings: { foreground: "#9B99FF", fontStyle: "bold" },
+      settings: { foreground: "var(--color-code-language)", fontStyle: "bold" },
     },
     // Markup bold: purple-blue
     {
       scope: "markup.bold",
-      settings: { foreground: "#9B99FF", fontStyle: "bold" },
+      settings: { foreground: "var(--color-code-language)", fontStyle: "bold" },
     },
     // Markup inline raw: sage green
     {
       scope: "markup.inline.raw",
-      settings: { foreground: "#AFEC73" },
+      settings: { foreground: "var(--color-code-string)" },
     },
     // Markup inserted: light green
     {
       scope: "markup.inserted",
-      settings: { foreground: "#b5cea8" },
+      settings: { foreground: "var(--color-code-number)" },
     },
     // Markup deleted: sage green
     {
       scope: "markup.deleted",
-      settings: { foreground: "#AFEC73" },
+      settings: { foreground: "var(--color-code-string)" },
     },
     // Markup changed: purple-blue
     {
       scope: "markup.changed",
-      settings: { foreground: "#9B99FF" },
+      settings: { foreground: "var(--color-code-language)" },
     },
     // Invalid: red
     {
       scope: "invalid",
-      settings: { foreground: "#f44747" },
+      settings: { foreground: "var(--color-code-invalid)" },
     },
     // JSX text content
     {
       scope: ["meta.jsx.children"],
-      settings: { foreground: "#D7D9DD" },
+      settings: { foreground: "var(--color-code-jsx-text)" },
     },
   ],
 };

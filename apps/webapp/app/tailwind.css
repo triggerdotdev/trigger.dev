@@ -211,12 +211,95 @@
   --color-previewBranches: var(--color-yellow-500);
 }
 
+/* Callout variant accents (see components/primitives/Callout.tsx) */
+@theme {
+  --color-callout-warning-text: var(--color-yellow-200);
+  --color-callout-error-text: var(--color-rose-200);
+  --color-callout-success-text: var(--color-green-200);
+  --color-callout-docs: var(--color-blue-400);
+  --color-callout-docs-text: var(--color-blue-200);
+  --color-callout-pending: var(--color-blue-400);
+  --color-callout-pending-bg: var(--color-blue-800);
+  --color-callout-pending-text: var(--color-blue-300);
+  --color-callout-pricing: var(--color-indigo-400);
+  --color-callout-pricing-bg: var(--color-indigo-800);
+  --color-callout-pricing-text: var(--color-indigo-300);
+}
+
+/*
+  Code syntax palette - the trigger-dark highlight theme, shared by the shiki
+  theme (streamdown) and the prism theme (CodeBlock). Consumed from JS via
+  var(), so declared static to always be emitted.
+*/
+@theme static {
+  --color-code-background: #212327;
+  --color-code-foreground: #878c99;
+  --color-code-line-number: #484c54;
+  --color-code-plain: #d4d4d4;
+  --color-code-muted: #5f6570;
+  --color-code-comment: #6f736d;
+  --color-code-keyword: #e888f8;
+  --color-code-storage: #8271ed;
+  --color-code-type: #f770c6;
+  --color-code-function: #d9f07c;
+  --color-code-variable: #cccbff;
+  --color-code-constant: #9c9af2;
+  --color-code-language: #9b99ff;
+  --color-code-object-key: #8b89ff;
+  --color-code-string: #afec73;
+  --color-code-template-punctuation: #7a78ea;
+  --color-code-number: #b5cea8;
+  --color-code-builtin: #e5c07b;
+  --color-code-attribute: #c39eff;
+  --color-code-escape: #d7ba7d;
+  --color-code-regexp: #d16969;
+  --color-code-regexp-constant: #646695;
+  --color-code-invalid: #f44747;
+  --color-code-deleted: #f85149;
+  --color-code-jsx-text: #d7d9dd;
+}
+
+/*
+  CodeMirror editor palette (see components/code/codeMirrorTheme.ts).
+  Consumed from JS via var(), so declared static to always be emitted.
+*/
+@theme static {
+  --color-editor-background: var(--color-background-deep);
+  --color-editor-foreground: #abb2bf;
+  --color-editor-keyword: #c678dd;
+  --color-editor-name: #9b99ff;
+  --color-editor-function: #61afef;
+  --color-editor-constant: #d19a66;
+  --color-editor-type: #e5c07b;
+  --color-editor-operator: #56b6c2;
+  --color-editor-comment: #7d8799;
+  --color-editor-heading: #e06c75;
+  --color-editor-string: #afec73;
+  --color-editor-invalid: #ffffff;
+  --color-editor-panel-background: #21252b;
+  --color-editor-highlight-background: rgba(71, 85, 105, 0.2);
+  --color-editor-tooltip-background: #353a42;
+  --color-editor-selection: rgb(71 85 105);
+  --color-editor-cursor: #528bff;
+  --color-editor-search-match: #72a1ff59;
+  --color-editor-search-match-outline: #457dff;
+  --color-editor-search-match-selected: #6199ff2f;
+  --color-editor-selection-match: #aafe661a;
+  --color-editor-matching-bracket: rgba(18, 19, 23, 0.9);
+  --color-editor-matching-bracket-outline: rgba(81, 90, 107, 0.5);
+  --color-editor-fold-placeholder: #dddddd;
+  --color-editor-scrollbar-track-active: #131b2b;
+  --color-editor-scrollbar-thumb: #293649;
+  --color-editor-scrollbar-thumb-active: #3c4b62;
+}
+
 /*
   Run-status chart colors. In-between shades are intentional - statuses within
   a family (blues, roses, charcoals) are evenly spaced so chart series stay
-  distinguishable. Referenced from JS via var(--color-run-*).
+  distinguishable. Referenced from JS via var(--color-run-*), so declared
+  static to always be emitted.
 */
-@theme {
+@theme static {
   --color-run-pending: var(--color-charcoal-500);
   --color-run-delayed: #6b7580;
   --color-run-pending-version: var(--color-warning);
