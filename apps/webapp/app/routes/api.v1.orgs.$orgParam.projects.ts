@@ -122,12 +122,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // Derive from the stored id rather than assuming new projects are unset,
     // so this stays correct if project creation ever inherits a default region.
     const defaultRegion = project.defaultWorkerGroupId
-      ? (
+      ? ((
           await prisma.workerInstanceGroup.findFirst({
             where: { id: project.defaultWorkerGroupId },
             select: { name: true },
           })
-        )?.name ?? null
+        )?.name ?? null)
       : null;
 
     const result: GetProjectResponseBody = {

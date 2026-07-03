@@ -58,10 +58,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       where: { organizationId: organization.id },
     });
     if (memberCount <= 1) {
-      return json(
-        { error: "Cannot remove the last member of an organization" },
-        { status: 400 }
-      );
+      return json({ error: "Cannot remove the last member of an organization" }, { status: 400 });
     }
 
     const removed = await removeTeamMember({
