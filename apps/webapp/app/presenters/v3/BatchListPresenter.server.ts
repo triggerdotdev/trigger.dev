@@ -111,19 +111,24 @@ export class BatchListPresenter extends BasePresenter {
   // Empty-state probe. Split on: probe the new run-ops DB first, then the legacy READ REPLICA only
   // (never the legacy primary). Split off (single-DB / self-host): one plain `_replica` probe.
   async #probeAnyBatch(environmentId: string): Promise<boolean> {
-    const onNew = await (this.readRoute?.runOpsNew ?? this._replica).batchTaskRun.findFirst({
+    // Passthrough: probe the SAME client the scan uses (_replica), or the empty-state hint can
+    // disagree with the page when a run-ops DB is configured but read-split is off.
+    if (!this.readRoute?.splitEnabled) {
+      const onReplica = await this._replica.batchTaskRun.findFirst({
+        where: { runtimeEnvironmentId: environmentId },
+      });
+      return Boolean(onReplica);
+    }
+
+    const onNew = await (this.readRoute.runOpsNew ?? this._replica).batchTaskRun.findFirst({
       where: { runtimeEnvironmentId: environmentId },
     });
     if (onNew) {
       return true;
     }
 
-    if (!this.readRoute?.splitEnabled) {
-      return false;
-    }
-
     const onLegacy = await (
-      this.readRoute?.runOpsLegacyReplica ?? this._replica
+      this.readRoute.runOpsLegacyReplica ?? this._replica
     ).batchTaskRun.findFirst({
       where: { runtimeEnvironmentId: environmentId },
     });
