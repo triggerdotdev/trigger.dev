@@ -71,6 +71,11 @@ describe("public wait-token resolution across the split boundary", () => {
             where: { id: waitpointId, environmentId: environment.id },
           }),
         deps: {
+          // Pin split-on explicitly: without it the fan-out gate falls back to the
+          // ambient RUN_OPS_SPLIT_ENABLED env, which is unset in CI (single-DB
+          // passthrough reads only the run-ops replica and never fans out to the
+          // control-plane legacy replica that holds this cuid-shaped token).
+          splitEnabled: true,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
         },
