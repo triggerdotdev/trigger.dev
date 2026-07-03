@@ -42,13 +42,18 @@ vi.mock("~/v3/alertsWorker.server", () => ({ alertsWorker: createWorkerStub() })
 // that open eager ioredis connections at import via the same pattern. No test
 // uses these app-level singletons directly (store-routing tests build their own
 // engine and run store), so stub them to no-op proxies.
-const noopProxy = () =>
-  new Proxy(
-    {},
-    {
-      get: () => vi.fn().mockResolvedValue(undefined),
-    }
-  );
+// Recursive no-op proxy: property access at any depth returns another callable
+// no-op proxy, so real service tests reaching nested singleton methods (e.g.
+// engine.runQueue.updateEnvConcurrencyLimits) don't break on an intermediate stub.
+type NoopProxyFn = ((...args: unknown[]) => Promise<undefined>) & Record<string, unknown>;
+
+const noopProxy = (): NoopProxyFn => {
+  const fn = () => Promise.resolve(undefined);
+  return new Proxy(fn, {
+    get: (_target, prop) => (prop === "then" ? undefined : noopProxy()),
+    apply: () => Promise.resolve(undefined),
+  }) as unknown as NoopProxyFn;
+};
 
 // Beyond the modules mocked above, dozens more app modules construct an
 // ioredis client at import time pointed at env-configured Redis, and ioredis
