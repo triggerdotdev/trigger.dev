@@ -109,9 +109,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const url = new URL(request.url);
-  const { page, query, period: rawPeriod } = SearchParamsSchema.parse(
-    Object.fromEntries(url.searchParams)
-  );
+  const {
+    page,
+    query,
+    period: rawPeriod,
+  } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
   const period: QueueMetricsWindow = isQueueMetricsWindow(rawPeriod) ? rawPeriod : "24h";
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
@@ -153,7 +155,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       window: QueueMetricsWindow;
       bucketStartMs: number;
       bucketIntervalMs: number;
-      byQueue: Record<string, import("~/presenters/v3/QueueMetricsPresenter.server").QueueListMetric>;
+      byQueue: Record<
+        string,
+        import("~/presenters/v3/QueueMetricsPresenter.server").QueueListMetric
+      >;
     } | null = null;
 
     if (queueMetricsUiEnabled && queues.success) {
@@ -404,8 +409,7 @@ function QueuesWithMetricsView() {
               </LinkButton>
             )
           ) : null}
-          {environment.runsEnabled &&
-          env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
+          {environment.runsEnabled && env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
             <EnvironmentPauseResumeButton env={env} />
           ) : null}
           <LinkButton
@@ -1209,7 +1213,13 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
   },
 ];
 
-function QueueEnvMetricTile({ tile, period }: { tile: QueueHeaderTile; period: QueueMetricsWindow }) {
+function QueueEnvMetricTile({
+  tile,
+  period,
+}: {
+  tile: QueueHeaderTile;
+  period: QueueMetricsWindow;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -1288,7 +1298,9 @@ function QueueEnvMetricTile({ tile, period }: { tile: QueueHeaderTile; period: Q
       {showLoading ? (
         <div className="h-12 w-full animate-pulse rounded bg-grid-bright/60" />
       ) : failed ? (
-        <div className="flex h-12 items-center text-xs text-text-dimmed">Unable to load metrics</div>
+        <div className="flex h-12 items-center text-xs text-text-dimmed">
+          Unable to load metrics
+        </div>
       ) : (
         <MiniChart data={sparkline} color={tile.color} />
       )}
@@ -1406,7 +1418,6 @@ function formatWaitMs(ms: number): string {
   if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
   return `${(ms / 3_600_000).toFixed(1)}h`;
 }
-
 
 // Classic Queues page, restored verbatim from before the Queue Metrics feature. Rendered
 // when queueMetricsUiEnabled is off so a gated org sees exactly the pre-metrics UI.

@@ -53,7 +53,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // The built-in "queues" dashboard is part of the metrics UI (unlinked, but reachable by
   // URL), so gate it per-org like the rest of the Queue Metrics view.
-  if (dashboardKey === "queues" && !(await canAccessQueueMetricsUi({ userId: user.id, organizationSlug }))) {
+  if (
+    dashboardKey === "queues" &&
+    !(await canAccessQueueMetricsUi({ userId: user.id, organizationSlug }))
+  ) {
     throw new Response(undefined, { status: 404, statusText: "Not found" });
   }
 

@@ -127,11 +127,7 @@ export type LabeledShardState = ShardState & { stream: "queue_metrics" };
 
 export async function probeQueueMetricsStreams(): Promise<LabeledShardState[]> {
   const def = metricsDefinition();
-  const states = await probeShardStates(
-    metricsAdminRedis(),
-    allStreamKeys(def),
-    def.consumerGroup
-  );
+  const states = await probeShardStates(metricsAdminRedis(), allStreamKeys(def), def.consumerGroup);
   return states.map((s) => ({ ...s, stream: "queue_metrics" as const }));
 }
 

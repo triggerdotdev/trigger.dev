@@ -141,9 +141,9 @@ export default function AdminQueueMetricsRoute() {
           </div>
           <Paragraph variant="extra-small">
             Depth = entries buffered in the shard stream; Lag = entries not yet delivered to the
-            consumer group (rising = consumer falling behind; "unknown" = entries were trimmed
-            past the group, i.e. data was lost); Pending = unacked entries. Gauges and counters
-            share one stream family on the metrics Redis.
+            consumer group (rising = consumer falling behind; "unknown" = entries were trimmed past
+            the group, i.e. data was lost); Pending = unacked entries. Gauges and counters share one
+            stream family on the metrics Redis.
           </Paragraph>
           {lagUnknownCount > 0 && (
             <Callout variant="error">

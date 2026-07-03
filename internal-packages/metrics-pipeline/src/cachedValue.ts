@@ -28,7 +28,10 @@ export class CachedRedisValue<T> {
     this.logger = options.logger ?? new Logger(options.loggerName ?? "CachedRedisValue", "warn");
     this.redis = createRedisClient(
       { ...options.redis, keyPrefix: undefined },
-      { onError: (error) => this.logger.error("cached value redis error", { error, key: options.key }) }
+      {
+        onError: (error) =>
+          this.logger.error("cached value redis error", { error, key: options.key }),
+      }
     );
     this.key = options.key;
     this.parse = options.parse;

@@ -73,7 +73,17 @@ describe("mapEntryToRow", () => {
   it("maps a gauge entry with numeric fields", () => {
     const row = mapEntryToRow({
       id: "1700000000000-0",
-      fields: { op: "gauge", q, ql: "5", cc: "2", lim: "10", eql: "7", ec: "3", elim: "20", thr: "1" },
+      fields: {
+        op: "gauge",
+        q,
+        ql: "5",
+        cc: "2",
+        lim: "10",
+        eql: "7",
+        ec: "3",
+        elim: "20",
+        thr: "1",
+      },
     });
     expect(row).toEqual(
       expect.objectContaining({

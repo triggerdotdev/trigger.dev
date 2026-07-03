@@ -55,7 +55,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!project) throw new Response(undefined, { status: 404, statusText: "Project not found" });
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) throw new Response(undefined, { status: 404, statusText: "Environment not found" });
+  if (!environment)
+    throw new Response(undefined, { status: 404, statusText: "Environment not found" });
 
   const retrieve = await new QueueRetrievePresenter().call({ environment, queueInput: queueParam });
   if (!retrieve.success) {
@@ -330,7 +331,9 @@ function QueueDetailChartCard({
               />
               <Tooltip
                 cursor={{ stroke: "rgba(255,255,255,0.12)" }}
-                content={<QueueChartTooltip series={series} formatX={formatX} valueFormat={valueFormat} />}
+                content={
+                  <QueueChartTooltip series={series} formatX={formatX} valueFormat={valueFormat} />
+                }
                 allowEscapeViewBox={{ x: true, y: true }}
                 wrapperStyle={{ zIndex: 1000 }}
                 animationDuration={0}
@@ -382,7 +385,10 @@ function QueueChartTooltip({
         const value = entry?.value;
         return (
           <div key={s.key} className="flex items-center gap-2 text-xs">
-            <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
+            <span
+              className="inline-block h-2 w-2 rounded-full"
+              style={{ backgroundColor: s.color }}
+            />
             <span className="text-text-dimmed">{s.label}</span>
             <span className="tabular-nums text-text-bright">
               {value === null || value === undefined
@@ -421,13 +427,21 @@ function QueueStats({
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
       <Stat label="Running now" value={queue.running.toLocaleString()} />
       <Stat label="Queued now" value={queue.queued.toLocaleString()} />
-      <Stat label="Limit" value={row ? toNumber(row.lim).toLocaleString() : "–"} loading={showLoading} />
+      <Stat
+        label="Limit"
+        value={row ? toNumber(row.lim).toLocaleString() : "–"}
+        loading={showLoading}
+      />
       <Stat
         label="Peak queued"
         value={row ? toNumber(row.peak_queued).toLocaleString() : "–"}
         loading={showLoading}
       />
-      <Stat label="Started" value={row ? toNumber(row.started).toLocaleString() : "–"} loading={showLoading} />
+      <Stat
+        label="Started"
+        value={row ? toNumber(row.started).toLocaleString() : "–"}
+        loading={showLoading}
+      />
       <Stat
         label="Worst delay p95"
         value={worstP95 > 0 ? formatWaitMs(worstP95) : "–"}

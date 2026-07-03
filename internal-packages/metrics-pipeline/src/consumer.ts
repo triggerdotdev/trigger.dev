@@ -133,7 +133,8 @@ export class MetricsStreamConsumer<TRow> {
       valueType: ValueType.INT,
     });
     const lagUnknownGauge = this.meter.createObservableGauge("queue_metrics.consumer.lag_unknown", {
-      description: "1 when Redis cannot compute group lag (entries trimmed => data loss); alert on this",
+      description:
+        "1 when Redis cannot compute group lag (entries trimmed => data loss); alert on this",
       valueType: ValueType.INT,
     });
     this.observables = [depthGauge, lagGauge, pendingGauge, lagUnknownGauge];
@@ -161,10 +162,7 @@ export class MetricsStreamConsumer<TRow> {
     this.running = false;
     this.meter.removeBatchObservableCallback(this.batchCallback, this.observables);
     await this.loopPromise?.catch(() => {});
-    await Promise.all([
-      this.redis.quit().catch(() => {}),
-      this.probeRedis.quit().catch(() => {}),
-    ]);
+    await Promise.all([this.redis.quit().catch(() => {}), this.probeRedis.quit().catch(() => {})]);
   }
 
   private async ensureGroups(): Promise<void> {

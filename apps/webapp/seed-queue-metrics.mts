@@ -20,7 +20,11 @@ type QueueProfile = {
   waitBaseMs: number;
   sparse?: boolean; // emit no rows when the queue is fully idle (tests carry-forward gaps)
 };
-type Scenario = { description: string; envLimit: (bucket: number) => number; queues: QueueProfile[] };
+type Scenario = {
+  description: string;
+  envLimit: (bucket: number) => number;
+  queues: QueueProfile[];
+};
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -113,7 +117,11 @@ const bursty = (name: string, limit: number, base: number): QueueProfile => ({
 });
 
 const scenarios: Record<string, (totalBuckets: number, bucketSec: number) => Scenario> = {
-  steady: () => ({ description: "all queues below capacity, no throttling", envLimit: () => 60, queues: steady() }),
+  steady: () => ({
+    description: "all queues below capacity, no throttling",
+    envLimit: () => 60,
+    queues: steady(),
+  }),
 
   burst: () => ({
     description: "periodic arrival bursts -> backlog + wait spikes + throttling",
@@ -144,9 +152,12 @@ const scenarios: Record<string, (totalBuckets: number, bucketSec: number) => Sce
   }),
 
   "throttled-backlog": () => ({
-    description: "arrival rate persistently above the queue limit -> permanent backlog + throttling",
+    description:
+      "arrival rate persistently above the queue limit -> permanent backlog + throttling",
     envLimit: () => 50,
-    queues: [{ name: "overloaded", limit: () => 10, arrivals: (_b, r) => poisson(16, r), waitBaseMs: 80 }],
+    queues: [
+      { name: "overloaded", limit: () => 10, arrivals: (_b, r) => poisson(16, r), waitBaseMs: 80 },
+    ],
   }),
 
   "idle-sparse": () => ({
@@ -330,8 +341,9 @@ async function insertBatched(ch: ClickHouse, rows: QueueMetricsRawV1Input[], non
 }
 
 async function resetEnv(ch: ClickHouse, environmentId: string) {
-  const raw = (ch.writer as unknown as { client: { command: (a: { query: string }) => Promise<unknown> } })
-    .client;
+  const raw = (
+    ch.writer as unknown as { client: { command: (a: { query: string }) => Promise<unknown> } }
+  ).client;
   for (const table of ["queue_metrics_raw_v1", "queue_metrics_v1"]) {
     await raw.command({
       query: `DELETE FROM trigger_dev.${table} WHERE environment_id = '${environmentId}'`,
@@ -347,7 +359,11 @@ async function resetEnv(ch: ClickHouse, environmentId: string) {
 // Make the synthetic project a V2 engine project with a current dev worker + a Postgres
 // TaskQueue per simulated queue, so the /queues list renders the V2 table (it pages from
 // Postgres and gates on engine version; ClickHouse only holds the metrics).
-async function ensureTaskQueues(scenario: Scenario, projectId: string, runtimeEnvironmentId: string) {
+async function ensureTaskQueues(
+  scenario: Scenario,
+  projectId: string,
+  runtimeEnvironmentId: string
+) {
   await prisma.project.update({ where: { id: projectId }, data: { engine: "V2" } });
 
   await prisma.backgroundWorker.upsert({
@@ -397,7 +413,9 @@ async function main() {
   const scenarioName = flags.scenario ?? "mixed";
   const build = scenarios[scenarioName];
   if (!build) {
-    console.error(`Unknown scenario "${scenarioName}". Options: ${Object.keys(scenarios).join(", ")}`);
+    console.error(
+      `Unknown scenario "${scenarioName}". Options: ${Object.keys(scenarios).join(", ")}`
+    );
     process.exit(1);
   }
   const bucketSec = Number(flags.bucket ?? 10);
@@ -415,11 +433,19 @@ async function main() {
   let org = await prisma.organization.findFirst({
     where: { title: ORG_TITLE, members: { some: { userId: user.id } } },
   });
-  if (!org) org = await createOrganization({ title: ORG_TITLE, userId: user.id, companySize: "1-10" });
+  if (!org)
+    org = await createOrganization({ title: ORG_TITLE, userId: user.id, companySize: "1-10" });
 
-  let project = await prisma.project.findFirst({ where: { name: PROJECT_NAME, organizationId: org.id } });
+  let project = await prisma.project.findFirst({
+    where: { name: PROJECT_NAME, organizationId: org.id },
+  });
   if (!project) {
-    project = await createProject({ organizationSlug: org.slug, name: PROJECT_NAME, userId: user.id, version: "v3" });
+    project = await createProject({
+      organizationSlug: org.slug,
+      name: PROJECT_NAME,
+      userId: user.id,
+      version: "v3",
+    });
   }
 
   const runtimeEnv = await prisma.runtimeEnvironment.findFirst({
@@ -430,7 +456,11 @@ async function main() {
     process.exit(1);
   }
 
-  const ids: Ids = { organization_id: org.id, project_id: project.id, environment_id: runtimeEnv.id };
+  const ids: Ids = {
+    organization_id: org.id,
+    project_id: project.id,
+    environment_id: runtimeEnv.id,
+  };
   const ch = clickhouse();
   const nonce = `qmsim-${Date.now()}-${seed}`;
 
@@ -448,7 +478,9 @@ async function main() {
   const backlog = new Array(scenario.queues.length).fill(0);
 
   console.log(`Scenario "${scenarioName}": ${scenario.description}`);
-  console.log(`Backfilling ${totalBuckets} x ${bucketSec}s buckets (${flags.window ?? "2h"}) for ${scenario.queues.length} queues...`);
+  console.log(
+    `Backfilling ${totalBuckets} x ${bucketSec}s buckets (${flags.window ?? "2h"}) for ${scenario.queues.length} queues...`
+  );
 
   // Backfill: buckets from (now - window) up to now, aligned to the bucket grid.
   const nowBucket = Math.floor(Date.now() / 1000 / bucketSec) * bucketSec;
@@ -463,12 +495,15 @@ async function main() {
 
   // Merge the AggregatingMergeTree partials so argMax "current value" widgets read cleanly.
   // The real pipeline relies on background merges; the simulator forces it for a tidy demo.
-  const raw = (ch.writer as unknown as { client: { command: (a: { query: string }) => Promise<unknown> } })
-    .client;
+  const raw = (
+    ch.writer as unknown as { client: { command: (a: { query: string }) => Promise<unknown> } }
+  ).client;
   await raw.command({ query: `OPTIMIZE TABLE trigger_dev.queue_metrics_v1 FINAL` });
 
   const origin = process.env.APP_ORIGIN ?? "http://localhost:3030";
-  console.log(`\nQueues dashboard: ${origin}/orgs/${org.slug}/projects/${project.slug}/env/dev/dashboards/queues`);
+  console.log(
+    `\nQueues dashboard: ${origin}/orgs/${org.slug}/projects/${project.slug}/env/dev/dashboards/queues`
+  );
 
   if (live) {
     console.log(`\nLive mode: appending one bucket every ${bucketSec}s (Ctrl-C to stop)...`);
@@ -476,7 +511,9 @@ async function main() {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       await new Promise((r) => setTimeout(r, bucketSec * 1000));
-      const eventTime = formatChDateTime(new Date(Math.floor(Date.now() / 1000 / bucketSec) * bucketSec * 1000));
+      const eventTime = formatChDateTime(
+        new Date(Math.floor(Date.now() / 1000 / bucketSec) * bucketSec * 1000)
+      );
       const liveRows = simulateBucket(scenario, b, bucketSec, eventTime, ids, backlog, rng);
       await insertBatched(ch, liveRows, `${nonce}:live:${b}`);
       console.log(`bucket ${b}: ${liveRows.length} rows @ ${eventTime}`);

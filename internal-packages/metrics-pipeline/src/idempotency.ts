@@ -5,5 +5,7 @@ import { createHash } from "node:crypto";
 // `scope` (the stream key) disambiguates id sets that could collide across streams.
 export function dedupTokenFromEntryIds(ids: string[], scope = ""): string {
   const sorted = [...ids].sort();
-  return createHash("sha1").update(`${scope}|${sorted.join(",")}`).digest("hex");
+  return createHash("sha1")
+    .update(`${scope}|${sorted.join(",")}`)
+    .digest("hex");
 }

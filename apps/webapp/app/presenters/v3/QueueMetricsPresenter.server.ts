@@ -58,7 +58,8 @@ export class QueueMetricsPresenter {
     const bucketSeconds = Math.max(60, Math.round(windowSeconds / SPARKLINE_POINTS));
     const numBuckets = Math.ceil(windowSeconds / bucketSeconds);
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const gridStartSeconds = Math.floor((nowSeconds - windowSeconds) / bucketSeconds) * bucketSeconds;
+    const gridStartSeconds =
+      Math.floor((nowSeconds - windowSeconds) / bucketSeconds) * bucketSeconds;
     const bucketStartMs = gridStartSeconds * 1000;
     const bucketIntervalMs = bucketSeconds * 1000;
 
@@ -144,5 +145,4 @@ export class QueueMetricsPresenter {
       return empty;
     }
   }
-
 }

@@ -722,35 +722,60 @@ export const queueMetricsSchema: TableSchema = {
     },
     max_queued: {
       name: "max_queued",
-      ...column("UInt32", { description: "Peak queue depth in the bucket. Aggregate with max().", coreColumn: true, fillMode: "carry" }),
+      ...column("UInt32", {
+        description: "Peak queue depth in the bucket. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
     },
     max_running: {
       name: "max_running",
-      ...column("UInt32", { description: "Peak running (concurrency) in the bucket. Aggregate with max().", coreColumn: true, fillMode: "carry" }),
+      ...column("UInt32", {
+        description: "Peak running (concurrency) in the bucket. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
     },
     max_limit: {
       name: "max_limit",
-      ...column("UInt32", { description: "The queue concurrency limit. Aggregate with max().", coreColumn: true, fillMode: "carry" }),
+      ...column("UInt32", {
+        description: "The queue concurrency limit. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
     },
     max_env_queued: {
       name: "max_env_queued",
-      ...column("UInt32", { description: "Peak environment-wide queued in the bucket. Aggregate with max().", fillMode: "carry" }),
+      ...column("UInt32", {
+        description: "Peak environment-wide queued in the bucket. Aggregate with max().",
+        fillMode: "carry",
+      }),
     },
     max_env_running: {
       name: "max_env_running",
-      ...column("UInt32", { description: "Peak environment-wide running in the bucket. Aggregate with max().", fillMode: "carry" }),
+      ...column("UInt32", {
+        description: "Peak environment-wide running in the bucket. Aggregate with max().",
+        fillMode: "carry",
+      }),
     },
     max_env_limit: {
       name: "max_env_limit",
-      ...column("UInt32", { description: "The environment concurrency limit. Aggregate with max().", fillMode: "carry" }),
+      ...column("UInt32", {
+        description: "The environment concurrency limit. Aggregate with max().",
+        fillMode: "carry",
+      }),
     },
     wait_ms_sum: {
       name: "wait_ms_sum",
-      ...column("UInt64", { description: "Sum of scheduling delays (ms). Mean = wait_ms_sum/wait_ms_count." }),
+      ...column("UInt64", {
+        description: "Sum of scheduling delays (ms). Mean = wait_ms_sum/wait_ms_count.",
+      }),
     },
     wait_ms_count: {
       name: "wait_ms_count",
-      ...column("UInt64", { description: "Count of scheduling-delay samples. Aggregate with sum()." }),
+      ...column("UInt64", {
+        description: "Count of scheduling-delay samples. Aggregate with sum().",
+      }),
     },
     wait_quantiles: {
       name: "wait_quantiles",

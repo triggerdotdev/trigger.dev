@@ -635,7 +635,11 @@ const queuesDashboard: BuiltInDashboard = {
       pressure: {
         title: "Queue pressure",
         query: `SELECT queue,\n  argMax(max_running, bucket_start) AS running,\n  argMax(max_queued, bucket_start) AS queued,\n  argMax(max_limit, bucket_start) AS limit,\n  running + queued AS demand,\n  max(max_queued) AS peak_queued,\n  sum(throttled_count) AS throttled,\n  multiIf(running >= limit AND queued > 0, 'queue-limited', queued > 0, 'backlogged', 'healthy') AS status\nFROM queue_metrics\nGROUP BY queue\nORDER BY peak_queued DESC`,
-        display: { type: "table", prettyFormatting: true, sorting: [{ id: "peak_queued", desc: true }] },
+        display: {
+          type: "table",
+          prettyFormatting: true,
+          sorting: [{ id: "peak_queued", desc: true }],
+        },
       },
       "t-trends": { title: "Per-queue trends", query: "", display: { type: "title" } },
       "running-q": {

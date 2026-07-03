@@ -25,10 +25,13 @@ const authenticatedEnvDev = {
   organization: { id: "o1234" },
 };
 
-async function readAllEntries(redisOptions: {
-  host: string;
-  port: number;
-}, definition: MetricDefinition) {
+async function readAllEntries(
+  redisOptions: {
+    host: string;
+    port: number;
+  },
+  definition: MetricDefinition
+) {
   const client = createRedisClient({ ...redisOptions, keyPrefix: undefined });
   const entries: Array<{ id: string; fields: Record<string, string> }> = [];
   for (const key of allStreamKeys(definition)) {
@@ -108,7 +111,11 @@ describe("RunQueue queue-metrics emission", () => {
     };
 
     try {
-      await queue.enqueueMessage({ env: authenticatedEnvDev, message, workerQueue: authenticatedEnvDev.id });
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message,
+        workerQueue: authenticatedEnvDev.id,
+      });
       await setTimeout(1000);
       const dequeued = await queue.dequeueMessageFromWorkerQueue("c1", authenticatedEnvDev.id);
       expect(dequeued?.messageId).toBe(message.runId);
@@ -144,75 +151,83 @@ describe("RunQueue queue-metrics emission", () => {
     }
   });
 
-  redisTest("emits a fast-path gauge reusing the admission-check locals", async ({ redisContainer }) => {
-    const redis = {
-      keyPrefix: "runqueue:test:",
-      host: redisContainer.getHost(),
-      port: redisContainer.getPort(),
-    };
-    const definition: MetricDefinition = {
-      name: `qm_fp_${Date.now()}`,
-      shardCount: 2,
-      consumerGroup: "cg",
-      maxLen: 1000,
-    };
-    const emitter = new MetricsStreamEmitter({ redis, definition, flag: { enabled: () => true } });
-    const queue = new RunQueue({
-      name: "rq",
-      tracer: trace.getTracer("rq"),
-      defaultEnvConcurrency: 25,
-      logger: new Logger("RunQueue", "error"),
-      keys: new RunQueueFullKeyProducer(),
-      queueSelectionStrategy: new FairQueueSelectionStrategy({
-        redis,
-        keys: new RunQueueFullKeyProducer(),
-      }),
-      redis,
-      queueMetrics: emitter,
-    });
-
-    const message: InputPayload = {
-      runId: "r-fastpath",
-      taskIdentifier: "task/my-task",
-      orgId: "o1234",
-      projectId: "p1234",
-      environmentId: authenticatedEnvDev.id,
-      environmentType: "DEVELOPMENT",
-      queue: "task/my-task",
-      timestamp: Date.now(),
-      attempt: 0,
-    };
-
-    try {
-      // enableFastPath + empty queue + zero concurrency => the Lua takes the fast path,
-      // so the gauge runs the reuse snippet (queueCurrent/envCurrent/queueLimit/envLimit).
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message,
-        workerQueue: authenticatedEnvDev.id,
-        enableFastPath: true,
-      });
-      const dequeued = await queue.dequeueMessageFromWorkerQueue("c1", authenticatedEnvDev.id);
-      expect(dequeued?.messageId).toBe(message.runId);
-
-      const entries = await waitForEntries(
+  redisTest(
+    "emits a fast-path gauge reusing the admission-check locals",
+    async ({ redisContainer }) => {
+      const redis = {
+        keyPrefix: "runqueue:test:",
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+      };
+      const definition: MetricDefinition = {
+        name: `qm_fp_${Date.now()}`,
+        shardCount: 2,
+        consumerGroup: "cg",
+        maxLen: 1000,
+      };
+      const emitter = new MetricsStreamEmitter({
         redis,
         definition,
-        (es) => es.some((e) => e.fields.op === "gauge") && es.some((e) => e.fields.op === "enqueue")
-      );
-      const gauge = entries.find((e) => e.fields.op === "gauge");
-      assertGauge(gauge);
-      for (const f of ["ql", "cc", "lim", "eql", "ec", "elim", "thr"]) {
-        expect(gauge!.fields[f]).toBeDefined();
+        flag: { enabled: () => true },
+      });
+      const queue = new RunQueue({
+        name: "rq",
+        tracer: trace.getTracer("rq"),
+        defaultEnvConcurrency: 25,
+        logger: new Logger("RunQueue", "error"),
+        keys: new RunQueueFullKeyProducer(),
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis,
+          keys: new RunQueueFullKeyProducer(),
+        }),
+        redis,
+        queueMetrics: emitter,
+      });
+
+      const message: InputPayload = {
+        runId: "r-fastpath",
+        taskIdentifier: "task/my-task",
+        orgId: "o1234",
+        projectId: "p1234",
+        environmentId: authenticatedEnvDev.id,
+        environmentType: "DEVELOPMENT",
+        queue: "task/my-task",
+        timestamp: Date.now(),
+        attempt: 0,
+      };
+
+      try {
+        // enableFastPath + empty queue + zero concurrency => the Lua takes the fast path,
+        // so the gauge runs the reuse snippet (queueCurrent/envCurrent/queueLimit/envLimit).
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message,
+          workerQueue: authenticatedEnvDev.id,
+          enableFastPath: true,
+        });
+        const dequeued = await queue.dequeueMessageFromWorkerQueue("c1", authenticatedEnvDev.id);
+        expect(dequeued?.messageId).toBe(message.runId);
+
+        const entries = await waitForEntries(
+          redis,
+          definition,
+          (es) =>
+            es.some((e) => e.fields.op === "gauge") && es.some((e) => e.fields.op === "enqueue")
+        );
+        const gauge = entries.find((e) => e.fields.op === "gauge");
+        assertGauge(gauge);
+        for (const f of ["ql", "cc", "lim", "eql", "ec", "elim", "thr"]) {
+          expect(gauge!.fields[f]).toBeDefined();
+        }
+        // Fast path was taken => capacity was available => not throttled.
+        expect(gauge!.fields.thr).toBe("0");
+        expect(entries.some((e) => e.fields.op === "enqueue")).toBe(true);
+      } finally {
+        await queue.quit();
+        await emitter.close();
       }
-      // Fast path was taken => capacity was available => not throttled.
-      expect(gauge!.fields.thr).toBe("0");
-      expect(entries.some((e) => e.fields.op === "enqueue")).toBe(true);
-    } finally {
-      await queue.quit();
-      await emitter.close();
     }
-  });
+  );
 
   redisTest("emits an aggregate gauge for CK queues at dequeue", async ({ redisContainer }) => {
     const redis = {
@@ -256,13 +271,19 @@ describe("RunQueue queue-metrics emission", () => {
     };
 
     try {
-      await queue.enqueueMessage({ env: authenticatedEnvDev, message, workerQueue: authenticatedEnvDev.id });
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message,
+        workerQueue: authenticatedEnvDev.id,
+      });
       await setTimeout(1000);
       const dequeued = await queue.dequeueMessageFromWorkerQueue("c1", authenticatedEnvDev.id);
       expect(dequeued?.messageId).toBe(message.runId);
 
       const entries = await waitForEntries(redis, definition, (es) =>
-        es.some((e) => e.fields.op === "gauge" && e.fields.q.includes(":ck:") && e.fields.thr === "0")
+        es.some(
+          (e) => e.fields.op === "gauge" && e.fields.q.includes(":ck:") && e.fields.thr === "0"
+        )
       );
       const gauges = entries.filter((e) => e.fields.op === "gauge");
       expect(gauges.length).toBeGreaterThan(0);
@@ -323,7 +344,11 @@ describe("RunQueue queue-metrics emission", () => {
     };
 
     try {
-      await queue.enqueueMessage({ env: authenticatedEnvDev, message, workerQueue: authenticatedEnvDev.id });
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message,
+        workerQueue: authenticatedEnvDev.id,
+      });
       await setTimeout(1000);
       await queue.dequeueMessageFromWorkerQueue("c1", authenticatedEnvDev.id);
 
