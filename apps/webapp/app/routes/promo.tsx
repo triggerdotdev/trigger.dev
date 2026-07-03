@@ -8,7 +8,7 @@ import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
-import { Header1, Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
 import { isGithubAuthSupported, isGoogleAuthSupported } from "~/services/auth.server";
@@ -131,40 +131,11 @@ function SignInForm({
   );
 }
 
-function PromoPanel({
-  amountInCents,
-  expiresAt,
-}: {
-  amountInCents: number;
-  expiresAt: string | null;
-}) {
-  const expiry = formatExpiry(expiresAt);
-  return (
-    <div className="flex h-full flex-col items-center justify-center px-16">
-      <Paragraph variant="small" className="uppercase tracking-wide text-text-dimmed">
-        Promo applied
-      </Paragraph>
-      <Header3 className="mt-3 text-center text-5xl font-semibold text-text-bright">
-        {formatDollars(amountInCents)} in free credits
-      </Header3>
-      <Paragraph className="mt-4 text-center text-text-dimmed">
-        Added to your new Trigger.dev account when you sign up
-        {expiry ? `, valid until ${expiry}` : ""}.
-      </Paragraph>
-    </div>
-  );
-}
-
 export default function PromoPage() {
   const data = useTypedLoaderData<typeof loader>();
 
-  const rightContent =
-    data.view === "valid" ? (
-      <PromoPanel amountInCents={data.amountInCents} expiresAt={data.expiresAt} />
-    ) : undefined;
-
   return (
-    <LoginPageLayout rightContent={rightContent}>
+    <LoginPageLayout>
       <div className="flex w-full flex-col">
         {data.view === "signed_in" ? (
           <>
@@ -181,14 +152,15 @@ export default function PromoPage() {
         ) : (
           <>
             <Header2 className="sm:text-2xl md:text-3xl lg:text-4xl" spacing>
-              {data.view === "valid" ? "Claim your credits" : "Create your account"}
+              {data.view === "valid" ? `Claim ${formatDollars(data.amountInCents)} credits` : "Create your account"}
             </Header2>
-            <Paragraph variant="base" spacing>
-              Create an account or login
+            {data.view === "valid" ? (
+              <Paragraph variant="base" spacing>
+              These are only available for new accounts. The credits expire on {formatExpiry(data.expiresAt)}.
             </Paragraph>
-            {data.view === "invalid" && (
+            ) : (
               <Callout variant="warning" className="mb-6 w-full">
-                That promo code isn't valid. You can still sign up below — credits just won't be
+                That promo code isn't valid. You can still sign up below but credits won't be
                 added.
               </Callout>
             )}
