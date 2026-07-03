@@ -1270,7 +1270,7 @@ function isNonEmptyBulkActionFilterValue(value: unknown): boolean {
 const BulkActionSelectionRequestBody = {
   filter: BulkActionFilterRequestBody.optional(),
   runIds: z.array(z.string()).min(1).optional(),
-  name: z.string().optional(),
+  name: z.string().max(255, "Name must be less than 255 characters").optional(),
 };
 
 export const CreateBulkActionRequestBody = z

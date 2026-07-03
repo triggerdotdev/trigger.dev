@@ -1,6 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { CreateBulkActionRequestBody, type QueueTypeName } from "@trigger.dev/core/v3";
 import type { z } from "zod";
+import { env } from "~/env.server";
 import {
   ApiBulkActionListSearchParams,
   ApiBulkActionPresenter,
@@ -30,6 +31,15 @@ const { action } = createActionApiRoute(
   async ({ body, authentication }) => {
     if (!body) {
       return json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    if (body.runIds && body.runIds.length > env.BULK_ACTION_MAX_RUN_IDS) {
+      return json(
+        {
+          error: `Too many runIds (${body.runIds.length}). Maximum is ${env.BULK_ACTION_MAX_RUN_IDS}. Use a filter to select more runs.`,
+        },
+        { status: 400 }
+      );
     }
 
     const service = new BulkActionService();

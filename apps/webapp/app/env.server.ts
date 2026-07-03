@@ -2009,6 +2009,8 @@ const EnvironmentSchema = z
     BULK_ACTION_SUBBATCH_CONCURRENCY: z.coerce.number().int().default(5),
     /// Max number of concurrent in-flight (PENDING) bulk replays per environment.
     BULK_ACTION_MAX_CONCURRENT_REPLAYS: z.coerce.number().int().default(3),
+    /// Max number of explicit run IDs accepted in a single bulk action create request.
+    BULK_ACTION_MAX_RUN_IDS: z.coerce.number().int().default(500),
 
     // AI Run Filter
     AI_RUN_FILTER_MODEL: z.string().optional(),
