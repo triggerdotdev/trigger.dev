@@ -7,11 +7,11 @@ import {
   ControlPlaneCache,
   DEFAULT_CP_CACHE_MAX_ENTRIES,
   DEFAULT_CP_CACHE_TTL_MS,
+  type ResolvedAuthenticatedEnv,
   type ResolvedEnv,
   type ResolvedWorkerVersion,
 } from "./controlPlaneCache.server";
 import { authIncludeWithParent, toAuthenticated } from "~/models/runtimeEnvironment.server";
-import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import type { ResolvedRunLockedWorker } from "./controlPlaneCache.server";
 
 /**
@@ -36,7 +36,7 @@ import type { ResolvedRunLockedWorker } from "./controlPlaneCache.server";
  */
 
 export { ResolvedEnv, ResolvedWorkerVersion };
-export type { ResolvedRunLockedWorker };
+export type { ResolvedAuthenticatedEnv, ResolvedRunLockedWorker };
 
 /** Thrown by `assertEnvExists` when a referenced control-plane env does not exist. */
 export class ControlPlaneReferenceError extends Error {
@@ -126,7 +126,7 @@ export class ControlPlaneResolver {
     };
   }
 
-  async resolveAuthenticatedEnv(environmentId: string): Promise<AuthenticatedEnvironment | null> {
+  async resolveAuthenticatedEnv(environmentId: string): Promise<ResolvedAuthenticatedEnv | null> {
     if (!this.splitEnabled()) {
       return this.#queryAuthenticatedEnv(this.controlPlanePrimary, environmentId);
     }
@@ -144,7 +144,7 @@ export class ControlPlaneResolver {
   async #queryAuthenticatedEnv(
     client: CpClient,
     environmentId: string
-  ): Promise<AuthenticatedEnvironment | null> {
+  ): Promise<ResolvedAuthenticatedEnv | null> {
     const env = await client.runtimeEnvironment.findFirst({
       where: { id: environmentId },
       include: authIncludeWithParent,
@@ -154,7 +154,9 @@ export class ControlPlaneResolver {
       return null;
     }
 
-    return toAuthenticated(env);
+    // `authIncludeWithParent` returns all RuntimeEnvironment scalars on the row (including
+    // `git`), so we map the auth shape via toAuthenticated() and add `git` from the same row.
+    return { ...toAuthenticated(env), git: env.git };
   }
 
   async resolveRunLockedWorker(args: {
@@ -423,6 +425,22 @@ export class ControlPlaneResolver {
       select: { id: true },
     });
     return env !== null;
+  }
+
+  /**
+   * Drop cached control-plane rows for one environment after a control-plane write to that
+   * env's config. A no-op when split is OFF (nothing is cached), so it is always safe to call.
+   */
+  invalidateEnvironment(environmentId: string): void {
+    this.cache.invalidateEnvironment(environmentId);
+  }
+
+  /**
+   * Drop cached env/authEnv rows for every environment of an organization after a
+   * control-plane write to that org's config. Safe under split OFF (no cache).
+   */
+  invalidateOrganization(organizationId: string): void {
+    this.cache.invalidateOrganization(organizationId);
   }
 }
 

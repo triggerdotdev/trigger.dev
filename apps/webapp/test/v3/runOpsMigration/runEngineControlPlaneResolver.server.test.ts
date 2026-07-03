@@ -14,13 +14,30 @@ vi.setConfig({ testTimeout: 60_000 });
 
 let n = 0;
 
-function buildAppResolver(controlPlane: PrismaClient) {
+function buildAppResolver(controlPlane: PrismaClient, opts?: { splitEnabled?: boolean }) {
   return new ControlPlaneResolver({
     controlPlanePrimary: controlPlane,
     controlPlaneReplica: controlPlane,
     cache: new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 }),
-    splitEnabled: () => false,
+    splitEnabled: () => opts?.splitEnabled ?? false,
   });
+}
+
+/**
+ * Wraps a real testcontainer PrismaClient with a `$extends` query hook counting DB operations.
+ * Not a mock — the real query still runs; we only observe the boundary to prove cache hits.
+ */
+function countQueries(client: PrismaClient): { client: PrismaClient; reads: () => number } {
+  let count = 0;
+  const extended = client.$extends({
+    query: {
+      async $allOperations({ args, query }) {
+        count++;
+        return query(args);
+      },
+    },
+  }) as unknown as PrismaClient;
+  return { client: extended, reads: () => count };
 }
 
 async function seedEnv(prisma: PrismaClient, type: "PRODUCTION" | "DEVELOPMENT") {
@@ -195,6 +212,50 @@ describe("RunEngineControlPlaneResolver adapter", () => {
 
       await expect(adapter.assertEnvExists(environment.id)).resolves.toBeUndefined();
       await expect(adapter.assertEnvExists("env_missing")).rejects.toThrow();
+    }
+  );
+
+  heteroPostgresTest(
+    "resolveAuthenticatedEnv delegates to the app resolver, returns `git`, and is cached",
+    async ({ prisma14 }) => {
+      const { environment } = await seedEnv(prisma14, "PRODUCTION");
+      const gitMeta = { commitSha: "deadbeef", branchName: "main" };
+      await prisma14.runtimeEnvironment.update({
+        where: { id: environment.id },
+        data: { git: gitMeta },
+      });
+
+      // split ON so the delegated app resolver caches; the counter proves the second call
+      // is a cache hit rather than re-querying $replica directly (the pre-fix behavior).
+      const { client: counting, reads } = countQueries(prisma14);
+      const adapter = new RunEngineControlPlaneResolver(
+        buildAppResolver(counting, { splitEnabled: true })
+      );
+
+      const first = await adapter.resolveAuthenticatedEnv(environment.id);
+      expect(first).not.toBeNull();
+      expect(first!.id).toBe(environment.id);
+      expect(first!.git).toEqual(gitMeta);
+      expect(reads()).toBe(1);
+
+      const second = await adapter.resolveAuthenticatedEnv(environment.id);
+      expect(second!.git).toEqual(gitMeta);
+      expect(reads()).toBe(1);
+    }
+  );
+
+  heteroPostgresTest(
+    "resolveAuthenticatedEnv returns null for a deleted project",
+    async ({ prisma14 }) => {
+      const { environment, project } = await seedEnv(prisma14, "PRODUCTION");
+      await prisma14.project.update({
+        where: { id: project.id },
+        data: { deletedAt: new Date() },
+      });
+
+      const adapter = new RunEngineControlPlaneResolver(buildAppResolver(prisma14));
+
+      expect(await adapter.resolveAuthenticatedEnv(environment.id)).toBeNull();
     }
   );
 });

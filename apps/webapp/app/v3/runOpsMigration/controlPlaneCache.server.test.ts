@@ -10,9 +10,13 @@ import {
 // Minimal, structurally-irrelevant stand-ins: the cache stores and returns opaque values by
 // reference, so these only need to be distinguishable objects — the slot types are exercised for
 // key routing, not field shape.
-const anEnv = { id: "env_1" } as unknown as ResolvedEnv;
+const anEnv = { id: "env_1", organizationId: "org_1" } as unknown as ResolvedEnv;
 const aVersion = { worker: { id: "bw_1" } } as unknown as ResolvedWorkerVersion;
-const anAuthEnv = { id: "env_1", slug: "prod" } as unknown as ResolvedAuthenticatedEnv;
+const anAuthEnv = {
+  id: "env_1",
+  slug: "prod",
+  organizationId: "org_1",
+} as unknown as ResolvedAuthenticatedEnv;
 const aLockedWorker = { lockedBy: null, lockedToVersion: null } as ResolvedRunLockedWorker;
 
 describe("ControlPlaneCache", () => {
@@ -139,5 +143,95 @@ describe("ControlPlaneCache", () => {
 
     cache.setEnv("env_ttl", anEnv);
     expect(cache.getEnv("env_ttl")).toBeUndefined();
+  });
+
+  it("invalidateEnvironment forces the next env/authEnv/envExists read to miss", () => {
+    const cache = new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 });
+
+    cache.setEnv("env_6", anEnv);
+    cache.setAuthEnv("env_6", anAuthEnv);
+    cache.setEnvExists("env_6", true);
+    expect(cache.getEnv("env_6")).toBe(anEnv);
+    expect(cache.getAuthEnv("env_6")).toBe(anAuthEnv);
+    expect(cache.getEnvExists("env_6")).toBe(true);
+
+    cache.invalidateEnvironment("env_6");
+
+    expect(cache.getEnv("env_6")).toBeUndefined();
+    expect(cache.getAuthEnv("env_6")).toBeUndefined();
+    expect(cache.getEnvExists("env_6")).toBeUndefined();
+  });
+
+  it("invalidateEnvironment is scoped to its own id", () => {
+    const cache = new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 });
+    const keepEnv = { id: "env_keep", organizationId: "org_1" } as unknown as ResolvedEnv;
+
+    cache.setEnv("env_drop", anEnv);
+    cache.setEnv("env_keep", keepEnv);
+    cache.invalidateEnvironment("env_drop");
+
+    expect(cache.getEnv("env_drop")).toBeUndefined();
+    expect(cache.getEnv("env_keep")).toBe(keepEnv);
+  });
+
+  it("invalidateOrganization drops env/authEnv rows for that org across every env id", () => {
+    const cache = new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 });
+    const envA = { id: "env_a", organizationId: "org_1" } as unknown as ResolvedEnv;
+    const envB = { id: "env_b", organizationId: "org_1" } as unknown as ResolvedEnv;
+    const authA = {
+      id: "env_a",
+      slug: "a",
+      organizationId: "org_1",
+    } as unknown as ResolvedAuthenticatedEnv;
+
+    cache.setEnv("env_a", envA);
+    cache.setEnv("env_b", envB);
+    cache.setAuthEnv("env_a", authA);
+    expect(cache.getEnv("env_a")).toBe(envA);
+    expect(cache.getEnv("env_b")).toBe(envB);
+    expect(cache.getAuthEnv("env_a")).toBe(authA);
+
+    cache.invalidateOrganization("org_1");
+
+    // Every env/authEnv row for org_1 misses — no reverse org->env index required.
+    expect(cache.getEnv("env_a")).toBeUndefined();
+    expect(cache.getEnv("env_b")).toBeUndefined();
+    expect(cache.getAuthEnv("env_a")).toBeUndefined();
+  });
+
+  it("invalidateOrganization does not affect a different org's cached envs", () => {
+    const cache = new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 });
+    const otherOrgEnv = { id: "env_other", organizationId: "org_2" } as unknown as ResolvedEnv;
+
+    cache.setEnv("env_1", anEnv); // org_1
+    cache.setEnv("env_other", otherOrgEnv); // org_2
+
+    cache.invalidateOrganization("org_1");
+
+    expect(cache.getEnv("env_1")).toBeUndefined();
+    expect(cache.getEnv("env_other")).toBe(otherOrgEnv);
+  });
+
+  it("re-setting an env after an org invalidation makes it readable again", () => {
+    const cache = new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 });
+
+    cache.setEnv("env_1", anEnv);
+    cache.invalidateOrganization("org_1");
+    expect(cache.getEnv("env_1")).toBeUndefined();
+
+    // A write after the bump stamps the new org epoch, so it reads back.
+    cache.setEnv("env_1", anEnv);
+    expect(cache.getEnv("env_1")).toBe(anEnv);
+  });
+
+  it("a cached null env survives an org invalidation (a confirmed absence carries no org)", () => {
+    const cache = new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 });
+
+    cache.setEnv("env_absent", null);
+    expect(cache.getEnv("env_absent")).toBeNull();
+
+    cache.invalidateOrganization("org_1");
+
+    expect(cache.getEnv("env_absent")).toBeNull();
   });
 });

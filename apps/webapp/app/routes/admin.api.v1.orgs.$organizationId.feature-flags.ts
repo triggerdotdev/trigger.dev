@@ -3,6 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { validatePartialFeatureFlags } from "~/v3/featureFlags";
 
 const ParamsSchema = z.object({
@@ -100,6 +101,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
         featureFlags: true,
       },
     });
+
+    // Org feature flags are embedded in every env of the org; drop all its cached env rows.
+    controlPlaneResolver.invalidateOrganization(organizationId);
 
     const updatedFlagsResult = updatedOrganization.featureFlags
       ? validatePartialFeatureFlags(updatedOrganization.featureFlags as Record<string, unknown>)

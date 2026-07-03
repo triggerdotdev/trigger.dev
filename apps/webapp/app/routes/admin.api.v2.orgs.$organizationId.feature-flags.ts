@@ -4,6 +4,7 @@ import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
   FEATURE_FLAG,
@@ -131,6 +132,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
     throw e;
   }
+
+  // Org feature flags are embedded in every env of the org; drop all its cached env rows.
+  controlPlaneResolver.invalidateOrganization(organizationId);
 
   return json({ success: true });
 }

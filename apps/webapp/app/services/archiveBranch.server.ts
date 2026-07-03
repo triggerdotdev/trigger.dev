@@ -2,6 +2,7 @@ import { type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { nanoid } from "nanoid";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 export class ArchiveBranchService {
   #prismaClient: PrismaClient;
@@ -87,6 +88,9 @@ export class ArchiveBranchService {
         where: { id: environmentId },
         data: { archivedAt: new Date(), slug, shortcode },
       });
+
+      // archivedAt/slug/shortcode changed in the control-plane; drop any cached copy.
+      controlPlaneResolver.invalidateEnvironment(environmentId);
 
       return {
         success: true as const,

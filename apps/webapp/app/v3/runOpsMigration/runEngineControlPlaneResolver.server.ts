@@ -5,8 +5,6 @@ import type {
   ResolvedWorkerVersion,
 } from "@internal/run-engine";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { $replica } from "~/db.server";
-import { authIncludeWithParent, toAuthenticated } from "~/models/runtimeEnvironment.server";
 import {
   ControlPlaneResolver as AppControlPlaneResolver,
   controlPlaneResolver,
@@ -62,25 +60,16 @@ export class RunEngineControlPlaneResolver implements EngineControlPlaneResolver
   }
 
   async resolveAuthenticatedEnv(environmentId: string): Promise<ResolvedAuthenticatedEnv | null> {
-    // Mirror findEnvironmentById's data source ($replica) and auth shape, but the
-    // engine needs `git` too. A single findFirst with `include: authIncludeWithParent`
-    // returns all RuntimeEnvironment scalars (including `git`) on the row, so we map
-    // the auth shape via toAuthenticated() and add `git` from the same row.
-    const environment = await $replica.runtimeEnvironment.findFirst({
-      where: {
-        id: environmentId,
-      },
-      include: authIncludeWithParent,
-    });
+    // Delegate to the cache-first, split-aware app resolver (like resolveEnv/resolveWorkerVersion):
+    // its authenticated-env slot now carries `git`. Keep the deleted-project guard the engine relies
+    // on — a deleted project's env must not resolve.
+    const environment = await this.#resolver.resolveAuthenticatedEnv(environmentId);
 
     if (!environment || environment.project.deletedAt !== null) {
       return null;
     }
 
-    return {
-      ...toAuthenticated(environment),
-      git: environment.git,
-    };
+    return environment;
   }
 
   async assertEnvExists(environmentId: string): Promise<void> {

@@ -468,6 +468,146 @@ heteroPostgresTest(
   }
 );
 
+heteroPostgresTest(
+  "resolveAuthenticatedEnv carries the `git` column (cached across calls)",
+  async ({ prisma14 }) => {
+    const { environment } = await seedControlPlane(prisma14);
+    const gitMeta = { commitSha: "abc123", branchName: "main" };
+    await prisma14.runtimeEnvironment.update({
+      where: { id: environment.id },
+      data: { git: gitMeta },
+    });
+
+    const { client: counting, reads } = countQueries(prisma14);
+    const resolver = new ControlPlaneResolver({
+      controlPlaneReplica: counting,
+      controlPlanePrimary: counting,
+      cache: new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 }),
+      splitEnabled: () => true,
+    });
+
+    const first = await resolver.resolveAuthenticatedEnv(environment.id);
+    expect(first).not.toBeNull();
+    expect(first!.git).toEqual(gitMeta);
+    expect(reads()).toBe(1);
+
+    // Served from cache, still carrying `git`.
+    const second = await resolver.resolveAuthenticatedEnv(environment.id);
+    expect(second!.git).toEqual(gitMeta);
+    expect(reads()).toBe(1);
+  }
+);
+
+// --- invalidation over the DB boundary -------------------------------------
+
+heteroPostgresTest(
+  "invalidateEnvironment forces resolveEnv/resolveAuthenticatedEnv to re-read after a write",
+  async ({ prisma14 }) => {
+    const { environment } = await seedControlPlane(prisma14);
+    const cache = new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 });
+    const resolver = new ControlPlaneResolver({
+      controlPlaneReplica: prisma14,
+      controlPlanePrimary: prisma14,
+      cache,
+      splitEnabled: () => true,
+    });
+
+    // Warm both env-scoped slots.
+    expect((await resolver.resolveEnv(environment.id))!.maximumConcurrencyLimit).not.toBe(999);
+    expect((await resolver.resolveAuthenticatedEnv(environment.id))!.paused).toBe(false);
+
+    // Control-plane write + invalidation (as a write site would do).
+    await prisma14.runtimeEnvironment.update({
+      where: { id: environment.id },
+      data: { maximumConcurrencyLimit: 999, paused: true },
+    });
+    resolver.invalidateEnvironment(environment.id);
+
+    expect((await resolver.resolveEnv(environment.id))!.maximumConcurrencyLimit).toBe(999);
+    expect((await resolver.resolveAuthenticatedEnv(environment.id))!.paused).toBe(true);
+  }
+);
+
+heteroPostgresTest(
+  "without invalidation a cached env stays stale after a control-plane write (fail-before contrast)",
+  async ({ prisma14 }) => {
+    const { environment } = await seedControlPlane(prisma14);
+    const resolver = new ControlPlaneResolver({
+      controlPlaneReplica: prisma14,
+      controlPlanePrimary: prisma14,
+      cache: new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 }),
+      splitEnabled: () => true,
+    });
+
+    const before = (await resolver.resolveEnv(environment.id))!.maximumConcurrencyLimit;
+    await prisma14.runtimeEnvironment.update({
+      where: { id: environment.id },
+      data: { maximumConcurrencyLimit: 777 },
+    });
+
+    // No invalidation: the cache still serves the pre-write value (this is the bug the
+    // write-site invalidation fixes).
+    expect((await resolver.resolveEnv(environment.id))!.maximumConcurrencyLimit).toBe(before);
+
+    // And with invalidation it re-reads.
+    resolver.invalidateEnvironment(environment.id);
+    expect((await resolver.resolveEnv(environment.id))!.maximumConcurrencyLimit).toBe(777);
+  }
+);
+
+heteroPostgresTest(
+  "invalidateOrganization forces every env of the org to re-read after an org write",
+  async ({ prisma14 }) => {
+    const { org: organization, project } = await seedControlPlane(prisma14);
+    // A second env in the same org.
+    const m = seedCounter++;
+    const secondEnv = await prisma14.runtimeEnvironment.create({
+      data: {
+        type: "STAGING",
+        slug: `env-second-${m}`,
+        projectId: project.id,
+        organizationId: organization.id,
+        apiKey: `tr_stg_${m}`,
+        pkApiKey: `pk_stg_${m}`,
+        shortcode: `short_stg_${m}`,
+      },
+    });
+    const firstEnv = await prisma14.runtimeEnvironment.findFirstOrThrow({
+      where: { projectId: project.id, type: "PRODUCTION" },
+    });
+
+    const resolver = new ControlPlaneResolver({
+      controlPlaneReplica: prisma14,
+      controlPlanePrimary: prisma14,
+      cache: new ControlPlaneCache({ ttlMs: 60_000, maxEntries: 100 }),
+      splitEnabled: () => true,
+    });
+
+    // Warm both envs' authEnv slots.
+    expect((await resolver.resolveAuthenticatedEnv(firstEnv.id))!.organization.runsEnabled).toBe(
+      true
+    );
+    expect((await resolver.resolveAuthenticatedEnv(secondEnv.id))!.organization.runsEnabled).toBe(
+      true
+    );
+
+    // Org-level write (runsEnabled) + a single org invalidation.
+    await prisma14.organization.update({
+      where: { id: organization.id },
+      data: { runsEnabled: false },
+    });
+    resolver.invalidateOrganization(organization.id);
+
+    // BOTH envs re-read and now observe the org change, with no reverse org->env index.
+    expect((await resolver.resolveAuthenticatedEnv(firstEnv.id))!.organization.runsEnabled).toBe(
+      false
+    );
+    expect((await resolver.resolveAuthenticatedEnv(secondEnv.id))!.organization.runsEnabled).toBe(
+      false
+    );
+  }
+);
+
 // --- resolveRunLockedWorker -------------------------------------------------
 
 heteroPostgresTest(

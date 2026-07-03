@@ -23,6 +23,11 @@ import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environ
  * stamped epoch still matches the current epoch, otherwise it is treated as a miss.
  * `invalidate*` bumps the key's epoch, forcing the next read to miss. (If a future
  * rebase gives `BoundedTtlCache` a public `delete`, prefer it and drop the epoch map.)
+ *
+ * Two invalidation scopes: `invalidateEnvironment(id)` bumps every env-keyed slot for one
+ * env; `invalidateOrganization(orgId)` bumps a per-org epoch that env/authEnv values are
+ * also stamped with at write time (no reverse org->env index needed), so all of that org's
+ * cached env/authEnv rows miss on the next read.
  */
 
 export const DEFAULT_CP_CACHE_TTL_MS = 30_000;
@@ -52,9 +57,11 @@ export type ResolvedWorkerVersion = {
   deployment: WorkerDeployment | null;
 };
 
-// The canonical authenticated-environment shape (slug/type/project/organization/orgMember/…).
-// Re-aliased from the engine type so the cache slot cannot drift from `toAuthenticated()`'s output.
-export type ResolvedAuthenticatedEnv = AuthenticatedEnvironment;
+// The canonical authenticated-environment shape (slug/type/project/organization/orgMember/…)
+// PLUS the `git` JSON column the run-engine runAttemptSystem reads. `AuthenticatedEnvironment`
+// does not carry `git`, so the intersection adds it; this matches the run-engine
+// `ResolvedAuthenticatedEnv` so the engine adapter can delegate to this cached slot.
+export type ResolvedAuthenticatedEnv = AuthenticatedEnvironment & { git: Prisma.JsonValue | null };
 
 /**
  * The slim `lockedBy` (BackgroundWorkerTask) + `lockedToVersion` (BackgroundWorker, with its
@@ -94,7 +101,9 @@ export type ResolvedRunLockedWorker = {
   } | null;
 };
 
-type Stamped<V> = { value: V; epoch: number };
+// `orgEpoch` is stamped only on slots that embed org config (env/authEnv); undefined slots
+// are exempt from the org-epoch check.
+type Stamped<V> = { value: V; epoch: number; orgEpoch?: number };
 
 export class ControlPlaneCache {
   readonly #env: BoundedTtlCache<Stamped<ResolvedEnv | null>>;
@@ -103,8 +112,9 @@ export class ControlPlaneCache {
   readonly #authEnv: BoundedTtlCache<Stamped<ResolvedAuthenticatedEnv | null>>;
   readonly #lockedWorker: BoundedTtlCache<Stamped<ResolvedRunLockedWorker | null>>;
 
-  // Explicit invalidation: bumping a key's epoch forces the next read to miss.
+  // Explicit invalidation: bumping a key's (or org's) epoch forces the next read to miss.
   readonly #epochs = new Map<string, number>();
+  readonly #orgEpochs = new Map<string, number>();
 
   constructor(opts?: { ttlMs?: number; maxEntries?: number }) {
     const ttl = opts?.ttlMs ?? DEFAULT_CP_CACHE_TTL_MS;
@@ -120,16 +130,27 @@ export class ControlPlaneCache {
     return this.#epochs.get(key) ?? 0;
   }
 
-  #read<V>(cache: BoundedTtlCache<Stamped<V>>, key: string): V | undefined {
+  #orgEpoch(orgId: string): number {
+    return this.#orgEpochs.get(orgId) ?? 0;
+  }
+
+  #read<V>(cache: BoundedTtlCache<Stamped<V>>, key: string, orgId?: string): V | undefined {
     const entry = cache.get(key);
     if (entry === undefined || entry.epoch !== this.#epoch(key)) {
+      return undefined;
+    }
+    if (orgId !== undefined && entry.orgEpoch !== this.#orgEpoch(orgId)) {
       return undefined;
     }
     return entry.value;
   }
 
-  #write<V>(cache: BoundedTtlCache<Stamped<V>>, key: string, value: V): void {
-    cache.set(key, { value, epoch: this.#epoch(key) });
+  #write<V>(cache: BoundedTtlCache<Stamped<V>>, key: string, value: V, orgId?: string): void {
+    cache.set(key, {
+      value,
+      epoch: this.#epoch(key),
+      orgEpoch: orgId !== undefined ? this.#orgEpoch(orgId) : undefined,
+    });
   }
 
   #bump(key: string): void {
@@ -137,10 +158,23 @@ export class ControlPlaneCache {
   }
 
   getEnv(id: string): (ResolvedEnv | null) | undefined {
-    return this.#read(this.#env, `env:${id}`);
+    const entry = this.#env.get(`env:${id}`);
+    if (entry === undefined || entry.epoch !== this.#epoch(`env:${id}`)) {
+      return undefined;
+    }
+    // A cached null (or an entry written without an org) carries no org, so it can never be
+    // stale against an org write.
+    if (
+      entry.value !== null &&
+      entry.value.organizationId &&
+      entry.orgEpoch !== this.#orgEpoch(entry.value.organizationId)
+    ) {
+      return undefined;
+    }
+    return entry.value;
   }
   setEnv(id: string, value: ResolvedEnv | null): void {
-    this.#write(this.#env, `env:${id}`, value);
+    this.#write(this.#env, `env:${id}`, value, value?.organizationId);
   }
   invalidateEnv(id: string): void {
     this.#bump(`env:${id}`);
@@ -164,10 +198,40 @@ export class ControlPlaneCache {
 
   // full authenticated environment (toAuthenticated shape)
   getAuthEnv(id: string): (ResolvedAuthenticatedEnv | null) | undefined {
-    return this.#read(this.#authEnv, `authEnv:${id}`);
+    const entry = this.#authEnv.get(`authEnv:${id}`);
+    if (entry === undefined || entry.epoch !== this.#epoch(`authEnv:${id}`)) {
+      return undefined;
+    }
+    if (
+      entry.value !== null &&
+      entry.value.organizationId &&
+      entry.orgEpoch !== this.#orgEpoch(entry.value.organizationId)
+    ) {
+      return undefined;
+    }
+    return entry.value;
   }
   setAuthEnv(id: string, value: ResolvedAuthenticatedEnv | null): void {
-    this.#write(this.#authEnv, `authEnv:${id}`, value);
+    this.#write(this.#authEnv, `authEnv:${id}`, value, value?.organizationId);
+  }
+
+  /**
+   * Invalidate every env-keyed slot for a single environment. Call this from a control-plane
+   * write that mutates one env's config (pause/resume, archive, concurrency/burst-factor).
+   */
+  invalidateEnvironment(id: string): void {
+    this.#bump(`env:${id}`);
+    this.#bump(`authEnv:${id}`);
+    this.#bump(`envExists:${id}`);
+  }
+
+  /**
+   * Invalidate every cached env/authEnv row belonging to an organization. Call this from a
+   * control-plane write that mutates org-level config (feature flags, org concurrency, runs
+   * enable/disable, rate limits) — it affects the org object embedded in each of the org's envs.
+   */
+  invalidateOrganization(orgId: string): void {
+    this.#orgEpochs.set(orgId, this.#orgEpoch(orgId) + 1);
   }
 
   // run-locked worker (lockedBy + lockedToVersion); key = `${lockedById ?? "_"}:${lockedToVersionId ?? "_"}`
