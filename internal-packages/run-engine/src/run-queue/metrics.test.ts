@@ -14,7 +14,7 @@ import { expect } from "vitest";
 import { FairQueueSelectionStrategy } from "./fairQueueSelectionStrategy.js";
 import { RunQueue } from "./index.js";
 import { RunQueueFullKeyProducer } from "./keyProducer.js";
-import { InputPayload } from "./types.js";
+import type { InputPayload } from "./types.js";
 
 const authenticatedEnvDev = {
   id: "e1234",

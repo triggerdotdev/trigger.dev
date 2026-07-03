@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
+import type { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 
 export const QueueMetricsRawV1Input = z.object({
   organization_id: z.string(),

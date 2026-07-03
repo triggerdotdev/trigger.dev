@@ -1,5 +1,5 @@
 import type { RedisOptions } from "@internal/redis";
-import { Logger } from "@trigger.dev/core/logger";
+import type { Logger } from "@trigger.dev/core/logger";
 import { CachedRedisValue } from "./cachedValue.js";
 
 export type CachedRedisFlagOptions = {

@@ -68,6 +68,7 @@ import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import {
   QueueMetricsPresenter,
   isQueueMetricsWindow,
+  type QueueListMetric,
   type QueueMetricsWindow,
 } from "~/presenters/v3/QueueMetricsPresenter.server";
 import { UsageSparkline } from "~/components/primitives/UsageSparkline";
@@ -155,10 +156,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       window: QueueMetricsWindow;
       bucketStartMs: number;
       bucketIntervalMs: number;
-      byQueue: Record<
-        string,
-        import("~/presenters/v3/QueueMetricsPresenter.server").QueueListMetric
-      >;
+      byQueue: Record<string, QueueListMetric>;
     } | null = null;
 
     if (queueMetricsUiEnabled && queues.success) {
