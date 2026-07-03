@@ -4,3 +4,14 @@ pre-commit:
   jobs:
     - name: 🚫 Prevent main branch commits
       run: exit 1
+
+# Mirror the CI code-quality check locally so unformatted / lint-failing pushes
+# are caught before they hit the PR. Note: GitButler uses its own git
+# implementation and only runs hooks when "Run hooks" is enabled in its
+# settings - with that off, this protects plain `git push` only.
+pre-push:
+  jobs:
+    - name: format
+      run: pnpm exec oxfmt --check .
+    - name: lint
+      run: pnpm exec oxlint .
