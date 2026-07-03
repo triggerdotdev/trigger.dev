@@ -3,6 +3,9 @@ import { createOrganization } from "./app/models/organization.server";
 import { createProject } from "./app/models/project.server";
 import type { Organization, Prisma, User } from "@trigger.dev/database";
 import { AuthenticationMethod } from "@trigger.dev/database";
+import { encryptToken, decryptToken, hashToken } from "./app/utils/tokens.server";
+import { env } from "./app/env.server";
+import { randomBytes } from "node:crypto";
 
 async function seed() {
   console.log("🌱 Starting seed...");
@@ -86,9 +89,51 @@ async function seed() {
   console.log(`User: ${user.email}`);
   console.log(`Organization: ${organization.title} (${organization.slug})`);
   console.log(`Projects: ${referenceProjects.map((p) => p.name).join(", ")}`);
+
+  // The PAT is an admin credential. Only mint and print it when seeding a local
+  // instance, so a stray non-local `db:seed` can't leak it to stdout/logs.
+  const isLocalInstance =
+    env.NODE_ENV !== "production" && /localhost|127\.0\.0\.1/.test(env.APP_ORIGIN);
+  if (isLocalInstance) {
+    const localPat = await ensureLocalCliPat(user);
+    console.log(`\n🔑 CLI access token for ${user.email} (name: ${localPat.name}):`);
+    console.log(`  ${localPat.token}`);
+    console.log(`  Point the CLI at this local instance without a browser login:`);
+    console.log(`    export TRIGGER_ACCESS_TOKEN=${localPat.token}`);
+    console.log(`    export TRIGGER_API_URL=${env.APP_ORIGIN}`);
+  }
   console.log("\n⚠️  Note: in your triggerdotdev/references clone, set TRIGGER_PROJECT_REF in:");
   console.log(`  - projects/d3-chat/.env: TRIGGER_PROJECT_REF=proj_cdmymsrobxmcgjqzhdkq`);
   console.log(`  - projects/realtime-streams/.env: TRIGGER_PROJECT_REF=proj_klxlzjnzxmbgiwuuwhvb`);
+}
+
+// Mints (or reuses) a Personal Access Token for the seeded local user so the
+// CLI can authenticate against this instance without the browser magic-link
+// flow. Idempotent: on re-seed we decrypt and reprint the existing token
+// rather than piling up new ones. The token is created inline (rather than via
+// personalAccessToken.server) so the seed doesn't pull the RBAC/service module
+// graph into its import chain.
+async function ensureLocalCliPat(user: User) {
+  const name = "local-dev-cli";
+  const existing = await prisma.personalAccessToken.findFirst({
+    where: { userId: user.id, name, revokedAt: null },
+  });
+  if (existing) {
+    const enc = existing.encryptedToken as { nonce: string; ciphertext: string; tag: string };
+    return { name, token: decryptToken(enc.nonce, enc.ciphertext, enc.tag, env.ENCRYPTION_KEY) };
+  }
+  const token = `tr_pat_${randomBytes(20).toString("hex")}`;
+  const body = token.slice("tr_pat_".length);
+  await prisma.personalAccessToken.create({
+    data: {
+      name,
+      userId: user.id,
+      encryptedToken: encryptToken(token, env.ENCRYPTION_KEY),
+      hashedToken: hashToken(token),
+      obfuscatedToken: `tr_pat_${body.slice(0, 4)}${"•".repeat(18)}${body.slice(-4)}`,
+    },
+  });
+  return { name, token };
 }
 
 async function createBatchLimitOrgs(user: User) {
