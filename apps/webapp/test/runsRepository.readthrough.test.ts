@@ -91,6 +91,7 @@ async function createRun(
   prisma: PrismaClient,
   ctx: SeedContext,
   run: {
+    id?: string;
     friendlyId: string;
     taskIdentifier?: string;
     status?: any;
@@ -100,6 +101,7 @@ async function createRun(
 ) {
   return prisma.taskRun.create({
     data: {
+      ...(run.id ? { id: run.id } : {}),
       friendlyId: run.friendlyId,
       taskIdentifier: run.taskIdentifier ?? "my-task",
       status: run.status ?? "PENDING",
@@ -347,6 +349,88 @@ describe("RunsRepository read-through id-set hydrate (PG14 legacy + PG17 new)", 
       } finally {
         await prismaNew.$disconnect();
       }
+    }
+  );
+
+  // Full-keyset walk over interleaved cuid + ksuid ids: hydration must preserve the ClickHouse
+  // (created_at DESC, run_id DESC) order across the id-space seam. A hydrate that reverts to lexical
+  // `id desc` splits the two id-spaces into separate blocks, so it would fail this walk.
+  replicationContainerTest(
+    "paginating the full keyset enumerates every interleaved cuid/ksuid id once, in CH keyset order, with no empty page",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      const { clickhouse } = await setupClickhouseReplication({
+        prisma,
+        databaseUrl: postgresContainer.getConnectionUri(),
+        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
+        redisOptions,
+      });
+
+      const ctx = await seedParents(prisma, "keysetwalk");
+
+      // cuid-shaped ids (25 chars, "c" prefix) and ksuid-shaped ids (27 chars, "2" prefix). Lexical
+      // `id desc` groups all "c" ids ahead of all "2" ids; the created_at order below interleaves
+      // them, so the two orders genuinely differ across the seam.
+      const cuid = (n: number) => `c${String(n).padStart(24, "0")}`;
+      const ksuid = (n: number) => `2${String(n).padStart(26, "0")}`;
+
+      // created_at DESC order (index 0 = most recent) interleaves the id-spaces: ksuid, cuid,
+      // ksuid, cuid, ksuid, cuid.
+      const now = Date.now();
+      const seeds = [
+        { id: ksuid(6), friendlyId: "run_k6", createdAt: new Date(now - 0 * 60_000) },
+        { id: cuid(5), friendlyId: "run_c5", createdAt: new Date(now - 1 * 60_000) },
+        { id: ksuid(4), friendlyId: "run_k4", createdAt: new Date(now - 2 * 60_000) },
+        { id: cuid(3), friendlyId: "run_c3", createdAt: new Date(now - 3 * 60_000) },
+        { id: ksuid(2), friendlyId: "run_k2", createdAt: new Date(now - 4 * 60_000) },
+        { id: cuid(1), friendlyId: "run_c1", createdAt: new Date(now - 5 * 60_000) },
+      ];
+      for (const s of seeds) {
+        await createRun(prisma, ctx, s);
+      }
+
+      await setTimeout(1500);
+
+      const runsRepository = new RunsRepository({ prisma, clickhouse });
+
+      // The authoritative order the hydrate must reproduce: exactly the CH keyset the id-list scan
+      // returns (created_at DESC, run_id DESC). Lexical id-desc of the same ids differs from this.
+      const chOrder = await runsRepository.listRunIds({
+        page: { size: 100 },
+        projectId: ctx.projectId,
+        environmentId: ctx.environmentId,
+        organizationId: ctx.organizationId,
+      });
+      const expectedOrder = chOrder.runIds;
+      const lexicalIdDesc = [...expectedOrder].sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+      expect(expectedOrder).not.toEqual(lexicalIdDesc); // the seam actually separates the two orders
+
+      // Walk the whole keyset a page at a time.
+      const walked: string[] = [];
+      let cursor: string | undefined;
+      let pages = 0;
+      while (true) {
+        const { runs, pagination } = await runsRepository.listRuns({
+          page: { size: 2, cursor },
+          projectId: ctx.projectId,
+          environmentId: ctx.environmentId,
+          organizationId: ctx.organizationId,
+        });
+        pages++;
+        expect(pages).toBeLessThan(20); // guard against a non-terminating walk
+
+        for (const r of runs) walked.push(r.id);
+
+        if (!pagination.nextCursor) break;
+        // No empty page may be returned while more pages exist.
+        expect(runs.length).toBeGreaterThan(0);
+        cursor = pagination.nextCursor;
+      }
+
+      // Every seeded id enumerated exactly once.
+      expect(walked.slice().sort()).toEqual(seeds.map((s) => s.id).sort());
+      expect(new Set(walked).size).toBe(seeds.length);
+      // The emitted order equals the CH keyset order across the id-space seam.
+      expect(walked).toEqual(expectedOrder);
     }
   );
 });

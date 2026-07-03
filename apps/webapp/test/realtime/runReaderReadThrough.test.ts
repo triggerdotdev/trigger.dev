@@ -310,6 +310,45 @@ describe("RunHydrator read-route through the runStore seam (legacy + new)", () =
     }
   );
 
+  // Terminal-metadata read-seam: a NEW-resident (ksuid) run's final metadata is hydrated through
+  // the owning (NEW) store, not off a generic legacy replica. Asserts read-seam ROUTING for the
+  // terminal read; it is not a hard ordering/consistency guarantee about when the terminal marker
+  // and the row's terminal columns converge.
+  heteroPostgresTest(
+    "terminal hydrate reads a NEW-resident run's final metadata through the owning store",
+    { timeout: 60_000 },
+    async ({ prisma14, prisma17 }) => {
+      const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
+      const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
+      const legacyFindRunSpy = vi.spyOn(legacyStore, "findRun");
+
+      const seed17 = await seedEnvironment(prisma17, "term17");
+      const envId = seed17.environment.id;
+      const terminalRunId = newId("terminal_run");
+
+      // A terminal run with its final metadata persisted on the NEW store only.
+      await seedRun(prisma17, {
+        runId: terminalRunId,
+        organizationId: seed17.organization.id,
+        projectId: seed17.project.id,
+        runtimeEnvironmentId: envId,
+        output: '{"result":"final"}',
+        metadata: '{"done":true}',
+      });
+
+      // A generic legacy replica would miss the NEW row entirely — the metadata must come off NEW.
+      const runStore = makeRoutingShapedStore({ newStore, legacyStore });
+      const hydrator = new RunHydrator({ replica: prisma14, runStore, cacheTtlMs: 0 });
+
+      const snapshot = await hydrator.getRunById(envId, terminalRunId);
+      expect(snapshot?.id).toBe(terminalRunId);
+      expect(snapshot?.metadata).toBe('{"done":true}');
+      expect(snapshot?.output).toBe('{"result":"final"}');
+      // The NEW-residency terminal read never touched the legacy slot.
+      expect(legacyFindRunSpy).not.toHaveBeenCalled();
+    }
+  );
+
   // A live-migrated run continues streaming across the seam crossing with no gap.
   heteroPostgresTest(
     "live-migrated run continues streaming across the seam crossing",
