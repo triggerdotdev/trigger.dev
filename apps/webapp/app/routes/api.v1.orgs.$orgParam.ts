@@ -64,7 +64,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ id: organization.id });
     }
 
-    const body = RenameOrgRequestBody.safeParse(await request.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const body = RenameOrgRequestBody.safeParse(rawBody);
 
     if (!body.success) {
       return json({ error: "Invalid request body" }, { status: 400 });

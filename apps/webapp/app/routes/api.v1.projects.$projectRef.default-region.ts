@@ -54,7 +54,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Project not found" }, { status: 404 });
     }
 
-    const body = SetDefaultRegionRequestBody.safeParse(await request.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const body = SetDefaultRegionRequestBody.safeParse(rawBody);
 
     if (!body.success) {
       return json({ error: "Invalid request body" }, { status: 400 });

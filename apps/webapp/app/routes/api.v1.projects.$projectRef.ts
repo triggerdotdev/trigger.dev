@@ -123,7 +123,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ id: project.id });
     }
 
-    const body = RenameProjectRequestBody.safeParse(await request.json());
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      return json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const body = RenameProjectRequestBody.safeParse(rawBody);
 
     if (!body.success) {
       return json({ error: "Invalid request body" }, { status: 400 });
