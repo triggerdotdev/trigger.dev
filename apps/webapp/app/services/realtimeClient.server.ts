@@ -52,6 +52,11 @@ const DEFAULT_ELECTRIC_COLUMNS = [
 const RESERVED_COLUMNS = ["id", "taskIdentifier", "friendlyId", "status", "createdAt"];
 const RESERVED_SEARCH_PARAMS = ["createdAt", "tags", "skipColumns"];
 
+// Doubles single quotes so a value is safe inside a single-quoted SQL string literal.
+export function escapeSqlStringLiteral(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
 export type RealtimeClientOptions = {
   electricOrigin: string | string[];
   redis: RedisWithClusterOptions;
@@ -171,7 +176,10 @@ export class RealtimeClient {
     const whereClauses: string[] = [`"runtimeEnvironmentId"='${environment.id}'`];
 
     if (params.tags) {
-      whereClauses.push(`"runTags" @> ARRAY[${params.tags.map((t) => `'${t}'`).join(",")}]`);
+      // Escape user-supplied tags so they can't break out of the SQL string literal.
+      whereClauses.push(
+        `"runTags" @> ARRAY[${params.tags.map((t) => `'${escapeSqlStringLiteral(t)}'`).join(",")}]`
+      );
     }
 
     const createdAtFilter = await this.#calculateCreatedAtFilter(url, params.createdAt);
