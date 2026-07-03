@@ -10,6 +10,7 @@ pre-commit:
 # implementation and only runs hooks when "Run hooks" is enabled in its
 # settings - with that off, this protects plain `git push` only.
 pre-push:
+  parallel: true
   jobs:
     - name: format
       run: pnpm exec oxfmt --check .
