@@ -1393,7 +1393,7 @@ importers:
         version: 6.0.1
       vitest:
         specifier: 4.1.7
-        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@20.14.14)(@vitest/coverage-v8@4.1.7)(vite@6.4.2(@types/node@20.14.14)(jiti@2.6.1)(lightningcss@1.29.2)(terser@5.46.1)(tsx@4.22.4)(yaml@2.9.0))
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(@vitest/coverage-v8@4.1.7)(vite@6.4.2(@types/node@22.20.0)(jiti@2.6.1)(lightningcss@1.29.2)(terser@5.46.1)(tsx@4.22.4)(yaml@2.9.0))
 
   internal-packages/run-store:
     dependencies:
