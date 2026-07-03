@@ -1,9 +1,9 @@
 import { Maximize2 } from "lucide-react";
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { useMaximizeShortcut } from "~/hooks/useMaximizeShortcut";
 import { cn } from "~/utils/cn";
 import { Dialog, DialogContent, DialogHeader } from "../Dialog";
 import { Card } from "./Card";
@@ -36,13 +36,10 @@ export function ChartCard({
   const containerRef = useRef<HTMLDivElement>(null);
 
   // "v" toggles fullscreen for the hovered card.
-  useShortcutKeys({
-    shortcut: { key: "v" },
-    action: useCallback(() => {
-      const isHovered = containerRef.current?.matches(":hover");
-      if (!isFullscreen && !isHovered) return;
-      setIsFullscreen((prev) => !prev);
-    }, [isFullscreen]),
+  useMaximizeShortcut({
+    containerRef,
+    isMaximized: isFullscreen,
+    setIsMaximized: setIsFullscreen,
     disabled: !maximizable,
   });
 

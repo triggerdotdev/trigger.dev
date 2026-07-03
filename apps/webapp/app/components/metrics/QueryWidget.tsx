@@ -11,7 +11,7 @@ import { z } from "zod";
 import { Card } from "~/components/primitives/charts/Card";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { useMaximizeShortcut } from "~/hooks/useMaximizeShortcut";
 import { cn } from "~/utils/cn";
 import { rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { QueryResultsChart } from "../code/QueryResultsChart";
@@ -186,13 +186,10 @@ export function QueryWidget({
   const hasData = props.data.rows.length > 0;
 
   // "v" to toggle fullscreen on hovered widget
-  useShortcutKeys({
-    shortcut: { key: "v" },
-    action: useCallback(() => {
-      const isHovered = containerRef.current?.matches(":hover");
-      if (!isFullscreen && !isHovered) return;
-      setIsFullscreen((prev) => !prev);
-    }, [isFullscreen]),
+  useMaximizeShortcut({
+    containerRef,
+    isMaximized: isFullscreen,
+    setIsMaximized: setIsFullscreen,
   });
 
   const copyToClipboard = useCallback((text: string) => {

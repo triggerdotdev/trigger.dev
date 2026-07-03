@@ -33,6 +33,7 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
@@ -80,6 +81,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -1251,50 +1253,56 @@ function YourModelsTab({
     to,
   };
 
+  // Mirror the agent landing page: the three charts share a hover indicator and
+  // drag-to-zoom commits the selection to the Time/Date filter (from/to URL params).
+  const zoomToTimeFilter = useZoomToTimeFilter();
+
   return (
     <div className="overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <div className="grid grid-cols-1 gap-3 px-3 lg:grid-cols-3">
-        <div className="h-[312px]">
-          <MetricWidget
-            widgetKey="your-models-cost-time"
-            title="Cost over time"
-            query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({
-              chartType: "bar",
-              xAxisColumn: "timebucket",
-              yAxisColumns: ["cost"],
-            })}
-            {...widgetProps}
-          />
+      <ChartSyncProvider onZoom={zoomToTimeFilter}>
+        <div className="grid grid-cols-1 gap-3 px-3 lg:grid-cols-3">
+          <div className="h-[312px]">
+            <MetricWidget
+              widgetKey="your-models-cost-time"
+              title="Cost over time"
+              query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
+              config={chartConfig({
+                chartType: "bar",
+                xAxisColumn: "timebucket",
+                yAxisColumns: ["cost"],
+              })}
+              {...widgetProps}
+            />
+          </div>
+          <div className="h-[312px]">
+            <MetricWidget
+              widgetKey="your-models-tokens-time"
+              title="Tokens over time"
+              query={`SELECT timeBucket(), sum(input_tokens) AS input_tokens, sum(output_tokens) AS output_tokens FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
+              config={chartConfig({
+                chartType: "bar",
+                xAxisColumn: "timebucket",
+                yAxisColumns: ["input_tokens", "output_tokens"],
+                stacked: true,
+              })}
+              {...widgetProps}
+            />
+          </div>
+          <div className="h-[312px]">
+            <MetricWidget
+              widgetKey="your-models-calls-over-time"
+              title="Calls over time"
+              query={`SELECT timeBucket(), count() AS calls FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
+              config={chartConfig({
+                chartType: "bar",
+                xAxisColumn: "timebucket",
+                yAxisColumns: ["calls"],
+              })}
+              {...widgetProps}
+            />
+          </div>
         </div>
-        <div className="h-[312px]">
-          <MetricWidget
-            widgetKey="your-models-tokens-time"
-            title="Tokens over time"
-            query={`SELECT timeBucket(), sum(input_tokens) AS input_tokens, sum(output_tokens) AS output_tokens FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({
-              chartType: "bar",
-              xAxisColumn: "timebucket",
-              yAxisColumns: ["input_tokens", "output_tokens"],
-              stacked: true,
-            })}
-            {...widgetProps}
-          />
-        </div>
-        <div className="h-[312px]">
-          <MetricWidget
-            widgetKey="your-models-calls-over-time"
-            title="Calls over time"
-            query={`SELECT timeBucket(), count() AS calls FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({
-              chartType: "bar",
-              xAxisColumn: "timebucket",
-              yAxisColumns: ["calls"],
-            })}
-            {...widgetProps}
-          />
-        </div>
-      </div>
+      </ChartSyncProvider>
 
       <div className="mt-4">
         {usage.length === 0 ? (

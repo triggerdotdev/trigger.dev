@@ -181,9 +181,15 @@ export function ChartBarRenderer({
   // Bucket width so the committed zoom range includes the last selected bucket.
   const bucketWidthMs = data.length >= 2 ? Number(data[1][dataKey]) - Number(data[0][dataKey]) : 0;
 
-  // Reuse the tooltip label formatter for the From/To edges (it reads `bucket` off the payload).
-  const formatZoomEdge = (v: number): string =>
-    tooltipLabelFormatter ? tooltipLabelFormatter("", [{ payload: { bucket: v } }]) : String(v);
+  // Reuse the tooltip label formatter for the From/To edges. Different callers read
+  // different fields off the payload (activity charts read `bucket`; the query widget
+  // reads `__rawDate`/`__granularity`), so pass the real data point at this x when we
+  // can find it, falling back to a minimal `{ bucket }` payload.
+  const formatZoomEdge = (v: number): string => {
+    if (!tooltipLabelFormatter) return String(v);
+    const point = data.find((d) => Number(d[dataKey]) === v);
+    return tooltipLabelFormatter("", [{ payload: point ?? { bucket: v } }]);
+  };
   let zoomFrom: string | null = null;
   let zoomTo: string | null = null;
   if (syncZoomSelection) {
