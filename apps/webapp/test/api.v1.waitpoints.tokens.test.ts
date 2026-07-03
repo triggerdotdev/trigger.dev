@@ -22,7 +22,7 @@ import {
   ownerEngine,
   CUID_LENGTH,
 } from "@trigger.dev/core/v3/isomorphic";
-import { Prisma, type PrismaClient } from "@trigger.dev/database";
+import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { trace } from "@opentelemetry/api";
 
 vi.setConfig({ testTimeout: 60_000 });

@@ -1,7 +1,7 @@
 import { type LoaderFunctionArgs } from "@remix-run/node";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";

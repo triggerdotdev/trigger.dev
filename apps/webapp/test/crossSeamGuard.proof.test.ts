@@ -1,5 +1,5 @@
 import { heteroPostgresTest } from "@internal/testcontainers";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";

@@ -1,4 +1,4 @@
-import { type ActionFunction, json } from "@remix-run/node";
+import { type ActionFunction } from "@remix-run/node";
 import { prisma } from "~/db.server";
 import { jsonWithErrorMessage, jsonWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
