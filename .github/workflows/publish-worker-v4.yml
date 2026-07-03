@@ -76,6 +76,10 @@ jobs:
           ref_without_tag=${IMAGE_REGISTRY}/${STEPS_GET_REPOSITORY_OUTPUTS_REPO}
           image_tags=$ref_without_tag:${STEPS_GET_TAG_OUTPUTS_TAG}
 
+          if [[ "${STEPS_GET_TAG_OUTPUTS_TAG}" =~ ^v4\.[0-9]+\.[0-9]+$ ]]; then
+            image_tags=$image_tags,$ref_without_tag:v4,$ref_without_tag:latest
+          fi
+
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
         env:
           IMAGE_REGISTRY: ${{ inputs.image_registry || vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
