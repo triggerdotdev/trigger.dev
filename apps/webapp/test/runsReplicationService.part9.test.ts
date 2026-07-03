@@ -1,6 +1,6 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { setTimeout } from "node:timers/promises";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { createInMemoryMetrics } from "./utils/tracing";
