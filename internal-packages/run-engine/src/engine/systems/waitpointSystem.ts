@@ -226,25 +226,52 @@ export class WaitpointSystem {
       }
     }
 
-    const waitpoint = await prisma.waitpoint.upsert({
-      where: {
-        environmentId_idempotencyKey: {
-          environmentId,
-          idempotencyKey: idempotencyKey ?? nanoid(24),
+    let waitpoint: Waitpoint;
+    try {
+      waitpoint = await prisma.waitpoint.upsert({
+        where: {
+          environmentId_idempotencyKey: {
+            environmentId,
+            idempotencyKey: idempotencyKey ?? nanoid(24),
+          },
         },
-      },
-      create: {
-        ...WaitpointId.generate(),
-        type: "DATETIME",
-        idempotencyKey: idempotencyKey ?? nanoid(24),
-        idempotencyKeyExpiresAt,
-        userProvidedIdempotencyKey: !!idempotencyKey,
-        environmentId,
-        projectId,
-        completedAfter,
-      },
-      update: {},
-    });
+        create: {
+          ...WaitpointId.generate(),
+          type: "DATETIME",
+          idempotencyKey: idempotencyKey ?? nanoid(24),
+          idempotencyKeyExpiresAt,
+          userProvidedIdempotencyKey: !!idempotencyKey,
+          environmentId,
+          projectId,
+          completedAfter,
+        },
+        update: {},
+      });
+    } catch (error) {
+      // A concurrent request with the same user-provided idempotencyKey can win the
+      // race between our findFirst above and this upsert, causing a P2002 on
+      // @@unique([environmentId, idempotencyKey]). The winner already created the row
+      // and enqueued the finishWaitpoint job, so return the existing row as cached
+      // instead of retrying (a plain retry would re-collide on the user-provided key).
+      if (
+        idempotencyKey &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const existing = await prisma.waitpoint.findFirst({
+          where: {
+            environmentId,
+            idempotencyKey,
+          },
+        });
+
+        if (existing) {
+          return { waitpoint: existing, isCached: true };
+        }
+      }
+
+      throw error;
+    }
 
     await this.$.worker.enqueue({
       id: `finishWaitpoint.${waitpoint.id}`,
