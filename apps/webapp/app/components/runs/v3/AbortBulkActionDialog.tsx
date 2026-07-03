@@ -17,7 +17,10 @@ type AbortBulkActionDialogProps = {
   onAbortSubmitted?: () => void;
 };
 
-export function AbortBulkActionDialog({ formAction, onAbortSubmitted }: AbortBulkActionDialogProps) {
+export function AbortBulkActionDialog({
+  formAction,
+  onAbortSubmitted,
+}: AbortBulkActionDialogProps) {
   const navigation = useNavigation();
 
   const isLoading = navigation.formAction === formAction && navigation.formMethod === "POST";
