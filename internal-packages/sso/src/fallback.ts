@@ -1,4 +1,6 @@
 import type {
+  DirectorySyncEffect,
+  DirectorySyncStatus,
   OrgSsoStatus,
   SsoBeginError,
   SsoCompleteError,
@@ -55,7 +57,7 @@ class SsoFallbackController implements SsoController {
   generatePortalLink(_params: {
     organizationId: string;
     userId: string;
-    intent: "sso" | "domain_verification";
+    intent: "sso" | "domain_verification" | "dsync";
     returnUrl: string;
   }): ResultAsync<{ url: string }, SsoPortalError> {
     return errAsync("idp_org_unavailable" as const);
@@ -89,6 +91,73 @@ class SsoFallbackController implements SsoController {
     jitDefaultRoleId: string | null;
   }): ResultAsync<void, SsoMutationError> {
     return errAsync("feature_disabled" as const);
+  }
+
+  getDirectorySyncStatus(
+    _organizationId: string
+  ): ResultAsync<DirectorySyncStatus, SsoDecisionError> {
+    return okAsync({
+      hasDirectory: false,
+      hasActiveDirectory: false,
+      allowExternalDomainSync: false,
+      allowManualMembership: true,
+      directoryDefaultRoleId: null,
+      userCount: 0,
+      directories: [],
+      groups: [],
+    });
+  }
+
+  setDirectoryGroupRole(_params: {
+    organizationId: string;
+    groupId: string;
+    roleId: string | null;
+  }): ResultAsync<{ effects: DirectorySyncEffect[] }, SsoMutationError> {
+    return errAsync("feature_disabled" as const);
+  }
+
+  setDirectoryDefaultRole(_params: {
+    organizationId: string;
+    roleId: string | null;
+  }): ResultAsync<void, SsoMutationError> {
+    return errAsync("feature_disabled" as const);
+  }
+
+  setAllowExternalDomainSync(_params: {
+    organizationId: string;
+    allowed: boolean;
+  }): ResultAsync<void, SsoMutationError> {
+    return errAsync("feature_disabled" as const);
+  }
+
+  // OSS has no directory, so manual membership is always allowed.
+  getMembershipPolicy(
+    _organizationId: string
+  ): ResultAsync<{ manualMembershipAllowed: boolean }, SsoDecisionError> {
+    return okAsync({ manualMembershipAllowed: true });
+  }
+
+  setAllowManualMembership(_params: {
+    organizationId: string;
+    allowed: boolean;
+  }): ResultAsync<void, SsoMutationError> {
+    return errAsync("feature_disabled" as const);
+  }
+
+  recordMembershipRemoval(_params: {
+    organizationId: string;
+    userId: string;
+    reason: "manual_removal" | "self_leave";
+  }): ResultAsync<void, SsoMutationError> {
+    // No plugin → no JIT → nothing to guard against. No-op success.
+    return okAsync(undefined as void);
+  }
+
+  clearMembershipRemoval(_params: {
+    organizationId: string;
+    userId: string;
+  }): ResultAsync<void, SsoMutationError> {
+    return okAsync(undefined as void);
   }
 
   decideRouteForEmail(_email: string): ResultAsync<SsoRouteDecision, SsoDecisionError> {
@@ -160,7 +229,11 @@ class SsoFallbackController implements SsoController {
     return errAsync("feature_disabled" as const);
   }
 
-  processWebhookEvent(_event: SsoWebhookEvent): ResultAsync<void, SsoWebhookError> {
-    return errAsync("feature_disabled" as const);
+  processWebhookEvent(
+    _event: SsoWebhookEvent
+  ): ResultAsync<{ effects: DirectorySyncEffect[] }, SsoWebhookError> {
+    // No plugin: nothing to verify or act on. The host's webhook proxy
+    // already rejects unverified requests, so a call here just no-ops.
+    return okAsync({ effects: [] });
   }
 }
