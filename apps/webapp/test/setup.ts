@@ -140,6 +140,22 @@ vi.mock("~/services/taskMetadataCacheInstance.server", async () => {
   return { taskMetadataCacheInstance: new NoopTaskMetadataCache() };
 });
 
+// The org-data-stores registry singleton is constructed at import (transitively via
+// the ClickHouse factory instance, which many presenters pull in). Its ctor fires a
+// `forever` pRetry(loadFromDatabase) plus a setInterval reload against db.server's
+// $replica; in CI (no Postgres) those retry forever, blocking the worker until any
+// awaiting test's hook times out. Stub the instance to a no-op — no unit test uses
+// this singleton (the registry-behavior tests construct the class directly).
+vi.mock("~/services/dataStores/organizationDataStoresRegistryInstance.server", () => ({
+  organizationDataStoresRegistry: {
+    isReady: Promise.resolve(),
+    isLoaded: true,
+    get: vi.fn().mockReturnValue(null),
+    reload: vi.fn().mockResolvedValue(undefined),
+    loadFromDatabase: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 vi.mock("~/v3/runEngine.server", () => ({ engine: noopProxy() }));
 vi.mock("~/v3/marqs/index.server", () => ({ marqs: noopProxy(), MarQS: class {} }));
 vi.mock("~/v3/marqs/devPubSub.server", () => ({ devPubSub: noopProxy() }));

@@ -169,7 +169,17 @@ function throwingFindFirst(prisma: PrismaClient, label: string): PrismaClient {
   }) as unknown as PrismaClient;
 }
 
-const callOptions = (ctx: SeedContext) => ({ projectId: ctx.projectId, pageSize: 10 });
+const callOptions = (ctx: SeedContext, overrides?: { to?: number }) => ({
+  projectId: ctx.projectId,
+  pageSize: 10,
+  ...overrides,
+});
+
+// `to` one hour in the past. The CH page filters `created_at <= to`, so a just-created run is
+// deterministically excluded regardless of replication timing — the empty-state tests otherwise
+// raced on the run not having replicated yet (held locally, failed on CI). The PG existence probe
+// has no time filter, so it still finds the row and `hasAnyRuns` stays true.
+const emptyPageWindow = (): { to: number } => ({ to: Date.now() - 60 * 60 * 1000 });
 
 describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legacy + new Postgres)", () => {
   // no-false-empty. Runs ONLY on legacy, none on new. Empty CH page -> listRuns returns [].
@@ -209,7 +219,7 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
         const result = await presenter.call(
           ctx.organizationId,
           ctx.environmentId,
-          callOptions(ctx)
+          callOptions(ctx, emptyPageWindow())
         );
 
         // CH id-set is empty within the page window, but the legacy probe finds the row.
@@ -337,7 +347,11 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
       // (passthrough) and the probe is one plain `this.replica.taskRun.findFirst`.
       const presenter = new NextRunListPresenter(prisma, clickhouse);
 
-      const result = await presenter.call(ctx.organizationId, ctx.environmentId, callOptions(ctx));
+      const result = await presenter.call(
+        ctx.organizationId,
+        ctx.environmentId,
+        callOptions(ctx, emptyPageWindow())
+      );
 
       expect(result.runs).toHaveLength(0);
       expect(result.hasAnyRuns).toBe(true);
