@@ -456,37 +456,15 @@ function StandardTaskForm({
 
   const [showTemplateCreatedSuccessMessage, setShowTemplateCreatedSuccessMessage] = useState(false);
 
-  const [
-    form,
-    {
-      environmentId,
-      payload,
-      metadata,
-      taskIdentifier,
-      delaySeconds,
-      ttlSeconds,
-      idempotencyKey,
-      idempotencyKeyTTLSeconds,
-      queue,
-      concurrencyKey,
-      maxAttempts,
-      maxDurationSeconds,
-      triggerSource,
-      tags,
-      version,
-      machine,
-      region,
-      prioritySeconds,
-    },
-  ] = useForm({
+  const [form, fields] = useForm({
     id: "test-task",
     // TODO: type this
     lastResult: lastSubmission as any,
     onSubmit(event, { formData }) {
       event.preventDefault();
 
-      formData.set(payload.name, currentPayloadJson.current);
-      formData.set(metadata.name, currentMetadataJson.current);
+      formData.set(fields.payload.name, currentPayloadJson.current);
+      formData.set(fields.metadata.name, currentMetadataJson.current);
 
       submit(formData, { method: "POST" });
     },
@@ -494,6 +472,24 @@ function StandardTaskForm({
       return parseWithZod(formData, { schema: TestTaskData });
     },
   });
+  const {
+    environmentId,
+    taskIdentifier,
+    delaySeconds,
+    ttlSeconds,
+    idempotencyKey,
+    idempotencyKeyTTLSeconds,
+    queue,
+    concurrencyKey,
+    maxAttempts,
+    maxDurationSeconds,
+    triggerSource,
+    tags,
+    version,
+    machine,
+    region,
+    prioritySeconds,
+  } = fields;
 
   return (
     <Form className="flex h-full max-h-full flex-col" method="post" {...getFormProps(form)}>
