@@ -1,7 +1,7 @@
 import { assertNonNullable, containerTest, heteroPostgresTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
-import { BatchId, generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { setTimeout } from "node:timers/promises";

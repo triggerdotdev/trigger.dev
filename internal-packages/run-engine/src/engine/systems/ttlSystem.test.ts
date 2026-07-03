@@ -11,7 +11,7 @@ import { expect } from "vitest";
 import { Decimal } from "@trigger.dev/database";
 import { PostgresRunStore } from "@internal/run-store";
 import type { RunStore } from "@internal/run-store";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "../tests/setup.js";
 
@@ -446,7 +446,7 @@ describe("TtlSystem store routing", () => {
       // expireRun (unchanged) must route its completion to NEW (waitpoint COMPLETED +
       // run EXPIRED on PG17) and leave the LEGACY DB (PG14) untouched.
 
-      const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
+      const _legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
       const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
 
       const residency = new Map<string, RunStore>();
@@ -454,7 +454,7 @@ describe("TtlSystem store routing", () => {
       // run and its waitpoint both live on NEW.
       const router = createRouter(residency, newStore);
 
-      const env14 = await setupAuthenticatedEnvironment(prisma14, "PRODUCTION");
+      const _env14 = await setupAuthenticatedEnvironment(prisma14, "PRODUCTION");
       const env17 = await setupAuthenticatedEnvironment(prisma17, "PRODUCTION");
 
       const engine = createEngine(prisma17, redisOptions, router, {

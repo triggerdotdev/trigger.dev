@@ -4,7 +4,7 @@ import type {
   TaskRun,
   TaskRunExecutionStatus,
 } from "@trigger.dev/database";
-import { RunStore } from "@internal/run-store";
+import type { RunStore } from "@internal/run-store";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";

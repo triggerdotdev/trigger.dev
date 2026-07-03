@@ -10,7 +10,7 @@ import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { PostgresRunStore } from "@internal/run-store";
 import type { RunStore } from "@internal/run-store";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "../tests/setup.js";
 

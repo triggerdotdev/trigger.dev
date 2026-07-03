@@ -10,7 +10,7 @@ import type {
   TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
-import { RunStore } from "@internal/run-store";
+import type { RunStore } from "@internal/run-store";
 import { ExecutionSnapshotNotFoundError } from "../errors.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";

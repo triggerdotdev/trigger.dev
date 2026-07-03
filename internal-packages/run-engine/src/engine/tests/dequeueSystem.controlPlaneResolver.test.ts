@@ -7,7 +7,7 @@
 // is never mocked. A single-DB passthrough case proves the engine dequeue is byte-identical.
 import { assertNonNullable, containerTest, heteroPostgresTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { DequeuedMessage } from "@trigger.dev/core/v3";
+import type { DequeuedMessage } from "@trigger.dev/core/v3";
 import {
   CURRENT_DEPLOYMENT_LABEL,
   generateFriendlyId,

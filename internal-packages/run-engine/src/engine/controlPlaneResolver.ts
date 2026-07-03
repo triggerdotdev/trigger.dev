@@ -1,11 +1,11 @@
-import {
-  type BackgroundWorker,
-  type BackgroundWorkerTask,
-  type PrismaClient,
+import type {
+  BackgroundWorker,
+  BackgroundWorkerTask,
   Prisma,
+  PrismaClient,
   RuntimeEnvironmentType,
-  type TaskQueue,
-  type WorkerDeployment,
+  TaskQueue,
+  WorkerDeployment,
 } from "@trigger.dev/database";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";

@@ -2,12 +2,7 @@ import { startSpan } from "@internal/tracing";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import type { DequeuedMessage } from "@trigger.dev/core/v3";
 import { RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
-import {
-  CURRENT_DEPLOYMENT_LABEL,
-  generateInternalId,
-  getMaxDuration,
-  SnapshotId,
-} from "@trigger.dev/core/v3/isomorphic";
+import { generateInternalId, getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import type {
   BackgroundWorker,

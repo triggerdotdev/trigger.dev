@@ -10,7 +10,7 @@ import { trace } from "@internal/tracing";
 import type { PrismaClient } from "@trigger.dev/database";
 import { setTimeout } from "node:timers/promises";
 import { expect } from "vitest";
-import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { PassthroughControlPlaneResolver } from "../controlPlaneResolver.js";
 import { PostgresRunStore } from "@internal/run-store";
 import { RunEngine } from "../index.js";

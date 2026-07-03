@@ -420,7 +420,7 @@ describe("BatchTaskRun group", () => {
           runCount: 2,
         })
       );
-      const created17 = await store17.createBatchTaskRun(
+      const _created17 = await store17.createBatchTaskRun(
         batchCreateData({
           id: batchId,
           friendlyId: "batch_friendly_1",
