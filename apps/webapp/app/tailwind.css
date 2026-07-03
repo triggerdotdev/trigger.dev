@@ -212,21 +212,49 @@
 }
 
 /*
-  shadcn/ui tokens used by streamdown's internals. Inline so the HSL vars
-  resolve where the utility is used - .streamdown-container redefines them locally.
+  Run-status chart colors. In-between shades are intentional - statuses within
+  a family (blues, roses, charcoals) are evenly spaced so chart series stay
+  distinguishable. Referenced from JS via var(--color-run-*).
+*/
+@theme {
+  --color-run-pending: var(--color-charcoal-500);
+  --color-run-delayed: #6b7580;
+  --color-run-pending-version: var(--color-warning);
+  --color-run-waiting-for-deploy: #d97706;
+  --color-run-executing: var(--color-pending);
+  --color-run-retrying-after-failure: #2f6fec;
+  --color-run-dequeued: #4d8ef5;
+  --color-run-waiting-to-resume: #555d67;
+  --color-run-paused: #fbbf24;
+  --color-run-canceled: #78828c;
+  --color-run-expired: #848d96;
+  --color-run-interrupted: #d52c4d;
+  --color-run-completed-successfully: var(--color-success);
+  --color-run-completed-with-errors: #de405c;
+  --color-run-system-failure: #e7536c;
+  --color-run-crashed: #cc193d;
+  --color-run-timed-out: #f0667b;
+}
+
+/*
+  shadcn/ui tokens used by streamdown's internals. Inline so the vars resolve
+  where the utility is used - .streamdown-container redefines them locally.
 */
 @theme inline {
-  --color-background: hsl(var(--background, 230 16% 9%));
-  --color-foreground: hsl(var(--foreground, 215 19% 87%));
-  --color-muted: hsl(var(--muted, 220 8% 17%));
-  --color-muted-foreground: hsl(var(--muted-foreground, 220 8% 57%));
-  --color-border: hsl(var(--border, 216 7% 27%));
-  --color-sidebar: hsl(var(--sidebar, 228 10% 11%));
-  --color-primary-foreground: hsl(var(--primary-foreground, 230 16% 9%));
+  --color-background: var(--background, #121317);
+  --color-foreground: var(--foreground, #d7d9dd);
+  --color-muted: var(--muted, #1c1e21);
+  --color-muted-foreground: var(--muted-foreground, #878c99);
+  --color-border: var(--border, #2c3034);
+  --color-sidebar: var(--sidebar, #15171a);
+  --color-primary-foreground: var(--primary-foreground, #121317);
 }
 
 @custom-variant lg-height (@media (max-height: 750px));
 @custom-variant md-height (@media (max-height: 600px));
+
+/* dark: follows the app theme (data-theme on <html>), not the OS preference */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @utility focus-custom {
   &:focus-visible {
@@ -328,6 +356,14 @@
     @apply bg-text-bright/30 text-text-bright;
   }
 
+  /* Native form controls, scrollbars etc. follow the app theme */
+  :root {
+    color-scheme: dark;
+  }
+  [data-theme="light"] {
+    color-scheme: light;
+  }
+
   /* shadcn charts: https://ui.shadcn.com/docs/components/chart#add-a-grid */
   :root {
     --chart-1: 12 76% 61%;
@@ -337,7 +373,7 @@
     --chart-5: 27 87% 67%;
   }
 
-  .dark {
+  [data-theme="dark"] {
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -385,18 +421,18 @@
 
 /* Streamdown markdown styling */
 .streamdown-container {
-  /* Streamdown uses shadcn/ui CSS variables - define them for our theme.
-     These map Tailwind utility classes like bg-background, bg-primary, etc.
-     that streamdown uses internally for its link safety modal, code blocks,
-     and other interactive elements. */
-  --background: 230 16% 9%; /* charcoal-900 #121317 */
-  --foreground: 215 19% 87%; /* charcoal-200 #D7D9DD */
-  --muted: 220 8% 17%; /* charcoal-775 #1C1E21 */
-  --muted-foreground: 220 8% 57%; /* charcoal-400 #878C99 */
-  --border: 216 7% 27%; /* charcoal-650 #2C3034 */
-  --primary: 95 100% 66%; /* apple-500 #A8FF53 */
-  --primary-foreground: 230 16% 9%; /* charcoal-900 */
-  --sidebar: 228 10% 11%; /* charcoal-850 #15171A */
+  /* Streamdown uses shadcn/ui CSS variables - derive them from our semantic
+     tokens so they follow the theme. They map Tailwind utility classes like
+     bg-background, bg-primary, etc. that streamdown uses internally for its
+     link safety modal, code blocks, and other interactive elements. */
+  --background: var(--color-background-deep);
+  --foreground: var(--color-text-bright);
+  --muted: var(--color-charcoal-775);
+  --muted-foreground: var(--color-text-dimmed);
+  --border: var(--color-border-bright);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-background-deep);
+  --sidebar: var(--color-background-dimmed);
 
   /* Code block styling */
   & [data-code-block-container] {
@@ -478,13 +514,6 @@
   }
   & [data-code-block-header] {
     @apply bg-charcoal-800 text-text-dimmed border-b border-charcoal-700;
-  }
-  /* Hide light mode code block, show dark mode */
-  & [data-code-block].dark\:hidden {
-    display: none !important;
-  }
-  & [data-code-block].hidden.dark\:block {
-    display: block !important;
   }
   /* Override the bg-muted/40 class to let inline styles work */
   & [data-code-block] pre {
