@@ -70,6 +70,27 @@ export class BulkActionService extends BaseService {
     const { organizationId, projectId, environmentId, userId } = input;
     const filters = freezeRunListFilters(input.filters);
 
+    // Concurrency guard for replays
+    // The count is backed by the (environmentId, status, type) index, so it only
+    // touches this env's PENDING replays and stays cheap.
+    if (input.action === "replay") {
+      const maxConcurrentReplays = env.BULK_ACTION_MAX_CONCURRENT_REPLAYS;
+      const inFlightReplays = await this._replica.bulkActionGroup.count({
+        where: {
+          environmentId,
+          type: BulkActionType.REPLAY,
+          status: BulkActionStatus.PENDING,
+        },
+      });
+
+      if (inFlightReplays >= maxConcurrentReplays) {
+        throw new ServiceValidationError(
+          `You can only run ${maxConcurrentReplays} bulk replays at a time in this environment. Wait for an in-progress replay to finish before starting another.`,
+          429
+        );
+      }
+    }
+
     // Region is a replay-only override that re-routes the replayed runs. It's
     // stored alongside the run-list filters under a dedicated key so it isn't
     // mistaken for a `regions` selection filter when the params are parsed.
