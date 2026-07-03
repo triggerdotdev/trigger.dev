@@ -79,68 +79,68 @@ const extraLinesWhenClipping = 0.35;
 
 const defaultTheme: PrismTheme = {
   plain: {
-    color: "#9C9AF2",
+    color: "var(--color-code-constant)",
     backgroundColor: "rgba(0, 0, 0, 0)",
   },
   styles: [
     {
       types: ["comment", "prolog", "doctype", "cdata"],
       style: {
-        color: "#5F6570",
+        color: "var(--color-code-muted)",
       },
     },
     {
       types: ["punctuation"],
       style: {
-        color: "#878C99",
+        color: "var(--color-code-foreground)",
       },
     },
     {
       types: ["property", "tag", "constant", "symbol", "deleted"],
       style: {
-        color: "#9B99FF",
+        color: "var(--color-code-language)",
       },
     },
     {
       types: ["boolean", "number"],
       style: {
-        color: "#E5C07B",
+        color: "var(--color-code-builtin)",
       },
     },
     {
       types: ["selector", "attr-name", "string", "char", "builtin", "inserted"],
       style: {
-        color: "#AFEC73",
+        color: "var(--color-code-string)",
       },
     },
     {
       types: ["operator", "entity", "url"],
       style: {
-        color: "#D4D4D4",
+        color: "var(--color-code-plain)",
       },
     },
     {
       types: ["variable"],
       style: {
-        color: "#CCCBFF",
+        color: "var(--color-code-variable)",
       },
     },
     {
       types: ["atrule", "attr-value", "keyword"],
       style: {
-        color: "#E888F8",
+        color: "var(--color-code-keyword)",
       },
     },
     {
       types: ["function", "class-name"],
       style: {
-        color: "#D9F07C",
+        color: "var(--color-code-function)",
       },
     },
     {
       types: ["regex"],
       style: {
-        color: "#d16969",
+        color: "var(--color-code-regexp)",
       },
     },
     {
@@ -164,31 +164,31 @@ const defaultTheme: PrismTheme = {
     {
       types: ["deleted"],
       style: {
-        color: "#F85149",
+        color: "var(--color-code-deleted)",
       },
     },
     {
       types: ["char"],
       style: {
-        color: "#b5cea8",
+        color: "var(--color-code-number)",
       },
     },
     {
       types: ["tag"],
       style: {
-        color: "#D7BA7D",
+        color: "var(--color-code-escape)",
       },
     },
     {
       types: ["keyword.operator"],
       style: {
-        color: "#8271ED",
+        color: "var(--color-code-storage)",
       },
     },
     {
       types: ["meta.template.expression"],
       style: {
-        color: "#d4d4d4",
+        color: "var(--color-code-plain)",
       },
     },
   ],
