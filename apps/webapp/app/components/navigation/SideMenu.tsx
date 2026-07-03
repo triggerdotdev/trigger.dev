@@ -4,7 +4,7 @@ import {
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import { LinkIcon } from "@heroicons/react/24/solid";
-import { useFetcher, useNavigation } from "@remix-run/react";
+import { useFetcher, useNavigate, useNavigation, useSubmit } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
@@ -37,17 +37,20 @@ import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { ShieldIcon } from "~/assets/icons/ShieldIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
+import { UserCrossIcon } from "~/assets/icons/UserCrossIcon";
 import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { RolesIcon } from "~/assets/icons/RolesIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
 import { SlackIcon } from "~/assets/icons/SlackIcon";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { Avatar } from "~/components/primitives/Avatar";
+import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
@@ -67,6 +70,8 @@ import { IncidentStatusPanel, useIncidentStatus } from "~/routes/resources.incid
 import { cn } from "~/utils/cn";
 import {
   accountPath,
+  accountSecurityPath,
+  personalAccessTokensPath,
   adminPath,
   branchesPath,
   concurrencyPath,
@@ -110,7 +115,6 @@ import {
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { AlphaBadge, NewBadge } from "../FeatureBadges";
-import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
@@ -305,30 +309,9 @@ export function SideMenu({
               isCollapsed={isCollapsed}
             />
           </div>
-          {isAdmin && !user.isImpersonating ? (
-            <CollapsibleElement isCollapsed={isCollapsed}>
-              <TooltipProvider disableHoverableContent={true}>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <LinkButton
-                      variant="minimal/medium"
-                      to={adminPath()}
-                      TrailingIcon={HomeIcon}
-                      trailingIconClassName="h-4.5 w-4.5"
-                      className="h-8 w-8"
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className={"text-xs"}>
-                    Admin dashboard
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </CollapsibleElement>
-          ) : isAdmin && user.isImpersonating ? (
-            <CollapsibleElement isCollapsed={isCollapsed}>
-              <ImpersonationBanner />
-            </CollapsibleElement>
-          ) : null}
+          <CollapsibleElement isCollapsed={isCollapsed}>
+            <AccountMenu isAdmin={isAdmin} isImpersonating={user.isImpersonating} />
+          </CollapsibleElement>
         </div>
         <div
           className={cn(
@@ -975,6 +958,8 @@ function OrgSelector({
             />
           )}
           <Integrations organization={organization} />
+        </div>
+        <div className="border-t border-charcoal-700 p-1">
           {organizations.length > 1 ? (
             <SwitchOrganizations organizations={organizations} organization={organization} />
           ) : (
@@ -987,11 +972,113 @@ function OrgSelector({
             />
           )}
         </div>
-        <div className="border-t border-charcoal-700 p-1">
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImpersonating: boolean }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const navigation = useNavigation();
+  const navigate = useNavigate();
+  const submit = useSubmit();
+
+  useEffect(() => {
+    setIsOpen(false);
+  }, [navigation.location?.pathname]);
+
+  const stopImpersonating = () =>
+    submit(null, { action: "/resources/impersonation", method: "delete" });
+
+  useShortcutKeys({
+    shortcut: isAdmin
+      ? { modifiers: ["mod"], key: "esc", enabledOnInputElements: true }
+      : undefined,
+    action: () => {
+      if (isImpersonating) {
+        stopImpersonating();
+      } else {
+        navigate(adminPath());
+      }
+    },
+  });
+
+  return (
+    <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen}>
+      <SimpleTooltip
+        button={
+          <PopoverTrigger className="group flex size-8 items-center justify-center rounded transition-colors hover:bg-charcoal-750 focus-custom">
+            <UserProfilePhoto className="size-6" />
+          </PopoverTrigger>
+        }
+        content="Account"
+        side="bottom"
+        sideOffset={8}
+        disableHoverableContent
+      />
+      <PopoverContent
+        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        side="bottom"
+        sideOffset={4}
+        align="start"
+        style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
+      >
+        {isAdmin && (
+          <div className="flex flex-col gap-1 border-b border-charcoal-700 p-1">
+            {isImpersonating ? (
+              <PopoverMenuItem
+                title={
+                  <div className="flex w-full items-center justify-between">
+                    <span className="text-amber-400">Stop impersonating</span>
+                    <span className="flex items-center gap-1">
+                      <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
+                      <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
+                    </span>
+                  </div>
+                }
+                icon={UserCrossIcon}
+                onClick={stopImpersonating}
+                leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, "text-amber-400")}
+                className={SIDE_MENU_POPOVER_ITEM_LABEL}
+              />
+            ) : (
+              <PopoverMenuItem
+                to={adminPath()}
+                title={
+                  <div className="flex w-full items-center justify-between">
+                    <span>Admin dashboard</span>
+                    <span className="flex items-center gap-1">
+                      <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
+                      <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
+                    </span>
+                  </div>
+                }
+                icon={HomeIcon}
+                leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+                className={SIDE_MENU_POPOVER_ITEM_LABEL}
+              />
+            )}
+          </div>
+        )}
+        <div className="flex flex-col gap-1 p-1">
           <PopoverMenuItem
             to={accountPath()}
-            title="Account"
+            title="Profile"
             icon={AvatarCircleIcon}
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
+          />
+          <PopoverMenuItem
+            to={personalAccessTokensPath()}
+            title="Personal Access Tokens"
+            icon={ShieldIcon}
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
+          />
+          <PopoverMenuItem
+            to={accountSecurityPath()}
+            title="Security"
+            icon={PadlockIcon}
             leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
             className={SIDE_MENU_POPOVER_ITEM_LABEL}
           />
