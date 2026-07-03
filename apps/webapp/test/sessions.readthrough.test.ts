@@ -13,7 +13,7 @@ import { heteroRunOpsPostgresTest, postgresTest } from "@internal/testcontainers
 import { buildRunStore } from "~/v3/runStore.server";
 import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import {
   resolveSessionByIdOrExternalId,
   serializeSessionsWithFriendlyRunIds,

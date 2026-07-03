@@ -12,7 +12,7 @@ vi.mock("~/db.server", () => ({
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import { buildRunStore } from "~/v3/runStore.server";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { convertRunListInputOptionsToFilterRunsOptions } from "~/services/runsRepository/runsRepository.server";
 

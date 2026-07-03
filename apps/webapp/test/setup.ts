@@ -3,6 +3,8 @@
 import { config } from "dotenv";
 import path from "node:path";
 import { vi } from "vitest";
+import type * as IORedisModule from "ioredis";
+import type * as TaskMetadataCacheModule from "~/services/taskMetadataCache.server";
 
 config({ path: path.resolve(__dirname, "../.env") });
 
@@ -56,7 +58,7 @@ const noopProxy = () =>
 // command (tests against live testcontainers) connects on first command
 // exactly as before.
 vi.mock("ioredis", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("ioredis")>();
+  const actual = await importOriginal<typeof IORedisModule>();
 
   // Normalize ioredis's overloaded ctor args — (), (port), (path),
   // (port, host), (opts), (port, opts), (port, host, opts), (path, opts) —
@@ -127,9 +129,9 @@ vi.mock("~/v3/services/tracePubSub.server", async () => {
 // leaves TASK_META_CACHE_REDIS_HOST unset and gets the Noop implementation;
 // pin the Noop cache here so env-configured local runs behave identically.
 vi.mock("~/services/taskMetadataCacheInstance.server", async () => {
-  const { NoopTaskMetadataCache } = await vi.importActual<
-    typeof import("~/services/taskMetadataCache.server")
-  >("~/services/taskMetadataCache.server");
+  const { NoopTaskMetadataCache } = await vi.importActual<typeof TaskMetadataCacheModule>(
+    "~/services/taskMetadataCache.server"
+  );
   return { taskMetadataCacheInstance: new NoopTaskMetadataCache() };
 });
 

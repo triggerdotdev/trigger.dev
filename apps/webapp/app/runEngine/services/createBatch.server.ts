@@ -1,6 +1,6 @@
 import type { InitializeBatchOptions } from "@internal/run-engine";
 import { type CreateBatchRequestBody, type CreateBatchResponse } from "@trigger.dev/core/v3";
-import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
 import { Evt } from "evt";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";

@@ -2,10 +2,8 @@ import { type RunStore } from "@internal/run-store";
 import { type Prisma, type ProjectAlertChannel } from "@trigger.dev/database";
 import { type PrismaClientOrTransaction, type prisma } from "~/db.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
-import {
-  ControlPlaneResolver,
-  controlPlaneResolver as defaultControlPlaneResolver,
-} from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import type { ControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { controlPlaneResolver as defaultControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { BaseService } from "../baseService.server";
 import { DeliverAlertService } from "./deliverAlert.server";
 

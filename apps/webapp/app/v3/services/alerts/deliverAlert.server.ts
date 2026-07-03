@@ -50,10 +50,9 @@ import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { fromPromise } from "neverthrow";
 import { BaseService } from "../baseService.server";
 import { CURRENT_API_VERSION } from "~/api/versions";
-import {
-  ControlPlaneResolver,
-  controlPlaneResolver as defaultControlPlaneResolver,
-} from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import type { RunStore } from "@internal/run-store";
+import type { ControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { controlPlaneResolver as defaultControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 // Run-ops scalars read off `alert.taskRun` downstream. The control-plane fields (env type/branch,
 // lockedBy file/export, lockedToVersion version) are resolved via the resolver and stitched on
@@ -137,7 +136,7 @@ export class DeliverAlertService extends BaseService {
     opts: {
       prisma?: PrismaClientOrTransaction;
       replica?: PrismaClientOrTransaction;
-      runStore?: import("@internal/run-store").RunStore;
+      runStore?: RunStore;
       controlPlaneResolver?: ControlPlaneResolver;
     } = {}
   ) {

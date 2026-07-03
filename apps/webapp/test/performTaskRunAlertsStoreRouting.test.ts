@@ -231,7 +231,7 @@ describe("PerformTaskRunAlertsService store routing (hetero)", () => {
       );
 
       // Org/project/env + a PARENT env + the alert channel are control-plane → the control-plane DB.
-      const { project, organization, runtimeEnvironment } = await seedProject(prisma14, "cp");
+      const { project, organization } = await seedProject(prisma14, "cp");
       // A branch env whose parent type drives the channel filter (parentEnvironmentType ?? type).
       const parentEnv = await prisma14.runtimeEnvironment.create({
         data: {
