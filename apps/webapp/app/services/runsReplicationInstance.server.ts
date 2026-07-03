@@ -168,7 +168,7 @@ function initializeRunsReplicationInstance() {
     // taken). runsReplicationService.server.ts is untouched. The create route also calls
     // setRunsReplicationGlobal — last-writer-wins is the existing contract.
     isSplitEnabled()
-      .then((splitEnabled) => {
+      .then(async (splitEnabled) => {
         const sources = buildReplicationSources({
           splitEnabled,
           legacyUrl: DATABASE_URL,
@@ -186,6 +186,9 @@ function initializeRunsReplicationInstance() {
         assertReplicationCoversSplit({ splitEnabled, sources });
 
         if (sources.length > 1) {
+          // Release the bootstrap instance's eager replication client (Redis + Redlock)
+          // before replacing it, or it leaks for the process lifetime. shutdown() is idempotent.
+          await service.shutdown();
           // The scalar pgConnectionUrl/slotName/publicationName remain required on the
           // options type, but are ignored when sources[] is non-empty — the
           // service normalizes off sources. Pass the legacy scalars to satisfy the type.
