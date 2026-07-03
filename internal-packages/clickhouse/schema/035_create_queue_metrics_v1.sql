@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_raw_v1
   environment_id   String CODEC(ZSTD(1)),
   queue_name       String CODEC(ZSTD(1)),
   event_time       DateTime CODEC(Delta(4), ZSTD(1)),
-  order_key        UInt64 DEFAULT 0,                 -- stream-id composite (ms*1e5+seq), deltaSumTimestamp ordering key
+  order_key        UInt64 DEFAULT 0,                 -- stream-id composite (ms*1e6+seq), deltaSumTimestamp ordering key
   op               LowCardinality(String),          -- gauge | enqueue | started | ack | nack | dlq
   running          UInt32 DEFAULT 0,
   queued           UInt32 DEFAULT 0,

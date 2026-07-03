@@ -35,14 +35,14 @@ describe("stream keys", () => {
   });
 
   it("entryOrderKey stays exact and strictly monotonic at real epoch magnitudes", () => {
-    const ms = 1783000000000; // ~2026: ms*1e5 is past JS safe-integer range, so a number key
+    const ms = 1783000000000; // ~2026: ms*1e6 is past JS safe-integer range, so a number key
     const k = (seq: number) => BigInt(entryOrderKey(`${ms}-${seq}`));
     // adjacent seq within one ms must not collapse to the same key (the float bug)
-    expect(k(0)).toBe(BigInt(ms) * 100000n);
+    expect(k(0)).toBe(BigInt(ms) * 1000000n);
     expect(k(1) - k(0)).toBe(1n);
     expect(k(2) - k(1)).toBe(1n);
-    // a later ms always outranks any seq of an earlier ms
-    expect(BigInt(entryOrderKey(`${ms + 1}-0`))).toBeGreaterThan(k(99999));
+    // a later ms always outranks any seq of an earlier ms (up to the 1M/ms factor)
+    expect(BigInt(entryOrderKey(`${ms + 1}-0`))).toBeGreaterThan(k(999999));
   });
 });
 

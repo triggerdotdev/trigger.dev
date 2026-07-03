@@ -112,7 +112,7 @@ describe("mapEntryToRow", () => {
         op: "started",
         wait_ms: 48,
         cumulative: 512,
-        order_key: 1700000000000 * 100000,
+        order_key: (1700000000000n * 1000000n).toString(),
       })
     );
     expect(mapEntryToRow({ id: "1-0", fields: { op: "ack", q, cum: "9" } })).toEqual(

@@ -32,10 +32,11 @@ export function entryTimeMs(id: string): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-// Ordering key from a stream id (`<ms>-<seq>`) = ms*1e5+seq, for deltaSumTimestamp. BigInt +
-// string because ms*1e5 exceeds JS safe-integer range at real epoch magnitudes (a number would
+// Ordering key from a stream id (`<ms>-<seq>`) = ms*1e6+seq, for deltaSumTimestamp. BigInt +
+// string because ms*1e6 exceeds JS safe-integer range at real epoch magnitudes (a number would
 // collapse nearby seq values); the ClickHouse order_key column is UInt64 and takes the string.
+// The 1e6 factor (1M entries/ms/shard, far above any single Redis stream) stays within UInt64.
 export function entryOrderKey(id: string): string {
   const [ms, seq] = id.split("-");
-  return (BigInt(Number(ms) || 0) * 100000n + BigInt(Number(seq) || 0)).toString();
+  return (BigInt(Number(ms) || 0) * 1000000n + BigInt(Number(seq) || 0)).toString();
 }
