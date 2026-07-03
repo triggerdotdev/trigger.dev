@@ -12,7 +12,7 @@ import { ShadowRealtimeClient } from "./shadowRealtimeClient.server";
 
 /**
  * Process-singleton wiring for the shadow-compare client. Only constructed
- * when an org's `realtimeBackend` flag is set to "shadow-sm".
+ * when an org's `realtimeBackend` flag is set to "shadow".
  */
 function initializeShadowRealtimeClient(): ShadowRealtimeClient {
   const compares = getMeter("realtime-shadow").createCounter("realtime_shadow.compares", {

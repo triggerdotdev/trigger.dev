@@ -15,7 +15,7 @@ import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { startActiveSpan, attributesFromAuthenticatedEnv } from "~/v3/tracer.server";
 
-type TemplateCreationMode = "required" | "shadow-sm" | "skip";
+type TemplateCreationMode = "required" | "shadow" | "skip";
 
 // Why the mode was chosen — slices the compute.template.create span by path.
 type TemplateModeReason =
@@ -95,7 +95,7 @@ export class ComputeTemplateCreationService {
         return;
       }
 
-      if (mode === "shadow-sm") {
+      if (mode === "shadow") {
         // Shadow is fire-and-forget (background build), so the span only records
         // that it was dispatched — the build outcome lands server-side later.
         span.setAttribute("compute.template.result", "shadow_dispatched");
@@ -226,7 +226,7 @@ export class ComputeTemplateCreationService {
         try {
           planType = (await getEntitlement(project.organization.id))?.plan?.type;
         } catch (error) {
-          logger.warn("compute migration: entitlement lookup failed; skipping shadow-sm template", {
+          logger.warn("compute migration: entitlement lookup failed; skipping shadow template", {
             organizationId: project.organization.id,
             error: error instanceof Error ? error.message : String(error),
           });
@@ -236,7 +236,7 @@ export class ComputeTemplateCreationService {
       if (migrated) {
         // required => template built at deploy (deploy fails on error); off => shadow.
         return {
-          mode: decision.flags?.computeMigrationRequireTemplate ? "required" : "shadow-sm",
+          mode: decision.flags?.computeMigrationRequireTemplate ? "required" : "shadow",
           migrated: true,
           reason: "migrated",
         };
@@ -246,12 +246,12 @@ export class ComputeTemplateCreationService {
     const hasComputeAccess = await resolveComputeAccess(prisma, project.organization.featureFlags);
 
     if (hasComputeAccess) {
-      return { mode: "shadow-sm", migrated: false, reason: "compute-access" };
+      return { mode: "shadow", migrated: false, reason: "compute-access" };
     }
 
     const rolloutPct = Number(env.COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT ?? "0");
     if (rolloutPct > 0 && Math.random() * 100 < rolloutPct) {
-      return { mode: "shadow-sm", migrated: false, reason: "rollout" };
+      return { mode: "shadow", migrated: false, reason: "rollout" };
     }
 
     return { mode: "skip", migrated: false, reason: "none" };

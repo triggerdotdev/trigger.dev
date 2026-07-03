@@ -11,7 +11,7 @@ import { type RealtimeStreamClient } from "./nativeRealtimeClient.server";
 import { getNativeRealtimeClient } from "./nativeRealtimeClientInstance.server";
 import { getShadowRealtimeClient } from "./shadowRealtimeClientInstance.server";
 
-type RealtimeBackend = "electric" | "native" | "shadow-sm";
+type RealtimeBackend = "electric" | "native" | "shadow";
 
 // Two gates, both defaulting to the Electric path: the env master switch, then the
 // per-org `realtimeBackend` feature flag (cached so long-polls don't hit the DB per request).
@@ -43,7 +43,7 @@ export async function resolveRealtimeStreamClient(
   switch (await getRealtimeBackend(environment.organizationId, orgFeatureFlags)) {
     case "native":
       return getNativeRealtimeClient();
-    case "shadow-sm":
+    case "shadow":
       // The client is still served Electric; the native path is diffed in the background.
       return getShadowRealtimeClient();
     case "electric":
