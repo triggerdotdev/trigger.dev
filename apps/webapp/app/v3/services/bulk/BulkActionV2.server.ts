@@ -51,6 +51,15 @@ export type ProcessToCompletionResult = {
   completed: boolean;
 };
 
+// How recently a PENDING replay must have made progress to still count against
+// the per-environment concurrency limit. Every processed batch bumps the
+// group's `updatedAt`, so a live replay keeps a fresh heartbeat for its whole
+// life no matter how long it runs, while a replay whose job has exhausted its
+// retries (and stopped making progress) ages out and frees its slot. This is
+// wide enough to cover the worst-case gap between batches for a healthy replay
+// that is retrying.
+const REPLAY_INFLIGHT_WINDOW_MS = 30 * 60 * 1000;
+
 export class BulkActionService extends BaseService {
   #splitEnabledPromise?: Promise<boolean>;
 
@@ -70,9 +79,12 @@ export class BulkActionService extends BaseService {
     const { organizationId, projectId, environmentId, userId } = input;
     const filters = freezeRunListFilters(input.filters);
 
-    // Concurrency guard for replays
-    // The count is backed by the (environmentId, status, type) index, so it only
-    // touches this env's PENDING replays and stays cheap.
+    // Concurrency guard for replays.
+    // The seek is backed by the (environmentId, status, type) index; the
+    // `updatedAt` window is applied on top so we only count replays that are
+    // actually still making progress. A replay whose job has died stops bumping
+    // `updatedAt` and drops out of the count, so it can't permanently hold a
+    // slot. Aborting a replay (dashboard or API) clears its slot immediately.
     if (input.action === "replay") {
       const maxConcurrentReplays = env.BULK_ACTION_MAX_CONCURRENT_REPLAYS;
       const inFlightReplays = await this._replica.bulkActionGroup.count({
@@ -80,6 +92,7 @@ export class BulkActionService extends BaseService {
           environmentId,
           type: BulkActionType.REPLAY,
           status: BulkActionStatus.PENDING,
+          updatedAt: { gte: new Date(Date.now() - REPLAY_INFLIGHT_WINDOW_MS) },
         },
       });
 
