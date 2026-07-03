@@ -51,13 +51,13 @@ function LastUsedBadge({ className }: { className?: string }) {
       )}
     >
       <motion.div
-        className="relative rounded border border-charcoal-700 bg-charcoal-800 px-2 py-1 text-center text-xxs font-medium uppercase text-blue-500"
+        className="relative rounded border border-grid-bright bg-background-bright px-2 py-1 text-center text-xxs font-medium uppercase text-blue-500"
         initial={shouldReduceMotion ? undefined : { opacity: 0, x: 4 }}
         animate={shouldReduceMotion ? undefined : { opacity: 1, x: 0 }}
         transition={shouldReduceMotion ? undefined : { duration: 0.8, ease: "easeOut" }}
       >
         <span className="pointer-events-none absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <span className="hidden h-2 w-2 rotate-45 border-b border-l border-charcoal-700 bg-charcoal-800 md:block" />
+          <span className="hidden h-2 w-2 rotate-45 border-b border-l border-grid-bright bg-background-bright md:block" />
         </span>
         Last used
       </motion.div>
@@ -255,9 +255,9 @@ export default function LoginPage() {
               <>
                 {(data.showGithubAuth || data.showGoogleAuth || data.showSsoAuth) && (
                   <div className="flex w-full items-center gap-3 py-1">
-                    <div className="h-px flex-1 bg-charcoal-700" />
+                    <div className="h-px flex-1 bg-background-raised" />
                     <span className="text-xs uppercase text-text-dimmed">or</span>
-                    <div className="h-px flex-1 bg-charcoal-700" />
+                    <div className="h-px flex-1 bg-background-raised" />
                   </div>
                 )}
                 <div className="w-full">

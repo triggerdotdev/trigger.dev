@@ -191,7 +191,7 @@ export default function Page() {
           />
         ) : null}
       </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="space-y-3">
           <div className="px-3 pt-3">
             <Meter
@@ -313,7 +313,7 @@ function Meter({ type, successCount, failureCount, totalCount }: MeterProps) {
           {formatNumber(successCount + failureCount)}/{formatNumber(totalCount)}
         </Paragraph>
       </div>
-      <div className="relative h-4 w-full overflow-hidden rounded-sm bg-charcoal-900">
+      <div className="relative h-4 w-full overflow-hidden rounded-sm bg-background-deep">
         <motion.div
           className="absolute left-0 top-0 h-full w-full bg-success"
           initial={{ width: `${successPercentage}%` }}
@@ -321,7 +321,7 @@ function Meter({ type, successCount, failureCount, totalCount }: MeterProps) {
           transition={{ duration: 0.3, ease: "easeOut" }}
         />
         <motion.div
-          className="absolute top-0 h-full w-full bg-charcoal-550"
+          className="absolute top-0 h-full w-full bg-surface-control-hover"
           initial={{ width: `${failurePercentage}%`, left: `${successPercentage}%` }}
           animate={{ width: `${failurePercentage}%`, left: `${successPercentage}%` }}
           transition={{ duration: 0.3, ease: "easeOut" }}
@@ -335,7 +335,7 @@ function Meter({ type, successCount, failureCount, totalCount }: MeterProps) {
           </Paragraph>
         </div>
         <div className="flex items-center gap-1">
-          <div className="h-2 w-2 rounded-[1px] bg-charcoal-550" />
+          <div className="h-2 w-2 rounded-[1px] bg-surface-control-hover" />
           <Paragraph variant="extra-small">
             {formatNumber(failureCount)} {typeText(type)} failed{" "}
             {type === "CANCEL" ? " (already finished)" : ""}

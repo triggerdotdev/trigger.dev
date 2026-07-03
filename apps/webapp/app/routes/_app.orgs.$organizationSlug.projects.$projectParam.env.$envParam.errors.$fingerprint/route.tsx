@@ -550,7 +550,7 @@ function ErrorGroupDetail({
               />
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-3">
-                <BugIcon className="size-16 text-charcoal-650" />
+                <BugIcon className="size-16 text-secondary" />
                 <Paragraph className="max-w-32 text-center text-text-dimmed">
                   No runs found for this error.
                 </Paragraph>
@@ -581,7 +581,7 @@ function ErrorDetailSidebar({
       <div className="border-b border-grid-dimmed px-3 py-2">
         <Header2 className="truncate">Details</Header2>
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="flex flex-col gap-4">
           <Property.Table>
             {/* Status */}
@@ -937,7 +937,7 @@ const ActivityTooltip = ({
   return (
     <TooltipPortal active={active}>
       <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-        <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+        <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
         <div className="mt-2 flex flex-col gap-1">
           {payload.map((entry, i) => {
             const value = (entry.value as number) ?? 0;
@@ -959,7 +959,7 @@ function ActivityChartBlankState() {
   return (
     <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
       {[...Array(42)].map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-charcoal-850" />
+        <div key={i} className="h-full flex-1 bg-background-dimmed" />
       ))}
     </div>
   );

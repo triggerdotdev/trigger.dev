@@ -327,7 +327,7 @@ export default function VercelOnboardingPage() {
 
   if (data.step === "error") {
     return (
-      <AppContainer className="bg-charcoal-900">
+      <AppContainer className="bg-background-deep">
         <BackgroundWrapper>
           <MainCenteredContainer
             variant="onboarding"
@@ -358,7 +358,7 @@ export default function VercelOnboardingPage() {
     })();
 
     return (
-      <AppContainer className="bg-charcoal-900">
+      <AppContainer className="bg-background-deep">
         <BackgroundWrapper>
           <MainCenteredContainer
             variant="onboarding"
@@ -438,7 +438,7 @@ export default function VercelOnboardingPage() {
   const isLoading = isSubmitting || isInstalling;
 
   return (
-    <AppContainer className="bg-charcoal-900">
+    <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
         <MainCenteredContainer
           variant="onboarding"

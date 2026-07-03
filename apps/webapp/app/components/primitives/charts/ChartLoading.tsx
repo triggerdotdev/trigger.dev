@@ -136,7 +136,7 @@ function ChartBarLoadingBackground() {
                 return (
                   <motion.div
                     key={i}
-                    className="flex-1 rounded-sm bg-charcoal-750/50"
+                    className="flex-1 rounded-sm bg-background-hover/50"
                     style={{ height: `${height}%` }}
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: `${height}%`, opacity: 1 }}
@@ -175,8 +175,8 @@ function ChartBarLoadingBackground() {
                     delay: 0.3 + i * 0.08,
                   }}
                 >
-                  <div className="h-5 w-2 rounded-sm bg-charcoal-750/50" />
-                  <div className="h-5 w-full rounded-sm bg-charcoal-750/50" />
+                  <div className="h-5 w-2 rounded-sm bg-background-hover/50" />
+                  <div className="h-5 w-full rounded-sm bg-background-hover/50" />
                 </motion.div>
               ))}
             </motion.div>
@@ -331,8 +331,8 @@ function ChartLineLoadingBackground() {
               delay: 0.3 + i * 0.08,
             }}
           >
-            <div className="h-5 w-2 rounded-sm bg-charcoal-750/50" />
-            <div className="h-5 w-full rounded-sm bg-charcoal-750/50" />
+            <div className="h-5 w-2 rounded-sm bg-background-hover/50" />
+            <div className="h-5 w-full rounded-sm bg-background-hover/50" />
           </motion.div>
         ))}
       </motion.div>

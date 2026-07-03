@@ -40,7 +40,7 @@ export function IconInBox({ boxClassName, ...props }: IconProps & { boxClassName
   return (
     <div
       className={cn(
-        "grid h-9 w-9 place-content-center rounded-sm border border-charcoal-750 bg-charcoal-850",
+        "grid h-9 w-9 place-content-center rounded-sm border border-grid-dimmed bg-background-dimmed",
         boxClassName
       )}
     >

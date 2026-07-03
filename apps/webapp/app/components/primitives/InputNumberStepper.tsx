@@ -128,7 +128,7 @@ export function InputNumberStepper({
   return (
     <div
       className={cn(
-        "flex items-center rounded border border-charcoal-600 bg-tertiary transition hover:border-charcoal-550/80 hover:bg-charcoal-600/80",
+        "flex items-center rounded border border-border-bright bg-tertiary transition hover:border-border-brighter/80 hover:bg-surface-control/80",
         size.container,
         "has-focus-visible:outline-solid has-focus-visible:outline-1 has-focus-visible:outline-offset-0 has-focus-visible:outline-text-link",
         disabled && "cursor-not-allowed opacity-50",

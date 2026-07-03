@@ -19,9 +19,9 @@ export const variants = {
     small,
     "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-text-dimmed/60"
   ),
-  "small/bright": cn(small, "bg-charcoal-750 text-text-bright border-charcoal-650"),
-  medium: cn(medium, "group-hover:border-charcoal-550"),
-  "medium/bright": cn(medium, "bg-charcoal-750 text-text-bright border-charcoal-650"),
+  "small/bright": cn(small, "bg-background-hover text-text-bright border-border-bright"),
+  medium: cn(medium, "group-hover:border-border-brighter"),
+  "medium/bright": cn(medium, "bg-background-hover text-text-bright border-border-bright"),
 };
 
 export type ShortcutKeyVariant = keyof typeof variants;

@@ -280,7 +280,7 @@ export default function AdminFeatureFlagsRoute() {
                   "flex items-center justify-between rounded-md border px-3 py-2.5",
                   isSet
                     ? "border-indigo-500/20 bg-indigo-500/5"
-                    : "border-transparent bg-charcoal-750"
+                    : "border-transparent bg-background-hover"
                 )}
               >
                 <div className="min-w-0 flex-1">
@@ -292,7 +292,7 @@ export default function AdminFeatureFlagsRoute() {
                   >
                     {isWorkerGroup ? "defaultWorkerInstanceGroup" : key}
                   </div>
-                  <div className="text-xs text-charcoal-400">
+                  <div className="text-xs text-text-dimmed">
                     {isSet
                       ? isWorkerGroup
                         ? resolveWorkerGroupDisplay(values[key] as string)
@@ -453,7 +453,7 @@ function LockedFlagRow({
     <div
       className={cn(
         "flex items-center justify-between rounded-md border px-3 py-2.5",
-        isSet ? "border-indigo-500/20 bg-indigo-500/5" : "border-transparent bg-charcoal-750"
+        isSet ? "border-indigo-500/20 bg-indigo-500/5" : "border-transparent bg-background-hover"
       )}
       title="Managed via database - not editable from this UI"
     >
@@ -461,10 +461,10 @@ function LockedFlagRow({
         <div className={cn("truncate text-sm", isSet ? "text-text-bright" : "text-text-dimmed")}>
           {isWorkerGroup ? "defaultWorkerInstanceGroup" : flagKey}
         </div>
-        <div className="text-xs text-charcoal-400">{displayValue}</div>
+        <div className="text-xs text-text-dimmed">{displayValue}</div>
       </div>
 
-      <LockClosedIcon className="size-4 text-charcoal-500" />
+      <LockClosedIcon className="size-4 text-text-faint" />
     </div>
   );
 }
@@ -541,7 +541,7 @@ function ConfirmDialog({
             changes.map((change) => (
               <div
                 key={change.key}
-                className="rounded-md border border-charcoal-600 bg-charcoal-800 px-3 py-2 font-mono text-xs"
+                className="rounded-md border border-border-bright bg-background-bright px-3 py-2 font-mono text-xs"
               >
                 <div className="font-sans text-sm text-text-bright">{change.key}</div>
                 {change.type === "added" && (

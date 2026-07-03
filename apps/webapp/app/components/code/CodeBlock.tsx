@@ -359,7 +359,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
             <div
               dir="ltr"
               className={cn(
-                "min-h-0 flex-1 px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                "min-h-0 flex-1 px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
                 "overflow-auto"
               )}
               style={{
@@ -412,7 +412,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
             ) : (
               <div
                 dir="ltr"
-                className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
               >
                 <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
                   {highlightSearchText(code, searchTerm)}
@@ -430,14 +430,14 @@ CodeBlock.displayName = "CodeBlock";
 
 function Chrome({ title }: { title?: string }) {
   return (
-    <div className="grid h-7 grid-cols-[100px_auto_100px] border-b border-charcoal-800 bg-charcoal-900">
+    <div className="grid h-7 grid-cols-[100px_auto_100px] border-b border-background-bright bg-background-deep">
       <div className="ml-2 flex items-center gap-2">
-        <div className="h-3 w-3 rounded-full bg-charcoal-700" />
-        <div className="h-3 w-3 rounded-full bg-charcoal-700" />
-        <div className="h-3 w-3 rounded-full bg-charcoal-700" />
+        <div className="h-3 w-3 rounded-full bg-background-raised" />
+        <div className="h-3 w-3 rounded-full bg-background-raised" />
+        <div className="h-3 w-3 rounded-full bg-background-raised" />
       </div>
       <div className="flex items-center justify-center">
-        <div className={cn("rounded-sm px-3 py-0.5 text-xs text-charcoal-500")}>{title}</div>
+        <div className={cn("rounded-sm px-3 py-0.5 text-xs text-text-faint")}>{title}</div>
       </div>
       <div></div>
     </div>
@@ -493,7 +493,7 @@ function HighlightCode({
   }, []);
 
   const containerClasses = cn(
-    "min-h-0 flex-1 px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+    "min-h-0 flex-1 px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
     !isWrapped && "overflow-auto",
     isWrapped && "overflow-auto",
     className
@@ -557,7 +557,7 @@ function HighlightCode({
                     {showLineNumbers && (
                       <div
                         className={cn(
-                          "mr-2 flex-none select-none text-right text-charcoal-500 transition-opacity duration-500",
+                          "mr-2 flex-none select-none text-right text-text-faint transition-opacity duration-500",
                           isWrapped && "sticky left-0"
                         )}
                         style={{

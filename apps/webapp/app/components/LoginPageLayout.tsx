@@ -68,7 +68,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
         </div>
         <div className="flex flex-col items-center gap-4 px-8">
           <Paragraph>Trusted by developers at</Paragraph>
-          <div className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-3 text-charcoal-500 xl:justify-between xl:gap-0">
+          <div className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-3 text-text-faint xl:justify-between xl:gap-0">
             <LyftLogo className="w-11" />
             <UnkeyLogo />
             <MiddayLogo />

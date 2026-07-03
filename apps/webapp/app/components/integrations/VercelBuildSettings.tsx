@@ -82,7 +82,7 @@ export function BuildSettingsFields({
             )}
           </Hint>
         </div>
-        <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
+        <div className="flex flex-col gap-2 rounded border bg-background-bright p-3">
           {availableEnvSlugs.map((slug) => {
             const envType = envSlugToType(slug);
             const disabled = isSlugDisabled(slug);
@@ -149,7 +149,7 @@ export function BuildSettingsFields({
             variables from Vercel during builds.
           </Hint>
         </div>
-        <div className="flex flex-col gap-2 rounded border bg-charcoal-800 p-3">
+        <div className="flex flex-col gap-2 rounded border bg-background-bright p-3">
           {availableEnvSlugs.map((slug) => {
             const envType = envSlugToType(slug);
             const disabled = isSlugDisabled(slug);

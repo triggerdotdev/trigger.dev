@@ -113,7 +113,7 @@ export function LogsTable({
   }, [hasMore, isLoadingMore, onLoadMore]);
 
   return (
-    <div className="relative h-full overflow-auto border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="relative h-full overflow-auto border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <Table variant="compact/mono" containerClassName="overflow-visible" showTopBorder={false}>
         <TableHeader className="sticky top-0 z-10">
           <TableRow>
@@ -151,7 +151,7 @@ export function LogsTable({
                   key={log.id}
                   className={cn(
                     "cursor-pointer transition-colors",
-                    isSelected ? "bg-charcoal-750" : "hover:bg-charcoal-850"
+                    isSelected ? "bg-background-hover" : "hover:bg-background-dimmed"
                   )}
                   isSelected={isSelected}
                 >

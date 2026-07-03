@@ -22,7 +22,7 @@ const sizes = {
 const style = {
   tertiary: {
     button:
-      "bg-tertiary focus-custom border border-tertiary hover:text-text-bright hover:border-charcoal-600",
+      "bg-tertiary focus-custom border border-tertiary hover:text-text-bright hover:border-border-bright",
   },
   minimal: {
     button:
@@ -30,7 +30,7 @@ const style = {
   },
   secondary: {
     button:
-      "bg-secondary focus-custom border border-charcoal-600 hover:text-text-bright hover:border-charcoal-550 text-text-bright hover:bg-charcoal-600",
+      "bg-secondary focus-custom border border-border-bright hover:text-text-bright hover:border-border-brighter text-text-bright hover:bg-surface-control",
   },
 };
 
@@ -358,7 +358,7 @@ export function SelectTrigger({
       {showTooltip && (
         <Ariakit.Tooltip
           disabled={!tooltipTitle && !shortcut}
-          className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs"
+          className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs"
         >
           <div className="flex items-center gap-2">
             <span>{tooltipTitle ?? "Open menu"}</span>
@@ -437,7 +437,7 @@ export function SelectList(props: SelectListProps) {
     <Component
       {...props}
       className={cn(
-        "overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 focus-custom",
+        "overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control focus-custom",
         props.className
       )}
     />
@@ -518,7 +518,9 @@ export function SelectItem({
         {checkPosition === "right" && checkIcon}
         {shortcut && (
           <ShortcutKey
-            className={cn("size-4 flex-none transition duration-0 group-hover:border-charcoal-600")}
+            className={cn(
+              "size-4 flex-none transition duration-0 group-hover:border-border-bright"
+            )}
             shortcut={shortcut}
             variant={"small"}
           />
@@ -603,7 +605,7 @@ export function shortcutFromIndex(
 export interface SelectSeparatorProps extends React.ComponentProps<"div"> {}
 
 export function SelectSeparator(props: SelectSeparatorProps) {
-  return <div {...props} className={cn("h-px bg-charcoal-700", props.className)} />;
+  return <div {...props} className={cn("h-px bg-background-raised", props.className)} />;
 }
 
 export interface SelectGroupProps extends Ariakit.SelectGroupProps {}
@@ -619,7 +621,7 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
     <Ariakit.SelectGroupLabel
       {...props}
       className={cn(
-        "flex h-5.5 items-center border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright",
+        "flex h-5.5 items-center border-b border-grid-bright bg-background-hover px-2.5 text-xxs uppercase text-text-bright",
         props.className
       )}
     />
@@ -629,7 +631,7 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
 export interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
 export function SelectHeading({ render, ...props }: SelectHeadingProps) {
   return (
-    <div className="flex h-5.5 flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
+    <div className="flex h-5.5 flex-none cursor-default items-center gap-2 border-b border-grid-bright bg-background-hover px-2.5 text-xxs uppercase text-text-bright">
       <Ariakit.SelectHeading render={render} />
     </div>
   );
@@ -649,7 +651,7 @@ export function SelectPopover({
       shift={shift}
       unmountOnHide={unmountOnHide}
       className={cn(
-        "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-hidden animate-in fade-in-40",
+        "z-50 flex flex-col overflow-clip rounded border border-grid-bright bg-background-bright shadow-md outline-hidden animate-in fade-in-40",
         "min-w-[max(180px,var(--popover-anchor-width))]",
         "max-w-[min(480px,var(--popover-available-width))]",
         "max-h-[min(600px,var(--popover-available-height))]",

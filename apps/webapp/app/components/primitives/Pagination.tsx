@@ -73,7 +73,7 @@ export function PaginationControls({
 
           <div
             className={cn(
-              "order-2 h-6 w-px bg-charcoal-600 transition-colors peer-hover/next:bg-charcoal-550 peer-hover/prev:bg-charcoal-550",
+              "order-2 h-6 w-px bg-surface-control transition-colors peer-hover/next:bg-surface-control-hover peer-hover/prev:bg-surface-control-hover",
               currentPage === 1 && nextDisabled && "opacity-30"
             )}
           />
@@ -109,7 +109,8 @@ function pageUrl(location: ReturnType<typeof useLocation>, page: number): string
 const baseClass =
   "flex items-center justify-center border border-transparent min-w-6 h-6 px-1 text-xs font-medium transition text-text-dimmed rounded-sm focus-visible:focus-custom";
 const unselectedClass = "hover:bg-tertiary hover:text-text-bright";
-const selectedClass = "border-charcoal-600 bg-tertiary text-text-bright hover:bg-charcoal-600/50";
+const selectedClass =
+  "border-border-bright bg-tertiary text-text-bright hover:bg-surface-control/50";
 
 function PageLinkComponent({
   page,

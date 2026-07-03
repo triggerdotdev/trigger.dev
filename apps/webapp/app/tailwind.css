@@ -148,12 +148,26 @@
   --color-secondary: var(--color-charcoal-650);
   --color-tertiary: var(--color-charcoal-700);
   --color-text-link: var(--color-lavender-400);
+  --color-text-faint: var(--color-charcoal-500);
   --color-text-dimmed: var(--color-charcoal-400);
   --color-text-bright: var(--color-charcoal-200);
-  --color-background-bright: var(--color-charcoal-800);
+
+  /* Surfaces, from deepest to most raised */
+  --color-background-deep: var(--color-charcoal-900);
   --color-background-dimmed: var(--color-charcoal-850);
-  --color-grid-bright: var(--color-charcoal-700);
+  --color-background-bright: var(--color-charcoal-800);
+  --color-background-hover: var(--color-charcoal-750);
+  --color-background-raised: var(--color-charcoal-700);
+  --color-surface-control: var(--color-charcoal-600);
+  --color-surface-control-hover: var(--color-charcoal-550);
+  --color-surface-control-active: var(--color-charcoal-500);
+
+  /* Borders, from subtlest to most visible */
   --color-grid-dimmed: var(--color-charcoal-750);
+  --color-grid-bright: var(--color-charcoal-700);
+  --color-border-bright: var(--color-charcoal-600);
+  --color-border-brighter: var(--color-charcoal-550);
+  --color-border-brightest: var(--color-charcoal-500);
   --color-success: var(--color-mint-500);
   --color-pending: var(--color-blue-500);
   --color-warning: var(--color-amber-500);

@@ -198,7 +198,7 @@ function PermanentStatusFilter() {
                     className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  <div className="flex h-6 items-center gap-1 rounded border border-border-bright bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-border-brighter group-hover:bg-surface-control">
                     <div className="grid size-4 place-items-center">
                       <div className="size-[75%] rounded-full border-2 border-text-bright" />
                     </div>
@@ -206,7 +206,7 @@ function PermanentStatusFilter() {
                   </div>
                 )}
               </Ariakit.TooltipAnchor>
-              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span>Filter by status</span>
                   <ShortcutKey
@@ -283,13 +283,13 @@ function PermanentBatchIdFilter() {
                     className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-border-bright bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-border-brighter group-hover:bg-surface-control">
                     <Squares2X2Icon className="size-3.5" />
                     <span>Batch ID</span>
                   </div>
                 )}
               </Ariakit.TooltipAnchor>
-              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span>Filter by batch ID</span>
                   <ShortcutKey

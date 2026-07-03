@@ -21,7 +21,7 @@ export default function Page() {
           <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-4" />
         </Link>
       </div>
-      <div className="overflow-y-auto p-8 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto p-8 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <Header1 spacing>Supported timezones</Header1>
         <Paragraph spacing>We support these timezones when creating a schedule.</Paragraph>
         <ul className="">

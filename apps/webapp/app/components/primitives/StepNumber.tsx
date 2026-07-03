@@ -29,7 +29,7 @@ export function StepNumber({
         </div>
       ) : (
         <div className="flex items-center gap-x-3">
-          <span className="flex h-6 w-6 items-center justify-center rounded border border-charcoal-700 bg-charcoal-800 py-1 text-xs font-semibold text-text-dimmed">
+          <span className="flex h-6 w-6 items-center justify-center rounded border border-grid-bright bg-background-bright py-1 text-xs font-semibold text-text-dimmed">
             {complete ? <CheckIcon className="size-4" /> : stepNumber}
           </span>
 

@@ -143,8 +143,8 @@ export function SaveToDashboardDialog({
                       isAtLimit
                         ? "cursor-not-allowed opacity-50"
                         : selectedDashboardId === dashboard.friendlyId
-                          ? "bg-charcoal-700 text-text-bright"
-                          : "text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
+                          ? "bg-background-raised text-text-bright"
+                          : "text-text-dimmed hover:bg-background-hover hover:text-text-bright"
                     )}
                   >
                     {selectedDashboardId === dashboard.friendlyId ? (

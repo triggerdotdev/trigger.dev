@@ -6,7 +6,7 @@ import { Icon } from "./Icon";
 
 const variants = {
   tertiary: {
-    container: "h-6 gap-1 rounded-sm hover:bg-charcoal-700 px-1",
+    container: "h-6 gap-1 rounded-sm hover:bg-background-raised px-1",
     icons: "h-4 w-4 text-text-bright",
     root: "h-4",
     track: "h-1 bg-grid-bright group-hover:bg-background-dimmed",

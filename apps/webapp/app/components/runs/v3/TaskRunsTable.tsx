@@ -505,7 +505,7 @@ export function TaskRunsTable({
                 )}
                 <TableCell to={path}>
                   {run.isTest ? (
-                    <CheckIcon className="size-4 text-charcoal-400 group-hover/table-row:text-text-bright" />
+                    <CheckIcon className="size-4 text-text-dimmed group-hover/table-row:text-text-bright" />
                   ) : (
                     "–"
                   )}
@@ -576,7 +576,7 @@ function RunActionsCell({
               <Dialog>
                 <DialogTrigger
                   asChild
-                  className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                  className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-background-raised hover:text-text-bright"
                 >
                   <Button
                     variant="small-menu-item"
@@ -613,7 +613,7 @@ function RunActionsCell({
               <Dialog>
                 <DialogTrigger
                   asChild
-                  className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                  className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-background-raised hover:text-text-bright"
                 >
                   <Button
                     variant="small-menu-item"
@@ -655,7 +655,7 @@ function RunActionsCell({
                 <Dialog>
                   <DialogTrigger
                     asChild
-                    className="size-6 rounded-sm p-1 text-text-bright transition hover:bg-charcoal-700"
+                    className="size-6 rounded-sm p-1 text-text-bright transition hover:bg-background-raised"
                   >
                     <NoSymbolIcon className="size-3" />
                   </DialogTrigger>
@@ -679,7 +679,7 @@ function RunActionsCell({
                 <Dialog>
                   <DialogTrigger
                     asChild
-                    className="h-6 w-6 rounded-sm p-1 text-text-bright transition hover:bg-charcoal-700"
+                    className="h-6 w-6 rounded-sm p-1 text-text-bright transition hover:bg-background-raised"
                   >
                     <ArrowPathIcon className="size-3" />
                   </DialogTrigger>

@@ -204,7 +204,7 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
   switch (status) {
     case "PENDING":
     case "DELAYED":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "PENDING_VERSION":
     case "WAITING_FOR_DEPLOY":
       return "text-amber-500";
@@ -213,12 +213,12 @@ export function runStatusClassNameColor(status: TaskRunStatus): string {
     case "DEQUEUED":
       return "text-pending";
     case "WAITING_TO_RESUME":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "PAUSED":
       return "text-amber-300";
     case "CANCELED":
     case "EXPIRED":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "INTERRUPTED":
       return "text-error";
     case "COMPLETED_SUCCESSFULLY":

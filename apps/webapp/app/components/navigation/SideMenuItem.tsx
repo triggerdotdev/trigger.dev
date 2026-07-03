@@ -60,7 +60,7 @@ export function SideMenuItem({
         isIndented ? "min-w-0 flex-1" : "w-full",
         isActive
           ? "bg-tertiary text-text-bright"
-          : "text-text-dimmed group-hover/menuitem:bg-charcoal-750 group-hover/menuitem:text-text-bright hover:bg-charcoal-750 hover:text-text-bright"
+          : "text-text-dimmed group-hover/menuitem:bg-background-hover group-hover/menuitem:text-text-bright hover:bg-background-hover hover:text-text-bright"
       )}
     >
       <Icon
@@ -131,7 +131,9 @@ export function SideMenuItem({
           <div
             className={cn(
               "absolute bottom-1 right-1 top-1 flex aspect-square items-center justify-center rounded",
-              isActive ? "group-hover/menuitem:bg-tertiary" : "group-hover/menuitem:bg-charcoal-750"
+              isActive
+                ? "group-hover/menuitem:bg-tertiary"
+                : "group-hover/menuitem:bg-background-hover"
             )}
           >
             {action}

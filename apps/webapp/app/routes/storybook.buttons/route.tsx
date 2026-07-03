@@ -28,7 +28,7 @@ export default function Story() {
   return (
     <div className="bg-background-dimmed p-12">
       <Header1 className="mb-2">Small buttons</Header1>
-      <div className="grid grid-cols-4 gap-8 border-b border-charcoal-700 pb-8">
+      <div className="grid grid-cols-4 gap-8 border-b border-grid-bright pb-8">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
           <Button variant="primary/small">Primary button</Button>
@@ -158,7 +158,7 @@ export default function Story() {
         </div>
       </div>
       <Header1 className="mb-2 mt-8">Medium buttons</Header1>
-      <div className="grid grid-cols-4 gap-8 border-b border-charcoal-700 pb-8">
+      <div className="grid grid-cols-4 gap-8 border-b border-grid-bright pb-8">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Basic</Header3>
           <Button variant="primary/medium">Primary button</Button>
@@ -340,7 +340,7 @@ export default function Story() {
       </div>
       <Header1 className="mb-2 mt-8">Menu items</Header1>
       <div className="grid grid-cols-1">
-        <div className="flex flex-col items-start gap-1 rounded border border-charcoal-800 bg-charcoal-850 p-1">
+        <div className="flex flex-col items-start gap-1 rounded border border-background-bright bg-background-dimmed p-1">
           <Button variant="menu-item" fullWidth textAlignLeft LeadingIcon={FolderIcon}>
             Acme Inc.
           </Button>
@@ -353,7 +353,9 @@ export default function Story() {
             textAlignLeft
             LeadingIcon={GlobeAltIcon}
             TrailingIcon={isSelected ? CheckIcon : undefined}
-            className={isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-750" : undefined}
+            className={
+              isSelected ? "bg-background-hover group-hover:bg-background-hover" : undefined
+            }
           >
             Item enabled
           </Button>

@@ -244,7 +244,7 @@ function SideMenu({ stories }: { stories: Story[] }) {
       )}
     >
       <div className="flex h-full flex-col">
-        <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           {stories.map((story) => {
             return (
               <Fragment key={story.slug}>

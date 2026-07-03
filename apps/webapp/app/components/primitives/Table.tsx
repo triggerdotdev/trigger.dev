@@ -11,14 +11,14 @@ const variants = {
   bright: {
     header: "bg-background-bright",
     headerCell: "px-3 py-2.5 pb-3 text-sm",
-    cell: "group-hover/table-row:bg-charcoal-750 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
+    cell: "group-hover/table-row:bg-background-hover group-has-[[tabindex='0']:focus]/table-row:bg-background-hover",
     cellSize: "px-3 py-3",
     cellText: "text-xs group-hover/table-row:text-text-bright",
-    stickyCell: "bg-background-bright group-hover/table-row:bg-charcoal-750",
+    stickyCell: "bg-background-bright group-hover/table-row:bg-background-hover",
     menuButton:
-      "bg-background-bright group-hover/table-row:bg-charcoal-750 group-hover/table-row:ring-charcoal-600/70 group-has-[[tabindex='0']:focus]/table-row:bg-charcoal-750",
-    menuButtonDivider: "group-hover/table-row:border-charcoal-600/70",
-    rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
+      "bg-background-bright group-hover/table-row:bg-background-hover group-hover/table-row:ring-border-bright/70 group-has-[[tabindex='0']:focus]/table-row:bg-background-hover",
+    menuButtonDivider: "group-hover/table-row:border-border-bright/70",
+    rowSelected: "bg-background-hover group-hover/table-row:bg-background-hover",
   },
   "bright/no-hover": {
     header: "bg-transparent",
@@ -29,31 +29,31 @@ const variants = {
     stickyCell: "bg-background-bright",
     menuButton: "bg-background-bright",
     menuButtonDivider: "",
-    rowSelected: "bg-charcoal-750",
+    rowSelected: "bg-background-hover",
   },
   dimmed: {
     header: "bg-background-dimmed",
     headerCell: "px-3 py-2.5 pb-3 text-sm",
-    cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    cell: "group-hover/table-row:bg-background-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
     cellSize: "px-3 py-3",
     cellText: "text-xs group-hover/table-row:text-text-bright",
-    stickyCell: "group-hover/table-row:bg-charcoal-800",
+    stickyCell: "group-hover/table-row:bg-background-bright",
     menuButton:
-      "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+      "bg-background-dimmed group-hover/table-row:bg-background-bright group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
     menuButtonDivider: "group-hover/table-row:border-grid-bright",
-    rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
+    rowSelected: "bg-background-hover group-hover/table-row:bg-background-hover",
   },
   "compact/mono": {
     header: "bg-background-dimmed",
     headerCell: "px-2 py-1.5 text-sm",
-    cell: "group-hover/table-row:bg-charcoal-800 group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+    cell: "group-hover/table-row:bg-background-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
     cellSize: "px-2 py-1.5",
     cellText: "text-xs font-mono group-hover/table-row:text-text-bright",
-    stickyCell: "group-hover/table-row:bg-charcoal-800",
+    stickyCell: "group-hover/table-row:bg-background-bright",
     menuButton:
-      "bg-background-dimmed group-hover/table-row:bg-charcoal-800 group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
+      "bg-background-dimmed group-hover/table-row:bg-background-bright group-hover/table-row:ring-grid-bright group-has-[[tabindex='0']:focus]/table-row:bg-background-bright",
     menuButtonDivider: "group-hover/table-row:border-grid-bright",
-    rowSelected: "bg-charcoal-750 group-hover/table-row:bg-charcoal-750",
+    rowSelected: "bg-background-hover group-hover/table-row:bg-background-hover",
   },
 } as const;
 
@@ -88,7 +88,7 @@ export const Table = forwardRef<HTMLTableElement, TableProps & { variant?: Table
       <TableContext.Provider value={{ variant }}>
         <div
           className={cn(
-            "whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            "whitespace-nowrap scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
             stickyHeader ? "overflow-visible" : "overflow-x-auto",
             showTopBorder && "border-t",
             containerClassName,
@@ -306,7 +306,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       <td
         ref={ref}
         className={cn(
-          "safari-only text-xs text-charcoal-400 has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
+          "safari-only text-xs text-text-dimmed has-[[tabindex='0']:focus]:before:absolute has-[[tabindex='0']:focus]:before:-top-px has-[[tabindex='0']:focus]:before:left-0 has-[[tabindex='0']:focus]:before:h-px has-[[tabindex='0']:focus]:before:w-3 has-[[tabindex='0']:focus]:before:bg-grid-dimmed has-[[tabindex='0']:focus]:after:absolute has-[[tabindex='0']:focus]:after:bottom-0 has-[[tabindex='0']:focus]:after:left-0 has-[[tabindex='0']:focus]:after:right-0 has-[[tabindex='0']:focus]:after:h-px has-[[tabindex='0']:focus]:after:bg-grid-dimmed",
           variants[variant].cellText,
           variants[variant].cell,
           to || onClick || hasAction
@@ -317,7 +317,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           isSticky && variants[variant].stickyCell,
           isSelected && variants[variant].rowSelected,
           !isSelected &&
-            "group-hover/table-row:before:absolute group-hover/table-row:before:left-0 group-hover/table-row:before:-top-px group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:after:absolute group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3 group-hover/table-row:after:bg-charcoal-750 group-focus-visible/table-row:bg-background-bright",
+            "group-hover/table-row:before:absolute group-hover/table-row:before:left-0 group-hover/table-row:before:-top-px group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:bg-background-hover group-hover/table-row:after:absolute group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3 group-hover/table-row:after:bg-background-hover group-focus-visible/table-row:bg-background-bright",
           className
         )}
         colSpan={colSpan}
@@ -377,10 +377,10 @@ export const CopyableTableCell = forwardRef<HTMLTableCellElement, CopyableTableC
                 button={
                   <span
                     className={cn(
-                      "flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
+                      "flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
                       copied
                         ? "text-green-500"
-                        : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
+                        : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
                     )}
                   >
                     {copied ? (
@@ -501,7 +501,7 @@ export const TableCellMenu = forwardRef<
                   className="duration-0 group-hover/table-row:text-text-bright"
                 />
                 <PopoverContent
-                  className="min-w-40 max-w-80 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                  className="min-w-40 max-w-80 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
                   align="end"
                 >
                   {typeof popoverContent === "function" ? (

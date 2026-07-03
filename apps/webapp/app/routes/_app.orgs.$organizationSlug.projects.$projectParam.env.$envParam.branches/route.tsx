@@ -355,7 +355,7 @@ export default function Page() {
                             </TableCell>
                             <TableCell className={cellClass}>
                               {branch.archivedAt ? (
-                                <CheckIcon className="size-4 text-charcoal-400" />
+                                <CheckIcon className="size-4 text-text-dimmed" />
                               ) : (
                                 "–"
                               )}

@@ -42,11 +42,11 @@ export function CopyableText({
             button={
               <span
                 className={cn(
-                  "ml-1 flex size-6 items-center justify-center rounded border border-charcoal-650 bg-charcoal-750",
+                  "ml-1 flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
                   asChild && "p-1",
                   copied
                     ? "text-green-500"
-                    : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
+                    : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
                 )}
               >
                 {copied ? (

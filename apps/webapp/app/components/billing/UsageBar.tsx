@@ -110,7 +110,7 @@ function Legend({ text, value, position, percentage, tooltipContent }: LegendPro
   return (
     <div
       className={cn(
-        "absolute left-full z-10 flex border-charcoal-500",
+        "absolute left-full z-10 flex border-border-brightest",
         positions[position],
         flipLegendPosition === true ? "-translate-x-full border-r" : "border-l"
       )}

@@ -110,7 +110,7 @@ function UsageSparklineTooltip({
   return (
     <TooltipPortal active={active}>
       <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-        <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+        <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
         <div className="mt-2 text-xs text-text-bright">
           <span className="tabular-nums">{entry.count.toLocaleString()}</span>{" "}
           <span className="text-text-dimmed">

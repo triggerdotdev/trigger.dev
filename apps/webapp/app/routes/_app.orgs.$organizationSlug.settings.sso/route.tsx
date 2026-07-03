@@ -793,7 +793,7 @@ function ActiveConnectionState({
         {activeConnections.map((conn) => (
           <div
             key={conn.id}
-            className="rounded-md border border-grid-bright bg-charcoal-800 px-3 py-2"
+            className="rounded-md border border-grid-bright bg-background-bright px-3 py-2"
           >
             <Paragraph variant="small" className="text-text-bright">
               {conn.name ?? conn.connectionType}
@@ -1173,7 +1173,7 @@ function PortalLinkDialog({
         <DialogDescription>
           {purpose} The link expires 5 minutes after you open this dialog.
         </DialogDescription>
-        <div className="mt-4 break-all rounded-md border border-grid-bright bg-charcoal-800 p-3 font-mono text-xs">
+        <div className="mt-4 break-all rounded-md border border-grid-bright bg-background-bright p-3 font-mono text-xs">
           {url ?? ""}
         </div>
         <DialogFooter>
