@@ -1,4 +1,4 @@
-name: 📝 CLAUDE.md Audit
+name: 📝 Agent Instructions Audit
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ on:
       - "**/*.md"
 
 concurrency:
-  group: claude-md-audit-${{ github.event.pull_request.number }}
+  group: agent-instructions-audit-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -48,29 +48,36 @@ jobs:
             --allowedTools "Read,Glob,Grep,Bash(git diff:*)"
 
           prompt: |
-            You are reviewing a PR to check whether any CLAUDE.md files or .claude/rules/ files need updating.
+            You are reviewing a PR to check whether any agent instruction files need updating.
+
+            In this repo:
+            - Root shared agent guidance lives in `AGENTS.md`.
+            - Root `CLAUDE.md` is only a Claude Code adapter that imports `AGENTS.md`.
+            - Subdirectories may still have scoped `CLAUDE.md` files.
+            - `.claude/rules/` contains additional Claude Code guidance.
 
             ## Your task
 
             1. Run `git diff origin/main...HEAD --name-only` to see which files changed in this PR.
-            2. For each changed directory, check if there's a CLAUDE.md in that directory or a parent directory.
-            3. Determine if any CLAUDE.md or .claude/rules/ file should be updated based on the changes. Consider:
+            2. For each changed directory, check the applicable instruction files: root `AGENTS.md`, any `CLAUDE.md` in that directory or a parent directory, and relevant `.claude/rules/` files.
+            3. Determine if any instruction file should be updated based on the changes. Consider:
                - New files/directories that aren't covered by existing documentation
-               - Changed architecture or patterns that contradict current CLAUDE.md guidance
-               - New dependencies, services, or infrastructure that Claude should know about
-               - Renamed or moved files that are referenced in CLAUDE.md
+               - Changed architecture or patterns that contradict current agent guidance
+               - New dependencies, services, or infrastructure that agents should know about
+               - Renamed or moved files that are referenced in an instruction file
                - Changes to build commands, test patterns, or development workflows
 
             ## Response format
 
             If NO updates are needed, respond with exactly:
-            ✅ CLAUDE.md files look current for this PR.
+            ✅ Agent instruction files look current for this PR.
 
             If updates ARE needed, respond with a short list:
-            📝 **CLAUDE.md updates suggested:**
+            📝 **Agent instruction updates suggested:**
+            - `AGENTS.md`: [what should be added/changed]
             - `path/to/CLAUDE.md`: [what should be added/changed]
             - `.claude/rules/file.md`: [what should be added/changed]
 
-            Keep suggestions specific and brief. Only flag things that would actually mislead Claude in future sessions.
+            Keep suggestions specific and brief. Only flag things that would actually mislead agents in future sessions.
             Do NOT suggest updates for trivial changes (bug fixes, small refactors within existing patterns).
-            Do NOT suggest creating new CLAUDE.md files - only updates to existing ones.
+            Do NOT suggest creating new CLAUDE.md files - only updates to existing instruction files.
