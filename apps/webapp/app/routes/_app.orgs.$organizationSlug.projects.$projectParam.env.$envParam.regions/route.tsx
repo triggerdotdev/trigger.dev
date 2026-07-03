@@ -174,7 +174,7 @@ export default function Page() {
                       <TableHeaderCell
                         alignment="right"
                         tooltip={
-                          <div className="max-w-[12rem]">
+                          <div className="max-w-48">
                             <Paragraph variant="small">
                               When you trigger a run it will execute in your default region, unless
                               you override the region when triggering.
@@ -277,7 +277,7 @@ export default function Page() {
                       })
                     )}
 
-                    <TableRow className="h-[3.125rem]">
+                    <TableRow className="h-12.5">
                       <TableCell colSpan={isAdmin ? 5 : 4}>
                         <Paragraph variant="extra-small">Suggest a new region</Paragraph>
                       </TableCell>

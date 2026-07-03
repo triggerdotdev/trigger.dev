@@ -835,7 +835,7 @@ function CopyableCell({
         "relative flex h-full w-full items-center overflow-hidden px-2",
         "bg-background-bright group-hover/row:bg-charcoal-750",
         "font-mono text-xs text-text-dimmed group-hover/row:text-text-bright",
-        "[&_a:focus-visible]:underline [&_a:focus-visible]:underline-offset-[3px] [&_a:focus-visible]:outline-none",
+        "[&_a:focus-visible]:underline [&_a:focus-visible]:underline-offset-[3px] [&_a:focus-visible]:outline-hidden",
         alignment === "right" && "justify-end"
       )}
       onMouseEnter={() => setIsHovered(true)}
@@ -925,7 +925,7 @@ function HeaderCellContent({
           })}
         >
           <span className="truncate text-left">{children}</span>
-          <span className="flex flex-shrink-0">
+          <span className="flex shrink-0">
             <InfoIconTooltip
               content={tooltip}
               contentClassName="normal-case tracking-normal"
@@ -941,7 +941,7 @@ function HeaderCellContent({
       {canSort && (
         <span
           className={cn(
-            "flex-shrink-0 transition-colors",
+            "shrink-0 transition-colors",
             sortHighlighted ? "text-text-bright" : "text-text-dimmed"
           )}
         >
@@ -962,7 +962,7 @@ function HeaderCellContent({
           }}
           onMouseEnter={() => setIsFilterHovered(true)}
           onMouseLeave={() => setIsFilterHovered(false)}
-          className="flex-shrink-0 rounded text-text-dimmed transition-colors focus-custom hover:text-text-bright"
+          className="shrink-0 rounded text-text-dimmed transition-colors focus-custom hover:text-text-bright"
           title="Toggle column filters"
         >
           {showFilters ? <IconFilter2X className="size-4" /> : <IconFilter2 className="size-4" />}
@@ -1006,7 +1006,7 @@ function FilterCell({
         className={cn(
           "w-full rounded border border-charcoal-700 bg-charcoal-800 px-2 py-1",
           "text-xs text-text-bright placeholder:text-text-dimmed",
-          "focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+          "focus:border-indigo-500/50 focus:outline-hidden focus:ring-1 focus:ring-indigo-500/50"
         )}
       />
     </div>
@@ -1249,7 +1249,7 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
             height: `${rowVirtualizer.getTotalSize()}px`,
             position: "relative",
           }}
-          className="divide-y divide-charcoal-700 bg-background-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:z-[1] after:h-px after:bg-grid-bright"
+          className="divide-y divide-charcoal-700 bg-background-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:z-1 after:h-px after:bg-grid-bright"
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
             const row = tableRows[virtualRow.index];

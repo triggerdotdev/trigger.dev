@@ -145,7 +145,7 @@ export default function NewOrganizationPage() {
       <BackgroundWrapper>
         <MainCenteredContainer
           variant="onboarding"
-          className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+          className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
         >
           <FormTitle
             LeadingIcon={<BuildingOffice2Icon className="size-6 text-fuchsia-600" />}

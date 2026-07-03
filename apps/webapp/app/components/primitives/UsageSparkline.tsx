@@ -66,7 +66,7 @@ export function UsageSparkline({
 
   return (
     <div className="flex items-start gap-2">
-      <div className="h-6 w-[7rem] rounded-sm">
+      <div className="h-6 w-28 rounded-sm">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
             <YAxis domain={[0, max || 1]} hide />

@@ -49,7 +49,7 @@ export function TitleWidget({
           {title}
         </span>
         {hasMenu && (
-          <div className="flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
             <Popover open={isMenuOpen} onOpenChange={setIsMenuOpen}>
               <PopoverVerticalEllipseTrigger isOpen={isMenuOpen} />
               <PopoverContent align="end" className="p-0">
@@ -70,7 +70,7 @@ export function TitleWidget({
                       icon={TrashIcon}
                       title="Delete"
                       leadingIconClassName="text-error"
-                      className="text-error hover:!bg-error/10"
+                      className="text-error hover:bg-error/10!"
                       onClick={() => {
                         onDelete();
                         setIsMenuOpen(false);

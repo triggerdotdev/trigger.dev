@@ -30,7 +30,7 @@ function LastUsedBadge({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "absolute -right-5 top-1 z-10 -translate-y-1/2 shadow-md md:-right-[4.6rem] md:top-1/2",
+        "absolute -right-5 top-1 z-10 -translate-y-1/2 shadow-md md:right-[-4.6rem] md:top-1/2",
         className
       )}
     >

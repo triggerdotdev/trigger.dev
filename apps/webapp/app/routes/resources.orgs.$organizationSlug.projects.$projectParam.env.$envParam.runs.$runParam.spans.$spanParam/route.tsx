@@ -681,7 +681,7 @@ function RunBody({
                                   <KeyIcon className="size-4 text-text-dimmed" />
                                   <Header3>Idempotency keys</Header3>
                                 </div>
-                                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                                <Paragraph variant="small" className="text-wrap! text-text-dimmed">
                                   Prevent duplicate task runs. If you trigger a task with the same
                                   key twice, the second request returns the original run.
                                 </Paragraph>
@@ -1314,7 +1314,7 @@ function SpanEntity({ span }: { span: Span }) {
               <span>Message</span>
               <CopyTextLink value={span.message} />
             </Property.Label>
-            <Property.Value className="whitespace-pre-wrap [overflow-wrap:break-word]">
+            <Property.Value className="whitespace-pre-wrap wrap-break-word">
               {span.message}
             </Property.Value>
           </Property.Item>
@@ -1345,7 +1345,7 @@ function SpanEntity({ span }: { span: Span }) {
         {span.triggeredRuns.length > 0 && (
           <div className="flex flex-col gap-1.5">
             <Header3>Runs</Header3>
-            <Table containerClassName="max-h-[12.5rem]">
+            <Table containerClassName="max-h-50">
               <TableHeader className="bg-background-bright">
                 <TableRow>
                   <TableHeaderCell>ID</TableHeaderCell>

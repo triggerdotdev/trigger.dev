@@ -41,7 +41,7 @@ export default function Story() {
         <Paragraph>
           This table scrolls when a max-height is applied to the Table component.
         </Paragraph>
-        <Table containerClassName="max-h-[11.5rem]">
+        <Table containerClassName="max-h-46">
           <TableHeader className="bg-background-bright">
             <TableRow>
               <TableHeaderCell>Col 1</TableHeaderCell>

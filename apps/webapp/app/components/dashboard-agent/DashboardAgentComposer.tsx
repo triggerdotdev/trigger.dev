@@ -34,7 +34,7 @@ export function DashboardAgentComposer({
             }}
             placeholder="Type a message…"
             className={cn(
-              "max-h-[40vh] min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-none ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [field-sizing:content] focus:outline-none focus:ring-0"
+              "max-h-[40vh] min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 field-sizing-content focus:outline-hidden focus:ring-0"
             )}
           />
           {isStreaming ? (

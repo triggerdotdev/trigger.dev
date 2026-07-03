@@ -65,7 +65,7 @@ export function PaginationControls({
               tooltip="Previous"
               disabled={currentPage === 1}
               className={cn(
-                "flex items-center rounded-r-none border-r-0 pl-2 pr-[0.5625rem]",
+                "flex items-center rounded-r-none border-r-0 pl-2 pr-2.25",
                 currentPage === 1 && "cursor-not-allowed opacity-50"
               )}
             />
@@ -87,7 +87,7 @@ export function PaginationControls({
               tooltip="Next"
               disabled={nextDisabled}
               className={cn(
-                "flex items-center rounded-l-none border-l-0 pl-[0.5625rem] pr-2",
+                "flex items-center rounded-l-none border-l-0 pl-2.25 pr-2",
                 nextDisabled && "cursor-not-allowed opacity-50"
               )}
             />

@@ -751,7 +751,7 @@ function ScheduledTaskDetailSidebar({
         </LinkButton>
       </div>
       <div className="flex h-8 items-end justify-between gap-2 border-b border-grid-bright pl-3 pr-1.5">
-        <TabContainer className="!border-b-0">
+        <TabContainer className="border-b-0!">
           <TabButton
             isActive={activeTab === "overview"}
             layoutId="scheduled-task-detail-tabs"

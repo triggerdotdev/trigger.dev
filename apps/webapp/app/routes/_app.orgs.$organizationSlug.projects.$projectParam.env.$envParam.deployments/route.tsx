@@ -244,7 +244,7 @@ export default function Page() {
                                 </div>
                                 <Paragraph
                                   variant="extra-small"
-                                  className="!text-wrap text-text-dimmed"
+                                  className="text-wrap! text-text-dimmed"
                                 >
                                   {deploymentStatusDescription(status)}
                                 </Paragraph>

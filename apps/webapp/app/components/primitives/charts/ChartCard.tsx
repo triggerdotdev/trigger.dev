@@ -62,7 +62,7 @@ export function ChartCard({
                       aria-label="Maximize chart"
                       leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
                       onClick={() => setIsFullscreen(true)}
-                      className="!px-1"
+                      className="px-1!"
                     />
                   </span>
                 }

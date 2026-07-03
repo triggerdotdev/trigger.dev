@@ -411,7 +411,7 @@ function ReplayForm({
                         <SelectItem
                           key={queueItem.value}
                           value={queueItem.value}
-                          className="max-w-[var(--popover-anchor-width)]"
+                          className="max-w-(--popover-anchor-width)"
                           icon={
                             queueItem.type === "task" ? (
                               <TaskIcon className="size-4 shrink-0 text-blue-500" />

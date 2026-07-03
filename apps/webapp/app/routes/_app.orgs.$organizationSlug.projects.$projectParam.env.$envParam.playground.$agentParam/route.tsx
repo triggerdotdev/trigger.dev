@@ -650,7 +650,7 @@ function ChatComposer({
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           className={cn(
-            "scrollbar-gutter-stable flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-none ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [field-sizing:content] focus:border-0 focus:outline-none focus:ring-0",
+            "scrollbar-gutter-stable flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 field-sizing-content focus:border-0 focus:outline-hidden focus:ring-0",
             minHeightClassName,
             maxHeightClassName
           )}
@@ -1206,7 +1206,7 @@ function ConversationMenu({
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverVerticalEllipseTrigger variant="minimal" />
-      <PopoverContent className="w-fit min-w-[12rem] p-1" align="end">
+      <PopoverContent className="w-fit min-w-48 p-1" align="end">
         <div className="flex flex-col gap-1">
           <PopoverMenuItem
             icon={PlusIcon}
@@ -1311,7 +1311,7 @@ function HistoryTabContent({
               </span>
               <Link
                 to={`?conversation=${conv.id}`}
-                className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-none focus-custom"
+                className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-hidden focus-custom"
               >
                 <Paragraph variant="small/bright" className="line-clamp-1 text-left">
                   {conv.title}

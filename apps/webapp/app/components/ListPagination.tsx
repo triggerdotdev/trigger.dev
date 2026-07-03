@@ -41,7 +41,7 @@ function PreviousButton({ cursor }: { cursor?: string }) {
         variant={"secondary/small"}
         LeadingIcon={ChevronLeftIcon}
         className={cn(
-          "flex items-center rounded-r-none border-r-0 pl-2 pr-[0.5625rem]",
+          "flex items-center rounded-r-none border-r-0 pl-2 pr-2.25",
           !path && "cursor-not-allowed opacity-50"
         )}
         onClick={(e) => !path && e.preventDefault()}
@@ -63,7 +63,7 @@ function NextButton({ cursor }: { cursor?: string }) {
         variant={"secondary/small"}
         TrailingIcon={ChevronRightIcon}
         className={cn(
-          "flex items-center rounded-l-none border-l-0 pl-[0.5625rem] pr-2",
+          "flex items-center rounded-l-none border-l-0 pl-2.25 pr-2",
           !path && "cursor-not-allowed opacity-50"
         )}
         onClick={(e) => !path && e.preventDefault()}

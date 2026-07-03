@@ -56,7 +56,7 @@ export function SideMenuItem({
       target={target}
       data-action={dataAction}
       className={cn(
-        "group/menulink flex h-8 items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2",
+        "group/menulink flex h-8 items-center gap-2 overflow-hidden rounded pl-1.75 pr-2",
         isIndented ? "min-w-0 flex-1" : "w-full",
         isActive
           ? "bg-tertiary text-text-bright"
@@ -122,7 +122,7 @@ export function SideMenuItem({
           content={name}
           side="right"
           sideOffset={8}
-          buttonClassName="!h-8 block w-full"
+          buttonClassName="h-8! block w-full"
           hidden={!isCollapsed}
           asChild
           disableHoverableContent
@@ -147,7 +147,7 @@ export function SideMenuItem({
       content={name}
       side="right"
       sideOffset={8}
-      buttonClassName="!h-8 block w-full"
+      buttonClassName="h-8! block w-full"
       hidden={!isCollapsed}
       asChild
       disableHoverableContent

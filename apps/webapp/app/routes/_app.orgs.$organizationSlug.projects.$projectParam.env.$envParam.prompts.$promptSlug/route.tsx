@@ -924,7 +924,7 @@ function OverrideDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col !gap-0 overflow-hidden pl-0 pr-3 pt-0 md:max-w-4xl lg:max-w-6xl">
+      <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col gap-0! overflow-hidden pl-0 pr-3 pt-0 md:max-w-4xl lg:max-w-6xl">
         <DialogHeader className="px-4 py-2.5">
           {isEditingOverride ? "Edit override" : "Create override"}
         </DialogHeader>
@@ -1167,7 +1167,7 @@ function PreviewTab({
                 {field.enumValues ? (
                   <select
                     autoFocus={index === 0}
-                    className="h-6 w-full rounded border border-charcoal-650 bg-background-bright px-1 text-xs text-text-bright focus:border-indigo-500 focus:outline-none"
+                    className="h-6 w-full rounded border border-charcoal-650 bg-background-bright px-1 text-xs text-text-bright focus:border-indigo-500 focus:outline-hidden"
                     value={testVariables[field.name] ?? ""}
                     onChange={(e) =>
                       setTestVariables((prev) => ({
@@ -1596,7 +1596,7 @@ function GenerationsTab({
                           variant="minimal/small"
                           TrailingIcon={RunsIcon}
                           trailingIconClassName="text-text-bright"
-                          className="h-[1.375rem] pl-1.5 pr-2"
+                          className="h-5.5 pl-1.5 pr-2"
                         >
                           <span className="text-[0.6875rem] text-text-bright">View run</span>
                         </LinkButton>

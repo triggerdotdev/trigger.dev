@@ -136,7 +136,7 @@ export default function Page() {
       <BackgroundWrapper>
         <MainCenteredContainer
           variant="onboarding"
-          className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+          className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
         >
           <div>
             <FormTitle

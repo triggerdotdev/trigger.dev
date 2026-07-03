@@ -773,12 +773,12 @@ function CompareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-fit gap-[0.4375rem] !px-0 !pb-0 !pt-0 sm:!max-w-[90vw]">
+      <DialogContent className="w-fit! gap-1.75 px-0! pb-0! pt-0! sm:max-w-[90vw]!">
         <DialogHeader className="h-11 justify-center px-4">
           <DialogTitle>Compare models</DialogTitle>
         </DialogHeader>
         {rows.length > 0 ? (
-          <div className="-mt-[0.375rem] max-h-[70vh] overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [&_tbody_tr:last-child]:after:hidden">
+          <div className="-mt-1.5 max-h-[70vh] overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [&_tbody_tr:last-child]:after:hidden">
             <Table stickyHeader showTopBorder={false}>
               <TableHeader>
                 <TableRow>

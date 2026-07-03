@@ -78,7 +78,7 @@ export default function Page() {
 
   return (
     <AppContainer>
-      <MainCenteredContainer className="max-w-[22rem]">
+      <MainCenteredContainer className="max-w-88">
         <div className="flex flex-col items-center space-y-4">
           {result.success ? (
             <div>

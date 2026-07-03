@@ -53,7 +53,7 @@ export function DashboardAgentHistory({
                   <button
                     type="button"
                     onClick={() => onSelect(chat.id)}
-                    className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left outline-none focus-custom"
+                    className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left outline-hidden focus-custom"
                   >
                     <span className="line-clamp-1 text-sm text-text-bright">{chat.title}</span>
                     {chat.lastMessageAt && (

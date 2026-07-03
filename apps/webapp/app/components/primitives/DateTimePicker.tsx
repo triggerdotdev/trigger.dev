@@ -109,7 +109,7 @@ export function DateTimePicker({
         className={cn(
           "h-[1.8rem] rounded border border-charcoal-650 bg-charcoal-750 px-2 text-xs tabular-nums transition hover:border-charcoal-600",
           value ? "text-text-bright" : "text-text-dimmed",
-          "focus:border-charcoal-500 focus:outline-none",
+          "focus:border-charcoal-500 focus:outline-hidden",
           "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
         )}
         aria-label={`${label} time`}

@@ -229,7 +229,7 @@ function BulkActionsTable({
                   <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
                     <BulkActionStatusCombo status="PENDING" />
                   </div>
-                  <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                  <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
                     The bulk action is currently in progress. They can take some time if there are
                     lots of runs.
                   </Paragraph>
@@ -238,7 +238,7 @@ function BulkActionsTable({
                   <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
                     <BulkActionStatusCombo status="COMPLETED" />
                   </div>
-                  <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                  <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
                     The bulk action has completed successfully.
                   </Paragraph>
                 </div>
@@ -246,7 +246,7 @@ function BulkActionsTable({
                   <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
                     <BulkActionStatusCombo status="ABORTED" />
                   </div>
-                  <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                  <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
                     The bulk action was aborted.
                   </Paragraph>
                 </div>

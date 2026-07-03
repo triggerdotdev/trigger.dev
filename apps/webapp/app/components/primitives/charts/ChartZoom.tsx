@@ -138,7 +138,7 @@ export function ZoomTooltip({
         {message}
         <div
           className={cn(
-            "absolute -top-[5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45",
+            "absolute top-[-5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45",
             invalidSelection
               ? "border-l border-t border-amber-800 bg-amber-950"
               : "border-l border-t border-blue-800 bg-[#1B2334]"
@@ -161,7 +161,7 @@ export function ZoomTooltip({
       }}
     >
       {label}
-      <div className="absolute -top-[5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-l border-t border-charcoal-600 bg-charcoal-700" />
+      <div className="absolute top-[-5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-l border-t border-charcoal-600 bg-charcoal-700" />
     </div>
   );
 }

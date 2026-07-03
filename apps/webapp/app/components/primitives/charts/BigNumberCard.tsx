@@ -142,7 +142,7 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
 
   if (isLoading) {
     return (
-      <div className="grid h-full place-items-center [container-type:size]">
+      <div className="grid h-full place-items-center @container-size">
         <Spinner className="size-6" />
       </div>
     );
@@ -155,7 +155,7 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
   // Use format-aware formatter when available
   if (columnValueFormatter) {
     return (
-      <div className="h-full w-full [container-type:size]">
+      <div className="h-full w-full @container-size">
         <div className="grid h-full w-full place-items-center">
           <div className="flex items-baseline gap-[0.15em] whitespace-nowrap text-[clamp(24px,12cqw,96px)] font-normal tabular-nums leading-none text-text-bright">
             {prefix && <span>{prefix}</span>}
@@ -172,7 +172,7 @@ export function BigNumberCard({ rows, columns, config, isLoading = false }: BigN
     : { displayValue: result, unitSuffix: undefined, decimalPlaces: getDecimalPlaces(result) };
 
   return (
-    <div className="h-full w-full [container-type:size]">
+    <div className="h-full w-full @container-size">
       <div className="grid h-full w-full place-items-center">
         <div className="flex items-baseline gap-[0.15em] whitespace-nowrap text-[clamp(24px,12cqw,96px)] font-normal tabular-nums leading-none text-text-bright">
           {prefix && <span>{prefix}</span>}
