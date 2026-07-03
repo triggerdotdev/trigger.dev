@@ -1,5 +1,6 @@
-import { ArrowLeftIcon, LinkIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { BellIcon } from "~/assets/icons/BellIcon";
+import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
 import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
@@ -130,7 +131,7 @@ export function OrganizationSettingsSideMenu({
           {featureFlags.hasPrivateConnections && (
             <SideMenuItem
               name="Private Connections"
-              icon={LinkIcon}
+              icon={ChainLinkIcon}
               activeIconColor="text-text-bright"
               inactiveIconColor="text-text-dimmed"
               to={v3PrivateConnectionsPath(organization)}

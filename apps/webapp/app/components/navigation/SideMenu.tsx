@@ -3,7 +3,6 @@ import {
   ChevronRightIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
-import { LinkIcon } from "@heroicons/react/24/solid";
 import { useFetcher, useNavigate, useNavigation, useSubmit } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -16,6 +15,7 @@ import { BatchesIcon } from "~/assets/icons/BatchesIcon";
 import { BellIcon } from "~/assets/icons/BellIcon";
 import { Box3DIcon } from "~/assets/icons/Box3DIcon";
 import { BugIcon } from "~/assets/icons/BugIcon";
+import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
 import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
 import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
@@ -934,7 +934,7 @@ function OrgSelector({
             <PopoverMenuItem
               to={v3PrivateConnectionsPath(organization)}
               title="Private connections"
-              icon={LinkIcon}
+              icon={ChainLinkIcon}
               leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
               className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
