@@ -31,6 +31,8 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install
 # Generate Prisma client here where all deps are installed
 COPY --from=pruner --chown=node:node /triggerdotdev/internal-packages/database/prisma/schema.prisma /triggerdotdev/internal-packages/database/prisma/schema.prisma
 RUN pnpx prisma@6.14.0 generate --schema /triggerdotdev/internal-packages/database/prisma/schema.prisma
+COPY --from=pruner --chown=node:node /triggerdotdev/internal-packages/run-ops-database/prisma/schema.prisma /triggerdotdev/internal-packages/run-ops-database/prisma/schema.prisma
+RUN pnpx prisma@6.14.0 generate --schema /triggerdotdev/internal-packages/run-ops-database/prisma/schema.prisma
 
 ## Production deps
 FROM base AS production-deps
@@ -85,6 +87,9 @@ COPY --from=pruner --chown=node:node /triggerdotdev/out/full/ .
 COPY --from=production-deps --chown=node:node /triggerdotdev .
 # Copy generated Prisma client from dev-deps
 COPY --from=dev-deps --chown=node:node /triggerdotdev/internal-packages/database/generated ./internal-packages/database/generated
+# Run-ops Prisma client (query engine + client). Only constructed when the split is enabled,
+# but the image must carry it so a split-on deployment doesn't hit a missing query engine.
+COPY --from=dev-deps --chown=node:node /triggerdotdev/internal-packages/run-ops-database/generated ./internal-packages/run-ops-database/generated
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build/server.js ./apps/webapp/build/server.js
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build ./apps/webapp/build
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/public ./apps/webapp/public
