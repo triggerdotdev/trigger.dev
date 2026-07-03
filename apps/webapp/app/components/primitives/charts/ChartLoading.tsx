@@ -263,7 +263,7 @@ function ChartLineLoadingBackground() {
       />
       <motion.path
         d={generateSmoothPath(points)}
-        stroke="#212327"
+        stroke="var(--color-background-hover)"
         strokeWidth="1"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -291,12 +291,12 @@ function ChartLineLoadingBackground() {
         >
           <defs>
             <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#212327" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="#212327" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--color-background-hover)" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="var(--color-background-hover)" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="secondAreaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#212327" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="#212327" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--color-background-hover)" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="var(--color-background-hover)" stopOpacity={0} />
             </linearGradient>
           </defs>
 

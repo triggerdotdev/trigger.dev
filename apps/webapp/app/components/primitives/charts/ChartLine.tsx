@@ -114,7 +114,7 @@ export function ChartLineRenderer({
     ticks: xAxisTicks,
     interval: "preserveStartEnd" as const,
     tick: {
-      fill: "#878C99",
+      fill: "var(--color-text-dimmed)",
       fontSize: 11,
       style: { fontVariantNumeric: "tabular-nums" },
     },
@@ -127,7 +127,7 @@ export function ChartLineRenderer({
     tickMargin: 8,
     width: computedYAxisWidth,
     tick: {
-      fill: "#878C99",
+      fill: "var(--color-text-dimmed)",
       fontSize: 11,
       style: { fontVariantNumeric: "tabular-nums" },
     },
@@ -160,7 +160,7 @@ export function ChartLineRenderer({
         }}
         onMouseLeave={handleMouseLeave}
       >
-        <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
+        <CartesianGrid vertical={false} stroke="var(--color-grid-bright)" strokeDasharray="3 3" />
         <XAxis {...xAxisConfig} />
         <YAxis {...yAxisConfig} />
         {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
@@ -210,7 +210,7 @@ export function ChartLineRenderer({
       }}
       onMouseLeave={handleMouseLeave}
     >
-      <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
+      <CartesianGrid vertical={false} stroke="var(--color-grid-bright)" strokeDasharray="3 3" />
       <XAxis {...xAxisConfig} />
       <YAxis {...yAxisConfig} />
       {/* When legend is shown below, render tooltip with cursor only (no content popup) */}

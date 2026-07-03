@@ -1039,14 +1039,14 @@ export const QueryResultsChart = memo(function QueryResultsChart({
               y1={axisY}
               x2={x as number}
               y2={axisY - 3}
-              stroke="#878C99"
+              stroke="var(--color-text-dimmed)"
               strokeWidth={1}
             />
             <text
               x={x}
               y={axisY}
               dy={10}
-              fill="#878C99"
+              fill="var(--color-text-dimmed)"
               fontSize={11}
               textAnchor={xAxisAngle !== 0 ? "end" : "middle"}
               style={{ fontVariantNumeric: "tabular-nums" }}
@@ -1066,7 +1066,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
           y1={axisY}
           x2={x as number}
           y2={axisY - 3}
-          stroke="#272A2E"
+          stroke="var(--color-grid-bright)"
           strokeWidth={1}
         />
       );

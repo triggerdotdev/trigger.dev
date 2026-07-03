@@ -244,14 +244,19 @@ function UsageSparkline({ data }: { data?: number[] }) {
             />
             <Bar
               dataKey="count"
-              fill="#3B82F6"
+              fill="var(--color-pending)"
               strokeWidth={0}
               isAnimationActive={false}
               minPointSize={1}
             />
-            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+            <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
             {max > 0 && (
-              <ReferenceLine y={max} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+              <ReferenceLine
+                y={max}
+                stroke="var(--color-border-brighter)"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+              />
             )}
           </BarChart>
         </ResponsiveContainer>

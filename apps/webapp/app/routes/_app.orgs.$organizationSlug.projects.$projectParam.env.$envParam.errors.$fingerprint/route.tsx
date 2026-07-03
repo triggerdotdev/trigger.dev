@@ -873,7 +873,7 @@ function ActivityChart({
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-        <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
+        <CartesianGrid vertical={false} stroke="var(--color-grid-bright)" strokeDasharray="3 3" />
         <XAxis
           dataKey="__timestamp"
           tickFormatter={xAxisFormatter}
@@ -881,14 +881,14 @@ function ActivityChart({
           height={24}
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "#878C99" }}
+          tick={{ fontSize: 11, fill: "var(--color-text-dimmed)" }}
         />
         <YAxis
           width={30}
           tickMargin={4}
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "#878C99" }}
+          tick={{ fontSize: 11, fill: "var(--color-text-dimmed)" }}
           domain={["auto", (dataMax: number) => dataMax * 1.15]}
         />
         <Tooltip

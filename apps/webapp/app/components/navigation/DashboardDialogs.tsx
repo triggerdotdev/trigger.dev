@@ -161,8 +161,8 @@ export function CreateDashboardPageButton({
 
 const PROGRESS_RING_R = 27.5;
 const PROGRESS_RING_CIRCUMFERENCE = 2 * Math.PI * PROGRESS_RING_R;
-const PROGRESS_COLOR_SUCCESS = "#28BF5C"; // mint-500 / success
-const PROGRESS_COLOR_ERROR = "#E11D48"; // rose-600 / error
+const PROGRESS_COLOR_SUCCESS = "var(--color-success)"; // mint-500 / success
+const PROGRESS_COLOR_ERROR = "var(--color-error)"; // rose-600 / error
 
 function CreateDashboardUpgradeDialog({
   limits,
