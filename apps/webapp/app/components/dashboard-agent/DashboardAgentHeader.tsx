@@ -47,8 +47,8 @@ function IconButton({
       aria-label={label}
       onClick={onClick}
       className={cn(
-        "rounded p-1.5 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright",
-        active && "bg-charcoal-700 text-text-bright"
+        "rounded p-1.5 text-text-dimmed transition hover:bg-background-raised hover:text-text-bright",
+        active && "bg-background-raised text-text-bright"
       )}
     >
       <Icon className="size-4" />

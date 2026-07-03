@@ -241,7 +241,7 @@ const QueryEditorForm = forwardRef<
   );
 
   return (
-    <div className="flex h-full flex-col gap-2 bg-charcoal-900 pb-2">
+    <div className="flex h-full flex-col gap-2 bg-background-deep pb-2">
       <TSQLEditor
         defaultValue={query}
         onChange={setQuery}
@@ -614,7 +614,10 @@ export function QueryEditor({
     <PageContainer>
       {renderNavBar()}
       <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full bg-charcoal-800">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="h-full max-h-full bg-background-bright"
+        >
           <ResizablePanel id="query-main" className="h-full">
             <ResizablePanelGroup orientation="vertical" className="h-full overflow-hidden">
               {/* Query editor - isolated component to prevent re-renders */}
@@ -644,7 +647,7 @@ export function QueryEditor({
               <ResizablePanel
                 id="query-results"
                 min="200px"
-                className="overflow-hidden bg-charcoal-800"
+                className="overflow-hidden bg-background-bright"
               >
                 <ClientTabs
                   value={resultsView}
@@ -737,7 +740,7 @@ export function QueryEditor({
                         {results.generatedSql && (
                           <div>
                             <Header3 className="mb-2">Generated ClickHouse SQL</Header3>
-                            <div className="overflow-auto rounded border border-grid-dimmed bg-charcoal-900 p-3">
+                            <div className="overflow-auto rounded border border-grid-dimmed bg-background-deep p-3">
                               <pre className="whitespace-pre font-mono text-xs text-text-bright">
                                 {results.generatedSql}
                               </pre>
@@ -746,7 +749,7 @@ export function QueryEditor({
                         )}
                         <div className="flex min-h-0 flex-1 flex-col">
                           <Header3 className="mb-2">Query Execution Plan</Header3>
-                          <div className="min-h-0 flex-1 overflow-auto rounded border border-grid-dimmed bg-charcoal-900 p-3">
+                          <div className="min-h-0 flex-1 overflow-auto rounded border border-grid-dimmed bg-background-deep p-3">
                             <pre className="whitespace-pre font-mono text-xs text-text-bright">
                               {results.explainOutput}
                             </pre>
@@ -804,7 +807,7 @@ export function QueryEditor({
                       </div>
                     ) : (
                       <div className="flex h-full flex-col items-center justify-center gap-3">
-                        <IconChartHistogram className="size-16 text-charcoal-650" />
+                        <IconChartHistogram className="size-16 text-secondary" />
                         <Paragraph className="max-w-48 text-center text-text-dimmed">
                           Run a query to visualize the results.
                         </Paragraph>
@@ -853,7 +856,7 @@ export function QueryEditor({
                       </>
                     ) : (
                       <div className="flex h-full flex-col items-center justify-center gap-3">
-                        <IconChartHistogram className="size-16 text-charcoal-650" />
+                        <IconChartHistogram className="size-16 text-secondary" />
                         <Paragraph className="max-w-48 text-center text-text-dimmed">
                           Run a query to visualize the results.
                         </Paragraph>
@@ -902,7 +905,7 @@ export function QueryEditor({
                       </>
                     ) : (
                       <div className="flex h-full flex-col items-center justify-center gap-3">
-                        <IconChartHistogram className="size-16 text-charcoal-650" />
+                        <IconChartHistogram className="size-16 text-secondary" />
                         <Paragraph className="max-w-48 text-center text-text-dimmed">
                           Run a query to visualize the results.
                         </Paragraph>

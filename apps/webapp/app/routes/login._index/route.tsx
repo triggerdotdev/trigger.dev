@@ -35,13 +35,13 @@ function LastUsedBadge({ className }: { className?: string }) {
       )}
     >
       <motion.div
-        className="relative rounded border border-charcoal-700 bg-charcoal-800 px-2 py-1 text-center text-xxs font-medium uppercase text-blue-500"
+        className="relative rounded border border-grid-bright bg-background-bright px-2 py-1 text-center text-xxs font-medium uppercase text-blue-500"
         initial={shouldReduceMotion ? undefined : { opacity: 0, x: 4 }}
         animate={shouldReduceMotion ? undefined : { opacity: 1, x: 0 }}
         transition={shouldReduceMotion ? undefined : { duration: 0.8, ease: "easeOut" }}
       >
         <span className="pointer-events-none absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <span className="hidden h-2 w-2 rotate-45 border-b border-l border-charcoal-700 bg-charcoal-800 md:block" />
+          <span className="hidden h-2 w-2 rotate-45 border-b border-l border-grid-bright bg-background-bright md:block" />
         </span>
         Last used
       </motion.div>
@@ -221,7 +221,7 @@ export default function LoginPage() {
             )}
             {data.showSsoAuth && !data.isVercelMarketplace && (
               <div className="flex w-full flex-col items-center gap-y-2 pt-2">
-                <div className="h-px w-full bg-charcoal-700" />
+                <div className="h-px w-full bg-background-raised" />
                 <div className="relative inline-flex items-center">
                   {data.lastAuthMethod === "sso" && <LastUsedBadge className="translate-x-2" />}
                   <TextLink

@@ -226,7 +226,7 @@ function ChatMessages({
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       {conversation.length === 0 ? (
         <motion.div
           className="flex flex-col gap-2 pb-2"
@@ -249,7 +249,7 @@ function ChatMessages({
           {exampleQuestions.map((question, index) => (
             <motion.button
               key={index}
-              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500"
+              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-border-bright px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500"
               onClick={() => onExampleClick(question)}
               variants={{
                 hidden: {
@@ -511,7 +511,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
               disabled={!message.trim()}
               LeadingIcon={<ArrowUpIcon className="size-5 text-text-bright" />}
               variant="primary/large"
-              className="size-10 min-w-10 rounded-full group-disabled/button:border-charcoal-550 group-disabled/button:bg-charcoal-600"
+              className="size-10 min-w-10 rounded-full group-disabled/button:border-border-brighter group-disabled/button:bg-surface-control"
             />
           )}
         </div>
@@ -534,8 +534,8 @@ function GradientSpinnerBackground({
       className={`flex rounded-full bg-linear-to-br from-indigo-500 via-purple-500 to-fuchsia-500 p-px ${className}`}
     >
       <div
-        className={`flex h-full w-full items-center justify-center rounded-full bg-charcoal-600 ${
-          hoverEffect ? "transition group-hover:bg-charcoal-550" : ""
+        className={`flex h-full w-full items-center justify-center rounded-full bg-surface-control ${
+          hoverEffect ? "transition group-hover:bg-surface-control-hover" : ""
         }`}
       >
         {children}

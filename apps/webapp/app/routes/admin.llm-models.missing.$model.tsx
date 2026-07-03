@@ -96,7 +96,7 @@ export default function AdminMissingModelDetailRoute() {
 
         {/* Token types summary */}
         {tokenSummary.length > 0 && (
-          <div className="rounded-md border border-grid-dimmed bg-charcoal-800 p-3 space-y-2">
+          <div className="rounded-md border border-grid-dimmed bg-background-bright p-3 space-y-2">
             <span className="text-xs font-medium text-text-dimmed">
               Token types seen across samples
             </span>
@@ -104,7 +104,7 @@ export default function AdminMissingModelDetailRoute() {
               {tokenSummary.map((t) => (
                 <span
                   key={t.key}
-                  className="inline-flex items-center gap-1.5 rounded-sm bg-charcoal-700 px-2 py-1 text-xs font-mono"
+                  className="inline-flex items-center gap-1.5 rounded-sm bg-background-raised px-2 py-1 text-xs font-mono"
                 >
                   <span className="text-text-bright">{t.key}</span>
                   <span className="text-text-dimmed">
@@ -159,7 +159,7 @@ export default function AdminMissingModelDetailRoute() {
         )}
 
         {/* Prompt section */}
-        <div className="rounded-md border border-grid-dimmed bg-charcoal-800 p-3 space-y-2">
+        <div className="rounded-md border border-grid-dimmed bg-background-bright p-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-text-dimmed">
               Claude Code prompt — paste this to have it add pricing for this model
@@ -168,7 +168,7 @@ export default function AdminMissingModelDetailRoute() {
               {copied ? "Copied!" : "Copy prompt"}
             </Button>
           </div>
-          <pre className="max-h-64 overflow-auto rounded bg-charcoal-900 p-3 text-xs text-text-dimmed font-mono whitespace-pre-wrap">
+          <pre className="max-h-64 overflow-auto rounded bg-background-deep p-3 text-xs text-text-dimmed font-mono whitespace-pre-wrap">
             {prompt}
           </pre>
         </div>
@@ -188,11 +188,14 @@ export default function AdminMissingModelDetailRoute() {
             }
 
             return (
-              <div key={s.span_id} className="rounded-md border border-grid-dimmed bg-charcoal-800">
+              <div
+                key={s.span_id}
+                className="rounded-md border border-grid-dimmed bg-background-bright"
+              >
                 <button
                   type="button"
                   onClick={() => toggleSpan(s.span_id)}
-                  className="w-full flex items-center justify-between p-3 text-left hover:bg-charcoal-750"
+                  className="w-full flex items-center justify-between p-3 text-left hover:bg-background-hover"
                 >
                   <div className="flex items-center gap-3 text-xs">
                     <span className="font-mono text-text-dimmed">{s.span_id.slice(0, 8)}</span>

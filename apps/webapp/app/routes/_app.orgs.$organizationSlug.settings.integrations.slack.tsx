@@ -196,7 +196,7 @@ export default function SlackIntegrationPage() {
         </NavBar>
         <PageBody>
           <div className="flex h-full flex-col items-center justify-center gap-3">
-            <SlackMonoIcon className="mb-2 size-16 text-charcoal-650" />
+            <SlackMonoIcon className="mb-2 size-16 text-secondary" />
             <Header2>No Slack integration found</Header2>
             <Paragraph className="max-w-md text-center text-text-dimmed">
               Your organization doesn't have a Slack integration configured. You can connect Slack

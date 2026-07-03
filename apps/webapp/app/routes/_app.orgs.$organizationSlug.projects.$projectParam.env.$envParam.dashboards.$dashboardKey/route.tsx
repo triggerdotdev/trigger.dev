@@ -329,7 +329,7 @@ export function MetricDashboard({
       <div
         ref={containerRef}
         className={cn(
-          "overflow-y-auto scrollbar-thin scrollbar-track-charcoal-800 scrollbar-thumb-charcoal-700",
+          "overflow-y-auto scrollbar-thin scrollbar-track-background-bright scrollbar-thumb-background-raised",
           isInteracting && "select-none"
         )}
       >

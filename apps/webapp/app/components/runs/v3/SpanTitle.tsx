@@ -92,7 +92,7 @@ function SpanPill({ text, icon }: { text: string; icon?: string }) {
   const hasIcon = icon && tablerIcons.has(icon);
 
   return (
-    <span className="inline-flex items-center gap-0.5 rounded-full border border-charcoal-700 bg-charcoal-850 px-1.5 py-px text-xxs text-text-dimmed">
+    <span className="inline-flex items-center gap-0.5 rounded-full border border-grid-bright bg-background-dimmed px-1.5 py-px text-xxs text-text-dimmed">
       {hasIcon && (
         <svg className="size-3 stroke-[1.5] text-text-dimmed/70">
           <use xlinkHref={`${tablerSpritePath}#${icon}`} />
@@ -113,7 +113,7 @@ export function SpanCodePathAccessory({
   return (
     <code
       className={cn(
-        "inline-flex items-center gap-0.5 truncate rounded border border-charcoal-700 bg-charcoal-800 px-1.5 py-0.5 font-mono text-text-dimmed",
+        "inline-flex items-center gap-0.5 truncate rounded border border-grid-bright bg-background-bright px-1.5 py-0.5 font-mono text-text-dimmed",
         className
       )}
     >
@@ -174,7 +174,7 @@ export function eventBackgroundClassName(event: RunEvent) {
   }
 
   if (event.isCancelled) {
-    return "bg-charcoal-600";
+    return "bg-surface-control";
   }
 
   switch (event.level) {
@@ -204,7 +204,7 @@ export function eventBorderClassName(event: RunEvent) {
   }
 
   if (event.isCancelled) {
-    return "border-charcoal-600";
+    return "border-border-bright";
   }
 
   switch (event.level) {
@@ -248,7 +248,7 @@ function backgroundClassNameForVariant(variant: TaskEventStyle["variant"], isPar
       return "bg-success";
     }
     default: {
-      return "bg-charcoal-500";
+      return "bg-surface-control-active";
     }
   }
 }
@@ -262,7 +262,7 @@ function borderClassNameForVariant(variant: TaskEventStyle["variant"], isPartial
       return "border-success";
     }
     default: {
-      return "border-charcoal-500";
+      return "border-border-brightest";
     }
   }
 }

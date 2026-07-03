@@ -272,7 +272,9 @@ export default function Page() {
                           </>
                         }
                         className={
-                          alertChannel.enabled ? "" : "group-hover/table-row:bg-charcoal-800/50"
+                          alertChannel.enabled
+                            ? ""
+                            : "group-hover/table-row:bg-background-bright/50"
                         }
                       />
                     </TableRow>
@@ -502,13 +504,13 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           leadingIcon={
             <AlertChannelTypeIcon
               channelType={alertChannel.type}
-              className="size-5 text-charcoal-400"
+              className="size-5 text-text-dimmed"
             />
           }
-          leadingIconClassName="text-charcoal-400"
+          leadingIconClassName="text-text-dimmed"
           label={"Email"}
           description={alertChannel.properties.email}
-          boxClassName="group-hover/table-row:bg-charcoal-800"
+          boxClassName="group-hover/table-row:bg-background-bright"
           className="h-12"
         />
       );
@@ -522,14 +524,14 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
                 <TooltipTrigger>
                   <AlertChannelTypeIcon
                     channelType={alertChannel.type}
-                    className="size-5 text-charcoal-400"
+                    className="size-5 text-text-dimmed"
                   />
                 </TooltipTrigger>
                 <TooltipContent className="flex items-center gap-1">Webhook</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           }
-          leadingIconClassName="text-charcoal-400"
+          leadingIconClassName="text-text-dimmed"
           label={alertChannel.properties.url}
           description={
             <ClipboardField
@@ -541,7 +543,7 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
               className="mt-1 w-80"
             />
           }
-          boxClassName="group-hover/table-row:bg-charcoal-800"
+          boxClassName="group-hover/table-row:bg-background-bright"
         />
       );
     }
@@ -551,13 +553,13 @@ function AlertChannelDetails({ alertChannel }: { alertChannel: AlertChannelListP
           leadingIcon={
             <AlertChannelTypeIcon
               channelType={alertChannel.type}
-              className="size-5 text-charcoal-400"
+              className="size-5 text-text-dimmed"
             />
           }
-          leadingIconClassName="text-charcoal-400"
+          leadingIconClassName="text-text-dimmed"
           label={"Slack"}
           description={`#${alertChannel.properties.channelName}`}
-          boxClassName="group-hover/table-row:bg-charcoal-800"
+          boxClassName="group-hover/table-row:bg-background-bright"
         />
       );
     }

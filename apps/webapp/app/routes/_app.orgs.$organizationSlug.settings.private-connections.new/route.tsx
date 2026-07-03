@@ -308,7 +308,7 @@ output "endpoint_service_name" {
               <select
                 value={entry.protocol}
                 onChange={(e) => updatePort(index, "protocol", e.target.value)}
-                className="rounded-md border border-charcoal-700 bg-charcoal-800 px-3 py-2 text-sm text-text-bright"
+                className="rounded-md border border-grid-bright bg-background-bright px-3 py-2 text-sm text-text-bright"
               >
                 <option value="TCP">TCP</option>
                 <option value="UDP">UDP</option>
@@ -363,8 +363,8 @@ output "endpoint_service_name" {
         </Select>
       </InputGroup>
 
-      <div className="rounded-md border border-charcoal-700 bg-charcoal-900">
-        <div className="flex items-center justify-between border-b border-charcoal-700 px-3 py-2">
+      <div className="rounded-md border border-grid-bright bg-background-deep">
+        <div className="flex items-center justify-between border-b border-grid-bright px-3 py-2">
           <span className="text-xs font-medium text-text-dimmed">main.tf</span>
           <button
             type="button"
@@ -454,7 +454,7 @@ After creating everything, give me the VPC Endpoint Service name (it looks like 
               <select
                 value={entry.protocol}
                 onChange={(e) => updatePort(index, "protocol", e.target.value)}
-                className="rounded-md border border-charcoal-700 bg-charcoal-800 px-3 py-2 text-sm text-text-bright"
+                className="rounded-md border border-grid-bright bg-background-bright px-3 py-2 text-sm text-text-bright"
               >
                 <option value="TCP">TCP</option>
                 <option value="UDP">UDP</option>
@@ -509,8 +509,8 @@ After creating everything, give me the VPC Endpoint Service name (it looks like 
         </Select>
       </InputGroup>
 
-      <div className="rounded-md border border-charcoal-700 bg-charcoal-900">
-        <div className="flex items-center justify-between border-b border-charcoal-700 px-3 py-2">
+      <div className="rounded-md border border-grid-bright bg-background-deep">
+        <div className="flex items-center justify-between border-b border-grid-bright px-3 py-2">
           <span className="text-xs font-medium text-text-dimmed">AI Prompt</span>
           <button
             type="button"
@@ -583,7 +583,7 @@ export default function Page() {
                 className={`rounded-lg border p-4 text-left transition ${
                   setupMethod === "manual"
                     ? "border-indigo-500 bg-indigo-500/10"
-                    : "border-grid-dimmed hover:border-charcoal-600"
+                    : "border-grid-dimmed hover:border-border-bright"
                 }`}
               >
                 <PencilSquareIcon className="mb-2 h-5 w-5 text-indigo-400" />
@@ -598,7 +598,7 @@ export default function Page() {
                 className={`rounded-lg border p-4 text-left transition ${
                   setupMethod === "ai"
                     ? "border-indigo-500 bg-indigo-500/10"
-                    : "border-grid-dimmed hover:border-charcoal-600"
+                    : "border-grid-dimmed hover:border-border-bright"
                 }`}
               >
                 <SparklesIcon className="mb-2 h-5 w-5 text-purple-400" />
@@ -613,7 +613,7 @@ export default function Page() {
                 className={`rounded-lg border p-4 text-left transition ${
                   setupMethod === "terraform"
                     ? "border-indigo-500 bg-indigo-500/10"
-                    : "border-grid-dimmed hover:border-charcoal-600"
+                    : "border-grid-dimmed hover:border-border-bright"
                 }`}
               >
                 <CommandLineIcon className="mb-2 h-5 w-5 text-emerald-400" />
@@ -628,7 +628,7 @@ export default function Page() {
                 className={`rounded-lg border p-4 text-left transition ${
                   setupMethod === "docs"
                     ? "border-indigo-500 bg-indigo-500/10"
-                    : "border-grid-dimmed hover:border-charcoal-600"
+                    : "border-grid-dimmed hover:border-border-bright"
                 }`}
               >
                 <DocumentTextIcon className="mb-2 h-5 w-5 text-amber-400" />
@@ -658,7 +658,7 @@ export default function Page() {
                 <Header3 spacing>Terraform Configuration</Header3>
                 <Paragraph variant="small" className="mb-4">
                   Fill in your resource details below and we'll generate a Terraform script. Run{" "}
-                  <code className="rounded bg-charcoal-800 px-1 py-0.5 text-xs">
+                  <code className="rounded bg-background-bright px-1 py-0.5 text-xs">
                     terraform apply
                   </code>{" "}
                   to create the VPC Endpoint Service, then paste the output service name below.
@@ -757,7 +757,7 @@ export default function Page() {
                     <select
                       {...getSelectProps(targetRegion)}
                       defaultValue={defaultRegion}
-                      className="w-full rounded-md border border-charcoal-700 bg-charcoal-800 px-3 py-2 text-sm text-text-bright"
+                      className="w-full rounded-md border border-grid-bright bg-background-bright px-3 py-2 text-sm text-text-bright"
                     >
                       {availableRegions.map((region: string) => (
                         <option key={region} value={region}>

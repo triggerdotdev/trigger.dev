@@ -52,7 +52,7 @@ export function PromptSpanDetails({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="shrink-0 overflow-x-auto px-3 py-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="shrink-0 overflow-x-auto px-3 py-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <TabContainer>
           {availableTabs.map((t) => (
             <TabButton
@@ -70,7 +70,7 @@ export function PromptSpanDetails({
         </TabContainer>
       </div>
 
-      <div className="scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {tab === "overview" && (
           <div className="flex flex-col px-3">
             {startTime && (
@@ -97,7 +97,7 @@ export function PromptSpanDetails({
             {promptData.text && (
               <div className="flex flex-col gap-1.5 py-2.5">
                 <Header3>Resolved content</Header3>
-                <div className="rounded-md border border-grid-bright bg-charcoal-750/50 px-3.5 py-2">
+                <div className="rounded-md border border-grid-bright bg-background-hover/50 px-3.5 py-2">
                   <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
                     <Suspense
                       fallback={
@@ -131,7 +131,7 @@ export function PromptSpanDetails({
 
         {tab === "template" && hasTemplate && (
           <div className="px-3 py-2.5">
-            <div className="rounded-md border border-grid-bright bg-charcoal-750/50 px-3.5 py-2">
+            <div className="rounded-md border border-grid-bright bg-background-hover/50 px-3.5 py-2">
               <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
                 <Suspense
                   fallback={<span className="whitespace-pre-wrap">{promptData.template!}</span>}

@@ -713,7 +713,7 @@ const TaskActivityTooltip = ({ active, payload }: TooltipProps<number, string>) 
     return (
       <TooltipPortal active={active}>
         <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-          <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+          <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
           {items.length === 0 ? (
             <div className="mt-2 text-xs text-text-dimmed">No runs</div>
           ) : (
@@ -858,7 +858,7 @@ function NewTaskPromptsPanel({ onClose }: { onClose: () => void }) {
           className="pl-1"
         />
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <Paragraph variant="small/bright" className="mb-6">
           Copy any example below into your project's{" "}
           <InlineCode variant="extra-small">trigger/</InlineCode> directory and customize it from

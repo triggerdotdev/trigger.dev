@@ -153,7 +153,7 @@ export function ZoomTooltip({
 
   return (
     <div
-      className="absolute whitespace-nowrap rounded border border-charcoal-600 bg-charcoal-700 px-2 py-1 text-xxs tabular-nums text-text-bright"
+      className="absolute whitespace-nowrap rounded border border-border-bright bg-background-raised px-2 py-1 text-xxs tabular-nums text-text-bright"
       style={{
         left: coordinate?.x,
         top: viewBox?.height ? viewBox.height + 13 : 0,
@@ -161,7 +161,7 @@ export function ZoomTooltip({
       }}
     >
       {label}
-      <div className="absolute top-[-5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-l border-t border-charcoal-600 bg-charcoal-700" />
+      <div className="absolute top-[-5px] left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 border-l border-t border-border-bright bg-background-raised" />
     </div>
   );
 }

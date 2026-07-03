@@ -30,7 +30,7 @@ const CATEGORY_LABELS: Record<DiagnosisBlock["category"], string> = {
 const CONFIDENCE_STYLES: Record<DiagnosisBlock["confidence"], string> = {
   high: "border-emerald-500/40 text-emerald-400",
   medium: "border-amber-500/40 text-amber-400",
-  low: "border-charcoal-600 text-text-dimmed",
+  low: "border-border-bright text-text-dimmed",
 };
 
 const EVIDENCE_LABELS: Record<DiagnosisBlock["evidence"][number]["type"], string> = {
@@ -91,7 +91,7 @@ function EvidenceReference({ reference }: { reference: string }) {
 
 function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["actions"]> }) {
   const buttonClass =
-    "inline-flex items-center rounded border border-charcoal-600 bg-charcoal-800 px-2.5 py-1 text-xs text-text-bright transition-colors hover:border-charcoal-500 hover:bg-charcoal-750";
+    "inline-flex items-center rounded border border-border-bright bg-background-bright px-2.5 py-1 text-xs text-text-bright transition-colors hover:border-border-brightest hover:bg-background-hover";
   return (
     <div className="flex flex-wrap gap-2 pt-1">
       {actions.map((action, i) => {
@@ -150,8 +150,8 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
   const actions = block.actions ?? [];
 
   return (
-    <div className="overflow-hidden rounded-lg border border-charcoal-600 bg-charcoal-850">
-      <div className="flex flex-wrap items-center gap-2 border-b border-charcoal-700 bg-charcoal-800 px-3 py-2">
+    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
+      <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-3 py-2">
         <span className="text-xs font-medium text-text-dimmed">Run diagnosis</span>
         <Badge variant="small" className="border-rose-500/40 text-rose-400">
           {CATEGORY_LABELS[block.category] ?? block.category}
@@ -174,7 +174,7 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
             <ul className="space-y-1.5">
               {evidence.map((item, i) => (
                 <li key={i} className="text-xs text-text-dimmed">
-                  <span className="mr-1.5 rounded-sm bg-charcoal-700 px-1 py-0.5 text-[10px] uppercase tracking-wide text-text-dimmed">
+                  <span className="mr-1.5 rounded-sm bg-background-raised px-1 py-0.5 text-[10px] uppercase tracking-wide text-text-dimmed">
                     {EVIDENCE_LABELS[item.type] ?? item.type}
                   </span>
                   <span className="text-text-bright">{item.detail}</span>

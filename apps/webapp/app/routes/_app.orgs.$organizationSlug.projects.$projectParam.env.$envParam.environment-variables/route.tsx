@@ -478,7 +478,7 @@ function EnvironmentVariablesListPage({
           )}
           <div
             ref={tableScrollRef}
-            className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+            className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           >
             <Table
               containerClassName={cn(
@@ -607,7 +607,7 @@ function EnvironmentVariableTableRow({
   const borderedCellClassName = getBorderedCellClassName(variable);
 
   return (
-    <TableRow className={variable.isLastTime ? "after:bg-charcoal-600" : "after:bg-transparent"}>
+    <TableRow className={variable.isLastTime ? "after:bg-surface-control" : "after:bg-transparent"}>
       <TableCell className={cellClassName}>
         {variable.isFirstTime ? <CopyableText value={variable.key} className="font-mono" /> : null}
       </TableCell>

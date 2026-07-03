@@ -23,7 +23,7 @@ function ColumnHelpItem({ col }: { col: ColumnSchema }) {
           <span className="text-xs text-text-dimmed">Example:</span>
           <CopyableText
             value={col.example}
-            className="rounded-sm bg-charcoal-750 px-1.5 py-0.5 font-mono text-xxs"
+            className="rounded-sm bg-background-hover px-1.5 py-0.5 font-mono text-xxs"
           />
         </div>
       )}
@@ -34,7 +34,7 @@ function ColumnHelpItem({ col }: { col: ColumnSchema }) {
             <CopyableText
               key={value}
               value={col.valueMap?.[value] ?? value}
-              className="rounded-sm bg-charcoal-750 px-1.5 py-0.5 font-mono text-xxs"
+              className="rounded-sm bg-background-hover px-1.5 py-0.5 font-mono text-xxs"
             />
           ))}
         </div>

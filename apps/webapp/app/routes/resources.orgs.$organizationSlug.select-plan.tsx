@@ -582,7 +582,7 @@ export function TierHobby({
           <Feedback
             defaultValue="hipaa"
             button={
-              <span className="cursor-pointer underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright">
+              <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
                 Request a BAA
               </span>
             }
@@ -736,7 +736,7 @@ export function TierPro({
           <Feedback
             defaultValue="hipaa"
             button={
-              <span className="cursor-pointer underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright">
+              <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
                 Request a BAA
               </span>
             }
@@ -759,7 +759,7 @@ export function TierEnterprise() {
           <Feedback
             defaultValue="enterprise"
             button={
-              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded border border-charcoal-600 bg-tertiary px-8 text-base font-medium transition hover:border-charcoal-550 hover:bg-charcoal-600">
+              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded border border-border-bright bg-tertiary px-8 text-base font-medium transition hover:border-border-brighter hover:bg-surface-control">
                 <span className="text-center text-text-bright">Contact us</span>
               </div>
             }
@@ -796,7 +796,7 @@ export function TierEnterprise() {
             <Feedback
               defaultValue="hipaa"
               button={
-                <span className="cursor-pointer underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright">
+                <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
                   Request a BAA
                 </span>
               }
@@ -890,7 +890,7 @@ function FeatureItem({
           )}
         />
       ) : (
-        <XMarkIcon className="mt-0.5 size-4 min-w-4 text-charcoal-500" />
+        <XMarkIcon className="mt-0.5 size-4 min-w-4 text-text-faint" />
       )}
       <div
         className={cn(

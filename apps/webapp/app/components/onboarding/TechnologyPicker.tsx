@@ -281,7 +281,7 @@ export function TechnologyPicker({
           }}
           virtualFocus
         >
-          <Ariakit.Select className="group flex h-8 w-full items-center rounded bg-charcoal-750 pl-2 pr-2.5 text-sm text-text-dimmed ring-charcoal-600 transition focus-custom hover:bg-charcoal-650 hover:ring-1">
+          <Ariakit.Select className="group flex h-8 w-full items-center rounded bg-background-hover pl-2 pr-2.5 text-sm text-text-dimmed ring-border-bright transition focus-custom hover:bg-secondary hover:ring-1">
             <div className="flex grow items-center">
               <CubeIcon className="mr-1.5 size-4 flex-none text-text-dimmed" />
               <span>Select your technologies…</span>
@@ -293,7 +293,7 @@ export function TechnologyPicker({
             gutter={5}
             unmountOnHide
             className={cn(
-              "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-hidden animate-in fade-in-40",
+              "z-50 flex flex-col overflow-clip rounded border border-grid-bright bg-background-bright shadow-md outline-hidden animate-in fade-in-40",
               "min-w-[max(180px,var(--popover-anchor-width))]",
               "max-w-[min(480px,var(--popover-available-width))]",
               "max-h-[min(400px,var(--popover-available-height))]"
@@ -308,7 +308,7 @@ export function TechnologyPicker({
               />
             </div>
 
-            <Ariakit.ComboboxList className="overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 focus-custom">
+            <Ariakit.ComboboxList className="overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control focus-custom">
               {filteredOptions.map((option) => (
                 <Ariakit.ComboboxItem
                   key={option}
@@ -332,9 +332,9 @@ export function TechnologyPicker({
               )}
             </Ariakit.ComboboxList>
 
-            <div className="sticky bottom-0 border-t border-charcoal-700 bg-background-bright px-1 py-1">
+            <div className="sticky bottom-0 border-t border-grid-bright bg-background-bright px-1 py-1">
               {showOtherInput ? (
-                <div className="flex h-8 w-full items-center rounded-sm bg-tertiary pl-0 pr-2 ring-1 ring-charcoal-650">
+                <div className="flex h-8 w-full items-center rounded-sm bg-tertiary pl-0 pr-2 ring-1 ring-border-bright">
                   <input
                     ref={otherInputRef}
                     type="text"

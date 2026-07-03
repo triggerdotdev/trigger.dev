@@ -309,7 +309,7 @@ export default function AdminLlmModelNewRoute() {
                   name="pricingUnit"
                   value={pricingUnit}
                   onChange={(e) => setPricingUnit(e.target.value)}
-                  className="w-full rounded border border-grid-dimmed bg-charcoal-750 px-2 py-1.5 text-sm text-text-bright"
+                  className="w-full rounded border border-grid-dimmed bg-background-hover px-2 py-1.5 text-sm text-text-bright"
                 >
                   <option value="">(unset)</option>
                   {PRICING_UNITS.map((u) => (
@@ -437,11 +437,11 @@ function TierEditor({
   const [newUsageType, setNewUsageType] = useState("");
 
   return (
-    <div className="rounded-md border border-grid-dimmed bg-charcoal-800 p-3 space-y-3">
+    <div className="rounded-md border border-grid-dimmed bg-background-bright p-3 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <input
-            className="bg-charcoal-750 text-text-bright rounded px-2 py-1 text-sm border border-grid-dimmed"
+            className="bg-background-hover text-text-bright rounded px-2 py-1 text-sm border border-grid-dimmed"
             value={tier.name}
             onChange={(e) => onChange({ ...tier, name: e.target.value })}
             placeholder="Tier name"
@@ -458,7 +458,7 @@ function TierEditor({
             Priority:
             <input
               type="number"
-              className="w-12 bg-charcoal-750 text-text-bright rounded px-1 py-0.5 text-xs border border-grid-dimmed"
+              className="w-12 bg-background-hover text-text-bright rounded px-1 py-0.5 text-xs border border-grid-dimmed"
               value={tier.priority}
               onChange={(e) => onChange({ ...tier, priority: parseInt(e.target.value) || 0 })}
             />
@@ -481,7 +481,7 @@ function TierEditor({
               <span className="w-48 text-xs font-mono text-text-dimmed">{usageType}</span>
               <input
                 type="text"
-                className="w-32 bg-charcoal-750 text-text-bright rounded px-2 py-0.5 text-xs font-mono border border-grid-dimmed"
+                className="w-32 bg-background-hover text-text-bright rounded px-2 py-0.5 text-xs font-mono border border-grid-dimmed"
                 value={price}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
@@ -506,7 +506,7 @@ function TierEditor({
 
         <div className="flex items-center gap-2 pt-1">
           <select
-            className="bg-charcoal-750 text-text-dimmed rounded px-2 py-0.5 text-xs border border-grid-dimmed"
+            className="bg-background-hover text-text-dimmed rounded px-2 py-0.5 text-xs border border-grid-dimmed"
             value={newUsageType}
             onChange={(e) => setNewUsageType(e.target.value)}
           >

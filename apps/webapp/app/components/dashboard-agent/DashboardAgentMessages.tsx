@@ -62,7 +62,7 @@ export function DashboardAgentMessages({
   const rootRef = useAutoScrollToBottom([messages, isThinking]);
 
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div ref={rootRef} className="space-y-4 p-4">
         {messages.map((message) => (
           <DashboardAgentMessageBubble key={message.id} message={stripStepParts(message)} />

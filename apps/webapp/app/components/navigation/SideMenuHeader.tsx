@@ -54,10 +54,10 @@ export function SideMenuHeader({
       {children !== undefined ? (
         <Popover onOpenChange={(open) => setHeaderMenuOpen(open)} open={isHeaderMenuOpen}>
           <PopoverCustomTrigger className="p-1">
-            <EllipsisHorizontalIcon className="h-4 w-4 text-charcoal-500 transition group-hover:text-text-bright" />
+            <EllipsisHorizontalIcon className="h-4 w-4 text-text-faint transition group-hover:text-text-bright" />
           </PopoverCustomTrigger>
           <PopoverContent
-            className="min-w-max overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+            className="min-w-max overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
             align="start"
           >
             <div className="flex flex-col gap-1 p-1">{children}</div>

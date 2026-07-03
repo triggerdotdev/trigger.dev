@@ -368,7 +368,7 @@ function SetDefaultDialog({
 
             <div className="my-4 flex">
               <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
-                <div className="border-b border-grid-dimmed bg-charcoal-800 p-3 font-medium">
+                <div className="border-b border-grid-dimmed bg-background-bright p-3 font-medium">
                   <Paragraph variant="small/bright">Current default</Paragraph>
                 </div>
                 <div className="border-b border-grid-dimmed p-3">
@@ -401,14 +401,14 @@ function SetDefaultDialog({
 
               {/* Middle column with arrow */}
               <div className="flex items-center justify-center px-3">
-                <div className="flex size-10 items-center justify-center rounded-full border border-grid-dimmed bg-charcoal-800 p-2">
+                <div className="flex size-10 items-center justify-center rounded-full border border-grid-dimmed bg-background-bright p-2">
                   <ArrowRightIcon className="size-4 text-text-dimmed" />
                 </div>
               </div>
 
               {/* Right column */}
               <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
-                <div className="border-b border-grid-dimmed bg-charcoal-800 p-3 font-medium">
+                <div className="border-b border-grid-dimmed bg-background-bright p-3 font-medium">
                   <Paragraph variant="small/bright">New default</Paragraph>
                 </div>
                 <div className="border-b border-grid-dimmed p-3">

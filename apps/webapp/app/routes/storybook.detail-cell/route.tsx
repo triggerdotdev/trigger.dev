@@ -17,7 +17,7 @@ export default function Story() {
         label="Learn how to create your own API Integrations"
         variant="base"
         trailingIcon={ArrowTopRightOnSquareIcon}
-        trailingIconClassName="text-charcoal-700 group-hover:text-text-bright"
+        trailingIconClassName="text-tertiary group-hover:text-text-bright"
       />
       <DetailCell
         leadingIcon={CodeBracketIcon}
@@ -28,11 +28,11 @@ export default function Story() {
       />
       <DetailCell
         leadingIcon={ClockIcon}
-        leadingIconClassName="text-charcoal-400"
+        leadingIconClassName="text-text-dimmed"
         label={<DateTime date={new Date()} />}
         description="Run #42 complete"
         trailingIcon={PlusIcon}
-        trailingIconClassName="text-charcoal-500 group-hover:text-text-bright"
+        trailingIconClassName="text-text-faint group-hover:text-text-bright"
       />
     </div>
   );
