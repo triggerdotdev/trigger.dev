@@ -519,7 +519,7 @@
 
   /* Code block styling */
   & [data-code-block-container] {
-    @apply rounded-sm border-charcoal-650 my-0;
+    @apply rounded-sm my-2 border-charcoal-700;
   }
   & [data-code-block] {
     border-top: none;
@@ -591,10 +591,6 @@
     @apply bg-charcoal-700 font-semibold;
   }
 
-  /* Streamdown code block container */
-  & [data-code-block-container] {
-    @apply my-2 border-charcoal-700;
-  }
   & [data-code-block-header] {
     @apply bg-charcoal-800 text-text-dimmed border-b border-charcoal-700;
   }
