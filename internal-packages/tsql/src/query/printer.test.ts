@@ -4054,4 +4054,14 @@ describe("timeBucket() fillGaps", () => {
     expect(sql).not.toContain("WITH FILL");
     expect(sql).not.toContain("INTERPOLATE");
   });
+
+  it("bucket-led ORDER BY DESC: fill is skipped (ascending fill would be invalid)", () => {
+    const query =
+      "SELECT timeBucket(), count() AS runs FROM metrics GROUP BY timeBucket ORDER BY timeBucket DESC";
+    const { sql } = run(query, true);
+    expect(sql).not.toContain("WITH FILL");
+    expect(sql).not.toContain("INTERPOLATE");
+    // The plain descending order still stands.
+    expect(sql).toContain("ORDER BY timebucket DESC");
+  });
 });

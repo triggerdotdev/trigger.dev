@@ -652,14 +652,22 @@ export class ClickHousePrinter {
     // js/polynomial-redos). endsWith + slice is linear.
     const trimmedLead = leadTerm.trim();
     const upperLead = trimmedLead.toUpperCase();
+    const isDescending = upperLead.endsWith(" DESC");
     const leadExpr = upperLead.endsWith(" ASC")
       ? trimmedLead.slice(0, -4).trimEnd()
-      : upperLead.endsWith(" DESC")
+      : isDescending
         ? trimmedLead.slice(0, -5).trimEnd()
         : trimmedLead;
     const matchesBucket = (expr: string): boolean =>
       expr.toLowerCase() === bucketAlias!.toLowerCase() || expr === bucketSql;
     if (!matchesBucket(leadExpr)) {
+      return null;
+    }
+    // WITH FILL is emitted with ascending bounds and a positive STEP, which is
+    // only valid for an ascending bucket order. A descending order would need
+    // swapped bounds and a negative step (newer ClickHouse only), so skip the
+    // gap-fill rewrite and let the plain descending ORDER BY stand.
+    if (isDescending) {
       return null;
     }
 
