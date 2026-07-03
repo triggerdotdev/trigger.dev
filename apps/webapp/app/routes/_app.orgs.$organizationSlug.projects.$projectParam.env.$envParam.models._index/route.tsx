@@ -773,7 +773,7 @@ function CompareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-fit! gap-1.75 px-0! pb-0! pt-0! sm:max-w-[90vw]!">
+      <DialogContent className="gap-1.75 px-0! pb-0! pt-0! sm:w-fit! sm:max-w-[90vw]!">
         <DialogHeader className="h-11 justify-center px-4">
           <DialogTitle>Compare models</DialogTitle>
         </DialogHeader>
