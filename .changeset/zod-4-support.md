@@ -6,4 +6,6 @@
 "@trigger.dev/schema-to-json": minor
 ---
 
-Add zod v4 compatibility. The `zod` peer dependency is widened to `^3.25.0 || ^4.0.0`, so projects can use zod 3.25+ or zod 4. Internal code was updated for zod v4 API changes (`ZodError.errors` → `.issues`, single-arg `z.record` → keyed, unified `error` option, `z.ZodSchema`/`z.AnyZodObject` → `z.ZodType`/`z.ZodObject`, `z.any()` object fields made `.optional()` to preserve v3 inference). No runtime behavior change for existing zod 3 users.
+Add zod v4 support. You can now use zod 3.25+ or zod 4 (the minimum zod 3 version is now 3.25.0). `zod` is now a peer dependency of `@trigger.dev/core`, `@trigger.dev/sdk`, `@trigger.dev/redis-worker`, and `@trigger.dev/schema-to-json`, so it shares a single copy with your project; if you depend on `@trigger.dev/core` directly, add `zod` to your own dependencies.
+
+The published type declarations are built against zod 4. If you are still on zod 3, keep `skipLibCheck: true` in your tsconfig (the default in Trigger.dev's templates).
