@@ -504,8 +504,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.0.29
-        version: 1.0.29
+        specifier: 1.2.0
+        version: 1.2.0(zod@3.25.76)
       '@trigger.dev/plugins':
         specifier: workspace:*
         version: link:../../packages/plugins
@@ -3074,8 +3074,16 @@ packages:
     resolution: {integrity: sha512-oy5V7pD+UvfkEATUKvIjvIAH/xCzfsFVw7ygW2SI6NClZzquT+mwdTfgfdbUiceh6iQO0CHtCPsyze/MZ2YbAA==}
     engines: {node: '>=6.9.0'}
 
+  '@babel/helper-string-parser@7.27.1':
+    resolution: {integrity: sha512-qMlSxKbpRlAridDExk92nSobyDdpPijUq2DW6oDnUqd0iOGxmQjyqhMIihI9+zv4LPyZdRje2cavWPbCbWm3eA==}
+    engines: {node: '>=6.9.0'}
+
   '@babel/helper-string-parser@7.29.7':
     resolution: {integrity: sha512-Pb5ijPrZ89GDH8223L4UP8i6QApWxs04RbPQJTeWDV0/keR2E36MeKnyr6LYmUUvqRRI+Iv87SuF1W6ErINzYw==}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/helper-validator-identifier@7.28.5':
+    resolution: {integrity: sha512-qSs4ifwzKJSV39ucNjsvc6WVHs6b7S03sOh2OcHF9UHfVPqWWALUsNUVzhSBiItjRZoLHx7nIarVjqKVusUZ1Q==}
     engines: {node: '>=6.9.0'}
 
   '@babel/helper-validator-identifier@7.29.7':
@@ -3175,6 +3183,10 @@ packages:
 
   '@babel/types@7.24.7':
     resolution: {integrity: sha512-XEFXSlxiG5td2EJRe8vOmRbaXVgfcBlszKujvVmWIK/UpywWljQCfzAv3RQCGujWQ1RD4YYWEAqDXfuJiy8f5Q==}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/types@7.29.0':
+    resolution: {integrity: sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==}
     engines: {node: '>=6.9.0'}
 
   '@babel/types@7.29.7':
@@ -8320,8 +8332,10 @@ packages:
       react: 18.3.1
       react-dom: 18.3.1
 
-  '@trigger.dev/platform@1.0.29':
-    resolution: {integrity: sha512-75lsz0igwY9tqWfT6U7Huj+94VWic3//B4Cux4muCzH/ZC8Hz22O9fsMe+R7JtQy7HsemG42R+Zwy5ITnSgFYg==}
+  '@trigger.dev/platform@1.2.0':
+    resolution: {integrity: sha512-Wa/XlMlmo1vhol5DEBYW1gMW4wgUUqr/ClDQb4IgwrRdPeLLmTpIVsgMHmYJXkERqR04xVaX7wBibWl4sW+1Hg==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@types/acorn@4.0.6':
     resolution: {integrity: sha512-veQTnWP+1D/xbxVrPC3zHnCZRjSrKfhbMUlEA43iMZLu7EsnTtkJklIuwrCPbOi8YkvDQAiW05VQQFvvz9oieQ==}
@@ -16411,9 +16425,6 @@ packages:
     peerDependencies:
       zod: ^3.18.0
 
-  zod@3.23.8:
-    resolution: {integrity: sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==}
-
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
@@ -18580,7 +18591,13 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.7
 
+  '@babel/helper-string-parser@7.27.1':
+    optional: true
+
   '@babel/helper-string-parser@7.29.7': {}
+
+  '@babel/helper-validator-identifier@7.28.5':
+    optional: true
 
   '@babel/helper-validator-identifier@7.29.7': {}
 
@@ -18688,6 +18705,12 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
       to-fast-properties: 2.0.0
+
+  '@babel/types@7.29.0':
+    dependencies:
+      '@babel/helper-string-parser': 7.27.1
+      '@babel/helper-validator-identifier': 7.28.5
+    optional: true
 
   '@babel/types@7.29.7':
     dependencies:
@@ -24566,9 +24589,9 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@trigger.dev/platform@1.0.29':
+  '@trigger.dev/platform@1.2.0(zod@3.25.76)':
     dependencies:
-      zod: 3.23.8
+      zod: 3.25.76
 
   '@types/acorn@4.0.6':
     dependencies:
@@ -29249,8 +29272,8 @@ snapshots:
 
   magicast@0.3.5:
     dependencies:
-      '@babel/parser': 7.29.7
-      '@babel/types': 7.29.7
+      '@babel/parser': 7.27.0
+      '@babel/types': 7.29.0
       source-map-js: 1.2.1
     optional: true
 
@@ -30288,7 +30311,7 @@ snapshots:
 
   node-abi@3.89.0:
     dependencies:
-      semver: 7.8.1
+      semver: 7.7.3
     optional: true
 
   node-abort-controller@3.1.1: {}
@@ -34108,8 +34131,6 @@ snapshots:
   zod-validation-error@1.5.0(zod@3.25.76):
     dependencies:
       zod: 3.25.76
-
-  zod@3.23.8: {}
 
   zod@3.25.76: {}
 
