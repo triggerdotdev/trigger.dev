@@ -76,6 +76,10 @@ jobs:
           # therefore publishes to its own package automatically.
           image_tags=$REF_WITHOUT_TAG:${STEPS_GET_TAG_OUTPUTS_TAG}
 
+          if [[ "${STEPS_GET_TAG_OUTPUTS_TAG}" =~ ^v4\.[0-9]+\.[0-9]+$ ]]; then
+            image_tags=$image_tags,$REF_WITHOUT_TAG:v4,$REF_WITHOUT_TAG:latest
+          fi
+
           # when pushing the mutable main tag, also push an immutable-by-convention
           # full-commit-sha tag so a commit can be resolved to a specific digest
           if [[ "${STEPS_GET_TAG_OUTPUTS_TAG}" == "main" ]]; then
