@@ -8,9 +8,8 @@ import {
 } from "@internal/metrics-pipeline";
 import { Logger } from "@trigger.dev/core/logger";
 import { Decimal } from "@trigger.dev/database";
-import { describe } from "node:test";
 import { setTimeout } from "node:timers/promises";
-import { expect } from "vitest";
+import { describe, expect } from "vitest";
 import { FairQueueSelectionStrategy } from "./fairQueueSelectionStrategy.js";
 import { RunQueue } from "./index.js";
 import { RunQueueFullKeyProducer } from "./keyProducer.js";
