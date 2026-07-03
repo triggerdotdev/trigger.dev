@@ -5,5 +5,8 @@
 
 */
 
+-- Fail fast instead of queueing behind a long txn/VACUUM for the ACCESS EXCLUSIVE lock.
+SET lock_timeout = '5s';
+
 -- DropTable
 DROP TABLE IF EXISTS "_TaskRunToTaskRunTag" CASCADE;

@@ -2,6 +2,9 @@
 -- can't be enforced on the run-ops DB, which has no control-plane tables). Mirrors the
 -- earlier TaskRun/BatchTaskRun drops; IF EXISTS so it's idempotent across both databases.
 
+-- Fail fast instead of queueing behind a long txn/VACUUM for the ACCESS EXCLUSIVE lock.
+SET lock_timeout = '5s';
+
 -- Waitpoint
 ALTER TABLE "Waitpoint" DROP CONSTRAINT IF EXISTS "Waitpoint_projectId_fkey";
 ALTER TABLE "Waitpoint" DROP CONSTRAINT IF EXISTS "Waitpoint_environmentId_fkey";
