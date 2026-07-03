@@ -212,6 +212,12 @@ export function bustBillingLimitCaches(organizationId: string) {
   invalidateBillingLimitCaches(organizationId);
 }
 
+// Clear the cached promo-credits read so a just-granted code shows on the usage
+// page immediately rather than after the stale TTL.
+export function bustPromoCreditsCache(organizationId: string) {
+  platformCache.promoCredits.remove(organizationId).catch(() => {});
+}
+
 type Machines = typeof machinesFromPlatform;
 
 const MachineOverrideValues = z.object({

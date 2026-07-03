@@ -34,7 +34,7 @@ import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { logger } from "~/services/logger.server";
-import { applyPromoCode, setPlan } from "~/services/platform.v3.server";
+import { applyPromoCode, bustPromoCreditsCache, setPlan } from "~/services/platform.v3.server";
 import { clearPromoCodeCookie, getPromoCodeFromCookie } from "~/services/promoCode.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { engine } from "~/v3/runEngine.server";
@@ -166,6 +166,7 @@ export const action = dashboardAction(
       if (promoCode) {
         const applied = await applyPromoCode(organization.id, user.id, promoCode);
         if (applied?.applied) {
+          bustPromoCreditsCache(organization.id);
           result.headers.append("Set-Cookie", await clearPromoCodeCookie());
         }
       }

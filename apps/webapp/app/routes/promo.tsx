@@ -44,8 +44,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return typedjson({ view: "invalid" as const, ...authMethods });
   }
 
-  // Stash the code so it survives the OAuth round-trip and can be applied when
-  // the new org is created.
+  // Stash the code so it survives the OAuth round-trip and can be applied once
+  // the new org selects a plan.
   return typedjson(
     {
       view: "valid" as const,
@@ -152,16 +152,20 @@ export default function PromoPage() {
         ) : (
           <>
             <Header2 className="sm:text-2xl md:text-3xl lg:text-4xl" spacing>
-              {data.view === "valid" ? `Claim ${formatDollars(data.amountInCents)} credits` : "Create your account"}
+              {data.view === "valid"
+                ? `Claim ${formatDollars(data.amountInCents)} credits`
+                : "Create your account"}
             </Header2>
             {data.view === "valid" ? (
               <Paragraph variant="base" spacing>
-              These are only available for new accounts. The credits expire on {formatExpiry(data.expiresAt)}.
-            </Paragraph>
+                These are only available for new accounts.
+                {formatExpiry(data.expiresAt)
+                  ? ` The credits expire on ${formatExpiry(data.expiresAt)}.`
+                  : ""}
+              </Paragraph>
             ) : (
               <Callout variant="warning" className="mb-6 w-full">
-                That promo code isn't valid. You can still sign up below but credits won't be
-                added.
+                That promo code isn't valid. You can still sign up below but credits won't be added.
               </Callout>
             )}
             <SignInForm showGithubAuth={data.showGithubAuth} showGoogleAuth={data.showGoogleAuth} />
