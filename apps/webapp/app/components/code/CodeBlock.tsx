@@ -369,7 +369,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
               <pre
                 className={cn(
                   "relative mr-2 p-2 font-mono text-xs leading-relaxed",
-                  isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:break-words"
+                  isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:wrap-break-word"
                 )}
                 dir="ltr"
               >
@@ -502,7 +502,7 @@ function HighlightCode({
   const preClasses = cn(
     "relative mr-2 font-mono leading-relaxed",
     preClassName,
-    isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:break-words"
+    isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:wrap-break-word"
   );
 
   if (!isLoaded) {
@@ -531,7 +531,7 @@ function HighlightCode({
                 }
 
                 const lineNumber = index + 1;
-                const lineProps = getLineProps({ line, key: index });
+                const lineProps = getLineProps({ line });
 
                 let hasAnyHighlights = highlightLines ? highlightLines.length > 0 : false;
 
@@ -570,7 +570,7 @@ function HighlightCode({
 
                     <div className="flex-1">
                       {line.map((token, key) => {
-                        const tokenProps = getTokenProps({ token, key });
+                        const tokenProps = getTokenProps({ token });
 
                         // Highlight search term matches in token
                         const content = highlightSearchText(token.content, searchTerm);
