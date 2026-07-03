@@ -1,5 +1,6 @@
-import { BookOpenIcon, NoSymbolIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { Form, Outlet, useParams, type MetaFunction } from "@remix-run/react";
+import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { NoSymbolIcon } from "@heroicons/react/24/solid";
+import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -9,6 +10,7 @@ import { BulkActionsNone } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -30,6 +32,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
+import { AbortBulkActionDialog } from "~/components/runs/v3/AbortBulkActionDialog";
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -360,16 +363,18 @@ function BulkActionActionsCell({
       isSticky
       hiddenButtons={
         canAbort ? (
-          <Form method="post" action={path}>
-            <Button
-              type="submit"
-              variant="minimal/small"
-              LeadingIcon={NoSymbolIcon}
-              leadingIconClassName="text-error"
-            >
-              <span className="text-text-bright">Abort</span>
-            </Button>
-          </Form>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="minimal/small"
+                LeadingIcon={NoSymbolIcon}
+                leadingIconClassName="text-error"
+              >
+                <span className="text-text-bright">Abort</span>
+              </Button>
+            </DialogTrigger>
+            <AbortBulkActionDialog formAction={path} />
+          </Dialog>
         ) : (
           <Button
             variant="minimal/small"
