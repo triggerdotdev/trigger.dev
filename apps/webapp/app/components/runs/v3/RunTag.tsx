@@ -26,8 +26,8 @@ export function RunTag({
     if (typeof tagResult === "string") {
       return (
         <>
-          <img src={tagLeftPath} alt="" className="block h-full w-[0.5625rem]" />
-          <span className="flex items-center rounded-r-sm border-y border-r border-charcoal-700 bg-charcoal-800 pr-1.5 text-text-dimmed group-hover:rounded-r-none group-has-[[href]]:group-hover:border-charcoal-650 group-has-[[href]]:group-hover:text-charcoal-300">
+          <img src={tagLeftPath} alt="" className="block h-full w-2.25" />
+          <span className="flex items-center rounded-r-sm border-y border-r border-charcoal-700 bg-charcoal-800 pr-1.5 text-text-dimmed group-hover:rounded-r-none group-hover:group-has-[[href]]:border-charcoal-650 group-hover:group-has-[[href]]:text-charcoal-300">
             {tag}
           </span>
         </>
@@ -35,11 +35,11 @@ export function RunTag({
     } else {
       return (
         <>
-          <img src={tagLeftPath} alt="" className="block h-full w-[0.5625rem]" />
-          <span className="flex items-center border-y border-r border-charcoal-700 bg-charcoal-800 pr-1.5 text-text-dimmed group-has-[[href]]:group-hover:border-charcoal-650 group-has-[[href]]:group-hover:text-charcoal-300">
+          <img src={tagLeftPath} alt="" className="block h-full w-2.25" />
+          <span className="flex items-center border-y border-r border-charcoal-700 bg-charcoal-800 pr-1.5 text-text-dimmed group-hover:group-has-[[href]]:border-charcoal-650 group-hover:group-has-[[href]]:text-charcoal-300">
             {tagResult.key}
           </span>
-          <span className="flex items-center whitespace-nowrap rounded-r-sm border-y border-r border-charcoal-700 bg-charcoal-750 px-1.5 text-text-dimmed group-hover:rounded-r-none group-has-[[href]]:group-hover:border-charcoal-650 group-has-[[href]]:group-hover:bg-charcoal-700 group-has-[[href]]:group-hover:text-charcoal-300">
+          <span className="flex items-center whitespace-nowrap rounded-r-sm border-y border-r border-charcoal-700 bg-charcoal-750 px-1.5 text-text-dimmed group-hover:rounded-r-none group-hover:group-has-[[href]]:border-charcoal-650 group-hover:group-has-[[href]]:bg-charcoal-700 group-hover:group-has-[[href]]:text-charcoal-300">
             {tagResult.value}
           </span>
         </>

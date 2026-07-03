@@ -287,7 +287,7 @@ export default function Page() {
                           <Button
                             variant="primary/small"
                             LeadingIcon={PlusIcon}
-                            leadingIconClassName="-mr-[0.7rem]"
+                            leadingIconClassName="mr-[-0.7rem]"
                             onClick={() => toggleUsefulLinks(true)}
                             className="pl-1.5"
                           >
@@ -630,7 +630,7 @@ const ACTIVITY_CHART_HEIGHT = 24;
 // chart (112) + gap-1.5 (6) + count min-w (28). Reserved so the column stays put while the chart unmounts.
 const ACTIVITY_CELL_WIDTH = 146;
 const ACTIVITY_CHART_COUNT_CLASS =
-  "-mt-1 inline-block min-w-[1.75rem] text-xxs tabular-nums text-text-dimmed";
+  "-mt-1 inline-block min-w-7 text-xxs tabular-nums text-text-dimmed";
 
 function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] }) {
   const maxTotal = Math.max(...activity.map((d) => d.total));

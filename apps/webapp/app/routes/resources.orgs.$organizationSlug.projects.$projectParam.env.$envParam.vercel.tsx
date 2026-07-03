@@ -1122,7 +1122,7 @@ function VercelSettingsPanel({
     return (
       <div className="rounded-sm border border-rose-500/40 bg-rose-500/10 p-4">
         <div className="flex items-start gap-3">
-          <ExclamationTriangleIcon className="h-5 w-5 flex-shrink-0 text-rose-500" />
+          <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-rose-500" />
           <div>
             <p className="font-medium text-rose-400">Failed to load Vercel settings</p>
             <p className="mt-1 text-sm text-rose-300">

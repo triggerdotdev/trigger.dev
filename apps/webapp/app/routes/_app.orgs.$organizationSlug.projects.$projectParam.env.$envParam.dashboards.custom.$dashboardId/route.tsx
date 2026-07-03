@@ -355,7 +355,7 @@ export default function Page() {
   const dashboardMenu = (
     <Popover>
       <PopoverVerticalEllipseTrigger variant="secondary" />
-      <PopoverContent className="w-fit min-w-[10rem] p-1" align="end">
+      <PopoverContent className="w-fit min-w-40 p-1" align="end">
         <div className="flex flex-col gap-1">
           <RenameDashboardDialog title={title} />
           <DeleteDashboardDialog title={title} />

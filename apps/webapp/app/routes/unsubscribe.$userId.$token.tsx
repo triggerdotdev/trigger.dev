@@ -61,7 +61,7 @@ export default function Page() {
 
   return (
     <AppContainer>
-      <MainCenteredContainer className="max-w-[22rem]">
+      <MainCenteredContainer className="max-w-88">
         {result.success ? (
           <div>
             <FormTitle

@@ -709,7 +709,7 @@ export function TimeDropdown({
                       setActiveSection("duration");
                       setValidationError(null);
                     }}
-                    className="h-full w-full translate-y-px border-none bg-transparent py-0 pl-2 pr-0 text-xs leading-none text-text-bright outline-none placeholder:text-text-dimmed focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="h-full w-full translate-y-px border-none bg-transparent py-0 pl-2 pr-0 text-xs leading-none text-text-bright outline-hidden placeholder:text-text-dimmed focus:outline-hidden focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                   <div className="flex items-center gap-2">
                     {timeUnits.map((unit) => (

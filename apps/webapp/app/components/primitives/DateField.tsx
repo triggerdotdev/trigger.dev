@@ -227,7 +227,7 @@ function DateSegment({ segment, state, variant }: DateSegmentProps) {
         minWidth: minWidthForSegment(segment),
       }}
       className={cn(
-        "group box-content text-center tabular-nums outline-none focus:bg-charcoal-600 focus:text-text-bright",
+        "group box-content text-center tabular-nums outline-hidden focus:bg-charcoal-600 focus:text-text-bright",
         sizeVariant.fieldStyles,
         !segment.isEditable ? "text-charcoal-500" : "text-text-bright"
       )}
@@ -275,7 +275,7 @@ function DateSegmentGuide({ segment }: { segment: DateSegment }) {
       style={{
         minWidth: minWidthForSegment(segment),
       }}
-      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums text-rose-500 outline-none ${
+      className={`group box-content rounded-sm px-0.5 text-right text-sm tabular-nums text-rose-500 outline-hidden ${
         !segment.isEditable ? "text-charcoal-500" : "text-text-bright"
       }`}
     >

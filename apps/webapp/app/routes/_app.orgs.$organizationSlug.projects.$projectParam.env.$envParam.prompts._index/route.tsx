@@ -114,27 +114,27 @@ export default function PromptsPage() {
               <TableHeaderCell>Model</TableHeaderCell>
               <TableHeaderCell
                 tooltip={
-                  <div className="flex max-w-[16rem] flex-col gap-3 p-1 pb-2">
+                  <div className="flex max-w-64 flex-col gap-3 p-1 pb-2">
                     <div className="flex flex-col gap-2">
                       <div>
                         <div className="mb-0.5 flex items-center gap-2">
                           <span className="size-1.5 shrink-0 rounded-full bg-success" />
-                          <Paragraph variant="small" className="!text-wrap text-text-bright">
+                          <Paragraph variant="small" className="text-wrap! text-text-bright">
                             Latest version
                           </Paragraph>
                         </div>
-                        <Paragraph variant="small" className="!text-wrap pl-3.5 text-text-dimmed">
+                        <Paragraph variant="small" className="text-wrap! pl-3.5 text-text-dimmed">
                           Running the most recently published version.
                         </Paragraph>
                       </div>
                       <div>
                         <div className="mb-0.5 flex items-center gap-2">
                           <span className="size-1.5 shrink-0 rounded-full bg-warning" />
-                          <Paragraph variant="small" className="!text-wrap text-text-bright">
+                          <Paragraph variant="small" className="text-wrap! text-text-bright">
                             Version overridden
                           </Paragraph>
                         </div>
-                        <Paragraph variant="small" className="!text-wrap pl-3.5 text-text-dimmed">
+                        <Paragraph variant="small" className="text-wrap! pl-3.5 text-text-dimmed">
                           Pinned to an older version instead of the latest.
                         </Paragraph>
                       </div>
@@ -231,7 +231,7 @@ function UsageSparkline({ data }: { data?: number[] }) {
 
   return (
     <div className="flex items-start gap-2">
-      <div className="h-6 w-[7rem] rounded-sm">
+      <div className="h-6 w-28 rounded-sm">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
             <YAxis domain={[0, max || 1]} hide />

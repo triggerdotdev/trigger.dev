@@ -93,7 +93,7 @@ export function Callout({
           href={to}
           target="_blank"
           className={cn(
-            `flex w-full items-start justify-between gap-2.5 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-sm`,
+            `flex w-full items-start justify-between gap-2.5 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-xs`,
             variantDefinition.className,
             variantDefinition.linkClassName,
             className
@@ -118,7 +118,7 @@ export function Callout({
         <Link
           to={to}
           className={cn(
-            `flex w-full items-start justify-between gap-2.5 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-sm`,
+            `flex w-full items-start justify-between gap-2.5 rounded-md border py-2 pl-2 pr-3 shadow-md backdrop-blur-xs`,
             variantDefinition.className,
             variantDefinition.linkClassName,
             className
@@ -146,7 +146,7 @@ export function Callout({
   return (
     <div
       className={cn(
-        "flex w-full items-start gap-2 rounded-md border pl-2 pr-2 shadow-md backdrop-blur-sm",
+        "flex w-full items-start gap-2 rounded-md border pl-2 pr-2 shadow-md backdrop-blur-xs",
         cta ? "py-2" : "py-2.5",
         variantDefinition.className,
         className

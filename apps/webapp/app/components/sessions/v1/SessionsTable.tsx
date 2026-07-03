@@ -75,7 +75,7 @@ export function SessionsTable({
                     <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
                       <SessionStatusCombo status={status} />
                     </div>
-                    <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                    <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
                       {descriptionForSessionStatus(status)}
                     </Paragraph>
                   </div>

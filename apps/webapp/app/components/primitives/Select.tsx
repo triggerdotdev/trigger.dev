@@ -619,7 +619,7 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
     <Ariakit.SelectGroupLabel
       {...props}
       className={cn(
-        "flex h-[1.375rem] items-center border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright",
+        "flex h-5.5 items-center border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright",
         props.className
       )}
     />
@@ -629,7 +629,7 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
 export interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
 export function SelectHeading({ render, ...props }: SelectHeadingProps) {
   return (
-    <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
+    <div className="flex h-5.5 flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
       <Ariakit.SelectHeading render={render} />
     </div>
   );
@@ -649,11 +649,11 @@ export function SelectPopover({
       shift={shift}
       unmountOnHide={unmountOnHide}
       className={cn(
-        "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-none animate-in fade-in-40",
+        "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-hidden animate-in fade-in-40",
         "min-w-[max(180px,var(--popover-anchor-width))]",
         "max-w-[min(480px,var(--popover-available-width))]",
         "max-h-[min(600px,var(--popover-available-height))]",
-        "origin-[var(--popover-transform-origin)]",
+        "origin-(--popover-transform-origin)",
         className
       )}
       {...props}
@@ -678,11 +678,11 @@ export function ComboBox({
   ...props
 }: ComboBoxProps) {
   return (
-    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-none">
+    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-hidden">
       <Ariakit.Combobox
         autoSelect={autoSelect}
         render={<input placeholder={placeholder} />}
-        className="flex-1 bg-transparent text-xs text-text-dimmed outline-none"
+        className="flex-1 bg-transparent text-xs text-text-dimmed outline-hidden"
         {...props}
       />
       {shortcut && (

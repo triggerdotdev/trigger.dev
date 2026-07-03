@@ -27,7 +27,7 @@ const variants = {
     label: "text-sm text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-0",
-    isChecked: "bg-charcoal-850 border-charcoal-750 hover:!bg-charcoal-850",
+    isChecked: "bg-charcoal-850 border-charcoal-750 hover:bg-charcoal-850!",
     isDisabled: "opacity-70 hover:bg-transparent",
   },
   button: {
@@ -36,7 +36,7 @@ const variants = {
     label: "text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-1",
-    isChecked: "bg-charcoal-850 border-charcoal-750 hover:!bg-charcoal-850",
+    isChecked: "bg-charcoal-850 border-charcoal-750 hover:bg-charcoal-850!",
     isDisabled: "opacity-70 hover:bg-transparent",
   },
   description: {
@@ -139,7 +139,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
           className={cn(
             inputPositionClasses,
             props.readOnly || disabled ? "cursor-default" : "cursor-pointer",
-            "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-charcoal-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none  focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
+            "read-only:border-charcoal-650 disabled:border-charcoal-650 rounded-sm border border-charcoal-600 bg-transparent transition checked:bg-indigo-500! read-only:bg-charcoal-700! group-hover:bg-charcoal-900 checked:group-hover:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-hidden  focus-visible:ring-indigo-500 disabled:bg-charcoal-700!"
           )}
           id={id}
           ref={ref}
@@ -189,7 +189,7 @@ export const Checkbox = forwardRef<HTMLInputElement, SimpleCheckboxProps>(
             : props.readOnly
               ? "cursor-default"
               : "cursor-pointer",
-          "read-only:border-charcoal-650 disabled:border-charcoal-650 disabled:opacity-50 rounded-sm border border-charcoal-600 bg-transparent transition checked:!bg-indigo-500 read-only:!bg-charcoal-700 group-hover:bg-charcoal-900 group-hover:checked:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-none focus-visible:ring-indigo-500 disabled:!bg-charcoal-700"
+          "read-only:border-charcoal-650 disabled:border-charcoal-650 disabled:opacity-50 rounded-sm border border-charcoal-600 bg-transparent transition checked:bg-indigo-500! read-only:bg-charcoal-700! group-hover:bg-charcoal-900 checked:group-hover:bg-indigo-500 group-focus:ring-1 focus:ring-indigo-500 focus:ring-offset-0 focus:ring-offset-transparent focus-visible:outline-hidden focus-visible:ring-indigo-500 disabled:bg-charcoal-700!"
         )}
         {...props}
         ref={ref}

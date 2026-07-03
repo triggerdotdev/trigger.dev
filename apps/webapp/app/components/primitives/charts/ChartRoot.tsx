@@ -174,7 +174,7 @@ function ChartRootInner({
           config={config}
           className={cn(
             "h-full w-full",
-            fillContainer && "!aspect-auto",
+            fillContainer && "aspect-auto!",
             enableZoom &&
               "[&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
           )}

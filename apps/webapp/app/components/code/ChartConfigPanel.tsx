@@ -568,7 +568,7 @@ function SeriesColorPicker({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex-shrink-0 rounded p-0.5 hover:bg-charcoal-700"
+          className="shrink-0 rounded p-0.5 hover:bg-charcoal-700"
           title="Change series color"
         >
           <span

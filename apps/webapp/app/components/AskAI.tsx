@@ -173,7 +173,7 @@ function AskAIDialog({ initialQuery, isOpen, onOpenChange, closeAskAI }: AskAIDi
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="animated-gradient-glow flex max-h-[90vh] min-h-fit w-full flex-col justify-between gap-0 px-0 pb-0 pt-0 sm:max-w-prose">
-        <DialogHeader className="flex h-[2.75rem] items-start justify-center rounded-t-md bg-background-bright pl-3">
+        <DialogHeader className="flex h-11 items-start justify-center rounded-t-md bg-background-bright pl-3">
           <div className="flex items-center gap-1">
             <AISparkleIcon className="size-5" />
             <DialogTitle className="text-sm font-medium text-text-bright">Ask AI</DialogTitle>
@@ -468,7 +468,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
         error={error}
         addFeedback={addFeedback}
       />
-      <form onSubmit={handleSubmit} className="flex-shrink-0 border-t border-grid-bright p-4">
+      <form onSubmit={handleSubmit} className="shrink-0 border-t border-grid-bright p-4">
         <div className="flex gap-3">
           <input
             type="text"
@@ -531,7 +531,7 @@ function GradientSpinnerBackground({
 }) {
   return (
     <div
-      className={`flex rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-fuchsia-500 p-px ${className}`}
+      className={`flex rounded-full bg-linear-to-br from-indigo-500 via-purple-500 to-fuchsia-500 p-px ${className}`}
     >
       <div
         className={`flex h-full w-full items-center justify-center rounded-full bg-charcoal-600 ${

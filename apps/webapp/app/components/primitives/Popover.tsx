@@ -27,7 +27,7 @@ const PopoverContent = React.forwardRef<
       sideOffset={sideOffset}
       avoidCollisions={true}
       className={cn(
-        "z-50 min-w-max rounded border border-charcoal-700 bg-background-bright p-4 shadow-md outline-none animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        "z-50 min-w-max rounded border border-charcoal-700 bg-background-bright p-4 shadow-md outline-hidden animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
       )}
       style={{
@@ -102,7 +102,7 @@ const PopoverMenuItem = React.forwardRef<
       TrailingIcon: isSelected ? CheckIcon : undefined,
       className: cn(
         danger
-          ? "transition-colors group-hover/button:bg-error/10 group-hover/button:text-error [&_span]:transition-colors [&_span]:group-hover/button:text-error"
+          ? "transition-colors group-hover/button:bg-error/10 group-hover/button:text-error [&_span]:transition-colors group-hover/button:[&_span]:text-error"
           : "group-hover:bg-charcoal-700",
         isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined,
         className
@@ -130,7 +130,7 @@ const PopoverMenuItem = React.forwardRef<
         onClick={onClick}
         disabled={disabled}
         className={cn(
-          "group/button outline-none focus-custom",
+          "group/button outline-hidden focus-custom",
           contentProps.fullWidth ? "w-full" : ""
         )}
         name={name}

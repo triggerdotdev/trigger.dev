@@ -327,7 +327,7 @@ const QueryEditorForm = forwardRef<
             shortcut={{ modifiers: ["mod"], key: "enter", enabledOnInputElements: true }}
             className={
               isLoading
-                ? "relative !text-transparent [&_*]:!border-transparent [&_*]:!text-transparent"
+                ? "relative text-transparent! **:border-transparent! **:text-transparent!"
                 : undefined
             }
           >
@@ -1078,7 +1078,7 @@ function ExportResultsButton({
       <PopoverArrowTrigger variant="minimal" isOpen={isOpen}>
         Export
       </PopoverArrowTrigger>
-      <PopoverContent className="min-w-[10rem] p-1" align="end">
+      <PopoverContent className="min-w-40 p-1" align="end">
         <div className="flex flex-col gap-1">
           <PopoverMenuItem
             icon={Clipboard}

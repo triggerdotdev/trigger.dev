@@ -251,7 +251,7 @@ export function ChartLegendCompound({
                   content={item.label}
                   side="top"
                   disableHoverableContent
-                  className="max-w-xs break-words"
+                  className="max-w-xs wrap-break-word"
                   buttonClassName="cursor-default min-w-0"
                 />
                 <span

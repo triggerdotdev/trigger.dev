@@ -7,7 +7,7 @@ export function BackgroundWrapper({ children }: { children: ReactNode }) {
   return (
     <div className="relative h-full w-full overflow-hidden bg-background-dimmed lg:bg-transparent">
       <div
-        className="absolute left-0 top-0 hidden w-[260px] bg-contain bg-left-top bg-no-repeat lg:block"
+        className="absolute left-0 top-0 hidden w-[260px] bg-contain bg-top-left bg-no-repeat lg:block"
         style={{
           backgroundImage: `url(${blurredDashboardBackgroundMenuTop})`,
           aspectRatio: "auto",
@@ -17,7 +17,7 @@ export function BackgroundWrapper({ children }: { children: ReactNode }) {
       />
 
       <div
-        className="absolute bottom-0 left-0 hidden w-[260px] bg-contain bg-left-bottom bg-no-repeat lg:block"
+        className="absolute bottom-0 left-0 hidden w-[260px] bg-contain bg-bottom-left bg-no-repeat lg:block"
         style={{
           backgroundImage: `url(${blurredDashboardBackgroundMenuBottom})`,
           aspectRatio: "auto",
@@ -27,7 +27,7 @@ export function BackgroundWrapper({ children }: { children: ReactNode }) {
       />
 
       <div
-        className="absolute top-0 hidden bg-left-top bg-no-repeat lg:block"
+        className="absolute top-0 hidden bg-top-left bg-no-repeat lg:block"
         style={{
           left: "260px",
           backgroundImage: `url(${blurredDashboardBackgroundTable})`,

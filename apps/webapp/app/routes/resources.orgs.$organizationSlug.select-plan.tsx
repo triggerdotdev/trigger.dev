@@ -755,7 +755,7 @@ export function TierEnterprise() {
           <h2 className="text-xl font-medium text-text-dimmed">Enterprise</h2>
           <p className="font-sans text-lg font-normal text-text-bright">Tailor a custom plan</p>
         </div>
-        <div className="w-full lg:w-auto lg:max-w-[16rem]">
+        <div className="w-full lg:w-auto lg:max-w-64">
           <Feedback
             defaultValue="enterprise"
             button={
@@ -820,7 +820,7 @@ function TierContainer({
   return (
     <div
       className={cn(
-        "flex w-full min-w-[16rem] flex-col p-6",
+        "flex w-full min-w-64 flex-col p-6",
         isHighlighted ? "border border-indigo-500" : "border border-grid-dimmed",
         className
       )}

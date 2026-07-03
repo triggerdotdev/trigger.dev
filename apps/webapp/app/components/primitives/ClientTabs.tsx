@@ -193,7 +193,7 @@ const ClientTabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     tabIndex={-1}
-    className={cn("mt-1 outline-none", className, "data-[state=inactive]:hidden")}
+    className={cn("mt-1 outline-hidden", className, "data-[state=inactive]:hidden")}
     {...props}
   />
 ));

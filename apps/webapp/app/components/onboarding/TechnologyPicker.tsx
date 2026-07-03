@@ -293,18 +293,18 @@ export function TechnologyPicker({
             gutter={5}
             unmountOnHide
             className={cn(
-              "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-none animate-in fade-in-40",
+              "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-hidden animate-in fade-in-40",
               "min-w-[max(180px,var(--popover-anchor-width))]",
               "max-w-[min(480px,var(--popover-available-width))]",
               "max-h-[min(400px,var(--popover-available-height))]"
             )}
           >
-            <div className="flex h-9 w-full flex-none items-center gap-2 border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-none">
+            <div className="flex h-9 w-full flex-none items-center gap-2 border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-hidden">
               <MagnifyingGlassIcon className="size-3.5 flex-none text-text-dimmed" />
               <Ariakit.Combobox
                 autoSelect
                 placeholder="Search technologies…"
-                className="flex-1 bg-transparent text-xs text-text-dimmed outline-none"
+                className="flex-1 bg-transparent text-xs text-text-dimmed outline-hidden"
               />
             </div>
 
@@ -342,7 +342,7 @@ export function TechnologyPicker({
                     onChange={(e) => setOtherInputValue(e.target.value)}
                     onKeyDown={handleOtherKeyDown}
                     placeholder="Type and press Enter to add"
-                    className="flex-1 border-none bg-transparent pl-2 text-2sm text-text-bright shadow-none outline-none ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-none focus:ring-0"
+                    className="flex-1 border-none bg-transparent pl-2 text-2sm text-text-bright shadow-none outline-hidden ring-0 placeholder:text-text-dimmed focus:border-none focus:outline-hidden focus:ring-0"
                     autoFocus
                   />
                   <ShortcutKey

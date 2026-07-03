@@ -693,7 +693,7 @@ function MergedStreamRow({
       <div
         className={cn(
           "min-w-0 flex-1 px-3 text-text-bright",
-          isWrapped ? "whitespace-pre-wrap break-words" : "whitespace-nowrap"
+          isWrapped ? "whitespace-pre-wrap wrap-break-word" : "whitespace-nowrap"
         )}
       >
         {isWrapped ? wrappedData : inlineData}

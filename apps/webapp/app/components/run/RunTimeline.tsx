@@ -413,7 +413,7 @@ function EventMarker({
     case "start-cap":
       return (
         <>
-          <div className={cn("h-full w-[0.4375rem] border-b", borderClass)} />
+          <div className={cn("h-full w-1.75 border-b", borderClass)} />
           <div className={cn("relative h-full w-px", bgClass)}>
             {state === "inprogress" && (
               <div
@@ -441,9 +441,7 @@ function EventMarker({
               />
             )}
           </div>
-          <div
-            className={cn("size-[0.3125rem] min-h-[0.3125rem] rounded-full border", borderClass)}
-          />
+          <div className={cn("size-1.25 min-h-1.25 rounded-full border", borderClass)} />
           <div className={cn("relative h-full w-px", bgClass)}>
             {state === "inprogress" && (
               <div
@@ -458,10 +456,10 @@ function EventMarker({
         </>
       );
     case "dot-solid":
-      return <div className={cn("size-[0.3125rem] rounded-full", bgClass)} />;
+      return <div className={cn("size-1.25 rounded-full", bgClass)} />;
     case "start-cap-thick":
       return (
-        <div className={cn("relative h-full w-[0.4375rem] rounded-t-[0.125rem]", bgClass)}>
+        <div className={cn("relative h-full w-1.75 rounded-t-xs", bgClass)}>
           {state === "inprogress" && (
             <div
               className="absolute inset-0 h-full w-full animate-tile-scroll-offset opacity-30"
@@ -474,9 +472,9 @@ function EventMarker({
         </div>
       );
     case "end-cap-thick":
-      return <div className={cn("h-full w-[0.4375rem] rounded-b-[0.125rem]", bgClass)} />;
+      return <div className={cn("h-full w-1.75 rounded-b-xs", bgClass)} />;
     default:
-      return <div className={cn("size-[0.3125rem] rounded-full bg-yellow-500")} />;
+      return <div className={cn("size-1.25 rounded-full bg-yellow-500")} />;
   }
 }
 
@@ -527,16 +525,14 @@ function LineMarker({
       break;
     case "inprogress":
       containerClass =
-        style === "normal"
-          ? "rounded-b-[0.125rem] bg-pending"
-          : "rounded-b-[0.125rem] bg-text-dimmed";
+        style === "normal" ? "rounded-b-xs bg-pending" : "rounded-b-xs bg-text-dimmed";
       break;
   }
 
   switch (variant) {
     case "normal":
       return (
-        <div className={cn("relative w-[0.4375rem]", containerClass)}>
+        <div className={cn("relative w-1.75", containerClass)}>
           {state === "inprogress" && (
             <div
               className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"
@@ -563,7 +559,7 @@ function LineMarker({
         </div>
       );
     default:
-      return <div className="w-px rounded-[0.125rem] bg-text-dimmed" />;
+      return <div className="w-px rounded-xs bg-text-dimmed" />;
   }
 }
 

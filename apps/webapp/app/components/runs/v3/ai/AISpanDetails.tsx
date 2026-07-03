@@ -221,7 +221,7 @@ function CopyRawFooter({ rawProperties }: { rawProperties: string }) {
   }
 
   return (
-    <div className="flex h-[3.25rem] shrink-0 items-center justify-end border-t border-grid-dimmed px-2">
+    <div className="flex h-13 shrink-0 items-center justify-end border-t border-grid-dimmed px-2">
       <Button
         variant="minimal/medium"
         onClick={handleCopy}

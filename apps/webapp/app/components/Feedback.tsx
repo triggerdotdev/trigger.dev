@@ -84,7 +84,7 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
         <DialogHeader>Contact us</DialogHeader>
         <div className="mt-2 flex flex-col gap-4">
           <div className="flex items-center gap-4">
-            <Icon icon={EnvelopeIcon} className="size-10 min-w-[2.5rem] text-blue-500" />
+            <Icon icon={EnvelopeIcon} className="size-10 min-w-10 text-blue-500" />
             <Paragraph variant="base/bright">
               How can we help? We read every message and will respond as quickly as we can.
             </Paragraph>

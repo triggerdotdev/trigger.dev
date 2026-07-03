@@ -158,7 +158,7 @@ export const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
         ref={ref}
         {...props}
         className={cn(
-          "group/table-row relative w-full outline-none after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
+          "group/table-row relative w-full outline-hidden after:absolute after:bottom-0 after:left-3 after:right-0 after:h-px after:bg-grid-dimmed",
           isSelected && variants[variant].rowSelected,
           disabled && "opacity-50",
           className
@@ -313,12 +313,11 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
             ? "cursor-pointer"
             : cn("cursor-default align-middle", variants[variant].cellSize),
           !to && !onClick && alignmentClassName,
-          isSticky &&
-            "[&:has(.group-hover/table-row:block)]:w-auto sticky right-0 bg-background-dimmed",
+          isSticky && "[&:has([data-hidden-buttons])]:w-auto sticky right-0 bg-background-dimmed",
           isSticky && variants[variant].stickyCell,
           isSelected && variants[variant].rowSelected,
           !isSelected &&
-            "group-hover/table-row:before:absolute group-hover/table-row:before:left-0 group-hover/table-row:before:top-[-1px] group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:after:absolute group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3 group-hover/table-row:after:bg-charcoal-750 group-focus-visible/table-row:bg-background-bright",
+            "group-hover/table-row:before:absolute group-hover/table-row:before:left-0 group-hover/table-row:before:-top-px group-hover/table-row:before:h-px group-hover/table-row:before:w-3 group-hover/table-row:before:bg-charcoal-750 group-hover/table-row:after:absolute group-hover/table-row:after:bottom-0 group-hover/table-row:after:left-0 group-hover/table-row:after:h-px group-hover/table-row:after:w-3 group-hover/table-row:after:bg-charcoal-750 group-focus-visible/table-row:bg-background-bright",
           className
         )}
         colSpan={colSpan}
@@ -327,7 +326,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         {to ? (
           <Link
             to={to}
-            className={cn("cursor-pointer focus:outline-none", flexClasses, actionClassName)}
+            className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
             tabIndex={isTabbableCell ? 0 : -1}
           >
             {children}
@@ -335,7 +334,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         ) : onClick ? (
           <button
             onClick={onClick}
-            className={cn("cursor-pointer focus:outline-none", flexClasses, actionClassName)}
+            className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
             tabIndex={isTabbableCell ? 0 : -1}
           >
             {children}
@@ -480,6 +479,7 @@ export const TableCellMenu = forwardRef<
             {/* Hidden buttons that show on hover */}
             {hiddenButtons && (
               <div
+                data-hidden-buttons
                 className={cn(
                   "hidden group-hover/table-row:block",
                   popoverContent && "pr-0.5 group-hover/table-row:border-r",
@@ -501,7 +501,7 @@ export const TableCellMenu = forwardRef<
                   className="duration-0 group-hover/table-row:text-text-bright"
                 />
                 <PopoverContent
-                  className="min-w-[10rem] max-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                  className="min-w-40 max-w-80 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
                   align="end"
                 >
                   {typeof popoverContent === "function" ? (

@@ -3,7 +3,9 @@ module.exports = {
   dev: {
     port: 8002,
   },
-  tailwind: true,
+  // Tailwind v4 runs through PostCSS (@tailwindcss/postcss), not the built-in Remix integration
+  tailwind: false,
+  postcss: true,
   cacheDirectory: "./node_modules/.cache/remix",
   ignoredRouteFiles: ["**/.*"],
   serverModuleFormat: "cjs",

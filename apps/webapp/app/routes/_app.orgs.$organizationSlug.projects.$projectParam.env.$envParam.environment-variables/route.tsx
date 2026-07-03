@@ -693,7 +693,7 @@ function EnvironmentVariableTableRow({
       </TableCell>
       <TableCellMenu
         isSticky
-        className="[&:has(.group-hover/table-row:block)]:w-auto w-0"
+        className="[&:has([data-hidden-buttons])]:w-auto w-0"
         hiddenButtons={
           // No edit/delete for environments the role can't manage — the value
           // is withheld, and the action enforces write:envvars independently.
