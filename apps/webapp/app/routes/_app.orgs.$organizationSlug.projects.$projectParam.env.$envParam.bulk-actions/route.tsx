@@ -331,11 +331,7 @@ function BulkActionsTable({
                 <TableCell to={path}>
                   {bulkAction.completedAt ? <DateTime date={bulkAction.completedAt} /> : "–"}
                 </TableCell>
-                <BulkActionActionsCell
-                  bulkAction={bulkAction}
-                  path={path}
-                  canAbort={canAbort}
-                />
+                <BulkActionActionsCell bulkAction={bulkAction} path={path} canAbort={canAbort} />
               </TableRow>
             );
           })
