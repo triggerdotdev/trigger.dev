@@ -92,8 +92,9 @@ async function seed() {
 
   // The PAT is an admin credential. Only mint and print it when seeding a local
   // instance, so a stray non-local `db:seed` can't leak it to stdout/logs.
+  const localHostnames = new Set(["localhost", "127.0.0.1", "[::1]"]);
   const isLocalInstance =
-    env.NODE_ENV !== "production" && /localhost|127\.0\.0\.1/.test(env.APP_ORIGIN);
+    env.NODE_ENV !== "production" && localHostnames.has(new URL(env.APP_ORIGIN).hostname);
   if (isLocalInstance) {
     const localPat = await ensureLocalCliPat(user);
     console.log(`\n🔑 CLI access token for ${user.email} (name: ${localPat.name}):`);
