@@ -861,7 +861,6 @@ const EnvironmentSchema = z
     QUEUE_METRICS_EMIT_ENABLED: z.string().default("0"),
     QUEUE_METRICS_CONSUMER_ENABLED: z.string().default("0"),
     QUEUE_METRICS_STREAM_SHARD_COUNT: z.coerce.number().int().default(4),
-    QUEUE_METRICS_STREAM_MAXLEN: z.coerce.number().int().default(2_000_000),
     QUEUE_METRICS_CONSUMER_BATCH_SIZE: z.coerce.number().int().default(1000),
     // Counter stream (exact counts, loss-intolerant). Unset host => the run-queue Redis;
     // set it to a dedicated instance so counter backlog never competes with the run queue.
@@ -869,7 +868,7 @@ const EnvironmentSchema = z
     QUEUE_METRICS_REDIS_PORT: z.coerce.number().optional(),
     QUEUE_METRICS_REDIS_USERNAME: z.string().optional(),
     QUEUE_METRICS_REDIS_PASSWORD: z.string().optional(),
-    QUEUE_METRICS_REDIS_TLS_DISABLED: z.string().default("false"),
+    QUEUE_METRICS_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     QUEUE_METRICS_COUNTER_STREAM_MAXLEN: z.coerce.number().int().default(8_000_000),
     // TTL (seconds) on the per-(queue,op) cumulative odometer key, refreshed on every write.
     // Idle-past-TTL queues purge and self-heal (restart from 1) on return; default 7 days.

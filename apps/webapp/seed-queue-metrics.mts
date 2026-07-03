@@ -282,7 +282,7 @@ function simulateBucket(
       env_running: envRunning,
       env_queued: envQueued,
       env_limit: envLimit,
-      throttled: running[q] >= limit[q] && queued[q] > 0 ? 1 : 0,
+      throttled: queued[q] > 0 && (running[q] >= limit[q] || scale < 1) ? 1 : 0,
     };
     rows.push(gauge);
 
@@ -317,11 +317,13 @@ function clickhouse(): ClickHouse {
     console.error("CLICKHOUSE_URL not set");
     process.exit(1);
   }
-  if (/\.clickhouse\.cloud|prod/i.test(clickhouseUrl)) {
-    console.error(`Refusing to run against a non-local ClickHouse: ${clickhouseUrl}`);
+  const url = new URL(clickhouseUrl);
+  // Allowlist local hosts only (this script TRUNCATEs), and never echo the URL (it carries creds).
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
+  if (!localHosts.has(url.hostname)) {
+    console.error(`Refusing to run against a non-local ClickHouse host: ${url.hostname}`);
     process.exit(1);
   }
-  const url = new URL(clickhouseUrl);
   url.searchParams.delete("secure");
   return new ClickHouse({ url: url.toString(), name: "queue-metrics-simulator" });
 }
@@ -419,8 +421,18 @@ async function main() {
     process.exit(1);
   }
   const bucketSec = Number(flags.bucket ?? 10);
+  if (!Number.isFinite(bucketSec) || bucketSec <= 0) {
+    console.error(`--bucket must be a positive number of seconds, got: ${flags.bucket}`);
+    process.exit(1);
+  }
   const windowSec = parseDuration(flags.window ?? "2h");
   const totalBuckets = Math.floor(windowSec / bucketSec);
+  if (!Number.isFinite(totalBuckets) || totalBuckets <= 0) {
+    console.error(
+      `--window must be longer than --bucket (got ${windowSec}s window, ${bucketSec}s bucket)`
+    );
+    process.exit(1);
+  }
   const seed = Number(flags.seed ?? 1);
   const live = flags.live === "true";
 

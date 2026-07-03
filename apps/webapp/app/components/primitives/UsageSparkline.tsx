@@ -50,7 +50,8 @@ export function UsageSparkline({
   formatTotal,
   totalClassName = "text-blue-400",
 }: UsageSparklineProps) {
-  if (!data || data.every((v) => v === 0)) {
+  const hasTotalOverride = totalOverride !== undefined;
+  if (!data || data.length === 0 || (data.every((v) => v === 0) && !hasTotalOverride)) {
     return <span className="text-text-dimmed">–</span>;
   }
 

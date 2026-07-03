@@ -73,6 +73,7 @@ import {
 } from "~/presenters/v3/QueueMetricsPresenter.server";
 import { UsageSparkline } from "~/components/primitives/UsageSparkline";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
@@ -160,19 +161,27 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     } | null = null;
 
     if (queueMetricsUiEnabled && queues.success) {
-      const presenter = new QueueMetricsPresenter();
-      const queueNames = queues.queues.map((q) => (q.type === "task" ? `task/${q.name}` : q.name));
-      const queueMetrics =
-        queueNames.length > 0
-          ? await presenter.getQueueListMetrics({ environment, queueNames, window: period })
-          : null;
-      if (queueMetrics) {
-        metrics = {
-          window: queueMetrics.window,
-          bucketStartMs: queueMetrics.bucketStartMs,
-          bucketIntervalMs: queueMetrics.bucketIntervalMs,
-          byQueue: Object.fromEntries(queueMetrics.byQueue),
-        };
+      // Metrics are additive observability; a ClickHouse hiccup must not take down queue
+      // management. Fail open to metrics: null instead of bubbling to the page-level 400.
+      try {
+        const presenter = new QueueMetricsPresenter();
+        const queueNames = queues.queues.map((q) =>
+          q.type === "task" ? `task/${q.name}` : q.name
+        );
+        const queueMetrics =
+          queueNames.length > 0
+            ? await presenter.getQueueListMetrics({ environment, queueNames, window: period })
+            : null;
+        if (queueMetrics) {
+          metrics = {
+            window: queueMetrics.window,
+            bucketStartMs: queueMetrics.bucketStartMs,
+            bucketIntervalMs: queueMetrics.bucketIntervalMs,
+            byQueue: Object.fromEntries(queueMetrics.byQueue),
+          };
+        }
+      } catch (error) {
+        logger.warn("Queue list metrics unavailable, rendering without them", { error });
       }
     }
 

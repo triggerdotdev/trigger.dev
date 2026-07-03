@@ -443,7 +443,7 @@ function QueueStats({
         loading={showLoading}
       />
       <Stat
-        label="Worst delay p95"
+        label="Delay p95"
         value={worstP95 > 0 ? formatWaitMs(worstP95) : "–"}
         loading={showLoading}
         className={worstP95 >= 60_000 ? "text-warning" : undefined}
