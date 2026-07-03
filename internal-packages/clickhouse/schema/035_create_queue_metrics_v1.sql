@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_raw_v1
   environment_id   String CODEC(ZSTD(1)),
   queue_name       String CODEC(ZSTD(1)),
   event_time       DateTime CODEC(Delta(4), ZSTD(1)),
-  order_key        UInt64 DEFAULT 0,                 -- stream-id composite (ms*1e5+seq); deltaSumTimestamp ordering key
+  order_key        UInt64 DEFAULT 0,                 -- stream-id composite (ms*1e5+seq), deltaSumTimestamp ordering key
   op               LowCardinality(String),          -- gauge | enqueue | started | ack | nack | dlq
   running          UInt32 DEFAULT 0,
   queued           UInt32 DEFAULT 0,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_raw_v1
   env_limit        UInt32 DEFAULT 0,
   throttled        UInt8  DEFAULT 0,                 -- 1 on a gauge emission with running>=limit AND queued>0
   wait_ms          UInt32 DEFAULT 0,                 -- set on op='started' (scheduling delay)
-  cumulative       UInt64 DEFAULT 0                  -- monotonic per-(queue,op) odometer on a counter op; diffed at read time
+  cumulative       UInt64 DEFAULT 0                  -- monotonic per-(queue,op) odometer on a counter op, diffed at read time
 )
 ENGINE = MergeTree()
 PARTITION BY toDate(event_time)
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_v1
   queue_name       String CODEC(ZSTD(1)),
   bucket_start     DateTime CODEC(Delta(4), ZSTD(1)),
 
-  -- Cumulative-counter deltas: each op maintains a monotonic odometer; deltaSumTimestamp
+  -- Cumulative-counter deltas: each op maintains a monotonic odometer, and deltaSumTimestamp
   -- sums positive consecutive deltas (ignoring resets) ordered by event_time, so a lost
   -- reading self-heals (the next surviving reading restates the total). Read with
   -- deltaSumTimestampMerge(<col>), never sum().
