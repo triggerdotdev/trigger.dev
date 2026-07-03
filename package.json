@@ -11,7 +11,7 @@
     "build": "turbo run build",
     "build:force": "turbo run build --force",
     "build:db:seed": "turbo run build:db:seed",
-    "db:migrate": "turbo run db:migrate:deploy generate",
+    "db:migrate": "turbo run db:migrate:deploy generate --filter=!@internal/run-ops-database",
     "db:seed": "turbo run db:seed",
     "db:studio": "turbo run db:studio",
     "db:populate": "turbo run db:populate",
