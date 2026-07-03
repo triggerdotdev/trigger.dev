@@ -9,7 +9,10 @@ import {
 import { chat as chatServer } from "@trigger.dev/sdk/chat-server";
 import { streamText, type UIMessage } from "ai";
 import { env } from "~/env.server";
-import { dashboardAgentApiOrigin, dashboardAgentTriggerConfig } from "~/services/dashboardAgent.server";
+import {
+  dashboardAgentApiOrigin,
+  dashboardAgentTriggerConfig,
+} from "~/services/dashboardAgent.server";
 import { logger } from "~/services/logger.server";
 
 const TASK_ID = "dashboard-agent";
