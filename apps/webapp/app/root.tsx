@@ -93,7 +93,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 export function ErrorBoundary() {
   return (
     <>
-      <html lang="en" className="h-full">
+      <html lang="en" className="h-full" data-theme="dark">
         <head>
           <meta charSet="utf-8" />
 
@@ -121,7 +121,7 @@ export default function App() {
 
   return (
     <>
-      <html lang="en" className="h-full">
+      <html lang="en" className="h-full" data-theme="dark">
         <head>
           <Meta />
           <Links />

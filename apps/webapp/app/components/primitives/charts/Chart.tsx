@@ -5,7 +5,7 @@ import { AnimatedNumber } from "../AnimatedNumber";
 import TooltipPortal from "../TooltipPortal";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
-const THEMES = { light: "", dark: ".dark" } as const;
+const THEMES = { light: "", dark: '[data-theme="dark"]' } as const;
 
 export type ChartState = "loading" | "noData" | "invalid" | "loaded" | undefined;
 
