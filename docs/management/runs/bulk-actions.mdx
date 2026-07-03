@@ -30,6 +30,10 @@ console.log(completed.status, completed.counts);
 
 `filter` accepts the same filters as [`runs.list()`](/management/runs/list), excluding pagination fields. Provide at least one filter field; use `runIds` when you want to target specific runs. Relative time filters such as `period` are resolved when the bulk action is created, so later batches process the same fixed time range.
 
+<Note>
+  Each environment can only run a limited number of bulk replays at the same time. If you start a replay while too many are still in progress, the call fails and returns an error. Wait for an in-progress replay to finish (or [abort](#abort-a-bulk-action) one) before starting another. Bulk cancels are not subject to this limit.
+</Note>
+
 <ParamField body="filter" type="BulkActionFilter">
   Selects runs using the same filter shape as `runs.list()`, excluding `limit`, `after`, and `before`.
 </ParamField>

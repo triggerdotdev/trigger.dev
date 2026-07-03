@@ -52,7 +52,18 @@ const { action } = createActionApiRoute(
       return json({ id: result.bulkActionId }, { status: 202 });
     } catch (error) {
       if (error instanceof ServiceValidationError) {
-        return json({ error: error.message }, { status: error.status ?? 400 });
+        const status = error.status ?? 400;
+        return json(
+          { error: error.message },
+          {
+            status,
+            // The SDK auto-retries 429s. The concurrent-replay cap is a semantic
+            // limit, not a transient rate limit, so it won't clear within the
+            // retry window. Tell the client not to retry so the error (and its
+            // actionable message) surfaces immediately instead of after backoff.
+            headers: status === 429 ? { "x-should-retry": "false" } : undefined,
+          }
+        );
       }
 
       logger.error("Failed to create API bulk action", { error });
