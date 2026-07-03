@@ -19,6 +19,30 @@ function base(op: QueueMetricsRawV1Input["op"], queue: string): QueueMetricsRawV
   };
 }
 
+// Cumulative counters: each op keeps a monotonic per-(queue,op) odometer, so a counter row
+// carries the running total in `cumulative`. deltaSumTimestamp reconstructs the increase
+// (last - first) from a seeded cum=0 baseline; order_key orders readings within an op.
+let orderKey = 0;
+function counter(
+  op: QueueMetricsRawV1Input["op"],
+  queue: string,
+  total: number,
+  waits?: number[]
+): QueueMetricsRawV1Input[] {
+  const rows: QueueMetricsRawV1Input[] = [
+    { ...base(op, queue), cumulative: 0, order_key: orderKey++ },
+  ];
+  for (let cum = 1; cum <= total; cum++) {
+    rows.push({
+      ...base(op, queue),
+      cumulative: cum,
+      order_key: orderKey++,
+      ...(waits ? { wait_ms: waits[cum - 1] } : {}),
+    });
+  }
+  return rows;
+}
+
 const aggregatedRow = z.object({
   enqueue_count: z.coerce.number(),
   started_count: z.coerce.number(),
@@ -44,11 +68,11 @@ function readAggregated(ch: ClickHouse) {
   return ch.reader.query({
     name: "read-queue-metrics-aggregated",
     query: `SELECT
-        sum(enqueue_count) AS enqueue_count,
-        sum(started_count) AS started_count,
-        sum(ack_count) AS ack_count,
-        sum(nack_count) AS nack_count,
-        sum(dlq_count) AS dlq_count,
+        deltaSumTimestampMerge(enqueue_delta) AS enqueue_count,
+        deltaSumTimestampMerge(started_delta) AS started_count,
+        deltaSumTimestampMerge(ack_delta) AS ack_count,
+        deltaSumTimestampMerge(nack_delta) AS nack_count,
+        deltaSumTimestampMerge(dlq_delta) AS dlq_count,
         sum(throttled_count) AS throttled_count,
         max(max_running) AS max_running,
         max(max_queued) AS max_queued,
@@ -82,14 +106,11 @@ describe("queue_metrics_v1", () => {
       const queue = "queue-a";
 
       const rows: QueueMetricsRawV1Input[] = [
-        ...Array.from({ length: 3 }, () => base("enqueue", queue)),
-        ...[100, 200, 300, 400, 500, 600, 700, 800, 900, 1000].map((wait_ms) => ({
-          ...base("started", queue),
-          wait_ms,
-        })),
-        ...Array.from({ length: 2 }, () => base("ack", queue)),
-        base("nack", queue),
-        base("dlq", queue),
+        ...counter("enqueue", queue, 3),
+        ...counter("started", queue, 10, [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]),
+        ...counter("ack", queue, 2),
+        ...counter("nack", queue, 1),
+        ...counter("dlq", queue, 1),
         {
           ...base("gauge", queue),
           running: 8,
@@ -155,12 +176,24 @@ describe("queue_metrics_v1", () => {
       const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
       const queue = "queue-b";
 
-      const block = (waits: number[]) =>
-        waits.map((wait_ms) => ({ ...base("started", queue), wait_ms }));
+      // Cumulative odometer continues across the two insert blocks (baseline 0, then 1..10);
+      // deltaSumTimestamp state and quantile state merge across the parts into one bucket.
+      const startedRow = (cum: number, wait_ms?: number): QueueMetricsRawV1Input => ({
+        ...base("started", queue),
+        cumulative: cum,
+        order_key: orderKey++,
+        ...(wait_ms !== undefined ? { wait_ms } : {}),
+      });
 
-      const [e1] = await ch.queueMetrics.insertRaw(block([100, 200, 300, 400, 500]), SYNC);
+      const [e1] = await ch.queueMetrics.insertRaw(
+        [startedRow(0), ...[100, 200, 300, 400, 500].map((w, i) => startedRow(i + 1, w))],
+        SYNC
+      );
       expect(e1).toBeNull();
-      const [e2] = await ch.queueMetrics.insertRaw(block([600, 700, 800, 900, 1000]), SYNC);
+      const [e2] = await ch.queueMetrics.insertRaw(
+        [600, 700, 800, 900, 1000].map((w, i) => startedRow(i + 6, w)),
+        SYNC
+      );
       expect(e2).toBeNull();
 
       const [queryError, result] = await readAggregated(ch)({ queueName: queue });
