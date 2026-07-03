@@ -136,7 +136,7 @@ export class MetricsStreamEmitter {
     if (!this.flag.enabled()) return;
     const op = String(fields.op ?? "unknown");
     const q = String(fields.q ?? "");
-    const odometerKey = `queue_metrics_cum:${op}:${q}`;
+    const odometerKey = `${this.def.name}_cum:${op}:${q}`;
     const stream = streamKey(this.def, shardFor(shardKey, this.def.shardCount));
     const extra: string[] = [];
     for (const [field, value] of Object.entries(fields)) {

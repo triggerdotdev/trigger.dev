@@ -100,7 +100,8 @@ export class CachedRedisNumber {
       redis: options.redis,
       key: options.key,
       parse: (raw) => {
-        const n = raw == null ? Number.NaN : Number(raw);
+        // Number("") is 0 (not NaN), so treat blank/whitespace as missing => fallback.
+        const n = raw == null || raw.trim() === "" ? Number.NaN : Number(raw);
         return Number.isFinite(n) ? clamp(n) : fallback;
       },
       defaultValue: fallback,

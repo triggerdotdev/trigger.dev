@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createMetricsGaugeComputeLua } from "./lua.js";
 import { dedupTokenFromEntryIds } from "./idempotency.js";
 import { fnv1a32, shardFor } from "./hash.js";
-import { allStreamKeys, entryTimeMs, streamKey } from "./types.js";
+import { allStreamKeys, entryOrderKey, entryTimeMs, streamKey } from "./types.js";
 
 describe("shardFor", () => {
   it("is deterministic and in range", () => {
@@ -32,6 +32,17 @@ describe("stream keys", () => {
     ]);
     expect(entryTimeMs("1717000000000-5")).toBe(1717000000000);
     expect(entryTimeMs("nope")).toBeNull();
+  });
+
+  it("entryOrderKey stays exact and strictly monotonic at real epoch magnitudes", () => {
+    const ms = 1783000000000; // ~2026: ms*1e5 is past JS safe-integer range, so a number key
+    const k = (seq: number) => BigInt(entryOrderKey(`${ms}-${seq}`));
+    // adjacent seq within one ms must not collapse to the same key (the float bug)
+    expect(k(0)).toBe(BigInt(ms) * 100000n);
+    expect(k(1) - k(0)).toBe(1n);
+    expect(k(2) - k(1)).toBe(1n);
+    // a later ms always outranks any seq of an earlier ms
+    expect(BigInt(entryOrderKey(`${ms + 1}-0`))).toBeGreaterThan(k(99999));
   });
 });
 

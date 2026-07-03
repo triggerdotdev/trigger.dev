@@ -32,9 +32,10 @@ export function entryTimeMs(id: string): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-// Strictly-monotonic-per-stream ordering key from a stream id (`<ms>-<seq>`): ms*1e5+seq.
-// Used to order cumulative readings for deltaSumTimestamp so within-ms ties don't misorder.
-export function entryOrderKey(id: string): number {
+// Ordering key from a stream id (`<ms>-<seq>`) = ms*1e5+seq, for deltaSumTimestamp. BigInt +
+// string because ms*1e5 exceeds JS safe-integer range at real epoch magnitudes (a number would
+// collapse nearby seq values); the ClickHouse order_key column is UInt64 and takes the string.
+export function entryOrderKey(id: string): string {
   const [ms, seq] = id.split("-");
-  return (Number(ms) || 0) * 100000 + (Number(seq) || 0);
+  return (BigInt(Number(ms) || 0) * 100000n + BigInt(Number(seq) || 0)).toString();
 }

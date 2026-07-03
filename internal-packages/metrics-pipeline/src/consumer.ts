@@ -114,7 +114,7 @@ export class MetricsStreamConsumer<TRow> {
       description: "Failed inserts (batch left pending for retry)",
       valueType: ValueType.INT,
     });
-    this.insertDuration = this.meter.createHistogram("queue_metrics.consumer.insert_duration_ms", {
+    this.insertDuration = this.meter.createHistogram("queue_metrics.consumer.insert_duration", {
       description: "Sink insert latency",
       unit: "ms",
       valueType: ValueType.INT,
@@ -302,9 +302,10 @@ export async function probeShardStates(
   for (let shard = 0; shard < keys.length; shard++) {
     const key = keys[shard]!;
     const depth = Number(await redis.xlen(key)) || 0;
-    // lag defaults to null (unknown) and only becomes a number when Redis reports one:
-    // a nil lag means entries were trimmed past the group's read position (data loss).
-    let lag: number | null = 0;
+    // lag defaults to null (unknown) and only becomes a number when the group is found and
+    // Redis reports one: a nil lag (or a missing group on an existing stream) means we can't
+    // compute it, e.g. entries were trimmed past the group's read position (data loss).
+    let lag: number | null = null;
     let pending = 0;
     try {
       const groups = (await redis.call("XINFO", "GROUPS", key)) as unknown[];
