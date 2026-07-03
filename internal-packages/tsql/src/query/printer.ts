@@ -647,9 +647,16 @@ export class ClickHousePrinter {
     // ORDER BY must be led by the timeBucket column (alias or full expression).
     // Don't fight a user ordering like `ORDER BY count DESC`.
     const leadTerm = orderBy[0];
-    // Trim first so the direction match is anchored without a trailing `\s*$`, which
-    // combined with the leading `\s+` would backtrack polynomially on all-whitespace input.
-    const leadExpr = leadTerm.trim().replace(/\s+(?:ASC|DESC)$/i, "");
+    // Strip a trailing ASC/DESC direction without a regex: an unanchored `\s+` before the
+    // keyword backtracks polynomially across start positions on whitespace runs (CodeQL
+    // js/polynomial-redos). endsWith + slice is linear.
+    const trimmedLead = leadTerm.trim();
+    const upperLead = trimmedLead.toUpperCase();
+    const leadExpr = upperLead.endsWith(" ASC")
+      ? trimmedLead.slice(0, -4).trimEnd()
+      : upperLead.endsWith(" DESC")
+        ? trimmedLead.slice(0, -5).trimEnd()
+        : trimmedLead;
     const matchesBucket = (expr: string): boolean =>
       expr.toLowerCase() === bucketAlias!.toLowerCase() || expr === bucketSql;
     if (!matchesBucket(leadExpr)) {
