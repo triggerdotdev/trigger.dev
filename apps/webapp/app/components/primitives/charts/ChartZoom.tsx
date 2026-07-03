@@ -52,7 +52,7 @@ export function ChartZoom({ syncWithDateRange = false, minDataPoints = 3 }: Char
       {inspectionLine && (
         <ReferenceLine
           x={inspectionLine}
-          stroke="#D7D9DD"
+          stroke="var(--color-text-bright)"
           strokeWidth={2}
           isFront={true}
           onClick={(e: any) => {
@@ -68,7 +68,7 @@ export function ChartZoom({ syncWithDateRange = false, minDataPoints = 3 }: Char
           x1={refAreaLeft}
           x2={refAreaRight}
           strokeOpacity={0.4}
-          fill="#3B82F6"
+          fill="var(--color-pending)"
           fillOpacity={0.2}
         />
       )}

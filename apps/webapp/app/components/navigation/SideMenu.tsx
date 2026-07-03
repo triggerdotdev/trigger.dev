@@ -1096,7 +1096,7 @@ function SelectorDivider() {
         y1="0.606339"
         x2="0.606339"
         y2="19.6362"
-        stroke="#3B3E45"
+        stroke="var(--color-border-bright)"
         strokeLinecap="round"
       />
     </svg>

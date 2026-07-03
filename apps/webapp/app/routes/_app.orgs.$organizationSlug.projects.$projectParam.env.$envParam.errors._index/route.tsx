@@ -717,9 +717,14 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
               isAnimationActive={false}
               minPointSize={1}
             />
-            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+            <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
             {maxCount > 0 && (
-              <ReferenceLine y={maxCount} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+              <ReferenceLine
+                y={maxCount}
+                stroke="var(--color-border-brighter)"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+              />
             )}
           </BarChart>
         </ResponsiveContainer>
@@ -765,7 +770,7 @@ function ErrorActivityBlankState() {
   return (
     <div className="flex h-6 w-28 items-end gap-px rounded-sm">
       {[...Array(24)].map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-[#212327]" />
+        <div key={i} className="h-full flex-1 bg-background-hover" />
       ))}
     </div>
   );

@@ -42,7 +42,7 @@ export function UsageSparkline({
   data,
   bucketStartMs,
   bucketIntervalMs,
-  color = "#3B82F6",
+  color = "var(--color-pending)",
   unitLabel = { singular: "call", plural: "calls" },
   formatTotal,
   totalClassName = "text-blue-400",
@@ -84,9 +84,14 @@ export function UsageSparkline({
               isAnimationActive={false}
               minPointSize={1}
             />
-            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+            <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
             {max > 0 && (
-              <ReferenceLine y={max} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+              <ReferenceLine
+                y={max}
+                stroke="var(--color-border-brighter)"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+              />
             )}
           </BarChart>
         </ResponsiveContainer>

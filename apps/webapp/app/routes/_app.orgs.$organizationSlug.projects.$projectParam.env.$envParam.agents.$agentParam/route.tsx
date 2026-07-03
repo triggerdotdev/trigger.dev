@@ -310,7 +310,7 @@ export default function Page() {
                                   activity={result}
                                   seriesKey="cost"
                                   label="Spend"
-                                  color="#A855F7"
+                                  color="var(--color-agents)"
                                   valueFormatter={formatCurrency}
                                 />
                               )}

@@ -9,7 +9,13 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
   const color = useTransform(
     widthProgress,
     [0, 74, 75, 95, 100],
-    ["#22C55E", "#22C55E", "#F59E0B", "#F43F5E", "#F43F5E"]
+    [
+      "var(--color-success)",
+      "var(--color-success)",
+      "var(--color-warning)",
+      "var(--color-error)",
+      "var(--color-error)",
+    ]
   );
 
   const hasHitLimit = cappedPercentage >= 1;

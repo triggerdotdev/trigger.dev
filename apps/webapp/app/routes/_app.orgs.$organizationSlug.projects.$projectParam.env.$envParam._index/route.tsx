@@ -607,21 +607,21 @@ function formatAgentType(type: string): string {
 }
 
 const STATUS_BARS: { status: TaskRunStatus; fill: string }[] = [
-  { status: "DELAYED", fill: "#5F6570" },
-  { status: "PENDING", fill: "#5F6570" },
-  { status: "PENDING_VERSION", fill: "#F59E0B" },
-  { status: "EXECUTING", fill: "#3B82F6" },
-  { status: "RETRYING_AFTER_FAILURE", fill: "#3B82F6" },
-  { status: "WAITING_TO_RESUME", fill: "#3B82F6" },
-  { status: "COMPLETED_SUCCESSFULLY", fill: "#28BF5C" },
-  { status: "CANCELED", fill: "#5F6570" },
-  { status: "COMPLETED_WITH_ERRORS", fill: "#F43F5E" },
-  { status: "INTERRUPTED", fill: "#F43F5E" },
-  { status: "SYSTEM_FAILURE", fill: "#F43F5E" },
-  { status: "PAUSED", fill: "#FCD34D" },
-  { status: "CRASHED", fill: "#F43F5E" },
-  { status: "EXPIRED", fill: "#5F6570" },
-  { status: "TIMED_OUT", fill: "#F43F5E" },
+  { status: "DELAYED", fill: "var(--color-run-delayed)" },
+  { status: "PENDING", fill: "var(--color-run-pending)" },
+  { status: "PENDING_VERSION", fill: "var(--color-run-pending-version)" },
+  { status: "EXECUTING", fill: "var(--color-run-executing)" },
+  { status: "RETRYING_AFTER_FAILURE", fill: "var(--color-run-retrying-after-failure)" },
+  { status: "WAITING_TO_RESUME", fill: "var(--color-run-waiting-to-resume)" },
+  { status: "COMPLETED_SUCCESSFULLY", fill: "var(--color-run-completed-successfully)" },
+  { status: "CANCELED", fill: "var(--color-run-canceled)" },
+  { status: "COMPLETED_WITH_ERRORS", fill: "var(--color-run-completed-with-errors)" },
+  { status: "INTERRUPTED", fill: "var(--color-run-interrupted)" },
+  { status: "SYSTEM_FAILURE", fill: "var(--color-run-system-failure)" },
+  { status: "PAUSED", fill: "var(--color-run-paused)" },
+  { status: "CRASHED", fill: "var(--color-run-crashed)" },
+  { status: "EXPIRED", fill: "var(--color-run-expired)" },
+  { status: "TIMED_OUT", fill: "var(--color-run-timed-out)" },
 ];
 
 // Fixed px dims skip ResponsiveContainer's ResizeObserver — otherwise every panel resize re-renders all 25 charts.
@@ -665,9 +665,14 @@ function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] 
               isAnimationActive={false}
             />
           ))}
-          <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+          <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
           {maxTotal > 0 && (
-            <ReferenceLine y={maxTotal} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+            <ReferenceLine
+              y={maxTotal}
+              stroke="var(--color-border-brighter)"
+              strokeDasharray="4 4"
+              strokeWidth={1}
+            />
           )}
         </BarChart>
       </div>
@@ -690,7 +695,7 @@ function TaskActivityBlankState() {
           y1={ACTIVITY_CHART_HEIGHT}
           x2={ACTIVITY_CHART_WIDTH}
           y2={ACTIVITY_CHART_HEIGHT}
-          stroke="#333539"
+          stroke="var(--color-border-bright)"
           strokeWidth={1}
         />
       </svg>
