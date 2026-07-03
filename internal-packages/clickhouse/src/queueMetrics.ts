@@ -7,7 +7,9 @@ export const QueueMetricsRawV1Input = z.object({
   environment_id: z.string(),
   queue_name: z.string(),
   event_time: z.string(),
-  order_key: z.number().optional(),
+  // Exact UInt64 ordering key; a string preserves precision past JS safe-integer range
+  // (see entryOrderKey). A plain number is still accepted for small test values.
+  order_key: z.union([z.string(), z.number()]).optional(),
   op: z.enum(["gauge", "enqueue", "started", "ack", "nack", "dlq"]),
   running: z.number().optional(),
   queued: z.number().optional(),

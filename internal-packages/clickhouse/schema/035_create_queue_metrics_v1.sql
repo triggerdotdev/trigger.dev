@@ -88,7 +88,7 @@ SELECT
   max(env_limit)          AS max_env_limit,
   sumIf(wait_ms, op = 'started')                 AS wait_ms_sum,
   countIf(op = 'started' AND wait_ms > 0)        AS wait_ms_count,
-  quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started') AS wait_quantiles
+  quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0) AS wait_quantiles
 FROM trigger_dev.queue_metrics_raw_v1
 GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 
