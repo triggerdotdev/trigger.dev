@@ -180,15 +180,9 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
     };
   }
 
-  async assertEnvExists(environmentId: string): Promise<void> {
-    const env = await this.#prisma.runtimeEnvironment.findFirst({
-      where: { id: environmentId },
-      select: { id: true },
-    });
-
-    if (!env) {
-      throw new Error(`Environment not found: ${environmentId}`);
-    }
+  async assertEnvExists(_environmentId: string): Promise<void> {
+    // No-op: passthrough is single-DB, so run and env share one database and there is
+    // no cross-seam FK to replace (matches main, which dropped the TaskRun env FK).
   }
 
   async resolveWorkerVersion(args: {

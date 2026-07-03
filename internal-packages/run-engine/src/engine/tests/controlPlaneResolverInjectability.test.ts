@@ -97,13 +97,14 @@ describe("RunEngine controlPlaneResolver injectability", () => {
           "deployment" in setup ? setup.deployment.id : undefined
         );
 
-        // assertEnvExists resolves for a present env and rejects for a missing one.
+        // The default passthrough resolver is single-DB, so assertEnvExists is a no-op:
+        // it resolves for both a present and a missing env (nothing to assert).
         await expect(
           engine.controlPlaneResolver.assertEnvExists(environment.id)
         ).resolves.toBeUndefined();
         await expect(
           engine.controlPlaneResolver.assertEnvExists("env_does_not_exist")
-        ).rejects.toThrow();
+        ).resolves.toBeUndefined();
       } finally {
         await engine.quit();
       }
