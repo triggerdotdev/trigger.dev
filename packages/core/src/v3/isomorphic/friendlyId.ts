@@ -39,7 +39,11 @@ function loadNodeWebCrypto(): Crypto | undefined {
   }
 }
 
-const getRandomValues: RandomFiller = resolveGetRandomValues();
+// Resolve the crypto source lazily on first use (memoized), so merely importing this
+// widely-used module never throws when crypto is unavailable — only minting a KSUID would.
+let cachedGetRandomValues: RandomFiller | undefined;
+const getRandomValues: RandomFiller = (array) =>
+  (cachedGetRandomValues ??= resolveGetRandomValues())(array);
 
 /** Encode raw bytes as base62 (big-endian), left-padded to the given length. */
 function base62Encode(bytes: Uint8Array, length: number): string {
