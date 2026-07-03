@@ -20,12 +20,7 @@ const SUBGRAPH_TABLES = [
   "batchTaskRun",
 ] as const;
 
-// Control-plane-resident model: exists ONLY in @trigger.dev/database, NOT in the run-ops subset.
-// Seeded + counted only against the control-plane writer.
-const CONTROL_PLANE_TABLES = ["bulkActionItem"] as const;
-
 type SubgraphTable = (typeof SUBGRAPH_TABLES)[number];
-type ControlPlaneTable = (typeof CONTROL_PLANE_TABLES)[number];
 
 let seedCounter = 0;
 
