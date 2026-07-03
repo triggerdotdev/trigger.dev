@@ -1,4 +1,4 @@
-import { UserCircleIcon } from "@heroicons/react/24/solid";
+import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
 import { useOptionalUser } from "~/hooks/useUser";
 import { cn } from "~/utils/cn";
 
@@ -26,6 +26,6 @@ export function UserAvatar({
       />
     </div>
   ) : (
-    <UserCircleIcon className={cn("aspect-square text-charcoal-400", className)} />
+    <AvatarCircleIcon className={cn("aspect-square text-charcoal-400", className)} />
   );
 }

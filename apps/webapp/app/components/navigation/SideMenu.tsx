@@ -1008,7 +1008,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
       <SimpleTooltip
         button={
           <PopoverTrigger className="group flex size-8 items-center justify-center rounded transition-colors hover:bg-charcoal-750 focus-custom">
-            <UserProfilePhoto className="size-6" />
+            <UserProfilePhoto className="size-5" />
           </PopoverTrigger>
         }
         content="Account"
