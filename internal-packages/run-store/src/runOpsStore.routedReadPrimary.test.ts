@@ -12,6 +12,7 @@
 // primary-routed read finds the row, with no replica==primary aliasing to mask the drop.
 
 import { heteroPostgresTest } from "@internal/testcontainers";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
@@ -19,9 +20,10 @@ import { RoutingRunStore } from "./runOpsStore.js";
 import { markReadReplicaClient } from "./readReplicaClient.js";
 import type { CreateRunInput } from "./types.js";
 
-// ownerEngine classifies by internal-id LENGTH: 25 chars → cuid → LEGACY, 27 → ksuid → NEW.
+// ownerEngine classifies by the version char: a 25-char cuid → LEGACY; a valid run-ops v1 body
+// (26 chars: base32hex core + region char + version "1") → NEW.
 const CUID_25 = "c".repeat(25);
-const KSUID_27 = "k".repeat(27);
+const RUN_OPS_ID_BODY = generateRunOpsId();
 
 // Router topology where the OWNING store (the one the test's run ids route to) writes to `writer`
 // but reads by default from `lagging` — a physically separate, never-written DB. The other store
@@ -189,16 +191,16 @@ describe("run-ops split — routed reads honor a caller-passed client via the ow
     }
   );
 
-  // NEW (ksuid) routing arm. The caller's client here is the CONTROL-PLANE writer — the wrong
+  // NEW (run-ops id) routing arm. The caller's client here is the CONTROL-PLANE writer — the wrong
   // physical DB for a NEW-resident run — so this also pins that the client is never forwarded
   // verbatim: the read must resolve on the owning NEW store's OWN primary.
   heteroPostgresTest(
-    "NEW ksuid: a control-plane client routes the snapshot read to the NEW store's OWN primary",
+    "NEW run-ops id: a control-plane client routes the snapshot read to the NEW store's OWN primary",
     async ({ prisma14, prisma17 }) => {
       // Owning (NEW) store writes to prisma14; the control-plane/other store is prisma17.
       const { router } = splitTopology("NEW", prisma14, prisma17);
       const seed = await seedEnvironment(prisma14, "snap_new");
-      const runId = `run_${KSUID_27}`;
+      const runId = `run_${RUN_OPS_ID_BODY}`;
       await router.createRun(
         buildCreateRunInput({
           runId,
