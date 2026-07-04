@@ -337,23 +337,26 @@ export class LogicalReplicationClient {
       return false;
     }
 
-    this.client = new Client({
-      ...this.options.pgConfig,
-      // @ts-expect-error
-      replication: "database",
-      application_name: this.options.name,
-    });
-    await this.client.connect();
+    try {
+      this.client = new Client({
+        ...this.options.pgConfig,
+        // @ts-expect-error
+        replication: "database",
+        application_name: this.options.name,
+      });
+      await this.client.connect();
 
-    // Drop the slot
-    const slotDropped = await this.#dropSlot();
-
-    await this.client.end();
-    this.client = null;
-
-    await this.#releaseLeaderLock();
-
-    return slotDropped;
+      // Drop the slot
+      return await this.#dropSlot();
+    } finally {
+      // Release the client + slot-keyed lock on both success and throw, so a
+      // mid-teardown failure can't strand the lock (blocking the slot's leader).
+      if (this.client) {
+        await tryCatch(this.client.end());
+        this.client = null;
+      }
+      await this.#releaseLeaderLock();
+    }
   }
 
   public async subscribe(startLsn?: string): Promise<this> {
