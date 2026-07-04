@@ -68,6 +68,9 @@ import {
   QueueMetricsPresenter,
   type QueueListMetric,
 } from "~/presenters/v3/QueueMetricsPresenter.server";
+import * as Ariakit from "@ariakit/react";
+import { AppliedFilter } from "~/components/primitives/AppliedFilter";
+import { SelectItem, SelectPopover, SelectProvider } from "~/components/primitives/Select";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { parseFiniteInt } from "~/utils/searchParams";
@@ -96,6 +99,9 @@ import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
+import { QueueAllocationPresenter } from "~/presenters/v3/QueueAllocationPresenter.server";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { AllocationView } from "./AllocationView";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -103,7 +109,14 @@ const SearchParamsSchema = z.object({
   period: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
+  view: z.string().optional(),
+  sort: z.enum(["busiest", "queued", "name"]).optional(),
 });
+
+const AllocationChangesSchema = z
+  .array(z.object({ friendlyId: z.string(), limit: z.number().int().min(0) }))
+  .min(1)
+  .max(200);
 
 const QUEUE_METRICS_DEFAULT_PERIOD = "1d";
 
@@ -120,7 +133,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const url = new URL(request.url);
-  const { page, query, period, from, to } = SearchParamsSchema.parse(
+  const { page, query, period, from, to, view, sort } = SearchParamsSchema.parse(
     Object.fromEntries(url.searchParams)
   );
 
@@ -150,6 +163,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environment,
       query,
       page,
+      // Relevance ordering rides the metrics pipeline, so it is part of the gated UI.
+      sort: queueMetricsUiEnabled ? (sort ?? "busiest") : "name",
     });
 
     const environmentQueuePresenter = new EnvironmentQueuePresenter();
@@ -165,7 +180,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       byQueue: Record<string, QueueListMetric>;
     } | null = null;
 
-    if (queueMetricsUiEnabled && queues.success) {
+    const allocationView = queueMetricsUiEnabled && view === "allocation";
+
+    if (queueMetricsUiEnabled && queues.success && !allocationView) {
       // Metrics are additive observability; a ClickHouse hiccup must not take down queue
       // management. Fail open to metrics: null instead of bubbling to the page-level 400.
       try {
@@ -200,11 +217,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       }
     }
 
+    const allocation =
+      allocationView && queues.success
+        ? await new QueueAllocationPresenter().call({ environment })
+        : null;
+
     return typedjson({
       ...queues,
       environment: await environmentQueuePresenter.call(environment),
       autoReloadPollIntervalMs,
       metrics,
+      allocation,
       queueMetricsUiEnabled,
     });
   } catch (error) {
@@ -368,6 +391,48 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       return redirectWithSuccessMessage(redirectPath, request, "Queue concurrency limit reset");
     }
+    case "allocation-apply": {
+      if (!(await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+        return redirectWithErrorMessage(redirectPath, request, "Not available");
+      }
+
+      let changes;
+      try {
+        changes = AllocationChangesSchema.parse(JSON.parse(String(formData.get("changes"))));
+      } catch {
+        return redirectWithErrorMessage(redirectPath, request, "Invalid changes");
+      }
+
+      const user = await getUserById(userId);
+      if (!user) {
+        return redirectWithErrorMessage(redirectPath, request, "User not found");
+      }
+
+      let failed = 0;
+      for (const change of changes) {
+        const result = await concurrencySystem.queues.overrideQueueConcurrencyLimit(
+          environment,
+          change.friendlyId,
+          change.limit,
+          user
+        );
+        if (!result.isOk()) failed++;
+      }
+
+      if (failed > 0) {
+        return redirectWithErrorMessage(
+          redirectPath,
+          request,
+          `Failed to update ${failed} of ${changes.length} queue limits`
+        );
+      }
+
+      return redirectWithSuccessMessage(
+        redirectPath,
+        request,
+        `Updated ${changes.length} queue limit${changes.length === 1 ? "" : "s"}`
+      );
+    }
     default:
       return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
   }
@@ -391,6 +456,7 @@ function QueuesWithMetricsView() {
     hasFilters,
     autoReloadPollIntervalMs,
     metrics,
+    allocation,
   } = useTypedLoaderData<typeof loader>();
 
   const metricsByQueue = metrics?.byQueue ?? {};
@@ -402,12 +468,13 @@ function QueuesWithMetricsView() {
   const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
 
   // The header tiles fetch client-side with the same period/from/to the TimeFilter writes.
-  const { value } = useSearchParams();
+  const { value, replace } = useSearchParams();
   const timeRange = {
     period: value("period") ?? null,
     from: value("from") ?? null,
     to: value("to") ?? null,
   };
+  const view = value("view") === "allocation" ? ("allocation" as const) : ("queues" as const);
 
   useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
 
@@ -451,7 +518,7 @@ function QueuesWithMetricsView() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
+        <div className="grid max-h-full grid-rows-[auto_auto_1fr] overflow-hidden">
           <div className="grid grid-cols-2 gap-3 p-3 lg:grid-cols-4">
             {QUEUE_HEADER_TILES.map((tile) => (
               <QueueEnvMetricTile
@@ -480,10 +547,40 @@ function QueuesWithMetricsView() {
           </div>
 
           {success ? (
+            <TabContainer className="px-3">
+              <TabButton
+                isActive={view === "queues"}
+                layoutId="queues-view"
+                onClick={() => replace({ view: undefined })}
+              >
+                Queues
+              </TabButton>
+              <TabButton
+                isActive={view === "allocation"}
+                layoutId="queues-view"
+                onClick={() => replace({ view: "allocation", page: undefined })}
+              >
+                Allocation
+              </TabButton>
+            </TabContainer>
+          ) : (
+            <div />
+          )}
+
+          {success && view === "allocation" ? (
+            allocation ? (
+              <AllocationView allocation={allocation} environment={environment} />
+            ) : (
+              <div className="grid place-items-center py-16">
+                <Spinner className="size-6" />
+              </div>
+            )
+          ) : success ? (
             <div className="grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto">
               <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
                 <div className="flex items-center gap-2">
                   <QueueFilters />
+                  <QueueSortFilter />
                   <TimeFilter
                     defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
                     labelName="Period"
@@ -1154,6 +1251,46 @@ export function isEnvironmentPauseResumeFormSubmission(
 
 export function QueueFilters() {
   return <SearchInput placeholder="Search queues…" paramName="query" resetParams={["page"]} />;
+}
+
+const QUEUE_SORT_OPTIONS = [
+  { value: "busiest", label: "Busiest" },
+  { value: "queued", label: "Backlog" },
+  { value: "name", label: "Name" },
+] as const;
+
+type QueueSortValue = (typeof QUEUE_SORT_OPTIONS)[number]["value"];
+
+function QueueSortFilter() {
+  const { value, replace } = useSearchParams();
+  const sort: QueueSortValue = (value("sort") as QueueSortValue) ?? "busiest";
+  const label = QUEUE_SORT_OPTIONS.find((option) => option.value === sort)?.label ?? "Busiest";
+
+  return (
+    <SelectProvider
+      value={sort}
+      setValue={(next) =>
+        replace({ sort: next === "busiest" ? undefined : (next as string), page: undefined })
+      }
+    >
+      <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
+        <AppliedFilter
+          label="Sort"
+          value={label}
+          removable={false}
+          variant="secondary/small"
+          valueClassName="text-text-bright"
+        />
+      </Ariakit.Select>
+      <SelectPopover className="min-w-0 max-w-[min(240px,var(--popover-available-width))]">
+        {QUEUE_SORT_OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value} className="gap-x-2 text-text-bright">
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectPopover>
+    </SelectProvider>
+  );
 }
 
 type MetricTileRow = Record<string, number | string | null>;
