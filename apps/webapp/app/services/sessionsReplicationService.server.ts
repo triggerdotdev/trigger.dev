@@ -431,10 +431,15 @@ export class SessionsReplicationService {
     if (this._isShutDownComplete) return;
 
     if (this._isShuttingDown) {
-      this._replicationClient.shutdown().finally(() => {
-        this._isSubscribed = false;
-        this._isShutDownComplete = true;
-      });
+      this._replicationClient
+        .shutdown()
+        .catch((error) => {
+          this.logger.error("Error stopping replication client during shutdown", { error });
+        })
+        .finally(() => {
+          this._isSubscribed = false;
+          this._isShutDownComplete = true;
+        });
     }
 
     // If there are no events, do nothing
