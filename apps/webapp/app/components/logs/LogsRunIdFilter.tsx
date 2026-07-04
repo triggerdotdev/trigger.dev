@@ -1,6 +1,5 @@
 import * as Ariakit from "@ariakit/react";
 import { FingerPrintIcon } from "@heroicons/react/20/solid";
-import { isClassifiable } from "@trigger.dev/core/v3/isomorphic";
 import { useCallback, useState } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button } from "~/components/primitives/Buttons";
@@ -10,8 +9,10 @@ import { Label } from "~/components/primitives/Label";
 import { SelectPopover, SelectProvider, SelectTrigger } from "~/components/primitives/Select";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { FilterMenuProvider } from "~/components/runs/v3/SharedFilters";
+import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 
 const shortcut = { key: "i" };
+const validateRunId = makeFriendlyIdValidator("run", "Run");
 
 export function LogsRunIdFilter() {
   const { value } = useSearchParams();
@@ -69,14 +70,7 @@ function RunIdDropdown({
     setOpen(false);
   }, [runId, replace, clearSearchValue]);
 
-  let error: string | undefined = undefined;
-  if (runId) {
-    if (!runId.startsWith("run_")) {
-      error = "Run IDs start with 'run_'";
-    } else if (!isClassifiable(runId)) {
-      error = "That doesn't look like a valid run ID";
-    }
-  }
+  const error = runId ? validateRunId(runId) : undefined;
 
   return (
     <SelectProvider virtualFocus={true} open={open} setOpen={setOpen}>

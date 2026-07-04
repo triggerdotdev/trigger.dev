@@ -2,7 +2,6 @@ import * as Ariakit from "@ariakit/react";
 import { FingerPrintIcon, TagIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
 import { WaitpointTokenStatus, waitpointTokenStatuses } from "@trigger.dev/core/v3";
-import { isClassifiable } from "@trigger.dev/core/v3/isomorphic";
 import { ListChecks } from "lucide-react";
 import { matchSorter } from "match-sorter";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
@@ -34,6 +33,7 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader as tagsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.tags";
+import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 import {
   appliedSummary,
   FilterMenuProvider,
@@ -399,6 +399,8 @@ function PermanentTagsFilter() {
   );
 }
 
+const validateWaitpointId = makeFriendlyIdValidator("waitpoint", "Waitpoint");
+
 function WaitpointIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
 ) {
@@ -408,11 +410,7 @@ function WaitpointIdDropdown(
       label="Waitpoint ID"
       placeholder="waitpoint_"
       paramKey="id"
-      validate={(v) => {
-        if (!v.startsWith("waitpoint_")) return "Waitpoint IDs start with 'waitpoint_'";
-        if (!isClassifiable(v)) return "That doesn't look like a valid waitpoint ID";
-        return undefined;
-      }}
+      validate={validateWaitpointId}
     />
   );
 }

@@ -16,6 +16,7 @@ export default defineConfig({
       "app/v3/services/bulk/**/*.test.ts",
       "app/runEngine/concerns/**/*.test.ts",
       "app/runEngine/services/**/*.test.ts",
+      "app/utils/**/*.test.ts",
     ],
     // *.e2e.test.ts: smoke matrix, run via vitest.e2e.config.ts.
     // *.e2e.full.test.ts: full auth suite, runs via vitest.e2e.full.config.ts

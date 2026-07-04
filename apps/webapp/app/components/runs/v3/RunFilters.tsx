@@ -13,7 +13,6 @@ import {
 import { Form, useFetcher } from "@remix-run/react";
 import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
-import { isClassifiable } from "@trigger.dev/core/v3/isomorphic";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { matchSorter } from "match-sorter";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -66,6 +65,7 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
+import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 import { Button } from "../../primitives/Buttons";
 import { AIFilterInput } from "./AIFilterInput";
 import { BulkActionTypeCombo } from "./BulkAction";
@@ -1714,10 +1714,7 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
   );
 }
 
-function validateRunId(value: string): string | undefined {
-  if (!value.startsWith("run_")) return "Run IDs start with 'run_'";
-  if (!isClassifiable(value)) return "That doesn't look like a valid run ID";
-}
+const validateRunId = makeFriendlyIdValidator("run", "Run");
 
 function RunIdDropdown(
   props: Omit<
@@ -1769,10 +1766,7 @@ function AppliedRunIdFilter() {
   );
 }
 
-function validateBatchId(value: string): string | undefined {
-  if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
-  if (!isClassifiable(value)) return "That doesn't look like a valid batch ID";
-}
+const validateBatchId = makeFriendlyIdValidator("batch", "Batch");
 
 function BatchIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
@@ -1820,10 +1814,7 @@ function AppliedBatchIdFilter() {
   );
 }
 
-function validateScheduleId(value: string): string | undefined {
-  if (!value.startsWith("sched_")) return "Schedule IDs start with 'sched_'";
-  if (value.length !== 27) return "Schedule IDs are 27 characters long";
-}
+const validateScheduleId = makeFriendlyIdValidator("sched", "Schedule");
 
 function ScheduleIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">

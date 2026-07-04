@@ -1,7 +1,6 @@
 import * as Ariakit from "@ariakit/react";
 import { Squares2X2Icon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import { isClassifiable } from "@trigger.dev/core/v3/isomorphic";
 import type { BatchTaskRunStatus } from "@trigger.dev/database";
 import { type ReactNode, useRef } from "react";
 import { z } from "zod";
@@ -25,6 +24,7 @@ import {
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 import { Button } from "../../primitives/Buttons";
 import {
   allBatchStatuses,
@@ -226,10 +226,7 @@ function PermanentStatusFilter() {
   );
 }
 
-function validateBatchId(value: string): string | undefined {
-  if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
-  if (!isClassifiable(value)) return "That doesn't look like a valid batch ID";
-}
+const validateBatchId = makeFriendlyIdValidator("batch", "Batch");
 
 function BatchIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">

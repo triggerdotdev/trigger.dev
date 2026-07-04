@@ -3,4 +3,4 @@ area: webapp
 type: fix
 ---
 
-The Run ID and Batch ID filters on the runs, batches, and logs pages now accept all valid run and batch IDs, fixing a case where recently created IDs were incorrectly rejected.
+The Run ID and Batch ID filters on the runs, batches, and logs pages now accept every valid ID format, fixing a case where valid IDs were rejected and the Apply button stayed disabled.
