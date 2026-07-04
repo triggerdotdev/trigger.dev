@@ -1,7 +1,7 @@
 // Run Prisma migrations against the dedicated NEW run-ops database (the second physical DB in the
 // split). It owns its own migration history, so it is migrated independently of the control-plane
-// DB. The connection is resolved the same way the webapp resolves it (RUN_OPS_DATABASE_URL, falling
-// back to TASK_RUN_DATABASE_URL) so migrations always target the DB the app connects to.
+// DB. Connects via RUN_OPS_DATABASE_URL — the same var the webapp uses — so migrations always
+// target the DB the app connects to.
 //
 // Usage: node scripts/migrate.mjs [deploy|status]   (defaults to deploy)
 import { spawnSync } from "node:child_process";
@@ -45,13 +45,13 @@ const redact = (url) => url.replace(/:\/\/[^@]*@/, "://***@");
 
 const subcommand = process.argv[2] === "status" ? "status" : "deploy";
 
-const databaseUrl = resolveVar("RUN_OPS_DATABASE_URL") || resolveVar("TASK_RUN_DATABASE_URL");
+const databaseUrl = resolveVar("RUN_OPS_DATABASE_URL");
 
 if (!databaseUrl) {
-  // Single-DB installs never set these — safe no-op. A genuinely-expected DB is gated on by the caller.
+  // Single-DB installs never set it — safe no-op. A genuinely-expected DB is gated on by the caller.
   console.log(
-    `run-ops migrate ${subcommand}: neither RUN_OPS_DATABASE_URL nor TASK_RUN_DATABASE_URL is set ` +
-      "(checked env and .env). No dedicated run-ops database configured — skipping."
+    `run-ops migrate ${subcommand}: RUN_OPS_DATABASE_URL is not set (checked env and .env). ` +
+      "No dedicated run-ops database configured — skipping."
   );
   process.exit(0);
 }
