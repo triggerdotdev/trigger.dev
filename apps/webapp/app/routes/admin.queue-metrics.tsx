@@ -6,7 +6,16 @@ import { z } from "zod";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header1, Header2 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
   probeQueueMetricsStreams,
@@ -110,14 +119,14 @@ export default function AdminQueueMetricsRoute() {
               Gauge sample rate 0–1 (queue_metrics:gauge_sample_rate); default{" "}
               {controls.sampleRateDefault}
             </label>
-            <input
+            <Input
               type="number"
               min={0}
               max={1}
               step={0.05}
               value={sampleRate}
               onChange={(e) => setSampleRate(e.target.value)}
-              className="w-32 rounded border border-grid-bright bg-charcoal-750 px-2 py-1 text-text-bright"
+              className="w-32"
             />
           </div>
           {error && <Callout variant="error">{error}</Callout>}
@@ -130,7 +139,7 @@ export default function AdminQueueMetricsRoute() {
 
         <div className="space-y-3 rounded-md border border-grid-bright p-4">
           <div className="flex items-center justify-between">
-            <Header2>Stream health{totalLag > 0 ? ` — lag ${totalLag}` : ""}</Header2>
+            <Header2>Stream health{totalLag > 0 ? ` (lag ${totalLag})` : ""}</Header2>
             <Button
               variant="tertiary/small"
               onClick={() => revalidator.revalidate()}
@@ -152,28 +161,28 @@ export default function AdminQueueMetricsRoute() {
               consumer health.
             </Callout>
           )}
-          <table className="w-full text-sm tabular-nums">
-            <thead className="text-text-dimmed">
-              <tr>
-                <th className="py-1 text-left font-normal">Stream</th>
-                <th className="py-1 text-left font-normal">Shard</th>
-                <th className="py-1 text-right font-normal">Depth</th>
-                <th className="py-1 text-right font-normal">Lag</th>
-                <th className="py-1 text-right font-normal">Pending</th>
-              </tr>
-            </thead>
-            <tbody className="text-text-bright">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Stream</TableHeaderCell>
+                <TableHeaderCell>Shard</TableHeaderCell>
+                <TableHeaderCell alignment="right">Depth</TableHeaderCell>
+                <TableHeaderCell alignment="right">Lag</TableHeaderCell>
+                <TableHeaderCell alignment="right">Pending</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {streams.map((s) => (
-                <tr key={`${s.stream}-${s.shard}`} className="border-t border-grid-dimmed">
-                  <td className="py-1">{s.stream}</td>
-                  <td className="py-1">{s.shard}</td>
-                  <td className="py-1 text-right">{s.depth}</td>
-                  <td className="py-1 text-right">{s.lag ?? "unknown"}</td>
-                  <td className="py-1 text-right">{s.pending}</td>
-                </tr>
+                <TableRow key={`${s.stream}-${s.shard}`}>
+                  <TableCell>{s.stream}</TableCell>
+                  <TableCell>{s.shard}</TableCell>
+                  <TableCell alignment="right">{s.depth}</TableCell>
+                  <TableCell alignment="right">{s.lag ?? "unknown"}</TableCell>
+                  <TableCell alignment="right">{s.pending}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </div>
     </main>
