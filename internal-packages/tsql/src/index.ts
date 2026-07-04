@@ -429,6 +429,24 @@ export function injectFallbackConditions(
 
   // Handle SelectQuery
   const selectQuery = ast as SelectQuery;
+
+  // When the FROM is a subquery, the fallback columns belong to the inner query's
+  // table, not this level; descend so e.g. a time fallback lands next to the table ref.
+  const fromTable = selectQuery.select_from?.table;
+  if (
+    fromTable &&
+    (fromTable.expression_type === "select_query" ||
+      fromTable.expression_type === "select_set_query")
+  ) {
+    return {
+      ...selectQuery,
+      select_from: {
+        ...selectQuery.select_from!,
+        table: injectFallbackConditions(fromTable, fallbacks) as SelectQuery | SelectSetQuery,
+      },
+    };
+  }
+
   const existingWhere = selectQuery.where;
 
   // Collect fallback expressions for columns not already in WHERE
