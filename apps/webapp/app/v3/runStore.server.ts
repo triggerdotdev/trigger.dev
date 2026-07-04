@@ -76,7 +76,7 @@ export function buildRunStore(deps: BuildRunStoreDeps): RunStore {
 // RUN_OPS_SPLIT_ENABLED. Reads must fan out across both DBs so a run that lives on the new
 // DB stays visible even with the flag off (matches the db.server topology factory). The flag
 // governs write/mint residency + migration via isSplitEnabled(), not read visibility.
-const ROUTING_ENABLED = !!env.TASK_RUN_DATABASE_URL && !!env.TASK_RUN_LEGACY_DATABASE_URL;
+const ROUTING_ENABLED = !!env.RUN_OPS_DATABASE_URL && !!env.RUN_OPS_LEGACY_DATABASE_URL;
 
 // Resolve the run-ops handles, tolerating contexts where they are absent — tests that mock
 // ~/db.server minimally omit them, and accessing a missing export under vi.mock throws. A

@@ -30,7 +30,7 @@ export async function computeSplitEnabled(
   // Both URLs are required to even consider a split.
   if (!config.legacyUrl || !config.newUrl) {
     deps.logger?.warn(
-      "RUN_OPS_SPLIT_ENABLED is on but TASK_RUN_LEGACY_DATABASE_URL / TASK_RUN_DATABASE_URL are not both set; staying single-DB."
+      "RUN_OPS_SPLIT_ENABLED is on but RUN_OPS_LEGACY_DATABASE_URL / RUN_OPS_DATABASE_URL are not both set; staying single-DB."
     );
     return false;
   }
@@ -70,8 +70,8 @@ export function isSplitEnabled(): Promise<boolean> {
     cached = computeSplitEnabled(
       {
         flagEnabled: env.RUN_OPS_SPLIT_ENABLED,
-        legacyUrl: env.TASK_RUN_LEGACY_DATABASE_URL,
-        newUrl: env.TASK_RUN_DATABASE_URL,
+        legacyUrl: env.RUN_OPS_LEGACY_DATABASE_URL,
+        newUrl: env.RUN_OPS_DATABASE_URL,
       },
       { logger }
     );

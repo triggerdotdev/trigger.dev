@@ -286,6 +286,7 @@ export class RunsReplicationService {
         table: "TaskRun",
         redisOptions: options.redisOptions,
         autoAcknowledge: false,
+        resubscribeOnFailure: true,
         publicationActions: ["insert", "update", "delete"],
         logger:
           options.logger ?? new Logger("LogicalReplicationClient", options.logLevel ?? "info"),
@@ -428,7 +429,9 @@ export class RunsReplicationService {
 
     if (!hasCurrentTransaction) {
       this.logger.info("No transaction to commit, shutting down immediately");
-      await Promise.all(Array.from(this._sources.values()).map((runtime) => runtime.client.stop()));
+      await Promise.all(
+        Array.from(this._sources.values()).map((runtime) => runtime.client.shutdown())
+      );
       this._isShutDownComplete = true;
       return;
     }
@@ -458,7 +461,7 @@ export class RunsReplicationService {
     for (const runtime of this._sources.values()) {
       this.logger.info("Stopping replication client", { sourceId: runtime.source.id });
 
-      await runtime.client.stop();
+      await runtime.client.shutdown();
 
       if (runtime.acknowledgeInterval) {
         clearInterval(runtime.acknowledgeInterval);
@@ -636,7 +639,7 @@ export class RunsReplicationService {
       // swallow client.stop() rejections so they don't surface as unhandled.
       if (!this._shutdownStopInFlight) {
         this._shutdownStopInFlight = true;
-        Promise.all(Array.from(this._sources.values()).map((r) => r.client.stop()))
+        Promise.all(Array.from(this._sources.values()).map((r) => r.client.shutdown()))
           .catch((error) => {
             this.logger.error("Error stopping replication clients during shutdown", { error });
           })

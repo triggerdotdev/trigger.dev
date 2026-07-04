@@ -449,7 +449,7 @@ export class ControlPlaneResolver {
 // run-ops topology factory uses); the async isSplitEnabled() distinct-DB sentinel is enforced
 // at boot elsewhere and is never awaited on a resolver hot path.
 const SPLIT_ENABLED =
-  env.RUN_OPS_SPLIT_ENABLED && !!env.TASK_RUN_DATABASE_URL && !!env.TASK_RUN_LEGACY_DATABASE_URL;
+  env.RUN_OPS_SPLIT_ENABLED && !!env.RUN_OPS_DATABASE_URL && !!env.RUN_OPS_LEGACY_DATABASE_URL;
 
 export const controlPlaneResolver = new ControlPlaneResolver({
   controlPlanePrimary: prisma,

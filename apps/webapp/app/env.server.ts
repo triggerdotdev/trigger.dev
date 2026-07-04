@@ -132,35 +132,24 @@ const EnvironmentSchema = z
     // Explicit positive opt-in. Split behavior is unreachable unless this is true
     // AND the distinct-DB sentinel confirms the two URLs are physically distinct DBs.
     RUN_OPS_SPLIT_ENABLED: BoolEnv.default(false),
-    // Datasource URL for the dedicated run-ops Prisma schema (migrations/generation).
-    // The webapp runtime pool is driven by TASK_RUN_DATABASE_URL, not this var.
+    // Canonical connection URL for the dedicated NEW run-ops DB — drives the runtime pool, the split
+    // decision, replication, and migrations. Optional so single-DB installs never set it.
     RUN_OPS_DATABASE_URL: z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_URL is invalid")
       .optional(),
-    // The NEW dedicated run-ops DB writer. Optional so single-DB installs never set it.
-    TASK_RUN_DATABASE_URL: z
-      .string()
-      .refine(isValidDatabaseUrl, "TASK_RUN_DATABASE_URL is invalid")
-      .optional(),
-    // The NEW run-ops DB unpooled/direct endpoint (Prisma migrate/introspection;
-    // connection poolers break advisory locks). Consumed by the migrations.
-    TASK_RUN_DATABASE_DIRECT_URL: z
-      .string()
-      .refine(isValidDatabaseUrl, "TASK_RUN_DATABASE_DIRECT_URL is invalid")
-      .optional(),
     // The LEGACY run-ops DB (the control-plane DB during the transition). When unset, legacy
     // run-ops reuses the existing DATABASE_URL (legacy run-ops == control-plane DB initially).
-    TASK_RUN_LEGACY_DATABASE_URL: z
+    RUN_OPS_LEGACY_DATABASE_URL: z
       .string()
-      .refine(isValidDatabaseUrl, "TASK_RUN_LEGACY_DATABASE_URL is invalid")
+      .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_URL is invalid")
       .optional(),
     // The NEW dedicated run-ops DB read replica. Optional; self-host never sets it.
     // Refined (unlike the unrefined control-plane DATABASE_READ_REPLICA_URL) so a malformed run-ops
     // replica URL fails boot loudly rather than silently degrading — do not align it down to the CP shape.
-    TASK_RUN_DATABASE_READ_REPLICA_URL: z
+    RUN_OPS_DATABASE_READ_REPLICA_URL: z
       .string()
-      .refine(isValidDatabaseUrl, "TASK_RUN_DATABASE_READ_REPLICA_URL is invalid")
+      .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_READ_REPLICA_URL is invalid")
       .optional(),
     // --- Control-plane datasource repoint. Additive-only. ---
     // Optional control-plane DB. Unset (self-host/single-DB) -> getClient()/getReplicaClient() fall back to
@@ -1724,9 +1713,9 @@ const EnvironmentSchema = z
 
     // --- Run-ops DB split — second replication source (the NEW dedicated run-ops DB). ---
     // Cloud-only; only consulted when isSplitEnabled() is true. Self-host never sets these.
-    // The NEW source's connection URL is TASK_RUN_DATABASE_URL; these add
-    // the NEW source's replication slot/publication and an explicit per-source enable so it can be
-    // brought up independently of the legacy source during the transition.
+    // The NEW source's connection URL is RUN_OPS_DATABASE_URL; these add the NEW source's replication
+    // slot/publication and an explicit per-source enable so it can be brought up independently of the
+    // legacy source during the transition.
     RUN_REPLICATION_NEW_SLOT_NAME: z.string().default("task_runs_to_clickhouse_v2"),
     RUN_REPLICATION_NEW_PUBLICATION_NAME: z
       .string()

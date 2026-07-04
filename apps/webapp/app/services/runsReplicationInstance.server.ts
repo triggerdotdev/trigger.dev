@@ -172,7 +172,7 @@ function initializeRunsReplicationInstance() {
         const sources = buildReplicationSources({
           splitEnabled,
           legacyUrl: DATABASE_URL,
-          newUrl: env.RUN_OPS_DATABASE_URL ?? env.TASK_RUN_DATABASE_URL,
+          newUrl: env.RUN_OPS_DATABASE_URL,
           newSourceOverride: env.RUN_REPLICATION_NEW_ENABLED === "disabled" ? false : undefined,
           legacySlotName: env.RUN_REPLICATION_SLOT_NAME,
           legacyPublicationName: env.RUN_REPLICATION_PUBLICATION_NAME,

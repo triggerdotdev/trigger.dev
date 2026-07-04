@@ -237,16 +237,16 @@ export function selectRunOpsTopology(
 // nothing new. The builders apply the SAME wrapper pair the control-plane
 // singletons use (captureInfrastructureErrors(tagDatasource(role, raw))).
 const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
-  const newUrl = env.TASK_RUN_DATABASE_URL;
+  const newUrl = env.RUN_OPS_DATABASE_URL;
   // Gate on the opt-in flag too: the distinct-DB sentinel only runs when the flag is on.
-  const splitEnabled = env.RUN_OPS_SPLIT_ENABLED && !!newUrl && !!env.TASK_RUN_LEGACY_DATABASE_URL;
+  const splitEnabled = env.RUN_OPS_SPLIT_ENABLED && !!newUrl && !!env.RUN_OPS_LEGACY_DATABASE_URL;
 
   return selectRunOpsTopology(
     {
       splitEnabled,
-      legacyUrl: env.TASK_RUN_LEGACY_DATABASE_URL,
+      legacyUrl: env.RUN_OPS_LEGACY_DATABASE_URL,
       newUrl,
-      newReplicaUrl: env.TASK_RUN_DATABASE_READ_REPLICA_URL,
+      newReplicaUrl: env.RUN_OPS_DATABASE_READ_REPLICA_URL,
     },
     {
       controlPlane: { writer: prisma, replica: $replica },
@@ -278,8 +278,8 @@ export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
   newReplica: runOpsNewReplicaClient,
   controlPlaneWriter: prisma,
   controlPlaneReplica: $replica,
-  hasNewUrl: !!env.TASK_RUN_DATABASE_URL,
-  hasLegacyUrl: !!env.TASK_RUN_LEGACY_DATABASE_URL,
+  hasNewUrl: !!env.RUN_OPS_DATABASE_URL,
+  hasLegacyUrl: !!env.RUN_OPS_LEGACY_DATABASE_URL,
 });
 
 // Boot-time interlock: if the flag is on but the distinct-DB sentinel does not

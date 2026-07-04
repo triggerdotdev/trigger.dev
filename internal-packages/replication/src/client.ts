@@ -19,7 +19,8 @@ export interface LogicalReplicationClientOptions {
   pgConfig: ClientConfig;
 
   /**
-   * The name of this LogicalReplicationClient instance, used for leader election.
+   * The name of this LogicalReplicationClient instance, used for logging and the
+   * Postgres application_name. Leader election is keyed on `slotName`.
    */
   name: string;
   /**
@@ -66,6 +67,17 @@ export interface LogicalReplicationClientOptions {
   leaderLockAcquireAdditionalTimeMs?: number;
 
   /**
+   * Auto re-subscribe (with backoff) after a lost election / failed
+   * START_REPLICATION instead of stopping. Off by default; when on, use
+   * `shutdown()` (not `stop()`) for intentional shutdown.
+   */
+  resubscribeOnFailure?: boolean;
+  /** Base delay for the resubscribe backoff (default: 1000ms). */
+  resubscribeMinDelayMs?: number;
+  /** Max delay for the resubscribe backoff (default: 30000ms). */
+  resubscribeMaxDelayMs?: number;
+
+  /**
    * The interval in seconds to automatically acknowledge the last LSN if no ack has been sent (default: 10)
    */
   ackIntervalSeconds?: number;
@@ -108,6 +120,13 @@ export class LogicalReplicationClient {
   private ackIntervalTimer: NodeJS.Timeout | null = null;
   private _isStopped: boolean = false;
   private _tracer: Tracer;
+  private resubscribeOnFailure: boolean;
+  private resubscribeMinDelayMs: number;
+  private resubscribeMaxDelayMs: number;
+  private resubscribeTimer: NodeJS.Timeout | null = null;
+  private resubscribeAttempts: number = 0;
+  private _intentionalStop: boolean = false;
+  private subscribeEpoch: number = 0;
 
   public get lastLsn(): string {
     return this.lastAcknowledgedLsn ?? "0/00000000";
@@ -130,6 +149,9 @@ export class LogicalReplicationClient {
     this.leaderLockAcquireAdditionalTimeMs = options.leaderLockAcquireAdditionalTimeMs ?? 1000;
     this.leaderLockRetryIntervalMs = options.leaderLockRetryIntervalMs ?? 500;
     this.ackIntervalSeconds = options.ackIntervalSeconds ?? 10;
+    this.resubscribeOnFailure = options.resubscribeOnFailure ?? false;
+    this.resubscribeMinDelayMs = options.resubscribeMinDelayMs ?? 1000;
+    this.resubscribeMaxDelayMs = options.resubscribeMaxDelayMs ?? 30000;
 
     this.redis = createRedisClient(
       {
@@ -154,6 +176,11 @@ export class LogicalReplicationClient {
 
   public async stop(): Promise<this> {
     return await startSpan(this._tracer, "logical_replication_client.stop", async (span) => {
+      if (this.resubscribeTimer) {
+        clearTimeout(this.resubscribeTimer);
+        this.resubscribeTimer = null;
+      }
+
       if (this._isStopped) return this;
 
       span.setAttribute("replication_client.name", this.options.name);
@@ -211,37 +238,135 @@ export class LogicalReplicationClient {
     });
   }
 
-  public async teardown(): Promise<boolean> {
-    await this.stop();
+  /**
+   * Permanently stop the client and disable auto-resubscribe. Use this (not
+   * stop()) for intentional shutdown so a failure-triggered resubscribe can't
+   * race it.
+   */
+  public async shutdown(): Promise<this> {
+    this._intentionalStop = true;
+    return this.stop();
+  }
 
-    // Acquire the leaderLock
-    const leaderLockAcquired = await this.#acquireLeaderLock();
+  /**
+   * Unconditionally release the current attempt's timers, pg client and leader
+   * lock. Unlike stop() this doesn't no-op when `_isStopped` is set — a failed
+   * subscribe runs entirely in that state and would otherwise leak them.
+   */
+  async #cleanupAttempt(): Promise<void> {
+    this._isStopped = true;
+
+    if (this.leaderLockHeartbeatTimer) {
+      clearInterval(this.leaderLockHeartbeatTimer);
+      this.leaderLockHeartbeatTimer = null;
+    }
+
+    if (this.ackIntervalTimer) {
+      clearInterval(this.ackIntervalTimer);
+      this.ackIntervalTimer = null;
+    }
+
+    this.connection?.removeAllListeners();
+    this.connection = null;
+
+    if (this.client) {
+      this.client.removeAllListeners();
+
+      const [endError] = await tryCatch(this.client.end());
+
+      if (endError) {
+        this.logger.error("Failed to end client", {
+          name: this.options.name,
+          error: endError,
+        });
+      }
+      this.client = null;
+    }
+
+    await this.#releaseLeaderLock();
+  }
+
+  #scheduleResubscribe(reason: string): void {
+    if (!this.resubscribeOnFailure || this._intentionalStop) return;
+    if (this.resubscribeTimer) return;
+
+    const delay = Math.min(
+      this.resubscribeMinDelayMs * 2 ** this.resubscribeAttempts,
+      this.resubscribeMaxDelayMs
+    );
+    this.resubscribeAttempts += 1;
+
+    const payload = {
+      name: this.options.name,
+      slotName: this.options.slotName,
+      reason,
+      attempt: this.resubscribeAttempts,
+      delayMs: delay,
+    };
+    // At the ceiling the stream isn't recovering — log loudly so a genuinely
+    // stuck slot surfaces instead of hiding behind silent retries.
+    if (delay >= this.resubscribeMaxDelayMs) {
+      this.logger.error("Replication resubscribe scheduled (at max backoff)", payload);
+    } else {
+      this.logger.warn("Replication resubscribe scheduled", payload);
+    }
+
+    this.resubscribeTimer = setTimeout(() => {
+      this.resubscribeTimer = null;
+      if (this._intentionalStop) return;
+      this.subscribe(this.lastAcknowledgedLsn ?? undefined).catch((error) => {
+        this.logger.error("Replication resubscribe attempt failed", {
+          name: this.options.name,
+          error,
+        });
+        this.#scheduleResubscribe("resubscribe-threw");
+      });
+    }, delay);
+  }
+
+  public async teardown(): Promise<boolean> {
+    this._intentionalStop = true;
+    this.subscribeEpoch += 1;
+    await this.stop();
+    await this.#cleanupAttempt();
+
+    // Acquire the leaderLock (teardown itself is an intentional stop)
+    const leaderLockAcquired = await this.#acquireLeaderLock(false);
 
     if (!leaderLockAcquired) {
       return false;
     }
 
-    this.client = new Client({
-      ...this.options.pgConfig,
-      // @ts-expect-error
-      replication: "database",
-      application_name: this.options.name,
-    });
-    await this.client.connect();
+    try {
+      this.client = new Client({
+        ...this.options.pgConfig,
+        // @ts-expect-error
+        replication: "database",
+        application_name: this.options.name,
+      });
+      await this.client.connect();
 
-    // Drop the slot
-    const slotDropped = await this.#dropSlot();
-
-    await this.client.end();
-    this.client = null;
-
-    await this.#releaseLeaderLock();
-
-    return slotDropped;
+      // Drop the slot
+      return await this.#dropSlot();
+    } finally {
+      // Release the client + slot-keyed lock on both success and throw, so a
+      // mid-teardown failure can't strand the lock (blocking the slot's leader).
+      if (this.client) {
+        await tryCatch(this.client.end());
+        this.client = null;
+      }
+      await this.#releaseLeaderLock();
+    }
   }
 
   public async subscribe(startLsn?: string): Promise<this> {
+    // An explicit subscribe is intent to run: re-arm self-heal after shutdown().
+    this._intentionalStop = false;
+    const attemptEpoch = ++this.subscribeEpoch;
+
     await this.stop();
+    // stop() no-ops once stopped; a failed attempt can leave a client/lock behind.
+    await this.#cleanupAttempt();
 
     this.lastAcknowledgedLsn = startLsn ?? this.lastAcknowledgedLsn;
 
@@ -256,9 +381,16 @@ export class LogicalReplicationClient {
     // 1. Leader election
     const leaderLockAcquired = await this.#acquireLeaderLock();
 
+    if (this._intentionalStop) {
+      await this.#cleanupAttempt();
+      return this;
+    }
+
     if (!leaderLockAcquired) {
       this.events.emit("leaderElection", false);
-      return this.stop();
+      await this.#cleanupAttempt();
+      this.#scheduleResubscribe("leader-election-failed");
+      return this;
     }
 
     this.events.emit("leaderElection", true);
@@ -277,135 +409,175 @@ export class LogicalReplicationClient {
     // Start auto-acknowledge interval
     this.#startAckInterval();
 
-    // 2. Connect pg client
-    this.client = new Client({
-      ...this.options.pgConfig,
-      // @ts-expect-error
-      replication: "database",
-      application_name: this.options.name,
-    });
-    await this.client.connect();
-    // @ts-ignore
-    this.connection = this.client.connection;
+    try {
+      // 2. Connect pg client
+      this.client = new Client({
+        ...this.options.pgConfig,
+        // @ts-expect-error
+        replication: "database",
+        application_name: this.options.name,
+      });
+      await this.client.connect();
+      // @ts-ignore
+      this.connection = this.client.connection;
 
-    const publicationCreated = await this.#createPublication();
-
-    if (!publicationCreated) {
-      return this.stop();
-    }
-
-    this.logger.info("Publication created", {
-      name: this.options.name,
-      table: this.options.table,
-      slotName: this.options.slotName,
-      publicationName: this.options.publicationName,
-      startLsn,
-    });
-
-    const slotCreated = await this.#createSlot();
-
-    if (!slotCreated) {
-      return this.stop();
-    }
-
-    this.logger.info("Slot created", {
-      name: this.options.name,
-      table: this.options.table,
-      slotName: this.options.slotName,
-      publicationName: this.options.publicationName,
-      startLsn,
-    });
-
-    // 5. Start replication (pgoutput)
-    const parser = new PgoutputParser();
-    const sql = getPgoutputStartReplicationSQL(this.options.slotName, this.lastLsn, {
-      protoVersion: 1,
-      publicationNames: [this.options.publicationName],
-      messages: false,
-    });
-
-    // 6. Listen for replication events (copyData, etc.)
-    if (!this.connection) {
-      this.events.emit(
-        "error",
-        new LogicalReplicationClientError("No connection after starting replication")
-      );
-      return this.stop();
-    }
-
-    this.connection.once("replicationStart", () => {
-      this._isStopped = false;
-      this.events.emit("start");
-    });
-
-    this.connection.on(
-      "copyData",
-      async ({ chunk: buffer }: { length: number; chunk: Buffer; name: string }) => {
-        // pgoutput protocol: 0x77 = XLogData, 0x6b = Primary keepalive
-        if (buffer[0] !== 0x77 && buffer[0] !== 0x6b) {
-          this.logger.warn("Unknown replication message type", { byte: buffer[0] });
-          return;
-        }
-        const lsn =
-          buffer.readUInt32BE(1).toString(16).toUpperCase() +
-          "/" +
-          buffer.readUInt32BE(5).toString(16).toUpperCase();
-
-        if (buffer[0] === 0x77) {
-          // XLogData
-          try {
-            const start = process.hrtime.bigint();
-            const log = parser.parse(buffer.subarray(25));
-            const duration = process.hrtime.bigint() - start;
-            this.events.emit("data", { lsn, log, parseDuration: duration });
-            await this.#acknowledge(lsn);
-          } catch (err) {
-            this.logger.error("Failed to parse XLogData", { error: err });
-            this.events.emit("error", err instanceof Error ? err : new Error(String(err)));
-          }
-        } else if (buffer[0] === 0x6b) {
-          // Primary keepalive message
-          const timestamp = Math.floor(
-            buffer.readUInt32BE(9) * 4294967.296 + buffer.readUInt32BE(13) / 1000 + 946080000000
-          );
-          const shouldRespond = !!buffer.readInt8(17);
-          this.events.emit("heartbeat", { lsn, timestamp, shouldRespond });
-          if (shouldRespond) {
-            await this.#acknowledge(lsn);
-          }
-        }
-
-        this.lastAcknowledgedLsn = lsn;
+      if (this._intentionalStop) {
+        await this.#cleanupAttempt();
+        return this;
       }
-    );
 
-    // 7. Handle errors and cleanup
-    this.client.on("error", (err) => {
-      this.events.emit("error", err);
-    });
+      const publicationCreated = await this.#createPublication();
 
-    this.logger.info("Started replication", {
-      name: this.options.name,
-      table: this.options.table,
-      slotName: this.options.slotName,
-      publicationName: this.options.publicationName,
-      startLsn,
-      sql: sql.replace(/\s+/g, " "),
-    });
+      if (!publicationCreated) {
+        await this.#cleanupAttempt();
+        this.#scheduleResubscribe("create-publication-failed");
+        return this;
+      }
 
-    // Start the replication stream
-    this.client.query(sql).catch((err) => {
-      this.logger.error("Failed to start replication", {
+      this.logger.info("Publication created", {
         name: this.options.name,
         table: this.options.table,
         slotName: this.options.slotName,
         publicationName: this.options.publicationName,
-        error: err,
+        startLsn,
       });
 
-      this.events.emit("error", err);
-      return this.stop();
-    });
+      const slotCreated = await this.#createSlot();
+
+      if (!slotCreated) {
+        await this.#cleanupAttempt();
+        this.#scheduleResubscribe("create-slot-failed");
+        return this;
+      }
+
+      this.logger.info("Slot created", {
+        name: this.options.name,
+        table: this.options.table,
+        slotName: this.options.slotName,
+        publicationName: this.options.publicationName,
+        startLsn,
+      });
+
+      if (this._intentionalStop) {
+        await this.#cleanupAttempt();
+        return this;
+      }
+
+      // 5. Start replication (pgoutput)
+      const parser = new PgoutputParser();
+      const sql = getPgoutputStartReplicationSQL(this.options.slotName, this.lastLsn, {
+        protoVersion: 1,
+        publicationNames: [this.options.publicationName],
+        messages: false,
+      });
+
+      // 6. Listen for replication events (copyData, etc.)
+      if (!this.connection) {
+        this.events.emit(
+          "error",
+          new LogicalReplicationClientError("No connection after starting replication")
+        );
+        await this.#cleanupAttempt();
+        this.#scheduleResubscribe("no-connection");
+        return this;
+      }
+
+      this.connection.once("replicationStart", () => {
+        if (this._intentionalStop) {
+          // shutdown() raced the stream start — tear this attempt down.
+          void this.#cleanupAttempt();
+          return;
+        }
+        this._isStopped = false;
+        this.resubscribeAttempts = 0;
+        this.events.emit("start");
+      });
+
+      this.connection.on(
+        "copyData",
+        async ({ chunk: buffer }: { length: number; chunk: Buffer; name: string }) => {
+          // pgoutput protocol: 0x77 = XLogData, 0x6b = Primary keepalive
+          if (buffer[0] !== 0x77 && buffer[0] !== 0x6b) {
+            this.logger.warn("Unknown replication message type", { byte: buffer[0] });
+            return;
+          }
+          const lsn =
+            buffer.readUInt32BE(1).toString(16).toUpperCase() +
+            "/" +
+            buffer.readUInt32BE(5).toString(16).toUpperCase();
+
+          if (buffer[0] === 0x77) {
+            // XLogData
+            try {
+              const start = process.hrtime.bigint();
+              const log = parser.parse(buffer.subarray(25));
+              const duration = process.hrtime.bigint() - start;
+              this.events.emit("data", { lsn, log, parseDuration: duration });
+              await this.#acknowledge(lsn);
+            } catch (err) {
+              this.logger.error("Failed to parse XLogData", { error: err });
+              this.events.emit("error", err instanceof Error ? err : new Error(String(err)));
+            }
+          } else if (buffer[0] === 0x6b) {
+            // Primary keepalive message
+            const timestamp = Math.floor(
+              buffer.readUInt32BE(9) * 4294967.296 + buffer.readUInt32BE(13) / 1000 + 946080000000
+            );
+            const shouldRespond = !!buffer.readInt8(17);
+            this.events.emit("heartbeat", { lsn, timestamp, shouldRespond });
+            if (shouldRespond) {
+              await this.#acknowledge(lsn);
+            }
+          }
+
+          this.lastAcknowledgedLsn = lsn;
+        }
+      );
+
+      // 7. Handle errors and cleanup
+      this.client.on("error", (err) => {
+        this.events.emit("error", err);
+      });
+
+      this.logger.info("Started replication", {
+        name: this.options.name,
+        table: this.options.table,
+        slotName: this.options.slotName,
+        publicationName: this.options.publicationName,
+        startLsn,
+        sql: sql.replace(/\s+/g, " "),
+      });
+
+      // Start the replication stream
+      this.client.query(sql).catch(async (err) => {
+        // A newer subscribe owns the client/lock now; don't tear it down.
+        if (attemptEpoch !== this.subscribeEpoch) return;
+
+        this.logger.error("Failed to start replication", {
+          name: this.options.name,
+          table: this.options.table,
+          slotName: this.options.slotName,
+          publicationName: this.options.publicationName,
+          error: err,
+        });
+
+        this.events.emit("error", err);
+        await this.#cleanupAttempt();
+        this.#scheduleResubscribe("start-replication-failed");
+      });
+    } catch (error) {
+      this.logger.error("Subscribe failed after leader election", {
+        name: this.options.name,
+        table: this.options.table,
+        slotName: this.options.slotName,
+        publicationName: this.options.publicationName,
+        error,
+      });
+
+      await this.#cleanupAttempt();
+      this.#scheduleResubscribe("subscribe-failed");
+      throw error;
+    }
 
     return this;
   }
@@ -688,7 +860,7 @@ export class LogicalReplicationClient {
     });
   }
 
-  async #acquireLeaderLock(): Promise<boolean> {
+  async #acquireLeaderLock(abortOnIntentionalStop = true): Promise<boolean> {
     const startTime = Date.now();
     const maxWaitTime = this.leaderLockTimeoutMs + this.leaderLockAcquireAdditionalTimeMs;
 
@@ -702,9 +874,22 @@ export class LogicalReplicationClient {
     let attempt = 0;
 
     while (Date.now() - startTime < maxWaitTime) {
+      if (abortOnIntentionalStop && this._intentionalStop) {
+        this.logger.info("Leader lock acquisition aborted by shutdown", {
+          name: this.options.name,
+          slotName: this.options.slotName,
+          publicationName: this.options.publicationName,
+          attempt,
+        });
+        return false;
+      }
+
       try {
+        // Key the leader lock on the SLOT, not `name`: Postgres allows one
+        // consumer per slot, so consumers of the same slot must contend on the
+        // same lock (a name-keyed lock lets old+new pods race it across a deploy).
         this.leaderLock = await this.redlock.acquire(
-          [`logical-replication-client:${this.options.name}`],
+          [`logical-replication-client:${this.options.slotName}`],
           this.leaderLockTimeoutMs
         );
 
