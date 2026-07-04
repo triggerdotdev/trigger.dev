@@ -1862,6 +1862,8 @@ function AppliedScheduleIdFilter() {
   );
 }
 
+// Error ids are `error_<16-char sha256 fingerprint>`, not a fixed-length generated
+// id, so they intentionally skip makeFriendlyIdValidator (its length check would reject them).
 function validateErrorId(value: string): string | undefined {
   if (!value.startsWith("error_")) return "Error IDs start with 'error_'";
 }
