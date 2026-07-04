@@ -448,6 +448,51 @@ async function resetEnv(ch: ClickHouse, environmentId: string) {
   console.log(`Reset queue metrics for environment ${environmentId}`);
 }
 
+// Fake running counts in the run-queue Redis (Running column + allocation usage bars).
+// Reconciled every run: staged with --usage, cleared otherwise.
+async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear: boolean) {
+  const host = process.env.RUN_ENGINE_RUN_QUEUE_REDIS_HOST ?? process.env.REDIS_HOST ?? "localhost";
+  const port = Number(
+    process.env.RUN_ENGINE_RUN_QUEUE_REDIS_PORT ?? process.env.REDIS_PORT ?? 6379
+  );
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
+  if (!localHosts.has(host)) {
+    console.warn(`Skipping Redis usage staging on a non-local host: ${host}`);
+    return;
+  }
+  try {
+    const { createRedisClient } = await import("@internal/redis");
+    const redis = createRedisClient({ host, port });
+    const rng = mulberry32(seed + 1);
+    const base = `engine:runqueue:{org:${ids.organization_id}}:proj:${ids.project_id}:env:${ids.environment_id}:queue:`;
+    for (const [q, profile] of scenario.queues.entries()) {
+      const key = `${base}${profile.name}:currentDequeued`;
+      await redis.del(key);
+      if (clear) continue;
+      const limit = profile.limit(0);
+      // First queue rides at/over its limit, the rest at 30-90%, sparse mostly idle.
+      const count = profile.sparse
+        ? rng() < 0.3
+          ? 1
+          : 0
+        : q === 0
+          ? limit + Math.round(rng() * 2)
+          : Math.round(limit * (0.3 + 0.6 * rng()));
+      if (count > 0) {
+        await redis.sadd(key, ...Array.from({ length: count }, (_v, i) => `sim_run_${i}`));
+      }
+    }
+    await redis.quit();
+    console.log(
+      clear
+        ? "Cleared staged Redis usage."
+        : "Staged fake running counts in Redis (Running column + allocation usage bars)."
+    );
+  } catch (error) {
+    console.warn("Redis usage staging skipped:", error instanceof Error ? error.message : error);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -530,6 +575,8 @@ Flags:
   --window <dur>      how much history to backfill, e.g. 30m, 6h, 1d (default: 2h)
   --bucket <sec>      seconds per simulated bucket (default: 10)
   --seed <n>          RNG seed for reproducible data (default: 1)
+  --usage             stage fake running counts in Redis so the Running column and
+                      the Allocation tab's usage bars have data (cleared when omitted)
   --live              after backfilling, keep appending one bucket per interval
   --reset             clear this environment's metrics before seeding
   --reset-only        clear and exit without seeding
@@ -625,6 +672,7 @@ async function main() {
 
   const scenario = build(totalBuckets, bucketSec);
   await ensureTaskQueues(scenario, project.id, runtimeEnv.id);
+  await stageRedisUsage(scenario, ids, seed, flags.usage !== "true");
   const rng = mulberry32(seed);
   const backlog = new Array(scenario.queues.length).fill(0);
 
