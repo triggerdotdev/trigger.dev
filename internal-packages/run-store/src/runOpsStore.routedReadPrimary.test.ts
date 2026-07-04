@@ -16,6 +16,7 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import { RoutingRunStore } from "./runOpsStore.js";
+import { markReadReplicaClient } from "./readReplicaClient.js";
 import type { CreateRunInput } from "./types.js";
 
 // ownerEngine classifies by internal-id LENGTH: 25 chars → cuid → LEGACY, 27 → ksuid → NEW.
@@ -175,9 +176,12 @@ describe("run-ops split — routed reads honor a caller-passed client via the ow
           environmentId: seed.environment.id,
         },
       });
-      await prisma14.$executeRaw`
-        INSERT INTO "_completedWaitpoints" ("A", "B") VALUES (${snapshotId}, ${waitpoint.id})
-      `;
+      // Link via the Prisma relation API (not a raw insert into the implicit join table) so a
+      // relation rename fails at compile time rather than silently seeding nothing.
+      await prisma14.taskRunExecutionSnapshot.update({
+        where: { id: snapshotId },
+        data: { completedWaitpoints: { connect: { id: waitpoint.id } } },
+      });
       expect(await router.findSnapshotCompletedWaitpointIds(snapshotId, prisma14)).toEqual([
         waitpoint.id,
       ]);
@@ -260,6 +264,51 @@ describe("run-ops split — routed reads honor a caller-passed client via the ow
       expect(
         await router.findBatchTaskRunByFriendlyId(batch.friendlyId, seed.environment.id)
       ).toBeNull();
+    }
+  );
+
+  // Read scaling: a caller that passes an explicit READ REPLICA (e.g. `$replica`) must NOT be
+  // escalated to the primary — only true read-your-writes (a writer/tx) should. A replica is a
+  // full PrismaClient at runtime (it has `$transaction` too), so shape can't distinguish it; the
+  // client builder brands it and the router honors the brand. Proven here by branding a client and
+  // showing the read stays on the owning store's (empty) replica — same as passing no client —
+  // while an unbranded writer escalates and finds the fresh row.
+  heteroPostgresTest(
+    "a branded read-replica client stays on the replica; a writer escalates to the primary",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = splitTopology("LEGACY", prisma14, prisma17);
+      const seed = await seedEnvironment(prisma14, "replica_leg");
+      const runId = `run_${CUID_25}`;
+      await router.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_replica_leg",
+          organizationId: seed.organization.id,
+          projectId: seed.project.id,
+          runtimeEnvironmentId: seed.environment.id,
+        })
+      );
+
+      // The router discards the caller's client object (it can't cross DBs) and reads the brand
+      // only, so a branded marker faithfully stands in for a passed `$replica`.
+      const replicaClient = markReadReplicaClient({} as unknown as PrismaClient);
+
+      // findRun (readYourWrites path): branded replica → owning replica (empty) → miss.
+      expect(
+        await router.findRun({ id: runId }, { select: { id: true } }, replicaClient)
+      ).toBeNull();
+      // Control: an unbranded writer escalates to the owning primary → finds the fresh row.
+      expect((await router.findRun({ id: runId }, { select: { id: true } }, prisma14))?.id).toBe(
+        runId
+      );
+
+      // findLatestExecutionSnapshot (#ownPrimary path): same replica-stays-on-replica invariant.
+      expect(await router.findLatestExecutionSnapshot(runId, replicaClient)).toBeNull();
+      expect((await router.findLatestExecutionSnapshot(runId, prisma14))?.executionStatus).toBe(
+        "RUN_CREATED"
+      );
+      // No client behaves identically to the branded replica.
+      expect(await router.findLatestExecutionSnapshot(runId)).toBeNull();
     }
   );
 

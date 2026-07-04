@@ -1257,6 +1257,39 @@ describe("RoutingRunStore.findRuns split-mode fan-out + drain", () => {
     }
   );
 
+  // forWaitpointCompletion selects the store a subsequent WRITE (updateManyWaitpoints) lands on,
+  // so its resolution probe must read each store's PRIMARY — not the replica. Here the owning
+  // (NEW) store's replica lags (points at an empty DB), so a replica probe would miss the fresh
+  // waitpoint and mis-resolve to the id-shape's default (LEGACY), stranding the run.
+  heteroPostgresTest(
+    "forWaitpointCompletion probes the primary, resolving the owner even under replica lag",
+    async ({ prisma14, prisma17 }) => {
+      const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
+      // NEW store writes to prisma17 but its replica is the (empty, w.r.t. this waitpoint) prisma14.
+      const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma14 });
+      const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
+      const seed17 = await seedEnvironment(prisma17, "wpc_lag17");
+
+      const cuidWaitpointId = `waitpoint_${"c".repeat(25)}`; // id-shape → LEGACY (the wrong owner)
+      await prisma17.waitpoint.create({
+        data: {
+          id: cuidWaitpointId,
+          friendlyId: "waitpoint_wpc_lag",
+          type: "MANUAL",
+          idempotencyKey: "wpc-lag-key",
+          userProvidedIdempotencyKey: false,
+          projectId: seed17.project.id,
+          environmentId: seed17.environment.id,
+        },
+      });
+
+      // Only the NEW store's PRIMARY (prisma17) has the row; a replica probe (prisma14) misses it.
+      expect(await router.forWaitpointCompletion(cuidWaitpointId, { routeKind: "MANUAL" })).toBe(
+        newStore
+      );
+    }
+  );
+
   // A waitpoint must be born on the same DB as its run (cuid → LEGACY, ksuid → NEW) so that
   // completion and the blocking edge — which already routes by run id — line up. A cuid
   // waitpoint landing on NEW is the regression that strands a non-opted org's wait forever.

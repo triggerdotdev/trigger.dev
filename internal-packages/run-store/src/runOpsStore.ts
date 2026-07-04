@@ -26,6 +26,7 @@ import type {
   TaskRunWithWaitpoint,
   WaitpointColocationOptions,
 } from "./types.js";
+import { isReadReplicaClient } from "./readReplicaClient.js";
 
 /**
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore}
@@ -57,11 +58,11 @@ export class RoutingRunStore implements RunStore {
 
   // Map a caller-passed read client onto a routed store. The caller's client is bound to the
   // control-plane connection — the wrong database for a NEW-resident row — so it is never forwarded
-  // verbatim. Its PRESENCE is the read-your-writes signal (mirroring `client ?? readOnlyPrisma` in
-  // PostgresRunStore): the routed read runs on the owning store's OWN primary; no client keeps the
-  // store's default.
+  // verbatim. A WRITER/tx signals read-your-writes (the just-written row must beat replica lag), so
+  // the routed read runs on the owning store's OWN primary. A caller-passed REPLICA (branded) or no
+  // client keeps the owning store's replica, preserving read scaling.
   static #ownPrimary(store: RunStore, client: ReadClient | undefined): ReadClient | undefined {
-    return client === undefined ? undefined : store.primaryReadClient;
+    return client != null && !isReadReplicaClient(client) ? store.primaryReadClient : undefined;
   }
 
   // An unclassifiable id is treated as LEGACY (probe the control-plane DB rather than drop a
@@ -1174,12 +1175,17 @@ export class RoutingRunStore implements RunStore {
           : this.#legacy;
     // Resolve to where the waitpoint ACTUALLY lives: a migrated run's waitpoint can be on NEW
     // with a LEGACY-classified id (or vice versa), so verify and fall back rather than route
-    // by id-shape alone and miss it (which leaves the blocked run stuck forever).
-    if (await preferred.findWaitpoint({ where: { id: waitpointId } })) {
+    // by id-shape alone and miss it (which leaves the blocked run stuck forever). This guard
+    // selects the store a WRITE (updateManyWaitpoints) then lands on, so it must probe each
+    // store's PRIMARY (mirroring #resolveWaitpointStore's onPrimary): a just-created waitpoint the
+    // replica hasn't caught up on would otherwise mis-resolve the owner and strand the run.
+    if (
+      await preferred.findWaitpoint({ where: { id: waitpointId } }, preferred.primaryReadClient)
+    ) {
       return preferred;
     }
     const other = preferred === this.#new ? this.#legacy : this.#new;
-    if (await other.findWaitpoint({ where: { id: waitpointId } })) {
+    if (await other.findWaitpoint({ where: { id: waitpointId } }, other.primaryReadClient)) {
       return other;
     }
     return preferred;
@@ -1524,18 +1530,18 @@ function selectOrIncludeArgs(
   return undefined;
 }
 
-// A read-your-writes call passes a client — the writer or an ambient tx, whose just-written row
-// must be read back before the replica has it. Recover the caller's client from the overloaded
-// read args — slot two when it isn't a `{ select | include }` object, else slot three — and report
-// whether one was passed. (Its presence, not its identity, is the signal: even an explicitly
-// passed replica handle can't be forwarded across DBs, so it resolves to the owning primary.)
+// A read-your-writes call passes a WRITER or ambient tx, whose just-written row must be read back
+// before the replica has it. Recover the caller's client from the overloaded read args — slot two
+// when it isn't a `{ select | include }` object, else slot three — and report whether it warrants
+// escalation to the owning primary. A branded replica does NOT: it can't be forwarded across DBs,
+// but it signals a replica-intended read, so the owning store keeps its own replica (read scaling).
 function readYourWrites(
   argsOrClient: { select?: unknown; include?: unknown } | ReadClient | unknown,
   client: ReadClient | undefined
 ): boolean {
   const passedClient =
     selectOrIncludeArgs(argsOrClient) === undefined ? (argsOrClient ?? client) : client;
-  return passedClient != null;
+  return passedClient != null && !isReadReplicaClient(passedClient);
 }
 
 // Read a plain scalar string field off a create-data object (e.g. `data.completedByTaskRunId`).

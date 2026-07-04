@@ -8,6 +8,7 @@ import {
   type PrismaTransactionOptions,
 } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
+import { markReadReplicaClient } from "@internal/run-store";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { env } from "./env.server";
@@ -170,7 +171,11 @@ export const prisma = singleton("prisma", () =>
 
 export const $replica: PrismaReplicaClient = singleton("replica", () => {
   const replica = getReplicaClient();
-  return replica ? captureInfrastructureErrors(tagDatasource("replica", replica)) : prisma;
+  // Brand ONLY a real replica so the run-store routing layer keeps replica reads off the primary.
+  // No replica configured → fall back to the writer `prisma`, which must stay UNBRANDED.
+  return replica
+    ? markReadReplicaClient(captureInfrastructureErrors(tagDatasource("replica", replica)))
+    : prisma;
 });
 
 export type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
@@ -254,9 +259,14 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
         captureInfraErrorsRunOps(
           tagDatasourceRunOps("writer", buildRunOpsWriterClient({ url, clientType }))
         ),
+      // Brand the run-ops replica (only built for a real replica URL) so routed replica reads stay
+      // off the primary. When no replica URL is set, selectRunOpsTopology reuses the writer here —
+      // which this callback never touches, so the writer stays unbranded.
       buildNewReplica: (url, clientType) =>
-        captureInfraErrorsRunOps(
-          tagDatasourceRunOps("replica", buildRunOpsReplicaClient({ url, clientType }))
+        markReadReplicaClient(
+          captureInfraErrorsRunOps(
+            tagDatasourceRunOps("replica", buildRunOpsReplicaClient({ url, clientType }))
+          )
         ),
     }
   );
