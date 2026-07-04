@@ -85,7 +85,7 @@ export class TriggerFailedTaskService {
   }
 
   // Mint a failed run's friendlyId. The id-kind decides which store the run is
-  // born in (cuid → legacy store, ksuid → new store); the whole subgraph of a
+  // born in (cuid → legacy store, run-ops id → new store); the whole subgraph of a
   // run must agree. Root failed runs mint by the environment's setting; child
   // failed runs inherit the parent's current store so they never split.
   private async mintFailedRunFriendlyId(args: {

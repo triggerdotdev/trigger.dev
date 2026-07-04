@@ -4,7 +4,7 @@
  * is false (single-DB passthrough).
  *
  * During the retention window, old run-ops rows are served off the legacy read replica.
- * Residency is decided purely by id-shape: a ksuid (NEW) id reads new only, a cuid
+ * Residency is decided purely by id-shape: a run-ops id (NEW) id reads new only, a cuid
  * (LEGACY) id reads legacy only. An unclassifiable id falls back to a new-then-legacy
  * probe. After termination, past-retention runs return the normal not-found response.
  * Patterned on `mollifier/resolveRunForMutation.server.ts` (`?? default` DI), but with
@@ -80,7 +80,7 @@ export async function readThroughRun<T>(
     }
   }
 
-  // A ksuid id can only live on the new DB — skip the legacy replica entirely.
+  // A run-ops id can only live on the new DB — skip the legacy replica entirely.
   if (residency === "NEW") {
     const v = await input.readNew(newClient);
     return v != null ? { source: "new", value: v } : { source: "not-found" };

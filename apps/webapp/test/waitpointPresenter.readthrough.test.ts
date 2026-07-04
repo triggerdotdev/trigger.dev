@@ -378,7 +378,7 @@ describe("WaitpointPresenter connected-runs hydrate routed through read-through 
 
 describe("WaitpointPresenter bare-ctor production default activates readThroughRun", () => {
   heteroPostgresTest(
-    "ksuid waitpoint on the new DB resolves via readThroughRun production defaults",
+    "run-ops waitpoint on the new DB resolves via readThroughRun production defaults",
     async ({ prisma14, prisma17 }) => {
       const ctx = await seedParents(prisma17, "proddefault");
       const seeded = await seedWaitpoint(prisma17, ctx, "waitpoint_proddefault", {

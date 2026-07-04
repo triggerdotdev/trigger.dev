@@ -2365,7 +2365,7 @@ model ProjectAlert {
 
   type ProjectAlertType
 
-  // Run-ops split: these reference run-subgraph rows that live on the dedicated run-ops DB for ksuid
+  // Run-ops split: these reference run-subgraph rows that live on the dedicated run-ops DB for run-ops id
   // runs, so the cross-DB FK can't hold. Scalar-only; the run is resolved via runStore.findRun.
   taskRunAttemptId String?
 

@@ -118,7 +118,7 @@ export class UnclassifiableWaitpointId extends Error {
   readonly cause?: unknown;
   constructor(waitpointId: string, options?: { cause?: unknown }) {
     super(
-      `Unclassifiable waitpointId for completion: length ${waitpointId.length} matches neither cuid nor ksuid — waitpointId=${JSON.stringify(
+      `Unclassifiable waitpointId for completion: length ${waitpointId.length} matches neither cuid nor run-ops id — waitpointId=${JSON.stringify(
         waitpointId
       )}`
     );

@@ -211,7 +211,7 @@ describe("debounceSystem store routing (single-DB passthrough)", () => {
 
   // Even on the tx path the snapshot read routes through the store.
   // getLatestExecutionSnapshot always passes this.$.runStore, so the read is routed to the
-  // OWNING DB (correct for split mode — a ksuid run's snapshot lives on the dedicated DB, not the
+  // OWNING DB (correct for split mode — a run-ops run's snapshot lives on the dedicated DB, not the
   // caller's control-plane tx). Driving the locked reschedule inside a tx must still increment the
   // counting store's snapshot-read counter.
   containerTest(

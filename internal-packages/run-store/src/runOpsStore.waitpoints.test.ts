@@ -20,7 +20,7 @@ import type { CreateRunInput, RunStoreSchemaVariant } from "./types.js";
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by the version char after stripping a single leading `<prefix>_`: a v1 body
-// → ksuid → NEW (#new / dedicated subset), 25 chars → cuid → LEGACY (#legacy / full schema).
+// → run-ops id → NEW (#new / dedicated subset), 25 chars → cuid → LEGACY (#legacy / full schema).
 const NEW_ID_26 = "k".repeat(24) + "01";
 const CUID_25 = "c".repeat(25);
 
@@ -490,7 +490,7 @@ describe("RunStore run-ops persistence — waitpoints", () => {
     }
   );
 
-  // the silent-hang case, against the REAL split. A NEW (ksuid) run is blocked on
+  // the silent-hang case, against the REAL split. A NEW (run-ops id) run is blocked on
   // a LEGACY (cuid) token, so its block edge lives on #new (co-located with the run) while the token's
   // id-shape says LEGACY. Completing that token must FAN OUT the waitpointId edge read across both DBs
   // and find the edge on #new — routing by the token's id-shape (LEGACY) returns zero edges and the
@@ -505,7 +505,7 @@ describe("RunStore run-ops persistence — waitpoints", () => {
 
       // The NEW run + its (synthetic) env live on the dedicated #new subset (prisma17).
       const env17 = await seedEnvironment(prisma17, "dedicated", "we17");
-      const runId = `run_${NEW_ID_26}`; // ksuid → NEW residency
+      const runId = `run_${NEW_ID_26}`; // run-ops id → NEW residency
       await router.createRun(
         buildCreateRunInput({
           runId,

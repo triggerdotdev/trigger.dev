@@ -3,7 +3,7 @@
 // control-plane client. Two-physical-DB topology with the real dedicated run-ops schema on
 // #new (prisma17), modelled on the block-edge residency test.
 //
-// RED before the fix: completeWaitpoint resolved the #new store (where the ksuid RUN waitpoint
+// RED before the fix: completeWaitpoint resolved the #new store (where the run-ops id RUN waitpoint
 // lives), marked it COMPLETED there, then re-read it via `store.findWaitpoint({where:{id}}, this.$.prisma)`.
 // A resolved PostgresRunStore HONORS the passed client, so the re-read hit the control-plane DB
 // (#legacy / prisma14), found nothing, and threw "Waitpoint not found" BEFORE enqueueing
@@ -35,10 +35,10 @@ const twoDbEngineTest = heteroRunOpsPostgresTest.extend<{
   redisOptions,
 });
 
-// ksuid (v1 internal id, version "1" at index 25) → classified NEW → routed to the run-ops (#new) store.
-const KSUID_A = "n".repeat(24) + "01";
-// A second ksuid run for the cross-DB (NEW-run → LEGACY-token) case.
-const KSUID_X = "k".repeat(24) + "01";
+// run-ops id (v1 internal id, version "1" at index 25) → classified NEW → routed to the run-ops (#new) store.
+const RUN_OPS_A = "n".repeat(24) + "01";
+// A second run-ops run for the cross-DB (NEW-run → LEGACY-token) case.
+const RUN_OPS_X = "k".repeat(24) + "01";
 // cuid (25-char) → classified LEGACY → a standalone token resident on #legacy (prisma14).
 const CUID_25 = "c".repeat(25);
 
@@ -134,9 +134,9 @@ function buildCreateRunInput(params: {
   };
 }
 
-// Seed an EXECUTING ksuid parent on #new (prisma17) via the routed store, plus a ksuid PENDING RUN
+// Seed an EXECUTING run-ops parent on #new (prisma17) via the routed store, plus a run-ops id PENDING RUN
 // waitpoint co-resident on #new. Returns the env + ids the block/complete path needs.
-async function seedExecutingKsuidParent(
+async function seedExecutingRunOpsParent(
   prisma14: PrismaClient,
   prisma17: RunOpsPrismaClient,
   router: RoutingRunStore,
@@ -170,7 +170,7 @@ async function seedExecutingKsuidParent(
     prisma14
   );
 
-  // The RUN waitpoint lives on #new, co-resident with the ksuid run, and is completed-by that run.
+  // The RUN waitpoint lives on #new, co-resident with the run-ops run, and is completed-by that run.
   await prisma17.waitpoint.create({
     data: {
       id: waitpointId,
@@ -188,10 +188,10 @@ async function seedExecutingKsuidParent(
   return env;
 }
 
-// Seed an EXECUTING ksuid parent on #new (prisma17) AND a standalone MANUAL token resident on
+// Seed an EXECUTING run-ops parent on #new (prisma17) AND a standalone MANUAL token resident on
 // #legacy (prisma14, cuid) — the tolerated NEW-run → LEGACY-token cross-DB direction (standalone
 // tokens are minted on LEGACY). The token is NOT created on #new. Returns both envs + ids.
-async function seedKsuidParentAndLegacyToken(
+async function seedRunOpsParentAndLegacyToken(
   prisma14: PrismaClient,
   prisma17: RunOpsPrismaClient,
   router: RoutingRunStore,
@@ -267,9 +267,9 @@ describe("RunEngine completeWaitpoint re-read residency (two physical DBs, dedic
       });
 
       try {
-        const parentRunId = `run_${KSUID_A}`;
-        const waitpointId = `waitpoint_${KSUID_A}`;
-        const env = await seedExecutingKsuidParent(
+        const parentRunId = `run_${RUN_OPS_A}`;
+        const waitpointId = `waitpoint_${RUN_OPS_A}`;
+        const env = await seedExecutingRunOpsParent(
           prisma14 as unknown as PrismaClient,
           prisma17,
           router,
@@ -335,7 +335,7 @@ describe("RunEngine completeWaitpoint re-read residency (two physical DBs, dedic
     }
   );
 
-  // End-to-end cross-DB gate: a ksuid run on #new blocked on a standalone MANUAL token resident on
+  // End-to-end cross-DB gate: a run-ops run on #new blocked on a standalone MANUAL token resident on
   // #legacy (the tolerated NEW-run → LEGACY-token direction — standalone tokens are minted on
   // LEGACY). RED before the writer fix: blockRunWithWaitpointEdges' dedicated branch joined
   // `FROM "Waitpoint" w`, which matched 0 rows on #new (the token is on #legacy) → 0 edges → the run
@@ -344,7 +344,7 @@ describe("RunEngine completeWaitpoint re-read residency (two physical DBs, dedic
   // token (the completion fan-out discovers the #new edge and resolves its COMPLETED status across
   // both DBs) resumes the NEW run.
   twoDbEngineTest(
-    "completeWaitpoint on a LEGACY-resident token unblocks a ksuid run whose edge lives on #new",
+    "completeWaitpoint on a LEGACY-resident token unblocks a run-ops run whose edge lives on #new",
     async ({ prisma14, prisma17, redisOptions }) => {
       const router = makeRouter(prisma14 as unknown as PrismaClient, prisma17);
       const engine = new RunEngine({
@@ -353,9 +353,9 @@ describe("RunEngine completeWaitpoint re-read residency (two physical DBs, dedic
       });
 
       try {
-        const parentRunId = `run_${KSUID_X}`; // ksuid run → #new
+        const parentRunId = `run_${RUN_OPS_X}`; // run-ops run → #new
         const waitpointId = `waitpoint_${CUID_25}`; // cuid standalone token → #legacy
-        const env = await seedKsuidParentAndLegacyToken(
+        const env = await seedRunOpsParentAndLegacyToken(
           prisma14 as unknown as PrismaClient,
           prisma17,
           router,
@@ -374,7 +374,7 @@ describe("RunEngine completeWaitpoint re-read residency (two physical DBs, dedic
           tx: prisma14 as unknown as PrismaClient,
         });
 
-        // The block edge is physically on #new; #legacy holds none for the ksuid run (safety invariant).
+        // The block edge is physically on #new; #legacy holds none for the run-ops run (safety invariant).
         expect(await prisma17.taskRunWaitpoint.count({ where: { taskRunId: parentRunId } })).toBe(
           1
         );

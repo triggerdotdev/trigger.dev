@@ -84,7 +84,7 @@ const read = (waitpointId: string, environmentId: string) => (client: PrismaRepl
 
 describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run-ops PG17)", () => {
   heteroRunOpsPostgresTest(
-    "ksuid waitpoint resolves on the dedicated run-ops client; legacy replica never touched",
+    "run-ops waitpoint resolves on the dedicated run-ops client; legacy replica never touched",
     async ({ prisma17, prisma14 }) => {
       const id = generateRunOpsId();
       expect(id.length).toBe(26);

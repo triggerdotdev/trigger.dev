@@ -1,10 +1,10 @@
 // MIXED-RESIDENCY MATRIX — systematic LOCK that every RoutingRunStore fan-out / partition / merge /
-// dedup method behaves correctly when cuid (#legacy) AND ksuid (#new) data COEXIST in the SAME call,
+// dedup method behaves correctly when cuid (#legacy) AND run-ops id (#new) data COEXIST in the SAME call,
 // against the REAL two-physical-DB split (heteroRunOpsPostgresTest: prisma14 = full/legacy on PG14,
 // prisma17 = RunOpsPrismaClient / dedicated subset on PG17). NEVER mocked.
 //
 // Existing tests exercise these methods one residency at a time or for a single specific bug. This
-// file is the cross-residency matrix: each case seeds BOTH a cuid row on #legacy AND a ksuid row on
+// file is the cross-residency matrix: each case seeds BOTH a cuid row on #legacy AND a run-ops id row on
 // #new in one environment, then drives the wired router and asserts the merge/partition is correct.
 // The matrix MUST go RED if a fan-out leg is dropped or a NEW-wins dedup regresses (see the reverted
 // mutation probes recorded in the task report).
@@ -20,12 +20,12 @@ import type { CreateRunInput, RunStoreSchemaVariant } from "./types.js";
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by internal-id LENGTH after stripping a leading `<prefix>_`
-// (runOpsResidency.ts): 25 chars (no internal underscore) → cuid → LEGACY, a v1 body (version "1" at index 25) → ksuid → NEW.
+// (runOpsResidency.ts): 25 chars (no internal underscore) → cuid → LEGACY, a v1 body (version "1" at index 25) → run-ops id → NEW.
 // These mint a distinct classifiable id of the right length from a short seed.
 function cuidLegacy(seed: string): string {
   return (seed + "c".repeat(25)).slice(0, 25); // 25 chars → LEGACY (#legacy / prisma14)
 }
-function ksuidNew(seed: string): string {
+function runOpsNew(seed: string): string {
   return (seed.replace(/[^0-9a-v]/g, "0") + "k".repeat(24)).slice(0, 24) + "01";
 }
 
@@ -194,11 +194,11 @@ async function seedSharedEnv(prisma14: PrismaClient, suffix: string) {
   };
 }
 
-describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new coexisting)", () => {
+describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id #new coexisting)", () => {
   // ── Case 1: findRuns by a MIXED bounded id-set (#findRunsByIdSet, runOpsStore.ts:294) ──
-  // A list-hydrate id set spans cuid (legacy) + ksuid (new) ids plus a ksuid id absent from legacy.
+  // A list-hydrate id set spans cuid (legacy) + run-ops id (new) ids plus a run-ops id absent from legacy.
   // Both resident runs returned; take/skip applied GLOBALLY post-merge; orderBy honored; the absent
-  // ksuid short-circuits (never probed on LEGACY, :309).
+  // run-ops id short-circuits (never probed on LEGACY, :309).
   heteroRunOpsPostgresTest(
     "case 1: findRuns by a mixed id-set returns both DBs' runs, ordered, take/skip global",
     async ({ prisma14, prisma17 }) => {
@@ -206,8 +206,8 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m1");
 
       const legacyId = cuidLegacy("m1l"); // cuid → #legacy
-      const newId = ksuidNew("m1n"); // ksuid → #new
-      const ghostKsuid = ksuidNew("m1g"); // ksuid, NEVER created → tests the LEGACY short-circuit
+      const newId = runOpsNew("m1n"); // run-ops id → #new
+      const ghostRunOpsId = runOpsNew("m1g"); // run-ops id, NEVER created → tests the LEGACY short-circuit
 
       await router.createRun(
         buildCreateRunInput({
@@ -234,7 +234,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
 
       // Full merge, ordered by createdAt asc → newId (Jan 1) before legacyId (Jan 2).
       const all = await router.findRuns({
-        where: { id: { in: [legacyId, newId, ghostKsuid] } },
+        where: { id: { in: [legacyId, newId, ghostRunOpsId] } },
         select: { id: true, createdAt: true },
         orderBy: { createdAt: "asc" },
       });
@@ -243,7 +243,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       // take=1 after the merge → only the first (newId). Proves take is applied GLOBALLY, not per-leg
       // (a per-leg take=1 would return one row from EACH DB → both ids).
       const firstOnly = await router.findRuns({
-        where: { id: { in: [legacyId, newId, ghostKsuid] } },
+        where: { id: { in: [legacyId, newId, ghostRunOpsId] } },
         select: { id: true },
         orderBy: { createdAt: "asc" },
         take: 1,
@@ -252,7 +252,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
 
       // skip=1 take=1 → the second (legacyId).
       const second = await router.findRuns({
-        where: { id: { in: [legacyId, newId, ghostKsuid] } },
+        where: { id: { in: [legacyId, newId, ghostRunOpsId] } },
         select: { id: true },
         orderBy: { createdAt: "asc" },
         skip: 1,
@@ -319,7 +319,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m2");
 
       const legacyId = cuidLegacy("m2l");
-      const newId = ksuidNew("m2n");
+      const newId = runOpsNew("m2n");
       await router.createRun(
         buildCreateRunInput({
           runId: legacyId,
@@ -342,7 +342,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       );
       await router.createRun(
         buildCreateRunInput({
-          runId: ksuidNew("m2np"),
+          runId: runOpsNew("m2np"),
           friendlyId: "run_m2_new_pending",
           status: "PENDING",
           ...env,
@@ -359,7 +359,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
   );
 
   // ── Case 3: expireRunsBatch with a MIXED id list (runOpsStore.ts:474) ──
-  // Partitions ksuid→NEW / cuid→LEGACY; each leg called only when non-empty; counts summed; each row
+  // Partitions run-ops id→NEW / cuid→LEGACY; each leg called only when non-empty; counts summed; each row
   // updated on its OWN DB only.
   heteroRunOpsPostgresTest(
     "case 3: expireRunsBatch partitions a mixed id list per-DB and sums the count",
@@ -368,7 +368,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m3");
 
       const legacyId = cuidLegacy("m3l");
-      const newId = ksuidNew("m3n");
+      const newId = runOpsNew("m3n");
       await router.createRun(
         buildCreateRunInput({ runId: legacyId, friendlyId: "run_m3_legacy", ...env })
       );
@@ -400,7 +400,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m4");
 
       const legacyId = cuidLegacy("m4l");
-      const newId = ksuidNew("m4n");
+      const newId = runOpsNew("m4n");
       await router.createRun(
         buildCreateRunInput({
           runId: legacyId,
@@ -441,8 +441,8 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m5");
 
       const legacyWp = cuidLegacy("m5l"); // PENDING on #legacy
-      const newWp = ksuidNew("m5n"); // PENDING on #new
-      const completedWp = ksuidNew("m5c"); // COMPLETED on #new → must NOT be counted
+      const newWp = runOpsNew("m5n"); // PENDING on #new
+      const completedWp = runOpsNew("m5c"); // COMPLETED on #new → must NOT be counted
       await seedPendingWaitpoint(prisma14, {
         id: legacyWp,
         friendlyId: "wp_m5_legacy",
@@ -477,7 +477,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m6");
 
       const legacyWp = cuidLegacy("m6l");
-      const newWp = ksuidNew("m6n");
+      const newWp = runOpsNew("m6n");
       await seedPendingWaitpoint(prisma14, {
         id: legacyWp,
         friendlyId: "wp_m6_legacy",
@@ -499,7 +499,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
   // ── Case 8: findExecutionSnapshot / findManyExecutionSnapshots OPEN (no runId) where ──
   // A by-snapshot-id-only lookup (snapshot ids are non-classifiable cuids) must fan out NEW→LEGACY
   // (findExecutionSnapshot, :675) / merge both (findManyExecutionSnapshots, :688). Seed a snapshot on
-  // EACH DB (one ksuid run on #new, one cuid run on #legacy) and read with a no-runId where.
+  // EACH DB (one run-ops run on #new, one cuid run on #legacy) and read with a no-runId where.
   heteroRunOpsPostgresTest(
     "case 8: findExecutionSnapshot/findManyExecutionSnapshots with an open where reach both DBs",
     async ({ prisma14, prisma17 }) => {
@@ -507,7 +507,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m8");
 
       const legacyRun = cuidLegacy("m8l");
-      const newRun = ksuidNew("m8n");
+      const newRun = runOpsNew("m8n");
       await router.createRun(
         buildCreateRunInput({ runId: legacyRun, friendlyId: "run_m8_legacy", ...env })
       );
@@ -548,7 +548,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
   );
 
   // ── Case 9a: findRun with an UNCLASSIFIABLE where (spanId) on a #legacy run (#findRunUnrouted, :213) ──
-  // A ksuid run on #new and a cuid run on #legacy each carry a distinct spanId. A spanId where can't
+  // A run-ops run on #new and a cuid run on #legacy each carry a distinct spanId. A spanId where can't
   // be id-classified → fan out NEW-first then LEGACY. The legacy-resident run must be found.
   heteroRunOpsPostgresTest(
     "case 9a: findRun by spanId fans out and finds a #legacy run (NEW miss → LEGACY hit)",
@@ -557,7 +557,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m9a");
 
       const legacyRun = cuidLegacy("m9al");
-      const newRun = ksuidNew("m9an");
+      const newRun = runOpsNew("m9an");
       await router.createRun(
         buildCreateRunInput({
           runId: legacyRun,
@@ -599,7 +599,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m9b");
 
       const legacyRun = cuidLegacy("m9bl");
-      const newRun = ksuidNew("m9bn");
+      const newRun = runOpsNew("m9bn");
       await router.createRun(
         buildCreateRunInput({
           runId: legacyRun,
@@ -633,7 +633,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
 
   // ── Case 7: findManyTaskRunWaitpoints with edges whose relations STRADDLE DBs (runOpsStore.ts:876) ──
   // An edge co-locates with its RUN, but its `waitpoint`/`taskRun` relations can live on the OTHER DB
-  // (a cuid token blocking a ksuid run, and vice versa). The per-leg scalar query is stripped of the
+  // (a cuid token blocking a run-ops run, and vice versa). The per-leg scalar query is stripped of the
   // relation keys; the router re-hydrates `waitpoint`/`taskRun` across BOTH DBs. Exercises BOTH
   // straddle directions in one read by querying both edges via { taskRunId: { in } }.
   heteroRunOpsPostgresTest(
@@ -642,8 +642,8 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedSharedEnv(prisma14, "m7");
 
-      // Direction A: ksuid run on #new, blocked on a cuid token that lives ONLY on #legacy. Edge on #new.
-      const newRun = ksuidNew("m7nr");
+      // Direction A: run-ops run on #new, blocked on a cuid token that lives ONLY on #legacy. Edge on #new.
+      const newRun = runOpsNew("m7nr");
       const legacyToken = cuidLegacy("m7lt");
       await router.createRun(
         buildCreateRunInput({ runId: newRun, friendlyId: "run_m7_new", ...env })
@@ -660,12 +660,12 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
         `INSERT INTO "TaskRunWaitpoint" ("id","taskRunId","waitpointId","projectId","createdAt","updatedAt") VALUES (gen_random_uuid(),'${newRun}','${legacyToken}','${env.projectId}',NOW(),NOW())`
       );
 
-      // Direction B: cuid run on #legacy, blocked on a ksuid token mirrored onto BOTH DBs (drain
+      // Direction B: cuid run on #legacy, blocked on a run-ops token mirrored onto BOTH DBs (drain
       // window). The #legacy copy is a STALE placeholder (PENDING) that satisfies the legacy edge FK;
       // the AUTHORITATIVE #new copy is COMPLETED. Edge on #legacy. Hydration re-resolves cross-DB and
       // NEW-wins the dedup → the edge's waitpoint must read the #new (COMPLETED) copy, not the local mirror.
       const legacyRun = cuidLegacy("m7lr");
-      const newToken = ksuidNew("m7nt");
+      const newToken = runOpsNew("m7nt");
       await router.createRun(
         buildCreateRunInput({ runId: legacyRun, friendlyId: "run_m7_legacy", ...env })
       );
@@ -733,8 +733,8 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedSharedEnv(prisma14, "m7b");
 
-      const newRun = ksuidNew("m7br");
-      const ghostToken = ksuidNew("m7bg"); // never created on either DB
+      const newRun = runOpsNew("m7br");
+      const ghostToken = runOpsNew("m7bg"); // never created on either DB
       await router.createRun(
         buildCreateRunInput({ runId: newRun, friendlyId: "run_m7b_new", ...env })
       );
@@ -752,8 +752,8 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
   );
 
   // ── Case 10: findBatchTaskRunById / findBatchTaskRunByFriendlyId NEW-then-LEGACY probe (:1124,:1137) ──
-  // A batch resident on #legacy AND a ksuid-id batch landed on #new (the control-plane window mints
-  // cuid ids, but a ksuid batch resides on #new) are BOTH found via the probe, regardless of id-shape.
+  // A batch resident on #legacy AND a run-ops-id batch landed on #new (the control-plane window mints
+  // cuid ids, but a run-ops batch resides on #new) are BOTH found via the probe, regardless of id-shape.
   heteroRunOpsPostgresTest(
     "case 10: findBatchTaskRunById/byFriendlyId probe NEW then LEGACY and find batches on either DB",
     async ({ prisma14, prisma17 }) => {
@@ -761,7 +761,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m10");
 
       const legacyBatch = cuidLegacy("m10l"); // cuid → #legacy
-      const newBatch = ksuidNew("m10n"); // ksuid → #new
+      const newBatch = runOpsNew("m10n"); // run-ops id → #new
       await prisma14.batchTaskRun.create({
         data: {
           id: legacyBatch,
@@ -805,7 +805,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       const env = await seedSharedEnv(prisma14, "m11a");
 
       const legacyWp = cuidLegacy("m11al");
-      const newWp = ksuidNew("m11an");
+      const newWp = runOpsNew("m11an");
       await seedPendingWaitpoint(prisma14, {
         id: legacyWp,
         friendlyId: "wp_m11a_legacy",
@@ -846,7 +846,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       // ONE logical run id whose edges happen to exist on BOTH DBs (the straddle the fan-out guards).
       // The edge is FK-free on #new (unnest path) and FK-bound on #legacy, so seed a co-resident
       // waitpoint + run on #legacy for its edge, and write the #new edge directly.
-      const runId = ksuidNew("m11br");
+      const runId = runOpsNew("m11br");
       const legacyToken = cuidLegacy("m11bt");
       await router.createRun(buildCreateRunInput({ runId, friendlyId: "run_m11b", ...env }));
       // #legacy needs the run + token present for the FK-bound edge insert.
@@ -881,8 +881,8 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       await prisma14.$executeRawUnsafe(
         `INSERT INTO "TaskRunWaitpoint" ("id","taskRunId","waitpointId","projectId","createdAt","updatedAt") VALUES (gen_random_uuid(),'${runId}','${legacyToken}','${env.projectId}',NOW(),NOW())`
       );
-      // #new edge (FK-free) pointing at a ksuid token absent locally — drain straddle.
-      const newToken = ksuidNew("m11bn");
+      // #new edge (FK-free) pointing at a run-ops token absent locally — drain straddle.
+      const newToken = runOpsNew("m11bn");
       await prisma17.$executeRawUnsafe(
         `INSERT INTO "TaskRunWaitpoint" ("id","taskRunId","waitpointId","projectId","createdAt","updatedAt") VALUES (gen_random_uuid(),'${runId}','${newToken}','${env.projectId}',NOW(),NOW())`
       );

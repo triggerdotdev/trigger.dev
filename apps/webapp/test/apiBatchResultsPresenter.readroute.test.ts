@@ -1,6 +1,6 @@
 // Route-level regression for ApiBatchResultsPresenter: the /batches/:id/results route used to build
 // the presenter with no read-through deps, collapsing to a passthrough read off the control-plane
-// replica only, which 404s a NEW-resident (ksuid) batch that lives on the dedicated run-ops DB.
+// replica only, which 404s a NEW-resident (run-ops id) batch that lives on the dedicated run-ops DB.
 import { heteroPostgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";

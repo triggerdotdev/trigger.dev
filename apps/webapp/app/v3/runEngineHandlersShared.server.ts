@@ -71,7 +71,7 @@ export async function readRunForEventOrThrow<S extends Prisma.TaskRunSelect>(
  * Resolve which run-ops writer physically owns the `BatchTaskRun` row for
  * `batchId` by probing where the row lives, so the batch-completion txn commits
  * on a single run-ops DB. Length classification is INVALID here: a batch id may
- * be a ksuid (cut-over orgs) or a cuid (and cuid-shaped ids can be backfilled
+ * be a run-ops id (cut-over orgs) or a cuid (and cuid-shaped ids can be backfilled
  * onto NEW), so id-shape does not reliably indicate the row's actual residency.
  * The existence probe is the correct signal.
  */

@@ -126,7 +126,7 @@ export function serializeSession(session: Session): SessionItem {
  * Skips the lookup when `currentRunId` is null.
  *
  * Resolves `currentRunId` -> `friendlyId` through `runStore.findRun` so a
- * ksuid (NEW-DB) session run resolves from its owning store rather than the
+ * run-ops id (NEW-DB) session run resolves from its owning store rather than the
  * control-plane replica. Mirrors `sessionRunManager.server.ts`.
  * Tenant-scoped because `Session.currentRunId` is a no-FK pointer.
  */

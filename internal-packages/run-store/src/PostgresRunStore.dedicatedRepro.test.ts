@@ -4,7 +4,7 @@
 // dedicated subset schema (`heteroRunOpsPostgresTest.prisma17` is a real `RunOpsPrismaClient` over
 // the @internal/run-ops-database SUBSET schema) and the full legacy schema on a SEPARATE physical
 // PG container (`prisma14`). An earlier harness masked every one of these by backing the "#new"
-// store with the FULL legacy schema and globally minting ksuid, so the split never ran against the
+// store with the FULL legacy schema and globally minting run-ops id, so the split never ran against the
 // dedicated schema.
 //
 // Each case either asserts the fixed behavior directly or, for a still-open item, wraps the broken
@@ -22,7 +22,7 @@ import type { CreateRunInput, RunStoreSchemaVariant } from "./types.js";
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by internal-id LENGTH (runOpsResidency.ts): 25 chars → cuid → LEGACY,
-// a v1 body (version "1" at index 25) → ksuid → NEW. A `run_`-prefixed friendly id strips the first underscore first.
+// a v1 body (version "1" at index 25) → run-ops id → NEW. A `run_`-prefixed friendly id strips the first underscore first.
 const CUID_25 = "c".repeat(25); // → LEGACY (#legacy / control-plane DB, full schema)
 const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW (#new / dedicated run-ops DB, subset schema)
 
@@ -248,16 +248,16 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
 
   // ===========================================================================================
   // Cross-DB waitpoint hydration through the router.
-  // A ksuid run (on #new) blocked by a waitpoint that lives on the OTHER DB (#legacy). The block
+  // A run-ops run (on #new) blocked by a waitpoint that lives on the OTHER DB (#legacy). The block
   // edge co-resides with the run on #new; the token is on #legacy. A single store hydrates the
   // edge's `waitpoint` from its own client → null → the run hangs / loses output. The
   // router must re-resolve the token across BOTH DBs.
   // ===========================================================================================
 
-  // Co-resident control (the ksuid happy path): a ksuid run blocked by a ksuid waitpoint,
+  // Co-resident control (the run-ops id happy path): a run-ops run blocked by a run-ops waitpoint,
   // both on #new, hydrates through the router with the real status/output.
   heteroRunOpsPostgresTest(
-    "cross-DB: a ksuid run blocked by a CO-RESIDENT ksuid waitpoint hydrates the real status via the router",
+    "cross-DB: a run-ops run blocked by a CO-RESIDENT run-ops waitpoint hydrates the real status via the router",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "cores_new");
@@ -297,11 +297,11 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   );
 
   // The cross-DB topology. The block edge is on #new (co-resident with the
-  // ksuid run), the completing token is on #legacy. The router resolves the token across both DBs
+  // run-ops run), the completing token is on #legacy. The router resolves the token across both DBs
   // and returns its REAL status and OUTPUT (the wrong-result guard) — a single store would
   // hydrate null here and strand the run.
   heteroRunOpsPostgresTest(
-    "cross-DB: a ksuid run completed by a waitpoint on the OTHER DB hydrates the real status + output via the router",
+    "cross-DB: a run-ops run completed by a waitpoint on the OTHER DB hydrates the real status + output via the router",
     async ({ prisma14, prisma17 }) => {
       const { router, newStore } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "xdb_new");
@@ -309,7 +309,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const runId = `run_${NEW_ID_26}`;
       const waitpointId = `waitpoint_${CUID_25}`; // cuid → lives on #legacy
 
-      // The completing token lives on #legacy (cuid MANUAL token blocking a ksuid run).
+      // The completing token lives on #legacy (cuid MANUAL token blocking a run-ops run).
       await prisma14.waitpoint.create({
         data: {
           id: waitpointId,
@@ -323,7 +323,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
           environmentId: legEnv.environment.id,
         },
       });
-      // The block edge co-resides with the ksuid RUN on #new.
+      // The block edge co-resides with the run-ops id RUN on #new.
       await prisma17.taskRunWaitpoint.create({
         data: { taskRunId: runId, waitpointId, projectId: newEnv.project.id },
       });
@@ -362,7 +362,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "phantom_new");
       const runId = `run_${NEW_ID_26}`;
-      const waitpointId = `waitpoint_${"p".repeat(24) + "01"}`; // ksuid-shaped, but never created anywhere
+      const waitpointId = `waitpoint_${"p".repeat(24) + "01"}`; // run-ops-shaped, but never created anywhere
 
       await prisma17.taskRunWaitpoint.create({
         data: { taskRunId: runId, waitpointId, projectId: newEnv.project.id },
@@ -471,9 +471,9 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     }
   );
 
-  // Control: a ksuid run's checkpoint, routed by its owning run id, co-resides on #new.
+  // Control: a run-ops run's checkpoint, routed by its owning run id, co-resides on #new.
   heteroRunOpsPostgresTest(
-    "control: a ksuid run's checkpoint co-resides on #new with its snapshot",
+    "control: a run-ops run's checkpoint co-resides on #new with its snapshot",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "gap2k_new");
@@ -493,7 +493,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
           data: {
             friendlyId: `checkpoint_${NEW_ID_26}`,
             type: "DOCKER",
-            location: "s3://bucket/ksuid-run-checkpoint",
+            location: "s3://bucket/run-ops id-run-checkpoint",
             projectId: env.project.id,
             runtimeEnvironmentId: env.environment.id,
           },
@@ -506,7 +506,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
 
       const snapshot = await router.createExecutionSnapshot({
         run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
-        snapshot: { executionStatus: "SUSPENDED", description: "ksuid suspended" },
+        snapshot: { executionStatus: "SUSPENDED", description: "run-ops suspended" },
         checkpointId: checkpoint.id,
         environmentId: env.environment.id,
         environmentType: "DEVELOPMENT",
@@ -637,10 +637,10 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     }
   );
 
-  // Control: a KSUID run (on #new / dedicated) IS visible through the router — proving the read gap
+  // Control: a run-ops run (on #new / dedicated) IS visible through the router — proving the read gap
   // is residency-specific (only the cuid/#legacy cohort would be dropped), not a blanket failure.
   heteroRunOpsPostgresTest(
-    "control: a ksuid run's #new snapshot IS found through the router",
+    "control: a run-ops run's #new snapshot IS found through the router",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
 
@@ -657,7 +657,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       );
       const created = await router.createExecutionSnapshot({
         run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
-        snapshot: { executionStatus: "EXECUTING", description: "ksuid run executing" },
+        snapshot: { executionStatus: "EXECUTING", description: "run-ops run executing" },
         environmentId: env.environment.id,
         environmentType: "DEVELOPMENT",
         projectId: env.project.id,
@@ -696,7 +696,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   heteroRunOpsPostgresTest(
     "mechanism: the block-edge CTE writes ZERO edges when the waitpoint is on the other DB",
     async ({ prisma14, prisma17 }) => {
-      // A ksuid parent run + its associated waitpoint live on #new (prisma17 / dedicated).
+      // A run-ops parent run + its associated waitpoint live on #new (prisma17 / dedicated).
       const newEnv = await seedEnvironment(prisma17, "dedicated", "gap3_new");
       const parentRunId = `run_${NEW_ID_26}`;
       const waitpointId = `waitpoint_${NEW_ID_26}`;
@@ -826,20 +826,20 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   // ===========================================================================================
   // Lazy RUN-waitpoint residency split.
   // `getOrCreateRunWaitpoint` creates the lazy RUN waitpoint via `createWaitpoint`
-  // carrying `completedByTaskRunId: runId`. Production never mints ksuid waitpoint ids, so routing by
-  // the waitpoint's OWN id-shape would land it on #legacy while a ksuid run is on #new → run-completion
+  // carrying `completedByTaskRunId: runId`. Production never mints run-ops waitpoint ids, so routing by
+  // the waitpoint's OWN id-shape would land it on #legacy while a run-ops run is on #new → run-completion
   // hydrate (associatedWaitpoint by completedByTaskRunId on the run's DB) misses it → parent hangs.
   // Fix: route the create by the OWNING run id (completedByTaskRunId) so it co-resides with the run.
   // ===========================================================================================
 
-  // A ksuid run's lazy RUN-waitpoint with a CUID-shaped waitpoint id (production-like: ksuid
+  // A run-ops run's lazy RUN-waitpoint with a CUID-shaped waitpoint id (production-like: run-ops id
   // waitpoint minting is off) co-resides on #new with the run, NOT on #legacy by its own id-shape.
   heteroRunOpsPostgresTest(
-    "a ksuid run's lazy RUN-waitpoint co-resides on #new (routed by completedByTaskRunId)",
+    "a run-ops run's lazy RUN-waitpoint co-resides on #new (routed by completedByTaskRunId)",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "gap6_new");
-      const runId = `run_${NEW_ID_26}`; // ksuid run → #new
+      const runId = `run_${NEW_ID_26}`; // run-ops run → #new
       const waitpointId = `waitpoint_${CUID_25}`; // cuid waitpoint id → would route to #legacy by id-shape
 
       await router.createRun(
@@ -867,7 +867,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
         },
       });
 
-      // Co-resides with the ksuid run on #new (NOT stranded on #legacy by the cuid id-shape).
+      // Co-resides with the run-ops run on #new (NOT stranded on #legacy by the cuid id-shape).
       const onNew = await prisma17.waitpoint.findUnique({ where: { id: waitpointId } });
       expect(onNew).not.toBeNull();
       const onLegacy = await prisma14.waitpoint.findUnique({ where: { id: waitpointId } });
@@ -887,7 +887,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma14, "legacy", "gap6c_leg");
       const runId = `run_${CUID_25}`; // cuid run → #legacy
-      const waitpointId = `waitpoint_${NEW_ID_26}`; // ksuid waitpoint id → would route to #new by id-shape
+      const waitpointId = `waitpoint_${NEW_ID_26}`; // run-ops waitpoint id → would route to #new by id-shape
 
       await router.createRun(
         buildCreateRunInput({
@@ -922,13 +922,13 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   // ===========================================================================================
   // Snapshot resume payload must not lose a cross-DB waitpoint's OUTPUT.
   // `findLatestExecutionSnapshot` hydrates `completedWaitpoints` from the
-  // snapshot's own (run's) client. A ksuid run resumed by a waitpoint that completed on the OTHER DB
+  // snapshot's own (run's) client. A run-ops run resumed by a waitpoint that completed on the OTHER DB
   // (cuid token) would get the token hydrated to a stale/absent row → its OUTPUT silently vanishes from
   // the resume payload (a wrong-result, not just a wrong dashboard). Fix: the router re-resolves the
   // snapshot's completed waitpoints across BOTH DBs.
   // ===========================================================================================
 
-  // A ksuid run's latest snapshot lists a completed waitpoint that lives on #legacy
+  // A run-ops run's latest snapshot lists a completed waitpoint that lives on #legacy
   // (cross-DB). The single #new store hydrates it null; the router recovers its real OUTPUT.
   heteroRunOpsPostgresTest(
     "findLatestExecutionSnapshot recovers a cross-DB completed waitpoint's OUTPUT via the router",
@@ -936,7 +936,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router, newStore } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "cg1_new");
       const legEnv = await seedEnvironment(prisma14, "legacy", "cg1_leg");
-      const runId = `run_${NEW_ID_26}`; // ksuid run → #new
+      const runId = `run_${NEW_ID_26}`; // run-ops run → #new
       const waitpointId = `waitpoint_${CUID_25}`; // cuid token → completed on #legacy
 
       await router.createRun(
@@ -964,7 +964,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
         },
       });
 
-      // The latest snapshot (on #new, co-resident with the ksuid run) lists the cross-DB token as a
+      // The latest snapshot (on #new, co-resident with the run-ops run) lists the cross-DB token as a
       // completed waitpoint via the CompletedWaitpoint join.
       await router.createExecutionSnapshot({
         run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
@@ -994,7 +994,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   // ===========================================================================================
   // Block-edge WRITER must not require a LOCAL waitpoint row.
   // The design routes the block edge to the RUN's DB and mints standalone tokens on LEGACY, so a
-  // ksuid run on #new can legitimately block on a cuid token resident on #legacy (the one tolerated
+  // run-ops run on #new can legitimately block on a cuid token resident on #legacy (the one tolerated
   // cross-DB direction — the #new `TaskRunWaitpoint` is FK-free precisely for this). If
   // `blockRunWithWaitpointEdges`'s dedicated branch sourced the edge rows from
   // `FROM "Waitpoint" w WHERE w.id = ANY(...)`, then when the token is NOT on the run's own DB the
@@ -1004,19 +1004,19 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   // the #new DB is FK-free on these columns.
   // ===========================================================================================
 
-  // A ksuid run on #new blocking on a cuid token resident on
+  // A run-ops run on #new blocking on a cuid token resident on
   // #legacy writes the block edge (TaskRunWaitpoint + WaitpointRunConnection) on #new, NOT requiring
-  // the waitpoint row to be local. The #legacy DB holds NO edge for the ksuid run.
+  // the waitpoint row to be local. The #legacy DB holds NO edge for the run-ops run.
   heteroRunOpsPostgresTest(
     "a NEW run blocking on a LEGACY-resident token writes the edge on NEW (no local waitpoint required)",
     async ({ prisma14, prisma17 }) => {
       const { router, newStore } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "gap3b_new");
       const legEnv = await seedEnvironment(prisma14, "legacy", "gap3b_leg");
-      const runId = `run_${NEW_ID_26}`; // ksuid run → #new
+      const runId = `run_${NEW_ID_26}`; // run-ops run → #new
       const waitpointId = `waitpoint_${CUID_25}`; // cuid standalone token → resides on #legacy
 
-      // The ksuid run lives on #new.
+      // The run-ops run lives on #new.
       await prisma17.taskRun.create({
         data: {
           id: runId,
@@ -1069,7 +1069,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
         where: { taskRunId: runId },
       });
       expect(connectionsOnNew).toBe(1);
-      // The #legacy DB holds NO edge for the ksuid run (the safety invariant: no cross-ref on LEGACY).
+      // The #legacy DB holds NO edge for the run-ops run (the safety invariant: no cross-ref on LEGACY).
       const edgesOnLegacy = await prisma14.taskRunWaitpoint.count({ where: { taskRunId: runId } });
       expect(edgesOnLegacy).toBe(0);
 
@@ -1084,7 +1084,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
 
       // Single-store cross-check: the #new store ALSO writes the edge directly (proving the fix is in
       // the store writer, not only the router routing).
-      const runId2 = `run_${"m".repeat(24) + "01"}`; // a second ksuid run on #new
+      const runId2 = `run_${"m".repeat(24) + "01"}`; // a second run-ops run on #new
       await prisma17.taskRun.create({
         data: {
           id: runId2,
@@ -1117,7 +1117,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     }
   );
 
-  // Co-resident control: a ksuid run blocking on a CO-RESIDENT ksuid token still writes the
+  // Co-resident control: a run-ops run blocking on a CO-RESIDENT run-ops token still writes the
   // edge on #new (proving the fix didn't break the co-resident case the old join handled).
   heteroRunOpsPostgresTest(
     "control: a NEW run blocking on a CO-RESIDENT NEW token writes the edge on NEW",
@@ -1125,7 +1125,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "gap3bco_new");
       const runId = `run_${NEW_ID_26}`;
-      const waitpointId = `waitpoint_${NEW_ID_26}`; // ksuid token → co-resident on #new
+      const waitpointId = `waitpoint_${NEW_ID_26}`; // run-ops token → co-resident on #new
 
       await prisma17.taskRun.create({
         data: {
@@ -1301,14 +1301,14 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   // waitpoint's blocking edge, run connection and completing snapshot all CO-LOCATE WITH THE RUN
   // (blockRunWithWaitpointEdges routes by runId; the CompletedWaitpoint + WaitpointRunConnection
   // join rows are written on the run's DB). A cuid token blocking
-  // a ksuid run therefore has every group-A TARGET on the OTHER DB → the single-client hydrator finds
+  // a run-ops run therefore has every group-A TARGET on the OTHER DB → the single-client hydrator finds
   // nothing → engine.getWaitpoint (include blockingTaskRuns→taskRun) silently returns an
   // empty `blockingTaskRuns`. Fix: the router (RoutingRunStore.findWaitpoint/findManyWaitpoints) strips
   // these relation keys from the per-leg query and re-resolves the targets across BOTH DBs, mirroring
   // findManyTaskRunWaitpoints' edge fan-out.
   // ===========================================================================================
 
-  // A cuid token on #legacy blocking a ksuid run on #new. The block edge + run connection live
+  // A cuid token on #legacy blocking a run-ops run on #new. The block edge + run connection live
   // on #new (the run's DB). getWaitpoint's include{ blockingTaskRuns: { select: { taskRun } } } must
   // surface the cross-DB blocked run. Single-store guard proves the #legacy hydrator alone misses it.
   heteroRunOpsPostgresTest(
@@ -1317,7 +1317,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router, legacyStore } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "gap13bt_new");
       const legEnv = await seedEnvironment(prisma14, "legacy", "gap13bt_leg");
-      const runId = `run_${NEW_ID_26}`; // ksuid run → #new
+      const runId = `run_${NEW_ID_26}`; // run-ops run → #new
       const waitpointId = `waitpoint_${CUID_25}`; // cuid token → #legacy
 
       await router.createRun(
@@ -1380,7 +1380,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   );
 
   // Sibling: connectedRuns. The WaitpointRunConnection join is co-resident with the run (#new),
-  // so a cuid token's connectedRuns must be re-resolved across BOTH DBs to surface the ksuid run.
+  // so a cuid token's connectedRuns must be re-resolved across BOTH DBs to surface the run-ops run.
   heteroRunOpsPostgresTest(
     "findWaitpoint include connectedRuns surfaces a cross-DB connected run via the router",
     async ({ prisma14, prisma17 }) => {
@@ -1471,7 +1471,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
           environmentId: legEnv.environment.id,
         },
       });
-      // The snapshot (on #new, co-resident with the ksuid run) records the cross-DB token as completed
+      // The snapshot (on #new, co-resident with the run-ops run) records the cross-DB token as completed
       // via the CompletedWaitpoint join.
       const snapshot = await router.createExecutionSnapshot({
         run: { id: runId, status: "EXECUTING", attemptNumber: 1 },

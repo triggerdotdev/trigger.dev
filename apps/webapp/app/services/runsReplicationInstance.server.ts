@@ -59,8 +59,8 @@ export function buildReplicationSources(args: {
 
 /**
  * The residency-split gate and the `#new`->ClickHouse replication gate are
- * independent env vars. If split is on (ksuid runs are minted on the new DB) but the
- * constructed sources[] has no `"new"` source, every ksuid run is silently missing from
+ * independent env vars. If split is on (run-ops runs are minted on the new DB) but the
+ * constructed sources[] has no `"new"` source, every run-ops run is silently missing from
  * ClickHouse — under-counting all CH-fronted usage/cost/metrics aggregates with no
  * Postgres fallback. Couple the gates at boot: this misconfiguration must fail loudly
  * rather than ship a fleet-wide under-count.
@@ -69,7 +69,7 @@ export class SplitReplicationMisconfiguredError extends Error {
   constructor() {
     super(
       'RUN_OPS_SPLIT_ENABLED is on but the runs-replication sources[] has no "new" source: ' +
-        "ksuid runs on the new DB would not replicate to ClickHouse, under-counting every " +
+        "run-ops runs on the new DB would not replicate to ClickHouse, under-counting every " +
         "ClickHouse-fronted aggregate. Enable the new replication source " +
         "(RUN_REPLICATION_NEW_ENABLED / RUN_OPS_DATABASE_URL) or turn the split off."
     );

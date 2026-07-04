@@ -129,12 +129,12 @@ export class RunEngineTriggerTaskService {
   }
 
   // Mint a new run's friendlyId. The id-kind decides which store the run is born
-  // in (cuid → legacy store, ksuid → new store), so the whole subgraph of a run
+  // in (cuid → legacy store, run-ops id → new store), so the whole subgraph of a run
   // must agree. Two cases:
   //
   //  - ROOT run (no parent): mint by the environment's cutover setting.
   //  - CHILD run (has a parent): inherit the parent's residency by id-shape, so a
-  //    parent and child never split across stores (ksuid parent → ksuid child,
+  //    parent and child never split across stores (run-ops parent → run-ops child,
   //    cuid parent → cuid child).
   // `region` is the caller-requested region (body.options.region). The id is
   // minted before the worker queue is resolved (the idempotency concern needs

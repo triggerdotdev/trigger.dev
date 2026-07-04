@@ -131,7 +131,7 @@ export class ApiBatchResultsPresenter extends BasePresenter {
   }
 
   // Split: resolve the batch row new-first then off the legacy READ REPLICA only (a batch id may
-  // be cuid or ksuid, and a cuid-shaped id can still have been backfilled onto NEW, so id-shape
+  // be cuid or run-ops id, and a cuid-shaped id can still have been backfilled onto NEW, so id-shape
   // residency is not authoritative for the row — the new-first-then-legacy probe is), then
   // hydrate every member run independently via the per-run read-through primitive.
   async #callSplit(

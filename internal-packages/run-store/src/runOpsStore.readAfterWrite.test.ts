@@ -26,7 +26,7 @@ import { RoutingRunStore } from "./runOpsStore.js";
 
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
-// ownerEngine classifies by internal-id LENGTH: 25 chars → cuid → LEGACY, 27 → ksuid → NEW.
+// ownerEngine classifies by internal-id LENGTH: 25 chars → cuid → LEGACY, 27 → run-ops id → NEW.
 const CUID_25 = "c".repeat(25); // → LEGACY (#legacy / prisma14, full schema)
 const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW (#new / prisma17, dedicated subset schema)
 
@@ -203,12 +203,12 @@ describe("run-ops split — read-after-write reads the OWNING store's WRITER, no
     }
   );
 
-  // (b) NEW-resident (ksuid) run: born on the NEW DB (5434). The NEW replica lags. Passing the NEW
+  // (b) NEW-resident (run-ops id) run: born on the NEW DB (5434). The NEW replica lags. Passing the NEW
   // WRITER as the read-your-writes client must resolve the run via the NEW writer, NOT its replica —
   // and (proving the constraint that motivated the original client-drop) the control-plane writer is
   // never leaked into the NEW query: each store reads its OWN writer.
   heteroRunOpsPostgresTest(
-    "NEW ksuid: read-after-write via the NEW WRITER finds the fresh run despite NEW replica lag",
+    "NEW run-ops id: read-after-write via the NEW WRITER finds the fresh run despite NEW replica lag",
     async ({ prisma14, prisma17 }) => {
       const newReplica = laggingReplica(prisma17);
       const newStore = new PostgresRunStore({
@@ -224,7 +224,7 @@ describe("run-ops split — read-after-write reads the OWNING store's WRITER, no
       const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
 
       const seed = seedEnvironmentDedicated("raw_new");
-      const runId = `run_${NEW_ID_26}`; // ksuid → NEW
+      const runId = `run_${NEW_ID_26}`; // run-ops id → NEW
       await prisma17.taskRun.create({
         data: taskRunData({
           id: runId,
@@ -259,7 +259,7 @@ describe("run-ops split — read-after-write reads the OWNING store's WRITER, no
       expect(newReplica2.wasHit()).toBe(false);
 
       // Even passing the LEGACY (control-plane) WRITER as the read-your-writes signal resolves the
-      // ksuid run: the router routes by residency to the NEW store's OWN writer, never forwarding the
+      // run-ops run: the router routes by residency to the NEW store's OWN writer, never forwarding the
       // control-plane client into the NEW DB. (This is the exact live shape — sessions/trigger pass
       // the control-plane `prisma`, and the run may be NEW-resident under split-ON.)
       const newReplica3 = laggingReplica(prisma17);

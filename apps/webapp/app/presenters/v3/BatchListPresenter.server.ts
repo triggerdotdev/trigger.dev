@@ -101,7 +101,7 @@ export class BatchListPresenter extends BasePresenter {
       }
     }
 
-    // codepoint comparator (NEVER localeCompare): BatchTaskRun.id is ASCII (cuid or ksuid).
+    // codepoint comparator (NEVER localeCompare): BatchTaskRun.id is ASCII (cuid or run-ops id).
     const sign = direction === "forward" ? 1 : -1; // forward => DESC; backward => ASC
     return Array.from(byId.values())
       .sort((a, b) => (a.id < b.id ? sign : a.id > b.id ? -sign : 0))

@@ -259,7 +259,7 @@ async function seedOrgProjectEnv(prisma: PrismaClient, suffix: string) {
 
 describe("UpdateMetadataService store routing (hetero)", () => {
   heteroPostgresTest(
-    "routes read+CAS to the owning (NEW/PG17) store for a KSUID run",
+    "routes read+CAS to the owning (NEW/PG17) store for a run-ops run",
     async ({ prisma17, prisma14 }) => {
       const runId = generateRunOpsId();
       expect(runId.length).toBe(26);

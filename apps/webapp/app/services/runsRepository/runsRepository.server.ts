@@ -295,7 +295,7 @@ export async function convertRunListInputOptionsToFilterRunsOptions(
   });
   convertedOptions.period = time.period ? (parseDuration(time.period) ?? undefined) : undefined;
 
-  // Cross-DB resolution: BatchTaskRun is a RUN-OPS table. A ksuid batch resident on the
+  // Cross-DB resolution: BatchTaskRun is a RUN-OPS table. A run-ops batch resident on the
   // dedicated run-ops DB must resolve via the store's NEW->LEGACY probe — a single control-plane
   // client would miss it and leave the friendlyId in the ClickHouse `batch_id` filter, matching
   // nothing. Split off / self-host: the store is a passthrough over the one client.

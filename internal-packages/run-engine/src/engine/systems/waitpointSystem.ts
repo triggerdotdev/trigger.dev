@@ -229,7 +229,7 @@ export class WaitpointSystem {
     // Co-location invariant: a DATETIME wait waitpoint lives on the same run-ops DB as the run that
     // blocks on it (so the block edge's local `Waitpoint` join resolves and completion/resume stay
     // local). The minted waitpoint id is always a cuid, so without `coLocateWithRunId` the upsert
-    // would always route to LEGACY and a ksuid run on NEW would hang. The (env,idempotencyKey) dedup
+    // would always route to LEGACY and a run-ops run on NEW would hang. The (env,idempotencyKey) dedup
     // is within the owning run/tree (co-resident on one DB), so the dedup probe + rotation target the
     // SAME store. With no run id (a standalone token has no owning run yet) the lookup falls back to
     // a cross-DB NEW-then-LEGACY scan and the upsert routes by id-shape. A caller-supplied tx pins a

@@ -51,7 +51,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
   // Per-org access to development branches. Off unless enabled for the org.
   [FEATURE_FLAG.devBranchesEnabled]: z.coerce.boolean(),
-  // Per-org KSUID mint cutover. Defaults to "cuid"; only honored when
+  // Per-org run-ops-id mint cutover. Defaults to "cuid"; only honored when
   // RUN_OPS_MINT_KSUID_ENABLED is on AND isSplitEnabled() is true.
   [FEATURE_FLAG.runOpsMintKsuid]: z.enum(["cuid", "ksuid"]),
 };

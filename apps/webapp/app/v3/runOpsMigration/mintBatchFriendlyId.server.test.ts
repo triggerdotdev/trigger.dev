@@ -3,7 +3,7 @@ import { batchIdForMintKind, resolveBatchMintKind } from "./mintBatchFriendlyId.
 import { classifyKind } from "@trigger.dev/core/v3/isomorphic";
 
 describe("batchIdForMintKind (pure)", () => {
-  it("ksuid -> 26-char classifiable NEW batch id (no 21-char ids)", () => {
+  it("'ksuid' kind -> 26-char classifiable NEW batch id (no 21-char ids)", () => {
     const r = batchIdForMintKind("ksuid");
     expect(r.friendlyId.startsWith("batch_")).toBe(true);
     expect(r.id.length).toBe(26);
@@ -51,7 +51,7 @@ describe("resolveBatchMintKind", () => {
     expect(kind).toBe("cuid");
   });
 
-  it("CHILD batch inherits a ksuid (NEW) parent by id-shape", async () => {
+  it("CHILD batch inherits a run-ops (NEW) parent by id-shape", async () => {
     const parentRunFriendlyId = `run_${"a".repeat(24) + "01"}`;
     const resolveRunIdMintKind = vi.fn();
 
@@ -81,7 +81,7 @@ describe("resolveBatchMintKind", () => {
 
   // mint-on-FLIP invariant: a child follows its parent's store even after the org flag
   // flips the other way. The flag resolver must NEVER be consulted for a child.
-  it("FLIP cuid->ksuid: a cuid (LEGACY) parent still mints a cuid child though the flag now says ksuid", async () => {
+  it("FLIP 'cuid'->'ksuid': a cuid (LEGACY) parent still mints a cuid child though the flag now says 'ksuid'", async () => {
     const parentRunFriendlyId = `run_${"a".repeat(25)}`;
     const resolveRunIdMintKind = vi.fn().mockResolvedValue("ksuid"); // flag flipped to ksuid
     const kind = await resolveBatchMintKind({
@@ -93,7 +93,7 @@ describe("resolveBatchMintKind", () => {
     expect(resolveRunIdMintKind).not.toHaveBeenCalled();
   });
 
-  it("FLIP ksuid->cuid: a ksuid (NEW) parent still mints a ksuid child though the flag now says cuid", async () => {
+  it("FLIP 'ksuid'->'cuid': a run-ops (NEW) parent still mints a run-ops child though the flag now says 'cuid'", async () => {
     const parentRunFriendlyId = `run_${"a".repeat(24) + "01"}`;
     const resolveRunIdMintKind = vi.fn().mockResolvedValue("cuid"); // flag flipped back to cuid
     const kind = await resolveBatchMintKind({

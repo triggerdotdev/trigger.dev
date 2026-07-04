@@ -6,6 +6,7 @@
 // boundaries (splitEnabled/isPastRetention) are injected.
 import { heteroPostgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { customAlphabet } from "nanoid";
 import { describe, expect, vi } from "vitest";
 import { ApiRunResultPresenter } from "~/presenters/v3/ApiRunResultPresenter.server";
@@ -21,10 +22,11 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const idGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 21);
 
-// Residency by friendlyId length (after stripping `run_`): 26-char v1 body (version "1" at index 25) → NEW,
-// 25-char body → LEGACY (cuid analog). ownerEngine classifies on the public friendly id.
+// Residency by friendlyId shape (after stripping `run_`): a valid 26-char v1 body (version "1" at
+// index 25, base32hex core) → NEW; a 25-char body → LEGACY (cuid analog). ownerEngine classifies on
+// the public friendly id, so newFriendlyId uses the real generator to produce a NEW-classified body.
 function newFriendlyId(): string {
-  return "run_" + customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 27)();
+  return "run_" + generateRunOpsId();
 }
 function legacyFriendlyId(): string {
   return "run_" + customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 25)();

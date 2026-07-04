@@ -1,5 +1,5 @@
-// ProjectAlert.taskRunId/taskRunAttemptId FKs point INTO the run subgraph. A ksuid run lives ONLY
-// on the dedicated run-ops DB (prisma17), so `projectAlert.create({ taskRunId: <ksuid> })` on
+// ProjectAlert.taskRunId/taskRunAttemptId FKs point INTO the run subgraph. A run-ops run lives ONLY
+// on the dedicated run-ops DB (prisma17), so `projectAlert.create({ taskRunId: <run-ops id> })` on
 // control-plane (prisma14) violates the FK and the alert is silently dropped. After the FK drop +
 // @relation removal the create succeeds; the read path resolves the run via runStore.findRun.
 // Asserts the create succeeds: it fails with an FK violation before the fix and succeeds after.
@@ -50,9 +50,9 @@ async function seedControlPlaneAlertPrereqs(prisma: PrismaClient, suffix: string
 
 describe("ProjectAlert control-plane → run-subgraph FK reconciliation", () => {
   heteroRunOpsPostgresTest(
-    "creating a TASK_RUN alert with a ksuid taskRunId (run only on the run-ops DB) succeeds on control-plane",
+    "creating a TASK_RUN alert with a run-ops id taskRunId (run only on the run-ops DB) succeeds on control-plane",
     async ({ prisma14, prisma17 }) => {
-      const suffix = "alert-ksuid";
+      const suffix = "alert-runops";
       const { project, environment, channel } = await seedControlPlaneAlertPrereqs(
         prisma14,
         suffix
@@ -103,15 +103,15 @@ describe("ProjectAlert control-plane → run-subgraph FK reconciliation", () => 
   );
 
   heteroRunOpsPostgresTest(
-    "creating a TASK_RUN_ATTEMPT alert with a ksuid taskRunAttemptId (attempt only on the run-ops DB) succeeds on control-plane",
+    "creating a TASK_RUN_ATTEMPT alert with a run-ops id taskRunAttemptId (attempt only on the run-ops DB) succeeds on control-plane",
     async ({ prisma14 }) => {
-      const suffix = "alert-ksuid-attempt";
+      const suffix = "alert-run-ops id-attempt";
       const { project, environment, channel } = await seedControlPlaneAlertPrereqs(
         prisma14,
         suffix
       );
 
-      // A ksuid attempt id with no matching control-plane TaskRunAttempt row. With the FK present
+      // A run-ops id attempt id with no matching control-plane TaskRunAttempt row. With the FK present
       // this throws P2003; after the FK is dropped it succeeds.
       const attemptId = "a".repeat(24) + "01";
       const alert = await prisma14.projectAlert.create({

@@ -2,7 +2,7 @@ import { describe, expect, vi } from "vitest";
 
 // Store-routed engine create/get seam + the residency-keyed id contract behind
 // the create route (not its HTTP action). A standalone MANUAL token is cuid →
-// LEGACY; NEW residency is reached only by co-locating the token with a ksuid run.
+// LEGACY; NEW residency is reached only by co-locating the token with a run-ops run.
 
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
@@ -280,7 +280,7 @@ function buildCreateRunInput(params: {
   };
 }
 
-async function seedExecutingKsuidRun(
+async function seedExecutingRunOpsRun(
   prisma14: PrismaClient,
   router: RoutingRunStore,
   runId: string,
@@ -329,21 +329,21 @@ function makeRouter(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
   return new RoutingRunStore({ new: newStore, legacy: legacyStore });
 }
 
-describe("waitpoint-token create engine seam — NEW residency via a ksuid run across the version boundary", () => {
-  // NEW residency comes from co-locating the token with a ksuid run; the token
+describe("waitpoint-token create engine seam — NEW residency via a run-ops run across the version boundary", () => {
+  // NEW residency comes from co-locating the token with a run-ops run; the token
   // resolves only on its owning (#new) store across the PG14<->PG17 boundary, never #legacy.
   twoDbEngineTest(
-    "a ksuid run's token co-locates on #new and resolves only there, not on #legacy",
+    "a run-ops run's token co-locates on #new and resolves only there, not on #legacy",
     async ({ prisma14, prisma17, redisOptions }) => {
       const p14 = prisma14 as unknown as PrismaClient;
       const router = makeRouter(p14, prisma17);
       const engine = buildEngine({ prisma: prisma14, redisOptions, store: router });
 
       try {
-        // A NEW-classified run id (explicit ksuid), mirroring the trigger-routing helper.
+        // A NEW-classified run id (explicit run-ops id), mirroring the trigger-routing helper.
         const runId = RunId.toFriendlyId(generateRunOpsId());
         expect(ownerEngine(runId)).toBe("NEW");
-        const env = await seedExecutingKsuidRun(p14, router, runId, "wpnew");
+        const env = await seedExecutingRunOpsRun(p14, router, runId, "wpnew");
 
         const { waitpoint } = await engine.createManualWaitpoint({
           runId,

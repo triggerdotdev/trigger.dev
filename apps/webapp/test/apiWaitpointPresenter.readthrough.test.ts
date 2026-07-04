@@ -111,7 +111,7 @@ const environmentArg = (env: { id: string; projectId: string }) => ({
 
 describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgres)", () => {
   heteroPostgresTest(
-    "resolves on run-ops NEW (ksuid), legacy replica never touched",
+    "resolves on run-ops NEW (run-ops id), legacy replica never touched",
     async ({ prisma17, prisma14 }) => {
       const id = generateRunOpsId();
       expect(id.length).toBe(26);
@@ -139,7 +139,7 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
       expect(result.tags).toEqual(["x", "y", "z"]);
       expect(result.output).toBe(JSON.stringify({ n: 42 }));
       expect(result.type).toBe("MANUAL");
-      // ksuid → NEW: new store served the read, legacy never touched (fast-path).
+      // run-ops id → NEW: new store served the read, legacy never touched (fast-path).
       expect(newClient.calls.length).toBe(1);
       expect(legacy.calls.length).toBe(0);
     }

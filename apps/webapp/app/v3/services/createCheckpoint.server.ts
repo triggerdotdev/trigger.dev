@@ -146,7 +146,7 @@ export class CreateCheckpointService extends BaseService {
         break;
       }
       case "WAIT_FOR_BATCH": {
-        // Routed by friendlyId so a ksuid (NEW-resident) batch is found on the owning DB;
+        // Routed by friendlyId so a run-ops id (NEW-resident) batch is found on the owning DB;
         // env-scoped to the dependent attempt's run (a batch shares its dependent's env).
         const batchRun = await this.runStore.findBatchTaskRunByFriendlyId(
           reason.batchFriendlyId,
@@ -361,7 +361,7 @@ export class CreateCheckpointService extends BaseService {
           });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
-          // Routed by friendlyId so a ksuid (NEW-resident) batch is found on the owning DB;
+          // Routed by friendlyId so a run-ops id (NEW-resident) batch is found on the owning DB;
           // env-scoped to the dependent attempt's run (a batch shares its dependent's env).
           const batchRun = await this.runStore.findBatchTaskRunByFriendlyId(
             reason.batchFriendlyId,

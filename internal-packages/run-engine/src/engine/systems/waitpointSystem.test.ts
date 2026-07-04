@@ -1415,7 +1415,7 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
 
   // ----- Group 5: cross-seam two-store + loud-ambiguity + pinning -----
 
-  // Cross-seam completion applied to the OWNING store: a ksuid waitpoint resides on the dedicated
+  // Cross-seam completion applied to the OWNING store: a run-ops waitpoint resides on the dedicated
   // run-ops (NEW) DB, a cuid waitpoint on the legacy/control-plane DB. Driving the completion at the
   // store seam (forWaitpointCompletion -> updateManyWaitpoints, as the engine does) must apply each
   // completion to its owning store only.
@@ -1429,17 +1429,17 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
       const envLegacy = await seedHeteroEnvironment(prisma14, "csl");
       const envNew = await seedHeteroEnvironment(prisma17, "csn");
 
-      // v1 body (26 chars, version "1" at index 25) => ksuid => NEW (dedicated run-ops DB); 25-char body => cuid => LEGACY.
-      const ksuidId = "waitpoint_" + "a".repeat(24) + "01";
+      // v1 body (26 chars, version "1" at index 25) => run-ops id => NEW (dedicated run-ops DB); 25-char body => cuid => LEGACY.
+      const runOpsId = "waitpoint_" + "a".repeat(24) + "01";
       const cuidId = "waitpoint_" + "b".repeat(25);
 
       await prisma17.waitpoint.create({
         data: {
-          id: ksuidId,
+          id: runOpsId,
           friendlyId: "waitpoint_ks",
           type: "MANUAL",
           status: "PENDING",
-          idempotencyKey: `idem_${ksuidId}`,
+          idempotencyKey: `idem_${runOpsId}`,
           userProvidedIdempotencyKey: false,
           projectId: envNew.projectId,
           environmentId: envNew.id,
@@ -1459,9 +1459,9 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
       });
 
       const completedAt = new Date();
-      const ownerKsuid = await router.forWaitpointCompletion(ksuidId, { routeKind: "MANUAL" });
-      await ownerKsuid.updateManyWaitpoints({
-        where: { id: ksuidId, status: "PENDING" },
+      const runOpsOwner = await router.forWaitpointCompletion(runOpsId, { routeKind: "MANUAL" });
+      await runOpsOwner.updateManyWaitpoints({
+        where: { id: runOpsId, status: "PENDING" },
         data: { status: "COMPLETED", completedAt },
       });
       const ownerCuid = await router.forWaitpointCompletion(cuidId, { routeKind: "MANUAL" });
@@ -1470,11 +1470,11 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
         data: { status: "COMPLETED", completedAt },
       });
 
-      // ksuid completed on the dedicated run-ops (NEW) DB only.
-      expect((await prisma17.waitpoint.findUniqueOrThrow({ where: { id: ksuidId } })).status).toBe(
+      // run-ops id completed on the dedicated run-ops (NEW) DB only.
+      expect((await prisma17.waitpoint.findUniqueOrThrow({ where: { id: runOpsId } })).status).toBe(
         "COMPLETED"
       );
-      expect(await prisma14.waitpoint.findUnique({ where: { id: ksuidId } })).toBeNull();
+      expect(await prisma14.waitpoint.findUnique({ where: { id: runOpsId } })).toBeNull();
       // cuid completed on the legacy DB only.
       expect((await prisma14.waitpoint.findUniqueOrThrow({ where: { id: cuidId } })).status).toBe(
         "COMPLETED"
@@ -1484,7 +1484,7 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
   );
 
   // Ambiguity resolution: forWaitpointCompletion safe-classifies an id matching neither cuid nor
-  // ksuid to LEGACY, then probes both DBs. With no row anywhere it resolves to the LEGACY fallback
+  // run-ops id to LEGACY, then probes both DBs. With no row anywhere it resolves to the LEGACY fallback
   // rather than throwing — the loud-failure contract lives at the engine seam (completeWaitpoint
   // re-reads and surfaces "Waitpoint not found"). The residency probe made this method async.
   heteroPostgresTest(
@@ -1500,7 +1500,7 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
     }
   );
 
-  // Pinning proof: a cross-tree-idempotency completion of a ksuid
+  // Pinning proof: a cross-tree-idempotency completion of a run-ops id
   // (NEW residency) waitpoint pins to the LEGACY store.
   heteroPostgresTest(
     "cross-seam cross-tree-idempotency completion pins to legacy",
@@ -1510,8 +1510,8 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
       const router = new RoutingRunStore({ new: newStore, legacy });
 
       // pin is DRIVEN via explicit context at the store seam; the engine completeWaitpoint entry cannot derive it — the organic cross-tree-idempotency pin is applied at the webapp idempotency caller.
-      const ksuidId = "waitpoint_" + "a".repeat(24) + "01";
-      const handle = await router.forWaitpointCompletion(ksuidId, {
+      const runOpsId = "waitpoint_" + "a".repeat(24) + "01";
+      const handle = await router.forWaitpointCompletion(runOpsId, {
         routeKind: "IDEMPOTENCY_REUSE",
         isCrossTreeIdempotency: true,
       });

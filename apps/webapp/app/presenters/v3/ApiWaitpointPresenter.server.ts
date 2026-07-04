@@ -42,7 +42,7 @@ export class ApiWaitpointPresenter extends BasePresenter {
       // Public waitpoint retrieve. Split on: new run-ops client first, then the LEGACY
       // RUN-OPS READ REPLICA ONLY on a new-probe miss — never the legacy primary.
       // Split off (single-DB / self-host): one plain waitpoint.findFirst against the replica
-      // (passthrough). The waitpointId is the residency-classifiable KSUID id (the route
+      // (passthrough). The waitpointId is the residency-classifiable run-ops id (the route
       // pre-decodes the friendlyId via WaitpointId.toId).
       const hydrate = (client: PrismaReplicaClient) =>
         client.waitpoint.findFirst({

@@ -80,11 +80,11 @@ function createRunInput(params: {
   };
 }
 
-describe("T24 — findRun resolves ksuid run on dedicated DB", () => {
+describe("T24 — findRun resolves run-ops run on dedicated DB", () => {
   heteroRunOpsPostgresTest(
-    "split ON: findRun({friendlyId, runtimeEnvironmentId}, {select}) finds a ksuid run on the new store",
+    "split ON: findRun({friendlyId, runtimeEnvironmentId}, {select}) finds a run-ops run on the new store",
     async ({ prisma14, prisma17 }) => {
-      const ENV_ID = "env_t24_ksuid_probe";
+      const ENV_ID = "env_t24_runops_probe";
       const WORKER_ID = "worker_t24_lock";
       await prisma17.taskRun.create({
         data: {
@@ -147,7 +147,7 @@ describe("buildRunStore", () => {
       expect(store).toBeInstanceOf(PostgresRunStore);
 
       const seed = await seedEnvironment(prisma14, "off");
-      // A ksuid id (would route to NEW under split) must still land on the single DB.
+      // A run-ops id (would route to NEW under split) must still land on the single DB.
       const runId = NEW_ID_26;
       await store.createRun(
         createRunInput({
@@ -183,7 +183,7 @@ describe("buildRunStore", () => {
       const seedNew = await seedEnvironment(prisma17, "on_new");
       const seedLegacy = await seedEnvironment(prisma14, "on_legacy");
 
-      // ksuid -> NEW (PG17)
+      // run-ops id -> NEW (PG17)
       await store.createRun(
         createRunInput({
           runId: NEW_ID_26,

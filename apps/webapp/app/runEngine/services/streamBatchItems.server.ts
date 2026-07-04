@@ -129,7 +129,7 @@ export class StreamBatchItemsService extends WithRunEngine {
         const batchId = this.parseBatchFriendlyId(batchFriendlyId);
 
         // Validate batch exists and belongs to this environment. Routed by batch id so a
-        // ksuid (NEW-resident) batch is found on the owning DB; the env-ownership check that
+        // run-ops id (NEW-resident) batch is found on the owning DB; the env-ownership check that
         // was in the where clause is enforced app-side below.
         const batch = await this._engine.runStore.findBatchTaskRunById(batchId);
 

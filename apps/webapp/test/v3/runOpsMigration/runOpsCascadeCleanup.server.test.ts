@@ -554,7 +554,7 @@ describe("RunOpsCascadeCleanupService", () => {
   );
 
   // The two-writer split — an env whose rows straddle both DBs (cuid runs on the LEGACY DB,
-  // ksuid runs on the NEW DB) is fully cleaned by one call; a single-writer service leaks orphans.
+  // run-ops runs on the NEW DB) is fully cleaned by one call; a single-writer service leaks orphans.
   heteroPostgresTest(
     "two-writer fan-out cleans a split env on both DBs; single-writer leaves orphans",
     async ({ prisma14, prisma17 }) => {

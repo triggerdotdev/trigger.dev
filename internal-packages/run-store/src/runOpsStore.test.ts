@@ -243,7 +243,7 @@ describe("RoutingRunStore (TaskRun-core)", () => {
       expect(await prisma17.taskRun.findUnique({ where: { id: bornId } })).not.toBeNull();
       expect(await prisma14.taskRun.findUnique({ where: { id: bornId } })).toBeNull();
 
-      // (ii) seed a cuid-length (LEGACY) row on the legacy DB and a ksuid-length (NEW) row on
+      // (ii) seed a cuid-length (LEGACY) row on the legacy DB and a run-ops id-length (NEW) row on
       // the new DB, then prove residency selection via ownerEngine length classification.
       const legacyRunId = `run_${CUID_25}`;
       const newRunId = `run_${NEW_ID_26}`;
@@ -355,7 +355,7 @@ describe("RoutingRunStore (TaskRun-core)", () => {
 
     const seed = await seedEnvironment(prisma14, "d14");
 
-    // Use a ksuid-length (NEW-residency) id to exercise the route; in single-DB both
+    // Use a run-ops id-length (NEW-residency) id to exercise the route; in single-DB both
     // slots are the same store, so the round-trip must succeed on the one client.
     const runId = `run_${NEW_ID_26}`;
     await router.createRun(
@@ -536,19 +536,19 @@ describe("BatchTaskRun group", () => {
   );
 
   heteroPostgresTest(
-    "findBatchTaskRunById routes ksuid→NEW and cuid→LEGACY",
+    "findBatchTaskRunById routes run-ops id→NEW and cuid→LEGACY",
     async ({ prisma14, prisma17 }) => {
       const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
       const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
       const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
 
       const seed14 = await seedEnvironment(prisma14, "p8a_cuid14");
-      const seed17 = await seedEnvironment(prisma17, "p8a_ksuid17");
+      const seed17 = await seedEnvironment(prisma17, "p8a_runops17");
 
       await newStore.createBatchTaskRun(
         batchCreateData({
           id: NEW_ID_26,
-          friendlyId: "batch_ksuid_p8a",
+          friendlyId: "batch_runops_p8a",
           runtimeEnvironmentId: seed17.environment.id,
           runCount: 1,
         })
@@ -568,7 +568,7 @@ describe("BatchTaskRun group", () => {
   );
 
   heteroPostgresTest(
-    "updateBatchTaskRun routes cuid→LEGACY and ksuid→NEW",
+    "updateBatchTaskRun routes cuid→LEGACY and run-ops id→NEW",
     async ({ prisma14, prisma17 }) => {
       const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
       const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
@@ -577,13 +577,13 @@ describe("BatchTaskRun group", () => {
       const seed14 = await seedEnvironment(prisma14, "p8a_upd14");
       const seed17 = await seedEnvironment(prisma17, "p8a_upd17");
 
-      const ksuidBatchId = `${NEW_ID_26.slice(0, -2)}u1`;
+      const runOpsBatchId = `${NEW_ID_26.slice(0, -2)}u1`;
       const cuidBatchId = `${CUID_25.slice(0, -1)}u`;
 
       await newStore.createBatchTaskRun(
         batchCreateData({
-          id: ksuidBatchId,
-          friendlyId: "batch_ksuid_upd",
+          id: runOpsBatchId,
+          friendlyId: "batch_runops_upd",
           runtimeEnvironmentId: seed17.environment.id,
           runCount: 2,
         })
@@ -598,12 +598,12 @@ describe("BatchTaskRun group", () => {
       );
 
       const updNew = await router.updateBatchTaskRun({
-        where: { id: ksuidBatchId },
+        where: { id: runOpsBatchId },
         data: { processingJobsCount: { increment: 1 } },
         select: { processingJobsCount: true, runCount: true },
       });
       expect(updNew).toEqual({ processingJobsCount: 1, runCount: 2 });
-      expect(await prisma14.batchTaskRun.findUnique({ where: { id: ksuidBatchId } })).toBeNull();
+      expect(await prisma14.batchTaskRun.findUnique({ where: { id: runOpsBatchId } })).toBeNull();
 
       const updLegacy = await router.updateBatchTaskRun({
         where: { id: cuidBatchId },
@@ -623,11 +623,11 @@ describe("BatchTaskRun group", () => {
       const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
 
       const seed17 = await seedEnvironment(prisma17, "p8a_inc17");
-      const ksuidBatchId = `${NEW_ID_26.slice(0, -2)}i1`;
+      const runOpsBatchId = `${NEW_ID_26.slice(0, -2)}i1`;
 
       await newStore.createBatchTaskRun(
         batchCreateData({
-          id: ksuidBatchId,
+          id: runOpsBatchId,
           friendlyId: "batch_inc_p8a",
           runtimeEnvironmentId: seed17.environment.id,
           runCount: 1,
@@ -659,10 +659,10 @@ describe("BatchTaskRun group", () => {
         },
       });
       await prisma17.batchTaskRunItem.create({
-        data: { batchTaskRunId: ksuidBatchId, taskRunId: runId, status: "PENDING" },
+        data: { batchTaskRunId: runOpsBatchId, taskRunId: runId, status: "PENDING" },
       });
 
-      const withItems = await router.findBatchTaskRunById(ksuidBatchId, {
+      const withItems = await router.findBatchTaskRunById(runOpsBatchId, {
         include: { items: true },
       });
       expect(withItems?.items).toBeDefined();
@@ -672,30 +672,30 @@ describe("BatchTaskRun group", () => {
   );
 
   heteroPostgresTest(
-    "createBatchTaskRun routes ksuid→NEW and cuid→LEGACY",
+    "createBatchTaskRun routes run-ops id→NEW and cuid→LEGACY",
     async ({ prisma14, prisma17 }) => {
       const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
       const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
       const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
 
       const seed14 = await seedEnvironment(prisma14, "p8c_cuid14");
-      const seed17 = await seedEnvironment(prisma17, "p8c_ksuid17");
+      const seed17 = await seedEnvironment(prisma17, "p8c_runops17");
 
-      const ksuidBatchId = `${NEW_ID_26.slice(0, -2)}c1`;
+      const runOpsBatchId = `${NEW_ID_26.slice(0, -2)}c1`;
       const cuidBatchId = `${CUID_25.slice(0, -2)}c1`;
 
       await router.createBatchTaskRun(
         batchCreateData({
-          id: ksuidBatchId,
-          friendlyId: "batch_p8c_ksuid",
+          id: runOpsBatchId,
+          friendlyId: "batch_p8c_runops",
           runtimeEnvironmentId: seed17.environment.id,
           runCount: 1,
         })
       );
       expect(
-        await prisma17.batchTaskRun.findUnique({ where: { id: ksuidBatchId } })
+        await prisma17.batchTaskRun.findUnique({ where: { id: runOpsBatchId } })
       ).not.toBeNull();
-      expect(await prisma14.batchTaskRun.findUnique({ where: { id: ksuidBatchId } })).toBeNull();
+      expect(await prisma14.batchTaskRun.findUnique({ where: { id: runOpsBatchId } })).toBeNull();
 
       await router.createBatchTaskRun(
         batchCreateData({
@@ -710,10 +710,10 @@ describe("BatchTaskRun group", () => {
     }
   );
 
-  // Probe: a ksuid-id batch physically resident on LEGACY (written by batchTriggerV3 raw
-  // to the control-plane) must be found; strict id-routing (ksuid→NEW only) would miss it.
+  // Probe: a run-ops-id batch physically resident on LEGACY (written by batchTriggerV3 raw
+  // to the control-plane) must be found; strict id-routing (run-ops id→NEW only) would miss it.
   heteroPostgresTest(
-    "findBatchTaskRunById probe finds ksuid-id batch resident on LEGACY (cross-residency)",
+    "findBatchTaskRunById probe finds run-ops-id batch resident on LEGACY (cross-residency)",
     async ({ prisma14, prisma17 }) => {
       const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
       const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
@@ -722,36 +722,38 @@ describe("BatchTaskRun group", () => {
       const seed14 = await seedEnvironment(prisma14, "p8c_probe14");
       const seed17 = await seedEnvironment(prisma17, "p8c_probe17");
 
-      const ksuidOnLegacy = `${NEW_ID_26.slice(0, -2)}l1`;
+      const runOpsIdOnLegacy = `${NEW_ID_26.slice(0, -2)}l1`;
       await legacyStore.createBatchTaskRun(
         batchCreateData({
-          id: ksuidOnLegacy,
+          id: runOpsIdOnLegacy,
           friendlyId: "batch_p8c_probe_legacy",
           runtimeEnvironmentId: seed14.environment.id,
           runCount: 1,
         })
       );
       expect(
-        await prisma14.batchTaskRun.findUnique({ where: { id: ksuidOnLegacy } })
+        await prisma14.batchTaskRun.findUnique({ where: { id: runOpsIdOnLegacy } })
       ).not.toBeNull();
-      expect(await prisma17.batchTaskRun.findUnique({ where: { id: ksuidOnLegacy } })).toBeNull();
+      expect(
+        await prisma17.batchTaskRun.findUnique({ where: { id: runOpsIdOnLegacy } })
+      ).toBeNull();
 
-      expect((await router.findBatchTaskRunById(ksuidOnLegacy))?.id).toBe(ksuidOnLegacy);
+      expect((await router.findBatchTaskRunById(runOpsIdOnLegacy))?.id).toBe(runOpsIdOnLegacy);
 
-      const ksuidOnNew = `${NEW_ID_26.slice(0, -2)}n1`;
+      const runOpsIdOnNew = `${NEW_ID_26.slice(0, -2)}n1`;
       await newStore.createBatchTaskRun(
         batchCreateData({
-          id: ksuidOnNew,
+          id: runOpsIdOnNew,
           friendlyId: "batch_p8c_probe_new",
           runtimeEnvironmentId: seed17.environment.id,
           runCount: 1,
         })
       );
-      expect((await router.findBatchTaskRunById(ksuidOnNew))?.id).toBe(ksuidOnNew);
+      expect((await router.findBatchTaskRunById(runOpsIdOnNew))?.id).toBe(runOpsIdOnNew);
     }
   );
 
-  // A BATCH-completion waitpoint (cuid own-id, `completedByBatchId` = ksuid batch on NEW) must be
+  // A BATCH-completion waitpoint (cuid own-id, `completedByBatchId` = run-ops batch on NEW) must be
   // born on NEW alongside its batch. On the control-plane DB (prisma14) the Waitpoint→BatchTaskRun
   // FK is enforced, so routing by the waitpoint's own cuid id-shape would land it on LEGACY and
   // FK-violate against the absent batch. The dedicated run-ops schema carries `completedByBatchId` as a scalar.
@@ -765,7 +767,7 @@ describe("BatchTaskRun group", () => {
       });
       const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
 
-      // The ksuid batch lives on NEW only — never on the control-plane DB.
+      // The run-ops batch lives on NEW only — never on the control-plane DB.
       const batchId = `${NEW_ID_26.slice(0, -2)}b1`;
       await prisma17.batchTaskRun.create({
         data: {
@@ -814,7 +816,7 @@ describe("BatchTaskRun group", () => {
 describe("RoutingRunStore cross-DB client + friendlyId routing (regression)", () => {
   // A create routed to NEW must land on NEW even when the caller forwards the LEGACY
   // client as `tx` (the webapp passes its control-plane client there). If the router
-  // forwarded it, the ksuid run would be written through the legacy connection.
+  // forwarded it, the run-ops run would be written through the legacy connection.
   heteroPostgresTest(
     "createRun ignores a forwarded wrong-DB tx and lands the run on its owning store",
     async ({ prisma14, prisma17 }) => {
@@ -923,7 +925,7 @@ describe("RoutingRunStore cross-DB client + friendlyId routing (regression)", ()
 
 describe("RoutingRunStore.findRuns split-mode fan-out + drain", () => {
   // Internal-id convention (matches the file): `run_` + a 25-char body (cuid → LEGACY) or
-  // a v1 body (ksuid → NEW). The classifier strips `run_` then keys on the version char.
+  // a v1 body (run-ops id → NEW). The classifier strips `run_` then keys on the version char.
   const legacyId = (suffix: string) => `run_${"c".repeat(25 - suffix.length)}${suffix}`;
   const newId = (suffix: string) =>
     `run_${(suffix.replace(/[^0-9a-v]/g, "0") + "k".repeat(24)).slice(0, 24)}01`;
@@ -1258,7 +1260,7 @@ describe("RoutingRunStore.findRuns split-mode fan-out + drain", () => {
     }
   );
 
-  // A waitpoint must be born on the same DB as its run (cuid → LEGACY, ksuid → NEW) so that
+  // A waitpoint must be born on the same DB as its run (cuid → LEGACY, run-ops id → NEW) so that
   // completion and the blocking edge — which already routes by run id — line up. A cuid
   // waitpoint landing on NEW is the regression that strands a non-opted org's wait forever.
   heteroPostgresTest(
@@ -1285,10 +1287,10 @@ describe("RoutingRunStore.findRuns split-mode fan-out + drain", () => {
       expect(await prisma14.waitpoint.findUnique({ where: { id: cuidWp } })).not.toBeNull();
       expect(await prisma17.waitpoint.findUnique({ where: { id: cuidWp } })).toBeNull();
 
-      const ksuidWp = `waitpoint_${NEW_ID_26}`;
+      const runOpsWp = `waitpoint_${NEW_ID_26}`;
       await router.createWaitpoint({
         data: {
-          id: ksuidWp,
+          id: runOpsWp,
           friendlyId: "waitpoint_co_k",
           type: "MANUAL",
           idempotencyKey: "co-key-k",
@@ -1297,8 +1299,8 @@ describe("RoutingRunStore.findRuns split-mode fan-out + drain", () => {
           environmentId: seed17.environment.id,
         },
       });
-      expect(await prisma17.waitpoint.findUnique({ where: { id: ksuidWp } })).not.toBeNull();
-      expect(await prisma14.waitpoint.findUnique({ where: { id: ksuidWp } })).toBeNull();
+      expect(await prisma17.waitpoint.findUnique({ where: { id: runOpsWp } })).not.toBeNull();
+      expect(await prisma14.waitpoint.findUnique({ where: { id: runOpsWp } })).toBeNull();
     }
   );
 });
@@ -1336,10 +1338,10 @@ describe("RoutingRunStore.findRuns cross-DB fan-out over distinct schemas", () =
 
       // NEW side has no control-plane tables and no associatedWaitpoint relation;
       // seed the TaskRun row directly with synthetic scalar ids.
-      const ksuidId = newId("t10");
+      const runOpsId = newId("t10");
       await prisma17.taskRun.create({
         data: {
-          id: ksuidId,
+          id: runOpsId,
           engine: "V2",
           status: "PENDING",
           friendlyId: "run_t10_new",
@@ -1364,11 +1366,11 @@ describe("RoutingRunStore.findRuns cross-DB fan-out over distinct schemas", () =
       });
 
       const rows = (await router.findRuns({
-        where: { id: { in: [cuidId, ksuidId] } },
+        where: { id: { in: [cuidId, runOpsId] } },
         select: { id: true },
       })) as Array<{ id: string }>;
 
-      expect(rows.map((r) => r.id).sort()).toEqual([cuidId, ksuidId].sort());
+      expect(rows.map((r) => r.id).sort()).toEqual([cuidId, runOpsId].sort());
     },
     120_000
   );
@@ -1499,7 +1501,7 @@ describe("RoutingRunStore write-path fan-outs", () => {
     }
   );
 
-  // expireRunsBatch with mixed ksuid+cuid ids partitions across both DBs and sums.
+  // expireRunsBatch with mixed run-ops id+cuid ids partitions across both DBs and sums.
   heteroPostgresTest(
     "expireRunsBatch with mixed ids partitions across NEW+LEGACY and sums count",
     async ({ prisma14, prisma17 }) => {
@@ -1548,9 +1550,9 @@ describe("RoutingRunStore write-path fan-outs", () => {
     }
   );
 
-  // all-ksuid batch goes only to NEW; LEGACY store is not called with an empty list.
+  // all-run-ops batch goes only to NEW; LEGACY store is not called with an empty list.
   heteroPostgresTest(
-    "expireRunsBatch all-ksuid batch skips LEGACY (no empty IN query)",
+    "expireRunsBatch all-run-ops batch skips LEGACY (no empty IN query)",
     async ({ prisma14, prisma17 }) => {
       const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
       let legacyCalled = false;
@@ -1574,7 +1576,7 @@ describe("RoutingRunStore write-path fan-outs", () => {
         buildCreateRunInput({
           runId: nId,
           friendlyId: "run_ks_n",
-          taskIdentifier: "ksuid-only-task",
+          taskIdentifier: "runops-only-task",
           organizationId: seed17.organization.id,
           projectId: seed17.project.id,
           runtimeEnvironmentId: seed17.environment.id,
@@ -1662,13 +1664,13 @@ describe("RoutingRunStore.findTaskRunAttempt residency routing", () => {
   );
 
   heteroPostgresTest(
-    "a ksuid (NEW) run's attempt still resolves via findTaskRunAttempt",
+    "a run-ops id (NEW) run's attempt still resolves via findTaskRunAttempt",
     async ({ prisma14, prisma17 }) => {
       const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
       const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
       const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
 
-      const seed17 = await seedEnvironment(prisma17, "t9a_ksuid17");
+      const seed17 = await seedEnvironment(prisma17, "t9a_runops17");
       const runId = newRunId("t9a2");
       await newStore.createRun(
         buildCreateRunInput({
@@ -1681,7 +1683,7 @@ describe("RoutingRunStore.findTaskRunAttempt residency routing", () => {
         })
       );
 
-      const attemptId = "attempt_t9a_ksuid1";
+      const attemptId = "attempt_t9a_runops1";
       await seedAttempt(prisma17, {
         attemptId,
         friendlyId: "attempt_t9a_k1",
@@ -1865,7 +1867,7 @@ describe("findBatchTaskRunByFriendlyId probe", () => {
   );
 });
 
-// Batch residency: the four new accessors must route by batch id so a ksuid
+// Batch residency: the four new accessors must route by batch id so a run-ops id
 // batch + its items live on NEW with its child runs, and fall back to fan-out where there
 // is no classifiable id (idempotency probe; status-only updateMany).
 describe("RoutingRunStore batch-residency accessors", () => {
@@ -1931,7 +1933,7 @@ describe("RoutingRunStore batch-residency accessors", () => {
 
       const seed14 = await seedEnvironment(prisma14, "optA_idem14");
 
-      // ksuid batch with an idempotency key on NEW (dedicated, scalar env id)
+      // run-ops batch with an idempotency key on NEW (dedicated, scalar env id)
       await newStore.createBatchTaskRun(
         batchData({
           id: `${NEW_ID_26.slice(0, -2)}i1`,
@@ -1962,7 +1964,7 @@ describe("RoutingRunStore batch-residency accessors", () => {
     }
   );
 
-  // updateManyBatchTaskRun: routes by where.id (ksuid→NEW, cuid→LEGACY); fans out + sums when unrouted.
+  // updateManyBatchTaskRun: routes by where.id (run-ops id→NEW, cuid→LEGACY); fans out + sums when unrouted.
   heteroRunOpsPostgresTest(
     "updateManyBatchTaskRun routes by where.id and fans out otherwise",
     async ({ prisma14, prisma17 }) => {
@@ -1972,10 +1974,10 @@ describe("RoutingRunStore batch-residency accessors", () => {
 
       const seed14 = await seedEnvironment(prisma14, "optA_um14");
 
-      const ksuidBatchId = `${NEW_ID_26.slice(0, -2)}m1`;
+      const runOpsBatchId = `${NEW_ID_26.slice(0, -2)}m1`;
       const cuidBatchId = `${CUID_25.slice(0, -2)}m1`;
       await newStore.createBatchTaskRun(
-        batchData({ id: ksuidBatchId, friendlyId: "batch_um_new", runtimeEnvironmentId: ENV_NEW })
+        batchData({ id: runOpsBatchId, friendlyId: "batch_um_new", runtimeEnvironmentId: ENV_NEW })
       );
       await legacyStore.createBatchTaskRun(
         batchData({
@@ -1985,14 +1987,14 @@ describe("RoutingRunStore batch-residency accessors", () => {
         })
       );
 
-      // where.id ksuid → NEW only
+      // where.id run-ops id → NEW only
       const upNew = await router.updateManyBatchTaskRun({
-        where: { id: ksuidBatchId },
+        where: { id: runOpsBatchId },
         data: { status: "COMPLETED" },
       });
       expect(upNew.count).toBe(1);
       expect(
-        (await prisma17.batchTaskRun.findUnique({ where: { id: ksuidBatchId } }))?.status
+        (await prisma17.batchTaskRun.findUnique({ where: { id: runOpsBatchId } }))?.status
       ).toBe("COMPLETED");
 
       // where.id cuid → LEGACY only
@@ -2022,9 +2024,9 @@ describe("RoutingRunStore batch-residency accessors", () => {
       const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
       const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
 
-      const ksuidBatchId = `${NEW_ID_26.slice(0, -2)}c1`;
+      const runOpsBatchId = `${NEW_ID_26.slice(0, -2)}c1`;
       await newStore.createBatchTaskRun(
-        batchData({ id: ksuidBatchId, friendlyId: "batch_cnt_new", runtimeEnvironmentId: ENV_NEW })
+        batchData({ id: runOpsBatchId, friendlyId: "batch_cnt_new", runtimeEnvironmentId: ENV_NEW })
       );
 
       const runA = `${NEW_ID_26.slice(0, -3)}ra1`;
@@ -2032,15 +2034,15 @@ describe("RoutingRunStore batch-residency accessors", () => {
       await seedDedicatedRun(prisma17, ENV_NEW, runA);
       await seedDedicatedRun(prisma17, ENV_NEW, runB);
       await prisma17.batchTaskRunItem.create({
-        data: { batchTaskRunId: ksuidBatchId, taskRunId: runA, status: "COMPLETED" },
+        data: { batchTaskRunId: runOpsBatchId, taskRunId: runA, status: "COMPLETED" },
       });
       await prisma17.batchTaskRunItem.create({
-        data: { batchTaskRunId: ksuidBatchId, taskRunId: runB, status: "PENDING" },
+        data: { batchTaskRunId: runOpsBatchId, taskRunId: runB, status: "PENDING" },
       });
 
-      expect(await router.countBatchTaskRunItems({ batchTaskRunId: ksuidBatchId })).toBe(2);
+      expect(await router.countBatchTaskRunItems({ batchTaskRunId: runOpsBatchId })).toBe(2);
       expect(
-        await router.countBatchTaskRunItems({ batchTaskRunId: ksuidBatchId, status: "COMPLETED" })
+        await router.countBatchTaskRunItems({ batchTaskRunId: runOpsBatchId, status: "COMPLETED" })
       ).toBe(1);
     }
   );
@@ -2053,24 +2055,24 @@ describe("RoutingRunStore batch-residency accessors", () => {
       const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
       const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
 
-      const ksuidBatchId = `${NEW_ID_26.slice(0, -2)}u1`;
+      const runOpsBatchId = `${NEW_ID_26.slice(0, -2)}u1`;
       await newStore.createBatchTaskRun(
-        batchData({ id: ksuidBatchId, friendlyId: "batch_ui_new", runtimeEnvironmentId: ENV_NEW })
+        batchData({ id: runOpsBatchId, friendlyId: "batch_ui_new", runtimeEnvironmentId: ENV_NEW })
       );
 
       const runX = `${NEW_ID_26.slice(0, -3)}ux1`;
       await seedDedicatedRun(prisma17, ENV_NEW, runX);
       await prisma17.batchTaskRunItem.create({
-        data: { batchTaskRunId: ksuidBatchId, taskRunId: runX, status: "PENDING" },
+        data: { batchTaskRunId: runOpsBatchId, taskRunId: runX, status: "PENDING" },
       });
 
       const res = await router.updateManyBatchTaskRunItems({
-        where: { batchTaskRunId: ksuidBatchId, taskRunId: runX },
+        where: { batchTaskRunId: runOpsBatchId, taskRunId: runX },
         data: { status: "COMPLETED" },
       });
       expect(res.count).toBe(1);
       const item = await prisma17.batchTaskRunItem.findFirst({
-        where: { batchTaskRunId: ksuidBatchId, taskRunId: runX },
+        where: { batchTaskRunId: runOpsBatchId, taskRunId: runX },
       });
       expect(item?.status).toBe("COMPLETED");
     }

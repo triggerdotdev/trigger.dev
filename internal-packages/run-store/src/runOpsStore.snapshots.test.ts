@@ -61,7 +61,7 @@ async function seedEnvironment(
 }
 
 // ownerEngine classifies by the version char after stripping a single leading `<prefix>_`: a v1 body
-// → ksuid → NEW (#new / dedicated run-ops DB subset), 25 chars → cuid → LEGACY (#legacy / full schema).
+// → run-ops id → NEW (#new / dedicated run-ops DB subset), 25 chars → cuid → LEGACY (#legacy / full schema).
 const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW residency, exercises the dedicated store
 const CUID_25 = "c".repeat(25); // → LEGACY residency, exercises the full-schema store
 

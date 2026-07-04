@@ -1,9 +1,9 @@
 // DATETIME / MANUAL waitpoint co-location with the owning run (run-ops split).
 //
 // The bug: `wait.for`/`wait.until` (DATETIME) and wait-token (MANUAL) waitpoints over the ~5s
-// checkpoint threshold hang a ksuid run forever. `createDateTimeWaitpoint`/`createManualWaitpoint`
+// checkpoint threshold hang a run-ops run forever. `createDateTimeWaitpoint`/`createManualWaitpoint`
 // mint an ALWAYS-cuid WaitpointId, and the routing store routed the upsert by that id → #legacy,
-// even though the owning ksuid run lives on #new. `blockRunWithWaitpoint` then writes its block edge
+// even though the owning run-ops run lives on #new. `blockRunWithWaitpoint` then writes its block edge
 // on #new (routed by run id), but the CTE joins `Waitpoint` LOCALLY on #new — where the
 // waitpoint does not exist — so it writes 0 edges and the run is never actually blocked nor resumed.
 //
@@ -35,11 +35,11 @@ const twoDbEngineTest = heteroRunOpsPostgresTest.extend<{
   redisOptions,
 });
 
-// ksuid (v1 internal id, version "1" at index 25) → classified NEW → routed to the run-ops (#new) store.
-const KSUID_A = "k".repeat(24) + "01";
-const KSUID_B = "m".repeat(24) + "01";
-const KSUID_C = "n".repeat(24) + "01";
-const KSUID_D = "p".repeat(24) + "01";
+// run-ops id (v1 internal id, version "1" at index 25) → classified NEW → routed to the run-ops (#new) store.
+const RUN_OPS_A = "k".repeat(24) + "01";
+const RUN_OPS_B = "m".repeat(24) + "01";
+const RUN_OPS_C = "n".repeat(24) + "01";
+const RUN_OPS_D = "p".repeat(24) + "01";
 
 function baseEngineOptions(redisOptions: any, prisma: any) {
   return {
@@ -133,8 +133,8 @@ function buildCreateRunInput(params: {
   };
 }
 
-// Seed an EXECUTING ksuid run on #new (prisma17) via the routed store. Returns the env + run id.
-async function seedExecutingKsuidRun(
+// Seed an EXECUTING run-ops run on #new (prisma17) via the routed store. Returns the env + run id.
+async function seedExecutingRunOpsRun(
   prisma14: PrismaClient,
   router: RoutingRunStore,
   runId: string,
@@ -184,7 +184,7 @@ function makeRouter(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
 }
 
 describe("DATETIME/MANUAL waitpoint co-location with the owning run (two physical DBs)", () => {
-  // RED before fix: the DATETIME waitpoint created for a ksuid run lands on #legacy (routed by its
+  // RED before fix: the DATETIME waitpoint created for a run-ops run lands on #legacy (routed by its
   // own cuid id), so the block edge (on #new) finds no local waitpoint and the run never blocks/resumes.
   // GREEN after: the waitpoint co-locates on #new, the edge resolves, and the run resumes once the
   // datetime waitpoint completes via the engine's finishWaitpoint timer.
@@ -196,8 +196,8 @@ describe("DATETIME/MANUAL waitpoint co-location with the owning run (two physica
       const engine = new RunEngine({ store: router, ...baseEngineOptions(redisOptions, prisma14) });
 
       try {
-        const runId = `run_${KSUID_A}`;
-        const env = await seedExecutingKsuidRun(p14, router, runId, "dta");
+        const runId = `run_${RUN_OPS_A}`;
+        const env = await seedExecutingRunOpsRun(p14, router, runId, "dta");
 
         // ~600ms out so the finishWaitpoint timer fires within the test window.
         const date = new Date(Date.now() + 600);
@@ -255,8 +255,8 @@ describe("DATETIME/MANUAL waitpoint co-location with the owning run (two physica
       const engine = new RunEngine({ store: router, ...baseEngineOptions(redisOptions, prisma14) });
 
       try {
-        const runId = `run_${KSUID_B}`;
-        const env = await seedExecutingKsuidRun(p14, router, runId, "mna");
+        const runId = `run_${RUN_OPS_B}`;
+        const env = await seedExecutingRunOpsRun(p14, router, runId, "mna");
 
         const { waitpoint } = await engine.createManualWaitpoint({
           runId,
@@ -310,8 +310,8 @@ describe("DATETIME/MANUAL waitpoint co-location with the owning run (two physica
       const engine = new RunEngine({ store: router, ...baseEngineOptions(redisOptions, prisma14) });
 
       try {
-        const runId = `run_${KSUID_C}`;
-        const env = await seedExecutingKsuidRun(p14, router, runId, "idem");
+        const runId = `run_${RUN_OPS_C}`;
+        const env = await seedExecutingRunOpsRun(p14, router, runId, "idem");
         const idempotencyKey = "dedup-key-1";
         const date = new Date(Date.now() + 60_000);
 
@@ -364,8 +364,8 @@ describe("DATETIME/MANUAL waitpoint co-location with the owning run (two physica
       const engine = new RunEngine({ store: router, ...baseEngineOptions(redisOptions, prisma14) });
 
       try {
-        const runId = `run_${KSUID_D}`;
-        const env = await seedExecutingKsuidRun(p14, router, runId, "idemm");
+        const runId = `run_${RUN_OPS_D}`;
+        const env = await seedExecutingRunOpsRun(p14, router, runId, "idemm");
         const idempotencyKey = "dedup-key-2";
 
         const first = await engine.createManualWaitpoint({

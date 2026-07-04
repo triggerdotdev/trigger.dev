@@ -310,7 +310,7 @@ export interface RunStore {
   /**
    * Run a co-resident multi-write unit atomically on the store that OWNS `runId`. The callback gets
    * the owning `RunStore` plus a `tx` opened on THAT store's OWN client; passing `tx` to the inner
-   * writes lands them all in ONE transaction on the owning DB (NEW for a ksuid run, LEGACY for a cuid
+   * writes lands them all in ONE transaction on the owning DB (NEW for a run-ops run, LEGACY for a cuid
    * run), so a failure between two writes rolls BOTH back. NOT a cross-DB transaction: `tx` is the
    * owning store's own client (never the control-plane tx), and every write MUST target the same run /
    * its co-resident subgraph. Callers MUST use the supplied `store` + `tx`, not the outer router

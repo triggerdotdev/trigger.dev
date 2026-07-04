@@ -16,7 +16,7 @@ import { RunHydrator } from "~/services/realtime/runReader.server";
 // (which live in the hydrator, not the store) are unaffected by the seam.
 //
 // The heterogeneous fixture gives real legacy + new Postgres containers; NO DB is mocked. The ONLY
-// non-DB fake is the residency selector that the routing-shaped store uses (`ownerEngine`: ksuid ->
+// non-DB fake is the residency selector that the routing-shaped store uses (`ownerEngine`: run-ops id ->
 // NEW, cuid -> LEGACY), exactly the substrate the RoutingRunStore ships. Run ids are 25 chars (cuid
 // -> LEGACY) or v1-shaped (26 chars, version "1" at index 25 -> NEW) so the classifier routes them deterministically.
 
@@ -310,7 +310,7 @@ describe("RunHydrator read-route through the runStore seam (legacy + new)", () =
     }
   );
 
-  // Terminal-metadata read-seam: a NEW-resident (ksuid) run's final metadata is hydrated through
+  // Terminal-metadata read-seam: a NEW-resident (run-ops id) run's final metadata is hydrated through
   // the owning (NEW) store, not off a generic legacy replica. Asserts read-seam ROUTING for the
   // terminal read; it is not a hard ordering/consistency guarantee about when the terminal marker
   // and the row's terminal columns converge.

@@ -38,7 +38,7 @@ describe("resolveIdempotencyDedupClient", () => {
     expect(client).toBe(FALLBACK);
   });
 
-  it("routes a root run to the NEW client when the env mints ksuid", async () => {
+  it("routes a root run to the NEW client when the env mints run-ops ids", async () => {
     const client = await resolveIdempotencyDedupClient(
       { environmentForMint: env, parentRunFriendlyId: undefined },
       makeDeps({ resolveMintKind: async () => "ksuid" })
@@ -54,10 +54,10 @@ describe("resolveIdempotencyDedupClient", () => {
     expect(client).toBe(LEGACY_CLIENT);
   });
 
-  it("routes a child to the NEW client when the ksuid parent is NEW-resident", async () => {
-    const ksuidParent = RunId.toFriendlyId("a".repeat(24) + "01");
+  it("routes a child to the NEW client when the run-ops parent is NEW-resident", async () => {
+    const runOpsParent = RunId.toFriendlyId("a".repeat(24) + "01");
     const client = await resolveIdempotencyDedupClient(
-      { environmentForMint: env, parentRunFriendlyId: ksuidParent },
+      { environmentForMint: env, parentRunFriendlyId: runOpsParent },
       makeDeps({ resolveMintKind: async () => "cuid" }) // mint flag must NOT win for a child
     );
     expect(client).toBe(NEW_CLIENT);

@@ -4,7 +4,7 @@
 // `runStore.findRun({ runtimeEnvironmentId, idempotencyKey, taskIdentifier },
 // { include: { associatedWaitpoint: true } }, dedupClient)`
 // (apps/webapp/app/runEngine/concerns/idempotencyKeys.server.ts). The existing run may live
-// on EITHER physical DB (a cuid run on #legacy minted before the org flipped to ksuid; a ksuid run on
+// on EITHER physical DB (a cuid run on #legacy minted before the org flipped to run-ops id; a run-ops run on
 // #new after). The PG unique key is PER-DB and cannot enforce cross-DB uniqueness, so dedup must be
 // correct at the routing layer. RoutingRunStore.findRun drops the caller
 // dedupClient and, for an id-less where, fans out NEW→LEGACY (#findRunUnrouted).
@@ -27,12 +27,12 @@ import type {
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by internal-id LENGTH after stripping a single leading `<prefix>_`:
-// 25 chars → cuid → LEGACY, a v1 body (version "1" at index 25) → ksuid → NEW. So a classifiable id
+// 25 chars → cuid → LEGACY, a v1 body (version "1" at index 25) → run-ops id → NEW. So a classifiable id
 // must carry NO internal underscore. These mint a distinct id of the right length from a short seed.
 function cuidLegacy(seed: string): string {
   return (seed + "c".repeat(25)).slice(0, 25); // 25 chars, no underscore → LEGACY
 }
-function ksuidNew(seed: string): string {
+function runOpsNew(seed: string): string {
   return (seed.replace(/[^0-9a-v]/g, "0") + "k".repeat(24)).slice(0, 24) + "01";
 }
 
@@ -240,16 +240,16 @@ describe("RoutingRunStore — cross-DB idempotency dedup probe", () => {
     }
   );
 
-  // the matching run + its associated waitpoint live on #new (ksuid, dedicated subset). The
+  // the matching run + its associated waitpoint live on #new (run-ops id, dedicated subset). The
   // probe hits the NEW leg first; the SCALAR-ONLY store must strip the `associatedWaitpoint` relation
   // and re-hydrate it from `Waitpoint.completedByTaskRunId`.
   heteroRunOpsPostgresTest(
-    "a ksuid run on #new is found by the id-less probe with associatedWaitpoint hydrated from scalar",
+    "a run-ops run on #new is found by the id-less probe with associatedWaitpoint hydrated from scalar",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "cg2_b");
-      const runId = ksuidNew("rbn"); // v1 body → NEW home
-      const waitpointId = ksuidNew("wbn");
+      const runId = runOpsNew("rbn"); // v1 body → NEW home
+      const waitpointId = runOpsNew("wbn");
       const idempotencyKey = "cg2-key-b";
       const taskIdentifier = "my-task";
 
@@ -271,7 +271,7 @@ describe("RoutingRunStore — cross-DB idempotency dedup probe", () => {
         })
       );
 
-      // It must NOT have landed on #legacy (the ksuid id routes to NEW).
+      // It must NOT have landed on #legacy (the run-ops id routes to NEW).
       expect(await prisma14.taskRun.findFirst({ where: { id: runId } })).toBeNull();
       expect(await prisma17.taskRun.findFirst({ where: { id: runId } })).not.toBeNull();
 
@@ -293,7 +293,7 @@ describe("RoutingRunStore — cross-DB idempotency dedup probe", () => {
 
   // duplicate-guard contract: a run with the SAME (env, idempotencyKey, taskIdentifier)
   // exists on BOTH DBs. The per-DB unique constraint allows one row each (it cannot enforce cross-DB
-  // uniqueness); the probe MUST still resolve to exactly ONE run, deterministically the NEW (ksuid)
+  // uniqueness); the probe MUST still resolve to exactly ONE run, deterministically the NEW (run-ops id)
   // one per #findRunUnrouted (NEW-first). The duplicate itself is prevented upstream by
   // probe-before-mint plus the per-DB unique constraint; this locks the read tie-break contract.
   heteroRunOpsPostgresTest(
@@ -307,9 +307,9 @@ describe("RoutingRunStore — cross-DB idempotency dedup probe", () => {
       const taskIdentifier = "my-task";
 
       const legacyRunId = cuidLegacy("rcl"); // cuid → LEGACY
-      const newRunId = ksuidNew("rcn"); // ksuid → NEW
+      const newRunId = runOpsNew("rcn"); // run-ops id → NEW
       const legacyWaitpointId = cuidLegacy("wcl");
-      const newWaitpointId = ksuidNew("wcn");
+      const newWaitpointId = runOpsNew("wcn");
 
       await router.createRun(
         buildCreateRunInput({
@@ -392,7 +392,7 @@ describe("RoutingRunStore — cross-DB idempotency dedup probe", () => {
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "cg2_sa_n");
-      const runId = ksuidNew("rsan"); // ksuid → NEW
+      const runId = runOpsNew("rsan"); // run-ops id → NEW
       const idempotencyKey = "cg2-key-sa-n";
 
       await router.createRun(

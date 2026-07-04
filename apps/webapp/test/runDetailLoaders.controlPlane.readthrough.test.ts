@@ -50,7 +50,10 @@ async function seedAll(prisma: PrismaClient) {
 
 // The run lives on the dedicated run-ops client; its control-plane FKs are synthetic scalar ids
 // pointing at rows that exist only on PG14 (the dedicated DB has no such tables).
-async function seedKsuidRun(prisma17: RunOpsPrismaClient, cp: Awaited<ReturnType<typeof seedAll>>) {
+async function seedRunOpsRun(
+  prisma17: RunOpsPrismaClient,
+  cp: Awaited<ReturnType<typeof seedAll>>
+) {
   const k = n++;
   return prisma17.taskRun.create({
     data: {
@@ -91,11 +94,11 @@ function wire(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
 
 describe("run-detail loaders cross-DB read-through (dedicated run-ops client)", () => {
   heteroRunOpsPostgresTest(
-    "ksuid run resolves: friendlyId read on the dedicated run-ops DB + membership/env auth on PG14 (resources.runs.$runParam shape)",
+    "run-ops run resolves: friendlyId read on the dedicated run-ops DB + membership/env auth on PG14 (resources.runs.$runParam shape)",
     async ({ prisma14, prisma17 }) => {
       const cp14 = prisma14 as unknown as PrismaClient;
       const cp = await seedAll(cp14);
-      const run = await seedKsuidRun(prisma17, cp);
+      const run = await seedRunOpsRun(prisma17, cp);
       const { runStore, resolver } = wire(cp14, prisma17);
 
       const found = await runStore.findRun(
@@ -141,7 +144,7 @@ describe("run-detail loaders cross-DB read-through (dedicated run-ops client)", 
     async ({ prisma14, prisma17 }) => {
       const cp14 = prisma14 as unknown as PrismaClient;
       const cp = await seedAll(cp14);
-      const run = await seedKsuidRun(prisma17, cp);
+      const run = await seedRunOpsRun(prisma17, cp);
       const { runStore } = wire(cp14, prisma17);
 
       const found = await runStore.findRun(
@@ -166,7 +169,7 @@ describe("run-detail loaders cross-DB read-through (dedicated run-ops client)", 
     async ({ prisma14, prisma17 }) => {
       const cp14 = prisma14 as unknown as PrismaClient;
       const cp = await seedAll(cp14);
-      const run = await seedKsuidRun(prisma17, cp);
+      const run = await seedRunOpsRun(prisma17, cp);
       const { runStore, resolver } = wire(cp14, prisma17);
 
       const found = await runStore.findRun(

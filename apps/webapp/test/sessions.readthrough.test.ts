@@ -91,7 +91,7 @@ async function createLegacyRun(
 }
 
 /**
- * Create a NEW (dedicated run-ops) TaskRun with a ksuid id — classifies NEW and
+ * Create a NEW (dedicated run-ops) TaskRun with a run-ops id — classifies NEW and
  * lives only on the run-ops DB. Scalar tenant columns only (the subset schema is
  * FK-free, so no org/project/env rows are required here).
  */
@@ -250,10 +250,10 @@ describe("sessions serializer currentRunId resolution", () => {
   );
 
   // --- Split single-run across two physical DBs (the production-shaped break) ---
-  // ksuid (NEW-DB) session run must serialize a non-null friendlyId, and a cuid
+  // run-ops id (NEW-DB) session run must serialize a non-null friendlyId, and a cuid
   // (LEGACY) run must still resolve — proving the asymmetry is gone.
   heteroRunOpsPostgresTest(
-    "split single-run resolves a NEW-ksuid run from the run-ops DB and a LEGACY-cuid run from control-plane",
+    "split single-run resolves a NEW-run-ops run from the run-ops DB and a LEGACY-cuid run from control-plane",
     async ({ prisma14, prisma17 }) => {
       const ctx = await seedParents(prisma14, "split-single");
 

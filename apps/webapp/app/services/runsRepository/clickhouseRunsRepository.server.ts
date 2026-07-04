@@ -194,7 +194,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
 
     // Preserve the ClickHouse keyset order (created_at desc, run_id desc) by re-ordering the
     // hydrated rows to match the input `runIds`. Sorting by raw `id` was only ~chronological
-    // when every id was a time-prefixed cuid; a mixed cuid/ksuid page sorts the two id-spaces
+    // when every id was a time-prefixed cuid; a mixed cuid/run-ops id page sorts the two id-spaces
     // into separate blocks, burying recent runs. Rows whose PG row is gone (e.g. past
     // retention) drop out, exactly as before.
     const byId = new Map(rows.map((r) => [r.id, r] as const));

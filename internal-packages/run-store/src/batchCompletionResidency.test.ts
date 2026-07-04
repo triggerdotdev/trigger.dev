@@ -1,7 +1,7 @@
 // REGRESSION suite for the run-ops split "control-plane tx/client forwarded into a NEW-resident
 // store" bug class on the BatchTaskRun write/probe path. When the router resolves the owning store
 // to #new but forwards the caller's control-plane handle, #new issues its statement against the
-// CONTROL-PLANE DB where the ksuid row does not exist → "No record was found" (update), wrong-DB row
+// CONTROL-PLANE DB where the run-ops id row does not exist → "No record was found" (update), wrong-DB row
 // (create), or wrong count. Covers updateBatchTaskRun (commit 62ae880af), createBatchTaskRun and
 // countBatchTaskRunItems (this sweep). `heteroRunOpsPostgresTest` is the REAL two-DB split topology
 // (prisma17 = dedicated #new, prisma14 = legacy #legacy); NEVER mocked.
@@ -118,16 +118,16 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
   // updateBatchTaskRun (commit 62ae880af) — the batch-completion residency regression.
   // ===========================================================================================
 
-  // The live `batchSystem.#tryCompleteBatch` shape: a ksuid batch on #new is updated to COMPLETED
+  // The live `batchSystem.#tryCompleteBatch` shape: a run-ops batch on #new is updated to COMPLETED
   // while the control-plane client is passed as `tx`. RED on the pre-62ae880af code (the router
   // forwarded tx → #new ran the UPDATE on the control-plane DB → "No record was found for an
   // update"); GREEN now (tx dropped for NEW → the row updates on #new's own DB).
   heteroRunOpsPostgresTest(
-    "updateBatchTaskRun marks a ksuid batch on #new COMPLETED even when the control-plane client is passed as tx",
+    "updateBatchTaskRun marks a run-ops batch on #new COMPLETED even when the control-plane client is passed as tx",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "updbatch_new");
-      const batchId = `batch_${NEW_ID_26}`; // ksuid → #new
+      const batchId = `batch_${NEW_ID_26}`; // run-ops id → #new
 
       await prisma17.batchTaskRun.create({
         data: {
@@ -185,15 +185,15 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
   // createBatchTaskRun (this sweep) — same anti-pattern on the create path.
   // ===========================================================================================
 
-  // A ksuid batch routed to #new with a forwarded control-plane tx must still be created on #new's
+  // A run-ops batch routed to #new with a forwarded control-plane tx must still be created on #new's
   // OWN DB, not the control-plane DB (which would strand the batch away from its co-resident child
   // runs/items). Forwarding tx unconditionally would land the row on prisma14.
   heteroRunOpsPostgresTest(
-    "createBatchTaskRun lands a ksuid batch on #new even when the control-plane client is passed as tx",
+    "createBatchTaskRun lands a run-ops batch on #new even when the control-plane client is passed as tx",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "crbatch_new");
-      const batchId = `batch_${NEW_ID_26}`; // ksuid → #new
+      const batchId = `batch_${NEW_ID_26}`; // run-ops id → #new
 
       const created = await router.createBatchTaskRun(
         {
@@ -206,7 +206,7 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
       );
       expect(created.id).toBe(batchId);
 
-      // Resident on #new (its own DB), absent from #legacy — co-located with its ksuid child runs.
+      // Resident on #new (its own DB), absent from #legacy — co-located with its run-ops child runs.
       const onNew = await prisma17.batchTaskRun.findUnique({ where: { id: batchId } });
       expect(onNew).not.toBeNull();
       const onLegacy = await prisma14.batchTaskRun.findUnique({ where: { id: batchId } });
@@ -243,14 +243,14 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
   // countBatchTaskRunItems (this sweep) — same anti-pattern on a routed probe read.
   // ===========================================================================================
 
-  // A ksuid batch's items live on #new; counting them with the control-plane client forwarded would
+  // A run-ops batch's items live on #new; counting them with the control-plane client forwarded would
   // count on the wrong DB (→ 0). The routed store must read its OWN DB and return the real count.
   heteroRunOpsPostgresTest(
-    "countBatchTaskRunItems counts a ksuid batch's items on #new even when the control-plane client is passed",
+    "countBatchTaskRunItems counts a run-ops batch's items on #new even when the control-plane client is passed",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "cntitems_new");
-      const batchId = `batch_${NEW_ID_26}`; // ksuid → #new
+      const batchId = `batch_${NEW_ID_26}`; // run-ops id → #new
 
       await prisma17.batchTaskRun.create({
         data: {

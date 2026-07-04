@@ -1,6 +1,6 @@
 // Block-edge write goes to the wrong DB so the parent never suspends. Two-physical-DB topology with
 // the real dedicated run-ops schema on #new (prisma17). RED before the fix: the control-plane tx
-// threaded by RunEngine.trigger forces the raw CTE to join `Waitpoint` on #legacy, where the ksuid
+// threaded by RunEngine.trigger forces the raw CTE to join `Waitpoint` on #legacy, where the run-ops id
 // waitpoint does not exist, so 0 edges are written and the parent stays EXECUTING. GREEN after: the
 // block path always routes through the store, landing the edge + WaitpointRunConnection on #new and
 // suspending the parent. (Snapshot reads/writes route by run id regardless of tx.)
@@ -29,9 +29,9 @@ const twoDbEngineTest = heteroRunOpsPostgresTest.extend<{
   redisOptions,
 });
 
-// ksuid (v1 internal id, version "1" at index 25) → classified NEW → routed to the run-ops (#new) store.
-const KSUID_A = "k".repeat(24) + "01";
-const KSUID_B = "m".repeat(24) + "01";
+// run-ops id (v1 internal id, version "1" at index 25) → classified NEW → routed to the run-ops (#new) store.
+const RUN_OPS_A = "k".repeat(24) + "01";
+const RUN_OPS_B = "m".repeat(24) + "01";
 
 function baseEngineOptions(redisOptions: any, prisma: any) {
   return {
@@ -128,9 +128,9 @@ function buildCreateRunInput(params: {
   };
 }
 
-// Seed an EXECUTING ksuid parent run on #new (prisma17) via the routed store, then a ksuid PENDING
+// Seed an EXECUTING run-ops parent run on #new (prisma17) via the routed store, then a run-ops id PENDING
 // RUN waitpoint co-resident on #new. Returns the env + ids the block path needs.
-async function seedExecutingKsuidParent(
+async function seedExecutingRunOpsParent(
   prisma14: PrismaClient,
   prisma17: RunOpsPrismaClient,
   router: RoutingRunStore,
@@ -166,7 +166,7 @@ async function seedExecutingKsuidParent(
     prisma14
   );
 
-  // The associated waitpoint lives on #new (co-resident with the ksuid run).
+  // The associated waitpoint lives on #new (co-resident with the run-ops run).
   await prisma17.waitpoint.create({
     data: {
       id: waitpointId,
@@ -198,11 +198,11 @@ function makeRouter(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
 }
 
 describe("RunEngine block-edge residency (two physical DBs, dedicated #new)", () => {
-  // RED before fix / GREEN after: a ksuid parent blocked by a #new-resident waitpoint, with the
+  // RED before fix / GREEN after: a run-ops parent blocked by a #new-resident waitpoint, with the
   // control-plane tx threaded exactly as RunEngine.trigger does, ends EXECUTING_WITH_WAITPOINTS with
   // the edge + WaitpointRunConnection physically on #new.
   twoDbEngineTest(
-    "blockRunWithWaitpoint suspends a ksuid parent with the edge on #new (control-plane tx threaded)",
+    "blockRunWithWaitpoint suspends a run-ops parent with the edge on #new (control-plane tx threaded)",
     async ({ prisma14, prisma17, redisOptions }) => {
       const router = makeRouter(prisma14 as unknown as PrismaClient, prisma17);
       const engine = new RunEngine({
@@ -211,9 +211,9 @@ describe("RunEngine block-edge residency (two physical DBs, dedicated #new)", ()
       });
 
       try {
-        const parentRunId = `run_${KSUID_A}`;
-        const waitpointId = `waitpoint_${KSUID_A}`;
-        const env = await seedExecutingKsuidParent(
+        const parentRunId = `run_${RUN_OPS_A}`;
+        const waitpointId = `waitpoint_${RUN_OPS_A}`;
+        const env = await seedExecutingRunOpsParent(
           prisma14 as unknown as PrismaClient,
           prisma17,
           router,
@@ -267,9 +267,9 @@ describe("RunEngine block-edge residency (two physical DBs, dedicated #new)", ()
       });
 
       try {
-        const parentRunId = `run_${KSUID_B}`;
-        const waitpointId = `waitpoint_${KSUID_B}`;
-        const env = await seedExecutingKsuidParent(
+        const parentRunId = `run_${RUN_OPS_B}`;
+        const waitpointId = `waitpoint_${RUN_OPS_B}`;
+        const env = await seedExecutingRunOpsParent(
           prisma14 as unknown as PrismaClient,
           prisma17,
           router,
@@ -283,7 +283,7 @@ describe("RunEngine block-edge residency (two physical DBs, dedicated #new)", ()
           runId: parentRunId,
           waitpoints: waitpointId,
           projectId: env.project.id,
-          batch: { id: `batch_${KSUID_B}`, index: 0 },
+          batch: { id: `batch_${RUN_OPS_B}`, index: 0 },
           tx: prisma14 as unknown as PrismaClient,
         });
 

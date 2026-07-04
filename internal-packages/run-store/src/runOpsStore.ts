@@ -31,7 +31,7 @@ import type {
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore}
  * by selecting between a NEW store (the dedicated run-ops DB, where new runs are born) and
  * a LEGACY store (the control-plane DB) via the residency classifier (`ownerEngine`:
- * ksuid→NEW, cuid→LEGACY). In single-DB both stores are the same, so routing is a no-op
+ * run-ops id→NEW, cuid→LEGACY). In single-DB both stores are the same, so routing is a no-op
  * passthrough. Inert until the injecting seam wires it in under `isSplitEnabled()`; reads no
  * flag here. The TaskRun-core methods (create/find/findRuns + updateMetadata/clearIdempotencyKey)
  * route by residency; all other methods are mechanical residency-routing delegates.
@@ -83,7 +83,7 @@ export class RoutingRunStore implements RunStore {
     }
   }
 
-  // WRITE routing is pure id-shape (cuid → LEGACY, ksuid → NEW). A LEGACY-classified id is
+  // WRITE routing is pure id-shape (cuid → LEGACY, run-ops id → NEW). A LEGACY-classified id is
   // always LEGACY-resident; no marker check exists. Kept async so the many
   // `await this.#routeForWrite(...)` call sites need no edits (awaiting a resolved store is
   // a no-op).
@@ -108,7 +108,7 @@ export class RoutingRunStore implements RunStore {
     return this.#routeOrNew(runId).runInTransaction(runId, fn);
   }
 
-  // A waitpoint WRITE co-locates with its run by id-shape (cuid → LEGACY, ksuid → NEW,
+  // A waitpoint WRITE co-locates with its run by id-shape (cuid → LEGACY, run-ops id → NEW,
   // unclassifiable → LEGACY), mirroring how `blockRunWithWaitpointEdges` routes the edge by
   // run id. `tx` is forwarded only to LEGACY (same physical DB as the control-plane tx);
   // for NEW it's dropped so the row lands on NEW's own client.
@@ -143,7 +143,7 @@ export class RoutingRunStore implements RunStore {
 
   // ---------------------------------------------------------------------------
   // TaskRun-core: Create — a run is born on the store named by its MINTED id-kind:
-  // cuid → LEGACY, ksuid → NEW, unclassifiable → NEW. The mint layer encodes
+  // cuid → LEGACY, run-ops id → NEW, unclassifiable → NEW. The mint layer encodes
   // inherited residency into the id-kind, so create-by-id-shape is correct;
   // a brand-new run has no redirect marker.
   //
@@ -298,7 +298,7 @@ export class RoutingRunStore implements RunStore {
   }
 
   // Bounded id-set (the list hydrate + engine sweeps). Query NEW for the whole set first
-  // (it holds ksuid runs); probe LEGACY only for the ids NEW missed that could still live
+  // (it holds run-ops runs); probe LEGACY only for the ids NEW missed that could still live
   // there (cuid). The two id sets are disjoint by construction, so the merge needs no dedupe.
   async #findRunsByIdSet(args: FindRunsArgs, ids: string[]): Promise<unknown[]> {
     const { args: selArgs, addedFields } = ensureProjected(args);
@@ -315,7 +315,7 @@ export class RoutingRunStore implements RunStore {
     const toLegacy: string[] = [];
     for (const id of ids) {
       if (foundIds.has(id)) continue;
-      if (this.#classifySafe(id) === "NEW") continue; // ksuid: cannot live on LEGACY
+      if (this.#classifySafe(id) === "NEW") continue; // run-ops id: cannot live on LEGACY
       toLegacy.push(id);
     }
 
@@ -475,7 +475,7 @@ export class RoutingRunStore implements RunStore {
     data: { error: TaskRunError; now: Date },
     tx?: PrismaClientOrTransaction
   ): Promise<number> {
-    // Partition by id-shape: ksuid → NEW, everything else → LEGACY. Call each store
+    // Partition by id-shape: run-ops id → NEW, everything else → LEGACY. Call each store
     // only when its partition is non-empty (avoids an empty IN () clause). Sum counts.
     const newIds = runIds.filter((id) => this.#classifySafe(id) === "NEW");
     const legacyIds = runIds.filter((id) => this.#classifySafe(id) !== "NEW");
@@ -705,7 +705,7 @@ export class RoutingRunStore implements RunStore {
   // completed the run; the owning store can only hydrate the ones that live on its own DB. When every
   // join id is already present we leave the array untouched (byte-identical for single-DB / the
   // co-resident steady state — no extra fan-out write); only genuinely-missing ids are resolved
-  // cross-DB and appended, so a cuid token completing a ksuid run keeps its OUTPUT on the resume.
+  // cross-DB and appended, so a cuid token completing a run-ops run keeps its OUTPUT on the resume.
   async #reresolveCompletedWaitpointsCrossDb(
     snapshot: Record<string, unknown>,
     owningStore: RunStore
@@ -1083,7 +1083,7 @@ export class RoutingRunStore implements RunStore {
   // strand that run forever. Dedup is a no-op in steady state; it guards the copy→fence window.
   //
   // The edge's `waitpoint`/`taskRun` relations can also straddle DBs (a cuid MANUAL/DATETIME token
-  // blocking a ksuid run; a drain-relocated token). A single store hydrates them from its own
+  // blocking a run-ops run; a drain-relocated token). A single store hydrates them from its own
   // client only → a cross-DB target resolves to null → the run hangs or its resume
   // output is silently dropped. So the router strips those relation keys from the per-leg
   // query (scalar edges only) and re-resolves them across BOTH stores here.
@@ -1212,16 +1212,16 @@ export class RoutingRunStore implements RunStore {
   }
 
   // ---------------------------------------------------------------------------
-  // BatchTaskRun (run-ops). Route by id-shape: ksuid→NEW, cuid→LEGACY.
+  // BatchTaskRun (run-ops). Route by id-shape: run-ops id→NEW, cuid→LEGACY.
   // ---------------------------------------------------------------------------
 
   async createBatchTaskRun(
     data: CreateBatchTaskRunData,
     tx?: PrismaClientOrTransaction
   ): Promise<BatchTaskRun> {
-    // Route by the batch's classifiable internal id: ksuid→NEW, cuid→LEGACY.
+    // Route by the batch's classifiable internal id: run-ops id→NEW, cuid→LEGACY.
     // Never forward a control-plane tx to NEW (the create would land in the wrong DB, stranding the
-    // ksuid batch + its co-resident child runs/items); forward tx only to LEGACY (same physical DB
+    // run-ops batch + its co-resident child runs/items); forward tx only to LEGACY (same physical DB
     // as the tx). Mirrors #routeWaitpointWrite / updateBatchTaskRun.
     const store = await this.#routeOrNewForWrite(data.id);
     return store.createBatchTaskRun(data, store === this.#legacy ? tx : undefined);
@@ -1245,7 +1245,7 @@ export class RoutingRunStore implements RunStore {
 
   // Batches can be written to either DB by different create paths (runEngine routes by id;
   // batchTriggerV3 writes raw to the control-plane), so probe NEW first then LEGACY rather
-  // than strict id-routing, which would miss a ksuid-id batch resident on the control-plane.
+  // than strict id-routing, which would miss a run-ops-id batch resident on the control-plane.
   async findBatchTaskRunById<T extends Prisma.BatchTaskRunInclude = {}>(
     id: string,
     args?: { include?: T },
@@ -1272,7 +1272,7 @@ export class RoutingRunStore implements RunStore {
   }
 
   // ---------------------------------------------------------------------------
-  // Batch residency — route every batch op by the batch id so a ksuid
+  // Batch residency — route every batch op by the batch id so a run-ops id
   // batch + its items co-reside on NEW with its child runs (the TaskRun.batchId and
   // BatchTaskRunItem.batchTaskRunId FKs resolve locally).
   // ---------------------------------------------------------------------------
@@ -1316,7 +1316,7 @@ export class RoutingRunStore implements RunStore {
     where: { batchTaskRunId: string; status?: BatchTaskRunItemStatus },
     client?: ReadClient
   ): Promise<number> {
-    // Never forward the caller's client (it is the control-plane handle): a ksuid batch routes to
+    // Never forward the caller's client (it is the control-plane handle): a run-ops batch routes to
     // NEW, so a forwarded control-plane client would count items on the wrong DB (→ 0/wrong count).
     // The routed store reads its OWN DB. Mirrors the probe-read sweep.
     return this.#routeOrNew(where.batchTaskRunId).countBatchTaskRunItems(where);

@@ -222,7 +222,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
       const ctxNew = await seedParents(prisma17, "partn");
       await mirrorParents(prisma14, ctxNew, "partn"); // legacy run-ops + CP parents share ids
 
-      const runId = `run_${NEW_ID_26}`; // ksuid → NEW residency
+      const runId = `run_${NEW_ID_26}`; // run-ops id → NEW residency
       const childMigratedId = `run_a${NEW_ID_26.slice(1)}`; // also NEW
       const parentFriendlyId = `run_p${NEW_ID_26.slice(1)}`; // v1 body → routes NEW by friendlyId
       await createRun(prisma17, ctxNew, {
@@ -385,7 +385,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
     async ({ prisma14, prisma17 }) => {
       const ctx = await seedParents(prisma17, "knownmig");
 
-      const newRunId = `run_${NEW_ID_26}`; // ksuid → NEW residency
+      const newRunId = `run_${NEW_ID_26}`; // run-ops id → NEW residency
       await createRun(prisma17, ctx, {
         id: newRunId,
         friendlyId: "run_known_new",
@@ -494,7 +494,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
       await mirrorParents(prisma17, ctx, "e2e4");
 
       const parentId = `run_${CUID_25}`; // cuid → LEGACY (in-retention)
-      const childId = `run_${NEW_ID_26}`; // ksuid → NEW (born-new)
+      const childId = `run_${NEW_ID_26}`; // run-ops id → NEW (born-new)
 
       await createRun(prisma14, ctx, {
         id: parentId,
@@ -536,7 +536,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
       // tree's FK self-relations stay single-DB.
       expect(parent?.rootTaskRun?.friendlyId).toBe("run_e2e_parent");
 
-      // The child resolves from the NEW slot (routed by its ksuid id) and points back at the parent
+      // The child resolves from the NEW slot (routed by its run-ops id) and points back at the parent
       // span — the cross-the-line parent/child shape, with no cross-DB join.
       const child = await store.findRun(
         { id: childId },

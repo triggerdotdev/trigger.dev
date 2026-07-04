@@ -452,16 +452,20 @@ describe("RunEngine lifecycle read routing (single-DB)", () => {
 // Read-through / cross-version proofs (PG14 legacy <-> PG17 run-ops). These test
 // the routing layer the engine's threaded reads delegate to: a real RoutingRunStore
 // over two real PostgresRunStores on two real containers (NEVER mocked). A new run
-// (ksuid id, born on PG17) resolves from the run-ops store; an old in-retention run
+// (run-ops id, born on PG17) resolves from the run-ops store; an old in-retention run
 // (cuid id, on PG14) reads THROUGH the legacy store's read-only (replica) client.
 // ---------------------------------------------------------------------------
 
 // A cuid-length (25-char) internal id → classifies LEGACY; a v1-shaped (26-char, version "1")
 // internal id → classifies NEW. The `run_` prefix is stripped before classification.
 const legacyRunId = (suffix: string) => `run_${suffix.padEnd(25, "0").slice(0, 25)}`;
+// Map each suffix char into the base32hex alphabet by code point (not a lossy outlier→"0" replace,
+// which collapsed suffixes differing only in out-of-range chars): 24-char core + region + version.
+const BASE32HEX = "0123456789abcdefghijklmnopqrstuv";
 const newRunId = (suffix: string) =>
-  `run_${suffix
-    .replace(/[^0-9a-v]/g, "0")
+  `run_${[...suffix]
+    .map((ch) => BASE32HEX[ch.charCodeAt(0) % 32])
+    .join("")
     .padEnd(24, "0")
     .slice(0, 24)}01`;
 
@@ -531,7 +535,7 @@ async function seedRunWithSnapshot(
 }
 
 describe("RunEngine lifecycle read-through routing (PG14/PG17)", () => {
-  // A NEW run (ksuid id) seeded only on the run-ops (PG17/new) store resolves
+  // A NEW run (run-ops id) seeded only on the run-ops (PG17/new) store resolves
   // its latest snapshot from that store, and the legacy store is never touched.
   heteroPostgresTest(
     "a new run resolves its latest snapshot from the run-ops store",

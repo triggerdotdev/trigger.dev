@@ -86,7 +86,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
   );
 
   containerTest(
-    "failed child of a NEW (ksuid) parent mints ksuid (call)",
+    "failed child of a NEW (run-ops id) parent mints run-ops id (call)",
     async ({ prisma, redisOptions }) => {
       const engine = makeEngine(prisma, redisOptions);
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -182,7 +182,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
   );
 
   containerTest(
-    "failed child of a NEW parent mints ksuid (callWithoutTraceEvents)",
+    "failed child of a NEW parent mints run-ops id (callWithoutTraceEvents)",
     async ({ prisma, redisOptions }) => {
       const engine = makeEngine(prisma, redisOptions);
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -236,7 +236,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
 
       const service = makeService(prisma, engine);
 
-      // A well-formed ksuid parent friendlyId that was NEVER triggered → no row.
+      // A well-formed run-ops parent friendlyId that was NEVER triggered → no row.
       // Exercises the missing-parent fallback in callWithoutTraceEvents.
       const absentParentFriendlyId = RunId.toFriendlyId(generateRunOpsId());
 

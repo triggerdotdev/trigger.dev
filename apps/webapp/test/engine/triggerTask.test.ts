@@ -2385,20 +2385,18 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
   );
 
   containerTest(
-    "child of a NEW (ksuid) parent is minted ksuid (born NEW)",
+    "child of a NEW (run-ops id) parent is minted run-ops id (born NEW)",
     async ({ prisma, redisOptions }) => {
       const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
         await setupResidencyService(prisma, redisOptions);
 
-      // Construct a NEW-resident parent directly by minting a ksuid friendlyId
+      // Construct a NEW-resident parent directly by minting a run-ops id friendlyId
       // and creating its run row, so the child inherits NEW by id-shape alone
-      // (no marker needed). We trigger the parent with an explicit ksuid id via
+      // (no marker needed). We trigger the parent with an explicit run-ops id via
       // the runFriendlyId option so the row physically exists for the parent
       // lookup the child path performs.
-      const parentFriendlyId = RunId.toFriendlyId(
-        // v1 id (version "1" at index 25) → classifies NEW
-        (await import("@trigger.dev/core/v3/isomorphic")).generateRunOpsId()
-      );
+      // v1 id (version "1" at index 25) → classifies NEW
+      const parentFriendlyId = RunId.toFriendlyId(generateRunOpsId());
       expect(classifyKind(parentFriendlyId)).toBe("ksuid");
 
       const parent = await triggerTaskService.call({
@@ -2427,7 +2425,7 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
       const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
         await setupResidencyService(prisma, redisOptions);
 
-      // Explicit cuid id for the run, and a ksuid/NEW parent id.
+      // Explicit cuid id for the run, and a run-ops id/NEW parent id.
       const explicitFriendlyId = RunId.toFriendlyId(generateInternalId());
       const parentFriendlyId = RunId.toFriendlyId(generateRunOpsId());
       expect(classifyKind(explicitFriendlyId)).toBe("cuid");
@@ -2440,7 +2438,7 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
         options: { runFriendlyId: explicitFriendlyId },
       });
 
-      // Caller-supplied id wins verbatim — NOT re-minted to ksuid despite the NEW parent.
+      // Caller-supplied id wins verbatim — NOT re-minted to run-ops id despite the NEW parent.
       expect(result!.run.friendlyId).toBe(explicitFriendlyId);
 
       await engine.quit();

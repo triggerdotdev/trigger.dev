@@ -352,11 +352,11 @@ describe("RunsRepository read-through id-set hydrate (PG14 legacy + PG17 new)", 
     }
   );
 
-  // Full-keyset walk over interleaved cuid + ksuid ids: hydration must preserve the ClickHouse
+  // Full-keyset walk over interleaved cuid + run-ops ids: hydration must preserve the ClickHouse
   // (created_at DESC, run_id DESC) order across the id-space seam. A hydrate that reverts to lexical
   // `id desc` splits the two id-spaces into separate blocks, so it would fail this walk.
   replicationContainerTest(
-    "paginating the full keyset enumerates every interleaved cuid/ksuid id once, in CH keyset order, with no empty page",
+    "paginating the full keyset enumerates every interleaved cuid/run-ops id once, in CH keyset order, with no empty page",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
         prisma,
@@ -371,17 +371,17 @@ describe("RunsRepository read-through id-set hydrate (PG14 legacy + PG17 new)", 
       // `id desc` groups all "c" ids ahead of all "2" ids; the created_at order below interleaves
       // them, so the two orders genuinely differ across the seam.
       const cuid = (n: number) => `c${String(n).padStart(24, "0")}`;
-      const ksuid = (n: number) => `2${String(n).padStart(23, "0")}01`;
+      const runOpsId = (n: number) => `2${String(n).padStart(23, "0")}01`;
 
-      // created_at DESC order (index 0 = most recent) interleaves the id-spaces: ksuid, cuid,
-      // ksuid, cuid, ksuid, cuid.
+      // created_at DESC order (index 0 = most recent) interleaves the id-spaces: run-ops id, cuid,
+      // run-ops id, cuid, run-ops id, cuid.
       const now = Date.now();
       const seeds = [
-        { id: ksuid(6), friendlyId: "run_k6", createdAt: new Date(now - 0 * 60_000) },
+        { id: runOpsId(6), friendlyId: "run_k6", createdAt: new Date(now - 0 * 60_000) },
         { id: cuid(5), friendlyId: "run_c5", createdAt: new Date(now - 1 * 60_000) },
-        { id: ksuid(4), friendlyId: "run_k4", createdAt: new Date(now - 2 * 60_000) },
+        { id: runOpsId(4), friendlyId: "run_k4", createdAt: new Date(now - 2 * 60_000) },
         { id: cuid(3), friendlyId: "run_c3", createdAt: new Date(now - 3 * 60_000) },
-        { id: ksuid(2), friendlyId: "run_k2", createdAt: new Date(now - 4 * 60_000) },
+        { id: runOpsId(2), friendlyId: "run_k2", createdAt: new Date(now - 4 * 60_000) },
         { id: cuid(1), friendlyId: "run_c1", createdAt: new Date(now - 5 * 60_000) },
       ];
       for (const s of seeds) {

@@ -344,8 +344,8 @@ export class BatchTriggerV3Service extends BaseService {
   }
 
   // Mint a child run's friendlyId so it lands in the SAME physical store as its
-  // residency anchor. The caller passes the batch's friendlyId, so a ksuid
-  // (NEW) anchor yields a ksuid (NEW) child and a cuid anchor yields a cuid
+  // residency anchor. The caller passes the batch's friendlyId, so a run-ops id
+  // (NEW) anchor yields a run-ops id (NEW) child and a cuid anchor yields a cuid
   // (LEGACY) child. With no anchor it falls back to the env's cutover setting.
   // Mirrors RunEngineTriggerTaskService.mintRunFriendlyId.
   private async mintChildFriendlyId(
@@ -1002,7 +1002,7 @@ export async function tryCompleteBatchV3(
   batchId: string,
   tx: PrismaClientOrTransaction,
   scheduleResumeOnComplete: boolean,
-  // Threaded in so a ksuid (NEW-resident) batch + its items are read/written on the owning
+  // Threaded in so a run-ops id (NEW-resident) batch + its items are read/written on the owning
   // store, not the control-plane `tx`. Defaults to the singleton (single-DB = passthrough).
   runStore: RunStore = defaultRunStore
 ) {
@@ -1062,7 +1062,7 @@ export async function completeBatchTaskRunItemV3(
   scheduleResumeOnComplete = false,
   taskRunAttemptId?: string,
   retryAttempt?: number,
-  // Threaded in so a ksuid (NEW-resident) batch's item lands on the owning store; route by
+  // Threaded in so a run-ops id (NEW-resident) batch's item lands on the owning store; route by
   // batchTaskRunId (items co-reside with their batch). Defaults to the singleton.
   runStore: RunStore = defaultRunStore
 ) {

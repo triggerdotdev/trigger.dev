@@ -1,6 +1,6 @@
 // Real heterogeneous legacy + new Postgres proof for the alert-hydration TaskRun read.
 // The DB is never mocked. A test-only RunStore wraps two real PostgresRunStore
-// instances and routes findRun by id residency (ksuid → NEW, cuid → LEGACY),
+// instances and routes findRun by id residency (run-ops id → NEW, cuid → LEGACY),
 // mirroring the sibling routing suite. The ProjectAlertChannel read must stay control-plane.
 //
 // The alert env-type read (parentEnvironment?.type ?? type) is resolved via the app

@@ -73,7 +73,7 @@ void _legacyWriterAssignable;
  *
  * Deletes route through the dedicated run-ops write clients (`runOpsNewPrismaClient` +
  * `runOpsLegacyPrisma`), NOT the control-plane `prisma`. The ordered delete pass runs against BOTH
- * writers: a migrating env/project's run-ops rows split across the new (KSUID) and
+ * writers: a migrating env/project's run-ops rows split across the new (run-ops id) and
  * legacy (cuid) DBs per the per-env cutover + roll-new-forward rollback, and the
  * cloud DB that lost its physical FK has no cascade to clean the other writer's miss. In single-DB
  * both handles are reference-equal to the one collapsed client, so de-dup-by-reference runs the

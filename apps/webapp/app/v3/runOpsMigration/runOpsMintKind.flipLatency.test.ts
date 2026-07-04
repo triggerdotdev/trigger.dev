@@ -31,7 +31,7 @@ describe("computeRunIdMintKind flip latency (mintCache TTL window — current be
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it("returns the STALE cached kind within the TTL after the flag flips cuid->ksuid", async () => {
+  it("returns the STALE cached kind within the TTL after the flag flips 'cuid'->'ksuid'", async () => {
     const cache = new BoundedTtlCache<RunIdMintKind>(TTL_MS, 100);
     let live: RunIdMintKind = "cuid";
     const flag = makeCachedFlag(cache, () => live);
@@ -44,7 +44,7 @@ describe("computeRunIdMintKind flip latency (mintCache TTL window — current be
     expect(await computeRunIdMintKind(env, deps)).toBe("cuid"); // STALE, as designed
   });
 
-  it("returns the FRESH kind once the TTL expires after a cuid->ksuid flip", async () => {
+  it("returns the FRESH kind once the TTL expires after a 'cuid'->'ksuid' flip", async () => {
     const cache = new BoundedTtlCache<RunIdMintKind>(TTL_MS, 100);
     let live: RunIdMintKind = "cuid";
     const flag = makeCachedFlag(cache, () => live);
@@ -57,7 +57,7 @@ describe("computeRunIdMintKind flip latency (mintCache TTL window — current be
     expect(await computeRunIdMintKind(env, deps)).toBe("ksuid"); // re-reads the live flag
   });
 
-  it("symmetric flip-back ksuid->cuid is also stale within TTL, fresh after", async () => {
+  it("symmetric flip-back 'ksuid'->'cuid' is also stale within TTL, fresh after", async () => {
     const cache = new BoundedTtlCache<RunIdMintKind>(TTL_MS, 100);
     let live: RunIdMintKind = "ksuid";
     const flag = makeCachedFlag(cache, () => live);

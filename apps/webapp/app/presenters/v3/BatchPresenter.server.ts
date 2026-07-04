@@ -79,7 +79,7 @@ export class BatchPresenter extends BasePresenter {
     const batchResult = await readThrough<BatchRow>({
       // The read-through key; here it is the batch friendlyId. A cuid-shaped batch friendlyId
       // classifies as LEGACY and the read-through probes both stores (new first, then legacy
-      // replica); a ksuid-shaped one (cut-over orgs) classifies as NEW and reads only the new
+      // replica); a run-ops-shaped one (cut-over orgs) classifies as NEW and reads only the new
       // store — either way the row is found on the DB that owns it.
       runId: batchId,
       environmentId,

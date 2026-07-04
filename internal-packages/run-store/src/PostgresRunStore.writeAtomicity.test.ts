@@ -2,7 +2,7 @@
 //
 // Under the run-ops split, several engine operations that were atomic-by-`prisma.$transaction` in
 // single-DB make TWO distinct RunStore writes (e.g. startAttempt + createExecutionSnapshot, or
-// promotePendingVersionRuns + createExecutionSnapshot). When the run is ksuid (#new), `RoutingRunStore`
+// promotePendingVersionRuns + createExecutionSnapshot). When the run is run-ops id (#new), `RoutingRunStore`
 // routes each write to the NEW store but DROPS the caller's control-plane `tx` — so the two writes
 // execute as independent auto-commit statements on the NEW DB, OUTSIDE any shared transaction. A crash
 // between them leaves partial state (a run EXECUTING with no matching snapshot; promoted-but-no-snapshot).
@@ -26,7 +26,7 @@ import type { CreateRunInput, RunStore, RunStoreSchemaVariant } from "./types.js
 
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
-// ownerEngine classifies by the version char: no marker → cuid → LEGACY, v1 body → ksuid → NEW.
+// ownerEngine classifies by the version char: no marker → cuid → LEGACY, v1 body → run-ops id → NEW.
 const CUID_25 = "c".repeat(25); // → LEGACY (#legacy / control-plane DB, full schema)
 const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW (#new / dedicated run-ops DB, subset schema)
 
@@ -136,8 +136,8 @@ function makeSplitRouter(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
   };
 }
 
-// Seed a ksuid run on #new (its create nests the initial RUN_CREATED snapshot) and return its ids.
-async function seedKsuidRun(
+// Seed a run-ops run on #new (its create nests the initial RUN_CREATED snapshot) and return its ids.
+async function seedRunOpsRun(
   router: RunStore,
   prisma17: RunOpsPrismaClient,
   suffix: string
@@ -175,14 +175,14 @@ function snapshotInput(
 describe("cross-DB write atomicity (startAttempt + createExecutionSnapshot)", () => {
   // ---------------------------------------------------------------------------------------------
   // RED demonstration: the BROKEN behaviour. Two separate routed writes (as the engine made them
-  // before the fix) on a ksuid run leave PARTIAL state on a mid-pair failure — the run is EXECUTING
+  // before the fix) on a run-ops run leave PARTIAL state on a mid-pair failure — the run is EXECUTING
   // but no EXECUTING snapshot exists. This is the regression vs single-DB.
   // ---------------------------------------------------------------------------------------------
   heteroRunOpsPostgresTest(
     "BROKEN baseline: two un-wrapped routed writes persist partial state on a mid-pair failure",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
-      const { runId, env } = await seedKsuidRun(router, prisma17, "broken_atomic");
+      const { runId, env } = await seedRunOpsRun(router, prisma17, "broken_atomic");
 
       // Simulate the OLD engine pattern: startAttempt then a failure BEFORE createExecutionSnapshot,
       // each as an independent routed (auto-commit) write — no shared transaction.
@@ -214,10 +214,10 @@ describe("cross-DB write atomicity (startAttempt + createExecutionSnapshot)", ()
   // BETWEEN the two writes rolls the FIRST write back — no partial state.
   // ---------------------------------------------------------------------------------------------
   heteroRunOpsPostgresTest(
-    "runInTransaction rolls back startAttempt when a failure is injected before the snapshot write (ksuid → #new)",
+    "runInTransaction rolls back startAttempt when a failure is injected before the snapshot write (run-ops id → #new)",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
-      const { runId, env } = await seedKsuidRun(router, prisma17, "rollback_new");
+      const { runId, env } = await seedRunOpsRun(router, prisma17, "rollback_new");
 
       await expect(
         router.runInTransaction(runId, async (store, tx) => {
@@ -246,10 +246,10 @@ describe("cross-DB write atomicity (startAttempt + createExecutionSnapshot)", ()
   );
 
   heteroRunOpsPostgresTest(
-    "runInTransaction commits BOTH writes atomically on success (ksuid → #new)",
+    "runInTransaction commits BOTH writes atomically on success (run-ops id → #new)",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
-      const { runId, env } = await seedKsuidRun(router, prisma17, "commit_new");
+      const { runId, env } = await seedRunOpsRun(router, prisma17, "commit_new");
 
       const result = await router.runInTransaction(runId, async (store, tx) => {
         const run = await store.startAttempt(

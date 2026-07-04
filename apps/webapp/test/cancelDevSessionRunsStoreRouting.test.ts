@@ -90,7 +90,7 @@ function recording(client: PrismaClient, opts: { forbidden?: boolean } = {}) {
 
 describe("CancelDevSessionRunsService store routing (hetero)", () => {
   heteroPostgresTest(
-    "a NEW run (ksuid) resolves on the new store via read-through, by friendlyId and by id",
+    "a NEW run (run-ops id) resolves on the new store via read-through, by friendlyId and by id",
     async ({ prisma17, prisma14 }) => {
       const id = generateRunOpsId();
       expect(id.length).toBe(26);
@@ -127,7 +127,7 @@ describe("CancelDevSessionRunsService store routing (hetero)", () => {
           cancelledAt: new Date(),
           reason: "test",
         });
-        // ksuid → NEW: new store served the read, legacy never touched.
+        // run-ops id → NEW: new store served the read, legacy never touched.
         expect(newClient.calls.length).toBe(1);
         expect(legacy.calls.length).toBe(0);
       }

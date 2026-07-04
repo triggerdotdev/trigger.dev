@@ -5,7 +5,7 @@ import type { RunStore } from "./types.js";
 
 // forWaitpointCompletion is async: it picks a preferred store from the id-shape + pins, then
 // PROBES findWaitpoint to resolve where the token ACTUALLY lives (drain can relocate a cuid
-// waitpoint onto NEW, or a ksuid token can be pinned LEGACY), falling back to the other store.
+// waitpoint onto NEW, or a run-ops token can be pinned LEGACY), falling back to the other store.
 // So the slots here are fakes whose only behaviour is "do I hold this waitpoint id?".
 function fakeStore(slot: string, heldIds: Set<string>): RunStore {
   return {
@@ -17,7 +17,7 @@ function fakeStore(slot: string, heldIds: Set<string>): RunStore {
   } as unknown as RunStore;
 }
 
-const KSUID_ID = "waitpoint_" + "a".repeat(24) + "01";
+const RUN_OPS_ID = "waitpoint_" + "a".repeat(24) + "01";
 const CUID_ID = "waitpoint_" + "a".repeat(25);
 const UNCLASSIFIABLE_ID = "waitpoint_" + "a".repeat(26);
 
@@ -28,7 +28,7 @@ function buildRouter(opts?: { newHolds?: string[]; legacyHolds?: string[] }): {
   newStore: RunStore;
   legacyStore: RunStore;
 } {
-  const all = [KSUID_ID, CUID_ID, UNCLASSIFIABLE_ID];
+  const all = [RUN_OPS_ID, CUID_ID, UNCLASSIFIABLE_ID];
   const newStore = fakeStore("new", new Set(opts?.newHolds ?? all));
   const legacyStore = fakeStore("legacy", new Set(opts?.legacyHolds ?? all));
   return {
@@ -39,9 +39,9 @@ function buildRouter(opts?: { newHolds?: string[]; legacyHolds?: string[] }): {
 }
 
 describe("RoutingRunStore.forWaitpointCompletion", () => {
-  it("resolves a ksuid waitpointId with no pins to the NEW slot", async () => {
+  it("resolves a run-ops waitpointId with no pins to the NEW slot", async () => {
     const { router, newStore } = buildRouter();
-    expect(await router.forWaitpointCompletion(KSUID_ID, { routeKind: "MANUAL" })).toBe(newStore);
+    expect(await router.forWaitpointCompletion(RUN_OPS_ID, { routeKind: "MANUAL" })).toBe(newStore);
   });
 
   it("resolves a cuid waitpointId with no pins to the LEGACY slot", async () => {
@@ -49,30 +49,30 @@ describe("RoutingRunStore.forWaitpointCompletion", () => {
     expect(await router.forWaitpointCompletion(CUID_ID, { routeKind: "MANUAL" })).toBe(legacyStore);
   });
 
-  it("pins to LEGACY when isCrossTreeIdempotency is true, even for a ksuid id", async () => {
+  it("pins to LEGACY when isCrossTreeIdempotency is true, even for a run-ops id", async () => {
     const { router, legacyStore } = buildRouter();
     expect(
-      await router.forWaitpointCompletion(KSUID_ID, {
+      await router.forWaitpointCompletion(RUN_OPS_ID, {
         routeKind: "IDEMPOTENCY_REUSE",
         isCrossTreeIdempotency: true,
       })
     ).toBe(legacyStore);
   });
 
-  it("pins to LEGACY when treeOwnerResidency is LEGACY, even for a ksuid id", async () => {
+  it("pins to LEGACY when treeOwnerResidency is LEGACY, even for a run-ops id", async () => {
     const { router, legacyStore } = buildRouter();
     expect(
-      await router.forWaitpointCompletion(KSUID_ID, {
+      await router.forWaitpointCompletion(RUN_OPS_ID, {
         routeKind: "MANUAL",
         treeOwnerResidency: "LEGACY",
       })
     ).toBe(legacyStore);
   });
 
-  it("pins to LEGACY when hasLegacyParent is true, even for a ksuid id", async () => {
+  it("pins to LEGACY when hasLegacyParent is true, even for a run-ops id", async () => {
     const { router, legacyStore } = buildRouter();
     expect(
-      await router.forWaitpointCompletion(KSUID_ID, {
+      await router.forWaitpointCompletion(RUN_OPS_ID, {
         routeKind: "RUN",
         hasLegacyParent: true,
       })
@@ -80,10 +80,10 @@ describe("RoutingRunStore.forWaitpointCompletion", () => {
   });
 
   it("falls back to the OTHER store when the preferred store does not hold the token", async () => {
-    // ksuid id prefers NEW, but the token actually lives on LEGACY (drain/relocation): the
+    // run-ops id prefers NEW, but the token actually lives on LEGACY (drain/relocation): the
     // probe must fall through to LEGACY rather than route by id-shape alone and miss it.
-    const { router, legacyStore } = buildRouter({ newHolds: [], legacyHolds: [KSUID_ID] });
-    expect(await router.forWaitpointCompletion(KSUID_ID, { routeKind: "MANUAL" })).toBe(
+    const { router, legacyStore } = buildRouter({ newHolds: [], legacyHolds: [RUN_OPS_ID] });
+    expect(await router.forWaitpointCompletion(RUN_OPS_ID, { routeKind: "MANUAL" })).toBe(
       legacyStore
     );
   });

@@ -42,7 +42,7 @@ const { action } = createActionApiRoute(
         : undefined;
 
       const { waitpoint } = await engine.createDateTimeWaitpoint({
-        // Co-locate the waitpoint with the run that blocks on it (run-ops split): a ksuid run lives
+        // Co-locate the waitpoint with the run that blocks on it (run-ops split): a run-ops run lives
         // on the dedicated DB, but the minted waitpoint id is always a cuid, so without the run id
         // the waitpoint would route to the control-plane DB and the block edge would never resolve.
         runId: run.id,

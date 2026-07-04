@@ -3,7 +3,7 @@
 //
 // During the flip window, two CONCURRENT same-(env, idempotencyKey, taskIdentifier) ROOT triggers can
 // land on instances with DIVERGENT cached mint-kinds: the stale instance mints a cuid run on #legacy,
-// the flipped instance a ksuid run on #new. The dedup probe (probe-before-mint) only catches an
+// the flipped instance a run-ops run on #new. The dedup probe (probe-before-mint) only catches an
 // ALREADY-COMMITTED run; two truly-simultaneous mints both miss, then both create. The per-DB unique
 // constraint on (runtimeEnvironmentId, idempotencyKey, taskIdentifier) is PER PHYSICAL DB, so it
 // cannot reject the second insert that lands on the OTHER DB. This test proves both creates SUCCEED
@@ -22,9 +22,9 @@ import type { CreateRunInput, RunStoreSchemaVariant } from "./types.js";
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by internal-id length (no internal underscore): 25 -> cuid -> LEGACY,
-// 27 -> ksuid -> NEW.
+// 27 -> run-ops id -> NEW.
 const cuidLegacy = (seed: string) => (seed + "c".repeat(25)).slice(0, 25);
-const ksuidNew = (seed: string) =>
+const runOpsNew = (seed: string) =>
   (seed.replace(/[^0-9a-v]/g, "0") + "k".repeat(24)).slice(0, 24) + "01";
 
 async function seedEnvironment(
@@ -138,7 +138,7 @@ describe("RoutingRunStore — mint-on-flip bounded concurrent-window cross-DB du
       const taskIdentifier = "my-task";
 
       const staleCuidRunId = cuidLegacy("rfl"); // stale instance mints cuid -> #legacy
-      const flippedKsuidRunId = ksuidNew("rfn"); // flipped instance mints ksuid -> #new
+      const flippedRunOpsRunId = runOpsNew("rfn"); // flipped instance mints run-ops id -> #new
 
       // Both concurrent mints commit. The second does NOT throw a unique violation: the constraint is
       // PER-DB and these land on different physical DBs.
@@ -155,7 +155,7 @@ describe("RoutingRunStore — mint-on-flip bounded concurrent-window cross-DB du
       );
       await router.createRun(
         buildCreateRunInput({
-          runId: flippedKsuidRunId,
+          runId: flippedRunOpsRunId,
           friendlyId: "run_flip_new",
           organizationId: seed.organization.id,
           projectId: seed.project.id,
@@ -167,7 +167,9 @@ describe("RoutingRunStore — mint-on-flip bounded concurrent-window cross-DB du
 
       // The duplicate is REAL: a row for the same key physically exists on BOTH DBs.
       expect(await prisma14.taskRun.findFirst({ where: { id: staleCuidRunId } })).not.toBeNull();
-      expect(await prisma17.taskRun.findFirst({ where: { id: flippedKsuidRunId } })).not.toBeNull();
+      expect(
+        await prisma17.taskRun.findFirst({ where: { id: flippedRunOpsRunId } })
+      ).not.toBeNull();
 
       // The duplicate is BOUNDED: subsequent reads via the id-less probe collapse to exactly ONE run,
       // deterministically the NEW one (NEW-first fan-out) — the same tie-break the cross-DB dedup
@@ -178,7 +180,7 @@ describe("RoutingRunStore — mint-on-flip bounded concurrent-window cross-DB du
         taskIdentifier,
       })) as Record<string, any> | null;
       expect(found).not.toBeNull();
-      expect(found!.id).toBe(flippedKsuidRunId);
+      expect(found!.id).toBe(flippedRunOpsRunId);
     }
   );
 });

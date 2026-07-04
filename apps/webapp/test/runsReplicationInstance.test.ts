@@ -153,7 +153,7 @@ describe("assertReplicationCoversSplit (boot gate-coupling)", () => {
   };
 
   it('throws when split is on but sources[] has no "new" source (the silent under-count)', () => {
-    // Split on, but the new replication source is forced off — ksuid runs would not
+    // Split on, but the new replication source is forced off — run-ops runs would not
     // reach ClickHouse. This is the exact misconfiguration the boot gate must refuse to boot with.
     const sources = buildReplicationSources({
       ...baseArgs,

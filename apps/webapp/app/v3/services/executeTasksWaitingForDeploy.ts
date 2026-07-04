@@ -72,7 +72,7 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
 
     // Defense-in-depth: the open-predicate findRuns fan-out can select runs from
     // either DB, but the status flip below is a single control-plane updateMany. A
-    // ksuid (NEW-resident) run can only reach WAITING_FOR_DEPLOY via a misconfiguration
+    // run-ops id (NEW-resident) run can only reach WAITING_FOR_DEPLOY via a misconfiguration
     // (it is a V1/cuid-only status — V2 uses PENDING_VERSION). Surface it loudly rather
     // than silently strand the run, and only mutate the LEGACY-resident runs the
     // control-plane client can actually reach.
