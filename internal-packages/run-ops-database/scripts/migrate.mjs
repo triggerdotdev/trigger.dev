@@ -36,8 +36,8 @@ function readFromEnvFiles(key) {
   return undefined;
 }
 
-// Expand `${VAR}` refs (e.g. the repo .env's RUN_OPS_DATABASE_DIRECT_URL=${RUN_OPS_DATABASE_URL});
-// our manual .env reader loads them literally, unlike Prisma's dotenv-expand.
+// Expand `${VAR}` refs in env-file values (our manual reader loads them literally, unlike Prisma's
+// dotenv-expand), so a `.env` like RUN_OPS_DATABASE_URL=${DATABASE_URL} still resolves.
 const expand = (value) =>
   value?.replace(/\$\{(\w+)\}/g, (_, k) => process.env[k] ?? readFromEnvFiles(k) ?? "");
 const resolveVar = (key) => expand(process.env[key] || readFromEnvFiles(key));
@@ -46,11 +46,6 @@ const redact = (url) => url.replace(/:\/\/[^@]*@/, "://***@");
 const subcommand = process.argv[2] === "status" ? "status" : "deploy";
 
 const databaseUrl = resolveVar("RUN_OPS_DATABASE_URL") || resolveVar("TASK_RUN_DATABASE_URL");
-// Prefer the direct/unpooled endpoint for migrations (poolers break Prisma's advisory locks).
-const directUrl =
-  resolveVar("RUN_OPS_DATABASE_DIRECT_URL") ||
-  resolveVar("TASK_RUN_DATABASE_DIRECT_URL") ||
-  databaseUrl;
 
 if (!databaseUrl) {
   // Single-DB installs never set these — safe no-op. A genuinely-expected DB is gated on by the caller.
@@ -71,7 +66,6 @@ const result = spawnSync("prisma", ["migrate", subcommand, "--schema", "prisma/s
   env: {
     ...process.env,
     RUN_OPS_DATABASE_URL: databaseUrl,
-    RUN_OPS_DATABASE_DIRECT_URL: directUrl,
   },
 });
 

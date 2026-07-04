@@ -139,12 +139,6 @@ const EnvironmentSchema = z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_URL is invalid")
       .optional(),
-    // Direct/unpooled endpoint for the run-ops DB, consumed by the migration runner (poolers break
-    // Prisma's advisory locks). Falls back to TASK_RUN_DATABASE_DIRECT_URL then the pooled URL.
-    RUN_OPS_DATABASE_DIRECT_URL: z
-      .string()
-      .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_DIRECT_URL is invalid")
-      .optional(),
     // The NEW dedicated run-ops DB writer. Optional so single-DB installs never set it.
     TASK_RUN_DATABASE_URL: z
       .string()

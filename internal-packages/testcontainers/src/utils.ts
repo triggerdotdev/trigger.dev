@@ -37,8 +37,8 @@ export async function pushDatabaseSchema(databaseUrl: string) {
 
 /**
  * Pushes the DEDICATED run-ops subset schema (@internal/run-ops-database) into the database at
- * `databaseUrl`. The run-ops datasource reads RUN_OPS_DATABASE_URL/RUN_OPS_DATABASE_DIRECT_URL, and
- * its schema is a subset of the control-plane schema (run-ops tables, no Organization/Project/etc).
+ * `databaseUrl`. The run-ops datasource reads RUN_OPS_DATABASE_URL, and its schema is a subset of
+ * the control-plane schema (run-ops tables, no Organization/Project/etc).
  */
 export async function pushRunOpsSchema(databaseUrl: string) {
   // Resolve the schema (and the package's own prisma binary) through the @internal/run-ops-database
@@ -49,7 +49,7 @@ export async function pushRunOpsSchema(databaseUrl: string) {
   const result = await pushPrismaSchema({
     prismaBin: `${runOpsPackagePath}/node_modules/.bin/prisma`,
     schemaPath,
-    env: { RUN_OPS_DATABASE_URL: databaseUrl, RUN_OPS_DATABASE_DIRECT_URL: databaseUrl },
+    env: { RUN_OPS_DATABASE_URL: databaseUrl },
   });
 
   // `db push` derives DDL from the schema datamodel and so cannot create the SQL-only partial unique
