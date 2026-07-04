@@ -2,18 +2,6 @@ import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 
-export const QUEUE_METRICS_WINDOWS = {
-  "1h": 3600,
-  "6h": 21600,
-  "24h": 86400,
-} as const;
-
-export type QueueMetricsWindow = keyof typeof QUEUE_METRICS_WINDOWS;
-
-export function isQueueMetricsWindow(value: unknown): value is QueueMetricsWindow {
-  return typeof value === "string" && value in QUEUE_METRICS_WINDOWS;
-}
-
 export type QueueListMetric = {
   p50WaitMs: number | null;
   p95WaitMs: number | null;
@@ -23,7 +11,6 @@ export type QueueListMetric = {
 };
 
 export type QueueListMetrics = {
-  window: QueueMetricsWindow;
   bucketStartMs: number;
   bucketIntervalMs: number;
   byQueue: Map<string, QueueListMetric>;
@@ -41,30 +28,30 @@ function finiteOrNull(value: number): number | null {
 
 export class QueueMetricsPresenter {
   /**
-   * Recent per-queue metrics for a fixed set of queues (the visible list page),
+   * Per-queue metrics over a time range for a fixed set of queues (the visible list page),
    * scoped to one ClickHouse query window so cost is independent of total queue count.
    * Degrades to an empty map if ClickHouse is unavailable so the live list still renders.
    */
   public async getQueueListMetrics({
     environment,
     queueNames,
-    window,
+    from,
+    to,
   }: {
     environment: AuthenticatedEnvironment;
     queueNames: string[];
-    window: QueueMetricsWindow;
+    from: Date;
+    to: Date;
   }): Promise<QueueListMetrics> {
-    const windowSeconds = QUEUE_METRICS_WINDOWS[window];
-    const bucketSeconds = Math.max(60, Math.round(windowSeconds / SPARKLINE_POINTS));
-    const numBuckets = Math.ceil(windowSeconds / bucketSeconds);
-    const nowSeconds = Math.floor(Date.now() / 1000);
+    const rangeSeconds = Math.max(60, Math.round((to.getTime() - from.getTime()) / 1000));
+    const bucketSeconds = Math.max(60, Math.round(rangeSeconds / SPARKLINE_POINTS));
+    const numBuckets = Math.max(1, Math.ceil(rangeSeconds / bucketSeconds));
     const gridStartSeconds =
-      Math.floor((nowSeconds - windowSeconds) / bucketSeconds) * bucketSeconds;
+      Math.floor(Math.floor(from.getTime() / 1000) / bucketSeconds) * bucketSeconds;
     const bucketStartMs = gridStartSeconds * 1000;
     const bucketIntervalMs = bucketSeconds * 1000;
 
     const empty: QueueListMetrics = {
-      window,
       bucketStartMs,
       bucketIntervalMs,
       byQueue: new Map(),
@@ -86,6 +73,7 @@ export class QueueMetricsPresenter {
         environmentId: environment.id,
         queueNames,
         startTime: formatClickhouseDateTime(new Date(bucketStartMs)),
+        endTime: formatClickhouseDateTime(to),
       };
 
       const [summaryResult, sparklineResult] = await Promise.all([
@@ -137,7 +125,7 @@ export class QueueMetricsPresenter {
         });
       }
 
-      return { window, bucketStartMs, bucketIntervalMs, byQueue };
+      return { bucketStartMs, bucketIntervalMs, byQueue };
     } catch (error) {
       logger.warn("QueueMetricsPresenter: failed to load queue metrics", {
         error: error instanceof Error ? error.message : String(error),

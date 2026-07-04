@@ -39,6 +39,7 @@ const QueueMetricsListParams = z.object({
   environmentId: z.string(),
   queueNames: z.array(z.string()),
   startTime: z.string(),
+  endTime: z.string(),
 });
 
 const QueueMetricsSummaryRow = z.object({
@@ -65,6 +66,7 @@ export function getQueueListMetricsSummary(reader: ClickhouseReader) {
         AND environment_id = {environmentId: String}
         AND queue_name IN {queueNames: Array(String)}
         AND bucket_start >= {startTime: DateTime}
+        AND bucket_start < {endTime: DateTime}
       GROUP BY queue_name`,
     params: QueueMetricsListParams,
     schema: QueueMetricsSummaryRow,
@@ -95,6 +97,7 @@ export function getQueueDepthSparklines(reader: ClickhouseReader) {
         AND environment_id = {environmentId: String}
         AND queue_name IN {queueNames: Array(String)}
         AND bucket_start >= {startTime: DateTime}
+        AND bucket_start < {endTime: DateTime}
       GROUP BY queue_name, bucket
       ORDER BY bucket`,
     params: QueueDepthSparklineParams,

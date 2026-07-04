@@ -7,11 +7,11 @@ import {
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, Link, useNavigation, useSearchParams, type MetaFunction } from "@remix-run/react";
+import { Form, Link, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
@@ -54,7 +54,6 @@ import {
 import { QueueName } from "~/components/runs/v3/QueueName";
 import { env } from "~/env.server";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
-import { useInterval } from "~/hooks/useInterval";
 import { LoadingBarDivider } from "~/components/primitives/LoadingBarDivider";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -67,12 +66,16 @@ import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePrese
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import {
   QueueMetricsPresenter,
-  isQueueMetricsWindow,
   type QueueListMetric,
-  type QueueMetricsWindow,
 } from "~/presenters/v3/QueueMetricsPresenter.server";
+import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { useSearchParams } from "~/hooks/useSearchParam";
+import { parseFiniteInt } from "~/utils/searchParams";
 import { UsageSparkline } from "~/components/primitives/UsageSparkline";
-import { Area, AreaChart, ResponsiveContainer } from "recharts";
+import {
+  useMetricResourceQuery,
+  type MetricResourceTimeRange,
+} from "~/hooks/useMetricResourceQuery";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -96,7 +99,11 @@ const SearchParamsSchema = z.object({
   query: z.string().optional(),
   page: z.coerce.number().min(1).default(1),
   period: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
 });
+
+const QUEUE_METRICS_DEFAULT_PERIOD = "1d";
 
 export const meta: MetaFunction = () => {
   return [
@@ -111,12 +118,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const url = new URL(request.url);
-  const {
-    page,
-    query,
-    period: rawPeriod,
-  } = SearchParamsSchema.parse(Object.fromEntries(url.searchParams));
-  const period: QueueMetricsWindow = isQueueMetricsWindow(rawPeriod) ? rawPeriod : "24h";
+  const { page, query, period, from, to } = SearchParamsSchema.parse(
+    Object.fromEntries(url.searchParams)
+  );
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -154,7 +158,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // The environment header tiles are fetched client-side per card (see QueueEnvMetricTile) so a
     // slow ClickHouse query never blocks the queues list from rendering.
     let metrics: {
-      window: QueueMetricsWindow;
       bucketStartMs: number;
       bucketIntervalMs: number;
       byQueue: Record<string, QueueListMetric>;
@@ -168,13 +171,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         const queueNames = queues.queues.map((q) =>
           q.type === "task" ? `task/${q.name}` : q.name
         );
+        const timeRange = timeFilterFromTo({
+          period,
+          from: parseFiniteInt(from),
+          to: parseFiniteInt(to),
+          defaultPeriod: QUEUE_METRICS_DEFAULT_PERIOD,
+        });
         const queueMetrics =
           queueNames.length > 0
-            ? await presenter.getQueueListMetrics({ environment, queueNames, window: period })
+            ? await presenter.getQueueListMetrics({
+                environment,
+                queueNames,
+                from: timeRange.from,
+                to: timeRange.to,
+              })
             : null;
         if (queueMetrics) {
           metrics = {
-            window: queueMetrics.window,
             bucketStartMs: queueMetrics.bucketStartMs,
             bucketIntervalMs: queueMetrics.bucketIntervalMs,
             byQueue: Object.fromEntries(queueMetrics.byQueue),
@@ -190,7 +203,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environment: await environmentQueuePresenter.call(environment),
       autoReloadPollIntervalMs,
       metrics,
-      period,
       queueMetricsUiEnabled,
     });
   } catch (error) {
@@ -377,7 +389,6 @@ function QueuesWithMetricsView() {
     hasFilters,
     autoReloadPollIntervalMs,
     metrics,
-    period,
   } = useTypedLoaderData<typeof loader>();
 
   const metricsByQueue = metrics?.byQueue ?? {};
@@ -386,6 +397,15 @@ function QueuesWithMetricsView() {
   const project = useProject();
   const env = useEnvironment();
   const plan = useCurrentPlan();
+  const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
+
+  // The header tiles fetch client-side with the same period/from/to the TimeFilter writes.
+  const { value } = useSearchParams();
+  const timeRange = {
+    period: value("period") ?? null,
+    from: value("from") ?? null,
+    to: value("to") ?? null,
+  };
 
   useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
 
@@ -432,16 +452,23 @@ function QueuesWithMetricsView() {
         <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
           <div className="grid grid-cols-2 gap-3 p-3 lg:grid-cols-4">
             {QUEUE_HEADER_TILES.map((tile) => (
-              <QueueEnvMetricTile key={tile.id} tile={tile} period={period} />
+              <QueueEnvMetricTile key={tile.id} tile={tile} timeRange={timeRange} />
             ))}
           </div>
 
           {success ? (
             <div className="grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto">
               <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <QueueFilters />
-                  <QueuePeriodSelect period={period} />
+                  <TimeFilter
+                    defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
+                    labelName="Period"
+                    hideLabel
+                    maxPeriodDays={maxPeriodDays}
+                    valueClassName="text-text-bright"
+                    shortcut={{ key: "d" }}
+                  />
                 </div>
                 <PaginationControls
                   currentPage={pagination.currentPage}
@@ -1106,58 +1133,30 @@ export function QueueFilters() {
   return <SearchInput placeholder="Search queues…" paramName="query" resetParams={["page"]} />;
 }
 
-const QUEUE_METRICS_PERIODS: { value: QueueMetricsWindow; label: string }[] = [
-  { value: "1h", label: "1h" },
-  { value: "6h", label: "6h" },
-  { value: "24h", label: "24h" },
-];
-
-function QueuePeriodSelect({ period }: { period: QueueMetricsWindow }) {
-  const [searchParams] = useSearchParams();
-  const hrefFor = (value: QueueMetricsWindow) => {
-    const next = new URLSearchParams(searchParams);
-    next.set("period", value);
-    next.delete("page");
-    return `?${next.toString()}`;
-  };
-  return (
-    <div className="flex items-center gap-1">
-      <span className="text-xs text-text-dimmed">Metrics</span>
-      {QUEUE_METRICS_PERIODS.map(({ value, label }) => (
-        <LinkButton
-          key={value}
-          to={hrefFor(value)}
-          variant={value === period ? "secondary/small" : "minimal/small"}
-          className={value === period ? "text-text-bright" : "text-text-dimmed"}
-        >
-          {label}
-        </LinkButton>
-      ))}
-    </div>
-  );
-}
-
 type MetricTileRow = Record<string, number | string | null>;
-
-type MetricTileResponse =
-  | { success: true; data: { rows: MetricTileRow[] } }
-  | { success: false; error: string };
 
 type QueueHeaderTile = {
   id: string;
   label: string;
   color: string;
   query: string;
+  unitLabel: { singular: string; plural: string };
   derive: (rows: MetricTileRow[]) => {
     sparkline: number[];
-    value: ReactNode;
-    valueClassName?: string;
+    total: number;
+    formatTotal?: (total: number) => string;
+    totalClassName?: string;
   };
 };
 
 function tileNumber(value: number | string | null): number {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function tileTimeToMs(value: number | string | null): number {
+  const s = String(value).replace(" ", "T");
+  return Date.parse(s.endsWith("Z") ? s : `${s}Z`);
 }
 
 // Header tiles fetch their own TRQL query client-side (resources.metric) with fillGaps, mirroring the
@@ -1168,13 +1167,14 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Env saturation",
     color: "#6366F1",
     query: `SELECT timeBucket() AS t,\n  max(max_env_running) AS used,\n  max(max_env_limit) AS env_limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    unitLabel: { singular: "%", plural: "%" },
     derive: (rows) => {
       const sparkline = rows.map((r) => {
         const limit = tileNumber(r.env_limit);
         return limit > 0 ? Math.round((tileNumber(r.used) / limit) * 100) : 0;
       });
       const peak = sparkline.reduce((max, v) => Math.max(max, v), 0);
-      return { sparkline, value: `${peak}% peak` };
+      return { sparkline, total: peak, formatTotal: (v) => `${v}% peak` };
     },
   },
   {
@@ -1182,10 +1182,11 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Backlog",
     color: "#A78BFA",
     query: `SELECT timeBucket() AS t,\n  max(max_env_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    unitLabel: { singular: "queued", plural: "queued" },
     derive: (rows) => {
       const sparkline = rows.map((r) => tileNumber(r.queued));
       const peak = sparkline.reduce((max, v) => Math.max(max, v), 0);
-      return { sparkline, value: `${peak.toLocaleString()} peak` };
+      return { sparkline, total: peak, formatTotal: (v) => `${v.toLocaleString()} peak` };
     },
   },
   {
@@ -1193,13 +1194,15 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Scheduling delay p95",
     color: "#F59E0B",
     query: `SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.95, 0.99)(wait_quantiles)[2]) AS p95\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    unitLabel: { singular: "ms", plural: "ms" },
     derive: (rows) => {
       const sparkline = rows.map((r) => tileNumber(r.p95));
       const worst = sparkline.reduce((max, v) => Math.max(max, v), 0);
       return {
         sparkline,
-        value: worst > 0 ? formatWaitMs(worst) : "–",
-        valueClassName: worst >= 60_000 ? "text-warning" : undefined,
+        total: worst,
+        formatTotal: (v) => (v > 0 ? formatWaitMs(v) : "–"),
+        totalClassName: worst >= 60_000 ? "text-warning" : undefined,
       };
     },
   },
@@ -1208,167 +1211,74 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Throttled",
     color: "#F59E0B",
     query: `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    unitLabel: { singular: "throttled bucket", plural: "throttled buckets" },
     derive: (rows) => {
       const sparkline = rows.map((r) => tileNumber(r.throttled));
       const total = sparkline.reduce((sum, v) => sum + v, 0);
       return {
         sparkline,
-        value: total.toLocaleString(),
-        valueClassName: total > 0 ? "text-warning" : undefined,
+        total,
+        totalClassName: total > 0 ? "text-warning" : undefined,
       };
     },
   },
 ];
 
+type TileTimeRange = MetricResourceTimeRange;
+
 function QueueEnvMetricTile({
   tile,
-  period,
+  timeRange,
 }: {
   tile: QueueHeaderTile;
-  period: QueueMetricsWindow;
+  timeRange: TileTimeRange;
 }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const [response, setResponse] = useState<MetricTileResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const abortRef = useRef<AbortController | null>(null);
 
-  const orgId = organization.id;
-  const projectId = project.id;
-  const environmentId = environment.id;
-  const { query } = tile;
+  const { rows, isLoading, showLoading, failed } = useMetricResourceQuery(tile.query, {
+    organizationId: organization.id,
+    projectId: project.id,
+    environmentId: environment.id,
+    timeRange,
+    defaultPeriod: QUEUE_METRICS_DEFAULT_PERIOD,
+    fillGaps: true,
+  });
 
-  const load = useCallback(() => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setIsLoading(true);
-    fetch("/resources/metric", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query,
-        scope: "environment",
-        period,
-        from: null,
-        to: null,
-        fillGaps: true,
-        organizationId: orgId,
-        projectId,
-        environmentId,
-      }),
-      signal: controller.signal,
-    })
-      .then((res) => res.json() as Promise<MetricTileResponse>)
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setResponse(data);
-          setIsLoading(false);
-        }
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        if (!controller.signal.aborted) {
-          setResponse({ success: false, error: "Network error" });
-          setIsLoading(false);
-        }
-      });
-  }, [query, period, orgId, projectId, environmentId]);
-
-  useEffect(() => {
-    load();
-    return () => abortRef.current?.abort();
-  }, [load]);
-
-  useInterval({ interval: 60_000, onLoad: false, onFocus: true, callback: load });
-
-  const rows = response?.success ? response.data.rows : [];
-  const hasData = rows.length > 0;
-  const showLoading = isLoading && !hasData;
-  const failed = response !== null && !response.success;
-  const { sparkline, value, valueClassName } = tile.derive(rows);
+  const { sparkline, total, formatTotal, totalClassName } = tile.derive(rows);
+  const bucketStartMs = rows.length > 0 ? tileTimeToMs(rows[0].t) : undefined;
+  const bucketIntervalMs =
+    rows.length >= 2 ? tileTimeToMs(rows[1].t) - tileTimeToMs(rows[0].t) : undefined;
 
   return (
-    <HeaderTile
-      label={`${tile.label} · ${period}`}
-      value={
-        showLoading ? (
-          <span className="inline-block h-3 w-12 animate-pulse rounded bg-grid-bright" />
-        ) : failed ? undefined : (
-          value
-        )
-      }
-      valueClassName={valueClassName}
-    >
+    <HeaderTile label={tile.label}>
       <LoadingBarDivider isLoading={isLoading} className="bg-transparent" />
       {showLoading ? (
-        <div className="h-12 w-full animate-pulse rounded bg-grid-bright/60" />
+        <div className="h-6 w-full animate-pulse rounded bg-grid-bright/60" />
       ) : failed ? (
-        <div className="flex h-12 items-center text-xs text-text-dimmed">
-          Unable to load metrics
-        </div>
+        <div className="flex h-6 items-center text-xs text-text-dimmed">Unable to load metrics</div>
       ) : (
-        <MiniChart data={sparkline} color={tile.color} />
+        <UsageSparkline
+          data={sparkline}
+          bucketStartMs={bucketStartMs}
+          bucketIntervalMs={bucketIntervalMs}
+          color={tile.color}
+          unitLabel={tile.unitLabel}
+          total={total}
+          formatTotal={formatTotal}
+          totalClassName={totalClassName ?? "text-text-bright"}
+        />
       )}
     </HeaderTile>
   );
 }
 
-function HeaderTile({
-  label,
-  value,
-  valueClassName,
-  className,
-  children,
-}: {
-  label: ReactNode;
-  value?: ReactNode;
-  valueClassName?: string;
-  className?: string;
-  children: ReactNode;
-}) {
+function HeaderTile({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-1.5 rounded-md border border-grid-dimmed bg-background-dimmed px-3 py-2",
-        className
-      )}
-    >
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-xs text-text-dimmed">{label}</span>
-        {value !== undefined ? (
-          <span className={cn("shrink-0 text-sm tabular-nums text-text-bright", valueClassName)}>
-            {value}
-          </span>
-        ) : null}
-      </div>
+    <div className="flex flex-col gap-1.5 rounded-sm border border-grid-dimmed bg-background-bright px-3 py-2">
+      <span className="truncate text-xs text-text-dimmed">{label}</span>
       {children}
-    </div>
-  );
-}
-
-function MiniChart({ data, color }: { data: number[]; color: string }) {
-  if (!data || data.length === 0 || data.every((v) => v === 0)) {
-    return <div className="flex h-12 items-center text-xs text-text-dimmed">No activity</div>;
-  }
-  const chartData = data.map((v, i) => ({ i, v }));
-  return (
-    <div className="h-12 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={chartData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-          <Area
-            type="monotone"
-            dataKey="v"
-            stroke={color}
-            fill={color}
-            fillOpacity={0.15}
-            strokeWidth={1.5}
-            isAnimationActive={false}
-            dot={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
     </div>
   );
 }
@@ -1400,7 +1310,7 @@ function QueueHealthBadge({
   }
   if (queued > 0) {
     return (
-      <Badge variant="extra-small" className="text-blue-400">
+      <Badge variant="extra-small" className="text-blue-500">
         Backlogged
       </Badge>
     );
