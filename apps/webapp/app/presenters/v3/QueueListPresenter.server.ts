@@ -217,40 +217,49 @@ export class QueueListPresenter extends BasePresenter {
       "query"
     );
 
+    // The window start is aligned to the minute so repeated page loads produce identical
+    // query text and can share ClickHouse query-cache entries.
+    const windowStartMs =
+      Math.floor((Date.now() - QUEUE_RANKING_WINDOW_MINUTES * 60 * 1000) / 60_000) * 60_000;
     const rankingArgs = {
       organizationId: environment.organizationId,
       projectId: environment.projectId,
       environmentId: environment.id,
-      startTime: formatClickhouseDateTime(
-        new Date(Date.now() - QUEUE_RANKING_WINDOW_MINUTES * 60 * 1000)
-      ),
+      startTime: formatClickhouseDateTime(new Date(windowStartMs)),
       nameContains: query?.trim() ?? "",
     };
 
-    const [countError, countRows] = await clickhouse.queueMetrics.rankingCount(rankingArgs);
-    if (countError) {
-      throw countError;
+    const offset = (page - 1) * this.perPage;
+
+    // One scan returns the page and the total ranked count (window function).
+    const [pageError, pageRows] = await clickhouse.queueMetrics.ranking({
+      ...rankingArgs,
+      byQueuedOnly: sort === "queued" ? 1 : 0,
+      limit: this.perPage,
+      offset,
+    });
+    if (pageError) {
+      throw pageError;
     }
-    const ranked = countRows?.[0]?.ranked ?? 0;
+
+    let ranked = pageRows?.[0]?.ranked_total ?? 0;
+    if (ranked === 0 && offset > 0) {
+      // Empty page past the ranked head: fetch the count alone for the tail slot math.
+      const [countError, countRows] = await clickhouse.queueMetrics.rankingCount(rankingArgs);
+      if (countError) {
+        throw countError;
+      }
+      ranked = countRows?.[0]?.ranked ?? 0;
+    }
     if (ranked > MAX_RANKED_QUEUES) {
       return null;
     }
 
     const where = buildQueueListWhere(environment.id, query, type);
     const totalQueues = await this._replica.taskQueue.count({ where });
-    const offset = (page - 1) * this.perPage;
 
     let rankedPageQueues: QueueListRow[] = [];
-    if (offset < ranked) {
-      const [pageError, pageRows] = await clickhouse.queueMetrics.rankingPage({
-        ...rankingArgs,
-        byQueuedOnly: sort === "queued" ? 1 : 0,
-        limit: this.perPage,
-        offset,
-      });
-      if (pageError) {
-        throw pageError;
-      }
+    if ((pageRows?.length ?? 0) > 0) {
       const rankedNames = (pageRows ?? []).map((row) => row.queue_name);
       rankedPageQueues = await this.findQueuesByNames(where, rankedNames);
     }
@@ -263,11 +272,9 @@ export class QueueListPresenter extends BasePresenter {
     if (tailNeeded > 0) {
       let excludedNames: string[] = [];
       if (ranked > 0) {
-        const [allError, allRows] = await clickhouse.queueMetrics.rankingPage({
+        const [allError, allRows] = await clickhouse.queueMetrics.rankingNames({
           ...rankingArgs,
-          byQueuedOnly: 0,
           limit: MAX_RANKED_QUEUES,
-          offset: 0,
         });
         if (allError) {
           throw allError;

@@ -67,13 +67,16 @@ export class QueueMetricsPresenter {
         "query"
       );
 
+      // End bound snaps up to the bucket grid so repeated loads within a bucket produce
+      // identical params and share ClickHouse query-cache entries.
+      const endMs = Math.ceil(to.getTime() / bucketIntervalMs) * bucketIntervalMs;
       const ids = {
         organizationId: environment.organizationId,
         projectId: environment.projectId,
         environmentId: environment.id,
         queueNames,
         startTime: formatClickhouseDateTime(new Date(bucketStartMs)),
-        endTime: formatClickhouseDateTime(to),
+        endTime: formatClickhouseDateTime(new Date(endMs)),
       };
 
       const [summaryResult, sparklineResult] = await Promise.all([

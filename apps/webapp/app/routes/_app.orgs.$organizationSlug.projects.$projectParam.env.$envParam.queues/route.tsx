@@ -1327,7 +1327,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     id: "saturation",
     label: "Env saturation",
     color: "#6366F1",
-    query: `SELECT timeBucket() AS t,\n  max(max_env_running) AS used,\n  max(max_env_limit) AS env_limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    query: `SELECT timeBucket() AS t,\n  max(max_env_running) AS used,\n  max(max_env_limit) AS env_limit\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
     formatValue: (v) => `${v}%`,
     derive: (rows) => {
       const sparkline = rows.map((r) => {
@@ -1342,7 +1342,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     id: "backlog",
     label: "Backlog",
     color: "#A78BFA",
-    query: `SELECT timeBucket() AS t,\n  max(max_env_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    query: `SELECT timeBucket() AS t,\n  max(max_env_queued) AS queued\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
     derive: (rows) => {
       const sparkline = rows.map((r) => tileNumber(r.queued));
       const peak = sparkline.reduce((max, v) => Math.max(max, v), 0);
@@ -1353,7 +1353,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     id: "p95",
     label: "Scheduling delay p95",
     color: "#F59E0B",
-    query: `SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.95, 0.99)(wait_quantiles)[2]) AS p95\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    query: `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.95, 0.99)(wait_quantiles)[2]) AS p95\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
     formatValue: formatWaitMs,
     derive: (rows) => {
       const sparkline = rows.map((r) => tileNumber(r.p95));
@@ -1370,7 +1370,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     id: "throttled",
     label: "Throttled",
     color: "#F59E0B",
-    query: `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    query: `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
     derive: (rows) => {
       const sparkline = rows.map((r) => tileNumber(r.throttled));
       const total = sparkline.reduce((sum, v) => sum + v, 0);

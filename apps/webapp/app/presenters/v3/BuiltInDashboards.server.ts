@@ -575,22 +575,22 @@ const queuesDashboard: BuiltInDashboard = {
     widgets: {
       "env-used": {
         title: "Concurrency in use",
-        query: `SELECT argMax(max_env_running, bucket_start) AS in_use\nFROM queue_metrics`,
+        query: `SELECT argMax(max_env_running, bucket_start) AS in_use\nFROM env_metrics`,
         display: { type: "bignumber", column: "in_use", aggregation: "max", abbreviate: false },
       },
       "env-limit": {
         title: "Environment limit",
-        query: `SELECT argMax(max_env_limit, bucket_start) AS env_limit\nFROM queue_metrics`,
+        query: `SELECT argMax(max_env_limit, bucket_start) AS env_limit\nFROM env_metrics`,
         display: { type: "bignumber", column: "env_limit", aggregation: "max", abbreviate: false },
       },
       "env-avail": {
         title: "Available slots",
-        query: `SELECT argMax(max_env_limit, bucket_start) - argMax(max_env_running, bucket_start) AS available\nFROM queue_metrics`,
+        query: `SELECT argMax(max_env_limit, bucket_start) - argMax(max_env_running, bucket_start) AS available\nFROM env_metrics`,
         display: { type: "bignumber", column: "available", aggregation: "max", abbreviate: false },
       },
       "env-sat": {
         title: "Env saturation",
-        query: `SELECT round(argMax(max_env_running, bucket_start) * 100.0 / nullIf(argMax(max_env_limit, bucket_start), 0), 1) AS saturation\nFROM queue_metrics`,
+        query: `SELECT round(argMax(max_env_running, bucket_start) * 100.0 / nullIf(argMax(max_env_limit, bucket_start), 0), 1) AS saturation\nFROM env_metrics`,
         display: {
           type: "bignumber",
           column: "saturation",
@@ -601,7 +601,7 @@ const queuesDashboard: BuiltInDashboard = {
       },
       "sat-time": {
         title: "Environment saturation over time",
-        query: `SELECT timeBucket() AS t,\n  round(max(max_env_running) * 100.0 / nullIf(max(max_env_limit), 0), 1) AS saturation\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+        query: `SELECT timeBucket() AS t,\n  round(max(max_env_running) * 100.0 / nullIf(max(max_env_limit), 0), 1) AS saturation\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
         display: {
           type: "chart",
           chartType: "line",
@@ -616,7 +616,7 @@ const queuesDashboard: BuiltInDashboard = {
       },
       "used-limit": {
         title: "Concurrency used vs limit",
-        query: `SELECT timeBucket() AS t,\n  max(max_env_running) AS used,\n  max(max_env_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+        query: `SELECT timeBucket() AS t,\n  max(max_env_running) AS used,\n  max(max_env_limit) AS limit\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
         // Single-series gauge: carry the last known used/limit across idle buckets instead of dropping to 0.
         fillGaps: true,
         display: {
@@ -695,9 +695,9 @@ const queuesDashboard: BuiltInDashboard = {
       },
       throughput: {
         title: "Enqueued vs started",
-        query: `SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
-        // Single-series counters: zero-fill idle buckets so the line returns to 0 rather than interpolating across gaps.
-        fillGaps: true,
+        // Counter states merge per queue, then sum outside: a single merge across queues
+        // mixes unrelated odometers and returns wrong totals.
+        query: `SELECT t, sum(enq) AS enqueued, sum(st) AS started\nFROM (\n  SELECT timeBucket() AS t, queue,\n    deltaSumTimestampMerge(enqueue_delta) AS enq,\n    deltaSumTimestampMerge(started_delta) AS st\n  FROM queue_metrics\n  GROUP BY t, queue\n)\nGROUP BY t\nORDER BY t`,
         display: {
           type: "chart",
           chartType: "line",
@@ -712,7 +712,7 @@ const queuesDashboard: BuiltInDashboard = {
       },
       "wait-pct": {
         title: "Scheduling delay p50/p95/p99 (ms)",
-        query: `SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.95, 0.99)(wait_quantiles)[2]) AS p95,\n  round(quantilesMerge(0.5, 0.95, 0.99)(wait_quantiles)[3]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+        query: `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesTDigestMerge(0.5, 0.95, 0.99)(wait_quantiles)[2]) AS p95,\n  round(quantilesTDigestMerge(0.5, 0.95, 0.99)(wait_quantiles)[3]) AS p99\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
         display: {
           type: "chart",
           chartType: "line",
