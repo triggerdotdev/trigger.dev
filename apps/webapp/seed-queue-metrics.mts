@@ -346,7 +346,12 @@ async function resetEnv(ch: ClickHouse, environmentId: string) {
   const raw = (
     ch.writer as unknown as { client: { command: (a: { query: string }) => Promise<unknown> } }
   ).client;
-  for (const table of ["queue_metrics_raw_v1", "queue_metrics_v1"]) {
+  for (const table of [
+    "queue_metrics_raw_v1",
+    "queue_metrics_v1",
+    "queue_metrics_5m_v1",
+    "env_metrics_v1",
+  ]) {
     await raw.command({
       query: `DELETE FROM trigger_dev.${table} WHERE environment_id = '${environmentId}'`,
     });
@@ -511,6 +516,8 @@ async function main() {
     ch.writer as unknown as { client: { command: (a: { query: string }) => Promise<unknown> } }
   ).client;
   await raw.command({ query: `OPTIMIZE TABLE trigger_dev.queue_metrics_v1 FINAL` });
+  await raw.command({ query: `OPTIMIZE TABLE trigger_dev.queue_metrics_5m_v1 FINAL` });
+  await raw.command({ query: `OPTIMIZE TABLE trigger_dev.env_metrics_v1 FINAL` });
 
   const origin = process.env.APP_ORIGIN ?? "http://localhost:3030";
   console.log(
