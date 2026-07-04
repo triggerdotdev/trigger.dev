@@ -28,7 +28,7 @@ type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by internal-id LENGTH: 25 chars → cuid → LEGACY, 27 → ksuid → NEW.
 const CUID_25 = "c".repeat(25); // → LEGACY (#legacy / prisma14, full schema)
-const KSUID_27 = "k".repeat(27); // → NEW (#new / prisma17, dedicated subset schema)
+const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW (#new / prisma17, dedicated subset schema)
 
 // A recording "replica" that has NOT yet caught up: its taskRun reads always come back empty and
 // record that they ran, so a replica-routed read misses the just-written row. Everything else
@@ -224,7 +224,7 @@ describe("run-ops split — read-after-write reads the OWNING store's WRITER, no
       const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
 
       const seed = seedEnvironmentDedicated("raw_new");
-      const runId = `run_${KSUID_27}`; // ksuid → NEW
+      const runId = `run_${NEW_ID_26}`; // ksuid → NEW
       await prisma17.taskRun.create({
         data: taskRunData({
           id: runId,

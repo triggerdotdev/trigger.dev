@@ -3,12 +3,10 @@ import {
   computeStoreForCompletion,
   selectStoreForWaitpoint,
 } from "~/v3/runOpsMigration/crossSeamGuard.server";
-import { UnclassifiableRunId } from "@trigger.dev/core/v3/isomorphic";
-
 // Real sample ids exercising the genuine run-id residency classifier (no stub).
-const NEW = "waitpoint_" + "a".repeat(27); // 27-char ksuid body -> NEW
+const NEW = "waitpoint_" + "a".repeat(24) + "01"; // v1 body (version "1" at index 25) -> NEW
 const LEGACY = "waitpoint_" + "a".repeat(25); // 25-char cuid body -> LEGACY
-const AMBIGUOUS = "waitpoint_" + "a".repeat(10); // neither length -> throws
+const UNRECOGNIZED = "waitpoint_" + "a".repeat(10); // no version marker -> LEGACY
 
 describe("selectStoreForWaitpoint — happy-path residency routing", () => {
   it("MANUAL completion of a NEW waitpoint selects the new store", () => {
@@ -92,11 +90,11 @@ describe("selectStoreForWaitpoint — legacy pins", () => {
   });
 });
 
-describe("selectStoreForWaitpoint — ambiguity and unknown routes are loud", () => {
-  it("rethrows UnclassifiableRunId for an ambiguous-length id (never silently routes)", () => {
-    expect(() => selectStoreForWaitpoint({ waitpointId: AMBIGUOUS, routeKind: "MANUAL" })).toThrow(
-      UnclassifiableRunId
-    );
+describe("selectStoreForWaitpoint — unrecognized shapes and unknown routes", () => {
+  it("routes an id without the v1 version marker to legacy (classification is total)", () => {
+    const d = selectStoreForWaitpoint({ waitpointId: UNRECOGNIZED, routeKind: "MANUAL" });
+    expect(d.store).toBe("legacy");
+    expect(d.residency).toBe("LEGACY");
   });
 
   it("throws when an unknown routeKind is supplied", () => {
@@ -111,7 +109,7 @@ describe("computeStoreForCompletion — single-DB no-op + flag wrapper", () => {
   it("returns the single store without classifying when split is OFF", () => {
     const calls: string[] = [];
     const d = computeStoreForCompletion(
-      { waitpointId: AMBIGUOUS, routeKind: "MANUAL" },
+      { waitpointId: UNRECOGNIZED, routeKind: "MANUAL" },
       {
         splitEnabled: false,
         classify: (id) => {

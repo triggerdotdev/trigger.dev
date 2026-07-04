@@ -367,11 +367,11 @@ describe("RunsRepository read-through id-set hydrate (PG14 legacy + PG17 new)", 
 
       const ctx = await seedParents(prisma, "keysetwalk");
 
-      // cuid-shaped ids (25 chars, "c" prefix) and ksuid-shaped ids (27 chars, "2" prefix). Lexical
+      // cuid-shaped ids (25 chars, "c" prefix) and v1-shaped ids (26 chars, "2" prefix, version "1"). Lexical
       // `id desc` groups all "c" ids ahead of all "2" ids; the created_at order below interleaves
       // them, so the two orders genuinely differ across the seam.
       const cuid = (n: number) => `c${String(n).padStart(24, "0")}`;
-      const ksuid = (n: number) => `2${String(n).padStart(26, "0")}`;
+      const ksuid = (n: number) => `2${String(n).padStart(23, "0")}01`;
 
       // created_at DESC order (index 0 = most recent) interleaves the id-spaces: ksuid, cuid,
       // ksuid, cuid, ksuid, cuid.

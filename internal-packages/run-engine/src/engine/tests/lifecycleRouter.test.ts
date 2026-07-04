@@ -456,10 +456,14 @@ describe("RunEngine lifecycle read routing (single-DB)", () => {
 // (cuid id, on PG14) reads THROUGH the legacy store's read-only (replica) client.
 // ---------------------------------------------------------------------------
 
-// A cuid-length (25-char) internal id → classifies LEGACY; a ksuid-length (27-char)
+// A cuid-length (25-char) internal id → classifies LEGACY; a v1-shaped (26-char, version "1")
 // internal id → classifies NEW. The `run_` prefix is stripped before classification.
 const legacyRunId = (suffix: string) => `run_${suffix.padEnd(25, "0").slice(0, 25)}`;
-const newRunId = (suffix: string) => `run_${suffix.padEnd(27, "0").slice(0, 27)}`;
+const newRunId = (suffix: string) =>
+  `run_${suffix
+    .replace(/[^0-9a-v]/g, "0")
+    .padEnd(24, "0")
+    .slice(0, 24)}01`;
 
 async function seedRunWithSnapshot(
   prisma: PrismaClient,

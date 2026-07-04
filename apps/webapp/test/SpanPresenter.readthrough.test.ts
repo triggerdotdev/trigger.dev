@@ -32,10 +32,10 @@ import { SpanPresenter } from "~/presenters/v3/SpanPresenter.server";
 
 vi.setConfig({ testTimeout: 90_000 });
 
-// 25-char internal id → cuid → LEGACY; 27-char internal id → ksuid → NEW (the residency
+// 25-char internal id → cuid → LEGACY; v1 internal id (26 chars, version "1" at index 25) → NEW (the residency
 // classifier shared with the RoutingRunStore's default `ownerEngine`).
 const CUID_25 = "c".repeat(25);
-const KSUID_27 = "k".repeat(27);
+const NEW_ID_26 = "k".repeat(24) + "01";
 
 type SeedContext = {
   organizationId: string;
@@ -222,11 +222,12 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
       const ctxNew = await seedParents(prisma17, "partn");
       await mirrorParents(prisma14, ctxNew, "partn"); // legacy run-ops + CP parents share ids
 
-      const runId = `run_${KSUID_27}`; // ksuid → NEW residency
-      const childMigratedId = `run_a${KSUID_27.slice(1)}`; // also NEW
+      const runId = `run_${NEW_ID_26}`; // ksuid → NEW residency
+      const childMigratedId = `run_a${NEW_ID_26.slice(1)}`; // also NEW
+      const parentFriendlyId = `run_p${NEW_ID_26.slice(1)}`; // v1 body → routes NEW by friendlyId
       await createRun(prisma17, ctxNew, {
         id: runId,
-        friendlyId: "run_parent",
+        friendlyId: parentFriendlyId,
         spanId: "span_parent",
         taskIdentifier: "parent-task",
       });
@@ -273,12 +274,12 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
       // (a) run hydrated through the run-ops store (NEW), byte-identical to the source row incl.
       //     the run-ops self-relations.
       const run = await presenter.findRun({
-        originalRunId: "run_parent",
+        originalRunId: parentFriendlyId,
         spanId: "span_parent",
         environmentId: ctxNew.environmentId,
       });
       expect(run?.id).toBe(runId);
-      expect(run?.friendlyId).toBe("run_parent");
+      expect(run?.friendlyId).toBe(parentFriendlyId);
       expect(run?.taskIdentifier).toBe("parent-task");
       expect(run?.runTags).toEqual(["alpha", "beta"]);
       // Nested run-ops self-relation resolved on the same (NEW) store.
@@ -286,7 +287,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
 
       // (b) the run does NOT exist on the CP DB — the run-ops read could only have come from the
       //     run-ops store, never a CP join.
-      expect(await cp.taskRun.findFirst({ where: { friendlyId: "run_parent" } })).toBeNull();
+      expect(await cp.taskRun.findFirst({ where: { friendlyId: parentFriendlyId } })).toBeNull();
 
       // (c) the control-plane standalone reads resolve from the CP client.
       const region = await cp.workerInstanceGroup.findFirst({ where: { masterQueue: "main" } });
@@ -305,18 +306,18 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
       const ctx = await seedParents(prisma17, "kids");
 
       await createRun(prisma17, ctx, {
-        id: `run_${KSUID_27}`,
+        id: `run_${NEW_ID_26}`,
         friendlyId: "run_parent2",
         spanId: "span_p2",
       });
       await createRun(prisma17, ctx, {
-        id: `run_b${KSUID_27.slice(1)}`,
+        id: `run_b${NEW_ID_26.slice(1)}`,
         friendlyId: "run_kid_a",
         spanId: "span_kid_a",
         parentSpanId: "span_p2",
       });
       await createRun(prisma17, ctx, {
-        id: `run_c${KSUID_27.slice(1)}`,
+        id: `run_c${NEW_ID_26.slice(1)}`,
         friendlyId: "run_kid_b",
         spanId: "span_kid_b",
         parentSpanId: "span_p2",
@@ -384,7 +385,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
     async ({ prisma14, prisma17 }) => {
       const ctx = await seedParents(prisma17, "knownmig");
 
-      const newRunId = `run_${KSUID_27}`; // ksuid → NEW residency
+      const newRunId = `run_${NEW_ID_26}`; // ksuid → NEW residency
       await createRun(prisma17, ctx, {
         id: newRunId,
         friendlyId: "run_known_new",
@@ -425,7 +426,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
       const cp = prisma14;
       const ctx = await seedParents(prisma14, "passthru");
 
-      const runId = `run_${KSUID_27}`;
+      const runId = `run_${NEW_ID_26}`;
       await createRun(prisma14, ctx, {
         id: runId,
         friendlyId: "run_solo",
@@ -433,7 +434,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
         taskIdentifier: "solo-task",
       });
       await createRun(prisma14, ctx, {
-        id: `run_d${KSUID_27.slice(1)}`,
+        id: `run_d${NEW_ID_26.slice(1)}`,
         friendlyId: "run_solo_kid",
         spanId: "span_solo_kid",
         parentSpanId: "span_solo",
@@ -493,7 +494,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
       await mirrorParents(prisma17, ctx, "e2e4");
 
       const parentId = `run_${CUID_25}`; // cuid → LEGACY (in-retention)
-      const childId = `run_${KSUID_27}`; // ksuid → NEW (born-new)
+      const childId = `run_${NEW_ID_26}`; // ksuid → NEW (born-new)
 
       await createRun(prisma14, ctx, {
         id: parentId,

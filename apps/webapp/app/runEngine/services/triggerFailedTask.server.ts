@@ -1,6 +1,6 @@
 import type { RunEngine } from "@internal/run-engine";
 import { TaskRunErrorCodes, type TaskRunError } from "@trigger.dev/core/v3";
-import { RunId, generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { RunId, generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
@@ -103,7 +103,7 @@ export class TriggerFailedTaskService {
         });
 
     return mintKind === "ksuid"
-      ? RunId.toFriendlyId(generateKsuidId())
+      ? RunId.toFriendlyId(generateRunOpsId())
       : RunId.generate().friendlyId;
   }
 

@@ -18,7 +18,7 @@ function makeDeps(over: Partial<ResolveIdempotencyClientDeps>): ResolveIdempoten
     legacyClient: LEGACY_CLIENT,
     resolveMintKind: async () => "ksuid",
     classify: (id) => {
-      if (id.length === 27) return "NEW";
+      if (id.length === 26 && id[25] === "1") return "NEW";
       if (id.length === 25) return "LEGACY";
       throw new Error(`unclassifiable: ${id.length}`);
     },
@@ -55,7 +55,7 @@ describe("resolveIdempotencyDedupClient", () => {
   });
 
   it("routes a child to the NEW client when the ksuid parent is NEW-resident", async () => {
-    const ksuidParent = RunId.toFriendlyId("a".repeat(27));
+    const ksuidParent = RunId.toFriendlyId("a".repeat(24) + "01");
     const client = await resolveIdempotencyDedupClient(
       { environmentForMint: env, parentRunFriendlyId: ksuidParent },
       makeDeps({ resolveMintKind: async () => "cuid" }) // mint flag must NOT win for a child

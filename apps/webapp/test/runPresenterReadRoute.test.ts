@@ -6,7 +6,7 @@
 // `user.findFirst` admin read — keeping the test off ClickHouse.
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -172,7 +172,7 @@ describe("RunPresenter run read seam (single-DB, real PG)", () => {
         suffix
       );
 
-      const id = generateKsuidId();
+      const id = generateRunOpsId();
       const friendlyId = `run_${id}`;
       const run = await seedRun(
         prisma,
@@ -216,7 +216,7 @@ describe("RunPresenter run read seam (single-DB, real PG)", () => {
         suffix
       );
 
-      const id = generateKsuidId();
+      const id = generateRunOpsId();
       const friendlyId = `run_${id}`;
       await seedRun(
         prisma,
@@ -270,7 +270,7 @@ describe("RunPresenter run read seam (single-DB, real PG)", () => {
     const suffix = uniqueSuffix("notfound");
     const { user, project, runtimeEnvironment } = await seedOrgProjectEnvMember(prisma, suffix);
 
-    const missingFriendlyId = `run_${generateKsuidId()}`;
+    const missingFriendlyId = `run_${generateRunOpsId()}`;
 
     const presenter = new RunPresenter(prisma);
     await expect(
@@ -294,7 +294,7 @@ describe("RunPresenter run read seam (single-DB, real PG)", () => {
       suffix
     );
 
-    const id = generateKsuidId();
+    const id = generateRunOpsId();
     const friendlyId = `run_${id}`;
     await seedRun(
       prisma,

@@ -16,9 +16,9 @@ import { hydrateRunsAcrossSeam } from "~/v3/services/bulk/BulkActionV2.batchRead
 
 vi.setConfig({ testTimeout: 60_000 });
 
-// 27-char body → NEW residency (ksuid analog). 25-char body → LEGACY residency (cuid analog).
+// 26-char v1 body (version "1" at index 25) → NEW residency. 25-char body → LEGACY residency (cuid analog).
 function newId(c: string) {
-  return "run_" + c.repeat(27);
+  return "run_" + c.repeat(24) + "01";
 }
 function legacyId(c: string) {
   return "run_" + c.repeat(25);

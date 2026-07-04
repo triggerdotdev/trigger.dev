@@ -18,7 +18,7 @@ import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
   WaitpointId,
   RunId,
-  generateKsuidId,
+  generateRunOpsId,
   ownerEngine,
   CUID_LENGTH,
 } from "@trigger.dev/core/v3/isomorphic";
@@ -341,7 +341,7 @@ describe("waitpoint-token create engine seam — NEW residency via a ksuid run a
 
       try {
         // A NEW-classified run id (explicit ksuid), mirroring the trigger-routing helper.
-        const runId = RunId.toFriendlyId(generateKsuidId());
+        const runId = RunId.toFriendlyId(generateRunOpsId());
         expect(ownerEngine(runId)).toBe("NEW");
         const env = await seedExecutingKsuidRun(p14, router, runId, "wpnew");
 

@@ -22,9 +22,9 @@ import type { CreateRunInput, RunStoreSchemaVariant } from "./types.js";
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by internal-id LENGTH (runOpsResidency.ts): 25 chars → cuid → LEGACY,
-// 27 chars → ksuid → NEW. A `run_`-prefixed friendly id strips the first underscore before length.
+// a v1 body (version "1" at index 25) → ksuid → NEW. A `run_`-prefixed friendly id strips the first underscore first.
 const CUID_25 = "c".repeat(25); // → LEGACY (#legacy / control-plane DB, full schema)
-const KSUID_27 = "k".repeat(27); // → NEW (#new / dedicated run-ops DB, subset schema)
+const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW (#new / dedicated run-ops DB, subset schema)
 
 // On the dedicated subset there are no Organization/Project/RuntimeEnvironment models (the run-ops
 // rows carry FK-free scalar ids), so we mint synthetic owning ids. On legacy we seed the real rows
@@ -158,7 +158,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const store = makeDedicatedStore(prisma17);
 
       const rows = await store.findManyTaskRunWaitpoints({
-        where: { taskRunId: `run_${KSUID_27}` },
+        where: { taskRunId: `run_${NEW_ID_26}` },
         select: {
           id: true,
           batchId: true,
@@ -179,8 +179,8 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     async ({ prisma17 }) => {
       const store = makeDedicatedStore(prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "gap4hyd_new");
-      const runId = `run_${KSUID_27}`;
-      const waitpointId = `waitpoint_${KSUID_27}`;
+      const runId = `run_${NEW_ID_26}`;
+      const waitpointId = `waitpoint_${NEW_ID_26}`;
       await prisma17.waitpoint.create({
         data: {
           id: waitpointId,
@@ -217,7 +217,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const store = makeLegacyStore(prisma14);
 
       const rows = await store.findManyTaskRunWaitpoints({
-        where: { taskRunId: `run_${KSUID_27}` },
+        where: { taskRunId: `run_${NEW_ID_26}` },
         select: {
           id: true,
           waitpoint: { select: { id: true, status: true } },
@@ -236,7 +236,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router } = makeSplitRouter(prisma14, prisma17);
 
       const rows = await router.findManyTaskRunWaitpoints({
-        where: { taskRunId: `run_${KSUID_27}` },
+        where: { taskRunId: `run_${NEW_ID_26}` },
         select: {
           id: true,
           waitpoint: { select: { id: true, status: true, type: true, completedAfter: true } },
@@ -261,8 +261,8 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "cores_new");
-      const runId = `run_${KSUID_27}`;
-      const waitpointId = `waitpoint_${KSUID_27}`;
+      const runId = `run_${NEW_ID_26}`;
+      const waitpointId = `waitpoint_${NEW_ID_26}`;
       await prisma17.waitpoint.create({
         data: {
           id: waitpointId,
@@ -306,7 +306,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router, newStore } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "xdb_new");
       const legEnv = await seedEnvironment(prisma14, "legacy", "xdb_leg");
-      const runId = `run_${KSUID_27}`;
+      const runId = `run_${NEW_ID_26}`;
       const waitpointId = `waitpoint_${CUID_25}`; // cuid → lives on #legacy
 
       // The completing token lives on #legacy (cuid MANUAL token blocking a ksuid run).
@@ -361,8 +361,8 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "phantom_new");
-      const runId = `run_${KSUID_27}`;
-      const waitpointId = `waitpoint_${"p".repeat(27)}`; // ksuid-shaped, but never created anywhere
+      const runId = `run_${NEW_ID_26}`;
+      const waitpointId = `waitpoint_${"p".repeat(24) + "01"}`; // ksuid-shaped, but never created anywhere
 
       await prisma17.taskRunWaitpoint.create({
         data: { taskRunId: runId, waitpointId, projectId: newEnv.project.id },
@@ -477,7 +477,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "gap2k_new");
-      const runId = `run_${KSUID_27}`;
+      const runId = `run_${NEW_ID_26}`;
       await router.createRun(
         buildCreateRunInput({
           runId,
@@ -491,7 +491,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const checkpoint = await router.createTaskRunCheckpoint(
         {
           data: {
-            friendlyId: `checkpoint_${KSUID_27}`,
+            friendlyId: `checkpoint_${NEW_ID_26}`,
             type: "DOCKER",
             location: "s3://bucket/ksuid-run-checkpoint",
             projectId: env.project.id,
@@ -645,7 +645,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router } = makeSplitRouter(prisma14, prisma17);
 
       const env = await seedEnvironment(prisma17, "dedicated", "gap5c_new");
-      const runId = `run_${KSUID_27}`;
+      const runId = `run_${NEW_ID_26}`;
       await router.createRun(
         buildCreateRunInput({
           runId,
@@ -698,8 +698,8 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     async ({ prisma14, prisma17 }) => {
       // A ksuid parent run + its associated waitpoint live on #new (prisma17 / dedicated).
       const newEnv = await seedEnvironment(prisma17, "dedicated", "gap3_new");
-      const parentRunId = `run_${KSUID_27}`;
-      const waitpointId = `waitpoint_${KSUID_27}`;
+      const parentRunId = `run_${NEW_ID_26}`;
+      const waitpointId = `waitpoint_${NEW_ID_26}`;
       await prisma17.taskRun.create({
         data: {
           id: parentRunId,
@@ -839,7 +839,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "gap6_new");
-      const runId = `run_${KSUID_27}`; // ksuid run → #new
+      const runId = `run_${NEW_ID_26}`; // ksuid run → #new
       const waitpointId = `waitpoint_${CUID_25}`; // cuid waitpoint id → would route to #legacy by id-shape
 
       await router.createRun(
@@ -887,7 +887,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma14, "legacy", "gap6c_leg");
       const runId = `run_${CUID_25}`; // cuid run → #legacy
-      const waitpointId = `waitpoint_${KSUID_27}`; // ksuid waitpoint id → would route to #new by id-shape
+      const waitpointId = `waitpoint_${NEW_ID_26}`; // ksuid waitpoint id → would route to #new by id-shape
 
       await router.createRun(
         buildCreateRunInput({
@@ -936,7 +936,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router, newStore } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "cg1_new");
       const legEnv = await seedEnvironment(prisma14, "legacy", "cg1_leg");
-      const runId = `run_${KSUID_27}`; // ksuid run → #new
+      const runId = `run_${NEW_ID_26}`; // ksuid run → #new
       const waitpointId = `waitpoint_${CUID_25}`; // cuid token → completed on #legacy
 
       await router.createRun(
@@ -1013,7 +1013,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router, newStore } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "gap3b_new");
       const legEnv = await seedEnvironment(prisma14, "legacy", "gap3b_leg");
-      const runId = `run_${KSUID_27}`; // ksuid run → #new
+      const runId = `run_${NEW_ID_26}`; // ksuid run → #new
       const waitpointId = `waitpoint_${CUID_25}`; // cuid standalone token → resides on #legacy
 
       // The ksuid run lives on #new.
@@ -1084,7 +1084,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
 
       // Single-store cross-check: the #new store ALSO writes the edge directly (proving the fix is in
       // the store writer, not only the router routing).
-      const runId2 = `run_${"m".repeat(27)}`; // a second ksuid run on #new
+      const runId2 = `run_${"m".repeat(24) + "01"}`; // a second ksuid run on #new
       await prisma17.taskRun.create({
         data: {
           id: runId2,
@@ -1124,8 +1124,8 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "gap3bco_new");
-      const runId = `run_${KSUID_27}`;
-      const waitpointId = `waitpoint_${KSUID_27}`; // ksuid token → co-resident on #new
+      const runId = `run_${NEW_ID_26}`;
+      const waitpointId = `waitpoint_${NEW_ID_26}`; // ksuid token → co-resident on #new
 
       await prisma17.taskRun.create({
         data: {
@@ -1185,7 +1185,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "gap3bidem_new");
       const legEnv = await seedEnvironment(prisma14, "legacy", "gap3bidem_leg");
-      const runId = `run_${KSUID_27}`;
+      const runId = `run_${NEW_ID_26}`;
       const waitpointId = `waitpoint_${CUID_25}`; // cuid token → #legacy
 
       await prisma17.taskRun.create({
@@ -1251,8 +1251,8 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "cg1c_new");
-      const runId = `run_${KSUID_27}`;
-      const waitpointId = `waitpoint_${KSUID_27}`; // co-resident on #new
+      const runId = `run_${NEW_ID_26}`;
+      const waitpointId = `waitpoint_${NEW_ID_26}`; // co-resident on #new
 
       await router.createRun(
         buildCreateRunInput({
@@ -1317,7 +1317,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router, legacyStore } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "gap13bt_new");
       const legEnv = await seedEnvironment(prisma14, "legacy", "gap13bt_leg");
-      const runId = `run_${KSUID_27}`; // ksuid run → #new
+      const runId = `run_${NEW_ID_26}`; // ksuid run → #new
       const waitpointId = `waitpoint_${CUID_25}`; // cuid token → #legacy
 
       await router.createRun(
@@ -1387,7 +1387,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router, legacyStore } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "gap13cr_new");
       const legEnv = await seedEnvironment(prisma14, "legacy", "gap13cr_leg");
-      const runId = `run_${KSUID_27}`;
+      const runId = `run_${NEW_ID_26}`;
       const waitpointId = `waitpoint_${CUID_25}`;
 
       await router.createRun(
@@ -1446,7 +1446,7 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
       const { router, legacyStore } = makeSplitRouter(prisma14, prisma17);
       const newEnv = await seedEnvironment(prisma17, "dedicated", "gap13cs_new");
       const legEnv = await seedEnvironment(prisma14, "legacy", "gap13cs_leg");
-      const runId = `run_${KSUID_27}`;
+      const runId = `run_${NEW_ID_26}`;
       const waitpointId = `waitpoint_${CUID_25}`;
 
       await router.createRun(
@@ -1510,8 +1510,8 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "gap13ctl_new");
-      const runId = `run_${KSUID_27}`;
-      const waitpointId = `waitpoint_${KSUID_27}`; // co-resident on #new
+      const runId = `run_${NEW_ID_26}`;
+      const waitpointId = `waitpoint_${NEW_ID_26}`; // co-resident on #new
 
       await router.createRun(
         buildCreateRunInput({

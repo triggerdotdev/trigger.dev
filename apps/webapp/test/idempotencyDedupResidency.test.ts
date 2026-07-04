@@ -1,6 +1,6 @@
 import { heteroPostgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, vi } from "vitest";
 
 // Stub so the runStore singleton doesn't eagerly connect at import.
@@ -79,7 +79,7 @@ async function seedRun(
     status?: "PENDING" | "EXECUTING" | "COMPLETED_SUCCESSFULLY" | "COMPLETED_WITH_ERRORS";
   }
 ) {
-  const runId = generateKsuidId();
+  const runId = generateRunOpsId();
   return prisma.taskRun.create({
     data: {
       id: runId,

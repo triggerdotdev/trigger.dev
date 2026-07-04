@@ -35,10 +35,10 @@ const twoDbEngineTest = heteroRunOpsPostgresTest.extend<{
   redisOptions,
 });
 
-// ksuid (27-char internal id) → classified NEW → routed to the run-ops (#new) store.
-const KSUID_A = "n".repeat(27);
+// ksuid (v1 internal id, version "1" at index 25) → classified NEW → routed to the run-ops (#new) store.
+const KSUID_A = "n".repeat(24) + "01";
 // A second ksuid run for the cross-DB (NEW-run → LEGACY-token) case.
-const KSUID_X = "x".repeat(27);
+const KSUID_X = "k".repeat(24) + "01";
 // cuid (25-char) → classified LEGACY → a standalone token resident on #legacy (prisma14).
 const CUID_25 = "c".repeat(25);
 

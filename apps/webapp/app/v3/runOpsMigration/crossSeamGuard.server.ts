@@ -56,7 +56,6 @@ export function selectStoreForWaitpoint(
 
   const classify = deps?.classify ?? ownerEngine;
 
-  // Loud on ambiguity: classify throws UnclassifiableRunId with the real id; never catch-and-default.
   const residency: RunOpsResidency = classify(input.waitpointId);
 
   const pinnedReason = applyPinningRules(input);

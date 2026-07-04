@@ -3,10 +3,10 @@ import { batchIdForMintKind, resolveBatchMintKind } from "./mintBatchFriendlyId.
 import { classifyKind } from "@trigger.dev/core/v3/isomorphic";
 
 describe("batchIdForMintKind (pure)", () => {
-  it("ksuid -> 27-char classifiable NEW batch id (no 21-char ids)", () => {
+  it("ksuid -> 26-char classifiable NEW batch id (no 21-char ids)", () => {
     const r = batchIdForMintKind("ksuid");
     expect(r.friendlyId.startsWith("batch_")).toBe(true);
-    expect(r.id.length).toBe(27);
+    expect(r.id.length).toBe(26);
     expect(classifyKind(r.id)).toBe("ksuid");
     expect(classifyKind(r.friendlyId)).toBe("ksuid");
   });
@@ -20,7 +20,7 @@ describe("batchIdForMintKind (pure)", () => {
 
   it("never mints a 21-char id", () => {
     for (const kind of ["cuid", "ksuid"] as const) {
-      expect([25, 27]).toContain(batchIdForMintKind(kind).id.length);
+      expect([25, 26]).toContain(batchIdForMintKind(kind).id.length);
     }
   });
 });
@@ -52,7 +52,7 @@ describe("resolveBatchMintKind", () => {
   });
 
   it("CHILD batch inherits a ksuid (NEW) parent by id-shape", async () => {
-    const parentRunFriendlyId = `run_${"a".repeat(27)}`;
+    const parentRunFriendlyId = `run_${"a".repeat(24) + "01"}`;
     const resolveRunIdMintKind = vi.fn();
 
     const kind = await resolveBatchMintKind({
@@ -94,7 +94,7 @@ describe("resolveBatchMintKind", () => {
   });
 
   it("FLIP ksuid->cuid: a ksuid (NEW) parent still mints a ksuid child though the flag now says cuid", async () => {
-    const parentRunFriendlyId = `run_${"a".repeat(27)}`;
+    const parentRunFriendlyId = `run_${"a".repeat(24) + "01"}`;
     const resolveRunIdMintKind = vi.fn().mockResolvedValue("cuid"); // flag flipped back to cuid
     const kind = await resolveBatchMintKind({
       environment,

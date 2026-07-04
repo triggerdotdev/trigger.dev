@@ -19,9 +19,9 @@ import { ApiBatchResultsPresenter } from "~/presenters/v3/ApiBatchResultsPresent
 
 vi.setConfig({ testTimeout: 60_000 });
 
-// 27-char body → NEW residency (ksuid analog). 25-char body → LEGACY residency (cuid analog).
+// 26-char v1 body (version "1" at index 25) → NEW residency. 25-char body → LEGACY residency (cuid analog).
 function newRunId(c: string) {
-  return c.repeat(27);
+  return c.repeat(24) + "01";
 }
 function legacyRunId(c: string) {
   return c.repeat(25);

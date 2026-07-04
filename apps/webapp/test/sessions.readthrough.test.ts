@@ -11,7 +11,7 @@ vi.mock("~/db.server", () => ({
 
 import { heteroRunOpsPostgresTest, postgresTest } from "@internal/testcontainers";
 import { buildRunStore } from "~/v3/runStore.server";
-import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { PrismaClient } from "@trigger.dev/database";
 import {
@@ -259,7 +259,7 @@ describe("sessions serializer currentRunId resolution", () => {
 
       const newRun = await createNewRun(prisma17, ctx, {
         friendlyId: "run_new",
-        id: generateKsuidId(),
+        id: generateRunOpsId(),
       });
       const legacyRun = await createLegacyRun(prisma14, ctx, { friendlyId: "run_legacy" });
 
@@ -299,7 +299,7 @@ describe("sessions serializer currentRunId resolution", () => {
 
       const newRun = await createNewRun(prisma17, ctx, {
         friendlyId: "run_bnew",
-        id: generateKsuidId(),
+        id: generateRunOpsId(),
       });
       const legacyRun = await createLegacyRun(prisma14, ctx, { friendlyId: "run_blegacy" });
       const crossEnvRun = await createLegacyRun(prisma14, otherCtx, { friendlyId: "run_bcross" });

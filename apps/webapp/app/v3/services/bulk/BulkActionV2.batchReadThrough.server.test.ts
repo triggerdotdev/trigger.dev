@@ -10,9 +10,9 @@ import { hydrateRunsAcrossSeam } from "./BulkActionV2.batchReadThrough.server";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-// 25-char cuid body → LEGACY residency. 27-char body → NEW residency.
+// 25-char cuid body → LEGACY residency. 26-char v1 body (version "1" at index 25) → NEW residency.
 const LEGACY_RUN_ID = "run_" + "a".repeat(25);
-const NEW_RUN_ID = "run_" + "b".repeat(27);
+const NEW_RUN_ID = "run_" + "b".repeat(24) + "01";
 
 type Row = { id: string };
 

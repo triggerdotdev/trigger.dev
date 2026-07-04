@@ -12,7 +12,7 @@ import {
   Prisma,
 } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
-import { generateKsuidId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -350,7 +350,8 @@ export class BatchTriggerV3Service extends BaseService {
   // Mirrors RunEngineTriggerTaskService.mintRunFriendlyId.
   private async mintChildFriendlyId(
     environment: AuthenticatedEnvironment,
-    anchorFriendlyId?: string
+    anchorFriendlyId?: string,
+    region?: string
   ): Promise<string> {
     const mintKind = anchorFriendlyId
       ? resolveInheritedMintKind(anchorFriendlyId)
@@ -361,7 +362,7 @@ export class BatchTriggerV3Service extends BaseService {
         });
 
     return mintKind === "ksuid"
-      ? RunId.toFriendlyId(generateKsuidId())
+      ? RunId.toFriendlyId(generateRunOpsId(region))
       : RunId.generate().friendlyId;
   }
 
@@ -379,7 +380,7 @@ export class BatchTriggerV3Service extends BaseService {
     if (body?.dependentAttempt) {
       return Promise.all(
         body.items.map(async (item) => ({
-          id: await this.mintChildFriendlyId(environment, childAnchor),
+          id: await this.mintChildFriendlyId(environment, childAnchor, item.options?.region),
           isCached: false,
           idempotencyKey: undefined,
           taskIdentifier: item.task,
@@ -441,7 +442,7 @@ export class BatchTriggerV3Service extends BaseService {
             expiredRunIds.add(cachedRun.friendlyId);
 
             return {
-              id: await this.mintChildFriendlyId(environment, childAnchor),
+              id: await this.mintChildFriendlyId(environment, childAnchor, item.options?.region),
               isCached: false,
               idempotencyKey: item.options?.idempotencyKey ?? undefined,
               taskIdentifier: item.task,
@@ -457,7 +458,7 @@ export class BatchTriggerV3Service extends BaseService {
         }
 
         return {
-          id: await this.mintChildFriendlyId(environment, childAnchor),
+          id: await this.mintChildFriendlyId(environment, childAnchor, item.options?.region),
           isCached: false,
           idempotencyKey: item.options?.idempotencyKey ?? undefined,
           taskIdentifier: item.task,

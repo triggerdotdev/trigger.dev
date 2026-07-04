@@ -20,13 +20,13 @@ import type { CreateRunInput, RunStoreSchemaVariant } from "./types.js";
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by internal-id LENGTH after stripping a leading `<prefix>_`
-// (runOpsResidency.ts): 25 chars (no internal underscore) → cuid → LEGACY, 27 chars → ksuid → NEW.
+// (runOpsResidency.ts): 25 chars (no internal underscore) → cuid → LEGACY, a v1 body (version "1" at index 25) → ksuid → NEW.
 // These mint a distinct classifiable id of the right length from a short seed.
 function cuidLegacy(seed: string): string {
   return (seed + "c".repeat(25)).slice(0, 25); // 25 chars → LEGACY (#legacy / prisma14)
 }
 function ksuidNew(seed: string): string {
-  return (seed + "k".repeat(27)).slice(0, 27); // 27 chars → NEW (#new / prisma17)
+  return (seed.replace(/[^0-9a-v]/g, "0") + "k".repeat(24)).slice(0, 24) + "01";
 }
 
 // On the dedicated subset there are no Organization/Project/RuntimeEnvironment models (run-ops rows

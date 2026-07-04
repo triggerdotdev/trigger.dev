@@ -5,10 +5,10 @@
 // `FeatureFlag` rows in a testcontainers Postgres. Only the two boundary knobs
 // are injected — `masterEnabled` and the `splitEnabled` boot-boolean — never a
 // mocked DB. The KSUID/cuid format + residency are then proven through the SAME isomorphic
-// helpers the real trigger path uses (`generateKsuidId` / `RunId.toFriendlyId` /
+// helpers the real trigger path uses (`generateRunOpsId` / `RunId.toFriendlyId` /
 // `RunId.fromFriendlyId` / `ownerEngine`).
 import type { PrismaClient } from "@trigger.dev/database";
-import { generateKsuidId, ownerEngine, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId, ownerEngine, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { postgresTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import {
@@ -28,7 +28,7 @@ vi.setConfig({ testTimeout: 60_000 });
 // The real trigger-path mint helper, copied verbatim from triggerTask.server.ts so the
 // test exercises the exact id format a cut-over env produces.
 function mintRunKsuidFriendlyId(): string {
-  return RunId.toFriendlyId(generateKsuidId());
+  return RunId.toFriendlyId(generateRunOpsId());
 }
 
 // Mirrors the real trigger path: resolve the kind, then mint either a KSUID friendlyId or
@@ -102,7 +102,7 @@ describe("per-env KSUID mint cutover", () => {
       const friendlyA = mintRunFriendlyId(kindA);
       const friendlyB = mintRunFriendlyId(kindB);
 
-      expect(RunId.fromFriendlyId(friendlyA).length).toBe(27);
+      expect(RunId.fromFriendlyId(friendlyA).length).toBe(26);
       expect(ownerEngine(RunId.fromFriendlyId(friendlyA))).toBe("NEW");
 
       expect(RunId.fromFriendlyId(friendlyB).length).toBe(25);
@@ -159,7 +159,7 @@ describe("per-env KSUID mint cutover", () => {
       expect(ownerEngine(RunId.fromFriendlyId(nextFriendly))).toBe("LEGACY");
 
       // The already-minted KSUID run is untouched — drain-new-forward never reverts it.
-      expect(RunId.fromFriendlyId(firstFriendly).length).toBe(27);
+      expect(RunId.fromFriendlyId(firstFriendly).length).toBe(26);
       expect(ownerEngine(RunId.fromFriendlyId(firstFriendly))).toBe("NEW");
     }
   );

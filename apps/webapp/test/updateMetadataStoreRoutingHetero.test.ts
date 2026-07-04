@@ -3,7 +3,7 @@ import { PostgresRunStore } from "@internal/run-store";
 import type { ReadClient, RunStore } from "@internal/run-store";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { parsePacket } from "@trigger.dev/core/v3";
-import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId, ownerEngine } from "@trigger.dev/core/v3/isomorphic";
 import { setTimeout } from "timers/promises";
 import { describe, expect } from "vitest";
 import { UpdateMetadataService } from "~/services/metadata/updateMetadata.server";
@@ -22,7 +22,7 @@ vi.setConfig({ testTimeout: 60_000 });
  * store by id length, then calls the inner store WITHOUT forwarding the outer tx
  * (passes undefined), so the inner PostgresRunStore uses its own prisma17/prisma14.
  *
- * Classification contract (length-disjoint): 27-char id => KSUID => NEW store;
+ * Classification contract (version char): a v1 id (26 chars, version "1" at index 25) => NEW store;
  * 25-char cuid => LEGACY store.
  */
 class RoutingRunStore implements RunStore {
@@ -34,13 +34,13 @@ class RoutingRunStore implements RunStore {
     this.#legacyStore = legacyStore;
   }
 
-  // Resolve by run-id length: 27 => NEW (KSUID), otherwise LEGACY (25-char cuid).
+  // Resolve by the version char: a v1 body => NEW, otherwise LEGACY (25-char cuid).
   #resolveById(runId: string): PostgresRunStore {
-    return runId.length === 27 ? this.#newStore : this.#legacyStore;
+    return ownerEngine(runId) === "NEW" ? this.#newStore : this.#legacyStore;
   }
 
   // Extract a classifiable run id from a `where`. Prefers `where.id`; if only a
-  // friendlyId is present we cannot classify by length, so the caller falls back
+  // friendlyId is present the stub does not classify, so the caller falls back
   // to read-through (try NEW, then LEGACY).
   #idFromWhere(where: Prisma.TaskRunWhereInput): string | undefined {
     const id = (where as { id?: unknown }).id;
@@ -56,7 +56,7 @@ class RoutingRunStore implements RunStore {
   ): Promise<unknown> {
     const id = this.#idFromWhere(where);
     if (id !== undefined) {
-      // Classifiable by id length — route to the owning store, dropping the
+      // Classifiable by id shape — route to the owning store, dropping the
       // forwarded client so the inner store uses its OWN prisma.
       return (this.#resolveById(id).findRun as any)(where, argsOrClient);
     }
@@ -222,7 +222,7 @@ function buildRoutingStore(prisma17: PrismaClient, prisma14: PrismaClient) {
   return new RoutingRunStore(newStore, legacyStore);
 }
 
-// 25-char cuid-format id (starts with 'c'), length-disjoint from the 27-char KSUID.
+// 25-char cuid-format id (starts with "c"), no v1 version marker.
 function generateLegacyCuid() {
   const suffix = Array.from(
     { length: 24 },
@@ -261,8 +261,8 @@ describe("UpdateMetadataService store routing (hetero)", () => {
   heteroPostgresTest(
     "routes read+CAS to the owning (NEW/PG17) store for a KSUID run",
     async ({ prisma17, prisma14 }) => {
-      const runId = generateKsuidId();
-      expect(runId.length).toBe(27);
+      const runId = generateRunOpsId();
+      expect(runId.length).toBe(26);
 
       const { project, organization, runtimeEnvironment } = await seedOrgProjectEnv(
         prisma17,
@@ -326,8 +326,8 @@ describe("UpdateMetadataService store routing (hetero)", () => {
   heteroPostgresTest(
     "preserves CAS under concurrent writers on a NEW-DB (PG17) run",
     async ({ prisma17, prisma14 }) => {
-      const runId = generateKsuidId();
-      expect(runId.length).toBe(27);
+      const runId = generateRunOpsId();
+      expect(runId.length).toBe(26);
 
       const { project, organization, runtimeEnvironment } = await seedOrgProjectEnv(
         prisma17,

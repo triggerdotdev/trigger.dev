@@ -30,7 +30,7 @@ import {
   RunId,
   classifyKind,
   generateInternalId,
-  generateKsuidId,
+  generateRunOpsId,
 } from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRun } from "@trigger.dev/database";
 import { Redis } from "ioredis";
@@ -2396,8 +2396,8 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
       // the runFriendlyId option so the row physically exists for the parent
       // lookup the child path performs.
       const parentFriendlyId = RunId.toFriendlyId(
-        // 27-char ksuid → classifies NEW
-        (await import("@trigger.dev/core/v3/isomorphic")).generateKsuidId()
+        // v1 id (version "1" at index 25) → classifies NEW
+        (await import("@trigger.dev/core/v3/isomorphic")).generateRunOpsId()
       );
       expect(classifyKind(parentFriendlyId)).toBe("ksuid");
 
@@ -2429,7 +2429,7 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
 
       // Explicit cuid id for the run, and a ksuid/NEW parent id.
       const explicitFriendlyId = RunId.toFriendlyId(generateInternalId());
-      const parentFriendlyId = RunId.toFriendlyId(generateKsuidId());
+      const parentFriendlyId = RunId.toFriendlyId(generateRunOpsId());
       expect(classifyKind(explicitFriendlyId)).toBe("cuid");
       expect(classifyKind(parentFriendlyId)).toBe("ksuid");
 

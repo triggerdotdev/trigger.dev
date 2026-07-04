@@ -7,13 +7,42 @@ export function generateFriendlyId(prefix: string, size?: number) {
   return `${prefix}_${idGenerator(size)}`;
 }
 
-// KSUID epoch (2014-05-13T16:53:20Z) — seconds offset applied to the unix timestamp.
-const KSUID_EPOCH = 1_400_000_000;
-const KSUID_TIMESTAMP_BYTES = 4;
-export const KSUID_PAYLOAD_BYTES = 16;
-const KSUID_TOTAL_BYTES = KSUID_TIMESTAMP_BYTES + KSUID_PAYLOAD_BYTES;
-export const KSUID_STRING_LENGTH = 27;
-const BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+// Run-ops v1 id: `<24-char base32hex core><region char><version char>` — 26 chars.
+// Core = 6-byte big-endian unix ms timestamp + 9 bytes CSPRNG. Invariants:
+//  - alphabet is lowercase [a-z0-9] (base32hex is [0-9a-v]): DNS-1123 safe for
+//    k8s pod names, and byte order == lexicographic order, so ids sort in mint
+//    order at ms resolution;
+//  - the id NEVER contains "-" — that delimiter belongs to pod-name suffixes
+//    (`runner-<id>-attempt-N`), so the id round-trips through a pod name by
+//    cutting at the first hyphen;
+//  - the `run_` (friendly) and `runner-` (pod) prefixes are part of the spec:
+//    they guarantee the k8s name starts with a letter even though a base32hex
+//    core can start with a digit.
+const RUN_OPS_ID_ALPHABET = "0123456789abcdefghijklmnopqrstuv"; // base32hex, lowercase (RFC 4648 §7)
+export const RUN_OPS_ID_LENGTH = 26;
+export const RUN_OPS_ID_REGION_INDEX = 24;
+export const RUN_OPS_ID_VERSION_INDEX = 25;
+export const RUN_OPS_ID_VERSION = "1";
+const RUN_OPS_ID_CORE_BYTES = 15; // 6 timestamp + 9 random → exactly 24 base32hex chars
+const RUN_OPS_ID_CORE_LENGTH = 24;
+const RUN_OPS_ID_TIMESTAMP_BYTES = 6;
+
+/** Region char stamped when the region is unknown or unmapped at mint. */
+export const DEFAULT_REGION_CHAR = "0";
+// The region char is a raw positional char (readable via charAt before any
+// decoding), NOT part of the base32hex core — so it may use the full DNS-safe
+// lowercase [a-z0-9] range (e.g. "w" for us-west-2, which is outside [0-9a-v]).
+const REGION_CHAR_PATTERN = /^[a-z0-9]$/;
+/** One lowercase [a-z0-9] char per supported region, at RUN_OPS_ID_REGION_INDEX. */
+export const REGION_CODES: Readonly<Record<string, string>> = {
+  "us-east-1": "e",
+  "us-west-2": "w",
+  "eu-central-1": "c",
+};
+
+export function regionCharForRegion(region: string | undefined): string {
+  return (region && REGION_CODES[region]) || DEFAULT_REGION_CHAR;
+}
 
 // globalThis.crypto is absent on Node 18.20 (a supported engine) without a flag, so fall back to
 // node:crypto's webcrypto, loaded only when the global is missing to stay isomorphic.
@@ -40,116 +69,111 @@ function loadNodeWebCrypto(): Crypto | undefined {
 }
 
 // Resolve the crypto source lazily on first use (memoized), so merely importing this
-// widely-used module never throws when crypto is unavailable — only minting a KSUID would.
+// widely-used module never throws when crypto is unavailable — only minting an id would.
 let cachedGetRandomValues: RandomFiller | undefined;
 const getRandomValues: RandomFiller = (array) =>
   (cachedGetRandomValues ??= resolveGetRandomValues())(array);
 
-/** Encode raw bytes as base62 (big-endian), left-padded to the given length. */
-function base62Encode(bytes: Uint8Array, length: number): string {
-  const digits = Array.from(bytes);
-  let result = "";
-
-  while (digits.length > 0) {
-    let remainder = 0;
-    const quotient: number[] = [];
-
-    for (let i = 0; i < digits.length; i++) {
-      const acc = (digits[i] ?? 0) + remainder * 256;
-      const q = Math.floor(acc / 62);
-      remainder = acc % 62;
-
-      if (quotient.length > 0 || q > 0) {
-        quotient.push(q);
-      }
+/** Lowercase base32hex (RFC 4648 §7): 5 bits per char, order-preserving, no padding. */
+export function base32hexEncode(bytes: Uint8Array): string {
+  let out = "";
+  let buf = 0;
+  let bits = 0;
+  for (const b of bytes) {
+    buf = (buf << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      out += RUN_OPS_ID_ALPHABET[(buf >> (bits - 5)) & 31];
+      bits -= 5;
     }
-
-    result = BASE62_ALPHABET.charAt(remainder) + result;
-    digits.length = 0;
-    digits.push(...quotient);
   }
+  return out;
+}
 
-  return result.padStart(length, BASE62_ALPHABET.charAt(0));
+/** Inverse of base32hexEncode. Throws on characters outside the lowercase alphabet. */
+export function base32hexDecode(s: string): Uint8Array {
+  const out: number[] = [];
+  let buf = 0;
+  let bits = 0;
+  for (const c of s) {
+    const v = RUN_OPS_ID_ALPHABET.indexOf(c);
+    if (v === -1) {
+      throw new Error(`invalid run id char: ${c}`);
+    }
+    buf = (buf << 5) | v;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((buf >> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  return Uint8Array.from(out);
 }
 
 /**
- * 27-char, base62, time-ordered KSUID body (length-disjoint from the 25-char cuid): a 4-byte
- * timestamp (seconds since the KSUID epoch) + a 16-byte payload; ids from different seconds
- * sort in mint order. Payload defaults to CSPRNG entropy; callers may supply up to
- * KSUID_PAYLOAD_BYTES metadata bytes (written first, remainder stays random for uniqueness).
+ * Mint a run-ops v1 id body (26 chars, no prefix): 24-char base32hex core
+ * (6-byte ms timestamp + 9 CSPRNG bytes) + region char + version char "1".
+ * The trailing version char at RUN_OPS_ID_VERSION_INDEX is the residency
+ * discriminator — see runOpsResidency.ts.
  */
-export function generateKsuidId(payload?: Uint8Array): string {
-  const bytes = new Uint8Array(KSUID_TOTAL_BYTES);
+export function generateRunOpsId(region?: string): string {
+  const core = new Uint8Array(RUN_OPS_ID_CORE_BYTES);
 
-  const timestamp = Math.floor(Date.now() / 1000) - KSUID_EPOCH;
-  bytes[0] = (timestamp >>> 24) & 0xff;
-  bytes[1] = (timestamp >>> 16) & 0xff;
-  bytes[2] = (timestamp >>> 8) & 0xff;
-  bytes[3] = timestamp & 0xff;
+  let ms = Date.now();
+  for (let i = RUN_OPS_ID_TIMESTAMP_BYTES - 1; i >= 0; i--) {
+    core[i] = ms % 256;
+    ms = Math.floor(ms / 256);
+  }
+  getRandomValues(core.subarray(RUN_OPS_ID_TIMESTAMP_BYTES));
 
-  if (payload && payload.length > KSUID_PAYLOAD_BYTES) {
-    throw new Error(
-      `KSUID payload must be at most ${KSUID_PAYLOAD_BYTES} bytes (got ${payload.length})`
-    );
-  }
-  const reserved = payload?.length ?? 0;
-  if (payload && reserved > 0) {
-    bytes.set(payload, KSUID_TIMESTAMP_BYTES);
-  }
-  if (reserved < KSUID_PAYLOAD_BYTES) {
-    getRandomValues(bytes.subarray(KSUID_TIMESTAMP_BYTES + reserved));
-  }
-
-  return base62Encode(bytes, KSUID_STRING_LENGTH);
+  return `${base32hexEncode(core)}${regionCharForRegion(region)}${RUN_OPS_ID_VERSION}`;
 }
 
-/** Decoded parts of a KSUID body: its mint timestamp and 16-byte payload. */
-export type DecodedKsuid = {
-  timestampSeconds: number;
-  timestamp: Date;
-  payload: Uint8Array;
-};
+export type ParsedRunId =
+  | { format: "b32hex"; table: "partitioned"; timestamp: Date; region: string; version: string }
+  | { format: "legacy"; table: "legacy" };
+
+const LEGACY_RUN_ID: ParsedRunId = { format: "legacy", table: "legacy" };
 
 /**
- * Decode a KSUID body (or a `prefix_<body>` friendly id) into its timestamp + 16-byte payload.
- * The inverse of generateKsuidId's layout. Throws if the body is not 27 base62 chars.
+ * Parse a v1 id body (no prefix). Returns undefined unless the body is exactly
+ * 26 chars with version "1" at index 25 and every char inside the base32hex
+ * alphabet — anything else (cuid, nanoid, pre-cutover 27-char base62, malformed
+ * v1) is a legacy shape.
  */
-export function decodeKsuid(idOrFriendlyId: string): DecodedKsuid {
-  const underscore = idOrFriendlyId.indexOf("_");
-  const body = underscore === -1 ? idOrFriendlyId : idOrFriendlyId.slice(underscore + 1);
-  if (body.length !== KSUID_STRING_LENGTH) {
-    throw new Error(
-      `Not a KSUID body: expected ${KSUID_STRING_LENGTH} base62 chars, got ${body.length}`
-    );
+export function parseRunOpsIdBody(
+  body: string
+): { timestamp: Date; region: string; version: string } | undefined {
+  if (body.length !== RUN_OPS_ID_LENGTH) return undefined;
+  if (body[RUN_OPS_ID_VERSION_INDEX] !== RUN_OPS_ID_VERSION) return undefined;
+  const region = body[RUN_OPS_ID_REGION_INDEX] ?? "";
+  if (!REGION_CHAR_PATTERN.test(region)) return undefined;
+
+  let core: Uint8Array;
+  try {
+    core = base32hexDecode(body.slice(0, RUN_OPS_ID_CORE_LENGTH));
+  } catch {
+    return undefined;
   }
 
-  let n = BigInt(0);
-  for (const ch of body) {
-    const digit = BASE62_ALPHABET.indexOf(ch);
-    if (digit < 0) {
-      throw new Error(`Invalid base62 character in KSUID body: ${ch}`);
-    }
-    n = n * BigInt(62) + BigInt(digit);
+  let ms = 0;
+  for (let i = 0; i < RUN_OPS_ID_TIMESTAMP_BYTES; i++) {
+    ms = ms * 256 + (core[i] ?? 0);
   }
 
-  const bytes = new Uint8Array(KSUID_TOTAL_BYTES);
-  for (let i = KSUID_TOTAL_BYTES - 1; i >= 0; i--) {
-    bytes[i] = Number(n & BigInt(0xff));
-    n >>= BigInt(8);
-  }
+  return { timestamp: new Date(ms), region, version: RUN_OPS_ID_VERSION };
+}
 
-  const timestampSeconds =
-    (bytes[0] ?? 0) * 0x1000000 +
-    (bytes[1] ?? 0) * 0x10000 +
-    (bytes[2] ?? 0) * 0x100 +
-    (bytes[3] ?? 0) +
-    KSUID_EPOCH;
+/** True if the (prefixless) id body is a well-formed run-ops v1 id. */
+export function isRunOpsIdBody(body: string): boolean {
+  return parseRunOpsIdBody(body) !== undefined;
+}
 
-  return {
-    timestampSeconds,
-    timestamp: new Date(timestampSeconds * 1000),
-    payload: bytes.slice(KSUID_TIMESTAMP_BYTES),
-  };
+/** Parse a `run_`-prefixed friendly id; anything not a well-formed v1 id is legacy. */
+export function parseRunId(id: string): ParsedRunId {
+  if (!id.startsWith("run_")) return LEGACY_RUN_ID;
+  const parsed = parseRunOpsIdBody(id.slice(4));
+  return parsed ? { format: "b32hex", table: "partitioned", ...parsed } : LEGACY_RUN_ID;
 }
 
 export function generateInternalId(): string {

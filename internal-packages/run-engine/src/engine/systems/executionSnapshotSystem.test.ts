@@ -345,7 +345,7 @@ describe("executionSnapshotSystem store routing (cross-version read-through)", (
     }
   );
 
-  // Routing keys off runId, the SnapshotId is a cuid (not a 27-char ksuid), and no
+  // Routing keys off runId, the SnapshotId is a cuid (not a v1 run-ops id), and no
   // residency classifier is consulted for the snapshot id (D5).
   heteroPostgresTest(
     "snapshots route by owning run id; SnapshotId stays cuid",
@@ -356,7 +356,7 @@ describe("executionSnapshotSystem store routing (cross-version read-through)", (
       const rNew = "run_new_f";
       const { snapshot } = await seedRunWithSnapshot(prisma17 as any, newStore, "new_f", rNew);
 
-      // cuid is 25 chars (c + 24); a ksuid friendly id is 27 chars. The snapshot id is a cuid.
+      // cuid is 25 chars (c + 24); a v1 run-ops body is 26 chars ending in "1". The snapshot id is a cuid.
       expect(snapshot.id.length).toBe(25);
 
       const router = new TwoStoreSnapshotRouter(newStore, legacyStore, [rNew]);

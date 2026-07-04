@@ -1,7 +1,7 @@
 import { heteroPostgresTest } from "@internal/testcontainers";
 import { PostgresRunStore } from "@internal/run-store";
 import { isUniqueConstraintError, type PrismaClient } from "@trigger.dev/database";
-import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -50,7 +50,7 @@ async function seedRun(
     idempotencyKeyExpiresAt?: Date;
   }
 ) {
-  const runId = generateKsuidId();
+  const runId = generateRunOpsId();
   return prisma.taskRun.create({
     data: {
       id: runId,
@@ -74,7 +74,7 @@ async function seedRun(
 }
 
 async function seedBatch(prisma: PrismaClient, runtimeEnvironmentId: string, suffix: string) {
-  const batchId = generateKsuidId();
+  const batchId = generateRunOpsId();
   return prisma.batchTaskRun.create({
     data: {
       id: batchId,

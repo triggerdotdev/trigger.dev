@@ -9,8 +9,8 @@ import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { describe, expect } from "vitest";
 
-// 27-char internal id → ksuid → NEW (lives only on the dedicated run-ops DB).
-const KSUID_27 = "k".repeat(27);
+// v1 internal id (26 chars, version "1" at index 25) → NEW (lives only on the dedicated run-ops DB).
+const NEW_ID_26 = "k".repeat(24) + "01";
 
 async function seedControlPlaneAlertPrereqs(prisma: PrismaClient, suffix: string) {
   const organization = await prisma.organization.create({
@@ -61,7 +61,7 @@ describe("ProjectAlert control-plane → run-subgraph FK reconciliation", () => 
       // The run exists ONLY on the dedicated run-ops DB (prisma17), never on control-plane.
       await (prisma17 as RunOpsPrismaClient).taskRun.create({
         data: {
-          id: KSUID_27,
+          id: NEW_ID_26,
           friendlyId: `run_${suffix}`,
           engine: "V2",
           status: "COMPLETED_WITH_ERRORS",
@@ -78,7 +78,7 @@ describe("ProjectAlert control-plane → run-subgraph FK reconciliation", () => 
         },
       });
 
-      // Control-plane has no TaskRun row for KSUID_27. With the FK present this throws P2003;
+      // Control-plane has no TaskRun row for NEW_ID_26. With the FK present this throws P2003;
       // after the FK is dropped + the @relation removed it succeeds.
       const alert = await prisma14.projectAlert.create({
         data: {
@@ -88,16 +88,16 @@ describe("ProjectAlert control-plane → run-subgraph FK reconciliation", () => 
           environmentId: environment.id,
           status: "PENDING",
           type: "TASK_RUN",
-          taskRunId: KSUID_27,
+          taskRunId: NEW_ID_26,
         },
       });
 
-      expect(alert.taskRunId).toBe(KSUID_27);
+      expect(alert.taskRunId).toBe(NEW_ID_26);
 
       // The scalar round-trips and can be re-read off the control-plane row (the read path resolves
       // the actual run via runStore.findRun against the run-ops DB).
       const reread = await prisma14.projectAlert.findUniqueOrThrow({ where: { id: alert.id } });
-      expect(reread.taskRunId).toBe(KSUID_27);
+      expect(reread.taskRunId).toBe(NEW_ID_26);
     },
     120_000
   );
@@ -113,7 +113,7 @@ describe("ProjectAlert control-plane → run-subgraph FK reconciliation", () => 
 
       // A ksuid attempt id with no matching control-plane TaskRunAttempt row. With the FK present
       // this throws P2003; after the FK is dropped it succeeds.
-      const attemptId = "a".repeat(27);
+      const attemptId = "a".repeat(24) + "01";
       const alert = await prisma14.projectAlert.create({
         data: {
           friendlyId: `alert_${suffix}`,

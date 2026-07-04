@@ -1,4 +1,4 @@
-import { isClassifiable, ownerEngine } from "@trigger.dev/core/v3/isomorphic";
+import { ownerEngine } from "@trigger.dev/core/v3/isomorphic";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
@@ -76,9 +76,7 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
     // (it is a V1/cuid-only status — V2 uses PENDING_VERSION). Surface it loudly rather
     // than silently strand the run, and only mutate the LEGACY-resident runs the
     // control-plane client can actually reach.
-    const newResidentRuns = runsWaitingForDeploy.filter(
-      (run) => isClassifiable(run.id) && ownerEngine(run.id) === "NEW"
-    );
+    const newResidentRuns = runsWaitingForDeploy.filter((run) => ownerEngine(run.id) === "NEW");
     if (newResidentRuns.length) {
       logger.error(
         "WAITING_FOR_DEPLOY selected NEW-resident runs; skipping their control-plane status flip",

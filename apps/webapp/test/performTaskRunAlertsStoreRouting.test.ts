@@ -10,7 +10,7 @@ import { heteroPostgresTest, postgresTest } from "@internal/testcontainers";
 import { PostgresRunStore } from "@internal/run-store";
 import type { ReadClient, RunStore } from "@internal/run-store";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
-import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId, ownerEngine } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect } from "vitest";
 import { ControlPlaneCache } from "~/v3/runOpsMigration/controlPlaneCache.server";
 import { ControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -41,7 +41,7 @@ class RoutingRunStore implements RunStore {
   }
 
   #resolveById(runId: string): PostgresRunStore {
-    return runId.length === 27 ? this.#newStore : this.#legacyStore;
+    return ownerEngine(runId) === "NEW" ? this.#newStore : this.#legacyStore;
   }
 
   #idFromWhere(where: Prisma.TaskRunWhereInput): string | undefined {
@@ -220,7 +220,7 @@ describe("PerformTaskRunAlertsService store routing (hetero)", () => {
   heteroPostgresTest(
     "env type resolves via the control-plane resolver (distinct DB) while the run resolves on the run-ops store",
     async ({ prisma17, prisma14 }) => {
-      const id = generateKsuidId();
+      const id = generateRunOpsId();
       const friendlyId = `run_${id}`;
 
       // Cloud shape: run-ops = the new DB (cross-seam FKs dropped), control-plane = the legacy DB.
@@ -312,7 +312,7 @@ describe("PerformTaskRunAlertsService passthrough (single-DB)", () => {
   postgresTest(
     "with the default store, run read + alert-channel read both resolve on the single DB",
     async ({ prisma }) => {
-      const id = generateKsuidId();
+      const id = generateRunOpsId();
       const friendlyId = `run_${id}`;
 
       const { project, organization, runtimeEnvironment } = await seedProject(prisma, "pt");

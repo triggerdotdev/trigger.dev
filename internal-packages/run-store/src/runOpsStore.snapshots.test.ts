@@ -60,9 +60,9 @@ async function seedEnvironment(
   return { organization, project, environment };
 }
 
-// ownerEngine classifies by internal-id LENGTH after stripping a single leading `<prefix>_`: 27 chars
+// ownerEngine classifies by the version char after stripping a single leading `<prefix>_`: a v1 body
 // → ksuid → NEW (#new / dedicated run-ops DB subset), 25 chars → cuid → LEGACY (#legacy / full schema).
-const KSUID_27 = "k".repeat(27); // → NEW residency, exercises the dedicated store
+const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW residency, exercises the dedicated store
 const CUID_25 = "c".repeat(25); // → LEGACY residency, exercises the full-schema store
 
 function buildCreateRunInput(params: {
@@ -201,7 +201,7 @@ describe("RunStore run-ops persistence — snapshots", () => {
       };
 
       const legacyRunId = `run_${CUID_25}`; // → #legacy (full schema)
-      const newRunId = `run_${KSUID_27}`; // → #new (dedicated subset)
+      const newRunId = `run_${NEW_ID_26}`; // → #new (dedicated subset)
       const seed14 = await seed(prisma14, "legacy", legacyRunId, "sa14");
       const seed17 = await seed(prisma17, "dedicated", newRunId, "sa17");
 
@@ -292,7 +292,7 @@ describe("RunStore run-ops persistence — snapshots", () => {
       };
 
       const r14 = await run(prisma14, "legacy", `run_${CUID_25}`, "sb14");
-      const r17 = await run(prisma17, "dedicated", `run_${KSUID_27}`, "sb17");
+      const r17 = await run(prisma17, "dedicated", `run_${NEW_ID_26}`, "sb17");
 
       // The join links the snapshot to both waitpoints (set-equal) on both stores.
       expect([...r14.joinIds].sort()).toEqual([r14.w1, r14.w2].sort());
@@ -344,7 +344,7 @@ describe("RunStore run-ops persistence — snapshots", () => {
       };
 
       await seed(prisma14, "legacy", `run_${CUID_25}`, "sc14");
-      await seed(prisma17, "dedicated", `run_${KSUID_27}`, "sc17");
+      await seed(prisma17, "dedicated", `run_${NEW_ID_26}`, "sc17");
 
       const orderedDescriptions = async (client: AnyClient) => {
         const rows = await (client as PrismaClient).$queryRawUnsafe<{ description: string }[]>(

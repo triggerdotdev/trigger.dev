@@ -14,7 +14,7 @@ import {
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import {
-  generateKsuidId,
+  generateRunOpsId,
   parseTraceparent,
   RunId,
   serializeTraceparent,
@@ -136,9 +136,14 @@ export class RunEngineTriggerTaskService {
   //  - CHILD run (has a parent): inherit the parent's residency by id-shape, so a
   //    parent and child never split across stores (ksuid parent → ksuid child,
   //    cuid parent → cuid child).
+  // `region` is the caller-requested region (body.options.region). The id is
+  // minted before the worker queue is resolved (the idempotency concern needs
+  // the friendlyId first), so the stamped region char reflects the requested
+  // region — or the default char when the run targets the default region.
   private async mintRunFriendlyId(
     environment: AuthenticatedEnvironment,
-    parentRunFriendlyId?: string
+    parentRunFriendlyId?: string,
+    region?: string
   ): Promise<string> {
     const mintKind = parentRunFriendlyId
       ? resolveInheritedMintKind(parentRunFriendlyId)
@@ -149,7 +154,7 @@ export class RunEngineTriggerTaskService {
         });
 
     return mintKind === "ksuid"
-      ? RunId.toFriendlyId(generateKsuidId())
+      ? RunId.toFriendlyId(generateRunOpsId(region))
       : RunId.generate().friendlyId;
   }
 
@@ -183,7 +188,11 @@ export class RunEngineTriggerTaskService {
           // parent is present, else the environment's setting.
           const runFriendlyId =
             options?.runFriendlyId ??
-            (await this.mintRunFriendlyId(environment, body.options?.parentRunId));
+            (await this.mintRunFriendlyId(
+              environment,
+              body.options?.parentRunId,
+              body.options?.region
+            ));
           const triggerRequest = {
             taskId,
             friendlyId: runFriendlyId,

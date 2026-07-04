@@ -29,9 +29,9 @@ const twoDbEngineTest = heteroRunOpsPostgresTest.extend<{
   redisOptions,
 });
 
-// ksuid (27-char internal id) → classified NEW → routed to the run-ops (#new) store.
-const KSUID_A = "k".repeat(27);
-const KSUID_B = "m".repeat(27);
+// ksuid (v1 internal id, version "1" at index 25) → classified NEW → routed to the run-ops (#new) store.
+const KSUID_A = "k".repeat(24) + "01";
+const KSUID_B = "m".repeat(24) + "01";
 
 function baseEngineOptions(redisOptions: any, prisma: any) {
   return {

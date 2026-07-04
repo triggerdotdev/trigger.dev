@@ -24,7 +24,8 @@ type AnyClient = PrismaClient | RunOpsPrismaClient;
 // ownerEngine classifies by internal-id length (no internal underscore): 25 -> cuid -> LEGACY,
 // 27 -> ksuid -> NEW.
 const cuidLegacy = (seed: string) => (seed + "c".repeat(25)).slice(0, 25);
-const ksuidNew = (seed: string) => (seed + "k".repeat(27)).slice(0, 27);
+const ksuidNew = (seed: string) =>
+  (seed.replace(/[^0-9a-v]/g, "0") + "k".repeat(24)).slice(0, 24) + "01";
 
 async function seedEnvironment(
   prisma: AnyClient,

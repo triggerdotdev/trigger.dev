@@ -9,14 +9,14 @@ import {
 } from "@internal/testcontainers";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { PrismaClient, WaitpointType } from "@trigger.dev/database";
-import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, vi } from "vitest";
 import type { PrismaReplicaClient } from "~/db.server";
 import { ApiWaitpointPresenter } from "~/presenters/v3/ApiWaitpointPresenter.server";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-// 25-char cuid body (length-disjoint from the 27-char KSUID) → LEGACY residency.
+// 25-char cuid body (no v1 version marker) → LEGACY residency.
 function generateLegacyCuid() {
   const suffix = Array.from(
     { length: 24 },
@@ -113,8 +113,8 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
   heteroPostgresTest(
     "resolves on run-ops NEW (ksuid), legacy replica never touched",
     async ({ prisma17, prisma14 }) => {
-      const id = generateKsuidId();
-      expect(id.length).toBe(27);
+      const id = generateRunOpsId();
+      expect(id.length).toBe(26);
 
       const { project, environment } = await seedOrgProjectEnv(prisma17, "new");
       const seeded = await seedWaitpoint(
@@ -218,7 +218,7 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
     "cross-seam — new-resident served from NEW (legacy untouched); in-retention served from legacy",
     async ({ prisma17, prisma14 }) => {
       // New-resident waitpoint: lives on NEW, the new probe hits, legacy must never be touched.
-      const newId = generateKsuidId();
+      const newId = generateRunOpsId();
       const newEnv = await seedOrgProjectEnv(prisma17, "x2new");
       await seedWaitpoint(prisma17, newId, {
         id: newEnv.environment.id,
@@ -301,7 +301,7 @@ describe("ApiWaitpointPresenter passthrough (single-DB)", () => {
   postgresTest(
     "no read-through deps → one plain replica read; legacy never touched",
     async ({ prisma }) => {
-      const id = generateKsuidId();
+      const id = generateRunOpsId();
       const { project, environment } = await seedOrgProjectEnv(prisma, "pt");
       const seeded = await seedWaitpoint(
         prisma,

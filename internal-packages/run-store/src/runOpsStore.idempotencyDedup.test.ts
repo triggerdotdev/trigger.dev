@@ -27,13 +27,13 @@ import type {
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by internal-id LENGTH after stripping a single leading `<prefix>_`:
-// 25 chars → cuid → LEGACY, 27 chars → ksuid → NEW. So a classifiable id
+// 25 chars → cuid → LEGACY, a v1 body (version "1" at index 25) → ksuid → NEW. So a classifiable id
 // must carry NO internal underscore. These mint a distinct id of the right length from a short seed.
 function cuidLegacy(seed: string): string {
   return (seed + "c".repeat(25)).slice(0, 25); // 25 chars, no underscore → LEGACY
 }
 function ksuidNew(seed: string): string {
-  return (seed + "k".repeat(27)).slice(0, 27); // 27 chars, no underscore → NEW
+  return (seed.replace(/[^0-9a-v]/g, "0") + "k".repeat(24)).slice(0, 24) + "01";
 }
 
 // On the dedicated subset there are no Organization/Project/RuntimeEnvironment models (the run-ops
@@ -248,7 +248,7 @@ describe("RoutingRunStore — cross-DB idempotency dedup probe", () => {
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "cg2_b");
-      const runId = ksuidNew("rbn"); // 27 chars → NEW home
+      const runId = ksuidNew("rbn"); // v1 body → NEW home
       const waitpointId = ksuidNew("wbn");
       const idempotencyKey = "cg2-key-b";
       const taskIdentifier = "my-task";

@@ -69,8 +69,9 @@ export class RoutingRunStore implements RunStore {
     return this.#classify(id) === "NEW" ? this.#new : this.#legacy;
   }
 
-  // Best-effort route; falls back to NEW (the steady-state home) when the id is absent
-  // or unclassifiable.
+  // Best-effort route; falls back to NEW (the steady-state home) when the id is absent.
+  // Classification is total (any id without the v1 version marker is LEGACY), so the
+  // catch below only guards injected classifiers that still throw.
   #routeOrNew(id: string | undefined): RunStore {
     if (typeof id !== "string") {
       return this.#new;

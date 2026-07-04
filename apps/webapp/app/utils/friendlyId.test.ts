@@ -2,30 +2,31 @@ import { describe, expect, it } from "vitest";
 import {
   BatchId,
   generateFriendlyId,
-  generateKsuidId,
+  generateRunOpsId,
   RunId,
 } from "@trigger.dev/core/v3/isomorphic";
 import { isValidFriendlyId, makeFriendlyIdValidator } from "./friendlyId";
 
 describe("isValidFriendlyId", () => {
   it("accepts every id generation the real generators produce", () => {
-    // nanoid (legacy V1), cuid (run-engine), ksuid (run-ops split)
+    // nanoid (legacy V1), cuid (run-engine), run-ops v1 (run-ops split)
     expect(isValidFriendlyId(generateFriendlyId("run"), "run")).toBe(true);
     expect(isValidFriendlyId(RunId.generate().friendlyId, "run")).toBe(true);
-    expect(isValidFriendlyId(RunId.toFriendlyId(generateKsuidId()), "run")).toBe(true);
+    expect(isValidFriendlyId(RunId.toFriendlyId(generateRunOpsId()), "run")).toBe(true);
 
     expect(isValidFriendlyId(generateFriendlyId("batch"), "batch")).toBe(true);
     expect(isValidFriendlyId(BatchId.generate().friendlyId, "batch")).toBe(true);
-    expect(isValidFriendlyId(BatchId.toFriendlyId(generateKsuidId()), "batch")).toBe(true);
+    expect(isValidFriendlyId(BatchId.toFriendlyId(generateRunOpsId()), "batch")).toBe(true);
   });
 
-  it("accepts each valid body length (21 nanoid, 25 cuid, 27 ksuid)", () => {
+  it("accepts each valid body length (21 nanoid, 25 cuid, 26 run-ops v1, 27 legacy base62)", () => {
     expect(isValidFriendlyId("run_" + "a".repeat(21), "run")).toBe(true);
     expect(isValidFriendlyId("run_" + "a".repeat(25), "run")).toBe(true);
+    expect(isValidFriendlyId("run_" + "a".repeat(26), "run")).toBe(true);
     expect(isValidFriendlyId("run_" + "a".repeat(27), "run")).toBe(true);
   });
 
-  it("accepts mixed-case (uppercase) ksuid bodies", () => {
+  it("accepts mixed-case (uppercase) legacy base62 bodies", () => {
     expect(isValidFriendlyId("run_2ABCdefGHI0123456789jklMN", "run")).toBe(true);
   });
 
@@ -39,7 +40,7 @@ describe("isValidFriendlyId", () => {
   });
 
   it("rejects body lengths that match no generator", () => {
-    for (const len of [0, 20, 22, 24, 26, 28]) {
+    for (const len of [0, 20, 22, 24, 28]) {
       expect(isValidFriendlyId("run_" + "a".repeat(len), "run")).toBe(false);
     }
   });
@@ -64,8 +65,8 @@ describe("makeFriendlyIdValidator", () => {
   it("returns undefined for a valid id of any generation", () => {
     expect(validateRunId(generateFriendlyId("run"))).toBeUndefined();
     expect(validateRunId(RunId.generate().friendlyId)).toBeUndefined();
-    expect(validateRunId(RunId.toFriendlyId(generateKsuidId()))).toBeUndefined();
-    expect(validateBatchId(BatchId.toFriendlyId(generateKsuidId()))).toBeUndefined();
+    expect(validateRunId(RunId.toFriendlyId(generateRunOpsId()))).toBeUndefined();
+    expect(validateBatchId(BatchId.toFriendlyId(generateRunOpsId()))).toBeUndefined();
   });
 
   it("reports a wrong prefix distinctly from a wrong shape", () => {

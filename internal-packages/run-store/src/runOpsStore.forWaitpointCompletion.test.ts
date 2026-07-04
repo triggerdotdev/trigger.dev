@@ -17,7 +17,7 @@ function fakeStore(slot: string, heldIds: Set<string>): RunStore {
   } as unknown as RunStore;
 }
 
-const KSUID_ID = "waitpoint_" + "a".repeat(27);
+const KSUID_ID = "waitpoint_" + "a".repeat(24) + "01";
 const CUID_ID = "waitpoint_" + "a".repeat(25);
 const UNCLASSIFIABLE_ID = "waitpoint_" + "a".repeat(26);
 

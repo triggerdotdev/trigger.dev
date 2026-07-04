@@ -17,9 +17,9 @@ import type { RunStoreSchemaVariant } from "./types.js";
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by internal-id LENGTH (runOpsResidency.ts): 25 chars → cuid → LEGACY,
-// 27 chars → ksuid → NEW.
+// a v1 body (26 chars, version "1" at index 25) → NEW.
 const CUID_25 = "c".repeat(25); // → LEGACY (#legacy / prisma14, full schema)
-const KSUID_27 = "k".repeat(27); // → NEW (#new / prisma17, dedicated subset schema)
+const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW (#new / prisma17, dedicated subset schema)
 
 async function seedEnvironment(
   prisma: AnyClient,
@@ -127,7 +127,7 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "updbatch_new");
-      const batchId = `batch_${KSUID_27}`; // ksuid → #new
+      const batchId = `batch_${NEW_ID_26}`; // ksuid → #new
 
       await prisma17.batchTaskRun.create({
         data: {
@@ -193,7 +193,7 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "crbatch_new");
-      const batchId = `batch_${KSUID_27}`; // ksuid → #new
+      const batchId = `batch_${NEW_ID_26}`; // ksuid → #new
 
       const created = await router.createBatchTaskRun(
         {
@@ -250,7 +250,7 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "cntitems_new");
-      const batchId = `batch_${KSUID_27}`; // ksuid → #new
+      const batchId = `batch_${NEW_ID_26}`; // ksuid → #new
 
       await prisma17.batchTaskRun.create({
         data: {
@@ -261,8 +261,8 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
           status: "PROCESSING",
         },
       });
-      const runA = `run_${KSUID_27.slice(0, -3)}cra`;
-      const runB = `run_${KSUID_27.slice(0, -3)}crb`;
+      const runA = `run_${NEW_ID_26.slice(0, -3)}ra1`;
+      const runB = `run_${NEW_ID_26.slice(0, -3)}rb1`;
       await seedDedicatedRun(prisma17, env.environment.id, runA);
       await seedDedicatedRun(prisma17, env.environment.id, runB);
       await prisma17.batchTaskRunItem.create({

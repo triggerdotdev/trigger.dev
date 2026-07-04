@@ -7,7 +7,7 @@ import {
   type CreateFailedRunInput,
   type CreateRunInput,
 } from "@internal/run-store";
-import { RunId, ownerEngine, generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { RunId, ownerEngine, generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
@@ -101,7 +101,7 @@ function freshRunId() {
 }
 
 function freshKsuidRunId() {
-  return RunId.toFriendlyId(generateKsuidId());
+  return RunId.toFriendlyId(generateRunOpsId());
 }
 
 const baseTriggerParams = (friendlyId: string, environment: any, taskIdentifier: string) => ({

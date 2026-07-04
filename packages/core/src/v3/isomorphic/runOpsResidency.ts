@@ -1,26 +1,29 @@
-import { KSUID_STRING_LENGTH } from "./friendlyId.js";
+import { isRunOpsIdBody } from "./friendlyId.js";
 
 /** The two run-ops stores a run/waitpoint can reside in. */
 export type Residency = "LEGACY" | "NEW";
 
-/** Underlying id format. cuid → LEGACY store, ksuid → NEW store. */
+/**
+ * Underlying id lineage. "ksuid" is the historical label for the NEW-store
+ * mint path (now a base32hex run-ops v1 id — see friendlyId.ts); it is kept
+ * because the value is persisted in the runOpsMintKsuid feature flag. "cuid"
+ * is every legacy shape (cuid, nanoid, pre-cutover 27-char base62).
+ */
 export type ResidencyKind = "cuid" | "ksuid";
 
-/** @bugsnag/cuid emits 25-char ids (cuid path, flag OFF). */
+/** @bugsnag/cuid emits 25-char ids (legacy mint path, flag OFF). */
 export const CUID_LENGTH = 25;
-/** KSUID / nanoid-27 emits 27-char ids (ksuid path, flag ON). */
-export const KSUID_LENGTH = KSUID_STRING_LENGTH;
 
-/** Thrown when an id length matches neither the cuid nor the ksuid margin. */
+/**
+ * Kept for API compatibility: the default classifier no longer throws (every
+ * non-v1 shape is legacy), but injected classifiers may still raise it and
+ * callers still catch it.
+ */
 export class UnclassifiableRunId extends Error {
   readonly value: string;
   readonly valueLength: number;
   constructor(value: string) {
-    super(
-      `Unclassifiable run-ops id: length ${value.length} matches neither cuid (${CUID_LENGTH}) nor ksuid (${KSUID_LENGTH}) — value=${JSON.stringify(
-        value
-      )}`
-    );
+    super(`Unclassifiable run-ops id: value=${JSON.stringify(value)} (length ${value.length})`);
     this.name = "UnclassifiableRunId";
     this.value = value;
     this.valueLength = value.length;
@@ -38,21 +41,22 @@ function internalForm(id: string): string {
   return underscore === -1 ? id : id.slice(underscore + 1);
 }
 
-/** Returns the underlying id FORMAT (cuid|ksuid), or throws if unclassifiable. */
+/**
+ * Returns the id lineage by the version-char rule: a well-formed run-ops v1
+ * body (26 chars, version "1" at index 25, base32hex alphabet) is "ksuid"
+ * (NEW store); everything else — including malformed v1 shapes — is "cuid"
+ * (legacy). Total: never throws.
+ */
 export function classifyKind(id: string): ResidencyKind {
-  const internal = internalForm(id);
-  if (internal.length === CUID_LENGTH) return "cuid";
-  if (internal.length === KSUID_LENGTH) return "ksuid";
-  throw new UnclassifiableRunId(id);
+  return isRunOpsIdBody(internalForm(id)) ? "ksuid" : "cuid";
 }
 
-/** Non-throwing predicate: is this id length one we can classify? */
-export function isClassifiable(id: string): boolean {
-  const len = internalForm(id).length;
-  return len === CUID_LENGTH || len === KSUID_LENGTH;
+/** Classification is total now; kept for API compatibility. */
+export function isClassifiable(_id: string): boolean {
+  return true;
 }
 
-/** Map an id to its owning run-ops store by length. Throws on ambiguity. */
+/** Map an id to its owning run-ops store by the version-char rule. */
 export function classifyResidency(id: string): Residency {
   return classifyKind(id) === "ksuid" ? "NEW" : "LEGACY";
 }

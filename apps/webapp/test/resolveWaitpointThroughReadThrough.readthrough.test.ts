@@ -1,14 +1,14 @@
 import { heteroRunOpsPostgresTest, postgresTest } from "@internal/testcontainers";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { PrismaClient } from "@trigger.dev/database";
-import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, vi } from "vitest";
 import type { PrismaReplicaClient } from "~/db.server";
 import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-// 25-char cuid (length-disjoint from the 27-char KSUID) -> LEGACY residency.
+// 25-char cuid (no v1 version marker) -> LEGACY residency.
 function generateLegacyCuid() {
   const suffix = Array.from(
     { length: 24 },
@@ -86,13 +86,13 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
   heteroRunOpsPostgresTest(
     "ksuid waitpoint resolves on the dedicated run-ops client; legacy replica never touched",
     async ({ prisma17, prisma14 }) => {
-      const id = generateKsuidId();
-      expect(id.length).toBe(27);
+      const id = generateRunOpsId();
+      expect(id.length).toBe(26);
 
       // The dedicated run-ops DB has no control-plane tables; the waitpoint's
       // environment/project FKs are synthetic scalar ids.
-      const environmentId = generateKsuidId();
-      const projectId = generateKsuidId();
+      const environmentId = generateRunOpsId();
+      const projectId = generateRunOpsId();
       const seeded = await seedWaitpoint(prisma17, id, { id: environmentId, projectId });
 
       const newClient = recording(prisma17);
@@ -156,10 +156,10 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
     async ({ prisma17, prisma14 }) => {
       // The bare wait route passes NO `deps`; the `defaults` DI seam models old vs new
       // fallback against containers, avoiding the real db.server topology.
-      const id = generateKsuidId();
-      expect(id.length).toBe(27);
-      const environmentId = generateKsuidId();
-      const projectId = generateKsuidId();
+      const id = generateRunOpsId();
+      expect(id.length).toBe(26);
+      const environmentId = generateRunOpsId();
+      const projectId = generateRunOpsId();
       const seeded = await seedWaitpoint(prisma17, id, { id: environmentId, projectId });
 
       // FAIL-BEFORE: old default pinned newClient to control-plane ($replica ≈ prisma14) → miss.
@@ -215,7 +215,7 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
   postgresTest(
     "passthrough (single-DB): one plain read; legacy never invoked",
     async ({ prisma }) => {
-      const id = generateKsuidId();
+      const id = generateRunOpsId();
       const { project, environment } = await seedOrgProjectEnv(prisma, "pt");
       const seeded = await seedWaitpoint(prisma, id, {
         id: environment.id,

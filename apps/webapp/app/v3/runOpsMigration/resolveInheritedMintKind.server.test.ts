@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveInheritedMintKind } from "./resolveInheritedMintKind.server";
 
-const NEW_PARENT = `run_${"a".repeat(27)}`; // ksuid id-shape -> NEW
+const NEW_PARENT = `run_${"a".repeat(24) + "01"}`; // ksuid id-shape -> NEW
 const LEGACY_PARENT = `run_${"b".repeat(25)}`; // cuid id-shape -> LEGACY
 
 describe("resolveInheritedMintKind (pure id-shape, shared across all mint paths)", () => {

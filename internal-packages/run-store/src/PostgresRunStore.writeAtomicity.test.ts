@@ -26,9 +26,9 @@ import type { CreateRunInput, RunStore, RunStoreSchemaVariant } from "./types.js
 
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
-// ownerEngine classifies by internal-id LENGTH: 25 chars → cuid → LEGACY, 27 chars → ksuid → NEW.
+// ownerEngine classifies by the version char: no marker → cuid → LEGACY, v1 body → ksuid → NEW.
 const CUID_25 = "c".repeat(25); // → LEGACY (#legacy / control-plane DB, full schema)
-const KSUID_27 = "k".repeat(27); // → NEW (#new / dedicated run-ops DB, subset schema)
+const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW (#new / dedicated run-ops DB, subset schema)
 
 async function seedEnvironment(
   prisma: AnyClient,
@@ -143,7 +143,7 @@ async function seedKsuidRun(
   suffix: string
 ): Promise<{ runId: string; env: { project: { id: string }; environment: { id: string } } }> {
   const env = await seedEnvironment(prisma17, "dedicated", suffix);
-  const runId = `run_${KSUID_27}`;
+  const runId = `run_${NEW_ID_26}`;
   await router.createRun(
     buildCreateRunInput({
       runId,

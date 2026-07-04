@@ -1396,7 +1396,7 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
           { timeout: 15_000, interval: 100 }
         );
 
-        // (c) the load-bearing no-op: an unclassifiable id (length 26) must NOT throw
+        // (c) the load-bearing no-op: an unrecognized id (26 "a"s, no version marker) must NOT throw
         // UnclassifiableWaitpointId under the default single store — the classifier is
         // never consulted. It finds no PENDING row, the re-read fails, and the ordinary
         // "Waitpoint not found" surfaces instead.
@@ -1429,8 +1429,8 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
       const envLegacy = await seedHeteroEnvironment(prisma14, "csl");
       const envNew = await seedHeteroEnvironment(prisma17, "csn");
 
-      // 27-char body => ksuid => NEW (dedicated run-ops DB); 25-char body => cuid => LEGACY.
-      const ksuidId = "waitpoint_" + "a".repeat(27);
+      // v1 body (26 chars, version "1" at index 25) => ksuid => NEW (dedicated run-ops DB); 25-char body => cuid => LEGACY.
+      const ksuidId = "waitpoint_" + "a".repeat(24) + "01";
       const cuidId = "waitpoint_" + "b".repeat(25);
 
       await prisma17.waitpoint.create({
@@ -1510,7 +1510,7 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
       const router = new RoutingRunStore({ new: newStore, legacy });
 
       // pin is DRIVEN via explicit context at the store seam; the engine completeWaitpoint entry cannot derive it — the organic cross-tree-idempotency pin is applied at the webapp idempotency caller.
-      const ksuidId = "waitpoint_" + "a".repeat(27);
+      const ksuidId = "waitpoint_" + "a".repeat(24) + "01";
       const handle = await router.forWaitpointCompletion(ksuidId, {
         routeKind: "IDEMPOTENCY_REUSE",
         isCrossTreeIdempotency: true,

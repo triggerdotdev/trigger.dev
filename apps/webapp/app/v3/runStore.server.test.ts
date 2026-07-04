@@ -6,9 +6,9 @@ import { buildRunStore } from "./runStore.server";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-// 25-char internal id -> cuid -> LEGACY; 27-char internal id -> ksuid -> NEW.
+// 25-char internal id -> cuid -> LEGACY; v1 body (version "1" at index 25) -> NEW.
 const CUID_25 = "c".repeat(25);
-const KSUID_27 = "k".repeat(27);
+const NEW_ID_26 = "k".repeat(24) + "01";
 
 async function seedEnvironment(prisma: PrismaClient, slugSuffix: string) {
   const organization = await prisma.organization.create({
@@ -88,10 +88,10 @@ describe("T24 — findRun resolves ksuid run on dedicated DB", () => {
       const WORKER_ID = "worker_t24_lock";
       await prisma17.taskRun.create({
         data: {
-          id: KSUID_27,
+          id: NEW_ID_26,
           engine: "V2",
           status: "EXECUTING",
-          friendlyId: "run_t24_ksuid",
+          friendlyId: `run_${NEW_ID_26}`,
           runtimeEnvironmentId: ENV_ID,
           environmentType: "DEVELOPMENT",
           organizationId: "org_t24",
@@ -118,13 +118,13 @@ describe("T24 — findRun resolves ksuid run on dedicated DB", () => {
       });
 
       const run = await store.findRun(
-        { friendlyId: "run_t24_ksuid", runtimeEnvironmentId: ENV_ID },
+        { friendlyId: `run_${NEW_ID_26}`, runtimeEnvironmentId: ENV_ID },
         { select: { lockedToVersionId: true } }
       );
 
       expect(run).not.toBeNull();
       expect(run?.lockedToVersionId).toBe(WORKER_ID);
-      expect(await prisma14.taskRun.findUnique({ where: { id: KSUID_27 } })).toBeNull();
+      expect(await prisma14.taskRun.findUnique({ where: { id: NEW_ID_26 } })).toBeNull();
     }
   );
 });
@@ -148,7 +148,7 @@ describe("buildRunStore", () => {
 
       const seed = await seedEnvironment(prisma14, "off");
       // A ksuid id (would route to NEW under split) must still land on the single DB.
-      const runId = KSUID_27;
+      const runId = NEW_ID_26;
       await store.createRun(
         createRunInput({
           runId,
@@ -186,15 +186,15 @@ describe("buildRunStore", () => {
       // ksuid -> NEW (PG17)
       await store.createRun(
         createRunInput({
-          runId: KSUID_27,
+          runId: NEW_ID_26,
           friendlyId: "run_new",
           organizationId: seedNew.organization.id,
           projectId: seedNew.project.id,
           runtimeEnvironmentId: seedNew.environment.id,
         })
       );
-      expect(await prisma17.taskRun.findUnique({ where: { id: KSUID_27 } })).not.toBeNull();
-      expect(await prisma14.taskRun.findUnique({ where: { id: KSUID_27 } })).toBeNull();
+      expect(await prisma17.taskRun.findUnique({ where: { id: NEW_ID_26 } })).not.toBeNull();
+      expect(await prisma14.taskRun.findUnique({ where: { id: NEW_ID_26 } })).toBeNull();
 
       // cuid -> LEGACY (PG14)
       await store.createRun(

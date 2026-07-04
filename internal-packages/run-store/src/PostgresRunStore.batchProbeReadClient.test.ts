@@ -23,9 +23,9 @@ import type { RunStoreSchemaVariant } from "./types.js";
 type AnyClient = PrismaClient | RunOpsPrismaClient;
 
 // ownerEngine classifies by internal-id LENGTH (runOpsResidency.ts): 25 chars → cuid → LEGACY,
-// 27 chars → ksuid → NEW.
+// a v1 body (26 chars, version "1" at index 25) → NEW.
 const CUID_25 = "c".repeat(25); // → LEGACY (#legacy / prisma14, full schema)
-const KSUID_27 = "k".repeat(27); // → NEW (#new / prisma17, dedicated subset schema)
+const NEW_ID_26 = "k".repeat(24) + "01"; // → NEW (#new / prisma17, dedicated subset schema)
 
 async function seedEnvironment(
   prisma: AnyClient,
@@ -100,7 +100,7 @@ describe("run-ops split — cross-DB probe reads must NOT forward the caller's c
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "batchprobe_new");
-      const batchId = `batch_${KSUID_27}`; // ksuid → #new
+      const batchId = `batch_${NEW_ID_26}`; // ksuid → #new
 
       // Seed the batch directly on #new (5434), exactly where a runEngine-routed ksuid batch lives.
       await prisma17.batchTaskRun.create({
@@ -155,7 +155,7 @@ describe("run-ops split — cross-DB probe reads must NOT forward the caller's c
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "batchfid_new");
-      const batchId = `batch_${KSUID_27}`;
+      const batchId = `batch_${NEW_ID_26}`;
       const friendlyId = "batch_fid_new";
 
       await prisma17.batchTaskRun.create({
@@ -184,7 +184,7 @@ describe("run-ops split — cross-DB probe reads must NOT forward the caller's c
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "batchidem_new");
-      const batchId = `batch_${KSUID_27}`;
+      const batchId = `batch_${NEW_ID_26}`;
       const idempotencyKey = "idem_batch_new";
 
       await prisma17.batchTaskRun.create({
@@ -215,8 +215,8 @@ describe("run-ops split — cross-DB probe reads must NOT forward the caller's c
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma17, "dedicated", "attempt_new");
-      const runId = `run_${KSUID_27}`; // ksuid run → #new
-      const attemptId = `attempt_${KSUID_27}`;
+      const runId = `run_${NEW_ID_26}`; // ksuid run → #new
+      const attemptId = `attempt_${NEW_ID_26}`;
 
       // The attempt's owning run lives on #new (the FK is co-resident on the dedicated schema).
       await prisma17.taskRun.create({
@@ -247,10 +247,10 @@ describe("run-ops split — cross-DB probe reads must NOT forward the caller's c
           number: 1,
           friendlyId: "attempt_fid_new",
           taskRunId: runId,
-          backgroundWorkerId: `bw_${KSUID_27}`,
-          backgroundWorkerTaskId: `bwt_${KSUID_27}`,
+          backgroundWorkerId: `bw_${NEW_ID_26}`,
+          backgroundWorkerTaskId: `bwt_${NEW_ID_26}`,
           runtimeEnvironmentId: env.environment.id,
-          queueId: `queue_${KSUID_27}`,
+          queueId: `queue_${NEW_ID_26}`,
           status: "PENDING",
         },
       });
@@ -274,7 +274,7 @@ describe("run-ops split — cross-DB probe reads must NOT forward the caller's c
       // Single-DB config: both slots point at the same dedicated store (split effectively OFF).
       const router = new RoutingRunStore({ new: newStore, legacy: newStore });
       const env = await seedEnvironment(prisma17, "dedicated", "splitoff_new");
-      const batchId = `batch_${KSUID_27}`;
+      const batchId = `batch_${NEW_ID_26}`;
 
       await prisma17.batchTaskRun.create({
         data: {

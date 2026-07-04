@@ -21,7 +21,7 @@ vi.setConfig({ testTimeout: 60_000 });
 
 const idGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 21);
 
-// Residency by friendlyId length (after stripping `run_`): 27-char body → NEW (ksuid analog),
+// Residency by friendlyId length (after stripping `run_`): 26-char v1 body (version "1" at index 25) → NEW,
 // 25-char body → LEGACY (cuid analog). ownerEngine classifies on the public friendly id.
 function newFriendlyId(): string {
   return "run_" + customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 27)();

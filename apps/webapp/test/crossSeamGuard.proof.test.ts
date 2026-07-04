@@ -13,7 +13,7 @@ import {
 } from "~/v3/runOpsMigration/unblockRouteCatalog";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 
-const NEW_WP = WaitpointId.toFriendlyId("0".repeat(27)); // 27-char internal body → NEW
+const NEW_WP = WaitpointId.toFriendlyId("0".repeat(24) + "01"); // v1 internal body → NEW
 const LEGACY_WP = WaitpointId.toFriendlyId("c".repeat(25)); // 25-char internal body → LEGACY
 
 describe("cross-seam guard — exhaustive per-route store selection", () => {
@@ -163,7 +163,7 @@ describe("cross-seam guard — PG14+PG17 hetero-fixture proof", () => {
   heteroPostgresTest(
     "exhaustive routes resolve to the physically-correct store on PG14+PG17",
     async ({ prisma14, prisma17 }) => {
-      const newWp = WaitpointId.toFriendlyId("0".repeat(27)); // NEW → PG17
+      const newWp = WaitpointId.toFriendlyId("0".repeat(24) + "01"); // NEW → PG17
       const legacyWp = WaitpointId.toFriendlyId("c".repeat(25)); // LEGACY → PG14
 
       // Distinct parent chains per residency; each Waitpoint lives on its own DB

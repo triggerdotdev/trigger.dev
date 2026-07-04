@@ -1,7 +1,7 @@
 import { containerTest, heteroPostgresTest } from "@internal/testcontainers";
 import { PostgresRunStore } from "@internal/run-store";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
-import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import { beforeEach, describe, expect, vi } from "vitest";
 
 // `resolveSchedule` reads the module-level `prisma` (control-plane handle).
@@ -249,10 +249,10 @@ async function seedRunWithTree(
     suffix: string;
   }
 ) {
-  const parentId = generateKsuidId();
-  const rootId = generateKsuidId();
-  const runId = generateKsuidId();
-  const childId = generateKsuidId();
+  const parentId = generateRunOpsId();
+  const rootId = generateRunOpsId();
+  const runId = generateRunOpsId();
+  const childId = generateRunOpsId();
 
   await seedRun(prisma, {
     id: rootId,
@@ -330,7 +330,7 @@ describe("ApiRetrieveRunPresenter.findRun store-routed read (single-DB invariant
       );
 
       // Control-plane schedule on the SAME single client.
-      const scheduleId = generateKsuidId();
+      const scheduleId = generateRunOpsId();
       await prisma.taskSchedule.create({
         data: {
           id: scheduleId,
@@ -399,7 +399,7 @@ describe("ApiRetrieveRunPresenter.findRun store-routed read (single-DB invariant
         "cp-inv"
       );
 
-      const scheduleId = generateKsuidId();
+      const scheduleId = generateRunOpsId();
       await prisma.taskSchedule.create({
         data: {
           id: scheduleId,
@@ -410,7 +410,7 @@ describe("ApiRetrieveRunPresenter.findRun store-routed read (single-DB invariant
         },
       });
 
-      const runId = generateKsuidId();
+      const runId = generateRunOpsId();
       await seedRun(prisma, {
         id: runId,
         friendlyId: `run_${runId}`,
@@ -522,7 +522,7 @@ describe("ApiRetrieveRunPresenter.findRun cross-version read (PG14 + PG17)", () 
       // The control-plane project the schedule hangs off lives on PG17.
       const cpEnv = await seedOrgProjectEnv(prisma17, "x-cp");
 
-      const scheduleId = generateKsuidId();
+      const scheduleId = generateRunOpsId();
       await prisma17.taskSchedule.create({
         data: {
           id: scheduleId,
@@ -534,7 +534,7 @@ describe("ApiRetrieveRunPresenter.findRun cross-version read (PG14 + PG17)", () 
         },
       });
 
-      const runId = generateKsuidId();
+      const runId = generateRunOpsId();
       await seedRun(prisma14, {
         id: runId,
         friendlyId: `run_${runId}`,
@@ -576,7 +576,7 @@ describe("ApiRetrieveRunPresenter.findRun cross-version read (PG14 + PG17)", () 
 
       // A run that exists on NEITHER store (terminated + past-retention,
       // observed at this layer as a miss on both underlying stores).
-      const goneFriendlyId = `run_${generateKsuidId()}`;
+      const goneFriendlyId = `run_${generateRunOpsId()}`;
 
       const fromNew = await readFoundRunViaStore(
         newStore,
