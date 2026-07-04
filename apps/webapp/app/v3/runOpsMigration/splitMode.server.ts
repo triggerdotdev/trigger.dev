@@ -4,7 +4,7 @@
  * infer split-vs-single from URL string-equality — distinctness is proven by the
  * runtime sentinel.
  */
-import { env } from "~/env.server";
+import { env, runOpsNewDatabaseUrl } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { probeDistinctDatabases as defaultProbe } from "./distinctDbSentinel.server";
 
@@ -71,7 +71,7 @@ export function isSplitEnabled(): Promise<boolean> {
       {
         flagEnabled: env.RUN_OPS_SPLIT_ENABLED,
         legacyUrl: env.TASK_RUN_LEGACY_DATABASE_URL,
-        newUrl: env.TASK_RUN_DATABASE_URL,
+        newUrl: runOpsNewDatabaseUrl,
       },
       { logger }
     );

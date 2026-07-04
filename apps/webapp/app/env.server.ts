@@ -132,11 +132,18 @@ const EnvironmentSchema = z
     // Explicit positive opt-in. Split behavior is unreachable unless this is true
     // AND the distinct-DB sentinel confirms the two URLs are physically distinct DBs.
     RUN_OPS_SPLIT_ENABLED: BoolEnv.default(false),
-    // Datasource URL for the dedicated run-ops Prisma schema (migrations/generation).
-    // The webapp runtime pool is driven by TASK_RUN_DATABASE_URL, not this var.
+    // Canonical connection URL for the dedicated run-ops DB — drives the runtime pool, the split
+    // decision, replication, and migrations (resolved via runOpsNewDatabaseUrl). Takes precedence
+    // over TASK_RUN_DATABASE_URL, which remains as the compatibility fallback.
     RUN_OPS_DATABASE_URL: z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_URL is invalid")
+      .optional(),
+    // Direct/unpooled endpoint for the run-ops DB, consumed by the migration runner (poolers break
+    // Prisma's advisory locks). Falls back to TASK_RUN_DATABASE_DIRECT_URL then the pooled URL.
+    RUN_OPS_DATABASE_DIRECT_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_DIRECT_URL is invalid")
       .optional(),
     // The NEW dedicated run-ops DB writer. Optional so single-DB installs never set it.
     TASK_RUN_DATABASE_URL: z
@@ -1724,8 +1731,8 @@ const EnvironmentSchema = z
 
     // --- Run-ops DB split — second replication source (the NEW dedicated run-ops DB). ---
     // Cloud-only; only consulted when isSplitEnabled() is true. Self-host never sets these.
-    // The NEW source's connection URL is TASK_RUN_DATABASE_URL; these add
-    // the NEW source's replication slot/publication and an explicit per-source enable so it can be
+    // The NEW source's connection URL is runOpsNewDatabaseUrl (RUN_OPS_DATABASE_URL ?? TASK_RUN_DATABASE_URL);
+    // these add the NEW source's replication slot/publication and an explicit per-source enable so it can be
     // brought up independently of the legacy source during the transition.
     RUN_REPLICATION_NEW_SLOT_NAME: z.string().default("task_runs_to_clickhouse_v2"),
     RUN_REPLICATION_NEW_PUBLICATION_NAME: z
@@ -2102,3 +2109,10 @@ const EnvironmentSchema = z
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
 export const env = EnvironmentSchema.parse(process.env);
+
+// Canonical connection URL for the NEW dedicated run-ops DB. RUN_OPS_DATABASE_URL is the canonical
+// name; TASK_RUN_DATABASE_URL is the compatibility fallback. Every NEW-DB consumer (connect path,
+// split-decision predicates, replication source, migration runner) resolves through this single
+// value so they can never disagree about which physical database the split targets.
+export const runOpsNewDatabaseUrl: string | undefined =
+  env.RUN_OPS_DATABASE_URL ?? env.TASK_RUN_DATABASE_URL;

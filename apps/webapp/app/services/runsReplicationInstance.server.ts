@@ -1,5 +1,5 @@
 import invariant from "tiny-invariant";
-import { env } from "~/env.server";
+import { env, runOpsNewDatabaseUrl } from "~/env.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { isSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
@@ -172,7 +172,7 @@ function initializeRunsReplicationInstance() {
         const sources = buildReplicationSources({
           splitEnabled,
           legacyUrl: DATABASE_URL,
-          newUrl: env.RUN_OPS_DATABASE_URL ?? env.TASK_RUN_DATABASE_URL,
+          newUrl: runOpsNewDatabaseUrl,
           newSourceOverride: env.RUN_REPLICATION_NEW_ENABLED === "disabled" ? false : undefined,
           legacySlotName: env.RUN_REPLICATION_SLOT_NAME,
           legacyPublicationName: env.RUN_REPLICATION_PUBLICATION_NAME,

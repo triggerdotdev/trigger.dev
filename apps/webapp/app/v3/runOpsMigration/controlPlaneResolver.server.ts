@@ -5,7 +5,7 @@ import type {
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import { prisma, $replica } from "~/db.server";
-import { env } from "~/env.server";
+import { env, runOpsNewDatabaseUrl } from "~/env.server";
 import {
   ControlPlaneCache,
   DEFAULT_CP_CACHE_MAX_ENTRIES,
@@ -449,7 +449,7 @@ export class ControlPlaneResolver {
 // run-ops topology factory uses); the async isSplitEnabled() distinct-DB sentinel is enforced
 // at boot elsewhere and is never awaited on a resolver hot path.
 const SPLIT_ENABLED =
-  env.RUN_OPS_SPLIT_ENABLED && !!env.TASK_RUN_DATABASE_URL && !!env.TASK_RUN_LEGACY_DATABASE_URL;
+  env.RUN_OPS_SPLIT_ENABLED && !!runOpsNewDatabaseUrl && !!env.TASK_RUN_LEGACY_DATABASE_URL;
 
 export const controlPlaneResolver = new ControlPlaneResolver({
   controlPlanePrimary: prisma,

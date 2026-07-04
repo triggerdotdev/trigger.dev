@@ -10,7 +10,7 @@ import {
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import invariant from "tiny-invariant";
 import { z } from "zod";
-import { env } from "./env.server";
+import { env, runOpsNewDatabaseUrl } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
 import {
@@ -237,7 +237,7 @@ export function selectRunOpsTopology(
 // nothing new. The builders apply the SAME wrapper pair the control-plane
 // singletons use (captureInfrastructureErrors(tagDatasource(role, raw))).
 const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
-  const newUrl = env.TASK_RUN_DATABASE_URL;
+  const newUrl = runOpsNewDatabaseUrl;
   // Gate on the opt-in flag too: the distinct-DB sentinel only runs when the flag is on.
   const splitEnabled = env.RUN_OPS_SPLIT_ENABLED && !!newUrl && !!env.TASK_RUN_LEGACY_DATABASE_URL;
 
@@ -278,7 +278,7 @@ export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
   newReplica: runOpsNewReplicaClient,
   controlPlaneWriter: prisma,
   controlPlaneReplica: $replica,
-  hasNewUrl: !!env.TASK_RUN_DATABASE_URL,
+  hasNewUrl: !!runOpsNewDatabaseUrl,
   hasLegacyUrl: !!env.TASK_RUN_LEGACY_DATABASE_URL,
 });
 
