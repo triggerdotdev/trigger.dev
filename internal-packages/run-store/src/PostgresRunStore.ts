@@ -507,6 +507,13 @@ export class PostgresRunStore implements RunStore {
     this.schemaVariant = options.schemaVariant ?? "legacy";
   }
 
+  // The writer handle in read-client form, so the routing layer can honor a caller-passed client
+  // (read-your-writes) with THIS store's own primary instead of leaking the caller's client across
+  // DBs. Cast mirrors runInTransaction: the generated clients differ only in delegates reads use.
+  get primaryReadClient(): ReadClient {
+    return this.prisma as unknown as ReadClient;
+  }
+
   // Open ONE interactive transaction on this store's OWN writer client and run `fn` against THIS store
   // (so subclass overrides survive) with the tx as the client to thread into the inner writes. `runId`
   // is ignored here — a single store has one connection — but is in the contract so the router can
