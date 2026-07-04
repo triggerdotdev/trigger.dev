@@ -650,6 +650,12 @@ export const TSQL_AGGREGATIONS: Record<string, TSQLFunctionMeta> = {
   countMerge: { clickhouseName: "countMerge", minArgs: 1, maxArgs: 1, aggregate: true },
   minMerge: { clickhouseName: "minMerge", minArgs: 1, maxArgs: 1, aggregate: true },
   maxMerge: { clickhouseName: "maxMerge", minArgs: 1, maxArgs: 1, aggregate: true },
+  deltaSumTimestampMerge: {
+    clickhouseName: "deltaSumTimestampMerge",
+    minArgs: 1,
+    maxArgs: 1,
+    aggregate: true,
+  },
 
   // Statistical functions
   simpleLinearRegression: {
