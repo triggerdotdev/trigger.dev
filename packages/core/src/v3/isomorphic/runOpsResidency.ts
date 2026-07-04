@@ -45,7 +45,9 @@ function internalForm(id: string): string {
  * Returns the id lineage by the version-char rule: a well-formed run-ops v1
  * body (26 chars, version "1" at index 25, base32hex alphabet) is "ksuid"
  * (NEW store); everything else — including malformed v1 shapes — is "cuid"
- * (legacy). Total: never throws.
+ * (legacy). Total: never throws. Transition: pre-cutover 27-char base62 KSUIDs (the old
+ * NEW-mint format) now classify LEGACY, so ship this with the base32hex generator only once
+ * any 27-char NEW-resident runs are drained/disposable — no live run is misrouted mid-cutover.
  */
 export function classifyKind(id: string): ResidencyKind {
   return isRunOpsIdBody(internalForm(id)) ? "ksuid" : "cuid";
