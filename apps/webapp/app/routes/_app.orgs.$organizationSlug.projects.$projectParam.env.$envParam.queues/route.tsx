@@ -11,7 +11,7 @@ import { Form, Link, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
@@ -72,6 +72,8 @@ import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { UsageSparkline } from "~/components/primitives/UsageSparkline";
+import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
+import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import {
   useMetricResourceQuery,
   type MetricResourceTimeRange,
@@ -452,7 +454,28 @@ function QueuesWithMetricsView() {
         <div className="grid max-h-full grid-rows-[auto_1fr] overflow-hidden">
           <div className="grid grid-cols-2 gap-3 p-3 lg:grid-cols-4">
             {QUEUE_HEADER_TILES.map((tile) => (
-              <QueueEnvMetricTile key={tile.id} tile={tile} timeRange={timeRange} />
+              <QueueEnvMetricTile
+                key={tile.id}
+                tile={tile}
+                timeRange={timeRange}
+                referenceLines={
+                  tile.id === "saturation"
+                    ? [
+                        { y: 100, label: `Limit ${environment.concurrencyLimit}` },
+                        ...(environment.burstFactor > 1
+                          ? [
+                              {
+                                y: Math.round(environment.burstFactor * 100),
+                                label: `Burst ${Math.round(
+                                  environment.concurrencyLimit * environment.burstFactor
+                                )}`,
+                              },
+                            ]
+                          : []),
+                      ]
+                    : undefined
+                }
+              />
             ))}
           </div>
 
@@ -1140,7 +1163,8 @@ type QueueHeaderTile = {
   label: string;
   color: string;
   query: string;
-  unitLabel: { singular: string; plural: string };
+  /** Formats a single bucket's value in the chart tooltip. */
+  formatValue?: (value: number) => string;
   derive: (rows: MetricTileRow[]) => {
     sparkline: number[];
     total: number;
@@ -1167,7 +1191,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Env saturation",
     color: "#6366F1",
     query: `SELECT timeBucket() AS t,\n  max(max_env_running) AS used,\n  max(max_env_limit) AS env_limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
-    unitLabel: { singular: "%", plural: "%" },
+    formatValue: (v) => `${v}%`,
     derive: (rows) => {
       const sparkline = rows.map((r) => {
         const limit = tileNumber(r.env_limit);
@@ -1182,7 +1206,6 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Backlog",
     color: "#A78BFA",
     query: `SELECT timeBucket() AS t,\n  max(max_env_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
-    unitLabel: { singular: "queued", plural: "queued" },
     derive: (rows) => {
       const sparkline = rows.map((r) => tileNumber(r.queued));
       const peak = sparkline.reduce((max, v) => Math.max(max, v), 0);
@@ -1194,7 +1217,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Scheduling delay p95",
     color: "#F59E0B",
     query: `SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.95, 0.99)(wait_quantiles)[2]) AS p95\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
-    unitLabel: { singular: "ms", plural: "ms" },
+    formatValue: formatWaitMs,
     derive: (rows) => {
       const sparkline = rows.map((r) => tileNumber(r.p95));
       const worst = sparkline.reduce((max, v) => Math.max(max, v), 0);
@@ -1211,7 +1234,6 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Throttled",
     color: "#F59E0B",
     query: `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
-    unitLabel: { singular: "throttled bucket", plural: "throttled buckets" },
     derive: (rows) => {
       const sparkline = rows.map((r) => tileNumber(r.throttled));
       const total = sparkline.reduce((sum, v) => sum + v, 0);
@@ -1229,9 +1251,11 @@ type TileTimeRange = MetricResourceTimeRange;
 function QueueEnvMetricTile({
   tile,
   timeRange,
+  referenceLines,
 }: {
   tile: QueueHeaderTile;
   timeRange: TileTimeRange;
+  referenceLines?: Array<{ y: number; label?: string }>;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -1247,37 +1271,89 @@ function QueueEnvMetricTile({
   });
 
   const { sparkline, total, formatTotal, totalClassName } = tile.derive(rows);
-  const bucketStartMs = rows.length > 0 ? tileTimeToMs(rows[0].t) : undefined;
-  const bucketIntervalMs =
-    rows.length >= 2 ? tileTimeToMs(rows[1].t) - tileTimeToMs(rows[0].t) : undefined;
+
+  // Same point shape the full-size charts use so the shared axis/tooltip helpers apply.
+  const data = rows
+    .map((r, i) => ({ bucket: tileTimeToMs(r.t), [tile.id]: sparkline[i] ?? 0 }))
+    .filter((p) => Number.isFinite(p.bucket));
+
+  const chartConfig = useMemo<ChartConfig>(
+    () => ({ [tile.id]: { label: tile.label, color: tile.color } }),
+    [tile.id, tile.label, tile.color]
+  );
+
+  const { tooltipLabelFormatter } = useMemo(() => buildActivityTimeAxis(data), [data]);
+  const hasData = data.length > 0 && sparkline.some((v) => v > 0);
 
   return (
-    <HeaderTile label={tile.label}>
+    <HeaderTile
+      label={tile.label}
+      value={
+        showLoading ? (
+          <span className="inline-block h-3 w-12 animate-pulse rounded bg-grid-bright" />
+        ) : failed ? undefined : formatTotal ? (
+          formatTotal(total)
+        ) : (
+          total.toLocaleString()
+        )
+      }
+      valueClassName={totalClassName}
+    >
       <LoadingBarDivider isLoading={isLoading} className="bg-transparent" />
       {showLoading ? (
-        <div className="h-6 w-full animate-pulse rounded bg-grid-bright/60" />
+        <div className="h-16 w-full animate-pulse rounded bg-grid-bright/60" />
       ) : failed ? (
-        <div className="flex h-6 items-center text-xs text-text-dimmed">Unable to load metrics</div>
+        <div className="flex h-16 items-center text-xs text-text-dimmed">
+          Unable to load metrics
+        </div>
+      ) : hasData ? (
+        <div className="h-16 w-full">
+          <Chart.Root
+            config={chartConfig}
+            data={data}
+            dataKey="bucket"
+            series={[tile.id]}
+            fillContainer
+          >
+            <Chart.Line
+              lineType="monotone"
+              showDots={false}
+              referenceLines={referenceLines}
+              xAxisProps={{ hide: true }}
+              yAxisProps={{ hide: true }}
+              tooltipLabelFormatter={tooltipLabelFormatter}
+              tooltipValueFormatter={tile.formatValue}
+            />
+          </Chart.Root>
+        </div>
       ) : (
-        <UsageSparkline
-          data={sparkline}
-          bucketStartMs={bucketStartMs}
-          bucketIntervalMs={bucketIntervalMs}
-          color={tile.color}
-          unitLabel={tile.unitLabel}
-          total={total}
-          formatTotal={formatTotal}
-          totalClassName={totalClassName ?? "text-text-bright"}
-        />
+        <div className="flex h-16 items-center text-xs text-text-dimmed">No activity</div>
       )}
     </HeaderTile>
   );
 }
 
-function HeaderTile({ label, children }: { label: ReactNode; children: ReactNode }) {
+function HeaderTile({
+  label,
+  value,
+  valueClassName,
+  children,
+}: {
+  label: ReactNode;
+  value?: ReactNode;
+  valueClassName?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1.5 rounded-sm border border-grid-dimmed bg-background-bright px-3 py-2">
-      <span className="truncate text-xs text-text-dimmed">{label}</span>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-xs text-text-dimmed">{label}</span>
+        {value !== undefined ? (
+          <span className={cn("shrink-0 text-sm tabular-nums text-text-bright", valueClassName)}>
+            {value}
+          </span>
+        ) : null}
+      </div>
       {children}
     </div>
   );

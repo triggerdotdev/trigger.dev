@@ -4,6 +4,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceLine,
   XAxis,
   YAxis,
   type XAxisProps,
@@ -48,11 +49,37 @@ export type ChartLineRendererProps = {
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
   /** Optional formatter for numeric tooltip values (e.g. bytes, duration) */
   tooltipValueFormatter?: (value: number) => string;
+  /** Draw a dot at each data point. Defaults to true; turn off for dense/compact charts. */
+  showDots?: boolean;
+  /** Horizontal reference lines (e.g. limits); the y-domain extends to include them. */
+  referenceLines?: Array<{ y: number; label?: string; color?: string }>;
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
   height?: number;
 };
+
+/** Reference-line label: right-aligned just below the line (recharts injects viewBox). */
+function ReferenceLineLabel({
+  viewBox,
+  value,
+}: {
+  viewBox?: { x: number; y: number; width: number };
+  value: string;
+}) {
+  if (!viewBox) return null;
+  return (
+    <text
+      x={viewBox.x + viewBox.width - 4}
+      y={viewBox.y + 12}
+      textAnchor="end"
+      fill="#878C99"
+      fontSize={10}
+    >
+      {value}
+    </text>
+  );
+}
 
 /**
  * Line chart renderer for the compound component system.
@@ -73,6 +100,8 @@ export function ChartLineRenderer({
   stacked = false,
   tooltipLabelFormatter,
   tooltipValueFormatter,
+  showDots = true,
+  referenceLines,
   width,
   height,
 }: ChartLineRendererProps) {
@@ -176,6 +205,17 @@ export function ChartLineRenderer({
           labelFormatter={tooltipLabelFormatter}
         />
         {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
+        {referenceLines?.map((line) => (
+          <ReferenceLine
+            key={`ref-${line.y}-${line.label ?? ""}`}
+            y={line.y}
+            stroke={line.color ?? "#4D525B"}
+            strokeDasharray="4 4"
+            strokeWidth={1}
+            ifOverflow="extendDomain"
+            label={line.label ? <ReferenceLineLabel value={line.label} /> : undefined}
+          />
+        ))}
         {visibleSeries.map((key) => (
           <Area
             key={key}
@@ -222,6 +262,17 @@ export function ChartLineRenderer({
         labelFormatter={tooltipLabelFormatter}
       />
       {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
+      {referenceLines?.map((line) => (
+        <ReferenceLine
+          key={`ref-${line.y}-${line.label ?? ""}`}
+          y={line.y}
+          stroke={line.color ?? "#4D525B"}
+          strokeDasharray="4 4"
+          strokeWidth={1}
+          ifOverflow="extendDomain"
+          label={line.label ? <ReferenceLineLabel value={line.label} /> : undefined}
+        />
+      ))}
       {visibleSeries.map((key) => (
         <Line
           key={key}
@@ -229,7 +280,7 @@ export function ChartLineRenderer({
           type={lineType}
           stroke={config[key]?.color}
           strokeWidth={1}
-          dot={{ r: 1.5, fill: config[key]?.color, strokeWidth: 0 }}
+          dot={showDots ? { r: 1.5, fill: config[key]?.color, strokeWidth: 0 } : false}
           activeDot={{ r: 4 }}
           isAnimationActive={false}
         />
