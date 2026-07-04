@@ -181,4 +181,58 @@ describe("Replication Client", () => {
       expect(slotExists[0].exists).toBe(false);
     }
   );
+
+  postgresAndRedisTest(
+    "two clients on the same slot must not both lead (rolling-deploy handoff)",
+    async ({ postgresContainer, prisma, redisOptions }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+
+      const shared = {
+        slotName: "handoff_slot",
+        publicationName: "handoff_publication",
+        redisOptions,
+        table: "TaskRun",
+        pgConfig: { connectionString: postgresContainer.getConnectionUri() },
+      };
+
+      // Leader on the shared slot.
+      const a = new LogicalReplicationClient({ ...shared, name: "runs-replication" });
+      const aElections: boolean[] = [];
+      a.events.on("leaderElection", (won) => aElections.push(won));
+      a.events.on("error", () => {});
+      await a.subscribe();
+      // Let A's walsender actually attach to the slot before B races it.
+      await setTimeout(1000);
+
+      // Second client, SAME slot, DIFFERENT name — the rolling-deploy shape that
+      // regressed (name changed "runs-replication" -> "runs-replication:legacy").
+      const b = new LogicalReplicationClient({
+        ...shared,
+        name: "runs-replication:legacy",
+        leaderLockTimeoutMs: 1000,
+        leaderLockAcquireAdditionalTimeMs: 250,
+        leaderLockRetryIntervalMs: 200,
+      });
+      const bElections: boolean[] = [];
+      const bErrors: Array<unknown> = [];
+      b.events.on("leaderElection", (won) => bElections.push(won));
+      b.events.on("error", (error) => bErrors.push(error));
+      await b.subscribe();
+      await setTimeout(500);
+
+      expect(aElections).toContain(true);
+      // B must not also win leadership on the same slot, nor race START_REPLICATION
+      // into a "slot is active" error. With a name-keyed lock it did both.
+      expect(bElections).not.toContain(true);
+      expect(bElections).toContain(false);
+      expect(
+        bErrors
+          .map((e) => String((e as Error)?.message ?? e))
+          .some((m) => /replication slot .* is active|already active/i.test(m))
+      ).toBe(false);
+
+      await a.stop();
+      await b.stop();
+    }
+  );
 });

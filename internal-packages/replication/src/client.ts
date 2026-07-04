@@ -19,7 +19,8 @@ export interface LogicalReplicationClientOptions {
   pgConfig: ClientConfig;
 
   /**
-   * The name of this LogicalReplicationClient instance, used for leader election.
+   * The name of this LogicalReplicationClient instance, used for logging and the
+   * Postgres application_name. Leader election is keyed on `slotName`.
    */
   name: string;
   /**
@@ -703,8 +704,11 @@ export class LogicalReplicationClient {
 
     while (Date.now() - startTime < maxWaitTime) {
       try {
+        // Key the leader lock on the SLOT, not `name`: Postgres allows one
+        // consumer per slot, so consumers of the same slot must contend on the
+        // same lock (a name-keyed lock lets old+new pods race it across a deploy).
         this.leaderLock = await this.redlock.acquire(
-          [`logical-replication-client:${this.options.name}`],
+          [`logical-replication-client:${this.options.slotName}`],
           this.leaderLockTimeoutMs
         );
 
