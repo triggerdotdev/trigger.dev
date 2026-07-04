@@ -809,16 +809,17 @@ export const queueMetricsSchema: TableSchema = {
 };
 
 /**
- * Schema definition for the env_metrics table (trigger_dev.env_metrics_1m_v1).
- * Environment-level rollup of queue_metrics into 1-minute buckets with the queue
- * dimension dropped, so header tiles and saturation charts cost the same regardless
- * of how many queues the environment has.
+ * Schema definition for the env_metrics table (trigger_dev.env_metrics_v1).
+ * Environment-level rollup of queue_metrics with the queue dimension dropped, so
+ * header tiles and saturation charts cost the same regardless of how many queues
+ * the environment has. Keeps the full 10-second granularity: row count is
+ * queue-independent, so even 30-day ranges stay small.
  */
 export const envMetricsSchema: TableSchema = {
   name: "env_metrics",
-  clickhouseName: "trigger_dev.env_metrics_1m_v1",
+  clickhouseName: "trigger_dev.env_metrics_v1",
   description:
-    "Environment-level concurrency, saturation, throttling, and scheduling-delay metrics (1-minute buckets)",
+    "Environment-level concurrency, saturation, throttling, and scheduling-delay metrics (10-second buckets)",
   timeConstraint: "bucket_start",
   tenantColumns: {
     organizationId: "organization_id",
@@ -846,7 +847,7 @@ export const envMetricsSchema: TableSchema = {
     bucket_start: {
       name: "bucket_start",
       ...column("DateTime", {
-        description: "The start of the 1-minute aggregation bucket",
+        description: "The start of the 10-second aggregation bucket",
         example: "2024-01-15 09:30:00",
         coreColumn: true,
       }),
@@ -907,6 +908,7 @@ export const envMetricsSchema: TableSchema = {
     },
   },
   timeBucketThresholds: [
+    { maxRangeSeconds: 3 * 60 * 60, interval: { value: 10, unit: "SECOND" } },
     { maxRangeSeconds: 12 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
     { maxRangeSeconds: 2 * 24 * 60 * 60, interval: { value: 5, unit: "MINUTE" } },
     { maxRangeSeconds: 7 * 24 * 60 * 60, interval: { value: 15, unit: "MINUTE" } },

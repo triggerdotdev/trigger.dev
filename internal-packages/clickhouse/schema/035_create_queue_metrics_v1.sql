@@ -92,11 +92,12 @@ SELECT
 FROM trigger_dev.queue_metrics_raw_v1
 GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 
--- (4) Env-level 1m rollup (no queue dimension) for header tiles/saturation charts.
+-- (4) Env-level 10s rollup (no queue dimension) for header tiles/saturation charts.
+-- Row count is queue-independent (~8640/day/env), so full granularity stays cheap at any range.
 -- No counter deltas on purpose: cross-queue deltaSumTimestamp state merges mix unrelated
 -- odometers (env totals must GROUP BY queue then sum). TDigest because an env-level
 -- reservoir absorbs every sample in the environment.
-CREATE TABLE IF NOT EXISTS trigger_dev.env_metrics_1m_v1
+CREATE TABLE IF NOT EXISTS trigger_dev.env_metrics_v1
 (
   organization_id  LowCardinality(String),
   project_id       LowCardinality(String),
@@ -119,11 +120,11 @@ TTL bucket_start + INTERVAL 30 DAY
 SETTINGS ttl_only_drop_parts = 1;
 
 -- (5) MV: raw -> env rollup.
-CREATE MATERIALIZED VIEW IF NOT EXISTS trigger_dev.env_metrics_1m_mv_v1
-TO trigger_dev.env_metrics_1m_v1 AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS trigger_dev.env_metrics_mv_v1
+TO trigger_dev.env_metrics_v1 AS
 SELECT
   organization_id, project_id, environment_id,
-  toStartOfInterval(event_time, INTERVAL 1 MINUTE) AS bucket_start,
+  toStartOfInterval(event_time, INTERVAL 10 SECOND) AS bucket_start,
   max(env_queued)         AS max_env_queued,
   max(env_running)        AS max_env_running,
   max(env_limit)          AS max_env_limit,
@@ -197,8 +198,8 @@ GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 -- +goose Down
 DROP VIEW IF EXISTS trigger_dev.queue_metrics_5m_mv_v1;
 DROP TABLE IF EXISTS trigger_dev.queue_metrics_5m_v1;
-DROP VIEW IF EXISTS trigger_dev.env_metrics_1m_mv_v1;
-DROP TABLE IF EXISTS trigger_dev.env_metrics_1m_v1;
+DROP VIEW IF EXISTS trigger_dev.env_metrics_mv_v1;
+DROP TABLE IF EXISTS trigger_dev.env_metrics_v1;
 DROP VIEW IF EXISTS trigger_dev.queue_metrics_mv_v1;
 DROP TABLE IF EXISTS trigger_dev.queue_metrics_v1;
 DROP TABLE IF EXISTS trigger_dev.queue_metrics_raw_v1;

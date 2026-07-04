@@ -215,7 +215,7 @@ describe("queue_metrics_v1", () => {
   );
 
   clickhouseTest(
-    "5m and env rollups agree with the 10s tier, and cross-queue totals sum per queue",
+    "5m and env rollups agree with the 10s tier, and env buckets are 10s",
     async ({ clickhouseContainer }) => {
       const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
 
@@ -226,6 +226,14 @@ describe("queue_metrics_v1", () => {
         ...counter("started", "roll-b", 3, [500, 600, 700]),
         { ...base("gauge", "roll-a"), running: 4, queued: 9, env_running: 30, env_limit: 50 },
         { ...base("gauge", "roll-b"), running: 2, queued: 1, env_running: 45, env_limit: 50 },
+        {
+          ...base("gauge", "roll-a"),
+          event_time: "2026-06-30 12:00:15",
+          running: 1,
+          queued: 2,
+          env_running: 20,
+          env_limit: 50,
+        },
       ].map((row) => ({ ...row, organization_id: rollOrg }));
       const [insertError] = await ch.queueMetrics.insertRaw(rows, SYNC);
       expect(insertError).toBeNull();
@@ -269,12 +277,14 @@ describe("queue_metrics_v1", () => {
         query: `SELECT
             max(max_env_running) AS max_env_running,
             max(max_env_limit) AS max_env_limit,
+            uniqExact(bucket_start) AS buckets,
             round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS wait_p99
-          FROM trigger_dev.env_metrics_1m_v1
+          FROM trigger_dev.env_metrics_v1
           WHERE organization_id = {org: String}`,
         schema: z.object({
           max_env_running: z.coerce.number(),
           max_env_limit: z.coerce.number(),
+          buckets: z.coerce.number(),
           wait_p99: z.coerce.number(),
         }),
         params: z.object({ org: z.string() }),
@@ -282,6 +292,8 @@ describe("queue_metrics_v1", () => {
       expect(envError).toBeNull();
       expect(envRows![0]!.max_env_running).toBe(45);
       expect(envRows![0]!.max_env_limit).toBe(50);
+      // 12:00:05 and 12:00:15 land in separate 10s env buckets (12:00:00 and 12:00:10).
+      expect(envRows![0]!.buckets).toBe(2);
       expect(envRows![0]!.wait_p99).toBeGreaterThanOrEqual(600);
       expect(envRows![0]!.wait_p99).toBeLessThanOrEqual(1000);
 
