@@ -485,6 +485,13 @@ export interface RunStore {
   ): Promise<void>;
 
   // Read
+
+  // This store's own PRIMARY (writer) handle in read-client form. The routing layer passes it as
+  // the `client` for a routed read when the CALLER supplied one: the caller's client is bound to
+  // the control-plane DB (the wrong database for a NEW-resident row), so read-your-writes is
+  // honored by reading the OWNING store's own primary instead of its replica.
+  readonly primaryReadClient: ReadClient;
+
   findRun<S extends Prisma.TaskRunSelect>(
     where: Prisma.TaskRunWhereInput,
     args: { select: S },
