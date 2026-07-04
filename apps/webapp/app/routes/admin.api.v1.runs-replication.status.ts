@@ -7,12 +7,15 @@ import { getRunsReplicationConfiguredSources } from "~/services/runsReplicationG
 /**
  * Probes per-source replication leadership via the redlock leader-lock key, which
  * is DOUBLE-PREFIXED with `logical-replication-client:` — once from the connection's
- * keyPrefix and once from redlock's resource string. So we prefix this connection
- * with `runs-replication:logical-replication-client:` and EXISTS on the resource
- * `logical-replication-client:runs-replication:<id>`, resolving to:
- *   runs-replication:logical-replication-client:logical-replication-client:runs-replication:<id>
+ * keyPrefix and once from redlock's resource string. The lock is keyed on the
+ * replication slot, so we prefix this connection with
+ * `runs-replication:logical-replication-client:` and EXISTS on the resource
+ * `logical-replication-client:<slotName>`, resolving to:
+ *   runs-replication:logical-replication-client:logical-replication-client:<slotName>
  */
-async function probeLeadership(sourceIds: string[]): Promise<Map<string, boolean>> {
+async function probeLeadership(
+  sources: { id: string; slotName: string }[]
+): Promise<Map<string, boolean>> {
   const leaders = new Map<string, boolean>();
 
   const redis = new Redis({
@@ -26,9 +29,9 @@ async function probeLeadership(sourceIds: string[]): Promise<Map<string, boolean
   });
 
   try {
-    for (const id of sourceIds) {
-      const exists = await redis.exists(`logical-replication-client:runs-replication:${id}`);
-      leaders.set(id, exists === 1);
+    for (const source of sources) {
+      const exists = await redis.exists(`logical-replication-client:${source.slotName}`);
+      leaders.set(source.id, exists === 1);
     }
   } finally {
     await redis.quit();
@@ -46,7 +49,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return json({ enabled: false, sources: [] });
   }
 
-  const leaders = await probeLeadership(sources.map((s) => s.id));
+  const leaders = await probeLeadership(sources);
 
   return json({
     enabled: env.RUN_REPLICATION_ENABLED === "1" && sources.length > 0,

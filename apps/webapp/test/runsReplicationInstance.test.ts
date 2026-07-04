@@ -408,10 +408,12 @@ describe("RunsReplication multi-source wiring (integration)", () => {
 
         probe = new Redis(redisOptions);
 
+        // Leader lock is keyed on the slot, so each source holds a distinct
+        // slot-keyed lock (double-prefixed: connection keyPrefix + redlock resource).
         const legacyKey =
-          "runs-replication:logical-replication-client:logical-replication-client:runs-replication:legacy";
+          "runs-replication:logical-replication-client:logical-replication-client:tr_legacy_wiring";
         const newKey =
-          "runs-replication:logical-replication-client:logical-replication-client:runs-replication:new";
+          "runs-replication:logical-replication-client:logical-replication-client:tr_new_wiring";
 
         expect(await probe.exists(legacyKey)).toBe(1);
         expect(await probe.exists(newKey)).toBe(1);
