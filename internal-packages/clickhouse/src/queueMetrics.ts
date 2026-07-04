@@ -105,4 +105,66 @@ export function getQueueDepthSparklines(reader: ClickhouseReader) {
   });
 }
 
+const QueueRankingParams = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
+  environmentId: z.string(),
+  startTime: z.string(),
+  /** 1 = rank by peak backlog only; 0 = backlog + running ("busiest"). */
+  byQueuedOnly: z.number(),
+  nameContains: z.string(),
+  limit: z.number(),
+  offset: z.number(),
+});
+
+const QueueRankingRow = z.object({
+  queue_name: z.string(),
+});
+
+const RANKING_WHERE = `organization_id = {organizationId: String}
+        AND project_id = {projectId: String}
+        AND environment_id = {environmentId: String}
+        AND bucket_start >= {startTime: DateTime}
+        AND queue_name != '__overflow__'
+        AND ({nameContains: String} = '' OR positionCaseInsensitive(queue_name, {nameContains: String}) > 0)`;
+
+/** Queue names ranked by recent activity, for relevance-ordered list pages. */
+export function getQueueRankingPage(reader: ClickhouseReader) {
+  return reader.query({
+    name: "getQueueRankingPage",
+    query: `SELECT queue_name
+      FROM trigger_dev.queue_metrics_v1
+      WHERE ${RANKING_WHERE}
+      GROUP BY queue_name
+      ORDER BY
+        if({byQueuedOnly: UInt8} = 1, max(max_queued), max(max_queued) + max(max_running)) DESC,
+        queue_name ASC
+      LIMIT {limit: UInt32} OFFSET {offset: UInt32}`,
+    params: QueueRankingParams,
+    schema: QueueRankingRow,
+  });
+}
+
+const QueueRankingCountParams = QueueRankingParams.omit({
+  byQueuedOnly: true,
+  limit: true,
+  offset: true,
+});
+
+const QueueRankingCountRow = z.object({
+  ranked: z.coerce.number(),
+});
+
+/** How many queues have activity in the ranking window (the ranked head of the list). */
+export function getQueueRankingCount(reader: ClickhouseReader) {
+  return reader.query({
+    name: "getQueueRankingCount",
+    query: `SELECT uniqExact(queue_name) AS ranked
+      FROM trigger_dev.queue_metrics_v1
+      WHERE ${RANKING_WHERE}`,
+    params: QueueRankingCountParams,
+    schema: QueueRankingCountRow,
+  });
+}
+
 // (per-queue detail series is now fetched via TRQL + fillGaps from the metric resource route)

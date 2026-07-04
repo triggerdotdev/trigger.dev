@@ -37,6 +37,8 @@ import {
   insertQueueMetricsRaw,
   getQueueListMetricsSummary,
   getQueueDepthSparklines,
+  getQueueRankingPage,
+  getQueueRankingCount,
 } from "./queueMetrics.js";
 import {
   getSessionTagsQueryBuilder,
@@ -273,6 +275,8 @@ export class ClickHouse {
       insertRaw: insertQueueMetricsRaw(this.writer),
       listSummary: getQueueListMetricsSummary(this.reader),
       depthSparklines: getQueueDepthSparklines(this.reader),
+      rankingPage: getQueueRankingPage(this.reader),
+      rankingCount: getQueueRankingCount(this.reader),
     };
   }
 
