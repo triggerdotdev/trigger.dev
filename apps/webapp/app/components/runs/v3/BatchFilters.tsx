@@ -1,6 +1,7 @@
 import * as Ariakit from "@ariakit/react";
 import { Squares2X2Icon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
+import { isClassifiable } from "@trigger.dev/core/v3/isomorphic";
 import type { BatchTaskRunStatus } from "@trigger.dev/database";
 import { type ReactNode, useRef } from "react";
 import { z } from "zod";
@@ -227,7 +228,7 @@ function PermanentStatusFilter() {
 
 function validateBatchId(value: string): string | undefined {
   if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
-  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27 or 31 characters long";
+  if (!isClassifiable(value)) return "That doesn't look like a valid batch ID";
 }
 
 function BatchIdDropdown(

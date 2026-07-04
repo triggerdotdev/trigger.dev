@@ -1,5 +1,6 @@
 import * as Ariakit from "@ariakit/react";
 import { FingerPrintIcon } from "@heroicons/react/20/solid";
+import { isClassifiable } from "@trigger.dev/core/v3/isomorphic";
 import { useCallback, useState } from "react";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button } from "~/components/primitives/Buttons";
@@ -72,8 +73,8 @@ function RunIdDropdown({
   if (runId) {
     if (!runId.startsWith("run_")) {
       error = "Run IDs start with 'run_'";
-    } else if (runId.length !== 25 && runId.length !== 29) {
-      error = "Run IDs are 25 or 29 characters long";
+    } else if (!isClassifiable(runId)) {
+      error = "That doesn't look like a valid run ID";
     }
   }
 

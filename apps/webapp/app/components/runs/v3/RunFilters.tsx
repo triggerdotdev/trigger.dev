@@ -13,6 +13,7 @@ import {
 import { Form, useFetcher } from "@remix-run/react";
 import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
+import { isClassifiable } from "@trigger.dev/core/v3/isomorphic";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { matchSorter } from "match-sorter";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
@@ -1715,7 +1716,7 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
 
 function validateRunId(value: string): string | undefined {
   if (!value.startsWith("run_")) return "Run IDs start with 'run_'";
-  if (value.length !== 25 && value.length !== 29) return "Run IDs are 25 or 29 characters long";
+  if (!isClassifiable(value)) return "That doesn't look like a valid run ID";
 }
 
 function RunIdDropdown(
@@ -1770,7 +1771,7 @@ function AppliedRunIdFilter() {
 
 function validateBatchId(value: string): string | undefined {
   if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
-  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27 or 31 characters long";
+  if (!isClassifiable(value)) return "That doesn't look like a valid batch ID";
 }
 
 function BatchIdDropdown(

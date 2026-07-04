@@ -2,6 +2,7 @@ import * as Ariakit from "@ariakit/react";
 import { FingerPrintIcon, TagIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
 import { WaitpointTokenStatus, waitpointTokenStatuses } from "@trigger.dev/core/v3";
+import { isClassifiable } from "@trigger.dev/core/v3/isomorphic";
 import { ListChecks } from "lucide-react";
 import { matchSorter } from "match-sorter";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
@@ -409,7 +410,7 @@ function WaitpointIdDropdown(
       paramKey="id"
       validate={(v) => {
         if (!v.startsWith("waitpoint_")) return "Waitpoint IDs start with 'waitpoint_'";
-        if (v.length !== 35) return "Waitpoint IDs are 35 characters long";
+        if (!isClassifiable(v)) return "That doesn't look like a valid waitpoint ID";
         return undefined;
       }}
     />
