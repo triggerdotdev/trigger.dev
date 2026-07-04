@@ -50,6 +50,12 @@ const QueueMetricsSummaryRow = z.object({
   started_count: z.coerce.number(),
 });
 
+// Callers align window bounds to the bucket grid so repeated loads share cache entries.
+const QUEUE_METRICS_CACHE_SETTINGS = {
+  use_query_cache: 1,
+  query_cache_ttl: 30,
+} as const;
+
 /** Per-queue rollups over a window, for a fixed set of queues (the visible page). */
 export function getQueueListMetricsSummary(reader: ClickhouseReader) {
   return reader.query({
@@ -70,6 +76,7 @@ export function getQueueListMetricsSummary(reader: ClickhouseReader) {
       GROUP BY queue_name`,
     params: QueueMetricsListParams,
     schema: QueueMetricsSummaryRow,
+    settings: QUEUE_METRICS_CACHE_SETTINGS,
   });
 }
 
@@ -102,6 +109,7 @@ export function getQueueDepthSparklines(reader: ClickhouseReader) {
       ORDER BY bucket`,
     params: QueueDepthSparklineParams,
     schema: QueueDepthSparklineRow,
+    settings: QUEUE_METRICS_CACHE_SETTINGS,
   });
 }
 
@@ -119,8 +127,11 @@ const QueueRankingParams = z.object({
 
 const QueueRankingRow = z.object({
   queue_name: z.string(),
+  ranked_total: z.coerce.number(),
 });
 
+// Ranking reads the 5m rollup: a 15-minute window there costs ~30x fewer rows than the
+// 10s table.
 const RANKING_WHERE = `organization_id = {organizationId: String}
         AND project_id = {projectId: String}
         AND environment_id = {environmentId: String}
@@ -128,20 +139,49 @@ const RANKING_WHERE = `organization_id = {organizationId: String}
         AND queue_name != '__overflow__'
         AND ({nameContains: String} = '' OR positionCaseInsensitive(queue_name, {nameContains: String}) > 0)`;
 
-/** Queue names ranked by recent activity, for relevance-ordered list pages. */
-export function getQueueRankingPage(reader: ClickhouseReader) {
+/**
+ * One page of queue names ranked by recent activity, with the total ranked count on
+ * every row (window function), so page + count cost a single scan.
+ */
+export function getQueueRanking(reader: ClickhouseReader) {
   return reader.query({
-    name: "getQueueRankingPage",
-    query: `SELECT queue_name
-      FROM trigger_dev.queue_metrics_v1
-      WHERE ${RANKING_WHERE}
-      GROUP BY queue_name
-      ORDER BY
-        if({byQueuedOnly: UInt8} = 1, max(max_queued), max(max_queued) + max(max_running)) DESC,
-        queue_name ASC
+    name: "getQueueRanking",
+    query: `SELECT queue_name, count() OVER () AS ranked_total
+      FROM (
+        SELECT queue_name
+        FROM trigger_dev.queue_metrics_5m_v1
+        WHERE ${RANKING_WHERE}
+        GROUP BY queue_name
+        ORDER BY
+          if({byQueuedOnly: UInt8} = 1, max(max_queued), max(max_queued) + max(max_running)) DESC,
+          queue_name ASC
+      )
       LIMIT {limit: UInt32} OFFSET {offset: UInt32}`,
     params: QueueRankingParams,
     schema: QueueRankingRow,
+    settings: QUEUE_METRICS_CACHE_SETTINGS,
+  });
+}
+
+const QueueRankingNamesParams = QueueRankingParams.omit({ byQueuedOnly: true, offset: true });
+
+const QueueRankingNameRow = z.object({
+  queue_name: z.string(),
+});
+
+/** All ranked queue names (activity order), used to exclude them from the alphabetical tail. */
+export function getQueueRankingNames(reader: ClickhouseReader) {
+  return reader.query({
+    name: "getQueueRankingNames",
+    query: `SELECT queue_name
+      FROM trigger_dev.queue_metrics_5m_v1
+      WHERE ${RANKING_WHERE}
+      GROUP BY queue_name
+      ORDER BY max(max_queued) + max(max_running) DESC, queue_name ASC
+      LIMIT {limit: UInt32}`,
+    params: QueueRankingNamesParams,
+    schema: QueueRankingNameRow,
+    settings: QUEUE_METRICS_CACHE_SETTINGS,
   });
 }
 
@@ -155,15 +195,16 @@ const QueueRankingCountRow = z.object({
   ranked: z.coerce.number(),
 });
 
-/** How many queues have activity in the ranking window (the ranked head of the list). */
+/** Ranked-queue count alone, for pages past the ranked head (approximate uniq is fine). */
 export function getQueueRankingCount(reader: ClickhouseReader) {
   return reader.query({
     name: "getQueueRankingCount",
-    query: `SELECT uniqExact(queue_name) AS ranked
-      FROM trigger_dev.queue_metrics_v1
+    query: `SELECT uniq(queue_name) AS ranked
+      FROM trigger_dev.queue_metrics_5m_v1
       WHERE ${RANKING_WHERE}`,
     params: QueueRankingCountParams,
     schema: QueueRankingCountRow,
+    settings: QUEUE_METRICS_CACHE_SETTINGS,
   });
 }
 

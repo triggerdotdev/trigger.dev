@@ -415,6 +415,16 @@ export interface TableSchema {
    * is needed to get correct results. Not needed for plain MergeTree tables.
    */
   useFinal?: boolean;
+  /**
+   * Coarser physical rollups with an identical logical schema, substituted by callers
+   * (not the printer) when the timeBucket() interval is at least minIntervalSeconds.
+   */
+  rollups?: Array<{ minIntervalSeconds: number; clickhouseName: string }>;
+  /**
+   * Opt into the ClickHouse query cache; callers align time bounds to alignSeconds
+   * so repeated auto-refresh queries share cache entries.
+   */
+  queryCache?: { ttlSeconds: number; alignSeconds: number };
 }
 
 /**

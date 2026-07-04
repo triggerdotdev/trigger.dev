@@ -37,7 +37,8 @@ import {
   insertQueueMetricsRaw,
   getQueueListMetricsSummary,
   getQueueDepthSparklines,
-  getQueueRankingPage,
+  getQueueRanking,
+  getQueueRankingNames,
   getQueueRankingCount,
 } from "./queueMetrics.js";
 import {
@@ -275,7 +276,8 @@ export class ClickHouse {
       insertRaw: insertQueueMetricsRaw(this.writer),
       listSummary: getQueueListMetricsSummary(this.reader),
       depthSparklines: getQueueDepthSparklines(this.reader),
-      rankingPage: getQueueRankingPage(this.reader),
+      ranking: getQueueRanking(this.reader),
+      rankingNames: getQueueRankingNames(this.reader),
       rankingCount: getQueueRankingCount(this.reader),
     };
   }

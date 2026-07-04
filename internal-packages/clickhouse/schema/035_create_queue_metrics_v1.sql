@@ -92,7 +92,113 @@ SELECT
 FROM trigger_dev.queue_metrics_raw_v1
 GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 
+-- (4) Env-level 1m rollup (no queue dimension) for header tiles/saturation charts.
+-- No counter deltas on purpose: cross-queue deltaSumTimestamp state merges mix unrelated
+-- odometers (env totals must GROUP BY queue then sum). TDigest because an env-level
+-- reservoir absorbs every sample in the environment.
+CREATE TABLE IF NOT EXISTS trigger_dev.env_metrics_1m_v1
+(
+  organization_id  LowCardinality(String),
+  project_id       LowCardinality(String),
+  environment_id   String CODEC(ZSTD(1)),
+  bucket_start     DateTime CODEC(Delta(4), ZSTD(1)),
+
+  max_env_queued   SimpleAggregateFunction(max, UInt32),
+  max_env_running  SimpleAggregateFunction(max, UInt32),
+  max_env_limit    SimpleAggregateFunction(max, UInt32),
+  throttled_count  SimpleAggregateFunction(sum, UInt64),
+
+  wait_ms_sum      SimpleAggregateFunction(sum, UInt64),
+  wait_ms_count    SimpleAggregateFunction(sum, UInt64),
+  wait_quantiles   AggregateFunction(quantilesTDigest(0.5, 0.9, 0.95, 0.99), UInt32)
+)
+ENGINE = AggregatingMergeTree()
+PARTITION BY toDate(bucket_start)
+ORDER BY (organization_id, project_id, environment_id, bucket_start)
+TTL bucket_start + INTERVAL 30 DAY
+SETTINGS ttl_only_drop_parts = 1;
+
+-- (5) MV: raw -> env rollup.
+CREATE MATERIALIZED VIEW IF NOT EXISTS trigger_dev.env_metrics_1m_mv_v1
+TO trigger_dev.env_metrics_1m_v1 AS
+SELECT
+  organization_id, project_id, environment_id,
+  toStartOfInterval(event_time, INTERVAL 1 MINUTE) AS bucket_start,
+  max(env_queued)         AS max_env_queued,
+  max(env_running)        AS max_env_running,
+  max(env_limit)          AS max_env_limit,
+  sum(throttled)          AS throttled_count,
+  sumIf(wait_ms, op = 'started')                 AS wait_ms_sum,
+  countIf(op = 'started' AND wait_ms > 0)        AS wait_ms_count,
+  quantilesTDigestStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0) AS wait_quantiles
+FROM trigger_dev.queue_metrics_raw_v1
+GROUP BY organization_id, project_id, environment_id, bucket_start;
+
+-- (6) Per-queue 5m rollup, exact column mirror of queue_metrics_v1, for ranking and
+-- env-wide GROUP BY queue reads at long ranges.
+CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_5m_v1
+(
+  organization_id  LowCardinality(String),
+  project_id       LowCardinality(String),
+  environment_id   String CODEC(ZSTD(1)),
+  queue_name       String CODEC(ZSTD(1)),
+  bucket_start     DateTime CODEC(Delta(4), ZSTD(1)),
+
+  enqueue_delta    AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  started_delta    AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  ack_delta        AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  nack_delta       AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  dlq_delta        AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  throttled_count  SimpleAggregateFunction(sum, UInt64),
+
+  max_queued       SimpleAggregateFunction(max, UInt32),
+  max_running      SimpleAggregateFunction(max, UInt32),
+  max_limit        SimpleAggregateFunction(max, UInt32),
+  max_env_queued   SimpleAggregateFunction(max, UInt32),
+  max_env_running  SimpleAggregateFunction(max, UInt32),
+  max_env_limit    SimpleAggregateFunction(max, UInt32),
+
+  wait_ms_sum      SimpleAggregateFunction(sum, UInt64),
+  wait_ms_count    SimpleAggregateFunction(sum, UInt64),
+  wait_quantiles   AggregateFunction(quantiles(0.5, 0.9, 0.95, 0.99), UInt32)
+)
+ENGINE = AggregatingMergeTree()
+PARTITION BY toDate(bucket_start)
+ORDER BY (organization_id, project_id, environment_id, queue_name, bucket_start)
+TTL bucket_start + INTERVAL 30 DAY
+SETTINGS ttl_only_drop_parts = 1;
+
+-- (7) MV: raw -> 5m rollup. MUST read raw, never cascade off queue_metrics_v1 with
+-- -MergeState: MV GROUP BY merges states in hash order, and out-of-time-order
+-- deltaSumTimestamp merges double-count bridging spans (verified 3x inflation).
+CREATE MATERIALIZED VIEW IF NOT EXISTS trigger_dev.queue_metrics_5m_mv_v1
+TO trigger_dev.queue_metrics_5m_v1 AS
+SELECT
+  organization_id, project_id, environment_id, queue_name,
+  toStartOfInterval(event_time, INTERVAL 5 MINUTE) AS bucket_start,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'enqueue') AS enqueue_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'started') AS started_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'ack')     AS ack_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'nack')    AS nack_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'dlq')     AS dlq_delta,
+  sum(throttled)          AS throttled_count,
+  max(queued)             AS max_queued,
+  max(running)            AS max_running,
+  max(queue_limit)        AS max_limit,
+  max(env_queued)         AS max_env_queued,
+  max(env_running)        AS max_env_running,
+  max(env_limit)          AS max_env_limit,
+  sumIf(wait_ms, op = 'started')                 AS wait_ms_sum,
+  countIf(op = 'started' AND wait_ms > 0)        AS wait_ms_count,
+  quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0) AS wait_quantiles
+FROM trigger_dev.queue_metrics_raw_v1
+GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
+
 -- +goose Down
+DROP VIEW IF EXISTS trigger_dev.queue_metrics_5m_mv_v1;
+DROP TABLE IF EXISTS trigger_dev.queue_metrics_5m_v1;
+DROP VIEW IF EXISTS trigger_dev.env_metrics_1m_mv_v1;
+DROP TABLE IF EXISTS trigger_dev.env_metrics_1m_v1;
 DROP VIEW IF EXISTS trigger_dev.queue_metrics_mv_v1;
 DROP TABLE IF EXISTS trigger_dev.queue_metrics_v1;
 DROP TABLE IF EXISTS trigger_dev.queue_metrics_raw_v1;

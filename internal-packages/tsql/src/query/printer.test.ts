@@ -4065,3 +4065,68 @@ describe("timeBucket() fillGaps", () => {
     expect(sql).toContain("ORDER BY timebucket DESC");
   });
 });
+
+describe("cross-queue counter totals via subquery (env-wide throughput shape)", () => {
+  // deltaSumTimestamp states must merge per queue, then sum outside; this is the
+  // supported shape for env-wide totals.
+  const metricsSchema: TableSchema = {
+    name: "metrics",
+    clickhouseName: "trigger_dev.queue_metrics_v1",
+    timeConstraint: "bucket_at",
+    columns: {
+      bucket_at: { name: "bucket_at", clickhouseName: "created_at", ...column("DateTime64") },
+      queue_name: { name: "queue_name", ...column("String") },
+      started_delta: {
+        name: "started_delta",
+        ...column("String"),
+        groupable: false,
+        sortable: false,
+        filterable: false,
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function runSubquery(query: string) {
+    const context = createPrinterContext({
+      schema: createSchemaRegistry([metricsSchema]),
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test123" },
+      },
+      timeRange: {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-08T00:00:00Z"),
+      },
+    });
+    const result = printToClickHouse(parseTSQLSelect(query), context);
+    return { ...result, warnings: context.warnings };
+  }
+
+  it("compiles per-queue merge + outer sum, with tenant scoping inside the subquery", () => {
+    const { sql, params } = runSubquery(`
+      SELECT t, sum(started) AS started
+      FROM (
+        SELECT timeBucket() AS t, queue_name, deltaSumTimestampMerge(started_delta) AS started
+        FROM metrics
+        GROUP BY t, queue_name
+      )
+      GROUP BY t
+      ORDER BY t
+    `);
+
+    expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
+    expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+    const subqueryStart = sql.indexOf("FROM (");
+    const tenantFilter = sql.indexOf("organization_id");
+    expect(subqueryStart).toBeGreaterThan(-1);
+    expect(tenantFilter).toBeGreaterThan(subqueryStart);
+    expect(Object.values(params)).toContain("org_test123");
+  });
+});

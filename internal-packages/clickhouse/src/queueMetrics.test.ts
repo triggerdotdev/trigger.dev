@@ -213,4 +213,122 @@ describe("queue_metrics_v1", () => {
       await ch.close();
     }
   );
+
+  clickhouseTest(
+    "5m and env rollups agree with the 10s tier, and cross-queue totals sum per queue",
+    async ({ clickhouseContainer }) => {
+      const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
+
+      // Own org so the env-level read (no queue filter) stays isolated from other tests.
+      const rollOrg = "org_qm_roll";
+      const rows: QueueMetricsRawV1Input[] = [
+        ...counter("started", "roll-a", 7, [100, 150, 200, 250, 300, 350, 400]),
+        ...counter("started", "roll-b", 3, [500, 600, 700]),
+        { ...base("gauge", "roll-a"), running: 4, queued: 9, env_running: 30, env_limit: 50 },
+        { ...base("gauge", "roll-b"), running: 2, queued: 1, env_running: 45, env_limit: 50 },
+      ].map((row) => ({ ...row, organization_id: rollOrg }));
+      const [insertError] = await ch.queueMetrics.insertRaw(rows, SYNC);
+      expect(insertError).toBeNull();
+
+      const perQueue = (table: string) =>
+        ch.reader.query({
+          name: "per-queue-both-tiers",
+          query: `SELECT queue_name, deltaSumTimestampMerge(started_delta) AS started
+          FROM ${table}
+          WHERE queue_name IN ('roll-a', 'roll-b')
+          GROUP BY queue_name ORDER BY queue_name`,
+          schema: z.object({ queue_name: z.string(), started: z.coerce.number() }),
+        })({});
+      const [e10, rows10] = await perQueue("trigger_dev.queue_metrics_v1");
+      const [e5m, rows5m] = await perQueue("trigger_dev.queue_metrics_5m_v1");
+      expect(e10).toBeNull();
+      expect(e5m).toBeNull();
+      expect(rows10).toEqual([
+        { queue_name: "roll-a", started: 7 },
+        { queue_name: "roll-b", started: 3 },
+      ]);
+      expect(rows5m).toEqual(rows10);
+
+      // Env-wide totals: sum of per-queue merges (a single merge across queues would mix
+      // odometers and double-count).
+      const [envTotalError, envTotal] = await ch.reader.query({
+        name: "env-total-per-queue-sum",
+        query: `SELECT sum(started) AS started FROM (
+            SELECT queue_name, deltaSumTimestampMerge(started_delta) AS started
+            FROM trigger_dev.queue_metrics_5m_v1
+            WHERE queue_name IN ('roll-a', 'roll-b')
+            GROUP BY queue_name
+          )`,
+        schema: z.object({ started: z.coerce.number() }),
+      })({});
+      expect(envTotalError).toBeNull();
+      expect(envTotal![0]!.started).toBe(10);
+
+      const [envError, envRows] = await ch.reader.query({
+        name: "env-rollup-read",
+        query: `SELECT
+            max(max_env_running) AS max_env_running,
+            max(max_env_limit) AS max_env_limit,
+            round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS wait_p99
+          FROM trigger_dev.env_metrics_1m_v1
+          WHERE organization_id = {org: String}`,
+        schema: z.object({
+          max_env_running: z.coerce.number(),
+          max_env_limit: z.coerce.number(),
+          wait_p99: z.coerce.number(),
+        }),
+        params: z.object({ org: z.string() }),
+      })({ org: rollOrg });
+      expect(envError).toBeNull();
+      expect(envRows![0]!.max_env_running).toBe(45);
+      expect(envRows![0]!.max_env_limit).toBe(50);
+      expect(envRows![0]!.wait_p99).toBeGreaterThanOrEqual(600);
+      expect(envRows![0]!.wait_p99).toBeLessThanOrEqual(1000);
+
+      await ch.close();
+    }
+  );
+
+  clickhouseTest(
+    "merged ranking returns the page and the windowed total in one query",
+    async ({ clickhouseContainer }) => {
+      const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
+
+      const gauge = (queue: string, queued: number, running: number): QueueMetricsRawV1Input => ({
+        ...base("gauge", queue),
+        queued,
+        running,
+      });
+      const [insertError] = await ch.queueMetrics.insertRaw(
+        [gauge("rank-low", 1, 0), gauge("rank-high", 50, 3), gauge("rank-mid", 10, 2)],
+        SYNC
+      );
+      expect(insertError).toBeNull();
+
+      const args = {
+        organizationId: ORG,
+        projectId: PROJECT,
+        environmentId: ENV,
+        startTime: "2026-06-30 11:50:00",
+        nameContains: "rank-",
+        byQueuedOnly: 0,
+      };
+      const [pageError, page] = await ch.queueMetrics.ranking({ ...args, limit: 2, offset: 0 });
+      expect(pageError).toBeNull();
+      expect(page).toEqual([
+        { queue_name: "rank-high", ranked_total: 3 },
+        { queue_name: "rank-mid", ranked_total: 3 },
+      ]);
+
+      const [countError, count] = await ch.queueMetrics.rankingCount(args);
+      expect(countError).toBeNull();
+      expect(count![0]!.ranked).toBe(3);
+
+      const [namesError, names] = await ch.queueMetrics.rankingNames({ ...args, limit: 10 });
+      expect(namesError).toBeNull();
+      expect(names!.map((r) => r.queue_name)).toEqual(["rank-high", "rank-mid", "rank-low"]);
+
+      await ch.close();
+    }
+  );
 });
