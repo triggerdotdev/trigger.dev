@@ -185,6 +185,39 @@ const scenarios: Record<string, (totalBuckets: number, bucketSec: number) => Sce
     ],
   }),
 
+  // Pagination + relevance-ranking design surface: one runaway queue, a busy-but-healthy
+  // head, a bursty middle, and a long sparse tail across 61 queues (the list pages at 25).
+  "many-queues": () => ({
+    description:
+      "61 queues: one runaway, busy head, bursty middle, long sparse tail (pagination + ranking)",
+    envLimit: () => 150,
+    queues: [
+      { name: "imports", limit: () => 8, arrivals: (_b, r) => poisson(14, r), waitBaseMs: 80 },
+      ...["checkout", "notifications", "emails"].map((name, i) => ({
+        name,
+        limit: () => 15,
+        arrivals: (_b: number, r: Rng) => poisson(7 + i, r),
+        waitBaseMs: 60,
+      })),
+      ...Array.from({ length: 12 }, (_v, i) =>
+        bursty(`service-${String(i + 1).padStart(2, "0")}`, 10, 2)
+      ),
+      ...Array.from({ length: 20 }, (_v, i) => ({
+        name: `job-${String(i + 1).padStart(2, "0")}`,
+        limit: () => 5,
+        arrivals: (_b: number, r: Rng) => poisson(1, r),
+        waitBaseMs: 40,
+      })),
+      ...Array.from({ length: 25 }, (_v, i) => ({
+        name: `tenant-${String(i + 1).padStart(2, "0")}`,
+        limit: () => 3,
+        arrivals: (_b: number, r: Rng) => (r() < 0.05 ? poisson(2, r) : 0),
+        waitBaseMs: 30,
+        sparse: true,
+      })),
+    ],
+  }),
+
   // Default: one env with a variety of queue behaviours + occasional env saturation.
   mixed: (totalBuckets) => ({
     description: "variety of queue profiles in one env, with occasional env saturation",
@@ -219,15 +252,61 @@ const WAIT_SIGMA = 0.6;
 const NACK_RATE = 0.02;
 const DLQ_RATE = 0.004;
 
+type CounterOp = "enqueue" | "started" | "ack" | "nack" | "dlq";
+// Per-(queue, op) odometers, mirroring the production emitter: cumulative readings with a
+// cum=0 baseline on the first one, so deltaSumTimestamp captures the 0->1 delta.
+type CounterState = Record<CounterOp, number>[];
+
+function counterRows(
+  counters: CounterState,
+  q: number,
+  ids: Ids,
+  queueName: string,
+  eventTime: string,
+  orderKey: () => number,
+  op: CounterOp,
+  wait_ms?: number
+): QueueMetricsRawV1Input[] {
+  const rows: QueueMetricsRawV1Input[] = [];
+  if (counters[q][op] === 0) {
+    rows.push({
+      ...ids,
+      queue_name: queueName,
+      event_time: eventTime,
+      op,
+      cumulative: 0,
+      order_key: orderKey(),
+    });
+  }
+  counters[q][op] += 1;
+  rows.push({
+    ...ids,
+    queue_name: queueName,
+    event_time: eventTime,
+    op,
+    cumulative: counters[q][op],
+    order_key: orderKey(),
+    ...(wait_ms !== undefined ? { wait_ms } : {}),
+  });
+  return rows;
+}
+
+function newCounterState(n: number): CounterState {
+  return Array.from({ length: n }, () => ({ enqueue: 0, started: 0, ack: 0, nack: 0, dlq: 0 }));
+}
+
 // Advance one bucket of the simulation for every queue, returning the raw rows to insert.
-// `backlog` is mutated in place so state carries across buckets (and into live mode).
+// `backlog` and `counters` are mutated in place so state carries across buckets (and into
+// live mode).
 function simulateBucket(
   scenario: Scenario,
   bucket: number,
   bucketSec: number,
   eventTime: string,
+  bucketEpochSec: number,
   ids: Ids,
   backlog: number[],
+  counters: CounterState,
   rng: Rng
 ): QueueMetricsRawV1Input[] {
   const envLimit = scenario.envLimit(bucket);
@@ -259,6 +338,11 @@ function simulateBucket(
     envQueued += queued[q];
   }
 
+  // Order keys are time-based (like the production stream ids) so appended runs and live
+  // mode stay monotonic; the per-bucket sequence keeps them unique within a bucket.
+  let bucketSeq = 0;
+  const orderKey = () => bucketEpochSec * 1_000_000 + bucketSeq++;
+
   const rows: QueueMetricsRawV1Input[] = [];
   for (let q = 0; q < n; q++) {
     const profile = scenario.queues[q];
@@ -287,21 +371,26 @@ function simulateBucket(
     rows.push(gauge);
 
     for (let a = 0; a < arrivals; a++) {
-      rows.push({ ...ids, queue_name: profile.name, event_time: eventTime, op: "enqueue" });
+      rows.push(...counterRows(counters, q, ids, profile.name, eventTime, orderKey, "enqueue"));
     }
 
     const medianWait = profile.waitBaseMs + (prior / Math.max(limit[q], 1)) * bucketSec * 1000;
     for (let s = 0; s < started; s++) {
-      rows.push({
-        ...ids,
-        queue_name: profile.name,
-        event_time: eventTime,
-        op: "started",
-        wait_ms: Math.round(lognormal(medianWait, WAIT_SIGMA, rng)),
-      });
+      rows.push(
+        ...counterRows(
+          counters,
+          q,
+          ids,
+          profile.name,
+          eventTime,
+          orderKey,
+          "started",
+          Math.round(lognormal(medianWait, WAIT_SIGMA, rng))
+        )
+      );
       const roll = rng();
-      const op = roll < DLQ_RATE ? "dlq" : roll < DLQ_RATE + NACK_RATE ? "nack" : "ack";
-      rows.push({ ...ids, queue_name: profile.name, event_time: eventTime, op });
+      const op: CounterOp = roll < DLQ_RATE ? "dlq" : roll < DLQ_RATE + NACK_RATE ? "nack" : "ack";
+      rows.push(...counterRows(counters, q, ids, profile.name, eventTime, orderKey, op));
     }
   }
   return rows;
@@ -412,11 +501,55 @@ async function ensureTaskQueues(
       update: { concurrencyLimit },
     });
   }
-  console.log(`Ensured ${scenario.queues.length} task queues in Postgres.`);
+
+  // Drop queues left over from a previously seeded scenario so switching scenarios
+  // does not leave metric-less rows in the list.
+  const { count: pruned } = await prisma.taskQueue.deleteMany({
+    where: {
+      runtimeEnvironmentId,
+      name: { notIn: scenario.queues.map((q) => q.name) },
+    },
+  });
+  console.log(
+    `Ensured ${scenario.queues.length} task queues in Postgres${pruned > 0 ? `, pruned ${pruned} stale` : ""}.`
+  );
+}
+
+function printHelp() {
+  const lines = Object.entries(scenarios).map(
+    ([name, build]) => `  ${name.padEnd(28)}${build(720, 10).description}`
+  );
+  console.log(`Queue metrics simulator: seeds a synthetic tenant with realistic queue metrics.
+
+Usage: pnpm --filter webapp run db:seed:queue-metrics -- [flags]
+
+Flags:
+  --scenario <name>   which scenario to seed (default: mixed)
+  --project <name>    project to seed into (default: ${PROJECT_NAME}); use one
+                      project per scenario to browse them side by side
+  --window <dur>      how much history to backfill, e.g. 30m, 6h, 1d (default: 2h)
+  --bucket <sec>      seconds per simulated bucket (default: 10)
+  --seed <n>          RNG seed for reproducible data (default: 1)
+  --live              after backfilling, keep appending one bucket per interval
+  --reset             clear this environment's metrics before seeding
+  --reset-only        clear and exit without seeding
+  --help              this text
+
+Scenarios:
+${lines.join("\n")}
+
+Example designer setup (one project per scenario):
+  pnpm --filter webapp run db:seed:queue-metrics -- --scenario mixed --reset
+  pnpm --filter webapp run db:seed:queue-metrics -- --scenario many-queues --project qm-many-queues --reset
+  pnpm --filter webapp run db:seed:queue-metrics -- --scenario throttled-backlog --project qm-throttled --reset`);
 }
 
 async function main() {
   const flags = parseArgs(process.argv.slice(2));
+  if (flags.help === "true") {
+    printHelp();
+    process.exit(0);
+  }
   const scenarioName = flags.scenario ?? "mixed";
   const build = scenarios[scenarioName];
   if (!build) {
@@ -453,13 +586,14 @@ async function main() {
   if (!org)
     org = await createOrganization({ title: ORG_TITLE, userId: user.id, companySize: "1-10" });
 
+  const projectName = flags.project ?? PROJECT_NAME;
   let project = await prisma.project.findFirst({
-    where: { name: PROJECT_NAME, organizationId: org.id },
+    where: { name: projectName, organizationId: org.id },
   });
   if (!project) {
     project = await createProject({
       organizationSlug: org.slug,
-      name: PROJECT_NAME,
+      name: projectName,
       userId: user.id,
       version: "v3",
     });
@@ -502,10 +636,24 @@ async function main() {
   // Backfill: buckets from (now - window) up to now, aligned to the bucket grid.
   const nowBucket = Math.floor(Date.now() / 1000 / bucketSec) * bucketSec;
   const startBucket = nowBucket - totalBuckets * bucketSec;
+  const counters = newCounterState(scenario.queues.length);
   const rows: QueueMetricsRawV1Input[] = [];
   for (let b = 0; b < totalBuckets; b++) {
-    const eventTime = formatChDateTime(new Date((startBucket + b * bucketSec) * 1000));
-    rows.push(...simulateBucket(scenario, b, bucketSec, eventTime, ids, backlog, rng));
+    const bucketEpochSec = startBucket + b * bucketSec;
+    const eventTime = formatChDateTime(new Date(bucketEpochSec * 1000));
+    rows.push(
+      ...simulateBucket(
+        scenario,
+        b,
+        bucketSec,
+        eventTime,
+        bucketEpochSec,
+        ids,
+        backlog,
+        counters,
+        rng
+      )
+    );
   }
   await insertBatched(ch, rows, nonce);
   console.log(`Inserted ${rows.length} raw rows.`);
@@ -530,10 +678,19 @@ async function main() {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       await new Promise((r) => setTimeout(r, bucketSec * 1000));
-      const eventTime = formatChDateTime(
-        new Date(Math.floor(Date.now() / 1000 / bucketSec) * bucketSec * 1000)
+      const bucketEpochSec = Math.floor(Date.now() / 1000 / bucketSec) * bucketSec;
+      const eventTime = formatChDateTime(new Date(bucketEpochSec * 1000));
+      const liveRows = simulateBucket(
+        scenario,
+        b,
+        bucketSec,
+        eventTime,
+        bucketEpochSec,
+        ids,
+        backlog,
+        counters,
+        rng
       );
-      const liveRows = simulateBucket(scenario, b, bucketSec, eventTime, ids, backlog, rng);
       await insertBatched(ch, liveRows, `${nonce}:live:${b}`);
       console.log(`bucket ${b}: ${liveRows.length} rows @ ${eventTime}`);
       b++;
