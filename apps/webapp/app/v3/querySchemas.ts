@@ -1309,6 +1309,7 @@ export const queueMetricsByKeySchema: TableSchema = {
   name: "queue_metrics_by_key",
   clickhouseName: "trigger_dev.queue_metrics_ck_v1",
   description: "Per-concurrency-key queue metrics: backlog, throughput, and wait by key",
+  hidden: true,
   timeConstraint: "bucket_start",
   tenantColumns: {
     organizationId: "organization_id",
@@ -1443,6 +1444,9 @@ export const querySchemas: TableSchema[] = [
   envMetricsSchema,
   queueMetricsByKeySchema,
 ];
+
+/** Schemas shown in user-facing listings (editor autocomplete, schema docs, schema API). */
+export const visibleQuerySchemas: TableSchema[] = querySchemas.filter((s) => !s.hidden);
 
 /**
  * Default query for the query editor

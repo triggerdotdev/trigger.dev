@@ -431,6 +431,11 @@ export interface TableSchema {
    * so repeated auto-refresh queries share cache entries.
    */
   queryCache?: { ttlSeconds: number; alignSeconds: number };
+  /**
+   * Excluded from user-facing listings (query editor, schema docs, schema API) by
+   * callers; the engine still compiles queries against it.
+   */
+  hidden?: boolean;
 }
 
 /**

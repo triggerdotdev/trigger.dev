@@ -1,7 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import type { ColumnSchema, TableSchema } from "@internal/tsql";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { querySchemas } from "~/v3/querySchemas";
+import { visibleQuerySchemas } from "~/v3/querySchemas";
 
 function serializeColumn(col: ColumnSchema) {
   const result: Record<string, unknown> = {
@@ -51,7 +51,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async () => {
-    const tables = querySchemas.map(serializeTable);
+    const tables = visibleQuerySchemas.map(serializeTable);
     return json({ tables });
   }
 );
