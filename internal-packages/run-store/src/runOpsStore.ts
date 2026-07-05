@@ -689,7 +689,27 @@ export class RoutingRunStore implements RunStore {
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null> {
     const owningStore = this.#routeOrNew(runId);
-    const snapshot = await owningStore.findLatestExecutionSnapshot(runId);
+    const snapshot = isWriterClient(client)
+      ? await owningStore.findLatestExecutionSnapshotOnPrimary(runId)
+      : await owningStore.findLatestExecutionSnapshot(runId);
+    if (snapshot) {
+      await this.#reresolveCompletedWaitpointsCrossDb(
+        snapshot as Record<string, unknown>,
+        owningStore
+      );
+    }
+    return snapshot;
+  }
+
+  // Explicit read-your-writes entry point: route by residency to the owning store's PRIMARY
+  // (writer), never the replica — mirrors findRunOnPrimary/findWaitpointOnPrimary.
+  async findLatestExecutionSnapshotOnPrimary(
+    runId: string
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
+    include: { completedWaitpoints: true; checkpoint: true };
+  }> | null> {
+    const owningStore = this.#routeOrNew(runId);
+    const snapshot = await owningStore.findLatestExecutionSnapshotOnPrimary(runId);
     if (snapshot) {
       await this.#reresolveCompletedWaitpointsCrossDb(
         snapshot as Record<string, unknown>,
@@ -813,9 +833,24 @@ export class RoutingRunStore implements RunStore {
   // A run's waitpoints can be scattered across both stores (drain in flight), so count on
   // each and sum rather than assume one home.
   async countPendingWaitpoints(waitpointIds: string[], client?: ReadClient): Promise<number> {
+    const [fromNew, fromLegacy] = isWriterClient(client)
+      ? await Promise.all([
+          this.#new.countPendingWaitpointsOnPrimary(waitpointIds),
+          this.#legacy.countPendingWaitpointsOnPrimary(waitpointIds),
+        ])
+      : await Promise.all([
+          this.#new.countPendingWaitpoints(waitpointIds),
+          this.#legacy.countPendingWaitpoints(waitpointIds),
+        ]);
+    return fromNew + fromLegacy;
+  }
+
+  // Explicit read-your-writes entry point: count on BOTH stores' PRIMARY (writer), never a
+  // replica — mirrors countPendingWaitpoints' writer-client branch above.
+  async countPendingWaitpointsOnPrimary(waitpointIds: string[]): Promise<number> {
     const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.countPendingWaitpoints(waitpointIds),
-      this.#legacy.countPendingWaitpoints(waitpointIds),
+      this.#new.countPendingWaitpointsOnPrimary(waitpointIds),
+      this.#legacy.countPendingWaitpointsOnPrimary(waitpointIds),
     ]);
     return fromNew + fromLegacy;
   }
@@ -1094,10 +1129,40 @@ export class RoutingRunStore implements RunStore {
       args as Record<string, unknown>
     );
 
+    const [fromNew, fromLegacy] = isWriterClient(client)
+      ? await Promise.all([
+          this.#new.findManyTaskRunWaitpointsOnPrimary(scalarArgs as typeof args),
+          this.#legacy.findManyTaskRunWaitpointsOnPrimary(scalarArgs as typeof args),
+        ])
+      : await Promise.all([
+          this.#new.findManyTaskRunWaitpoints(scalarArgs as typeof args),
+          this.#legacy.findManyTaskRunWaitpoints(scalarArgs as typeof args),
+        ]);
+    return this.#hydrateTaskRunWaitpointEdges(fromNew, fromLegacy, waitpoint, taskRun);
+  }
+
+  // Explicit read-your-writes entry point: query BOTH stores' PRIMARY (writer), never a
+  // replica — mirrors findManyTaskRunWaitpoints' writer-client branch above.
+  async findManyTaskRunWaitpointsOnPrimary<T extends Prisma.TaskRunWaitpointFindManyArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunWaitpointFindManyArgs>
+  ): Promise<Prisma.TaskRunWaitpointGetPayload<T>[]> {
+    const { scalarArgs, waitpoint, taskRun } = splitEdgeRelationProjection(
+      args as Record<string, unknown>
+    );
+
     const [fromNew, fromLegacy] = await Promise.all([
-      this.#new.findManyTaskRunWaitpoints(scalarArgs as typeof args),
-      this.#legacy.findManyTaskRunWaitpoints(scalarArgs as typeof args),
+      this.#new.findManyTaskRunWaitpointsOnPrimary(scalarArgs as typeof args),
+      this.#legacy.findManyTaskRunWaitpointsOnPrimary(scalarArgs as typeof args),
     ]);
+    return this.#hydrateTaskRunWaitpointEdges(fromNew, fromLegacy, waitpoint, taskRun);
+  }
+
+  async #hydrateTaskRunWaitpointEdges<T extends Prisma.TaskRunWaitpointFindManyArgs>(
+    fromNew: unknown[],
+    fromLegacy: unknown[],
+    waitpoint: SubProjection | undefined,
+    taskRun: SubProjection | undefined
+  ): Promise<Prisma.TaskRunWaitpointGetPayload<T>[]> {
     const edges = dedupeEdgesById([...fromNew, ...fromLegacy]) as Record<string, unknown>[];
 
     if (waitpoint) {

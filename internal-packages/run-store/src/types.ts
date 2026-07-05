@@ -585,6 +585,14 @@ export interface RunStore {
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null>;
+  // Read-after-write on the OWNING store's primary (never the replica) — for re-reading a
+  // snapshot just written in this request, where replica lag would cause a false miss (mirrors
+  // findWaitpointOnPrimary / findRunOnPrimary).
+  findLatestExecutionSnapshotOnPrimary(
+    runId: string
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
+    include: { completedWaitpoints: true; checkpoint: true };
+  }> | null>;
   findExecutionSnapshot<T extends Prisma.TaskRunExecutionSnapshotFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunExecutionSnapshotFindFirstArgs>,
     client?: ReadClient
@@ -614,6 +622,9 @@ export interface RunStore {
     tx?: PrismaClientOrTransaction;
   }): Promise<void>;
   countPendingWaitpoints(waitpointIds: string[], client?: ReadClient): Promise<number>;
+  // Read-after-write on the OWNING store's primary (never the replica) — for re-counting
+  // pending waitpoints just written in this request, where replica lag would cause a false miss.
+  countPendingWaitpointsOnPrimary(waitpointIds: string[]): Promise<number>;
 
   // Waitpoint group
   createWaitpoint<T extends Prisma.WaitpointCreateArgs>(
@@ -667,6 +678,12 @@ export interface RunStore {
   findManyTaskRunWaitpoints<T extends Prisma.TaskRunWaitpointFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunWaitpointFindManyArgs>,
     client?: ReadClient
+  ): Promise<Prisma.TaskRunWaitpointGetPayload<T>[]>;
+  // Read-after-write on the OWNING store's primary (never the replica) — for re-reading
+  // taskRunWaitpoint edges just written in this request, where replica lag would cause a false
+  // miss.
+  findManyTaskRunWaitpointsOnPrimary<T extends Prisma.TaskRunWaitpointFindManyArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunWaitpointFindManyArgs>
   ): Promise<Prisma.TaskRunWaitpointGetPayload<T>[]>;
   deleteManyTaskRunWaitpoints(
     args: Prisma.TaskRunWaitpointDeleteManyArgs,

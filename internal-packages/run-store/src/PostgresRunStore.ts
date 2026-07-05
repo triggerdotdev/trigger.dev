@@ -1418,6 +1418,16 @@ export class PostgresRunStore implements RunStore {
     });
   }
 
+  // Read-after-write on the OWNING store's PRIMARY: a caller that just wrote a snapshot in this
+  // request re-reads it here so replica lag (findLatestExecutionSnapshot's default) can't miss it.
+  async findLatestExecutionSnapshotOnPrimary(
+    runId: string
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
+    include: { completedWaitpoints: true; checkpoint: true };
+  }> | null> {
+    return this.findLatestExecutionSnapshot(runId, this.prisma as ReadClient);
+  }
+
   /**
    * Dedicated-schema replacement for the legacy `include: { completedWaitpoints: true }` snapshot
    * read. The relation doesn't exist on the subset schema, so we resolve the linked waitpoint ids
@@ -1764,6 +1774,12 @@ export class PostgresRunStore implements RunStore {
     return Number(pendingCheck.at(0)?.pending_count ?? 0);
   }
 
+  // Read-after-write on the OWNING store's PRIMARY: a caller that just wrote/updated a waitpoint
+  // in this request re-counts here so replica lag (countPendingWaitpoints's default) can't miss it.
+  async countPendingWaitpointsOnPrimary(waitpointIds: string[]): Promise<number> {
+    return this.countPendingWaitpoints(waitpointIds, this.prisma as ReadClient);
+  }
+
   async createWaitpoint<T extends Prisma.WaitpointCreateArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointCreateArgs>,
     tx?: PrismaClientOrTransaction
@@ -1922,6 +1938,15 @@ export class PostgresRunStore implements RunStore {
       );
     }
     return rows as Prisma.TaskRunWaitpointGetPayload<T>[];
+  }
+
+  // Read-after-write on the OWNING store's PRIMARY: a caller that just wrote a taskRunWaitpoint
+  // edge in this request re-reads it here so replica lag (findManyTaskRunWaitpoints's default)
+  // can't miss it.
+  async findManyTaskRunWaitpointsOnPrimary<T extends Prisma.TaskRunWaitpointFindManyArgs>(
+    args: Prisma.SelectSubset<T, Prisma.TaskRunWaitpointFindManyArgs>
+  ): Promise<Prisma.TaskRunWaitpointGetPayload<T>[]> {
+    return this.findManyTaskRunWaitpoints(args, this.prisma as ReadClient);
   }
 
   async deleteManyTaskRunWaitpoints(
