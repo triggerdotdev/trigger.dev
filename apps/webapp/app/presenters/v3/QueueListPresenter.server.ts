@@ -281,8 +281,10 @@ export class QueueListPresenter extends BasePresenter {
         }
         excludedNames = (allRows ?? []).map((row) => row.queue_name);
       }
+      // AND keeps the search's name filter intact alongside the exclusion (a spread
+      // would overwrite one name condition with the other).
       tailQueues = await this._replica.taskQueue.findMany({
-        where: { ...where, name: { notIn: excludedNames } },
+        where: { AND: [where, { name: { notIn: excludedNames } }] },
         select: queueListSelect,
         orderBy: {
           orderableName: "asc",
@@ -314,7 +316,7 @@ export class QueueListPresenter extends BasePresenter {
       return [];
     }
     const queues = await this._replica.taskQueue.findMany({
-      where: { ...where, name: { in: names } },
+      where: { AND: [where, { name: { in: names } }] },
       select: queueListSelect,
     });
     const byName = new Map(queues.map((queue) => [queue.name, queue]));
