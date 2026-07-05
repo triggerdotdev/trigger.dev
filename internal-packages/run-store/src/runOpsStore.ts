@@ -833,7 +833,10 @@ export class RoutingRunStore implements RunStore {
   // Snapshot ids are cuids (they always classify LEGACY), and a snapshot's CompletedWaitpoint join
   // co-locates with its run, which may live on either store, so fan out to BOTH and merge (like
   // findWaitpointCompletedSnapshotIds) rather than route by the un-classifiable snapshot id.
-  async findSnapshotCompletedWaitpointIds(snapshotId: string, client?: ReadClient): Promise<string[]> {
+  async findSnapshotCompletedWaitpointIds(
+    snapshotId: string,
+    client?: ReadClient
+  ): Promise<string[]> {
     const [fromNew, fromLegacy] = await Promise.all([
       this.#new.findSnapshotCompletedWaitpointIds(
         snapshotId,

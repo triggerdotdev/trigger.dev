@@ -199,7 +199,9 @@ function laggingPendingReplica<C extends RunOpsPrismaClient>(
           return (target as any).$queryRaw(strings, ...values);
         };
       }
-      return (target as any)[prop];
+      // Bind forwarded methods to the real client (Prisma delegates are proxy-based, not pre-bound).
+      const forwarded = (target as any)[prop];
+      return typeof forwarded === "function" ? forwarded.bind(target) : forwarded;
     },
   }) as C;
   return { client, wasHit: () => hit };

@@ -137,12 +137,17 @@ function laggingLockReplica<C extends RunOpsPrismaClient>(
           return row ? { ...row, lockedById: null } : row;
         };
       }
-      return (target as any)[prop];
+      // Bind forwarded methods to the real client: Prisma delegates are proxy-based and not
+      // pre-bound, so an unbound method would trip a this/private-field brand check when called.
+      const forwarded = (target as any)[prop];
+      return typeof forwarded === "function" ? forwarded.bind(target) : forwarded;
     },
   });
   const client = new Proxy(real as any, {
     get(target, prop) {
-      return prop === "taskRun" ? laggingTaskRun : (target as any)[prop];
+      if (prop === "taskRun") return laggingTaskRun;
+      const forwarded = (target as any)[prop];
+      return typeof forwarded === "function" ? forwarded.bind(target) : forwarded;
     },
   }) as C;
   return { client, wasHit: () => hit };
