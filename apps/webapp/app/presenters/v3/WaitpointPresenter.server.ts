@@ -45,12 +45,6 @@ export class WaitpointPresenter extends BasePresenter {
       completedAfter: true,
       completedAt: true,
       createdAt: true,
-      connectedRuns: {
-        select: {
-          friendlyId: true,
-        },
-        take: 5,
-      },
       tags: true,
       environmentId: true,
     } as const;
@@ -78,6 +72,66 @@ export class WaitpointPresenter extends BasePresenter {
     });
 
     return result.source === "new" || result.source === "legacy-replica" ? result.value : null;
+  }
+
+  // Connected-run friendlyIds gathered across BOTH stores. The run<->waitpoint join co-locates with
+  // the RUN (written on the run's DB), so the waitpoint's own store misses a cross-DB connection; we
+  // read the join on each client and resolve the run's friendlyId on that same client, then union.
+  // We never relation-select `connectedRuns`: it is not a field on the dedicated subset `Waitpoint`.
+  async #connectedRunFriendlyIds(waitpointId: string): Promise<string[]> {
+    const replica = this._replica as unknown as PrismaReplicaClient;
+    const rawClients: PrismaReplicaClient[] =
+      this.readThroughDeps?.splitEnabled === true
+        ? [
+            (this.readThroughDeps.newClient as PrismaReplicaClient | undefined) ?? replica,
+            (this.readThroughDeps.legacyReplica as PrismaReplicaClient | undefined) ?? replica,
+          ]
+        : [replica];
+    const clients = [...new Set(rawClients)];
+
+    const friendlyIds = new Set<string>();
+    for (const client of clients) {
+      const runIds = await this.#connectedRunIdsOn(client, waitpointId);
+      if (runIds.length === 0) {
+        continue;
+      }
+      const runs = await client.taskRun.findMany({
+        where: { id: { in: runIds } },
+        select: { friendlyId: true },
+        take: 5,
+      });
+      for (const run of runs) {
+        friendlyIds.add(run.friendlyId);
+      }
+      if (friendlyIds.size >= 5) {
+        break;
+      }
+    }
+    return Array.from(friendlyIds).slice(0, 5);
+  }
+
+  // Schema-aware read of the run ids linked to a waitpoint: the dedicated subset uses the explicit
+  // `WaitpointRunConnection` model, the control-plane full schema the implicit `_WaitpointRunConnections`
+  // M2M (A = TaskRun.id, B = Waitpoint.id). The dedicated join delegate is absent on the full client.
+  async #connectedRunIdsOn(client: PrismaReplicaClient, waitpointId: string): Promise<string[]> {
+    const joinDelegate = (
+      client as unknown as {
+        waitpointRunConnection?: {
+          findMany: (args: unknown) => Promise<{ taskRunId: string }[]>;
+        };
+      }
+    ).waitpointRunConnection;
+    if (joinDelegate && typeof joinDelegate.findMany === "function") {
+      const links = await joinDelegate.findMany({
+        where: { waitpointId },
+        select: { taskRunId: true },
+      });
+      return links.map((link) => link.taskRunId);
+    }
+    const rows = await client.$queryRaw<{ A: string }[]>`
+      SELECT "A" FROM "_WaitpointRunConnections" WHERE "B" = ${waitpointId}
+    `;
+    return rows.map((row) => row.A);
   }
 
   public async call({
@@ -119,7 +173,7 @@ export class WaitpointPresenter extends BasePresenter {
       }
     }
 
-    const connectedRunIds = waitpoint.connectedRuns.map((run) => run.friendlyId);
+    const connectedRunIds = await this.#connectedRunFriendlyIds(waitpoint.id);
     const connectedRuns: NextRunListItem[] = [];
 
     if (connectedRunIds.length > 0) {
