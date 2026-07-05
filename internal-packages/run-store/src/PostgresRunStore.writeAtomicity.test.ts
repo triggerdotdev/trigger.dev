@@ -395,3 +395,65 @@ describe("fan-out deleteManyTaskRunWaitpoints honors the caller's tx on the #leg
     }
   );
 });
+
+// RoutingRunStore.createExecutionSnapshot accepts a caller tx but must forward it to the OWNING store
+// only when that store is #legacy: a control-plane tx can't wrap a #new (cross-DB) write, but it can
+// (and should) wrap a legacy-resident snapshot so it stays atomic with the caller's operation.
+describe("createExecutionSnapshot honors the caller's tx on the #legacy owning store", () => {
+  heteroRunOpsPostgresTest(
+    "rolls the snapshot back when a legacy run's caller tx rolls back",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const env = await seedEnvironment(prisma14, "legacy", "ces_rb");
+      const runId = `run_${CUID_25}`;
+      await router.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_ces_rb",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+
+      await expect(
+        prisma14.$transaction(async (tx) => {
+          await router.createExecutionSnapshot(snapshotInput(runId, env), tx);
+          throw new Error("rollback");
+        })
+      ).rejects.toThrow("rollback");
+
+      const snap = await prisma14.taskRunExecutionSnapshot.findFirst({
+        where: { runId, executionStatus: "EXECUTING" },
+      });
+      expect(snap).toBeNull();
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "persists the snapshot when the legacy caller tx commits",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const env = await seedEnvironment(prisma14, "legacy", "ces_commit");
+      const runId = `run_${CUID_25}`;
+      await router.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_ces_commit",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+
+      await prisma14.$transaction(async (tx) => {
+        await router.createExecutionSnapshot(snapshotInput(runId, env), tx);
+      });
+
+      const snap = await prisma14.taskRunExecutionSnapshot.findFirst({
+        where: { runId, executionStatus: "EXECUTING" },
+      });
+      expect(snap).not.toBeNull();
+    }
+  );
+});

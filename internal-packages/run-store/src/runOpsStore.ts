@@ -827,7 +827,10 @@ export class RoutingRunStore implements RunStore {
     input: CreateExecutionSnapshotInput,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>> {
-    return (await this.#routeOrNewForWrite(input.run.id)).createExecutionSnapshot(input);
+    // Forward the caller's control-plane tx only to the #legacy store; a #new (cross-DB) write can't
+    // join it, so it's dropped there (the atomic #new path uses runInTransaction instead).
+    const store = await this.#routeOrNewForWrite(input.run.id);
+    return store.createExecutionSnapshot(input, store === this.#legacy ? tx : undefined);
   }
 
   // Snapshot ids are cuids (they always classify LEGACY), and a snapshot's CompletedWaitpoint join
