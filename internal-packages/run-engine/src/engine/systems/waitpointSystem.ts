@@ -511,8 +511,9 @@ export class WaitpointSystem {
         batchIndex: batch?.index,
       });
 
-      // Check if the run is actually blocked using a separate query (see above).
-      const pendingCount = await this.$.runStore.countPendingWaitpoints($waitpoints);
+      // Check if the run is actually blocked using a separate query (see above). Pass the writer so the
+      // pending re-read is read-your-writes on the owning PRIMARY (a lagging replica can strand the run).
+      const pendingCount = await this.$.runStore.countPendingWaitpoints($waitpoints, prisma);
 
       const isRunBlocked = pendingCount > 0;
 
