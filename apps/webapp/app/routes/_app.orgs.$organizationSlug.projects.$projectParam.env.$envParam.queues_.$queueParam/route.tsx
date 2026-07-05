@@ -27,6 +27,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { engine } from "~/v3/runEngine.server";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
@@ -114,12 +115,25 @@ export default function Page() {
   const plan = useCurrentPlan();
   const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
 
-  const { value } = useSearchParams();
+  const { value, replace } = useSearchParams();
   const timeRange: TimeRangeParams = {
     period: value("period") ?? null,
     from: value("from") ?? null,
     to: value("to") ?? null,
   };
+
+  // The Concurrency keys tab exists only for queues with key activity: live keys in the
+  // ckIndex, or nonzero CK history in the selected range (one cached scalar query decides).
+  const { rows: gateRows, showLoading: gateLoading } = useQueueMetric(
+    `SELECT max(max_ck_backlogged) AS peak_keys, max(max_ck_wait_ms) AS peak_wait\nFROM queue_metrics`,
+    { ids, timeRange, queueName: fullName }
+  );
+  const gateRow = gateRows[0];
+  const hasHistory = gateRow
+    ? toNumber(gateRow.peak_keys) > 0 || toNumber(gateRow.peak_wait) > 0
+    : false;
+  const showKeysTab = ckBreakdown.keys.length > 0 || (!gateLoading && hasHistory);
+  const view = value("view") === "keys" && showKeysTab ? "keys" : "overview";
 
   return (
     <PageContainer>
@@ -145,60 +159,98 @@ export default function Page() {
             />
           </div>
 
-          <QueueDetailChartCard
-            title="Concurrency"
-            query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-            fillGaps
-            ids={ids}
-            timeRange={timeRange}
-            queueName={fullName}
-            series={[
-              { key: "running", label: "Running", color: COLORS.running },
-              { key: "limit", label: "Limit", color: COLORS.limit },
-            ]}
-          />
-          <QueueDetailChartCard
-            title="Queue depth (backlog)"
-            query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-            fillGaps
-            ids={ids}
-            timeRange={timeRange}
-            queueName={fullName}
-            series={[{ key: "queued", label: "Queued", color: COLORS.queued }]}
-          />
-          <QueueDetailChartCard
-            title="Scheduling delay"
-            query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-            fillGaps
-            ids={ids}
-            timeRange={timeRange}
-            queueName={fullName}
-            valueFormat={formatWaitMs}
-            series={[
-              { key: "p50", label: "p50", color: COLORS.p50 },
-              { key: "p95", label: "p95", color: COLORS.p95 },
-              { key: "p99", label: "p99", color: COLORS.p99 },
-            ]}
-          />
-          <QueueDetailChartCard
-            title="Throttled buckets"
-            query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-            fillGaps
-            ids={ids}
-            timeRange={timeRange}
-            queueName={fullName}
-            series={[{ key: "throttled", label: "Throttled", color: COLORS.throttled }]}
-          />
-          <ConcurrencyKeysSection
-            breakdown={ckBreakdown}
-            loadedAt={loadedAt}
-            ids={ids}
-            timeRange={timeRange}
-            queueName={fullName}
-          />
+          {showKeysTab && (
+            <TabContainer>
+              <TabButton
+                isActive={view === "overview"}
+                layoutId="queue-detail-view"
+                onClick={() => replace({ view: undefined, key: undefined })}
+              >
+                Overview
+              </TabButton>
+              <TabButton
+                isActive={view === "keys"}
+                layoutId="queue-detail-view"
+                onClick={() => replace({ view: "keys" })}
+              >
+                Concurrency keys
+              </TabButton>
+            </TabContainer>
+          )}
+
+          {view === "keys" ? (
+            <ConcurrencyKeysView
+              breakdown={ckBreakdown}
+              loadedAt={loadedAt}
+              ids={ids}
+              timeRange={timeRange}
+              queueName={fullName}
+            />
+          ) : (
+            <OverviewCharts ids={ids} timeRange={timeRange} queueName={fullName} />
+          )}
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+function OverviewCharts({
+  ids,
+  timeRange,
+  queueName,
+}: {
+  ids: Ids;
+  timeRange: TimeRangeParams;
+  queueName: string;
+}) {
+  return (
+    <>
+      <QueueDetailChartCard
+        title="Concurrency"
+        query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+        fillGaps
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+        series={[
+          { key: "running", label: "Running", color: COLORS.running },
+          { key: "limit", label: "Limit", color: COLORS.limit },
+        ]}
+      />
+      <QueueDetailChartCard
+        title="Queue depth (backlog)"
+        query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+        fillGaps
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+        series={[{ key: "queued", label: "Queued", color: COLORS.queued }]}
+      />
+      <QueueDetailChartCard
+        title="Scheduling delay"
+        query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+        fillGaps
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+        valueFormat={formatWaitMs}
+        series={[
+          { key: "p50", label: "p50", color: COLORS.p50 },
+          { key: "p95", label: "p95", color: COLORS.p95 },
+          { key: "p99", label: "p99", color: COLORS.p99 },
+        ]}
+      />
+      <QueueDetailChartCard
+        title="Throttled buckets"
+        query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+        fillGaps
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+        series={[{ key: "throttled", label: "Throttled", color: COLORS.throttled }]}
+      />
+    </>
   );
 }
 
@@ -212,9 +264,7 @@ type CkBreakdown = {
   }>;
 };
 
-// Rendered only for queues with concurrency-key activity: live keys in the ckIndex, or
-// nonzero CK history in the selected range (one cached scalar query decides).
-function ConcurrencyKeysSection({
+function ConcurrencyKeysView({
   breakdown,
   loadedAt,
   ids,
@@ -227,20 +277,27 @@ function ConcurrencyKeysSection({
   timeRange: TimeRangeParams;
   queueName: string;
 }) {
-  const { rows, showLoading } = useQueueMetric(
-    `SELECT max(max_ck_backlogged) AS peak_keys, max(max_ck_wait_ms) AS peak_wait\nFROM queue_metrics`,
-    { ids, timeRange, queueName }
-  );
-  const row = rows[0];
-  const hasHistory = row ? toNumber(row.peak_keys) > 0 || toNumber(row.peak_wait) > 0 : false;
-  const hasLive = breakdown.keys.length > 0;
-
-  if (!hasLive && (showLoading || !hasHistory)) return null;
-
   return (
     <>
+      <GroupedKeyChartCard
+        title="Backlog by key"
+        rankExpr="max(max_queued)"
+        seriesExpr="max(max_queued)"
+        fillGaps
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+      />
+      <GroupedKeyChartCard
+        title="Throughput by key (started)"
+        rankExpr="deltaSumTimestampMerge(started_delta)"
+        seriesExpr="deltaSumTimestampMerge(started_delta)"
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+      />
       <QueueDetailChartCard
-        title="Concurrency keys with backlog"
+        title="Keys with queued runs (count)"
         query={`SELECT timeBucket() AS t, max(max_ck_backlogged) AS keys\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
         fillGaps
         ids={ids}
@@ -249,7 +306,7 @@ function ConcurrencyKeysSection({
         series={[{ key: "keys", label: "Keys", color: COLORS.ckKeys }]}
       />
       <QueueDetailChartCard
-        title="Most-starved key wait"
+        title="Most-starved key wait (max across all keys)"
         query={`SELECT timeBucket() AS t, max(max_ck_wait_ms) AS wait\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
         fillGaps
         ids={ids}
@@ -258,7 +315,6 @@ function ConcurrencyKeysSection({
         valueFormat={formatWaitMs}
         series={[{ key: "wait", label: "Max wait", color: COLORS.ckWait }]}
       />
-      <TopKeysChartCard ids={ids} timeRange={timeRange} queueName={queueName} />
       <KeyStatsTable
         breakdown={breakdown}
         loadedAt={loadedAt}
@@ -286,20 +342,25 @@ const KEY_SERIES_COLORS = [
   "#84CC16",
 ];
 
-// Two-step top-N: rank keys by peak backlog over the range, then chart those keys as
-// grouped series (the per-key table is activity-bound, so ranking is a cheap scan).
-function TopKeysChartCard({
-  ids,
-  timeRange,
-  queueName,
-}: {
+type GroupedKeyChartProps = {
+  title: string;
+  /** Aggregate expression ranking keys over the whole range (top 8 charted). */
+  rankExpr: string;
+  /** Aggregate expression charted per (bucket, key). */
+  seriesExpr: string;
+  fillGaps?: boolean;
+  valueFormat?: (value: number) => string;
   ids: Ids;
   timeRange: TimeRangeParams;
   queueName: string;
-}) {
+};
+
+// Two-step top-N: rank keys over the range, then chart those keys as grouped series
+// (the per-key table is activity-bound, so ranking is a cheap scan).
+function GroupedKeyChartCard(props: GroupedKeyChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(
-    `SELECT concurrency_key, max(max_queued) AS peak\nFROM queue_metrics_by_key\nGROUP BY concurrency_key\nORDER BY peak DESC\nLIMIT 8`,
-    { ids, timeRange, queueName }
+    `SELECT concurrency_key, ${props.rankExpr} AS peak\nFROM queue_metrics_by_key\nGROUP BY concurrency_key\nORDER BY peak DESC\nLIMIT 8`,
+    { ids: props.ids, timeRange: props.timeRange, queueName: props.queueName }
   );
   const keys = useMemo(
     () => rows.filter((r) => toNumber(r.peak) > 0).map((r) => String(r.concurrency_key)),
@@ -307,24 +368,23 @@ function TopKeysChartCard({
   );
 
   if (showLoading || failed || keys.length === 0) return null;
-  return <TopKeysSeries keys={keys} ids={ids} timeRange={timeRange} queueName={queueName} />;
+  return <GroupedKeySeries keys={keys} {...props} />;
 }
 
-function TopKeysSeries({
+function GroupedKeySeries({
   keys,
+  title,
+  seriesExpr,
+  fillGaps,
+  valueFormat,
   ids,
   timeRange,
   queueName,
-}: {
-  keys: string[];
-  ids: Ids;
-  timeRange: TimeRangeParams;
-  queueName: string;
-}) {
+}: GroupedKeyChartProps & { keys: string[] }) {
   const inList = keys.map((k) => `'${trqlString(k)}'`).join(", ");
   const { rows, showLoading, failed } = useQueueMetric(
-    `SELECT timeBucket() AS t, concurrency_key, max(max_queued) AS queued\nFROM queue_metrics_by_key\nWHERE concurrency_key IN (${inList})\nGROUP BY t, concurrency_key\nORDER BY t`,
-    { ids, timeRange, queueName, fillGaps: true }
+    `SELECT timeBucket() AS t, concurrency_key, ${seriesExpr} AS v\nFROM queue_metrics_by_key\nWHERE concurrency_key IN (${inList})\nGROUP BY t, concurrency_key\nORDER BY t`,
+    { ids, timeRange, queueName, fillGaps }
   );
 
   const data = useMemo(() => {
@@ -337,7 +397,7 @@ function TopKeysSeries({
         point = { bucket } as { bucket: number } & Record<string, number>;
         buckets.set(bucket, point);
       }
-      point[String(r.concurrency_key)] = toNumber(r.queued);
+      point[String(r.concurrency_key)] = toNumber(r.v);
     }
     return [...buckets.values()].sort((a, b) => a.bucket - b.bucket);
   }, [rows]);
@@ -358,7 +418,7 @@ function TopKeysSeries({
 
   return (
     <div className="h-64">
-      <ChartCard title="Top keys by backlog">
+      <ChartCard title={title}>
         <Chart.Root
           config={chartConfig}
           data={data}
@@ -370,7 +430,9 @@ function TopKeysSeries({
           <Chart.Line
             lineType="monotone"
             xAxisProps={{ tickFormatter }}
+            yAxisProps={valueFormat ? { tickFormatter: (v: number) => valueFormat(v) } : undefined}
             tooltipLabelFormatter={tooltipLabelFormatter}
+            tooltipValueFormatter={valueFormat}
           />
         </Chart.Root>
       </ChartCard>
