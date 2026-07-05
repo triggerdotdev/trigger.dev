@@ -668,6 +668,7 @@ export const queueMetricsSchema: TableSchema = {
     // invalid (mixes unrelated odometers): totals must GROUP BY queue, then sum outside.
     enqueue_delta: {
       name: "enqueue_delta",
+      mergeGroupKey: "queue",
       ...column("String", {
         description:
           "Runs enqueued (cumulative-counter delta). Read with deltaSumTimestampMerge(enqueue_delta) grouped by queue. For totals across queues, sum the per-queue results in an outer query, never merge across queues.",
@@ -678,6 +679,7 @@ export const queueMetricsSchema: TableSchema = {
     },
     started_delta: {
       name: "started_delta",
+      mergeGroupKey: "queue",
       ...column("String", {
         description:
           "Runs dequeued/started (throughput). Read with deltaSumTimestampMerge(started_delta) grouped by queue. For totals across queues, sum the per-queue results in an outer query, never merge across queues.",
@@ -689,6 +691,7 @@ export const queueMetricsSchema: TableSchema = {
     },
     ack_delta: {
       name: "ack_delta",
+      mergeGroupKey: "queue",
       ...column("String", {
         description:
           "Runs acked (completed). Read with deltaSumTimestampMerge(ack_delta) grouped by queue; sum per-queue results for totals.",
@@ -699,6 +702,7 @@ export const queueMetricsSchema: TableSchema = {
     },
     nack_delta: {
       name: "nack_delta",
+      mergeGroupKey: "queue",
       ...column("String", {
         description:
           "Runs nacked. Read with deltaSumTimestampMerge(nack_delta) grouped by queue; sum per-queue results for totals.",
@@ -709,6 +713,7 @@ export const queueMetricsSchema: TableSchema = {
     },
     dlq_delta: {
       name: "dlq_delta",
+      mergeGroupKey: "queue",
       ...column("String", {
         description:
           "Runs dead-lettered. Read with deltaSumTimestampMerge(dlq_delta) grouped by queue; sum per-queue results for totals.",

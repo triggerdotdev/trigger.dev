@@ -385,6 +385,8 @@ export class ClickHousePrinter {
       nextJoin = nextJoin.next_join;
     }
 
+    this.validateMergeScopedColumns(node);
+
     // Extract SELECT column aliases BEFORE visiting columns
     // This allows ORDER BY/HAVING to reference aliased columns
     const savedAliases = this.selectAliases;
@@ -1881,6 +1883,134 @@ export class ClickHousePrinter {
       }
     }
     // Note: projectId and environmentId are optional - no validation needed
+  }
+
+  /**
+   * Reject queries that merge a scope-keyed aggregate state column (`mergeGroupKey`)
+   * across values of its key: such merges silently return wrong numbers. Valid shapes
+   * group by the key column or pin it to a single value (in the query's WHERE or via
+   * the enforced clause). Runs per SELECT scope; subqueries validate themselves.
+   */
+  private validateMergeScopedColumns(node: SelectQuery): void {
+    for (const tableSchema of this.tableContexts.values()) {
+      for (const column of Object.values(tableSchema.columns)) {
+        const key = column.mergeGroupKey;
+        if (!key) continue;
+        if (!this.scopeReferencesColumn(node, column.name)) continue;
+        if (this.groupByIncludesColumn(node, key)) continue;
+        if (this.wherePinsColumn(node.where, key)) continue;
+        if (this.enforcedPinsColumn(tableSchema, key)) continue;
+        throw new QueryError(
+          `Merging '${column.name}' across every ${key} returns wrong totals: its aggregate ` +
+            `states are kept per ${key} and only combine correctly within one ${key}. Either ` +
+            `add '${key}' to the GROUP BY and sum the per-${key} results in an outer query, ` +
+            `for example: SELECT sum(v) AS total FROM (SELECT ${key}, ` +
+            `deltaSumTimestampMerge(${column.name}) AS v FROM ${tableSchema.name} ` +
+            `GROUP BY ${key}). Or filter to a single ${key}, for example: ` +
+            `WHERE ${key} = 'my-${key}'. For a time series, bucket both layers: ` +
+            `inner GROUP BY t, ${key} and outer GROUP BY t.`
+        );
+      }
+    }
+  }
+
+  private scopeReferencesColumn(node: SelectQuery, name: string): boolean {
+    const parts: unknown[] = [
+      node.select,
+      node.prewhere,
+      node.where,
+      node.group_by,
+      node.having,
+      node.order_by,
+    ];
+    return parts.some((part) => this.expressionReferencesColumn(part, name));
+  }
+
+  private expressionReferencesColumn(
+    expr: unknown,
+    name: string,
+    seen = new WeakSet<object>()
+  ): boolean {
+    if (expr === null || typeof expr !== "object") return false;
+    if (seen.has(expr)) return false;
+    seen.add(expr);
+    if (Array.isArray(expr)) {
+      return expr.some((item) => this.expressionReferencesColumn(item, name, seen));
+    }
+    const candidate = expr as { expression_type?: string; chain?: unknown[] };
+    if (
+      candidate.expression_type === "select_query" ||
+      candidate.expression_type === "select_set_query"
+    ) {
+      return false;
+    }
+    if (
+      candidate.expression_type === "field" &&
+      Array.isArray(candidate.chain) &&
+      candidate.chain[candidate.chain.length - 1] === name
+    ) {
+      return true;
+    }
+    return Object.entries(expr).some(
+      ([property, value]) =>
+        property !== "type" &&
+        property !== "parent" &&
+        this.expressionReferencesColumn(value, name, seen)
+    );
+  }
+
+  private groupByIncludesColumn(node: SelectQuery, name: string): boolean {
+    return (node.group_by ?? []).some((expr) => {
+      const field = expr as Field;
+      return (
+        field.expression_type === "field" &&
+        Array.isArray(field.chain) &&
+        field.chain[field.chain.length - 1] === name
+      );
+    });
+  }
+
+  // Pins only count on the top-level AND chain: a pin inside an OR guarantees nothing.
+  private wherePinsColumn(where: Expression | undefined, name: string): boolean {
+    if (!where) return false;
+    if (where.expression_type === "and") {
+      return (where as And).exprs.some((expr) => this.wherePinsColumn(expr, name));
+    }
+    if (where.expression_type !== "compare_operation") return false;
+    const cmp = where as CompareOperation;
+    const isKeyField = (side: Expression) => {
+      const field = side as Field;
+      return (
+        field.expression_type === "field" &&
+        Array.isArray(field.chain) &&
+        field.chain[field.chain.length - 1] === name
+      );
+    };
+    const fieldSide = [cmp.left, cmp.right].find(isKeyField);
+    if (!fieldSide) return false;
+    if (cmp.op === CompareOperationOp.Eq) return true;
+    if (cmp.op === CompareOperationOp.In || cmp.op === CompareOperationOp.GlobalIn) {
+      const other = fieldSide === cmp.left ? cmp.right : cmp.left;
+      if ((other as Constant).expression_type === "constant") return true;
+      const tuple = other as Tuple;
+      return tuple.expression_type === "tuple" && tuple.exprs.length === 1;
+    }
+    return false;
+  }
+
+  private enforcedPinsColumn(tableSchema: TableSchema, key: string): boolean {
+    const names = [key];
+    const clickhouseName = tableSchema.columns[key]?.clickhouseName;
+    if (clickhouseName) names.push(clickhouseName);
+    for (const name of names) {
+      const condition = this.context.enforcedWhereClause[name] as
+        | { op?: string; values?: unknown[] }
+        | undefined;
+      if (!condition) continue;
+      if (condition.op === "eq") return true;
+      if (condition.op === "in" && condition.values?.length === 1) return true;
+    }
+    return false;
   }
 
   /**

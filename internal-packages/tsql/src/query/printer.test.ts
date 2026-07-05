@@ -4078,6 +4078,7 @@ describe("cross-queue counter totals via subquery (env-wide throughput shape)", 
       queue_name: { name: "queue_name", ...column("String") },
       started_delta: {
         name: "started_delta",
+        mergeGroupKey: "queue_name",
         ...column("String"),
         groupable: false,
         sortable: false,
@@ -4128,5 +4129,98 @@ describe("cross-queue counter totals via subquery (env-wide throughput shape)", 
     expect(subqueryStart).toBeGreaterThan(-1);
     expect(tenantFilter).toBeGreaterThan(subqueryStart);
     expect(Object.values(params)).toContain("org_test123");
+  });
+});
+
+describe("mergeGroupKey validation", () => {
+  const metricsSchema: TableSchema = {
+    name: "metrics",
+    clickhouseName: "trigger_dev.queue_metrics_v1",
+    timeConstraint: "bucket_at",
+    columns: {
+      bucket_at: { name: "bucket_at", ...column("DateTime64") },
+      queue: { name: "queue", clickhouseName: "queue_name", ...column("String") },
+      started_delta: {
+        name: "started_delta",
+        mergeGroupKey: "queue",
+        ...column("String"),
+        groupable: false,
+        sortable: false,
+        filterable: false,
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+    },
+    tenantColumns: { organizationId: "organization_id" },
+  };
+
+  function compile(
+    query: string,
+    enforced: Record<string, unknown> = { organization_id: { op: "eq", value: "org_x" } }
+  ) {
+    const context = createPrinterContext({
+      schema: createSchemaRegistry([metricsSchema]),
+      enforcedWhereClause: enforced as never,
+      timeRange: {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-08T00:00:00Z"),
+      },
+    });
+    return printToClickHouse(parseTSQLSelect(query), context);
+  }
+
+  it("rejects an ungrouped, unpinned merge with an actionable message", () => {
+    expect(() =>
+      compile(
+        "SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started FROM metrics GROUP BY t"
+      )
+    ).toThrowError(
+      /Merging 'started_delta' across every queue[\s\S]*GROUP BY queue\)[\s\S]*WHERE queue = 'my-queue'[\s\S]*inner GROUP BY t, queue and outer GROUP BY t/
+    );
+  });
+
+  it("allows the merge when queue is in the GROUP BY", () => {
+    const { sql } = compile(
+      "SELECT timeBucket() AS t, queue, deltaSumTimestampMerge(started_delta) AS started FROM metrics GROUP BY t, queue"
+    );
+    expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
+  });
+
+  it("allows the merge when queue is pinned by an equality filter", () => {
+    const { sql } = compile(
+      "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics WHERE queue = 'emails'"
+    );
+    expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
+  });
+
+  it("allows the merge when the enforced clause pins queue to one value", () => {
+    const { sql } = compile(
+      "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics",
+      { organization_id: { op: "eq", value: "org_x" }, queue: { op: "in", values: ["emails"] } }
+    );
+    expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
+  });
+
+  it("rejects the merge when the enforced clause spans several queues", () => {
+    expect(() =>
+      compile("SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics", {
+        organization_id: { op: "eq", value: "org_x" },
+        queue: { op: "in", values: ["emails", "webhooks"] },
+      })
+    ).toThrowError(/only combine correctly within one queue/);
+  });
+
+  it("allows a grouped inner merge summed by the outer query", () => {
+    const { sql } = compile(
+      "SELECT t, sum(started) AS started FROM (SELECT timeBucket() AS t, queue, deltaSumTimestampMerge(started_delta) AS started FROM metrics GROUP BY t, queue) GROUP BY t ORDER BY t"
+    );
+    expect(sql).toContain("GROUP BY t, queue_name");
+  });
+
+  it("rejects an ungrouped merge inside a subquery", () => {
+    expect(() =>
+      compile(
+        "SELECT t, sum(started) AS started FROM (SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started FROM metrics GROUP BY t) GROUP BY t"
+      )
+    ).toThrowError(/only combine correctly within one queue/);
   });
 });
