@@ -6,7 +6,7 @@ export type Residency = "LEGACY" | "NEW";
 /**
  * Underlying id lineage. "runOpsId" (formerly "ksuid") is the label for the
  * NEW-store mint path — a base32hex run-ops v1 id (see friendlyId.ts). It is
- * the value persisted in the runOpsMintKsuid feature flag. "cuid" is every
+ * the value persisted in the runOpsMintKind feature flag. "cuid" is every
  * legacy shape (cuid, nanoid, pre-cutover 27-char base62).
  */
 export type ResidencyKind = "cuid" | "runOpsId";

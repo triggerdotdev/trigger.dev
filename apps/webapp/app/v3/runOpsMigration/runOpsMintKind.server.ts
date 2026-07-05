@@ -51,7 +51,7 @@ export async function resolveRunIdMintKind(environment: {
   orgFeatureFlags?: unknown;
 }): Promise<RunIdMintKind> {
   return computeRunIdMintKind(environment, {
-    masterEnabled: env.RUN_OPS_MINT_KSUID_ENABLED,
+    masterEnabled: env.RUN_OPS_MINT_ENABLED,
     splitEnabled: isSplitEnabled,
     flag: async (orgId, orgFeatureFlags) => {
       // The cache stores only "cuid"|"runOpsId" (never undefined), so the cache's
@@ -73,7 +73,7 @@ export async function resolveRunIdMintKind(environment: {
             )?.featureFlags;
 
       const kind = await flagFn({
-        key: FEATURE_FLAG.runOpsMintKsuid,
+        key: FEATURE_FLAG.runOpsMintKind,
         defaultValue: "cuid",
         overrides: (overrides as Record<string, unknown>) ?? {},
       });

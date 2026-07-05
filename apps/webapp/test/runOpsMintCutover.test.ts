@@ -48,7 +48,7 @@ async function seedOrgEnv(prisma: PrismaClient, mintFlag?: RunIdMintKind) {
   if (mintFlag) {
     await prisma.organization.update({
       where: { id: organization.id },
-      data: { featureFlags: { [FEATURE_FLAG.runOpsMintKsuid]: mintFlag } },
+      data: { featureFlags: { [FEATURE_FLAG.runOpsMintKind]: mintFlag } },
     });
   }
   return { organization, environment };
@@ -70,7 +70,7 @@ function realFlag(prisma: PrismaClient) {
             })
           )?.featureFlags;
     return flagFn({
-      key: FEATURE_FLAG.runOpsMintKsuid,
+      key: FEATURE_FLAG.runOpsMintKind,
       defaultValue: "cuid",
       overrides: (overrides as Record<string, unknown>) ?? {},
     });
@@ -145,7 +145,7 @@ describe("per-env run-ops-id mint cutover", () => {
       // Roll the org back to cuid (drain-new-forward — set the flag to "cuid").
       await prisma.organization.update({
         where: { id: a.organization.id },
-        data: { featureFlags: { [FEATURE_FLAG.runOpsMintKsuid]: "cuid" } },
+        data: { featureFlags: { [FEATURE_FLAG.runOpsMintKind]: "cuid" } },
       });
 
       // The NEXT run mints cuid again (the env-bound resolver's TTL cache is not used here,

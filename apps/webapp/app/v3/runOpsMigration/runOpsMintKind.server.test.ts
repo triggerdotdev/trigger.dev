@@ -33,7 +33,7 @@ describe("computeRunIdMintKind (pure)", () => {
 
   it("passes the already-loaded org feature flags through to the flag fn (no extra DB read)", async () => {
     const flag = vi.fn().mockResolvedValue("runOpsId");
-    const orgFeatureFlags = { runOpsMintKsuid: "runOpsId" };
+    const orgFeatureFlags = { runOpsMintKind: "runOpsId" };
     await computeRunIdMintKind(
       { organizationId: "org_1", id: "env_1", orgFeatureFlags },
       { masterEnabled: true, splitEnabled: async () => true, flag }
