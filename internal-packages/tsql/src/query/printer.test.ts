@@ -4149,8 +4149,14 @@ describe("mergeGroupKey validation", () => {
         filterable: false,
       },
       organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
     },
-    tenantColumns: { organizationId: "organization_id" },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
   };
 
   function compile(
