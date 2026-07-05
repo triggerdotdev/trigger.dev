@@ -31,10 +31,18 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import {
+  QUEUE_METRIC_COLORS,
+  QueueMetricChartCard,
+  QueueSidebarStats,
+  type QueueLiveCounts,
+  type QueueMetricIds,
+} from "~/components/queues/QueueMetricCards";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
@@ -48,10 +56,13 @@ import { requireUser } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
   v3EnvironmentPath,
+  v3QueuePath,
   v3QueuesPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
+import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
+import { engine } from "~/v3/runEngine.server";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
@@ -97,6 +108,28 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   if (!task) throw new Response("Task not found", { status: 404 });
 
+  // Live queue counts (two O(1) Redis reads) shown in the sidebar; history charts fetch
+  // client-side through the metric resource. Flag off = no extra reads at all.
+  let queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null = null;
+  if (task.queue && (await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
+    const queueName = task.queue.name;
+    const [lengths, concurrency] = await Promise.all([
+      engine.lengthOfQueues(environment, [queueName]),
+      engine.currentConcurrencyOfQueues(environment, [queueName]),
+    ]);
+    queueMetrics = {
+      live: {
+        queued: lengths?.[queueName] ?? 0,
+        running: concurrency?.[queueName] ?? 0,
+      },
+      ids: {
+        organizationId: project.organizationId,
+        projectId: project.id,
+        environmentId: environment.id,
+      },
+    };
+  }
+
   const time = timeFilterFromTo({ period, from, to, defaultPeriod: "7d" });
 
   const activity = presenter
@@ -128,11 +161,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     task,
     activity,
     runList,
+    queueMetrics,
   });
 };
 
 export default function Page() {
-  const { task, activity, runList } = useTypedLoaderData<typeof loader>();
+  const { task, activity, runList, queueMetrics } = useTypedLoaderData<typeof loader>();
   const zoomToTimeFilter = useZoomToTimeFilter();
   const organization = useOrganization();
   const project = useProject();
@@ -143,6 +177,26 @@ export default function Page() {
     taskIdentifier: task.slug,
   });
   const queuesPath = v3QueuesPath(organization, project, environment);
+  const queuePath = task.queue
+    ? v3QueuePath(organization, project, environment, { friendlyId: task.queue.friendlyId })
+    : undefined;
+
+  const { value } = useSearchParams();
+  const timeRange = {
+    period: value("period") ?? null,
+    from: value("from") ?? null,
+    to: value("to") ?? null,
+  };
+
+  const runsByStatusCard = (
+    <ChartCard title="Runs by status">
+      <Suspense fallback={<ActivityChartSkeleton />}>
+        <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
+          {(result) => <ActivityChart activity={result} />}
+        </TypedAwait>
+      </Suspense>
+    </ChartCard>
+  );
 
   return (
     <PageContainer>
@@ -180,13 +234,26 @@ export default function Page() {
                 <ResizablePanel id="task-activity" min="220px" default="320px">
                   <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-2">
                     <ChartSyncProvider onZoom={zoomToTimeFilter}>
-                      <ChartCard title="Runs by status">
-                        <Suspense fallback={<ActivityChartSkeleton />}>
-                          <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
-                            {(result) => <ActivityChart activity={result} />}
-                          </TypedAwait>
-                        </Suspense>
-                      </ChartCard>
+                      {queueMetrics && task.queue ? (
+                        <div className="grid h-full min-h-0 grid-cols-2 gap-2">
+                          {runsByStatusCard}
+                          <QueueMetricChartCard
+                            title={`Queue backlog: ${task.queue.name}`}
+                            query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+                            fillGaps
+                            ids={queueMetrics.ids}
+                            timeRange={timeRange}
+                            queueName={task.queue.name}
+                            defaultPeriod="7d"
+                            className="h-full min-h-0"
+                            series={[
+                              { key: "queued", label: "Queued", color: QUEUE_METRIC_COLORS.queued },
+                            ]}
+                          />
+                        </div>
+                      ) : (
+                        runsByStatusCard
+                      )}
                     </ChartSyncProvider>
                   </div>
                 </ResizablePanel>
@@ -225,7 +292,13 @@ export default function Page() {
 
           <ResizableHandle id="task-detail-handle" />
           <ResizablePanel id="task-detail" min="280px" default="380px" max="500px" isStaticAtRest>
-            <TaskDetailSidebar task={task} testPath={testPath} queuesPath={queuesPath} />
+            <TaskDetailSidebar
+              task={task}
+              testPath={testPath}
+              queuesPath={queuesPath}
+              queuePath={queuePath}
+              queueMetrics={queueMetrics}
+            />
           </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
@@ -237,10 +310,14 @@ function TaskDetailSidebar({
   task,
   testPath,
   queuesPath,
+  queuePath,
+  queueMetrics,
 }: {
   task: TaskDetail;
   testPath: string;
   queuesPath: string;
+  queuePath: string | undefined;
+  queueMetrics: { live: QueueLiveCounts; ids: QueueMetricIds } | null;
 }) {
   const showExportName = task.exportName && task.exportName !== task.slug;
   const retrySummary = formatRetrySummary(task.retry);
@@ -314,11 +391,21 @@ function TaskDetailSidebar({
               <Property.Label>Queue</Property.Label>
               <Property.Value>
                 <div className="flex flex-col gap-0.5">
-                  <TextLink to={queuesPath}>{task.queue.name}</TextLink>
+                  <TextLink to={queueMetrics && queuePath ? queuePath : queuesPath}>
+                    {task.queue.name}
+                  </TextLink>
                   <Paragraph variant="extra-small" className="text-text-dimmed">
                     Concurrency: {task.queue.concurrencyLimit ?? "Unlimited"}
                     {task.queue.paused ? " · Paused" : ""}
                   </Paragraph>
+                  {queueMetrics ? (
+                    <QueueSidebarStats
+                      live={queueMetrics.live}
+                      ids={queueMetrics.ids}
+                      queueName={task.queue.name}
+                      defaultPeriod="7d"
+                    />
+                  ) : null}
                 </div>
               </Property.Value>
             </Property.Item>

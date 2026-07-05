@@ -13,9 +13,17 @@ import {
 } from "~/components/primitives/charts/ChartCompound";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
 import {
-  useMetricResourceQuery,
-  type MetricResourceTimeRange,
-} from "~/hooks/useMetricResourceQuery";
+  QUEUE_METRIC_COLORS as COLORS,
+  QUEUE_METRICS_DEFAULT_PERIOD,
+  QueueMetricChartCard as QueueDetailChartCard,
+  QueueMetricStat as Stat,
+  type QueueMetricIds as Ids,
+  type QueueMetricTimeRange as TimeRangeParams,
+  clickhouseTimeToMs,
+  formatWaitMs,
+  toNumber,
+  useQueueMetric,
+} from "~/components/queues/QueueMetricCards";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueueRetrievePresenter } from "~/presenters/v3/QueueRetrievePresenter.server";
@@ -34,7 +42,6 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => [{ title: `Queue metrics | Trigger.dev` }];
@@ -89,25 +96,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
-const COLORS = {
-  running: "#6366F1",
-  limit: "#4D525B",
-  queued: "#A78BFA",
-  p50: "#22D3EE",
-  p95: "#F59E0B",
-  p99: "#EF4444",
-  throttled: "#F59E0B",
-  ckKeys: "#34D399",
-  ckWait: "#F59E0B",
-};
-
 const CK_LIVE_LIMIT = 50;
-
-type Ids = { organizationId: string; projectId: string; environmentId: string };
-
-type TimeRangeParams = MetricResourceTimeRange;
-
-const QUEUE_METRICS_DEFAULT_PERIOD = "1d";
 
 export default function Page() {
   const { queue, fullName, ckBreakdown, loadedAt, backPath, ids } =
@@ -604,106 +593,6 @@ function KeyDrilldown({
   );
 }
 
-function useQueueMetric(
-  query: string,
-  opts: { ids: Ids; timeRange: TimeRangeParams; queueName: string; fillGaps?: boolean }
-) {
-  return useMetricResourceQuery(query, {
-    ...opts.ids,
-    timeRange: opts.timeRange,
-    defaultPeriod: QUEUE_METRICS_DEFAULT_PERIOD,
-    queues: [opts.queueName],
-    fillGaps: opts.fillGaps,
-  });
-}
-
-function toNumber(value: number | string | null | undefined): number {
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function clickhouseTimeToMs(value: unknown): number {
-  const s = String(value).replace(" ", "T");
-  return Date.parse(s.endsWith("Z") ? s : `${s}Z`);
-}
-
-type SeriesConfig = { key: string; label: string; color: string };
-
-function QueueDetailChartCard({
-  title,
-  query,
-  series,
-  ids,
-  timeRange,
-  queueName,
-  valueFormat,
-  fillGaps,
-}: {
-  title: string;
-  query: string;
-  series: SeriesConfig[];
-  ids: Ids;
-  timeRange: TimeRangeParams;
-  queueName: string;
-  valueFormat?: (value: number) => string;
-  fillGaps?: boolean;
-}) {
-  const { rows, showLoading, failed } = useQueueMetric(query, {
-    ids,
-    timeRange,
-    queueName,
-    fillGaps,
-  });
-
-  const data = useMemo(() => {
-    return rows
-      .map((r) => {
-        const point: { bucket: number } & Record<string, number> = {
-          bucket: clickhouseTimeToMs(r.t),
-        };
-        for (const s of series) point[s.key] = toNumber(r[s.key]);
-        return point;
-      })
-      .filter((p) => Number.isFinite(p.bucket));
-  }, [rows, series]);
-
-  const chartConfig = useMemo(() => {
-    const cfg: ChartConfig = {};
-    for (const s of series) cfg[s.key] = { label: s.label, color: s.color };
-    return cfg;
-  }, [series]);
-
-  const { tickFormatter, tooltipLabelFormatter } = useMemo(
-    () => buildActivityTimeAxis(data),
-    [data]
-  );
-
-  const state: ChartState = showLoading ? "loading" : failed ? "invalid" : undefined;
-
-  return (
-    <div className="h-64">
-      <ChartCard title={title}>
-        <Chart.Root
-          config={chartConfig}
-          data={data}
-          dataKey="bucket"
-          series={series.map((s) => s.key)}
-          state={state}
-          fillContainer
-        >
-          <Chart.Line
-            lineType="monotone"
-            xAxisProps={{ tickFormatter }}
-            yAxisProps={valueFormat ? { tickFormatter: (v: number) => valueFormat(v) } : undefined}
-            tooltipLabelFormatter={tooltipLabelFormatter}
-            tooltipValueFormatter={valueFormat}
-          />
-        </Chart.Root>
-      </ChartCard>
-    </div>
-  );
-}
-
 function QueueStats({
   queue,
   ids,
@@ -752,32 +641,3 @@ function QueueStats({
   );
 }
 
-function Stat({
-  label,
-  value,
-  className,
-  loading,
-}: {
-  label: string;
-  value: string;
-  className?: string;
-  loading?: boolean;
-}) {
-  return (
-    <div className="rounded-sm border border-grid-dimmed bg-background-bright px-3 py-2">
-      <div className="text-xs text-text-dimmed">{label}</div>
-      {loading ? (
-        <div className="mt-1 h-6 w-12 animate-pulse rounded bg-grid-bright/50" />
-      ) : (
-        <div className={cn("text-2xl tabular-nums text-text-bright", className)}>{value}</div>
-      )}
-    </div>
-  );
-}
-
-function formatWaitMs(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
-  return `${(ms / 3_600_000).toFixed(1)}h`;
-}

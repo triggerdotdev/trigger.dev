@@ -82,6 +82,12 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
+import { formatWaitMs } from "~/components/queues/QueueMetricCards";
+import {
+  resolveRunQueueMetrics,
+  type RunQueueMetrics,
+  type RunQueueWaiting,
+} from "~/presenters/v3/RunQueueMetricsPresenter.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
@@ -91,6 +97,7 @@ import {
   docsPath,
   v3BatchPath,
   v3DeploymentVersionPath,
+  v3QueuePath,
   v3RunDownloadLogsPath,
   v3RunIdempotencyKeyResetPath,
   v3RunPath,
@@ -144,7 +151,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     // `{ ...result }` collapses the union and loses the
     // `type === "run" | "span"` discriminant downstream in `SpanView`.
     if (result.type === "run") {
-      return typedjson({ type: "run" as const, run: result.run });
+      const queueMetrics = await resolveRunQueueMetrics({
+        userId,
+        organizationSlug,
+        projectParam,
+        envParam,
+        run: result.run,
+      });
+      return typedjson({ type: "run" as const, run: result.run, queueMetrics });
     }
     return typedjson({ type: "span" as const, span: result.span });
   } catch (error) {
@@ -236,6 +250,7 @@ export function SpanView({
       return (
         <RunBody
           run={fetcher.data.run}
+          queueMetrics={fetcher.data.queueMetrics}
           runParam={runParam}
           spanId={spanId}
           closePanel={closePanel}
@@ -360,11 +375,13 @@ function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
 
 function RunBody({
   run,
+  queueMetrics,
   runParam,
   spanId,
   closePanel,
 }: {
   run: SpanRun;
+  queueMetrics: RunQueueMetrics | null;
   runParam: string;
   spanId: string;
   closePanel?: () => void;
@@ -376,6 +393,12 @@ function RunBody({
   const { value, replace } = useSearchParams();
   const tab = value("tab");
   const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
+
+  const queuePath = queueMetrics?.queueFriendlyId
+    ? v3QueuePath(organization, project, environment, {
+        friendlyId: queueMetrics.queueFriendlyId,
+      })
+    : undefined;
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_minmax(3.25rem,auto)] overflow-hidden bg-background-bright">
@@ -920,9 +943,31 @@ function RunBody({
                 <Property.Item>
                   <Property.Label>Queue</Property.Label>
                   <Property.Value>
-                    <div>Name: {run.queue.name}</div>
                     <div>
-                      Concurrency key: {run.queue.concurrencyKey ? run.queue.concurrencyKey : "–"}
+                      Name:{" "}
+                      {queuePath ? (
+                        <TextLink to={queuePath}>{run.queue.name}</TextLink>
+                      ) : (
+                        run.queue.name
+                      )}
+                    </div>
+                    <div>
+                      Concurrency key:{" "}
+                      {run.queue.concurrencyKey ? (
+                        queuePath ? (
+                          <TextLink
+                            to={`${queuePath}?view=keys&key=${encodeURIComponent(
+                              run.queue.concurrencyKey
+                            )}`}
+                          >
+                            {run.queue.concurrencyKey}
+                          </TextLink>
+                        ) : (
+                          run.queue.concurrencyKey
+                        )
+                      ) : (
+                        "–"
+                      )}
                     </div>
                   </Property.Value>
                 </Property.Item>
@@ -1070,6 +1115,14 @@ function RunBody({
                   content={descriptionForTaskRunStatus(run.status)}
                 />
               </div>
+              {queueMetrics?.waiting ? (
+                <WaitingInQueueBlock
+                  queuePath={queuePath}
+                  paused={queueMetrics.paused}
+                  waiting={queueMetrics.waiting}
+                  status={run.status}
+                />
+              ) : null}
               <RunTimeline run={run} />
 
               {run.error && <RunError error={run.error} />}
@@ -1125,6 +1178,59 @@ function RunBody({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+function WaitingInQueueBlock({
+  queuePath,
+  paused,
+  waiting,
+  status,
+}: {
+  queuePath: string | undefined;
+  paused: boolean;
+  waiting: RunQueueWaiting;
+  status: SpanRun["status"];
+}) {
+  const key = waiting.concurrencyKey;
+  const limit = waiting.concurrencyLimit;
+  // The concurrency limit applies per key on keyed queues. PENDING renders as "Queued".
+  const atLimit = limit !== null && (key ? key.running >= limit : waiting.running >= limit);
+  const showAtLimit = status === "PENDING" && atLimit && !paused;
+
+  const runningLabel = (running: number, withLimit: boolean) =>
+    withLimit && limit !== null
+      ? `${running.toLocaleString()} of ${limit.toLocaleString()} running`
+      : `${running.toLocaleString()} running`;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-sm border border-grid-bright p-3">
+      <div className="flex items-center justify-between gap-2">
+        <Header3>Waiting in queue</Header3>
+        {queuePath ? <TextLink to={queuePath}>View queue</TextLink> : null}
+      </div>
+      <Paragraph variant="small" className="tabular-nums">
+        {waiting.queued.toLocaleString()} queued · {runningLabel(waiting.running, !key)}
+        {waiting.delayP95Ms !== null
+          ? ` · p95 delay ${formatWaitMs(waiting.delayP95Ms)} in the last hour`
+          : ""}
+      </Paragraph>
+      {key ? (
+        <Paragraph variant="small" className="tabular-nums">
+          Key {key.key}: {key.queued.toLocaleString()} queued · {runningLabel(key.running, true)}
+          {key.oldestWaitMs !== null ? ` · oldest wait ${formatWaitMs(key.oldestWaitMs)}` : ""}
+        </Paragraph>
+      ) : null}
+      {paused ? (
+        <Callout variant="warning">
+          This queue is paused. Runs will not start until it is resumed.
+        </Callout>
+      ) : showAtLimit ? (
+        <Callout variant="info">
+          At the queue&apos;s concurrency limit. This run starts when a running one finishes.
+        </Callout>
+      ) : null}
     </div>
   );
 }
