@@ -132,6 +132,20 @@ export class WorkloadHttpClient {
           headers: {
             ...this.defaultHeaders(),
           },
+        },
+        {
+          // Resuming after a wait is idempotent (guarded server-side by the
+          // snapshot id), so retry generously to ride out a transient database
+          // outage rather than aborting the run. `randomize` jitters the delay
+          // so a fleet of runs resuming at once doesn't stampede the DB the
+          // moment it recovers.
+          retry: {
+            minTimeoutInMs: 500,
+            maxTimeoutInMs: 10_000,
+            maxAttempts: 8,
+            factor: 2,
+            randomize: true,
+          },
         }
       )
     );
