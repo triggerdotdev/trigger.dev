@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { ApiRunResultPresenter } from "~/presenters/v3/ApiRunResultPresenter.server";
+import { $replica, runOpsNewReplica, runOpsSplitReadEnabled } from "~/db.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
@@ -27,7 +28,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const { runParam } = parsed.data;
 
   try {
-    const presenter = new ApiRunResultPresenter();
+    const presenter = new ApiRunResultPresenter(undefined, undefined, {
+      newClient: runOpsNewReplica,
+      legacyReplica: $replica,
+      splitEnabled: runOpsSplitReadEnabled,
+    });
     const result = await presenter.call(runParam, authenticationResult.environment);
 
     if (!result) {
