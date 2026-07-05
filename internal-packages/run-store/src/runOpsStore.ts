@@ -1302,11 +1302,12 @@ export class RoutingRunStore implements RunStore {
       const store = await this.#resolveWaitpointStore(waitpointId);
       return store.deleteManyTaskRunWaitpoints(args, store === this.#legacy ? tx : undefined);
     }
-    // Keyed by taskRunId (or other): a run's edges may straddle DBs mid-drain, so delete from
-    // both. Can't span one tx across two DBs, so it's dropped for the both-stores path.
+    // Keyed by taskRunId (or other): a run's edges may straddle DBs mid-drain, so delete from both.
+    // One tx can't span two DBs, so the #new leg is auto-commit; the caller's tx is control-plane, so
+    // the #legacy leg keeps it (atomic with the caller's op, matching the waitpointId-keyed path).
     const [fromNew, fromLegacy] = await Promise.all([
       this.#new.deleteManyTaskRunWaitpoints(args),
-      this.#legacy.deleteManyTaskRunWaitpoints(args),
+      this.#legacy.deleteManyTaskRunWaitpoints(args, tx),
     ]);
     return { count: fromNew.count + fromLegacy.count };
   }

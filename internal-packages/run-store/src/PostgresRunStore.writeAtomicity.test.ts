@@ -312,3 +312,86 @@ describe("cross-DB write atomicity (startAttempt + createExecutionSnapshot)", ()
     }
   );
 });
+
+// A run's blocking edges may straddle both DBs mid-drain, so clearBlockingWaitpoints routes the
+// taskRunId-keyed delete through the both-stores fan-out. The #new leg can't join a control-plane
+// tx, but the #legacy leg CAN — so the caller's tx (e.g. attemptFailed) must still be honored for
+// the legacy edges, keeping them atomic with the caller's operation instead of auto-committing.
+async function seedLegacyBlockingEdge(
+  prisma14: PrismaClient,
+  env: { project: { id: string }; environment: { id: string } },
+  runId: string,
+  suffix: string
+): Promise<void> {
+  const waitpoint = await prisma14.waitpoint.create({
+    data: {
+      friendlyId: `wp_${suffix}`,
+      type: "MANUAL",
+      status: "PENDING",
+      idempotencyKey: `idem_${suffix}`,
+      userProvidedIdempotencyKey: false,
+      projectId: env.project.id,
+      environmentId: env.environment.id,
+    },
+  });
+  await prisma14.taskRunWaitpoint.create({
+    data: { taskRunId: runId, waitpointId: waitpoint.id, projectId: env.project.id },
+  });
+}
+
+describe("fan-out deleteManyTaskRunWaitpoints honors the caller's tx on the #legacy leg", () => {
+  heteroRunOpsPostgresTest(
+    "rolls the #legacy edge delete back when the caller's control-plane tx rolls back",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const env = await seedEnvironment(prisma14, "legacy", "del_tx_rb");
+      const runId = `run_${CUID_25}`;
+      await router.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_del_tx_rb",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      await seedLegacyBlockingEdge(prisma14, env, runId, "del_tx_rb");
+
+      await expect(
+        prisma14.$transaction(async (tx) => {
+          await router.deleteManyTaskRunWaitpoints({ where: { taskRunId: runId } }, tx);
+          throw new Error("rollback");
+        })
+      ).rejects.toThrow("rollback");
+
+      const remaining = await prisma14.taskRunWaitpoint.count({ where: { taskRunId: runId } });
+      expect(remaining).toBe(1);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "still deletes the #legacy edge when the caller's tx commits",
+    async ({ prisma14, prisma17 }) => {
+      const { router } = makeSplitRouter(prisma14, prisma17);
+      const env = await seedEnvironment(prisma14, "legacy", "del_tx_commit");
+      const runId = `run_${CUID_25}`;
+      await router.createRun(
+        buildCreateRunInput({
+          runId,
+          friendlyId: "run_del_tx_commit",
+          organizationId: env.organization.id,
+          projectId: env.project.id,
+          runtimeEnvironmentId: env.environment.id,
+        })
+      );
+      await seedLegacyBlockingEdge(prisma14, env, runId, "del_tx_commit");
+
+      await prisma14.$transaction(async (tx) => {
+        await router.deleteManyTaskRunWaitpoints({ where: { taskRunId: runId } }, tx);
+      });
+
+      const remaining = await prisma14.taskRunWaitpoint.count({ where: { taskRunId: runId } });
+      expect(remaining).toBe(0);
+    }
+  );
+});
