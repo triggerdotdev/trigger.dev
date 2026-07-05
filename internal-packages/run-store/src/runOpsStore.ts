@@ -830,13 +830,21 @@ export class RoutingRunStore implements RunStore {
     return (await this.#routeOrNewForWrite(input.run.id)).createExecutionSnapshot(input);
   }
 
-  // A snapshot lives with its run; route by the snapshot id's residency.
-  findSnapshotCompletedWaitpointIds(snapshotId: string, client?: ReadClient): Promise<string[]> {
-    const store = this.#routeOrNew(snapshotId);
-    return store.findSnapshotCompletedWaitpointIds(
-      snapshotId,
-      RoutingRunStore.#ownPrimary(store, client)
-    );
+  // Snapshot ids are cuids (they always classify LEGACY), and a snapshot's CompletedWaitpoint join
+  // co-locates with its run, which may live on either store, so fan out to BOTH and merge (like
+  // findWaitpointCompletedSnapshotIds) rather than route by the un-classifiable snapshot id.
+  async findSnapshotCompletedWaitpointIds(snapshotId: string, client?: ReadClient): Promise<string[]> {
+    const [fromNew, fromLegacy] = await Promise.all([
+      this.#new.findSnapshotCompletedWaitpointIds(
+        snapshotId,
+        RoutingRunStore.#ownPrimary(this.#new, client)
+      ),
+      this.#legacy.findSnapshotCompletedWaitpointIds(
+        snapshotId,
+        RoutingRunStore.#ownPrimary(this.#legacy, client)
+      ),
+    ]);
+    return uniqueStrings([...fromNew, ...fromLegacy]);
   }
 
   // Keyed by waitpointId, but the WaitpointRunConnection / CompletedWaitpoint join co-locates with the
@@ -1484,9 +1492,11 @@ export class RoutingRunStore implements RunStore {
     args: Prisma.BatchTaskRunItemUpdateManyArgs,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.BatchPayload> {
+    // Items co-reside with their batch; route by batchTaskRunId (residency-encoding) first. The item
+    // id is a cuid that always classifies LEGACY, so leading with it misroutes a NEW batch's items.
     const id =
-      RoutingRunStore.#scalarId(args.where) ??
-      RoutingRunStore.#scalarField(args.where, "batchTaskRunId");
+      RoutingRunStore.#scalarField(args.where, "batchTaskRunId") ??
+      RoutingRunStore.#scalarId(args.where);
     if (id !== undefined) {
       const store = this.#routeOrNew(id);
       return store.updateManyBatchTaskRunItems(args, store === this.#legacy ? tx : undefined);
