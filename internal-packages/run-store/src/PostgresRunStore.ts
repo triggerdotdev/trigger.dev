@@ -929,6 +929,26 @@ export class PostgresRunStore implements RunStore {
     });
   }
 
+  // Legacy implicit M2M equivalent of #connectCompletedWaitpoints: raw-insert the join rows FK-free.
+  // Prisma `connect` ORM-validates the Waitpoint exists locally, which fails for a cross-DB
+  // (NEW-resident) token; the raw insert + dropped _completedWaitpoints_B_fkey records it. A =
+  // TaskRunExecutionSnapshot.id, B = Waitpoint.id (implicit M2M alphabetical order).
+  async #connectCompletedWaitpointsLegacy(
+    client: PrismaClientOrTransaction,
+    snapshotId: string,
+    waitpointIds: string[]
+  ): Promise<void> {
+    if (waitpointIds.length === 0) {
+      return;
+    }
+
+    await client.$executeRaw`
+      INSERT INTO "_completedWaitpoints" ("A", "B")
+      SELECT ${snapshotId}, w.id
+      FROM unnest(${waitpointIds}::text[]) AS w(id)
+      ON CONFLICT DO NOTHING`;
+  }
+
   async lockRunToWorker(
     runId: string,
     data: LockRunData,
@@ -970,15 +990,7 @@ export class PostgresRunStore implements RunStore {
             organizationId: data.snapshot.organizationId,
             checkpointId: data.snapshot.checkpointId ?? undefined,
             batchId: data.snapshot.batchId ?? undefined,
-            // Legacy: connect the implicit M2M. Dedicated: links inserted below into the
-            // CompletedWaitpoint join model (no such relation field exists on that schema).
-            ...(dedicated
-              ? {}
-              : {
-                  completedWaitpoints: {
-                    connect: data.snapshot.completedWaitpointIds.map((id) => ({ id })),
-                  },
-                }),
+            // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas.
             completedWaitpointOrder: data.snapshot.completedWaitpointOrder,
             workerId: data.snapshot.workerId ?? undefined,
             runnerId: data.snapshot.runnerId ?? undefined,
@@ -989,6 +1001,12 @@ export class PostgresRunStore implements RunStore {
 
     if (dedicated) {
       await this.#connectCompletedWaitpoints(
+        prisma,
+        data.snapshot.id,
+        data.snapshot.completedWaitpointIds
+      );
+    } else {
+      await this.#connectCompletedWaitpointsLegacy(
         prisma,
         data.snapshot.id,
         data.snapshot.completedWaitpointIds
@@ -1554,15 +1572,8 @@ export class PostgresRunStore implements RunStore {
         workerId,
         runnerId,
         metadata: snapshot.metadata ?? undefined,
-        // Legacy: connect the implicit M2M. Dedicated: links inserted below into the
-        // CompletedWaitpoint join model (no such relation field exists on that schema).
-        ...(dedicated
-          ? {}
-          : {
-              completedWaitpoints: {
-                connect: completedWaitpoints?.map((w) => ({ id: w.id })),
-              },
-            }),
+        // Completed-waitpoint links are inserted FK-free after create (below) for BOTH schemas, so a
+        // cross-DB (NEW-resident) token can be recorded without a Prisma `connect` existence check.
         completedWaitpointOrder: completedWaitpoints
           ?.filter((c) => c.index !== undefined)
           .sort((a, b) => a.index! - b.index!)
@@ -1573,12 +1584,11 @@ export class PostgresRunStore implements RunStore {
       include: { checkpoint: true },
     });
 
+    const completedWaitpointIds = completedWaitpoints?.map((w) => w.id) ?? [];
     if (dedicated) {
-      await this.#connectCompletedWaitpoints(
-        prisma,
-        newSnapshot.id,
-        completedWaitpoints?.map((w) => w.id) ?? []
-      );
+      await this.#connectCompletedWaitpoints(prisma, newSnapshot.id, completedWaitpointIds);
+    } else {
+      await this.#connectCompletedWaitpointsLegacy(prisma, newSnapshot.id, completedWaitpointIds);
     }
 
     return newSnapshot;
