@@ -41,7 +41,7 @@ describe("ownerEngine — residency classifier (version char at fixed position, 
       "A".repeat(25) + "1", // uppercase
       "a".repeat(24) + "-1", // hyphen region char
       "a".repeat(27), // pre-cutover 27-char shape → LEGACY under the version rule
-      "run_" + "b".repeat(27), // 27-char base62 KSUID-era friendly id → LEGACY
+      "run_" + "b".repeat(27), // 27-char base62 pre-cutover friendly id → LEGACY
       "x".repeat(40),
     ]) {
       expect(ownerEngine(bad)).toBe("LEGACY");

@@ -4,10 +4,10 @@ import { isRunOpsIdBody } from "./friendlyId.js";
 export type Residency = "LEGACY" | "NEW";
 
 /**
- * Underlying id lineage. "runOpsId" (formerly "ksuid") is the label for the
- * NEW-store mint path — a base32hex run-ops v1 id (see friendlyId.ts). It is
- * the value persisted in the runOpsMintKind feature flag. "cuid" is every
- * legacy shape (cuid, nanoid, pre-cutover 27-char base62).
+ * Underlying id lineage. "runOpsId" is the label for the NEW-store mint path
+ * — a base32hex run-ops v1 id (see friendlyId.ts). It is the value persisted in
+ * the runOpsMintKind feature flag. "cuid" is every legacy shape (cuid, nanoid,
+ * and the pre-cutover 27-char base62 format).
  */
 export type ResidencyKind = "cuid" | "runOpsId";
 
@@ -45,7 +45,7 @@ function internalForm(id: string): string {
  * Returns the id lineage by the version-char rule: a well-formed run-ops v1
  * body (26 chars, version "1" at index 25, base32hex alphabet) is "runOpsId"
  * (NEW store); everything else — including malformed v1 shapes — is "cuid"
- * (legacy). Total: never throws. Transition: pre-cutover 27-char base62 KSUIDs (the old
+ * (legacy). Total: never throws. Transition: pre-cutover 27-char base62 ids (the old
  * NEW-mint format) now classify LEGACY, so ship this with the base32hex generator only once
  * any 27-char NEW-resident runs are drained/disposable — no live run is misrouted mid-cutover.
  */
