@@ -88,6 +88,8 @@ describe("run-ops split — completing a batch item routes by the batch id, not 
       expect(result.count).toBe(1);
       const onNew = await prisma17.batchTaskRunItem.findUnique({ where: { id: item.id } });
       expect(onNew?.status).toBe("COMPLETED");
+      // Legacy was never touched: no phantom/double-routed item update on #legacy.
+      expect(await prisma14.batchTaskRunItem.count({ where: { batchTaskRunId: batchId } })).toBe(0);
     }
   );
 });
