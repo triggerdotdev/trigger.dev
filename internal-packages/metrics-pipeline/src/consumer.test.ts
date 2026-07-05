@@ -212,6 +212,8 @@ redisTest(
       flag: { enabled: () => true },
     });
 
+    // Emits before the connection is ready are dropped by design (loss-tolerant).
+    await emitter.waitUntilReady();
     emitter.emitGauge("q1", {
       op: "gauge",
       q: "q1",

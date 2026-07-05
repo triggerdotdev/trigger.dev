@@ -114,6 +114,9 @@ export class MetricsStreamEmitter {
   // the caller. Shares the counter stream (one stream family on the metrics Redis).
   emitGauge(shardKey: string, fields: MetricFields): void {
     if (!this.flag.enabled()) return;
+    // Drop rather than queue while the metrics Redis is unreachable: ioredis would hold
+    // every command in its offline queue until rejection, and metrics are loss-tolerant.
+    if (this.redis.status !== "ready") return;
     const op = String(fields.op ?? "gauge");
     const stream = streamKey(this.def, shardFor(shardKey, this.def.shardCount));
     const args: string[] = [];
@@ -134,6 +137,7 @@ export class MetricsStreamEmitter {
   // lost XADD self-heals (the next reading restates the total); the INCR is never sampled.
   emit(shardKey: string, fields: MetricFields): void {
     if (!this.flag.enabled()) return;
+    if (this.redis.status !== "ready") return;
     const op = String(fields.op ?? "unknown");
     const q = String(fields.q ?? "");
     const odometerKey = `${this.def.name}_cum:${op}:${q}`;
@@ -159,6 +163,12 @@ export class MetricsStreamEmitter {
         this.errorCounter.add(1);
         this.logger.debug("metrics emit failed", { error, stream });
       });
+  }
+
+  // Resolves once the metrics Redis connection is ready (emits before that are dropped).
+  waitUntilReady(): Promise<void> {
+    if (this.redis.status === "ready") return Promise.resolve();
+    return new Promise((resolve) => this.redis.once("ready", () => resolve()));
   }
 
   async close(): Promise<void> {
