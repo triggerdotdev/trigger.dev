@@ -42,6 +42,8 @@ jobs:
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile --filter trigger.dev...
 
+      # Prisma clients generate concurrently and share one engine binary in the
+      # pnpm store; the generate script retries the transient Windows EPERM race.
       - name: 📀 Generate Prisma Client
         run: pnpm run generate
 

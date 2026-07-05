@@ -25,7 +25,7 @@
   },
   "scripts": {
     "clean": "rimraf dist",
-    "generate": "prisma generate",
+    "generate": "node ../../scripts/retry-prisma-generate.mjs",
     "db:migrate:dev:create": "prisma migrate dev --create-only",
     "db:migrate:deploy": "node scripts/migrate.mjs deploy",
     "db:migrate:status": "node scripts/migrate.mjs status",
