@@ -245,6 +245,21 @@ export class SupervisorHttpClient {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
         },
+      },
+      {
+        // This is the hop that reaches the engine, so it's where a transient
+        // database outage during resume surfaces (as a retryable 5xx). Resuming
+        // is idempotent server-side (guarded by the snapshot id), so retry
+        // generously to ride out the outage rather than aborting the run.
+        // `randomize` jitters the delay so a fleet of runs resuming at once
+        // doesn't stampede the DB the moment it recovers.
+        retry: {
+          minTimeoutInMs: 500,
+          maxTimeoutInMs: 10_000,
+          maxAttempts: 8,
+          factor: 2,
+          randomize: true,
+        },
       }
     );
   }
