@@ -347,7 +347,9 @@ export class RunAttemptSystem {
                 lockedById: true,
                 ttl: true,
               },
-            }
+            },
+            // read-your-writes on the owning primary (dequeue just wrote lockedById; a replica lags).
+            prisma
           );
 
           this.$.logger.debug("Creating a task run attempt", { taskRun });
