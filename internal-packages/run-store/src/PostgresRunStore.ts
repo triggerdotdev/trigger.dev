@@ -934,7 +934,7 @@ export class PostgresRunStore implements RunStore {
   // (NEW-resident) token; the raw insert + dropped _completedWaitpoints_B_fkey records it. A =
   // TaskRunExecutionSnapshot.id, B = Waitpoint.id (implicit M2M alphabetical order).
   async #connectCompletedWaitpointsLegacy(
-    client: PrismaClientOrTransaction,
+    client: RunOpsCapableClient,
     snapshotId: string,
     waitpointIds: string[]
   ): Promise<void> {
