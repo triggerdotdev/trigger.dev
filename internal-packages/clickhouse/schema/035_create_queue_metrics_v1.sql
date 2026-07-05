@@ -66,7 +66,7 @@ ENGINE = AggregatingMergeTree()
 PARTITION BY toDate(bucket_start)
 ORDER BY (organization_id, project_id, environment_id, queue_name, bucket_start)
 TTL bucket_start + INTERVAL 30 DAY
-SETTINGS ttl_only_drop_parts = 1;
+SETTINGS ttl_only_drop_parts = 1, non_replicated_deduplication_window = 1000;
 
 -- (3) MV: raw -> aggregated, 10s buckets.
 CREATE MATERIALIZED VIEW IF NOT EXISTS trigger_dev.queue_metrics_mv_v1
@@ -117,7 +117,7 @@ ENGINE = AggregatingMergeTree()
 PARTITION BY toDate(bucket_start)
 ORDER BY (organization_id, project_id, environment_id, bucket_start)
 TTL bucket_start + INTERVAL 30 DAY
-SETTINGS ttl_only_drop_parts = 1;
+SETTINGS ttl_only_drop_parts = 1, non_replicated_deduplication_window = 1000;
 
 -- (5) MV: raw -> env rollup.
 CREATE MATERIALIZED VIEW IF NOT EXISTS trigger_dev.env_metrics_mv_v1
@@ -167,7 +167,7 @@ ENGINE = AggregatingMergeTree()
 PARTITION BY toDate(bucket_start)
 ORDER BY (organization_id, project_id, environment_id, queue_name, bucket_start)
 TTL bucket_start + INTERVAL 30 DAY
-SETTINGS ttl_only_drop_parts = 1;
+SETTINGS ttl_only_drop_parts = 1, non_replicated_deduplication_window = 1000;
 
 -- (7) MV: raw -> 5m rollup. MUST read raw, never cascade off queue_metrics_v1 with
 -- -MergeState: MV GROUP BY merges states in hash order, and out-of-time-order

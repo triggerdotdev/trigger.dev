@@ -344,3 +344,60 @@ describe("queue_metrics_v1", () => {
     }
   );
 });
+
+describe("consumer retry idempotency", () => {
+  clickhouseTest(
+    "re-inserting a batch with the same dedup token does not inflate any tier",
+    async ({ clickhouseContainer }) => {
+      const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
+
+      const dedupOrg = "org_qm_dedup";
+      const rows: QueueMetricsRawV1Input[] = [
+        ...counter("started", "dedup-q", 3, [100, 200, 300]),
+        { ...base("gauge", "dedup-q"), running: 2, queued: 1, env_running: 5, env_limit: 10 },
+      ].map((row) => ({ ...row, organization_id: dedupOrg }));
+
+      const retrySettings = {
+        params: {
+          clickhouse_settings: {
+            async_insert: 0 as const,
+            insert_deduplication_token: "qm-test-retry-batch",
+            deduplicate_blocks_in_dependent_materialized_views: 1 as const,
+          },
+        },
+      };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const [error] = await ch.queueMetrics.insertRaw(rows, retrySettings);
+        expect(error).toBeNull();
+      }
+
+      const [tiersError, tiers] = await ch.reader.query({
+        name: "dedup-tier-counts",
+        query: `SELECT
+            (SELECT count() FROM trigger_dev.queue_metrics_v1 WHERE organization_id = {org: String}) AS rows_10s,
+            (SELECT count() FROM trigger_dev.queue_metrics_5m_v1 WHERE organization_id = {org: String}) AS rows_5m,
+            (SELECT count() FROM trigger_dev.env_metrics_v1 WHERE organization_id = {org: String}) AS rows_env,
+            (SELECT sum(wait_ms_count) FROM trigger_dev.env_metrics_v1 WHERE organization_id = {org: String}) AS wait_count,
+            (SELECT deltaSumTimestampMerge(started_delta) FROM trigger_dev.queue_metrics_v1 WHERE organization_id = {org: String}) AS started`,
+        schema: z.object({
+          rows_10s: z.coerce.number(),
+          rows_5m: z.coerce.number(),
+          rows_env: z.coerce.number(),
+          wait_count: z.coerce.number(),
+          started: z.coerce.number(),
+        }),
+        params: z.object({ org: z.string() }),
+      })({ org: dedupOrg });
+      expect(tiersError).toBeNull();
+      const t = tiers![0]!;
+      // Without dedup windows on the MV targets, retries append copies: rows and sums triple.
+      expect(t.rows_10s).toBe(1);
+      expect(t.rows_5m).toBe(1);
+      expect(t.rows_env).toBe(1);
+      expect(t.wait_count).toBe(3);
+      expect(t.started).toBe(3);
+
+      await ch.close();
+    }
+  );
+});
