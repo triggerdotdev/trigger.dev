@@ -134,11 +134,11 @@ export class WorkloadHttpClient {
           },
         },
         {
-          // Resuming after a wait is idempotent (guarded server-side by the
-          // snapshot id), so retry generously to ride out a transient database
-          // outage rather than aborting the run. `randomize` jitters the delay
-          // so a fleet of runs resuming at once doesn't stampede the DB the
-          // moment it recovers.
+          // This hop only reaches the supervisor's workload server, so retry
+          // generously with jittered backoff to ride out a transient blip
+          // talking to the supervisor (e.g. a restart) rather than aborting the
+          // run. Database outages surface one hop further in, on the
+          // supervisor-to-engine call, which carries its own retry for them.
           retry: {
             minTimeoutInMs: 500,
             maxTimeoutInMs: 10_000,
