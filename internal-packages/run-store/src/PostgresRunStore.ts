@@ -1709,9 +1709,11 @@ export class PostgresRunStore implements RunStore {
       return;
     }
 
-    // Insert the blocking connections and the historical run connections.
-    // We use a CTE to do both inserts atomically. Data-modifying CTEs are
-    // always executed regardless of whether they're referenced in the outer query.
+    // Source edges from the id array via `unnest` (like the dedicated branch), NOT `FROM "Waitpoint"`:
+    // a cross-DB token (LEGACY run -> NEW-resident token) lives on the other DB, so the join matched 0
+    // rows and the run hung. Needs the _WaitpointRunConnections -> Waitpoint FK dropped (migration);
+    // casts are required because `unnest` gives no column types for the nullable params.
+    const ids = waitpointIds;
     await prisma.$queryRaw`
       WITH inserted AS (
         INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt", "spanIdToComplete", "batchId", "batchIndex")
@@ -1722,19 +1724,17 @@ export class PostgresRunStore implements RunStore {
           ${projectId},
           NOW(),
           NOW(),
-          ${spanIdToComplete ?? null},
-          ${batchId ?? null},
-          ${batchIndex ?? null}
-        FROM "Waitpoint" w
-        WHERE w.id IN (${Prisma.join(waitpointIds)})
+          ${spanIdToComplete ?? null}::text,
+          ${batchId ?? null}::text,
+          ${batchIndex ?? null}::int
+        FROM unnest(${ids}::text[]) AS w(id)
         ON CONFLICT DO NOTHING
         RETURNING "waitpointId"
       ),
       connected_runs AS (
         INSERT INTO "_WaitpointRunConnections" ("A", "B")
         SELECT ${runId}, w.id
-        FROM "Waitpoint" w
-        WHERE w.id IN (${Prisma.join(waitpointIds)})
+        FROM unnest(${ids}::text[]) AS w(id)
         ON CONFLICT DO NOTHING
       )
       SELECT COUNT(*) FROM inserted`;
