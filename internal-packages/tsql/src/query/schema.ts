@@ -130,10 +130,10 @@ export interface ColumnSchema {
   fillMode?: "zero" | "carry";
   /**
    * Aggregate-state column whose states only merge correctly within one value of the
-   * named column (e.g. per-queue counter states). Queries referencing it must GROUP BY
-   * that column or pin it to a single value; other shapes fail to compile.
+   * named column(s) (e.g. per-queue counter states). Queries referencing it must GROUP BY
+   * every listed column or pin each to a single value; other shapes fail to compile.
    */
-  mergeGroupKey?: string;
+  mergeGroupKey?: string | string[];
   /**
    * Example value for documentation purposes.
    *

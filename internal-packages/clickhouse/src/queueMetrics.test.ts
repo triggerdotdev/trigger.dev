@@ -432,3 +432,94 @@ describe("consumer retry idempotency", () => {
     }
   );
 });
+
+describe("per-concurrency-key tier", () => {
+  clickhouseTest(
+    "per-key rows feed the ck tier without polluting per-queue counters or waits",
+    async ({ clickhouseContainer }) => {
+      const ch = new ClickHouse({ url: clickhouseContainer.getConnectionUrl(), name: "test" });
+      const ckOrg = "org_qm_ck";
+      const queue = "ck-tier-q";
+      const withCk = (row: QueueMetricsRawV1Input, ck: string): QueueMetricsRawV1Input => ({
+        ...row,
+        concurrency_key: ck,
+      });
+
+      // 5 started events on one queue across two keys (t1 x3, t2 x2). Each event lands as
+      // a base row (base odometer) + a per-key row (per-key odometer), both carrying wait,
+      // exactly like the consumer expansion. Baselines seed each odometer.
+      const rows: QueueMetricsRawV1Input[] = [];
+      let ok = 0;
+      const started = (cum: number, ck: string, ckcum: number, wait: number) => {
+        rows.push({ ...base("started", queue), cumulative: cum, order_key: ok, wait_ms: wait });
+        rows.push(
+          withCk({ ...base("started", queue), cumulative: ckcum, order_key: ok, wait_ms: wait }, ck)
+        );
+        ok++;
+      };
+      rows.push({ ...base("started", queue), cumulative: 0, order_key: ok++ });
+      rows.push(withCk({ ...base("started", queue), cumulative: 0, order_key: ok++ }, "t1"));
+      rows.push(withCk({ ...base("started", queue), cumulative: 0, order_key: ok++ }, "t2"));
+      started(1, "t1", 1, 100);
+      started(2, "t1", 2, 200);
+      started(3, "t2", 1, 300);
+      started(4, "t1", 3, 400);
+      started(5, "t2", 2, 500);
+      // Per-subqueue gauges carry the key.
+      rows.push(withCk({ ...base("gauge", queue), queued: 4, running: 1 }, "t1"));
+      rows.push(withCk({ ...base("gauge", queue), queued: 2, running: 0 }, "t2"));
+
+      const [insertError] = await ch.queueMetrics.insertRaw(
+        rows.map((r) => ({ ...r, organization_id: ckOrg })),
+        SYNC
+      );
+      expect(insertError).toBeNull();
+
+      const [perQueueError, perQueue] = await ch.reader.query({
+        name: "ck-per-queue-read",
+        query: `SELECT
+            deltaSumTimestampMerge(started_delta) AS started,
+            sum(wait_ms_sum) AS wait_sum,
+            sum(wait_ms_count) AS wait_count,
+            max(max_queued) AS peak_queued
+          FROM trigger_dev.queue_metrics_v1
+          WHERE organization_id = {org: String}`,
+        schema: z.object({
+          started: z.coerce.number(),
+          wait_sum: z.coerce.number(),
+          wait_count: z.coerce.number(),
+          peak_queued: z.coerce.number(),
+        }),
+        params: z.object({ org: z.string() }),
+      })({ org: ckOrg });
+      expect(perQueueError).toBeNull();
+      // Base rows only: 5 events (not 10), waits counted once, per-key gauges still max in.
+      expect(perQueue![0]).toEqual({ started: 5, wait_sum: 1500, wait_count: 5, peak_queued: 4 });
+
+      const [ckError, ckRows] = await ch.reader.query({
+        name: "ck-tier-read",
+        query: `SELECT concurrency_key,
+            deltaSumTimestampMerge(started_delta) AS started,
+            max(max_queued) AS peak_queued,
+            sum(wait_ms_sum) AS wait_sum
+          FROM trigger_dev.queue_metrics_ck_v1
+          WHERE organization_id = {org: String}
+          GROUP BY concurrency_key ORDER BY concurrency_key`,
+        schema: z.object({
+          concurrency_key: z.string(),
+          started: z.coerce.number(),
+          peak_queued: z.coerce.number(),
+          wait_sum: z.coerce.number(),
+        }),
+        params: z.object({ org: z.string() }),
+      })({ org: ckOrg });
+      expect(ckError).toBeNull();
+      expect(ckRows).toEqual([
+        { concurrency_key: "t1", started: 3, peak_queued: 4, wait_sum: 700 },
+        { concurrency_key: "t2", started: 2, peak_queued: 2, wait_sum: 800 },
+      ]);
+
+      await ch.close();
+    }
+  );
+});

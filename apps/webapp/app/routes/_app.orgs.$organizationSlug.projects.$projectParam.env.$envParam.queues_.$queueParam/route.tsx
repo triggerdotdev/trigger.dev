@@ -258,42 +258,286 @@ function ConcurrencyKeysSection({
         valueFormat={formatWaitMs}
         series={[{ key: "wait", label: "Max wait", color: COLORS.ckWait }]}
       />
-      {hasLive && (
-        <div className="rounded-sm border border-grid-dimmed bg-background-bright">
-          <div className="flex items-baseline justify-between px-3 pt-2">
-            <div className="text-sm text-text-bright">Concurrency keys with queued runs</div>
-            <div className="text-xs text-text-dimmed">
-              {breakdown.totalBackloggedKeys > breakdown.keys.length
-                ? `Showing the ${breakdown.keys.length} most starved of ${breakdown.totalBackloggedKeys.toLocaleString()} keys`
-                : `${breakdown.totalBackloggedKeys.toLocaleString()} ${
-                    breakdown.totalBackloggedKeys === 1 ? "key" : "keys"
-                  }`}
-            </div>
+      <TopKeysChartCard ids={ids} timeRange={timeRange} queueName={queueName} />
+      <KeyStatsTable
+        breakdown={breakdown}
+        loadedAt={loadedAt}
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+      />
+    </>
+  );
+}
+
+// TRQL string literal escape (standard SQL doubling).
+function trqlString(value: string): string {
+  return value.replace(/'/g, "''");
+}
+
+const KEY_SERIES_COLORS = [
+  "#34D399",
+  "#6366F1",
+  "#F59E0B",
+  "#22D3EE",
+  "#A78BFA",
+  "#EF4444",
+  "#F472B6",
+  "#84CC16",
+];
+
+// Two-step top-N: rank keys by peak backlog over the range, then chart those keys as
+// grouped series (the per-key table is activity-bound, so ranking is a cheap scan).
+function TopKeysChartCard({
+  ids,
+  timeRange,
+  queueName,
+}: {
+  ids: Ids;
+  timeRange: TimeRangeParams;
+  queueName: string;
+}) {
+  const { rows, showLoading, failed } = useQueueMetric(
+    `SELECT concurrency_key, max(max_queued) AS peak\nFROM queue_metrics_by_key\nGROUP BY concurrency_key\nORDER BY peak DESC\nLIMIT 8`,
+    { ids, timeRange, queueName }
+  );
+  const keys = useMemo(
+    () => rows.filter((r) => toNumber(r.peak) > 0).map((r) => String(r.concurrency_key)),
+    [rows]
+  );
+
+  if (showLoading || failed || keys.length === 0) return null;
+  return <TopKeysSeries keys={keys} ids={ids} timeRange={timeRange} queueName={queueName} />;
+}
+
+function TopKeysSeries({
+  keys,
+  ids,
+  timeRange,
+  queueName,
+}: {
+  keys: string[];
+  ids: Ids;
+  timeRange: TimeRangeParams;
+  queueName: string;
+}) {
+  const inList = keys.map((k) => `'${trqlString(k)}'`).join(", ");
+  const { rows, showLoading, failed } = useQueueMetric(
+    `SELECT timeBucket() AS t, concurrency_key, max(max_queued) AS queued\nFROM queue_metrics_by_key\nWHERE concurrency_key IN (${inList})\nGROUP BY t, concurrency_key\nORDER BY t`,
+    { ids, timeRange, queueName, fillGaps: true }
+  );
+
+  const data = useMemo(() => {
+    const buckets = new Map<number, { bucket: number } & Record<string, number>>();
+    for (const r of rows) {
+      const bucket = clickhouseTimeToMs(r.t);
+      if (!Number.isFinite(bucket)) continue;
+      let point = buckets.get(bucket);
+      if (!point) {
+        point = { bucket } as { bucket: number } & Record<string, number>;
+        buckets.set(bucket, point);
+      }
+      point[String(r.concurrency_key)] = toNumber(r.queued);
+    }
+    return [...buckets.values()].sort((a, b) => a.bucket - b.bucket);
+  }, [rows]);
+
+  const chartConfig = useMemo(() => {
+    const cfg: ChartConfig = {};
+    keys.forEach((k, i) => {
+      cfg[k] = { label: k, color: KEY_SERIES_COLORS[i % KEY_SERIES_COLORS.length]! };
+    });
+    return cfg;
+  }, [keys]);
+
+  const { tickFormatter, tooltipLabelFormatter } = useMemo(
+    () => buildActivityTimeAxis(data),
+    [data]
+  );
+  const state: ChartState = showLoading ? "loading" : failed ? "invalid" : undefined;
+
+  return (
+    <div className="h-64">
+      <ChartCard title="Top keys by backlog">
+        <Chart.Root
+          config={chartConfig}
+          data={data}
+          dataKey="bucket"
+          series={keys}
+          state={state}
+          fillContainer
+        >
+          <Chart.Line
+            lineType="monotone"
+            xAxisProps={{ tickFormatter }}
+            tooltipLabelFormatter={tooltipLabelFormatter}
+          />
+        </Chart.Root>
+      </ChartCard>
+    </div>
+  );
+}
+
+type KeyRangeStats = { started: number; peakBacklog: number; meanWaitMs: number };
+
+// Live breakdown (queued/running now, oldest wait) merged with per-key range stats from
+// the history tier; keys with history but no live backlog still appear. Clicking a key
+// pins the drill-down charts via the `key` search param.
+function KeyStatsTable({
+  breakdown,
+  loadedAt,
+  ids,
+  timeRange,
+  queueName,
+}: {
+  breakdown: CkBreakdown;
+  loadedAt: number;
+  ids: Ids;
+  timeRange: TimeRangeParams;
+  queueName: string;
+}) {
+  const { value, replace, del } = useSearchParams();
+  const selectedKey = value("key");
+
+  const { rows, showLoading } = useQueueMetric(
+    `SELECT concurrency_key,\n  deltaSumTimestampMerge(started_delta) AS started,\n  max(max_queued) AS peak_backlog,\n  if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS mean_wait\nFROM queue_metrics_by_key\nGROUP BY concurrency_key\nORDER BY peak_backlog DESC\nLIMIT 50`,
+    { ids, timeRange, queueName }
+  );
+
+  const merged = useMemo(() => {
+    const range = new Map<string, KeyRangeStats>();
+    for (const r of rows) {
+      range.set(String(r.concurrency_key), {
+        started: toNumber(r.started),
+        peakBacklog: toNumber(r.peak_backlog),
+        meanWaitMs: toNumber(r.mean_wait),
+      });
+    }
+    const liveKeys = new Set(breakdown.keys.map((k) => k.concurrencyKey));
+    const live = breakdown.keys.map((k) => ({
+      key: k.concurrencyKey,
+      queued: k.queued,
+      running: k.running,
+      oldestWaitMs: Math.max(0, loadedAt - k.oldestEnqueuedAt),
+      range: range.get(k.concurrencyKey),
+    }));
+    const historyOnly = [...range.entries()]
+      .filter(([key]) => !liveKeys.has(key))
+      .map(([key, stats]) => ({
+        key,
+        queued: 0,
+        running: 0,
+        oldestWaitMs: null as number | null,
+        range: stats,
+      }));
+    return [...live, ...historyOnly].slice(0, 50);
+  }, [rows, breakdown, loadedAt]);
+
+  if (merged.length === 0) return null;
+
+  return (
+    <>
+      <div className="rounded-sm border border-grid-dimmed bg-background-bright">
+        <div className="flex items-baseline justify-between px-3 pt-2">
+          <div className="text-sm text-text-bright">Concurrency keys</div>
+          <div className="text-xs text-text-dimmed">
+            {breakdown.totalBackloggedKeys > 0
+              ? `${breakdown.totalBackloggedKeys.toLocaleString()} ${
+                  breakdown.totalBackloggedKeys === 1 ? "key" : "keys"
+                } with queued runs now`
+              : "No keys with queued runs right now"}
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>Key</TableHeaderCell>
-                <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                <TableHeaderCell alignment="right">Oldest wait</TableHeaderCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {breakdown.keys.map((key) => (
-                <TableRow key={key.concurrencyKey}>
-                  <TableCell>{key.concurrencyKey}</TableCell>
-                  <TableCell alignment="right">{key.queued.toLocaleString()}</TableCell>
-                  <TableCell alignment="right">{key.running.toLocaleString()}</TableCell>
-                  <TableCell alignment="right">
-                    {formatWaitMs(Math.max(0, loadedAt - key.oldestEnqueuedAt))}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
         </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell>Key</TableHeaderCell>
+              <TableHeaderCell alignment="right">Queued now</TableHeaderCell>
+              <TableHeaderCell alignment="right">Running now</TableHeaderCell>
+              <TableHeaderCell alignment="right">Oldest wait</TableHeaderCell>
+              <TableHeaderCell alignment="right">Started</TableHeaderCell>
+              <TableHeaderCell alignment="right">Peak backlog</TableHeaderCell>
+              <TableHeaderCell alignment="right">Mean delay</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {merged.map((row) => (
+              <TableRow
+                key={row.key}
+                isSelected={selectedKey === row.key}
+                className="cursor-pointer"
+                onClick={() => (selectedKey === row.key ? del("key") : replace({ key: row.key }))}
+              >
+                <TableCell>{row.key}</TableCell>
+                <TableCell alignment="right">{row.queued.toLocaleString()}</TableCell>
+                <TableCell alignment="right">{row.running.toLocaleString()}</TableCell>
+                <TableCell alignment="right">
+                  {row.oldestWaitMs === null ? "–" : formatWaitMs(row.oldestWaitMs)}
+                </TableCell>
+                <TableCell alignment="right">
+                  {row.range ? row.range.started.toLocaleString() : showLoading ? "…" : "–"}
+                </TableCell>
+                <TableCell alignment="right">
+                  {row.range ? row.range.peakBacklog.toLocaleString() : showLoading ? "…" : "–"}
+                </TableCell>
+                <TableCell alignment="right">
+                  {row.range && row.range.meanWaitMs > 0 ? formatWaitMs(row.range.meanWaitMs) : "–"}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      {selectedKey && (
+        <KeyDrilldown keyName={selectedKey} ids={ids} timeRange={timeRange} queueName={queueName} />
       )}
+    </>
+  );
+}
+
+function KeyDrilldown({
+  keyName,
+  ids,
+  timeRange,
+  queueName,
+}: {
+  keyName: string;
+  ids: Ids;
+  timeRange: TimeRangeParams;
+  queueName: string;
+}) {
+  const pin = `concurrency_key = '${trqlString(keyName)}'`;
+  return (
+    <>
+      <QueueDetailChartCard
+        title={`Key ${keyName}: backlog and running`}
+        query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+        fillGaps
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+        series={[
+          { key: "queued", label: "Queued", color: COLORS.queued },
+          { key: "running", label: "Running", color: COLORS.running },
+        ]}
+      />
+      <QueueDetailChartCard
+        title={`Key ${keyName}: throughput`}
+        query={`SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+        series={[{ key: "started", label: "Started", color: COLORS.ckKeys }]}
+      />
+      <QueueDetailChartCard
+        title={`Key ${keyName}: mean scheduling delay`}
+        query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+        valueFormat={formatWaitMs}
+        series={[{ key: "wait", label: "Mean delay", color: COLORS.p95 }]}
+      />
     </>
   );
 }

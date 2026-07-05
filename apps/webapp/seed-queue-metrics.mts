@@ -325,6 +325,50 @@ function newCounterState(n: number): CounterState {
   return Array.from({ length: n }, () => ({ enqueue: 0, started: 0, ack: 0, nack: 0, dlq: 0 }));
 }
 
+// Per-key simulation for CK profiles: 12 tenants (tenant-01 is the hog, matching
+// stageRedisUsage), per-tenant backlog drained round-robin, per-tenant odometers.
+const CK_TENANT_COUNT = 12;
+type CkSimState = { backlog: number[]; counters: Map<number, Record<CounterOp, number>> };
+const ckSim = new Map<number, CkSimState>();
+
+function ckTenantName(t: number): string {
+  return `tenant-${String(t + 1).padStart(2, "0")}`;
+}
+
+function ckCounterRows(
+  state: CkSimState,
+  tenant: number,
+  ids: Ids,
+  queueName: string,
+  eventTime: string,
+  orderKey: () => number,
+  op: CounterOp,
+  wait_ms?: number
+): QueueMetricsRawV1Input[] {
+  let c = state.counters.get(tenant);
+  if (!c) {
+    c = { enqueue: 0, started: 0, ack: 0, nack: 0, dlq: 0 };
+    state.counters.set(tenant, c);
+  }
+  const common = {
+    ...ids,
+    queue_name: queueName,
+    concurrency_key: ckTenantName(tenant),
+    event_time: eventTime,
+  };
+  const rows: QueueMetricsRawV1Input[] = [];
+  if (c[op] === 0) rows.push({ ...common, op, cumulative: 0, order_key: orderKey() });
+  c[op] += 1;
+  rows.push({
+    ...common,
+    op,
+    cumulative: c[op],
+    order_key: orderKey(),
+    ...(wait_ms !== undefined ? { wait_ms } : {}),
+  });
+  return rows;
+}
+
 // Advance one bucket of the simulation for every queue, returning the raw rows to insert.
 // `backlog` and `counters` are mutated in place so state carries across buckets (and into
 // live mode).
@@ -416,6 +460,67 @@ function simulateBucket(
       rows.push(...counterRows(counters, q, ids, profile.name, eventTime, orderKey, "enqueue"));
     }
 
+    // Per-key rows for CK profiles: assign arrivals hog-weighted, drain round-robin
+    // (fair share), then emit per-tenant odometers + a per-key gauge per active tenant.
+    if (profile.ck) {
+      let ckq = ckSim.get(q);
+      if (!ckq) {
+        ckq = { backlog: new Array(CK_TENANT_COUNT).fill(0), counters: new Map() };
+        ckSim.set(q, ckq);
+      }
+      const hogShare = bucket % 60 < 20 ? 0.6 : 0.15;
+      const arrivalsPerTenant = new Array(CK_TENANT_COUNT).fill(0);
+      for (let a = 0; a < arrivals; a++) {
+        const t = rng() < hogShare ? 0 : 1 + Math.floor(rng() * (CK_TENANT_COUNT - 1));
+        arrivalsPerTenant[t]++;
+        ckq.backlog[t]++;
+      }
+      const drainedPerTenant = new Array(CK_TENANT_COUNT).fill(0);
+      let remaining = started;
+      while (remaining > 0 && ckq.backlog.some((v) => v > 0)) {
+        for (let t = 0; t < CK_TENANT_COUNT && remaining > 0; t++) {
+          if (ckq.backlog[t] > 0) {
+            ckq.backlog[t]--;
+            drainedPerTenant[t]++;
+            remaining--;
+          }
+        }
+      }
+      for (let t = 0; t < CK_TENANT_COUNT; t++) {
+        const fairShare = Math.max(1, limit[q] / CK_TENANT_COUNT);
+        const ckMedianWait = profile.waitBaseMs + (ckq.backlog[t] / fairShare) * bucketSec * 1000;
+        for (let a = 0; a < arrivalsPerTenant[t]; a++) {
+          rows.push(...ckCounterRows(ckq, t, ids, profile.name, eventTime, orderKey, "enqueue"));
+        }
+        for (let d = 0; d < drainedPerTenant[t]; d++) {
+          rows.push(
+            ...ckCounterRows(
+              ckq,
+              t,
+              ids,
+              profile.name,
+              eventTime,
+              orderKey,
+              "started",
+              Math.round(lognormal(ckMedianWait, WAIT_SIGMA, rng))
+            )
+          );
+          rows.push(...ckCounterRows(ckq, t, ids, profile.name, eventTime, orderKey, "ack"));
+        }
+        if (ckq.backlog[t] > 0 || drainedPerTenant[t] > 0) {
+          rows.push({
+            ...ids,
+            queue_name: profile.name,
+            concurrency_key: ckTenantName(t),
+            event_time: eventTime,
+            op: "gauge",
+            queued: ckq.backlog[t],
+            running: drainedPerTenant[t],
+          });
+        }
+      }
+    }
+
     const medianWait = profile.waitBaseMs + (prior / Math.max(limit[q], 1)) * bucketSec * 1000;
     for (let s = 0; s < started; s++) {
       rows.push(
@@ -482,6 +587,7 @@ async function resetEnv(ch: ClickHouse, environmentId: string) {
     "queue_metrics_v1",
     "queue_metrics_5m_v1",
     "env_metrics_v1",
+    "queue_metrics_ck_v1",
   ]) {
     await raw.command({
       query: `DELETE FROM trigger_dev.${table} WHERE environment_id = '${environmentId}'`,
@@ -799,6 +905,7 @@ async function main() {
   await raw.command({ query: `OPTIMIZE TABLE trigger_dev.queue_metrics_v1 FINAL` });
   await raw.command({ query: `OPTIMIZE TABLE trigger_dev.queue_metrics_5m_v1 FINAL` });
   await raw.command({ query: `OPTIMIZE TABLE trigger_dev.env_metrics_v1 FINAL` });
+  await raw.command({ query: `OPTIMIZE TABLE trigger_dev.queue_metrics_ck_v1 FINAL` });
 
   const origin = process.env.APP_ORIGIN ?? "http://localhost:3030";
   console.log(

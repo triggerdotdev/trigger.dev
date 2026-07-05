@@ -4230,3 +4230,72 @@ describe("mergeGroupKey validation", () => {
     ).toThrowError(/only combine correctly within one queue/);
   });
 });
+
+describe("compound mergeGroupKey validation", () => {
+  const byKeySchema: TableSchema = {
+    name: "metrics_by_key",
+    clickhouseName: "trigger_dev.queue_metrics_ck_v1",
+    timeConstraint: "bucket_at",
+    columns: {
+      bucket_at: { name: "bucket_at", ...column("DateTime64") },
+      queue: { name: "queue", clickhouseName: "queue_name", ...column("String") },
+      concurrency_key: { name: "concurrency_key", ...column("String") },
+      started_delta: {
+        name: "started_delta",
+        mergeGroupKey: ["queue", "concurrency_key"],
+        ...column("String"),
+        groupable: false,
+        sortable: false,
+        filterable: false,
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function compile(query: string) {
+    const context = createPrinterContext({
+      schema: createSchemaRegistry([byKeySchema]),
+      enforcedWhereClause: { organization_id: { op: "eq", value: "org_x" } } as never,
+      timeRange: {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-08T00:00:00Z"),
+      },
+    });
+    return printToClickHouse(parseTSQLSelect(query), context);
+  }
+
+  it("requires EVERY listed key grouped or pinned", () => {
+    expect(() =>
+      compile(
+        "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics_by_key WHERE queue = 'emails'"
+      )
+    ).toThrowError(/only combine correctly within one concurrency_key/);
+    expect(() =>
+      compile(
+        "SELECT concurrency_key, deltaSumTimestampMerge(started_delta) AS started FROM metrics_by_key GROUP BY concurrency_key"
+      )
+    ).toThrowError(/only combine correctly within one queue/);
+  });
+
+  it("allows pin + group combinations covering both keys", () => {
+    const grouped = compile(
+      "SELECT concurrency_key, deltaSumTimestampMerge(started_delta) AS started FROM metrics_by_key WHERE queue = 'emails' GROUP BY concurrency_key"
+    );
+    expect(grouped.sql).toContain("deltaSumTimestampMerge(started_delta)");
+    const pinned = compile(
+      "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics_by_key WHERE queue = 'emails' AND concurrency_key = 't1'"
+    );
+    expect(pinned.sql).toContain("deltaSumTimestampMerge(started_delta)");
+    const bothGrouped = compile(
+      "SELECT queue, concurrency_key, deltaSumTimestampMerge(started_delta) AS started FROM metrics_by_key GROUP BY queue, concurrency_key"
+    );
+    expect(bothGrouped.sql).toContain("GROUP BY queue_name, concurrency_key");
+  });
+});

@@ -17,6 +17,9 @@ export type MetricsStreamEmitterOptions = {
    * Active queues never expire; idle-past-TTL queues purge and self-heal on return.
    * Default 7 days. */
   counterOdometerTtlMs?: number;
+  /** TTL (ms) for per-concurrency-key odometers; short because key cardinality is
+   * user-controlled and cumulative counters make idle-gap expiry loss-free. Default 24h. */
+  ckOdometerTtlMs?: number;
   logger?: Logger;
   meter?: Meter;
 };
@@ -28,6 +31,19 @@ type CumulativeCommand = (
   maxLen: string,
   op: string,
   q: string,
+  ...extraFields: string[]
+) => Promise<unknown>;
+
+type CumulativeCkCommand = (
+  odometerKey: string,
+  ckOdometerKey: string,
+  streamKey: string,
+  ttlMs: string,
+  ckTtlMs: string,
+  maxLen: string,
+  op: string,
+  q: string,
+  ck: string,
   ...extraFields: string[]
 ) => Promise<unknown>;
 
@@ -54,6 +70,32 @@ if v == 1 then xadd(0, false) end
 xadd(v, true)
 `;
 
+// CK variant: advances base + per-key odometers, ONE reading entry carries both (cum +
+// ck/ckcum), so per-key attribution adds no stream volume. Baselines seed independently:
+// cum-only entry = base row, ck+ckcum-only entry = per-key row, reading entry = both.
+// KEYS: [1]=baseOdometer [2]=ckOdometer [3]=stream. ARGV: [1]=baseTtlMs [2]=ckTtlMs
+// [3]=maxLen [4]=op [5]=q [6]=ck [7..]=extra field/value pairs.
+const CUMULATIVE_CK_LUA = `
+local v = redis.call('INCR', KEYS[1])
+redis.call('PEXPIRE', KEYS[1], ARGV[1])
+local ckv = redis.call('INCR', KEYS[2])
+redis.call('PEXPIRE', KEYS[2], ARGV[2])
+local maxlen = tonumber(ARGV[3]) or 0
+local function xadd(fields, withExtra)
+  local x = {'XADD', KEYS[3]}
+  if maxlen > 0 then x[#x+1]='MAXLEN'; x[#x+1]='~'; x[#x+1]=ARGV[3] end
+  x[#x+1]='*'
+  x[#x+1]='op'; x[#x+1]=ARGV[4]
+  x[#x+1]='q';  x[#x+1]=ARGV[5]
+  if withExtra then for i=7,#ARGV do x[#x+1]=ARGV[i] end end
+  for i=1,#fields do x[#x+1]=fields[i] end
+  redis.call(unpack(x))
+end
+if v == 1 then xadd({'cum', 0}, false) end
+if ckv == 1 then xadd({'ck', ARGV[6], 'ckcum', 0}, false) end
+xadd({'ck', ARGV[6], 'cum', v, 'ckcum', ckv}, true)
+`;
+
 /** Node-side producer: XADDs events to a sharded metrics stream, gated on a flag. */
 export class MetricsStreamEmitter {
   private readonly redis: Redis;
@@ -61,6 +103,7 @@ export class MetricsStreamEmitter {
   private readonly flag: { enabled(): boolean };
   private readonly sampleRate: () => number;
   private readonly odometerTtlMs: number;
+  private readonly ckOdometerTtlMs: number;
   private readonly logger: Logger;
   private readonly emittedCounter: Counter;
   private readonly errorCounter: Counter;
@@ -72,7 +115,9 @@ export class MetricsStreamEmitter {
       { onError: (error) => this.logger.error("emitter redis error", { error }) }
     );
     this.redis.defineCommand("qmEmitCumulative", { numberOfKeys: 2, lua: CUMULATIVE_LUA });
+    this.redis.defineCommand("qmEmitCumulativeCk", { numberOfKeys: 3, lua: CUMULATIVE_CK_LUA });
     this.odometerTtlMs = options.counterOdometerTtlMs ?? 7 * 24 * 60 * 60 * 1000;
+    this.ckOdometerTtlMs = options.ckOdometerTtlMs ?? 24 * 60 * 60 * 1000;
     this.def = options.definition;
     this.flag = options.flag;
     const rate = options.gaugeSampleRate;
@@ -135,11 +180,14 @@ export class MetricsStreamEmitter {
   // Fire-and-forget cumulative counter emit: advances the per-(queue,op) odometer and
   // XADDs its new absolute value. No-op when disabled, never throws into the caller. A
   // lost XADD self-heals (the next reading restates the total); the INCR is never sampled.
+  // A non-empty `fields.ck` also advances a per-concurrency-key odometer and rides the
+  // same entry as ck/ckcum (see CUMULATIVE_CK_LUA for the baseline/row mapping).
   emit(shardKey: string, fields: MetricFields): void {
     if (!this.flag.enabled()) return;
     if (this.redis.status !== "ready") return;
     const op = String(fields.op ?? "unknown");
     const q = String(fields.q ?? "");
+    const ck = fields.ck != null && String(fields.ck) !== "" ? String(fields.ck) : null;
     const shard = shardFor(shardKey, this.def.shardCount);
     const stream = streamKey(this.def, shard);
     // The odometer carries the stream's {shard} hash tag so INCR + XADD stay in one
@@ -149,25 +197,37 @@ export class MetricsStreamEmitter {
     const odometerKey = `${this.def.name}_cum:{${shard}}:${op}:${q}`;
     const extra: string[] = [];
     for (const [field, value] of Object.entries(fields)) {
-      if (field === "op" || field === "q") continue;
+      if (field === "op" || field === "q" || field === "ck") continue;
       extra.push(field, String(value));
     }
     this.emittedCounter.add(1, { op });
+    const maxLen = String(this.def.maxLen ?? 0);
+    const done = (error: unknown) => {
+      this.errorCounter.add(1);
+      this.logger.debug("metrics emit failed", { error, stream });
+    };
+    if (ck) {
+      const client = this.redis as unknown as { qmEmitCumulativeCk: CumulativeCkCommand };
+      client
+        .qmEmitCumulativeCk(
+          odometerKey,
+          `${odometerKey}:ck:${ck}`,
+          stream,
+          String(this.odometerTtlMs),
+          String(this.ckOdometerTtlMs),
+          maxLen,
+          op,
+          q,
+          ck,
+          ...extra
+        )
+        .catch(done);
+      return;
+    }
     const client = this.redis as unknown as { qmEmitCumulative: CumulativeCommand };
     client
-      .qmEmitCumulative(
-        odometerKey,
-        stream,
-        String(this.odometerTtlMs),
-        String(this.def.maxLen ?? 0),
-        op,
-        q,
-        ...extra
-      )
-      .catch((error) => {
-        this.errorCounter.add(1);
-        this.logger.debug("metrics emit failed", { error, stream });
-      });
+      .qmEmitCumulative(odometerKey, stream, String(this.odometerTtlMs), maxLen, op, q, ...extra)
+      .catch(done);
   }
 
   // Resolves once the metrics Redis connection is ready (emits before that are dropped).

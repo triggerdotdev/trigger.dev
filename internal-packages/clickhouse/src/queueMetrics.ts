@@ -6,6 +6,7 @@ export const QueueMetricsRawV1Input = z.object({
   project_id: z.string(),
   environment_id: z.string(),
   queue_name: z.string(),
+  concurrency_key: z.string().optional(),
   event_time: z.string(),
   // Exact UInt64 ordering key; a string preserves precision past JS safe-integer range
   // (see entryOrderKey). A plain number is still accepted for small test values.

@@ -1894,22 +1894,26 @@ export class ClickHousePrinter {
   private validateMergeScopedColumns(node: SelectQuery): void {
     for (const tableSchema of this.tableContexts.values()) {
       for (const column of Object.values(tableSchema.columns)) {
-        const key = column.mergeGroupKey;
-        if (!key) continue;
+        if (!column.mergeGroupKey) continue;
+        const keys = Array.isArray(column.mergeGroupKey)
+          ? column.mergeGroupKey
+          : [column.mergeGroupKey];
         if (!this.scopeReferencesColumn(node, column.name)) continue;
-        if (this.groupByIncludesColumn(node, key)) continue;
-        if (this.wherePinsColumn(node.where, key)) continue;
-        if (this.enforcedPinsColumn(tableSchema, key)) continue;
-        throw new QueryError(
-          `Merging '${column.name}' across every ${key} returns wrong totals: its aggregate ` +
-            `states are kept per ${key} and only combine correctly within one ${key}. Either ` +
-            `add '${key}' to the GROUP BY and sum the per-${key} results in an outer query, ` +
-            `for example: SELECT sum(v) AS total FROM (SELECT ${key}, ` +
-            `deltaSumTimestampMerge(${column.name}) AS v FROM ${tableSchema.name} ` +
-            `GROUP BY ${key}). Or filter to a single ${key}, for example: ` +
-            `WHERE ${key} = 'my-${key}'. For a time series, bucket both layers: ` +
-            `inner GROUP BY t, ${key} and outer GROUP BY t.`
-        );
+        for (const key of keys) {
+          if (this.groupByIncludesColumn(node, key)) continue;
+          if (this.wherePinsColumn(node.where, key)) continue;
+          if (this.enforcedPinsColumn(tableSchema, key)) continue;
+          throw new QueryError(
+            `Merging '${column.name}' across every ${key} returns wrong totals: its aggregate ` +
+              `states are kept per ${key} and only combine correctly within one ${key}. Either ` +
+              `add '${key}' to the GROUP BY and sum the per-${key} results in an outer query, ` +
+              `for example: SELECT sum(v) AS total FROM (SELECT ${key}, ` +
+              `deltaSumTimestampMerge(${column.name}) AS v FROM ${tableSchema.name} ` +
+              `GROUP BY ${key}). Or filter to a single ${key}, for example: ` +
+              `WHERE ${key} = 'my-${key}'. For a time series, bucket both layers: ` +
+              `inner GROUP BY t, ${key} and outer GROUP BY t.`
+          );
+        }
       }
     }
   }

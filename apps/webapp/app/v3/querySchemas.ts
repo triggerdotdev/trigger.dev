@@ -1300,6 +1300,140 @@ export const llmModelsSchema: TableSchema = {
   },
 };
 
+/**
+ * Per-concurrency-key drill-down for queues that shard work with `concurrencyKey`
+ * (e.g. per-tenant fairness). Rows are activity-bound: a (queue, key, bucket) row exists
+ * only when that key had events, so key cardinality cannot inflate the table.
+ */
+export const queueMetricsByKeySchema: TableSchema = {
+  name: "queue_metrics_by_key",
+  clickhouseName: "trigger_dev.queue_metrics_ck_v1",
+  description: "Per-concurrency-key queue metrics: backlog, throughput, and wait by key",
+  timeConstraint: "bucket_start",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
+    },
+    project: {
+      name: "project",
+      clickhouseName: "project_id",
+      ...column("String", {
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
+      }),
+      fieldMapping: "project",
+      customRenderType: "project",
+    },
+    queue: {
+      name: "queue",
+      clickhouseName: "queue_name",
+      ...column("LowCardinality(String)", {
+        description: "The queue name",
+        example: "my-queue",
+        coreColumn: true,
+      }),
+    },
+    concurrency_key: {
+      name: "concurrency_key",
+      ...column("String", {
+        description: "The concurrency key the run was sharded by (e.g. a tenant id)",
+        example: "tenant-42",
+        coreColumn: true,
+      }),
+    },
+    bucket_start: {
+      name: "bucket_start",
+      ...column("DateTime", {
+        description: "The start of the 10-second aggregation bucket",
+        example: "2024-01-15 09:30:00",
+        coreColumn: true,
+      }),
+    },
+    enqueue_delta: {
+      name: "enqueue_delta",
+      mergeGroupKey: ["queue", "concurrency_key"],
+      ...column("String", {
+        description:
+          "Runs enqueued for this key (cumulative-counter delta). Read with deltaSumTimestampMerge(enqueue_delta) grouped by queue and concurrency_key, or with both pinned; never merge across keys.",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    started_delta: {
+      name: "started_delta",
+      mergeGroupKey: ["queue", "concurrency_key"],
+      ...column("String", {
+        description:
+          "Runs dequeued/started for this key (throughput). Read with deltaSumTimestampMerge(started_delta) grouped by queue and concurrency_key, or with both pinned; never merge across keys.",
+        coreColumn: true,
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    ack_delta: {
+      name: "ack_delta",
+      mergeGroupKey: ["queue", "concurrency_key"],
+      ...column("String", {
+        description:
+          "Runs acked (completed) for this key. Read with deltaSumTimestampMerge(ack_delta) grouped by queue and concurrency_key, or with both pinned.",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    max_queued: {
+      name: "max_queued",
+      ...column("UInt32", {
+        description: "Peak backlog for this key in the bucket. Aggregate with max().",
+        coreColumn: true,
+        fillMode: "carry",
+      }),
+    },
+    max_running: {
+      name: "max_running",
+      ...column("UInt32", {
+        description: "Peak running for this key in the bucket. Aggregate with max().",
+        fillMode: "carry",
+      }),
+    },
+    wait_ms_sum: {
+      name: "wait_ms_sum",
+      ...column("UInt64", {
+        description:
+          "Sum of scheduling delays (ms) for this key. Mean = wait_ms_sum/wait_ms_count.",
+      }),
+    },
+    wait_ms_count: {
+      name: "wait_ms_count",
+      ...column("UInt64", {
+        description: "Count of scheduling-delay samples for this key. Aggregate with sum().",
+      }),
+    },
+  },
+  timeBucketThresholds: [
+    { maxRangeSeconds: 3 * 60 * 60, interval: { value: 10, unit: "SECOND" } },
+    { maxRangeSeconds: 12 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
+    { maxRangeSeconds: 2 * 24 * 60 * 60, interval: { value: 5, unit: "MINUTE" } },
+    { maxRangeSeconds: 7 * 24 * 60 * 60, interval: { value: 15, unit: "MINUTE" } },
+    { maxRangeSeconds: 30 * 24 * 60 * 60, interval: { value: 1, unit: "HOUR" } },
+    { maxRangeSeconds: 90 * 24 * 60 * 60, interval: { value: 6, unit: "HOUR" } },
+    { maxRangeSeconds: 180 * 24 * 60 * 60, interval: { value: 1, unit: "DAY" } },
+    { maxRangeSeconds: 365 * 24 * 60 * 60, interval: { value: 1, unit: "WEEK" } },
+  ] satisfies BucketThreshold[],
+  queryCache: { ttlSeconds: 30, alignSeconds: 30 },
+};
+
 export const querySchemas: TableSchema[] = [
   runsSchema,
   metricsSchema,
@@ -1307,6 +1441,7 @@ export const querySchemas: TableSchema[] = [
   llmModelsSchema,
   queueMetricsSchema,
   envMetricsSchema,
+  queueMetricsByKeySchema,
 ];
 
 /**

@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_raw_v1
   project_id       LowCardinality(String),
   environment_id   String CODEC(ZSTD(1)),
   queue_name       String CODEC(ZSTD(1)),
+  concurrency_key  String DEFAULT '' CODEC(ZSTD(1)),  -- per-key attribution ('' = base/whole-queue row)
   event_time       DateTime CODEC(Delta(4), ZSTD(1)),
   order_key        UInt64 DEFAULT 0,                 -- stream-id composite (ms*1e6+seq), deltaSumTimestamp ordering key
   op               LowCardinality(String),          -- gauge | enqueue | started | ack | nack | dlq
@@ -78,11 +79,11 @@ TO trigger_dev.queue_metrics_v1 AS
 SELECT
   organization_id, project_id, environment_id, queue_name,
   toStartOfInterval(event_time, INTERVAL 10 SECOND) AS bucket_start,
-  deltaSumTimestampStateIf(cumulative, order_key, op = 'enqueue') AS enqueue_delta,
-  deltaSumTimestampStateIf(cumulative, order_key, op = 'started') AS started_delta,
-  deltaSumTimestampStateIf(cumulative, order_key, op = 'ack')     AS ack_delta,
-  deltaSumTimestampStateIf(cumulative, order_key, op = 'nack')    AS nack_delta,
-  deltaSumTimestampStateIf(cumulative, order_key, op = 'dlq')     AS dlq_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'enqueue' AND concurrency_key = '') AS enqueue_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'started' AND concurrency_key = '') AS started_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'ack' AND concurrency_key = '')     AS ack_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'nack' AND concurrency_key = '')    AS nack_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'dlq' AND concurrency_key = '')     AS dlq_delta,
   sum(throttled)          AS throttled_count,
   max(queued)             AS max_queued,
   max(running)            AS max_running,
@@ -92,9 +93,9 @@ SELECT
   max(env_limit)          AS max_env_limit,
   max(ck_backlogged)      AS max_ck_backlogged,
   max(ck_max_wait_ms)     AS max_ck_wait_ms,
-  sumIf(wait_ms, op = 'started')                 AS wait_ms_sum,
-  countIf(op = 'started' AND wait_ms > 0)        AS wait_ms_count,
-  quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0) AS wait_quantiles
+  sumIf(wait_ms, op = 'started' AND concurrency_key = '')                 AS wait_ms_sum,
+  countIf(op = 'started' AND wait_ms > 0 AND concurrency_key = '')        AS wait_ms_count,
+  quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0 AND concurrency_key = '') AS wait_quantiles
 FROM trigger_dev.queue_metrics_raw_v1
 GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 
@@ -135,9 +136,9 @@ SELECT
   max(env_running)        AS max_env_running,
   max(env_limit)          AS max_env_limit,
   sum(throttled)          AS throttled_count,
-  sumIf(wait_ms, op = 'started')                 AS wait_ms_sum,
-  countIf(op = 'started' AND wait_ms > 0)        AS wait_ms_count,
-  quantilesTDigestStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0) AS wait_quantiles
+  sumIf(wait_ms, op = 'started' AND concurrency_key = '')                 AS wait_ms_sum,
+  countIf(op = 'started' AND wait_ms > 0 AND concurrency_key = '')        AS wait_ms_count,
+  quantilesTDigestStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0 AND concurrency_key = '') AS wait_quantiles
 FROM trigger_dev.queue_metrics_raw_v1
 GROUP BY organization_id, project_id, environment_id, bucket_start;
 
@@ -185,11 +186,11 @@ TO trigger_dev.queue_metrics_5m_v1 AS
 SELECT
   organization_id, project_id, environment_id, queue_name,
   toStartOfInterval(event_time, INTERVAL 5 MINUTE) AS bucket_start,
-  deltaSumTimestampStateIf(cumulative, order_key, op = 'enqueue') AS enqueue_delta,
-  deltaSumTimestampStateIf(cumulative, order_key, op = 'started') AS started_delta,
-  deltaSumTimestampStateIf(cumulative, order_key, op = 'ack')     AS ack_delta,
-  deltaSumTimestampStateIf(cumulative, order_key, op = 'nack')    AS nack_delta,
-  deltaSumTimestampStateIf(cumulative, order_key, op = 'dlq')     AS dlq_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'enqueue' AND concurrency_key = '') AS enqueue_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'started' AND concurrency_key = '') AS started_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'ack' AND concurrency_key = '')     AS ack_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'nack' AND concurrency_key = '')    AS nack_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'dlq' AND concurrency_key = '')     AS dlq_delta,
   sum(throttled)          AS throttled_count,
   max(queued)             AS max_queued,
   max(running)            AS max_running,
@@ -199,13 +200,64 @@ SELECT
   max(env_limit)          AS max_env_limit,
   max(ck_backlogged)      AS max_ck_backlogged,
   max(ck_max_wait_ms)     AS max_ck_wait_ms,
-  sumIf(wait_ms, op = 'started')                 AS wait_ms_sum,
-  countIf(op = 'started' AND wait_ms > 0)        AS wait_ms_count,
-  quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0) AS wait_quantiles
+  sumIf(wait_ms, op = 'started' AND concurrency_key = '')                 AS wait_ms_sum,
+  countIf(op = 'started' AND wait_ms > 0 AND concurrency_key = '')        AS wait_ms_count,
+  quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0 AND concurrency_key = '') AS wait_quantiles
 FROM trigger_dev.queue_metrics_raw_v1
 GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
 
+
+-- (8) Per-concurrency-key 10s tier. Rows are activity-bound (a (queue, key, bucket) row
+-- exists only when that key had an event in that bucket), so user-controlled key
+-- cardinality cannot inflate it beyond event volume (~19 bytes/event measured).
+-- Lean columns: no nack/dlq deltas and no per-key quantile states (mean wait via sums).
+CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_ck_v1
+(
+  organization_id  LowCardinality(String),
+  project_id       LowCardinality(String),
+  environment_id   String CODEC(ZSTD(1)),
+  queue_name       String CODEC(ZSTD(1)),
+  concurrency_key  String CODEC(ZSTD(1)),
+  bucket_start     DateTime CODEC(Delta(4), ZSTD(1)),
+
+  enqueue_delta    AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  started_delta    AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  ack_delta        AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+
+  max_queued       SimpleAggregateFunction(max, UInt32),
+  max_running      SimpleAggregateFunction(max, UInt32),
+
+  wait_ms_sum      SimpleAggregateFunction(sum, UInt64),
+  wait_ms_count    SimpleAggregateFunction(sum, UInt64)
+)
+ENGINE = AggregatingMergeTree()
+PARTITION BY toDate(bucket_start)
+ORDER BY (organization_id, project_id, environment_id, queue_name, concurrency_key, bucket_start)
+TTL bucket_start + INTERVAL 30 DAY
+SETTINGS ttl_only_drop_parts = 1, non_replicated_deduplication_window = 1000;
+
+-- (9) MV: raw -> per-key tier. Only rows with a real key: per-key counter rows carry
+-- per-key odometers (safe to merge within their own (queue, key) group), and per-key
+-- gauge rows carry per-subqueue depth/running.
+CREATE MATERIALIZED VIEW IF NOT EXISTS trigger_dev.queue_metrics_ck_mv_v1
+TO trigger_dev.queue_metrics_ck_v1 AS
+SELECT
+  organization_id, project_id, environment_id, queue_name, concurrency_key,
+  toStartOfInterval(event_time, INTERVAL 10 SECOND) AS bucket_start,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'enqueue') AS enqueue_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'started') AS started_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'ack')     AS ack_delta,
+  maxIf(queued, op = 'gauge')  AS max_queued,
+  maxIf(running, op = 'gauge') AS max_running,
+  sumIf(wait_ms, op = 'started')          AS wait_ms_sum,
+  countIf(op = 'started' AND wait_ms > 0) AS wait_ms_count
+FROM trigger_dev.queue_metrics_raw_v1
+WHERE concurrency_key != ''
+GROUP BY organization_id, project_id, environment_id, queue_name, concurrency_key, bucket_start;
+
 -- +goose Down
+DROP VIEW IF EXISTS trigger_dev.queue_metrics_ck_mv_v1;
+DROP TABLE IF EXISTS trigger_dev.queue_metrics_ck_v1;
 DROP VIEW IF EXISTS trigger_dev.queue_metrics_5m_mv_v1;
 DROP TABLE IF EXISTS trigger_dev.queue_metrics_5m_v1;
 DROP VIEW IF EXISTS trigger_dev.env_metrics_mv_v1;

@@ -304,6 +304,21 @@ describe("RunQueue queue-metrics emission", () => {
         expect(Number(g.fields.ckw)).toBeGreaterThanOrEqual(0);
       }
       expect(ckGauges.some((g) => Number(g.fields.ckq) >= 1)).toBe(true);
+
+      // CK counter entries carry both odometers: the reading has cum + ck/ckcum, and each
+      // odometer seeds its own baseline entry (cum-only vs ck+ckcum-only).
+      const enqueues = entries.filter((e) => e.fields.op === "enqueue");
+      const reading = enqueues.find((e) => e.fields.cum != null && e.fields.ckcum != null);
+      expect(reading).toBeDefined();
+      expect(reading!.fields.ck).toBe("tenant-1");
+      expect(reading!.fields.q).not.toContain(":ck:");
+      expect(Number(reading!.fields.cum)).toBe(1);
+      expect(Number(reading!.fields.ckcum)).toBe(1);
+      const baseBaseline = enqueues.find((e) => e.fields.cum === "0" && e.fields.ck == null);
+      expect(baseBaseline).toBeDefined();
+      const ckBaseline = enqueues.find((e) => e.fields.ckcum === "0" && e.fields.cum == null);
+      expect(ckBaseline).toBeDefined();
+      expect(ckBaseline!.fields.ck).toBe("tenant-1");
     } finally {
       await queue.quit();
       await emitter.close();

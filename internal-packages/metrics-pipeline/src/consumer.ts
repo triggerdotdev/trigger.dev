@@ -17,7 +17,7 @@ export type MetricsStreamConsumerOptions<TRow> = {
   /** Unique per process; distinct replicas MUST use distinct names (PEL ownership). */
   consumerName: string;
   /** Map a stream entry to a row, or null to drop it (still acked). */
-  mapEntry: (entry: StreamEntry) => TRow | null;
+  mapEntry: (entry: StreamEntry) => TRow | TRow[] | null;
   /** Insert a batch. Must be idempotent w.r.t. dedupToken; throw to retry the batch. */
   insert: (rows: TRow[], opts: { dedupToken: string }) => Promise<void>;
   batchSize?: number;
@@ -66,7 +66,7 @@ export class MetricsStreamConsumer<TRow> {
   private lastReclaimAt = 0;
   private readonly errorBackoffMs: number;
   private readonly logger: Logger;
-  private readonly mapEntry: (entry: StreamEntry) => TRow | null;
+  private readonly mapEntry: (entry: StreamEntry) => TRow | TRow[] | null;
   private readonly insert: (rows: TRow[], opts: { dedupToken: string }) => Promise<void>;
 
   private readonly meter: Meter;
@@ -251,8 +251,9 @@ export class MetricsStreamConsumer<TRow> {
       const rows: TRow[] = [];
       for (const [id, flat] of entries) {
         keyIds.push(id);
-        const row = this.mapEntry({ id, fields: parseFields(flat) });
-        if (row !== null) rows.push(row);
+        const mapped = this.mapEntry({ id, fields: parseFields(flat) });
+        if (Array.isArray(mapped)) rows.push(...mapped);
+        else if (mapped !== null) rows.push(mapped);
       }
       this.entriesCounter.add(keyIds.length, { source });
 

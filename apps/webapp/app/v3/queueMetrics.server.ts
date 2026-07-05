@@ -17,7 +17,7 @@ import { getDefaultClickhouseClient } from "~/services/clickhouse/clickhouseFact
 import { logger } from "~/services/logger.server";
 import { signalsEmitter } from "~/services/signals.server";
 import { singleton } from "~/utils/singleton";
-import { mapEntryToRow, QueueNameLimiter } from "./queueMetricsMapping";
+import { mapEntryToRows, QueueNameLimiter } from "./queueMetricsMapping";
 import { meter } from "./tracer.server";
 
 const FLAG_KEY = "queue_metrics:enabled";
@@ -165,8 +165,16 @@ const queueNameLimiter = singleton(
   () => new QueueNameLimiter(env.QUEUE_METRICS_MAX_QUEUE_NAMES_PER_ENV)
 );
 
-function mapEntry(entry: StreamEntry): QueueMetricsRawV1Input | null {
-  return mapEntryToRow(entry, queueNameLimiter);
+const concurrencyKeyLimiter = singleton(
+  "queueMetricsConcurrencyKeyLimiter",
+  () => new QueueNameLimiter(env.QUEUE_METRICS_MAX_CONCURRENCY_KEYS_PER_QUEUE, 50_000)
+);
+
+function mapEntry(entry: StreamEntry): QueueMetricsRawV1Input[] {
+  return mapEntryToRows(entry, {
+    queueNames: queueNameLimiter,
+    concurrencyKeys: concurrencyKeyLimiter,
+  });
 }
 
 function makeInsert(): (

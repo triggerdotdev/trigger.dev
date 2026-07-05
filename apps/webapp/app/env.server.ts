@@ -877,6 +877,7 @@ const EnvironmentSchema = z
     QUEUE_METRICS_COUNTER_ODOMETER_TTL_SECONDS: z.coerce.number().int().default(604_800),
     // Per-env distinct queue_name cap (0 = unlimited); overflow maps to "__overflow__".
     QUEUE_METRICS_MAX_QUEUE_NAMES_PER_ENV: z.coerce.number().int().default(1000),
+    QUEUE_METRICS_MAX_CONCURRENCY_KEYS_PER_QUEUE: z.coerce.number().int().default(10_000),
     // Fraction (0..1) of ops that emit a gauge; counters are never sampled. Dial below 1
     // only if EngineCPU is too high in slow-path-heavy regions (hurts low-traffic queues).
     QUEUE_METRICS_GAUGE_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),

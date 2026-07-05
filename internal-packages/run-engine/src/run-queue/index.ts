@@ -2036,13 +2036,15 @@ export class RunQueue {
   #emitQueueMetric(shardKey: string, fields: Record<string, string | number>): void {
     // Counters roll up per BASE queue: normalize the CK-qualified queue to its base so all
     // concurrency keys share one monotonic odometer (and one shard/order key), matching the
-    // base queue_name the consumer buckets on. Otherwise per-CK odometers would collide in
-    // the deltaSum reconstruction.
+    // base queue_name the consumer buckets on. A real concurrency key rides along as `ck`,
+    // driving a SEPARATE per-key odometer on the same entry (per-key history tier).
     const baseQueue = this.keys.baseQueueKeyFromQueue(shardKey);
-    const baseFields =
-      typeof fields.q === "string"
-        ? { ...fields, q: this.keys.baseQueueKeyFromQueue(fields.q) }
-        : fields;
+    let baseFields = fields;
+    if (typeof fields.q === "string") {
+      baseFields = { ...fields, q: this.keys.baseQueueKeyFromQueue(fields.q) };
+      const ck = fields.q.match(/:ck:(.+)$/)?.[1];
+      if (ck && ck !== "*") baseFields.ck = ck;
+    }
     this.options.queueMetrics?.emit(baseQueue, baseFields);
   }
 
