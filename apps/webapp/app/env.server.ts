@@ -1713,9 +1713,13 @@ const EnvironmentSchema = z
 
     // --- Run-ops DB split — second replication source (the NEW dedicated run-ops DB). ---
     // Cloud-only; only consulted when isSplitEnabled() is true. Self-host never sets these.
-    // The NEW source's connection URL is RUN_OPS_DATABASE_URL; these add the NEW source's replication
-    // slot/publication and an explicit per-source enable so it can be brought up independently of the
-    // legacy source during the transition.
+    // Connection URL for the run-ops DB used by the runs-replication source. Required when the split is
+    // enabled (unset → boot fails via SplitReplicationMisconfiguredError, no silent fallback). Kept
+    // separate from the app's RUN_OPS_DATABASE_URL: replication can't run over a pooler, so this is direct.
+    RUN_REPLICATION_RUN_OPS_DATABASE_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "RUN_REPLICATION_RUN_OPS_DATABASE_URL is invalid")
+      .optional(),
     RUN_REPLICATION_NEW_SLOT_NAME: z.string().default("task_runs_to_clickhouse_v2"),
     RUN_REPLICATION_NEW_PUBLICATION_NAME: z
       .string()
