@@ -603,7 +603,7 @@ export class RunQueue {
       const queuedResult = stats?.[i * 2];
       const runningResult = stats?.[i * 2 + 1];
       return {
-        concurrencyKey: member.match(/:ck:(.+)$/)?.[1] ?? "",
+        concurrencyKey: this.#concurrencyKeyFromQueue(member) ?? "",
         queued: queuedResult && !queuedResult[0] ? ((queuedResult[1] as number) ?? 0) : 0,
         running: runningResult && !runningResult[0] ? ((runningResult[1] as number) ?? 0) : 0,
         oldestEnqueuedAt: score,
@@ -2033,6 +2033,11 @@ export class RunQueue {
     this.options.queueMetrics?.emitGauge(queue, fields);
   }
 
+  #concurrencyKeyFromQueue(queue: string): string | undefined {
+    const idx = queue.indexOf(":ck:");
+    return idx === -1 || idx + 4 >= queue.length ? undefined : queue.slice(idx + 4);
+  }
+
   #emitQueueMetric(shardKey: string, fields: Record<string, string | number>): void {
     // Counters roll up per BASE queue: normalize the CK-qualified queue to its base so all
     // concurrency keys share one monotonic odometer (and one shard/order key), matching the
@@ -2042,7 +2047,7 @@ export class RunQueue {
     let baseFields = fields;
     if (typeof fields.q === "string") {
       baseFields = { ...fields, q: this.keys.baseQueueKeyFromQueue(fields.q) };
-      const ck = fields.q.match(/:ck:(.+)$/)?.[1];
+      const ck = this.#concurrencyKeyFromQueue(fields.q);
       if (ck && ck !== "*") baseFields.ck = ck;
     }
     this.options.queueMetrics?.emit(baseQueue, baseFields);
