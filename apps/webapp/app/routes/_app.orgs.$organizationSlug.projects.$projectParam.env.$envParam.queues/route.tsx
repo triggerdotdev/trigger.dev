@@ -1353,7 +1353,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     id: "p95",
     label: "Scheduling delay p95",
     color: "#F59E0B",
-    query: `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.95, 0.99)(wait_quantiles)[2]) AS p95\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
+    query: `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
     formatValue: formatWaitMs,
     derive: (rows) => {
       const sparkline = rows.map((r) => tileNumber(r.p95));

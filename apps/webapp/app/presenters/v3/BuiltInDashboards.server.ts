@@ -712,7 +712,7 @@ const queuesDashboard: BuiltInDashboard = {
       },
       "wait-pct": {
         title: "Scheduling delay p50/p95/p99 (ms)",
-        query: `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesTDigestMerge(0.5, 0.95, 0.99)(wait_quantiles)[2]) AS p95,\n  round(quantilesTDigestMerge(0.5, 0.95, 0.99)(wait_quantiles)[3]) AS p99\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
+        query: `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
         display: {
           type: "chart",
           chartType: "line",

@@ -148,7 +148,7 @@ export default function Page() {
           />
           <QueueDetailChartCard
             title="Scheduling delay"
-            query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.95, 0.99)(wait_quantiles)[2]) AS p95,\n  round(quantilesMerge(0.5, 0.95, 0.99)(wait_quantiles)[3]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+            query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
             fillGaps
             ids={ids}
             timeRange={timeRange}
@@ -288,7 +288,7 @@ function QueueStats({
 }) {
   // One scalar query feeds the CH-derived stats; the "now" counts come from the loader (live).
   const { rows, showLoading } = useQueueMetric(
-    `SELECT max(max_limit) AS lim, max(max_queued) AS peak_queued, deltaSumTimestampMerge(started_delta) AS started,\n  round(quantilesMerge(0.5, 0.95, 0.99)(wait_quantiles)[2]) AS worst_p95\nFROM queue_metrics`,
+    `SELECT max(max_limit) AS lim, max(max_queued) AS peak_queued, deltaSumTimestampMerge(started_delta) AS started,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS worst_p95\nFROM queue_metrics`,
     { ids, timeRange, queueName }
   );
   const row = rows[0];

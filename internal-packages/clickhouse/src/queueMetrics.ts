@@ -62,8 +62,8 @@ export function getQueueListMetricsSummary(reader: ClickhouseReader) {
     name: "getQueueListMetricsSummary",
     query: `SELECT
         queue_name,
-        round(quantilesMerge(0.5, 0.95)(wait_quantiles)[1]) AS p50_wait_ms,
-        round(quantilesMerge(0.5, 0.95)(wait_quantiles)[2]) AS p95_wait_ms,
+        round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50_wait_ms,
+        round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95_wait_ms,
         max(max_queued) AS peak_queued,
         deltaSumTimestampMerge(started_delta) AS started_count
       FROM trigger_dev.queue_metrics_v1
