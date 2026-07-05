@@ -1,4 +1,3 @@
-import { LockClosedIcon, LockOpenIcon, ScaleIcon } from "@heroicons/react/20/solid";
 import { Form, useNavigation } from "@remix-run/react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { BigNumber } from "~/components/metrics/BigNumber";
@@ -28,64 +27,6 @@ import { cn } from "~/utils/cn";
 
 type Drafts = Record<string, number>;
 
-/**
- * Distribute the env budget across unlocked queues, weighted by current load
- * (running + queued), largest-remainder rounding, min 1 when the budget allows.
- * Locked queues keep their current value and are subtracted from the budget first.
- */
-export function computeAutoBalance(
-  queues: QueueAllocationItem[],
-  envLimit: number,
-  locked: Set<string>,
-  draftLimit: (queue: QueueAllocationItem) => number | null
-): Drafts {
-  const unlocked = queues.filter((q) => !locked.has(q.id));
-  if (unlocked.length === 0) return {};
-
-  const lockedSum = queues
-    .filter((q) => locked.has(q.id))
-    .reduce((sum, q) => sum + (draftLimit(q) ?? 0), 0);
-  const budget = Math.max(0, envLimit - lockedSum);
-
-  const weights = unlocked.map((q) => q.running + q.queued);
-  const totalWeight = weights.reduce((a, b) => a + b, 0);
-  const raw = unlocked.map((_, i) =>
-    totalWeight > 0 ? (budget * weights[i]) / totalWeight : budget / unlocked.length
-  );
-
-  const shares = raw.map(Math.floor);
-  let remainder = budget - shares.reduce((a, b) => a + b, 0);
-  const byFraction = raw
-    .map((value, i) => ({ i, fraction: value - Math.floor(value) }))
-    .sort((a, b) => b.fraction - a.fraction);
-  for (const { i } of byFraction) {
-    if (remainder <= 0) break;
-    shares[i]++;
-    remainder--;
-  }
-
-  // Every unlocked queue gets at least 1 when the budget can afford it.
-  if (budget >= unlocked.length) {
-    for (let i = 0; i < shares.length; i++) {
-      while (shares[i] < 1) {
-        let donor = -1;
-        for (let j = 0; j < shares.length; j++) {
-          if (j !== i && shares[j] > 1 && (donor === -1 || shares[j] > shares[donor])) donor = j;
-        }
-        if (donor === -1) break;
-        shares[donor]--;
-        shares[i]++;
-      }
-    }
-  }
-
-  const result: Drafts = {};
-  unlocked.forEach((q, i) => {
-    result[q.id] = Math.min(Math.max(shares[i], 0), envLimit);
-  });
-  return result;
-}
-
 export function AllocationView({
   allocation,
   environment,
@@ -94,7 +35,6 @@ export function AllocationView({
   environment: Environment;
 }) {
   const [drafts, setDrafts] = useState<Drafts>({});
-  const [locked, setLocked] = useState<Set<string>>(new Set());
   const [reviewOpen, setReviewOpen] = useState(false);
   const navigation = useNavigation();
   const isSubmitting = navigation.state !== "idle";
@@ -149,29 +89,6 @@ export function AllocationView({
         delete next[queue.id];
       } else {
         next[queue.id] = parsed;
-      }
-      return next;
-    });
-  };
-
-  const toggleLock = (id: string) => {
-    setLocked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const autoBalance = () => {
-    const balanced = computeAutoBalance(allocation.queues, envLimit, locked, draftLimit);
-    setDrafts((prev) => {
-      const next = { ...prev };
-      for (const queue of allocation.queues) {
-        const value = balanced[queue.id];
-        if (value === undefined) continue;
-        if (value === queue.limit) delete next[queue.id];
-        else next[queue.id] = value;
       }
       return next;
     });
@@ -237,8 +154,8 @@ export function AllocationView({
       {overAllocated && (
         <Callout variant="warning">
           The queue limits add up to more than the environment limit, so queues will compete for
-          concurrency when the environment saturates. Reduce limits (or use Auto-balance) to
-          guarantee each queue its allocation.
+          concurrency when the environment saturates. Reduce limits to guarantee each queue its
+          allocation.
         </Callout>
       )}
 
@@ -250,16 +167,6 @@ export function AllocationView({
       )}
 
       <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="secondary/small"
-          LeadingIcon={ScaleIcon}
-          onClick={autoBalance}
-          disabled={isSubmitting}
-          tooltip="Distribute the environment limit across unlocked queues, weighted by current load"
-        >
-          Auto-balance
-        </Button>
         <Button
           type="button"
           variant="minimal/small"
@@ -332,14 +239,10 @@ export function AllocationView({
             >
               Limit
             </TableHeaderCell>
-            <TableHeaderCell className="w-[1%]">
-              <span className="sr-only">Lock</span>
-            </TableHeaderCell>
           </TableRow>
         </TableHeader>
         <TableBody>
           {tableQueues.map((queue) => {
-            const isLocked = locked.has(queue.id);
             const changed = drafts[queue.id] !== undefined && drafts[queue.id] !== queue.limit;
             return (
               <TableRow key={queue.id}>
@@ -377,30 +280,11 @@ export function AllocationView({
                       value={drafts[queue.id] ?? queue.limit ?? ""}
                       placeholder={String(envLimit)}
                       onChange={(e) => setDraft(queue, e.target.value)}
-                      disabled={isLocked || isSubmitting}
+                      disabled={isSubmitting}
                       className="w-24"
                       variant="small"
                     />
                   </span>
-                </TableCell>
-                <TableCell>
-                  <SimpleTooltip
-                    button={
-                      <Button
-                        type="button"
-                        variant="minimal/small"
-                        LeadingIcon={isLocked ? LockClosedIcon : LockOpenIcon}
-                        leadingIconClassName={isLocked ? "text-text-bright" : "text-text-dimmed"}
-                        onClick={() => toggleLock(queue.id)}
-                        aria-label={isLocked ? "Unlock queue" : "Lock queue"}
-                      />
-                    }
-                    content={
-                      isLocked
-                        ? "Locked: auto-balance keeps this queue's limit"
-                        : "Unlocked: auto-balance can change this queue's limit"
-                    }
-                  />
                 </TableCell>
               </TableRow>
             );
