@@ -95,6 +95,8 @@ export function mapEntryToRow(
     row.env_running = num(f.ec);
     row.env_limit = num(f.elim);
     row.throttled = num(f.thr);
+    row.ck_backlogged = num(f.ckq);
+    row.ck_max_wait_ms = num(f.ckw);
   } else {
     // Counter op: the monotonic odometer reading + its ordering key (and wait on started).
     row.cumulative = num(f.cum);

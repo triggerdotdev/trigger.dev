@@ -14,6 +14,9 @@ export type GaugeComputeLuaParams = {
   // Lua boolean expression (in __cc/__lim/__ql) for the throttled flag. Pass "false"
   // where cc >= lim is not a valid throttle signal (e.g. summed CK aggregates).
   throttledExpr?: string;
+  // CK-health extras (both or neither): appended as an optional gauge tail, gauge[8]/gauge[9].
+  ckBacklogged?: string;
+  ckMaxWaitMs?: string;
 };
 
 // Computes an op=gauge snapshot into the enclosing script's `__qm_g` local (a flat
@@ -22,6 +25,12 @@ export type GaugeComputeLuaParams = {
 // Gated on the sample flag and pcall-wrapped. The script MUST declare `local __qm_g` first.
 export function createMetricsGaugeComputeLua(params: GaugeComputeLuaParams): string {
   const throttled = params.throttledExpr ?? "__cc >= __lim and __ql > 0";
+  const hasCk = params.ckBacklogged != null && params.ckMaxWaitMs != null;
+  const gauge = hasCk
+    ? `    local __ckq = tonumber(${params.ckBacklogged}) or 0
+    local __ckw = tonumber(${params.ckMaxWaitMs}) or 0
+    __qm_g = {__ql, __cc, __lim, __eql, __ec, __elim, __thr, __ckq, __ckw}`
+    : `    __qm_g = {__ql, __cc, __lim, __eql, __ec, __elim, __thr}`;
 
   return `
 if ${params.enabledArg} then
@@ -35,7 +44,7 @@ if ${params.enabledArg} then
     local __elim = tonumber(${params.envLimit}) or 0
     local __thr = 0
     if ${throttled} then __thr = 1 end
-    __qm_g = {__ql, __cc, __lim, __eql, __ec, __elim, __thr}
+${gauge}
   end)
 end`;
 }

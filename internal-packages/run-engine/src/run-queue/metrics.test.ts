@@ -137,6 +137,9 @@ describe("RunQueue queue-metrics emission", () => {
       for (const f of ["ql", "cc", "lim", "eql", "ec", "elim", "thr"]) {
         expect(gauge!.fields[f]).toBeDefined();
       }
+      // Non-CK scripts keep the 7-field gauge (no CK-health tail).
+      expect(gauge!.fields.ckq).toBeUndefined();
+      expect(gauge!.fields.ckw).toBeUndefined();
 
       // The first counter emission also seeds a cum=0 baseline (no wait); the real reading
       // carries wait. Pick the reading (cum > 0).
@@ -291,6 +294,16 @@ describe("RunQueue queue-metrics emission", () => {
       assertGauge(aggregate);
       expect(Number(aggregate!.fields.ql)).toBeGreaterThanOrEqual(0);
       expect(Number(aggregate!.fields.cc)).toBeGreaterThanOrEqual(0);
+
+      // Every CK-path gauge carries the CK-health tail; the enqueue-time reading (and the
+      // pre-dequeue aggregate reading) sees the backlogged key.
+      const ckGauges = gauges.filter((e) => e.fields.q.includes(":ck:"));
+      for (const g of ckGauges) {
+        expect(g.fields.ckq).toBeDefined();
+        expect(g.fields.ckw).toBeDefined();
+        expect(Number(g.fields.ckw)).toBeGreaterThanOrEqual(0);
+      }
+      expect(ckGauges.some((g) => Number(g.fields.ckq) >= 1)).toBe(true);
     } finally {
       await queue.quit();
       await emitter.close();

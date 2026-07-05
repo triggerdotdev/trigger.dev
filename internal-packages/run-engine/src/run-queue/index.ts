@@ -92,6 +92,39 @@ const QUEUE_METRICS_ENQUEUE_FASTPATH_GAUGE_LUA = createMetricsGaugeComputeLua({
   envLimit: "envLimit",
 });
 
+// CK-health extras: distinct backlogged keys + most-starved head-of-line wait (ckIndex scores
+// are per-subqueue oldest timestamps). Needs ckIndexKey/currentTime locals; clamps future scores.
+const QUEUE_METRICS_CK_GAUGE_EXTRAS = {
+  preamble: `local __ckhead = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+    local __ckwait = 0
+    if #__ckhead > 0 then __ckwait = math.floor(math.max(0, (tonumber(currentTime) or 0) - (tonumber(__ckhead[2]) or 0))) end`,
+  ckBacklogged: "redis.call('ZCARD', ckIndexKey)",
+  ckMaxWaitMs: "__ckwait",
+};
+
+// CK enqueue variants of the two gauges above, extended with the CK-health tail.
+const QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
+  enabledArg: "ARGV[#ARGV] == '1'",
+  queued: "redis.call('ZCARD', queueKey)",
+  running: "redis.call('SCARD', queueCurrentConcurrencyKey)",
+  queueLimit: "redis.call('GET', queueConcurrencyLimitKey) or '1000000'",
+  envQueued: "redis.call('ZCARD', envQueueKey)",
+  envRunning: "redis.call('SCARD', envCurrentConcurrencyKey)",
+  envLimit: "redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit",
+  ...QUEUE_METRICS_CK_GAUGE_EXTRAS,
+});
+
+const QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA = createMetricsGaugeComputeLua({
+  enabledArg: "ARGV[#ARGV] == '1'",
+  queued: "redis.call('ZCARD', queueKey)",
+  running: "queueCurrent",
+  queueLimit: "queueLimit",
+  envQueued: "redis.call('ZCARD', envQueueKey)",
+  envRunning: "envCurrent",
+  envLimit: "envLimit",
+  ...QUEUE_METRICS_CK_GAUGE_EXTRAS,
+});
+
 // CK dequeue: depth/running from the per-base-queue aggregate counters the run-queue already
 // maintains (two O(1) GETs, not a per-variant scan). thr suppressed — an aggregate cc >= per-CK
 // limit would over-report; per-CK throttle is caught by the per-subqueue enqueue gauges.
@@ -104,6 +137,7 @@ const QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA = createMetricsGaugeComputeLua({
   envRunning: "redis.call('SCARD', envCurrentConcurrencyKey)",
   envLimit: "redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit",
   throttledExpr: "false",
+  ...QUEUE_METRICS_CK_GAUGE_EXTRAS,
 });
 
 /** Injected queue-metrics stream emitter; all calls are no-ops when metrics are disabled. */
@@ -518,6 +552,65 @@ export class RunQueue {
       "-inf",
       String(currentTime.getTime())
     );
+  }
+
+  /**
+   * Live per-concurrency-key breakdown of a queue's backlog, most-starved first.
+   * Reads the ckIndex zset (members = CK subqueue names, scores = oldest-message
+   * timestamps), so only keys with queued work appear; running-only keys do not.
+   */
+  public async concurrencyKeyBreakdown(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    options?: { limit?: number }
+  ): Promise<{
+    totalBackloggedKeys: number;
+    keys: Array<{
+      concurrencyKey: string;
+      queued: number;
+      running: number;
+      oldestEnqueuedAt: number;
+    }>;
+  }> {
+    const limit = options?.limit ?? 50;
+    const ckIndexKey = this.keys.ckIndexKeyFromQueue(this.keys.queueKey(env, queue));
+
+    const indexPipeline = this.redis.pipeline();
+    indexPipeline.zcard(ckIndexKey);
+    indexPipeline.zrange(ckIndexKey, 0, limit - 1, "WITHSCORES");
+    const indexResults = await indexPipeline.exec();
+    if (!indexResults) return { totalBackloggedKeys: 0, keys: [] };
+
+    const [totalErr, totalVal] = indexResults[0];
+    const [rangeErr, rangeVal] = indexResults[1];
+    const totalBackloggedKeys = totalErr || totalVal == null ? 0 : (totalVal as number);
+    const flat = rangeErr || rangeVal == null ? [] : (rangeVal as string[]);
+
+    const members: Array<{ member: string; score: number }> = [];
+    for (let i = 0; i < flat.length; i += 2) {
+      members.push({ member: flat[i], score: Number(flat[i + 1]) });
+    }
+    if (members.length === 0) return { totalBackloggedKeys, keys: [] };
+
+    const statsPipeline = this.redis.pipeline();
+    for (const { member } of members) {
+      statsPipeline.zcard(member);
+      statsPipeline.scard(this.keys.queueCurrentConcurrencyKeyFromQueue(member));
+    }
+    const stats = await statsPipeline.exec();
+
+    const keys = members.map(({ member, score }, i) => {
+      const queuedResult = stats?.[i * 2];
+      const runningResult = stats?.[i * 2 + 1];
+      return {
+        concurrencyKey: member.match(/:ck:(.+)$/)?.[1] ?? "",
+        queued: queuedResult && !queuedResult[0] ? ((queuedResult[1] as number) ?? 0) : 0,
+        running: runningResult && !runningResult[0] ? ((runningResult[1] as number) ?? 0) : 0,
+        oldestEnqueuedAt: score,
+      };
+    });
+
+    return { totalBackloggedKeys, keys };
   }
 
   public async lengthOfEnvQueue(env: MinimalAuthenticatedEnvironment) {
@@ -1914,14 +2007,15 @@ export class RunQueue {
     return this.options.queueMetrics?.sampledSync() ? "1" : "0";
   }
 
-  // Gauge returned on a script reply as a flat [ql, cc, lim, eql, ec, elim, thr] array.
+  // Gauge returned on a script reply as a flat [ql, cc, lim, eql, ec, elim, thr] array,
+  // plus an optional [ckq, ckw] tail on CK-path scripts.
   // Unlike counters, gauges are NOT base-normalized: the q label keeps its :ck: suffix so
   // the CK-aggregate and per-subqueue readings stay distinguishable; the consumer's mapEntry
   // strips :ck: to the base queue_name and the MV maxes them into one row.
   #emitGauge(queue: string, gauge: number[]): void {
     if (!Array.isArray(gauge) || gauge.length < 7) return;
-    const [ql, cc, lim, eql, ec, elim, thr] = gauge;
-    this.options.queueMetrics?.emitGauge(queue, {
+    const [ql, cc, lim, eql, ec, elim, thr, ckq, ckw] = gauge;
+    const fields: Record<string, string | number> = {
       op: "gauge",
       q: queue,
       ql,
@@ -1931,7 +2025,12 @@ export class RunQueue {
       ec,
       elim,
       thr,
-    });
+    };
+    if (gauge.length >= 9) {
+      fields.ckq = ckq;
+      fields.ckw = ckw;
+    }
+    this.options.queueMetrics?.emitGauge(queue, fields);
   }
 
   #emitQueueMetric(shardKey: string, fields: Record<string, string | number>): void {
@@ -3421,7 +3520,7 @@ if enableFastPath == '1' then
         redis.call('SADD', queueCurrentConcurrencyKey, messageId)
         redis.call('SADD', envCurrentConcurrencyKey, messageId)
         redis.call('RPUSH', workerQueueKey, messageKeyValue)
-${QUEUE_METRICS_ENQUEUE_FASTPATH_GAUGE_LUA}
+${QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA}
         return __qmret(1)
       end
     end
@@ -3458,7 +3557,7 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
-${QUEUE_METRICS_GAUGE_LUA}
+${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
 
 return __qmret(0)
       `,
@@ -3522,7 +3621,7 @@ if enableFastPath == '1' then
         redis.call('SADD', queueCurrentConcurrencyKey, messageId)
         redis.call('SADD', envCurrentConcurrencyKey, messageId)
         redis.call('RPUSH', workerQueueKey, messageKeyValue)
-${QUEUE_METRICS_ENQUEUE_FASTPATH_GAUGE_LUA}
+${QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA}
         -- Skip TTL sorted set: the expireRun worker job handles TTL expiry independently
         return __qmret(1)
       end
@@ -3563,7 +3662,7 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
-${QUEUE_METRICS_GAUGE_LUA}
+${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
 
 return __qmret(0)
       `,
@@ -3637,7 +3736,7 @@ if enableFastPath == '1' then
         redis.call('SADD', queueCurrentConcurrencyKey, messageId)
         redis.call('SADD', envCurrentConcurrencyKey, messageId)
         redis.call('RPUSH', workerQueueKey, messageKeyValue)
-${QUEUE_METRICS_ENQUEUE_FASTPATH_GAUGE_LUA}
+${QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA}
         -- Fast-path skips the CK variant zset entirely; lengthCounter is unchanged.
         -- runningCounter is bumped later by dequeueMessageFromKeyTracked when the
         -- worker pulls the message from the worker queue.
@@ -3693,7 +3792,7 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
-${QUEUE_METRICS_GAUGE_LUA}
+${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
 
 return __qmret(0)
       `,
@@ -3762,7 +3861,7 @@ if enableFastPath == '1' then
         redis.call('SADD', queueCurrentConcurrencyKey, messageId)
         redis.call('SADD', envCurrentConcurrencyKey, messageId)
         redis.call('RPUSH', workerQueueKey, messageKeyValue)
-${QUEUE_METRICS_ENQUEUE_FASTPATH_GAUGE_LUA}
+${QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA}
         return __qmret(1)
       end
     end
@@ -3811,7 +3910,7 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
-${QUEUE_METRICS_GAUGE_LUA}
+${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
 
 return __qmret(0)
       `,

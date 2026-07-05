@@ -82,4 +82,35 @@ describe("createMetricsGaugeComputeLua", () => {
     expect(lua).toContain("if false then __thr = 1 end");
     expect(lua).not.toContain("XADD");
   });
+
+  it("appends the CK-health tail only when both CK params are set", () => {
+    const withCk = createMetricsGaugeComputeLua({
+      enabledArg: "true",
+      queued: "0",
+      running: "0",
+      queueLimit: "0",
+      envQueued: "0",
+      envRunning: "0",
+      envLimit: "0",
+      ckBacklogged: "redis.call('ZCARD', ckIndexKey)",
+      ckMaxWaitMs: "__ckwait",
+    });
+    expect(withCk).toContain(
+      "__qm_g = {__ql, __cc, __lim, __eql, __ec, __elim, __thr, __ckq, __ckw}"
+    );
+    expect(withCk).toContain("local __ckq = tonumber(redis.call('ZCARD', ckIndexKey)) or 0");
+
+    const withoutCk = createMetricsGaugeComputeLua({
+      enabledArg: "true",
+      queued: "0",
+      running: "0",
+      queueLimit: "0",
+      envQueued: "0",
+      envRunning: "0",
+      envLimit: "0",
+      ckBacklogged: "0",
+    });
+    expect(withoutCk).toContain("__qm_g = {__ql, __cc, __lim, __eql, __ec, __elim, __thr}");
+    expect(withoutCk).not.toContain("__ckq");
+  });
 });

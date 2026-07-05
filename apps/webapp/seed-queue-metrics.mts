@@ -19,6 +19,11 @@ type QueueProfile = {
   arrivals: (bucket: number, rng: Rng) => number; // expected new runs enqueued this bucket
   waitBaseMs: number;
   sparse?: boolean; // emit no rows when the queue is fully idle (tests carry-forward gaps)
+  // Concurrency-key queue: adds CK-health gauge fields + live ckIndex staging (--usage)
+  ck?: {
+    backlogged: (bucket: number, rng: Rng) => number;
+    maxWaitMs: (bucket: number, rng: Rng) => number;
+  };
 };
 type Scenario = {
   description: string;
@@ -218,6 +223,31 @@ const scenarios: Record<string, (totalBuckets: number, bucketSec: number) => Sce
     ],
   }),
 
+  // Per-tenant concurrency keys: a hog tenant periodically floods the queue and starves
+  // the others, so the CK charts (keys with backlog, most-starved wait) and the live
+  // per-key table on the queue detail page have something to show. Use with --usage.
+  "tenant-hotspot": () => ({
+    description:
+      "CK queue where a hog tenant starves others: CK charts + live key table (use --usage)",
+    envLimit: () => 40,
+    queues: [
+      {
+        name: "per-tenant",
+        limit: () => 10,
+        arrivals: (b, r) => poisson(b % 60 < 20 ? 25 : 8, r),
+        waitBaseMs: 60,
+        ck: {
+          backlogged: (b, r) => (b % 60 < 20 ? 6 + Math.round(r() * 6) : Math.round(r() * 3)),
+          maxWaitMs: (b, r) =>
+            b % 60 < 20
+              ? Math.round(lognormal(90_000, 0.5, r))
+              : Math.round(lognormal(3_000, 0.6, r)),
+        },
+      },
+      { name: "background", limit: () => 10, arrivals: (_b, r) => poisson(5, r), waitBaseMs: 40 },
+    ],
+  }),
+
   // Default: one env with a variety of queue behaviours + occasional env saturation.
   mixed: (totalBuckets) => ({
     description: "variety of queue profiles in one env, with occasional env saturation",
@@ -355,6 +385,15 @@ function simulateBucket(
       continue; // fully idle: leave a gap so carry-forward is exercised
     }
 
+    // CK-health fields stay coherent with the depth: no queued runs means no backlogged keys.
+    const ckBacklogged = profile.ck
+      ? queued[q] > 0
+        ? Math.max(1, Math.min(profile.ck.backlogged(bucket, rng), queued[q]))
+        : 0
+      : undefined;
+    const ckMaxWaitMs =
+      profile.ck && ckBacklogged ? Math.round(profile.ck.maxWaitMs(bucket, rng)) : undefined;
+
     const gauge: QueueMetricsRawV1Input = {
       ...ids,
       queue_name: profile.name,
@@ -367,6 +406,9 @@ function simulateBucket(
       env_queued: envQueued,
       env_limit: envLimit,
       throttled: queued[q] > 0 && (running[q] >= limit[q] || scale < 1) ? 1 : 0,
+      ...(ckBacklogged !== undefined
+        ? { ck_backlogged: ckBacklogged, ck_max_wait_ms: ckMaxWaitMs ?? 0 }
+        : {}),
     };
     rows.push(gauge);
 
@@ -464,10 +506,23 @@ async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear
     const { createRedisClient } = await import("@internal/redis");
     const redis = createRedisClient({ host, port });
     const rng = mulberry32(seed + 1);
-    const base = `engine:runqueue:{org:${ids.organization_id}}:proj:${ids.project_id}:env:${ids.environment_id}:queue:`;
+    const prefix = "engine:runqueue:";
+    const logicalBase = `{org:${ids.organization_id}}:proj:${ids.project_id}:env:${ids.environment_id}:queue:`;
+    const base = `${prefix}${logicalBase}`;
     for (const [q, profile] of scenario.queues.entries()) {
       const key = `${base}${profile.name}:currentDequeued`;
       await redis.del(key);
+
+      // CK staging (ckIndex + per-key subqueues) feeds the live per-key table on the queue
+      // detail page. Members are stored unprefixed, exactly like the run-queue Lua does.
+      const ckIndexKey = `${base}${profile.name}:ckIndex`;
+      const lengthCounterKey = `${base}${profile.name}:lengthCounter`;
+      const staleMembers = await redis.zrange(ckIndexKey, 0, -1);
+      for (const member of staleMembers) {
+        await redis.del(`${prefix}${member}`, `${prefix}${member}:currentConcurrency`);
+      }
+      await redis.del(ckIndexKey, lengthCounterKey);
+
       if (clear) continue;
       const limit = profile.limit(0);
       // First queue rides at/over its limit, the rest at 30-90%, sparse mostly idle.
@@ -480,6 +535,35 @@ async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear
           : Math.round(limit * (0.3 + 0.6 * rng()));
       if (count > 0) {
         await redis.sadd(key, ...Array.from({ length: count }, (_v, i) => `sim_run_${i}`));
+      }
+
+      if (profile.ck) {
+        const now = Date.now();
+        const tenants = 12;
+        let totalCkQueued = 0;
+        for (let t = 1; t <= tenants; t++) {
+          const tenant = `tenant-${String(t).padStart(2, "0")}`;
+          const member = `${logicalBase}${profile.name}:ck:${tenant}`;
+          const hog = t === 1;
+          const queuedCount = hog ? 40 : 1 + Math.round(rng() * 5);
+          const runningCount = hog ? limit : Math.round(rng() * 2);
+          const oldestAgeMs = hog ? 15 * 60_000 : 5_000 + Math.round(rng() * 55_000);
+          const zargs: Array<string | number> = [];
+          for (let i = 0; i < queuedCount; i++) {
+            zargs.push(now - oldestAgeMs + i * 250, `sim_${tenant}_run_${i}`);
+          }
+          await redis.zadd(`${prefix}${member}`, ...zargs);
+          if (runningCount > 0) {
+            await redis.sadd(
+              `${prefix}${member}:currentConcurrency`,
+              ...Array.from({ length: runningCount }, (_v, i) => `sim_${tenant}_running_${i}`)
+            );
+          }
+          await redis.zadd(ckIndexKey, now - oldestAgeMs, member);
+          totalCkQueued += queuedCount;
+        }
+        // The aggregate "Queued now" reads ZCARD(base) + this counter; keep them coherent.
+        await redis.set(lengthCounterKey, totalCkQueued, "EX", 24 * 3600);
       }
     }
     await redis.quit();
@@ -588,7 +672,8 @@ ${lines.join("\n")}
 Example designer setup (one project per scenario):
   pnpm --filter webapp run db:seed:queue-metrics -- --scenario mixed --reset
   pnpm --filter webapp run db:seed:queue-metrics -- --scenario many-queues --project qm-many-queues --reset
-  pnpm --filter webapp run db:seed:queue-metrics -- --scenario throttled-backlog --project qm-throttled --reset`);
+  pnpm --filter webapp run db:seed:queue-metrics -- --scenario throttled-backlog --project qm-throttled --reset
+  pnpm --filter webapp run db:seed:queue-metrics -- --scenario tenant-hotspot --project qm-tenants --usage --reset`);
 }
 
 async function main() {

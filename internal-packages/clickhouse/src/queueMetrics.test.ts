@@ -56,6 +56,8 @@ const aggregatedRow = z.object({
   max_env_running: z.coerce.number(),
   max_env_queued: z.coerce.number(),
   max_env_limit: z.coerce.number(),
+  max_ck_backlogged: z.coerce.number(),
+  max_ck_wait_ms: z.coerce.number(),
   wait_ms_sum: z.coerce.number(),
   wait_ms_count: z.coerce.number(),
   wait_p50: z.coerce.number(),
@@ -80,6 +82,8 @@ function readAggregated(ch: ClickHouse) {
         max(max_env_running) AS max_env_running,
         max(max_env_queued) AS max_env_queued,
         max(max_env_limit) AS max_env_limit,
+        max(max_ck_backlogged) AS max_ck_backlogged,
+        max(max_ck_wait_ms) AS max_ck_wait_ms,
         sum(wait_ms_sum) AS wait_ms_sum,
         sum(wait_ms_count) AS wait_ms_count,
         quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles) AS wait_arr,
@@ -120,6 +124,8 @@ describe("queue_metrics_v1", () => {
           env_queued: 10,
           env_limit: 50,
           throttled: 0,
+          ck_backlogged: 3,
+          ck_max_wait_ms: 2500,
         },
         {
           ...base("gauge", queue),
@@ -130,6 +136,8 @@ describe("queue_metrics_v1", () => {
           env_queued: 20,
           env_limit: 50,
           throttled: 1, // running >= limit AND queued > 0
+          ck_backlogged: 2,
+          ck_max_wait_ms: 1500,
         },
       ];
 
@@ -154,6 +162,8 @@ describe("queue_metrics_v1", () => {
       expect(row.max_env_running).toBe(50);
       expect(row.max_env_queued).toBe(20);
       expect(row.max_env_limit).toBe(50);
+      expect(row.max_ck_backlogged).toBe(3);
+      expect(row.max_ck_wait_ms).toBe(2500);
 
       expect(row.wait_ms_sum).toBe(5500);
       expect(row.wait_ms_count).toBe(10);
@@ -224,7 +234,15 @@ describe("queue_metrics_v1", () => {
       const rows: QueueMetricsRawV1Input[] = [
         ...counter("started", "roll-a", 7, [100, 150, 200, 250, 300, 350, 400]),
         ...counter("started", "roll-b", 3, [500, 600, 700]),
-        { ...base("gauge", "roll-a"), running: 4, queued: 9, env_running: 30, env_limit: 50 },
+        {
+          ...base("gauge", "roll-a"),
+          running: 4,
+          queued: 9,
+          env_running: 30,
+          env_limit: 50,
+          ck_backlogged: 5,
+          ck_max_wait_ms: 9000,
+        },
         { ...base("gauge", "roll-b"), running: 2, queued: 1, env_running: 45, env_limit: 50 },
         {
           ...base("gauge", "roll-a"),
@@ -233,6 +251,8 @@ describe("queue_metrics_v1", () => {
           queued: 2,
           env_running: 20,
           env_limit: 50,
+          ck_backlogged: 2,
+          ck_max_wait_ms: 3000,
         },
       ].map((row) => ({ ...row, organization_id: rollOrg }));
       const [insertError] = await ch.queueMetrics.insertRaw(rows, SYNC);
@@ -256,6 +276,17 @@ describe("queue_metrics_v1", () => {
         { queue_name: "roll-b", started: 3 },
       ]);
       expect(rows5m).toEqual(rows10);
+
+      // CK-health gauges roll into the 5m mirror too.
+      const [ckError, ckRows] = await ch.reader.query({
+        name: "ck-5m-read",
+        query: `SELECT max(max_ck_backlogged) AS ck_keys, max(max_ck_wait_ms) AS ck_wait
+          FROM trigger_dev.queue_metrics_5m_v1
+          WHERE queue_name = 'roll-a'`,
+        schema: z.object({ ck_keys: z.coerce.number(), ck_wait: z.coerce.number() }),
+      })({});
+      expect(ckError).toBeNull();
+      expect(ckRows![0]).toEqual({ ck_keys: 5, ck_wait: 9000 });
 
       // Env-wide totals: sum of per-queue merges (a single merge across queues would mix
       // odometers and double-count).

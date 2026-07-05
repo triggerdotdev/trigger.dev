@@ -18,6 +18,8 @@ export const QueueMetricsRawV1Input = z.object({
   env_queued: z.number().optional(),
   env_limit: z.number().optional(),
   throttled: z.number().optional(),
+  ck_backlogged: z.number().optional(),
+  ck_max_wait_ms: z.number().optional(),
   wait_ms: z.number().optional(),
   cumulative: z.number().optional(),
 });

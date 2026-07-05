@@ -774,6 +774,22 @@ export const queueMetricsSchema: TableSchema = {
         fillMode: "carry",
       }),
     },
+    max_ck_backlogged: {
+      name: "max_ck_backlogged",
+      ...column("UInt32", {
+        description:
+          "Peak number of distinct concurrency keys with queued runs in the bucket. Aggregate with max(). Zero for queues that do not use concurrency keys.",
+        fillMode: "carry",
+      }),
+    },
+    max_ck_wait_ms: {
+      name: "max_ck_wait_ms",
+      ...column("UInt32", {
+        description:
+          "Worst head-of-line wait (ms) across concurrency keys in the bucket: how long the most-starved key's oldest queued run has been waiting. Aggregate with max(). Zero for queues that do not use concurrency keys.",
+        fillMode: "carry",
+      }),
+    },
     wait_ms_sum: {
       name: "wait_ms_sum",
       ...column("UInt64", {

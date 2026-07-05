@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_raw_v1
   env_queued       UInt32 DEFAULT 0,
   env_limit        UInt32 DEFAULT 0,
   throttled        UInt8  DEFAULT 0,                 -- 1 on a gauge emission with running>=limit AND queued>0
+  ck_backlogged    UInt32 DEFAULT 0,                 -- gauge on CK queues: distinct concurrency keys with queued work
+  ck_max_wait_ms   UInt32 DEFAULT 0,                 -- gauge on CK queues: most-starved key's head-of-line wait
   wait_ms          UInt32 DEFAULT 0,                 -- set on op='started' (scheduling delay)
   cumulative       UInt64 DEFAULT 0                  -- monotonic per-(queue,op) odometer on a counter op, diffed at read time
 )
@@ -57,6 +59,8 @@ CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_v1
   max_env_queued   SimpleAggregateFunction(max, UInt32),
   max_env_running  SimpleAggregateFunction(max, UInt32),
   max_env_limit    SimpleAggregateFunction(max, UInt32),
+  max_ck_backlogged SimpleAggregateFunction(max, UInt32),
+  max_ck_wait_ms   SimpleAggregateFunction(max, UInt32),
 
   wait_ms_sum      SimpleAggregateFunction(sum, UInt64),
   wait_ms_count    SimpleAggregateFunction(sum, UInt64),
@@ -86,6 +90,8 @@ SELECT
   max(env_queued)         AS max_env_queued,
   max(env_running)        AS max_env_running,
   max(env_limit)          AS max_env_limit,
+  max(ck_backlogged)      AS max_ck_backlogged,
+  max(ck_max_wait_ms)     AS max_ck_wait_ms,
   sumIf(wait_ms, op = 'started')                 AS wait_ms_sum,
   countIf(op = 'started' AND wait_ms > 0)        AS wait_ms_count,
   quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0) AS wait_quantiles
@@ -158,6 +164,8 @@ CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_5m_v1
   max_env_queued   SimpleAggregateFunction(max, UInt32),
   max_env_running  SimpleAggregateFunction(max, UInt32),
   max_env_limit    SimpleAggregateFunction(max, UInt32),
+  max_ck_backlogged SimpleAggregateFunction(max, UInt32),
+  max_ck_wait_ms   SimpleAggregateFunction(max, UInt32),
 
   wait_ms_sum      SimpleAggregateFunction(sum, UInt64),
   wait_ms_count    SimpleAggregateFunction(sum, UInt64),
@@ -189,6 +197,8 @@ SELECT
   max(env_queued)         AS max_env_queued,
   max(env_running)        AS max_env_running,
   max(env_limit)          AS max_env_limit,
+  max(ck_backlogged)      AS max_ck_backlogged,
+  max(ck_max_wait_ms)     AS max_ck_wait_ms,
   sumIf(wait_ms, op = 'started')                 AS wait_ms_sum,
   countIf(op = 'started' AND wait_ms > 0)        AS wait_ms_count,
   quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started' AND wait_ms > 0) AS wait_quantiles

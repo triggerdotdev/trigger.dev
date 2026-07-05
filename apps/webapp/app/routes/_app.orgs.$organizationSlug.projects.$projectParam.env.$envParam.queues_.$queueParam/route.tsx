@@ -19,6 +19,15 @@ import {
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueueRetrievePresenter } from "~/presenters/v3/QueueRetrievePresenter.server";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
+import { engine } from "~/v3/runEngine.server";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
@@ -58,12 +67,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const queue = retrieve.queue;
   const fullName = queue.type === "task" ? `task/${queue.name}` : queue.name;
 
+  const ckBreakdown = await engine.concurrencyKeyBreakdown(environment, fullName, {
+    limit: CK_LIVE_LIMIT,
+  });
+
   // Charts + CH-derived stats are fetched client-side per card (see QueueDetailChartCard /
   // useQueueMetric) so the drill-down renders instantly. The loader only returns the live
   // "now" counts + identifiers the client fetches need.
   return typedjson({
     queue,
     fullName,
+    ckBreakdown,
+    loadedAt: Date.now(),
     backPath: url.pathname.replace(/\/[^/]+$/, ""),
     ids: {
       organizationId: environment.organizationId,
@@ -81,7 +96,11 @@ const COLORS = {
   p95: "#F59E0B",
   p99: "#EF4444",
   throttled: "#F59E0B",
+  ckKeys: "#34D399",
+  ckWait: "#F59E0B",
 };
+
+const CK_LIVE_LIMIT = 50;
 
 type Ids = { organizationId: string; projectId: string; environmentId: string };
 
@@ -90,7 +109,8 @@ type TimeRangeParams = MetricResourceTimeRange;
 const QUEUE_METRICS_DEFAULT_PERIOD = "1d";
 
 export default function Page() {
-  const { queue, fullName, backPath, ids } = useTypedLoaderData<typeof loader>();
+  const { queue, fullName, ckBreakdown, loadedAt, backPath, ids } =
+    useTypedLoaderData<typeof loader>();
   const plan = useCurrentPlan();
   const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
 
@@ -169,9 +189,112 @@ export default function Page() {
             queueName={fullName}
             series={[{ key: "throttled", label: "Throttled", color: COLORS.throttled }]}
           />
+          <ConcurrencyKeysSection
+            breakdown={ckBreakdown}
+            loadedAt={loadedAt}
+            ids={ids}
+            timeRange={timeRange}
+            queueName={fullName}
+          />
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+type CkBreakdown = {
+  totalBackloggedKeys: number;
+  keys: Array<{
+    concurrencyKey: string;
+    queued: number;
+    running: number;
+    oldestEnqueuedAt: number;
+  }>;
+};
+
+// Rendered only for queues with concurrency-key activity: live keys in the ckIndex, or
+// nonzero CK history in the selected range (one cached scalar query decides).
+function ConcurrencyKeysSection({
+  breakdown,
+  loadedAt,
+  ids,
+  timeRange,
+  queueName,
+}: {
+  breakdown: CkBreakdown;
+  loadedAt: number;
+  ids: Ids;
+  timeRange: TimeRangeParams;
+  queueName: string;
+}) {
+  const { rows, showLoading } = useQueueMetric(
+    `SELECT max(max_ck_backlogged) AS peak_keys, max(max_ck_wait_ms) AS peak_wait\nFROM queue_metrics`,
+    { ids, timeRange, queueName }
+  );
+  const row = rows[0];
+  const hasHistory = row ? toNumber(row.peak_keys) > 0 || toNumber(row.peak_wait) > 0 : false;
+  const hasLive = breakdown.keys.length > 0;
+
+  if (!hasLive && (showLoading || !hasHistory)) return null;
+
+  return (
+    <>
+      <QueueDetailChartCard
+        title="Concurrency keys with backlog"
+        query={`SELECT timeBucket() AS t, max(max_ck_backlogged) AS keys\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+        fillGaps
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+        series={[{ key: "keys", label: "Keys", color: COLORS.ckKeys }]}
+      />
+      <QueueDetailChartCard
+        title="Most-starved key wait"
+        query={`SELECT timeBucket() AS t, max(max_ck_wait_ms) AS wait\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+        fillGaps
+        ids={ids}
+        timeRange={timeRange}
+        queueName={queueName}
+        valueFormat={formatWaitMs}
+        series={[{ key: "wait", label: "Max wait", color: COLORS.ckWait }]}
+      />
+      {hasLive && (
+        <div className="rounded-sm border border-grid-dimmed bg-background-bright">
+          <div className="flex items-baseline justify-between px-3 pt-2">
+            <div className="text-sm text-text-bright">Concurrency keys with queued runs</div>
+            <div className="text-xs text-text-dimmed">
+              {breakdown.totalBackloggedKeys > breakdown.keys.length
+                ? `Showing the ${breakdown.keys.length} most starved of ${breakdown.totalBackloggedKeys.toLocaleString()} keys`
+                : `${breakdown.totalBackloggedKeys.toLocaleString()} ${
+                    breakdown.totalBackloggedKeys === 1 ? "key" : "keys"
+                  }`}
+            </div>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Key</TableHeaderCell>
+                <TableHeaderCell alignment="right">Queued</TableHeaderCell>
+                <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                <TableHeaderCell alignment="right">Oldest wait</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {breakdown.keys.map((key) => (
+                <TableRow key={key.concurrencyKey}>
+                  <TableCell>{key.concurrencyKey}</TableCell>
+                  <TableCell alignment="right">{key.queued.toLocaleString()}</TableCell>
+                  <TableCell alignment="right">{key.running.toLocaleString()}</TableCell>
+                  <TableCell alignment="right">
+                    {formatWaitMs(Math.max(0, loadedAt - key.oldestEnqueuedAt))}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </>
   );
 }
 

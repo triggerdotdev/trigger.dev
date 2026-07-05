@@ -100,6 +100,25 @@ describe("mapEntryToRow", () => {
       })
     );
     expect(row!.event_time).toBe("2023-11-14 22:13:20");
+    // Non-CK gauges carry no CK-health tail.
+    expect(row!.ck_backlogged).toBeUndefined();
+    expect(row!.ck_max_wait_ms).toBeUndefined();
+  });
+
+  it("maps the CK-health tail on gauges from CK paths", () => {
+    const row = mapEntryToRow({
+      id: "1700000000000-0",
+      fields: { op: "gauge", q: `${q}:ck:tenant-1`, ql: "4", ckq: "3", ckw: "2500" },
+    });
+    expect(row).toEqual(
+      expect.objectContaining({
+        op: "gauge",
+        queue_name: "task/t",
+        queued: 4,
+        ck_backlogged: 3,
+        ck_max_wait_ms: 2500,
+      })
+    );
   });
 
   it("maps started with wait_ms + cumulative and drops unknown ops", () => {
