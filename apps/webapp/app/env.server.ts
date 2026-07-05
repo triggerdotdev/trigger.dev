@@ -869,7 +869,9 @@ const EnvironmentSchema = z
     QUEUE_METRICS_REDIS_USERNAME: z.string().optional(),
     QUEUE_METRICS_REDIS_PASSWORD: z.string().optional(),
     QUEUE_METRICS_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
-    QUEUE_METRICS_COUNTER_STREAM_MAXLEN: z.coerce.number().int().default(8_000_000),
+    // Default depends on where the stream lives: see metricsDefinition() in
+    // queueMetrics.server.ts (2M on the shared run-queue Redis, 8M on a dedicated one).
+    QUEUE_METRICS_COUNTER_STREAM_MAXLEN: z.coerce.number().int().optional(),
     // TTL (seconds) on the per-(queue,op) cumulative odometer key, refreshed on every write.
     // Idle-past-TTL queues purge and self-heal (restart from 1) on return; default 7 days.
     QUEUE_METRICS_COUNTER_ODOMETER_TTL_SECONDS: z.coerce.number().int().default(604_800),

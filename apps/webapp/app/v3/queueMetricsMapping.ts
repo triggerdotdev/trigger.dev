@@ -74,6 +74,10 @@ export function mapEntryToRow(
   if (!descriptor || !descriptor.queue_name) return null;
   if (limiter) {
     descriptor.queue_name = limiter.limit(descriptor.environment_id, descriptor.queue_name);
+    // Overflowed names share one row, but counter readings are per-queue odometers and
+    // merging different odometers under one key produces garbage deltas: drop counters
+    // for overflow, keep gauges (max across the overflow set is still meaningful).
+    if (descriptor.queue_name === OVERFLOW_QUEUE_NAME && op !== "gauge") return null;
   }
 
   const eventMs = entryTimeMs(entry.id) ?? Date.now();

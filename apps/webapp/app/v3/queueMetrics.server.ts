@@ -56,11 +56,14 @@ function metricsRedisOptions(): RedisOptions {
 // One stream family on the metrics Redis carrying both gauge snapshots and cumulative
 // counter readings; one consumer group reads it.
 function metricsDefinition(): MetricDefinition {
+  // A stalled consumer holds up to maxLen entries per shard in Redis memory: cap lower
+  // by default when the stream shares the queue-critical run-queue Redis.
+  const defaultMaxLen = env.QUEUE_METRICS_REDIS_HOST ? 8_000_000 : 2_000_000;
   return {
     name: "queue_metrics",
     shardCount: env.QUEUE_METRICS_STREAM_SHARD_COUNT,
     consumerGroup: "queue_metrics_cg",
-    maxLen: env.QUEUE_METRICS_COUNTER_STREAM_MAXLEN,
+    maxLen: env.QUEUE_METRICS_COUNTER_STREAM_MAXLEN ?? defaultMaxLen,
   };
 }
 

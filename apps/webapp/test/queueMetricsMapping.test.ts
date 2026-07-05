@@ -122,14 +122,27 @@ describe("mapEntryToRow", () => {
     expect(mapEntryToRow({ id: "1-0", fields: { op: "ack" } })).toBeNull();
   });
 
-  it("applies the queue-name limiter", () => {
+  it("applies the queue-name limiter: gauges overflow, counters drop", () => {
     const limiter = new QueueNameLimiter(1);
     const first = mapEntryToRow({ id: "1-0", fields: { op: "ack", q } }, limiter);
     expect(first!.queue_name).toBe("task/t");
-    const second = mapEntryToRow(
-      { id: "1-1", fields: { op: "ack", q: "{org:o1}:proj:p1:env:e1:queue:task/other" } },
+
+    // Overflowed gauges keep flowing under the shared name (max stays meaningful).
+    const overflowGauge = mapEntryToRow(
+      {
+        id: "1-1",
+        fields: { op: "gauge", q: "{org:o1}:proj:p1:env:e1:queue:task/other", ql: "3" },
+      },
       limiter
     );
-    expect(second!.queue_name).toBe(OVERFLOW_QUEUE_NAME);
+    expect(overflowGauge!.queue_name).toBe(OVERFLOW_QUEUE_NAME);
+
+    // Overflowed counters are dropped: merging distinct odometers under one key
+    // produces garbage deltas.
+    const overflowCounter = mapEntryToRow(
+      { id: "1-2", fields: { op: "ack", q: "{org:o1}:proj:p1:env:e1:queue:task/other", cum: "4" } },
+      limiter
+    );
+    expect(overflowCounter).toBeNull();
   });
 });

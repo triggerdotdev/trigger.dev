@@ -140,8 +140,13 @@ export class MetricsStreamEmitter {
     if (this.redis.status !== "ready") return;
     const op = String(fields.op ?? "unknown");
     const q = String(fields.q ?? "");
-    const odometerKey = `${this.def.name}_cum:${op}:${q}`;
-    const stream = streamKey(this.def, shardFor(shardKey, this.def.shardCount));
+    const shard = shardFor(shardKey, this.def.shardCount);
+    const stream = streamKey(this.def, shard);
+    // The odometer carries the stream's {shard} hash tag so INCR + XADD stay in one
+    // Cluster slot (the shard is derived from the queue, so the mapping is stable).
+    // The key format is part of the rolling-deploy data shape: concurrent old/new
+    // emitters with different formats split an odometer and corrupt its deltas.
+    const odometerKey = `${this.def.name}_cum:{${shard}}:${op}:${q}`;
     const extra: string[] = [];
     for (const [field, value] of Object.entries(fields)) {
       if (field === "op" || field === "q") continue;

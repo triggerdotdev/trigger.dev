@@ -671,7 +671,7 @@ export const queueMetricsSchema: TableSchema = {
       mergeGroupKey: "queue",
       ...column("String", {
         description:
-          "Runs enqueued (cumulative-counter delta). Read with deltaSumTimestampMerge(enqueue_delta) grouped by queue. For totals across queues, sum the per-queue results in an outer query, never merge across queues.",
+          "Runs enqueued (cumulative-counter delta). Read with deltaSumTimestampMerge(enqueue_delta) grouped by queue. For totals across queues, sum the per-queue results in an outer query, never merge across queues. Per-bucket values can undercount by one inter-reading delta at bucket boundaries (the bridge lives in the prior bucket's state); totals over the whole range are exact.",
       }),
       groupable: false,
       sortable: false,
@@ -682,7 +682,7 @@ export const queueMetricsSchema: TableSchema = {
       mergeGroupKey: "queue",
       ...column("String", {
         description:
-          "Runs dequeued/started (throughput). Read with deltaSumTimestampMerge(started_delta) grouped by queue. For totals across queues, sum the per-queue results in an outer query, never merge across queues.",
+          "Runs dequeued/started (throughput). Read with deltaSumTimestampMerge(started_delta) grouped by queue. For totals across queues, sum the per-queue results in an outer query, never merge across queues. Per-bucket values can undercount by one inter-reading delta at bucket boundaries (the bridge lives in the prior bucket's state); totals over the whole range are exact.",
         coreColumn: true,
       }),
       groupable: false,
