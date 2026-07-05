@@ -196,9 +196,9 @@ describe("isRetryableConnectionError", () => {
   });
 
   it("classifies an ECONNRESET substring in the message as retryable", () => {
-    expect(isRetryableConnectionError(new Error("Unable to query clickhouse: read ECONNRESET"))).toBe(
-      true
-    );
+    expect(
+      isRetryableConnectionError(new Error("Unable to query clickhouse: read ECONNRESET"))
+    ).toBe(true);
   });
 
   it("classifies a wrapped connection error (via cause) as retryable", () => {

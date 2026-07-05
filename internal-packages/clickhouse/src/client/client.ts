@@ -119,11 +119,7 @@ export function isRetryableConnectionError(error: unknown): boolean {
 }
 
 /** Full-jitter exponential backoff, bounded by `maxDelayMs`. */
-function computeRetryBackoffMs(
-  attempt: number,
-  minDelayMs: number,
-  maxDelayMs: number
-): number {
+function computeRetryBackoffMs(attempt: number, minDelayMs: number, maxDelayMs: number): number {
   if (minDelayMs <= 0) {
     return 0;
   }
@@ -185,7 +181,10 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
    * against dead keep-alive sockets surfacing as `ECONNRESET` on the first use
    * of a pooled connection. Server-side errors are re-thrown immediately.
    */
-  private async queryWithConnectionRetry<T>(operationName: string, fn: () => Promise<T>): Promise<T> {
+  private async queryWithConnectionRetry<T>(
+    operationName: string,
+    fn: () => Promise<T>
+  ): Promise<T> {
     const { maxAttempts, minDelayMs, maxDelayMs } = this.connectionRetry;
 
     let attempt = 0;
