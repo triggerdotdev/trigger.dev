@@ -12,8 +12,8 @@ describe("computeRunIdMintKind (pure)", () => {
     expect(flag).not.toHaveBeenCalled();
   });
 
-  it("mints cuid when split is OFF, even if master + per-org flag say 'ksuid'", async () => {
-    const flag = vi.fn().mockResolvedValue("ksuid");
+  it("mints cuid when split is OFF, even if master + per-org flag say 'runOpsId'", async () => {
+    const flag = vi.fn().mockResolvedValue("runOpsId");
     const kind = await computeRunIdMintKind(
       { organizationId: "org_1", id: "env_1" },
       { masterEnabled: true, splitEnabled: async () => false, flag }
@@ -22,18 +22,18 @@ describe("computeRunIdMintKind (pure)", () => {
     expect(flag).not.toHaveBeenCalled(); // split-off short-circuits before any flag read
   });
 
-  it("mints run-ops id only when master on AND split on AND per-org flag = 'ksuid'", async () => {
-    const flag = vi.fn().mockResolvedValue("ksuid");
+  it("mints run-ops id only when master on AND split on AND per-org flag = 'runOpsId'", async () => {
+    const flag = vi.fn().mockResolvedValue("runOpsId");
     const kind = await computeRunIdMintKind(
       { organizationId: "org_1", id: "env_1" },
       { masterEnabled: true, splitEnabled: async () => true, flag }
     );
-    expect(kind).toBe("ksuid");
+    expect(kind).toBe("runOpsId");
   });
 
   it("passes the already-loaded org feature flags through to the flag fn (no extra DB read)", async () => {
-    const flag = vi.fn().mockResolvedValue("ksuid");
-    const orgFeatureFlags = { runOpsMintKsuid: "ksuid" };
+    const flag = vi.fn().mockResolvedValue("runOpsId");
+    const orgFeatureFlags = { runOpsMintKsuid: "runOpsId" };
     await computeRunIdMintKind(
       { organizationId: "org_1", id: "env_1", orgFeatureFlags },
       { masterEnabled: true, splitEnabled: async () => true, flag }

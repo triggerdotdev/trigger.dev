@@ -102,7 +102,7 @@ export class TriggerFailedTaskService {
           orgFeatureFlags: args.orgFeatureFlags,
         });
 
-    return mintKind === "ksuid"
+    return mintKind === "runOpsId"
       ? RunId.toFriendlyId(generateRunOpsId())
       : RunId.generate().friendlyId;
   }

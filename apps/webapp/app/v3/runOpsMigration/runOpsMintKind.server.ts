@@ -7,7 +7,7 @@ import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 import { isSplitEnabled } from "./splitMode.server";
 
-export type RunIdMintKind = "cuid" | "ksuid";
+export type RunIdMintKind = "cuid" | "runOpsId";
 
 type MintKindDeps = {
   masterEnabled: boolean;
@@ -54,7 +54,7 @@ export async function resolveRunIdMintKind(environment: {
     masterEnabled: env.RUN_OPS_MINT_KSUID_ENABLED,
     splitEnabled: isSplitEnabled,
     flag: async (orgId, orgFeatureFlags) => {
-      // The cache stores only "cuid"|"ksuid" (never undefined), so the cache's
+      // The cache stores only "cuid"|"runOpsId" (never undefined), so the cache's
       // "stored-undefined == miss" caveat never applies here.
       const cached = mintCache.get(orgId);
       if (cached !== undefined) return cached;

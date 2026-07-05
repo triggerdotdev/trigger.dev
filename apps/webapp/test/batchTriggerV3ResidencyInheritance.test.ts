@@ -90,13 +90,13 @@ describe("BatchTriggerV3Service child-residency inheritance", () => {
   });
 
   // The cuid mirror: a cuid batch anchor yields cuid children even if the flag flipped ON.
-  it("a cuid batch anchor yields cuid children even when the env flag resolves 'ksuid'", async () => {
+  it("a cuid batch anchor yields cuid children even when the env flag resolves 'runOpsId'", async () => {
     const service = new BatchTriggerV3Service(
       undefined,
       undefined,
       {} as any,
       {} as any,
-      async () => "ksuid" // env flag flipped ON mid-batch
+      async () => "runOpsId" // env flag flipped ON mid-batch
     );
     const batchFriendlyId = BatchId.generate().friendlyId; // cuid (LEGACY) batch
     expect(ownerEngine(batchFriendlyId)).toBe("LEGACY");

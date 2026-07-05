@@ -153,7 +153,7 @@ export class RunEngineTriggerTaskService {
           orgFeatureFlags: environment.organization.featureFlags,
         });
 
-    return mintKind === "ksuid"
+    return mintKind === "runOpsId"
       ? RunId.toFriendlyId(generateRunOpsId(region))
       : RunId.generate().friendlyId;
   }

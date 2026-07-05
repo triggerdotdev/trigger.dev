@@ -53,7 +53,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.devBranchesEnabled]: z.coerce.boolean(),
   // Per-org run-ops-id mint cutover. Defaults to "cuid"; only honored when
   // RUN_OPS_MINT_KSUID_ENABLED is on AND isSplitEnabled() is true.
-  [FEATURE_FLAG.runOpsMintKsuid]: z.enum(["cuid", "ksuid"]),
+  [FEATURE_FLAG.runOpsMintKsuid]: z.enum(["cuid", "runOpsId"]),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

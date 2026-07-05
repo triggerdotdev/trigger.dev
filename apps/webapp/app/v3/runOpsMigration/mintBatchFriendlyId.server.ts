@@ -14,7 +14,7 @@ const defaultDeps: ResolveDeps = {
 };
 
 export function batchIdForMintKind(kind: RunIdMintKind): { id: string; friendlyId: string } {
-  if (kind === "ksuid") {
+  if (kind === "runOpsId") {
     const id = generateRunOpsId();
     return { id, friendlyId: BatchId.toFriendlyId(id) };
   }

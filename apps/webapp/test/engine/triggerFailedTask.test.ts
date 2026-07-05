@@ -94,7 +94,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
       await setupBackgroundWorker(engine, environment, taskIdentifier);
 
       const parentFriendlyId = RunId.toFriendlyId(generateRunOpsId());
-      expect(classifyKind(parentFriendlyId)).toBe("ksuid");
+      expect(classifyKind(parentFriendlyId)).toBe("runOpsId");
       await engine.trigger(
         {
           friendlyId: parentFriendlyId,
@@ -122,7 +122,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
         parentRunId: parentFriendlyId,
       });
 
-      expect(classifyKind(friendlyId!)).toBe("ksuid");
+      expect(classifyKind(friendlyId!)).toBe("runOpsId");
 
       // The failed run write must land (persistence) and link to the resolved parent.
       const persisted = await prisma.taskRun.findFirst({ where: { friendlyId: friendlyId! } });
@@ -220,7 +220,7 @@ describe("TriggerFailedTaskService — failed run residency", () => {
         parentRunId: parentFriendlyId,
       });
 
-      expect(classifyKind(friendlyId!)).toBe("ksuid");
+      expect(classifyKind(friendlyId!)).toBe("runOpsId");
 
       await engine.quit();
     }

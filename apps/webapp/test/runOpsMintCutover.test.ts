@@ -34,7 +34,7 @@ function mintRunOpsFriendlyId(): string {
 // Mirrors the real trigger path: resolve the kind, then mint either a run-ops friendlyId or
 // the default cuid one (RunId.generate()).
 function mintRunFriendlyId(kind: RunIdMintKind): string {
-  return kind === "ksuid" ? mintRunOpsFriendlyId() : RunId.generate().friendlyId;
+  return kind === "runOpsId" ? mintRunOpsFriendlyId() : RunId.generate().friendlyId;
 }
 
 async function seedOrgEnv(prisma: PrismaClient, mintFlag?: RunIdMintKind) {
@@ -81,7 +81,7 @@ describe("per-env run-ops-id mint cutover", () => {
   postgresTest(
     "canary org mints run-ops/NEW; non-canary org mints cuid/LEGACY",
     async ({ prisma }) => {
-      const a = await seedOrgEnv(prisma, "ksuid"); // canary
+      const a = await seedOrgEnv(prisma, "runOpsId"); // canary
       const b = await seedOrgEnv(prisma); // not cut over
 
       const flag = realFlag(prisma);
@@ -96,7 +96,7 @@ describe("per-env run-ops-id mint cutover", () => {
         deps
       );
 
-      expect(kindA).toBe("ksuid");
+      expect(kindA).toBe("runOpsId");
       expect(kindB).toBe("cuid");
 
       const friendlyA = mintRunFriendlyId(kindA);
@@ -111,9 +111,9 @@ describe("per-env run-ops-id mint cutover", () => {
   );
 
   postgresTest(
-    "split OFF mints cuid even for a 'ksuid'-flagged org (split gate dominates)",
+    "split OFF mints cuid even for a 'runOpsId'-flagged org (split gate dominates)",
     async ({ prisma }) => {
-      const a = await seedOrgEnv(prisma, "ksuid");
+      const a = await seedOrgEnv(prisma, "runOpsId");
       const flag = vi.fn(realFlag(prisma));
 
       const kind = await computeRunIdMintKind(
@@ -129,7 +129,7 @@ describe("per-env run-ops-id mint cutover", () => {
   postgresTest(
     "drain-new-forward (D8): flipping back to cuid stops new run-ops mints without reverting existing",
     async ({ prisma }) => {
-      const a = await seedOrgEnv(prisma, "ksuid");
+      const a = await seedOrgEnv(prisma, "runOpsId");
       const flag = realFlag(prisma);
       const deps = { masterEnabled: true, splitEnabled: async () => true, flag };
 
@@ -139,7 +139,7 @@ describe("per-env run-ops-id mint cutover", () => {
         deps
       );
       const firstFriendly = mintRunFriendlyId(firstKind);
-      expect(firstKind).toBe("ksuid");
+      expect(firstKind).toBe("runOpsId");
       expect(ownerEngine(RunId.fromFriendlyId(firstFriendly))).toBe("NEW");
 
       // Roll the org back to cuid (drain-new-forward — set the flag to "cuid").
@@ -168,7 +168,7 @@ describe("per-env run-ops-id mint cutover", () => {
     "parent and child re-resolve independently from their own org flag",
     async ({ prisma }) => {
       // Parent lives in a cut-over org; child is triggered into a NON-cut-over org.
-      const parentOrg = await seedOrgEnv(prisma, "ksuid");
+      const parentOrg = await seedOrgEnv(prisma, "runOpsId");
       const childOrg = await seedOrgEnv(prisma); // not cut over
       const flag = realFlag(prisma);
       const deps = { masterEnabled: true, splitEnabled: async () => true, flag };
@@ -186,7 +186,7 @@ describe("per-env run-ops-id mint cutover", () => {
       // it does NOT inherit the parent's residency. A child in a non-cut-over org mints cuid
       // even when its parent was born run-ops. If children must inherit, that inheritance
       // belongs to the child-trigger path, not this resolver.
-      expect(parentKind).toBe("ksuid");
+      expect(parentKind).toBe("runOpsId");
       expect(childKind).toBe("cuid");
     }
   );

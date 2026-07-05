@@ -1,7 +1,7 @@
 import { ownerEngine, RunId, type Residency } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 
-type MintKind = "cuid" | "ksuid";
+type MintKind = "cuid" | "runOpsId";
 
 export type ResolveIdempotencyClientDeps = {
   isSplitEnabled: () => Promise<boolean>;
@@ -52,5 +52,5 @@ export async function resolveIdempotencyDedupClient(
   }
 
   const kind = await deps.resolveMintKind(args.environmentForMint);
-  return clientFor(kind === "ksuid" ? "NEW" : "LEGACY");
+  return clientFor(kind === "runOpsId" ? "NEW" : "LEGACY");
 }

@@ -23,7 +23,7 @@ describe("ownerEngine — residency classifier (version char at fixed position, 
       expect(ownerEngine(id)).toBe("NEW");
       expect(ownerEngine(friendlyId)).toBe("NEW");
       expect(classifyResidency(id)).toBe("NEW");
-      expect(classifyKind(id)).toBe("ksuid");
+      expect(classifyKind(id)).toBe("runOpsId");
     }
   });
 

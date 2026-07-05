@@ -2397,7 +2397,7 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
       // lookup the child path performs.
       // v1 id (version "1" at index 25) → classifies NEW
       const parentFriendlyId = RunId.toFriendlyId(generateRunOpsId());
-      expect(classifyKind(parentFriendlyId)).toBe("ksuid");
+      expect(classifyKind(parentFriendlyId)).toBe("runOpsId");
 
       const parent = await triggerTaskService.call({
         taskId: taskIdentifier,
@@ -2413,7 +2413,7 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
         body: { payload: { test: "child" }, options: { parentRunId: parentFriendlyId } },
       });
 
-      expect(classifyKind(child!.run.friendlyId)).toBe("ksuid");
+      expect(classifyKind(child!.run.friendlyId)).toBe("runOpsId");
 
       await engine.quit();
     }
@@ -2429,7 +2429,7 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
       const explicitFriendlyId = RunId.toFriendlyId(generateInternalId());
       const parentFriendlyId = RunId.toFriendlyId(generateRunOpsId());
       expect(classifyKind(explicitFriendlyId)).toBe("cuid");
-      expect(classifyKind(parentFriendlyId)).toBe("ksuid");
+      expect(classifyKind(parentFriendlyId)).toBe("runOpsId");
 
       const result = await triggerTaskService.call({
         taskId: taskIdentifier,

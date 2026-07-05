@@ -1729,7 +1729,7 @@ const EnvironmentSchema = z
 
     // Run-ops id mint cutover — per-env, canary-first, OFF by default.
     // Even when on, an env mints run-ops ids only if its per-org runOpsMintKsuid flag is
-    // "ksuid" AND isSplitEnabled() is true. Cache mirrors REALTIME_BACKEND_FLAG_CACHE_*.
+    // "runOpsId" AND isSplitEnabled() is true. Cache mirrors REALTIME_BACKEND_FLAG_CACHE_*.
     RUN_OPS_MINT_KSUID_ENABLED: BoolEnv.default(false),
     RUN_OPS_MINT_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     RUN_OPS_MINT_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(10_000),
