@@ -10,6 +10,7 @@ import {
 } from "@trigger.dev/core/v3";
 
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
+import { $replica, runOpsNewReplica, runOpsSplitReadEnabled } from "~/db.server";
 import {
   extractIdempotencyKeyScope,
   getUserProvidedIdempotencyKey,
@@ -722,7 +723,11 @@ export class SpanPresenter extends BasePresenter {
           return { ...data, entity: null };
         }
 
-        const presenter = new WaitpointPresenter(undefined, undefined, {});
+        const presenter = new WaitpointPresenter(undefined, undefined, {
+          newClient: runOpsNewReplica,
+          legacyReplica: $replica,
+          splitEnabled: runOpsSplitReadEnabled,
+        });
         const waitpoint = await presenter.call({
           friendlyId: span.entity.id,
           environmentId,
