@@ -111,7 +111,7 @@ describe("RunEngineTriggerTaskService", () => {
     expect(result?.run.status).toBe("PENDING");
     expect(result?.isCached).toBe(false);
 
-    const run = await prisma.taskRun.findUnique({
+    const run = await prisma.taskRun.findFirst({
       where: {
         id: result?.run.id,
       },
@@ -315,7 +315,7 @@ describe("RunEngineTriggerTaskService", () => {
       expect(result?.run.friendlyId).toBeDefined();
       expect(result?.run.status).toBe("PENDING");
 
-      const run = await prisma.taskRun.findUnique({
+      const run = await prisma.taskRun.findFirst({
         where: {
           id: result?.run.id,
         },
