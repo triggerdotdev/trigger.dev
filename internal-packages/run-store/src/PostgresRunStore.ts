@@ -493,6 +493,16 @@ export function wrapRunOpsClientForErrorNormalization<C extends RunOpsCapableCli
  * so `instanceof Prisma.PrismaClientKnownRequestError` works regardless of which
  * generated client backs the store.
  */
+// Relations present on the full control-plane schema but ABSENT from the dedicated run-ops subset;
+// selecting one against the dedicated client throws an opaque Prisma error for NEW-resident data.
+const BATCH_TASK_RUN_CONTROL_PLANE_RELATIONS = ["runsBlocked", "waitpoints", "runtimeEnvironment"];
+const TASK_RUN_ATTEMPT_CONTROL_PLANE_RELATIONS = [
+  "backgroundWorker",
+  "backgroundWorkerTask",
+  "runtimeEnvironment",
+  "queue",
+];
+
 export class PostgresRunStore implements RunStore {
   private readonly prisma: RunOpsCapableClient;
   private readonly readOnlyPrisma: RunOpsCapableClient;
@@ -2055,7 +2065,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunAttemptGetPayload<T> | null> {
     const prisma = client ?? this.readOnlyPrisma;
 
-    const forbidden = ["backgroundWorker", "backgroundWorkerTask", "runtimeEnvironment", "queue"];
+    const forbidden = TASK_RUN_ATTEMPT_CONTROL_PLANE_RELATIONS;
     this.#assertSubsetSelectable(
       (args as { include?: Record<string, unknown> }).include,
       forbidden,
@@ -2120,7 +2130,7 @@ export class PostgresRunStore implements RunStore {
 
     this.#assertSubsetSelectable(
       args?.include as Record<string, unknown> | undefined,
-      ["runsBlocked", "waitpoints", "runtimeEnvironment"],
+      BATCH_TASK_RUN_CONTROL_PLANE_RELATIONS,
       "findBatchTaskRunById"
     );
 
@@ -2140,7 +2150,7 @@ export class PostgresRunStore implements RunStore {
 
     this.#assertSubsetSelectable(
       args?.include as Record<string, unknown> | undefined,
-      ["runsBlocked", "waitpoints", "runtimeEnvironment"],
+      BATCH_TASK_RUN_CONTROL_PLANE_RELATIONS,
       "findBatchTaskRunByFriendlyId"
     );
 
@@ -2162,7 +2172,7 @@ export class PostgresRunStore implements RunStore {
 
     this.#assertSubsetSelectable(
       args?.include as Record<string, unknown> | undefined,
-      ["runsBlocked", "waitpoints", "runtimeEnvironment"],
+      BATCH_TASK_RUN_CONTROL_PLANE_RELATIONS,
       "findBatchTaskRunByIdempotencyKey"
     );
 
