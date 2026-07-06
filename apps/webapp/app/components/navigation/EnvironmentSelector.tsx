@@ -35,6 +35,12 @@ import { V4Badge } from "../V4Badge";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 import { Badge } from "../primitives/Badge";
 
+// Size this Env popover's items to match the Project popover menu items
+// (SIDE_MENU_POPOVER_ITEM_* in SideMenu.tsx). Applied only at these call sites so the
+// shared EnvironmentLabel/EnvironmentCombo defaults used elsewhere in the app stay unchanged.
+const ENV_POPOVER_ITEM_ICON = "size-5";
+const ENV_POPOVER_ITEM_LABEL = "text-[0.90625rem] font-medium tracking-[-0.01em]";
+
 export function EnvironmentSelector({
   organization,
   project,
@@ -135,7 +141,13 @@ export function EnvironmentSelector({
                 <PopoverMenuItem
                   key={env.id}
                   to={urlForEnvironment(env)}
-                  title={<EnvironmentCombo environment={env} className="mx-auto grow text-2sm" />}
+                  title={
+                    <EnvironmentCombo
+                      environment={env}
+                      className={cn("mx-auto grow", ENV_POPOVER_ITEM_LABEL)}
+                      iconClassName={ENV_POPOVER_ITEM_ICON}
+                    />
+                  }
                   isSelected={env.id === environment.id}
                 />
               );
@@ -153,8 +165,12 @@ export function EnvironmentSelector({
                 )}
                 title={
                   <div className="flex w-full items-center justify-between">
-                    <EnvironmentCombo environment={{ type: "STAGING" }} className="text-2sm" />
-                    <span className="text-indigo-500">Upgrade</span>
+                    <EnvironmentCombo
+                      environment={{ type: "STAGING" }}
+                      className={ENV_POPOVER_ITEM_LABEL}
+                      iconClassName={ENV_POPOVER_ITEM_ICON}
+                    />
+                    <span className={cn("text-indigo-500", ENV_POPOVER_ITEM_LABEL)}>Upgrade</span>
                   </div>
                 }
                 isSelected={false}
@@ -167,8 +183,12 @@ export function EnvironmentSelector({
                 )}
                 title={
                   <div className="flex w-full items-center justify-between">
-                    <EnvironmentCombo environment={{ type: "PREVIEW" }} className="text-2sm" />
-                    <span className="text-indigo-500">Upgrade</span>
+                    <EnvironmentCombo
+                      environment={{ type: "PREVIEW" }}
+                      className={ENV_POPOVER_ITEM_LABEL}
+                      iconClassName={ENV_POPOVER_ITEM_ICON}
+                    />
+                    <span className={cn("text-indigo-500", ENV_POPOVER_ITEM_LABEL)}>Upgrade</span>
                   </div>
                 }
                 isSelected={false}
@@ -233,7 +253,11 @@ function Branches({
             textAlignLeft
             fullWidth
           >
-            <EnvironmentCombo environment={parentEnvironment} className="mx-auto grow text-2sm" />
+            <EnvironmentCombo
+              environment={parentEnvironment}
+              className={cn("mx-auto grow", ENV_POPOVER_ITEM_LABEL)}
+              iconClassName={ENV_POPOVER_ITEM_ICON}
+            />
           </ButtonContent>
         </PopoverTrigger>
         <PopoverContent
@@ -302,14 +326,16 @@ export function BranchesPopoverContent({
             to={urlForEnvironment(environment)}
             title={
               <>
-                <span className={cn("block w-full", envTextClassName)}>
+                <span className={cn("block w-full", envTextClassName, ENV_POPOVER_ITEM_LABEL)}>
                   {environment.branchName}
                 </span>
                 <Badge variant="extra-small">Archived</Badge>
               </>
             }
             icon={
-              <BranchEnvironmentIconSmall className={cn("size-4 shrink-0", envTextClassName)} />
+              <BranchEnvironmentIconSmall
+                className={cn(ENV_POPOVER_ITEM_ICON, "shrink-0", envTextClassName)}
+              />
             }
             isSelected={environment.id === currentEnvironment.id}
           />
@@ -323,13 +349,13 @@ export function BranchesPopoverContent({
                   key={env.id}
                   to={urlForEnvironment(env)}
                   title={
-                    <span className={cn("block w-full", envTextClassName)}>
+                    <span className={cn("block w-full", envTextClassName, ENV_POPOVER_ITEM_LABEL)}>
                       {env.branchName ?? DEFAULT_DEV_BRANCH}
                     </span>
                   }
                   icon={
                     <BranchEnvironmentIconSmall
-                      className={cn("size-4 shrink-0", envTextClassName)}
+                      className={cn(ENV_POPOVER_ITEM_ICON, "shrink-0", envTextClassName)}
                     />
                   }
                   isSelected={env.id === currentEnvironment.id}
@@ -362,15 +388,17 @@ export function BranchesPopoverContent({
           <PopoverMenuItem
             to={branchesDevPath(organization, project, environment)}
             title="Manage dev branches"
-            icon={<Cog8ToothIcon className="size-4 text-text-dimmed" />}
+            icon={<Cog8ToothIcon className={cn(ENV_POPOVER_ITEM_ICON, "text-text-dimmed")} />}
             leadingIconClassName="text-text-dimmed"
+            className={ENV_POPOVER_ITEM_LABEL}
           />
         ) : (
           <PopoverMenuItem
             to={branchesPath(organization, project, environment)}
             title="Manage preview branches"
-            icon={<Cog8ToothIcon className="size-4 text-text-dimmed" />}
+            icon={<Cog8ToothIcon className={cn(ENV_POPOVER_ITEM_ICON, "text-text-dimmed")} />}
             leadingIconClassName="text-text-dimmed"
+            className={ENV_POPOVER_ITEM_LABEL}
           />
         )}
       </div>

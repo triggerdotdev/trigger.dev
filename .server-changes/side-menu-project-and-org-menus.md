@@ -14,6 +14,9 @@ Restructure the side menu's top-left and project/organization navigation:
   connections, Roles, SSO, Vercel integration, Slack integration, Switch
   organization, then Account and Logout) using the same icons and links as the
   organization settings side menu.
+- Match the Environment selector popover's item sizing (icons and labels,
+  including the branch submenu and its footer) to the Project popover so the two
+  side-menu menus are visually consistent.
 
 The org loader now exposes whether the RBAC and SSO plugins are installed so the
 side menu can gate the Roles and SSO items the same way the settings side menu
