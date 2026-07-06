@@ -2910,4 +2910,110 @@ describe("API", () => {
       });
     });
   });
+
+  // PAT *action* routes (createActionPATApiRoute). Target: PUT
+  // /api/v1/projects/:projectRef/default-region — the first consumer of the
+  // new mutation builder. Exercises the method guard, body parsing, PAT auth,
+  // and the membership floor. The manage:project authorization block can't be
+  // driven to a 403 here: the OSS fallback ability is permissive
+  // (can: () => true), so role-based denial only bites with the cloud plugin
+  // loaded — that path is covered by the plugin's own tests.
+  describe("Default region — PAT action route", () => {
+    const pathFor = (ref: string) => `/api/v1/projects/${ref}/default-region`;
+    const putRegion = (path: string, headers: Record<string, string>, body?: unknown) =>
+      getTestServer().webapp.fetch(path, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+
+    it("missing Authorization: 401", async () => {
+      const res = await putRegion(pathFor("proj_nope"), {}, { region: "aws-us-east-1" });
+      expect(res.status).toBe(401);
+    });
+
+    it("non-PAT token: 401", async () => {
+      const res = await putRegion(
+        pathFor("proj_nope"),
+        { Authorization: "Bearer not-a-real-token" },
+        { region: "aws-us-east-1" }
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("revoked PAT: 401", async () => {
+      const server = getTestServer();
+      const { user } = await seedTestUserProject(server.prisma);
+      const revoked = await seedTestPAT(server.prisma, user.id, { revoked: true });
+      const res = await putRegion(
+        pathFor("proj_nope"),
+        { Authorization: `Bearer ${revoked.token}` },
+        { region: "aws-us-east-1" }
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("wrong method (POST): 405", async () => {
+      // A valid token is needed to clear the global api rate-limit middleware
+      // (it 401s unauthenticated /api requests before the route runs); the
+      // builder's method guard then rejects the non-PUT with 405.
+      const server = getTestServer();
+      const { pat } = await seedTestUserProject(server.prisma);
+      const res = await getTestServer().webapp.fetch(pathFor("proj_nope"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ region: "aws-us-east-1" }),
+      });
+      expect(res.status).toBe(405);
+    });
+
+    it("valid PAT, empty body: 400", async () => {
+      const server = getTestServer();
+      const { project, pat } = await seedTestUserProject(server.prisma);
+      const res = await getTestServer().webapp.fetch(pathFor(project.externalRef), {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("valid PAT, body missing region: 400", async () => {
+      const server = getTestServer();
+      const { project, pat } = await seedTestUserProject(server.prisma);
+      const res = await putRegion(
+        pathFor(project.externalRef),
+        { Authorization: `Bearer ${pat.token}` },
+        {}
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("valid PAT, project in another user's org: 404 (membership floor)", async () => {
+      const server = getTestServer();
+      const a = await seedTestUserProject(server.prisma);
+      const b = await seedTestUserProject(server.prisma);
+      const res = await putRegion(
+        pathFor(b.project.externalRef),
+        { Authorization: `Bearer ${a.pat.token}` },
+        { region: "aws-us-east-1" }
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("valid PAT, own project, unknown region: auth passes, handler runs", async () => {
+      const server = getTestServer();
+      const { project, pat } = await seedTestUserProject(server.prisma);
+      const res = await putRegion(
+        pathFor(project.externalRef),
+        { Authorization: `Bearer ${pat.token}` },
+        { region: "definitely-not-a-region" }
+      );
+      // No worker groups seeded → the presenter yields no regions → the handler
+      // returns 400 "region not found". The point: the builder let the request
+      // through to the handler (auth + method + body all passed).
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+      expect(res.status).not.toBe(405);
+    });
+  });
 });
