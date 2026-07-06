@@ -22,6 +22,8 @@
     "**/.changeset/",
     "**/dist/",
     "internal-packages/tsql/src/grammar/",
+    "internal-packages/llm-model-catalog/src/defaultPrices.ts",
+    "internal-packages/llm-model-catalog/src/modelCatalog.ts",
     // Maybe turn these on in the future
     "**/*.yaml",
     "**/*.mdx",
