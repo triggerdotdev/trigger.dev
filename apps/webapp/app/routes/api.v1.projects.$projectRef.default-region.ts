@@ -55,7 +55,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Project not found" }, { status: 404 });
     }
 
-    // Setting a project's region is Owner-only (via manage:all).
     const denied = await authorizePatOrganizationAccess({
       request,
       organizationId: project.organizationId,

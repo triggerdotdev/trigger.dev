@@ -46,8 +46,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Organization not found" }, { status: 404 });
     }
 
-    // Rename/delete are Owner-only (via manage:all). Membership resolution above
-    // is the OSS floor; this is the role gate enforced when the RBAC plugin runs.
     const denied = await authorizePatOrganizationAccess({
       request,
       organizationId: organization.id,

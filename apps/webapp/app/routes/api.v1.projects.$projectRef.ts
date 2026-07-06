@@ -114,8 +114,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Project not found" }, { status: 404 });
   }
 
-  // Rename/delete are Owner-only (via manage:all); membership resolve above is
-  // the OSS floor, this is the role gate when the RBAC plugin runs.
   const denied = await authorizePatOrganizationAccess({
     request,
     organizationId: project.organizationId,
