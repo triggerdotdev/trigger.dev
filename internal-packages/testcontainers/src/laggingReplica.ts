@@ -45,7 +45,9 @@ export function laggingReplica<C extends object>(
               if (prop === "findMany") return [];
               if (prop === "count") return 0;
               if (prop === "findFirstOrThrow" || prop === "findUniqueOrThrow") {
-                throw new Error(`laggingReplica: ${modelName}.${prop} - row not visible on replica yet`);
+                throw new Error(
+                  `laggingReplica: ${modelName}.${prop} - row not visible on replica yet`
+                );
               }
               return null;
             }
@@ -60,7 +62,9 @@ export function laggingReplica<C extends object>(
           };
         }
         const value = (target as Record<string | symbol, unknown>)[prop];
-        return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+        return typeof value === "function"
+          ? (value as (...a: unknown[]) => unknown).bind(target)
+          : value;
       },
     });
 
@@ -72,7 +76,9 @@ export function laggingReplica<C extends object>(
         return makeModelProxy(prop as string, delegate, cfg);
       }
       const value = (target as Record<string | symbol, unknown>)[prop];
-      return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      return typeof value === "function"
+        ? (value as (...a: unknown[]) => unknown).bind(target)
+        : value;
     },
   }) as C;
 

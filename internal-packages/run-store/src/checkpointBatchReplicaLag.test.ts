@@ -81,7 +81,10 @@ describe("checkpoint WAIT_FOR_BATCH under replica lag", () => {
       expect(staleBatch.resumedAt).toBeNull();
 
       // The batch completes and resumes the parent: primary now has resumedAt set...
-      await prisma.batchTaskRun.update({ where: { id: batch.id }, data: { resumedAt: new Date() } });
+      await prisma.batchTaskRun.update({
+        where: { id: batch.id },
+        data: { resumedAt: new Date() },
+      });
 
       // ...but the replica lags, frozen at the pre-resume snapshot.
       const replica = laggingReplica(prisma, [
