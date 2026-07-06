@@ -11,7 +11,9 @@ import { setTimeout } from "node:timers/promises";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { setupClickhouseReplication } from "./utils/replicationUtils";
 
-vi.setConfig({ testTimeout: 60_000 });
+// 120s: raised from 60s — Postgres+ClickHouse replication testcontainers plus
+// Redlock are slow on a loaded CI runner and intermittently exceeded 60s.
+vi.setConfig({ testTimeout: 120_000 });
 
 describe("RunsRepository (part 2/4)", () => {
   replicationContainerTest(

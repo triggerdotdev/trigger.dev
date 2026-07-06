@@ -8,7 +8,9 @@ import { RunsReplicationService } from "~/services/runsReplicationService.server
 import { createInMemoryTracing } from "./utils/tracing";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
-vi.setConfig({ testTimeout: 60_000 });
+// 120s: raised from 60s — Postgres+ClickHouse replication testcontainers are
+// slow to come up on a loaded CI runner and intermittently exceeded 60s.
+vi.setConfig({ testTimeout: 120_000 });
 
 describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
   replicationContainerTest(

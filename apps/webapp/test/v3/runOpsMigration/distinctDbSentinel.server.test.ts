@@ -3,8 +3,10 @@ import { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import { probeDistinctDatabases } from "~/v3/runOpsMigration/distinctDbSentinel.server";
 
-// Spinning up two separate postgres clusters and probing each can exceed the 5s default.
-vi.setConfig({ testTimeout: 60_000 });
+// Spinning up two separate postgres clusters and probing each can exceed the 5s
+// default. 120s: raised from 60s — the two cold clusters intermittently exceeded
+// 60s on a loaded CI runner.
+vi.setConfig({ testTimeout: 120_000 });
 
 function urlWithDatabase(uri: string, database: string): string {
   const url = new URL(uri);

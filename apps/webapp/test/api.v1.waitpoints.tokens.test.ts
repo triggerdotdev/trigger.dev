@@ -25,7 +25,9 @@ import {
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { trace } from "@opentelemetry/api";
 
-vi.setConfig({ testTimeout: 60_000 });
+// 120s: raised from 60s — the two-DB (hetero run-ops) cases start extra
+// Postgres testcontainers whose cold startup intermittently exceeded 60s.
+vi.setConfig({ testTimeout: 120_000 });
 
 function buildEngine(opts: {
   prisma: any;

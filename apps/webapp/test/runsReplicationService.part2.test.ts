@@ -6,7 +6,10 @@ import { z } from "zod";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
-vi.setConfig({ testTimeout: 60_000 });
+// 120s: raised from 60s — Postgres+ClickHouse replication testcontainers plus
+// Redlock leader-election are slow on a loaded CI runner and intermittently
+// exceeded 60s.
+vi.setConfig({ testTimeout: 120_000 });
 
 describe("RunsReplicationService (part 2/7)", () => {
   replicationContainerTest(

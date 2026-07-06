@@ -6,7 +6,9 @@ import { RunsReplicationService } from "~/services/runsReplicationService.server
 import { createInMemoryMetrics } from "./utils/tracing";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
-vi.setConfig({ testTimeout: 90_000 });
+// 120s: raised from 90s — Postgres+ClickHouse replication testcontainers are
+// slow to come up on a loaded CI runner and intermittently exceeded 90s.
+vi.setConfig({ testTimeout: 120_000 });
 
 // Copied from runsReplicationService.part4.test.ts (the only replication part-test that
 // injects a meter). These read metric data points out of the in-memory reader.

@@ -14,7 +14,9 @@ import { PostgresRunStore } from "@internal/run-store";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
-vi.setConfig({ testTimeout: 60_000 });
+// 120s: the hetero PG14+PG17 case starts two Postgres testcontainers whose
+// cold startup on a loaded CI runner intermittently pushed setup past 60s.
+vi.setConfig({ testTimeout: 120_000 });
 
 function createEngineOptions(redisOptions: any, prisma: any) {
   return {

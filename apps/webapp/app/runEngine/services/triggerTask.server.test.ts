@@ -46,7 +46,9 @@ import type {
 } from "~/runEngine/types";
 import { RunEngineTriggerTaskService } from "./triggerTask.server";
 
-vi.setConfig({ testTimeout: 60_000 }); // 60 seconds timeout
+// 120s: raised from 60s — cold testcontainer startup + worker shutdown on a
+// loaded CI runner intermittently exceeded 60s.
+vi.setConfig({ testTimeout: 120_000 });
 
 class MockPayloadProcessor implements PayloadProcessor {
   async process(request: TriggerTaskRequest): Promise<IOPacket> {
