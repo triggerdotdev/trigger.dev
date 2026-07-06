@@ -39,8 +39,9 @@ export const GetProjectResponseBody = z.object({
   slug: z.string(),
   createdAt: z.coerce.date(),
   // Worker-group name of the project's default region, or null when unset
-  // (the project falls back to the global platform default).
-  defaultRegion: z.string().nullable(),
+  // (the project falls back to the global platform default). Optional so a
+  // newer client still parses responses from an older server that omits it.
+  defaultRegion: z.string().nullable().optional(),
   organization: z.object({
     id: z.string(),
     title: z.string(),
