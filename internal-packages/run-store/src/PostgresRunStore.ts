@@ -527,6 +527,25 @@ export class PostgresRunStore implements RunStore {
     );
   }
 
+  // Run `fn` atomically: reuse the caller's interactive transaction if it gave us a real one, else open
+  // our own on this store's writer. A real interactive tx has no `$transaction` method; a base client
+  // (which callers, e.g. the engine's dequeue/resume paths, thread through for routing) DOES - so a base
+  // client still gets a fresh transaction. Used by write methods that create a row plus dependent rows
+  // (snapshot + completed-waitpoints, run + associated-waitpoint) which must commit together.
+  #withOptionalTransaction<R>(
+    tx: PrismaClientOrTransaction | undefined,
+    fn: (client: PrismaClientOrTransaction) => Promise<R>
+  ): Promise<R> {
+    const alreadyInTransaction =
+      tx !== undefined && typeof (tx as { $transaction?: unknown }).$transaction !== "function";
+    if (alreadyInTransaction) {
+      return fn(tx);
+    }
+    return (this.prisma as RunOpsTransactionalClient).$transaction((t) =>
+      fn(t as unknown as PrismaClientOrTransaction)
+    );
+  }
+
   async createRun(
     params: CreateRunInput,
     tx?: PrismaClientOrTransaction
@@ -547,15 +566,19 @@ export class PostgresRunStore implements RunStore {
     };
 
     if (this.schemaVariant === "dedicated") {
-      const run = (await client.taskRun.create({
-        data: {
-          ...params.data,
-          executionSnapshots: { create: snapshotCreate },
-        },
-      })) as TaskRun;
+      // The run + its associated RUN-type waitpoint are two writes here (the legacy branch below nests
+      // them). Commit them together so a crash / lagging read never leaves a run without its waitpoint.
+      return this.#withOptionalTransaction(tx, async (c) => {
+        const run = (await c.taskRun.create({
+          data: {
+            ...params.data,
+            executionSnapshots: { create: snapshotCreate },
+          },
+        })) as TaskRun;
 
-      const associatedWaitpoint = await this.#createAssociatedWaitpoint(client, run.id, params);
-      return { ...run, associatedWaitpoint };
+        const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
+        return { ...run, associatedWaitpoint };
+      });
     }
 
     return client.taskRun.create({
@@ -633,12 +656,15 @@ export class PostgresRunStore implements RunStore {
     const client = tx ?? this.prisma;
 
     if (this.schemaVariant === "dedicated") {
-      const run = (await client.taskRun.create({
-        data: { ...params.data },
-      })) as TaskRun;
+      // Run + associated RUN-type waitpoint are two writes here; commit them together (see createRun).
+      return this.#withOptionalTransaction(tx, async (c) => {
+        const run = (await c.taskRun.create({
+          data: { ...params.data },
+        })) as TaskRun;
 
-      const associatedWaitpoint = await this.#createAssociatedWaitpoint(client, run.id, params);
-      return { ...run, associatedWaitpoint };
+        const associatedWaitpoint = await this.#createAssociatedWaitpoint(c, run.id, params);
+        return { ...run, associatedWaitpoint };
+      });
     }
 
     return client.taskRun.create({
@@ -954,8 +980,17 @@ export class PostgresRunStore implements RunStore {
     data: LockRunData,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{}>> {
-    const prisma = tx ?? this.prisma;
+    // The run-lock update (with its nested PENDING_EXECUTING snapshot) and the completed-waitpoint
+    // connect must commit together, or a replica-served resume read can see the snapshot without its
+    // links and drop the resume.
+    return this.#withOptionalTransaction(tx, (c) => this.#lockRunToWorker(runId, data, c));
+  }
 
+  async #lockRunToWorker(
+    runId: string,
+    data: LockRunData,
+    prisma: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{}>> {
     const dedicated = this.schemaVariant === "dedicated";
 
     const result = await prisma.taskRun.update({
@@ -1533,8 +1568,17 @@ export class PostgresRunStore implements RunStore {
     input: CreateExecutionSnapshotInput,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>> {
-    const prisma = tx ?? this.prisma;
+    // The snapshot row and its completed-waitpoint join rows MUST commit together. `/snapshots/since`
+    // can be served from a lagging read replica, so a snapshot that commits before its links can be
+    // read back waitpoint-less and the runner's resume is lost (the run hangs). This is the warm-continue
+    // path: the engine threads its base prisma through as `tx`, which is not a real transaction.
+    return this.#withOptionalTransaction(tx, (c) => this.#createExecutionSnapshot(input, c));
+  }
 
+  async #createExecutionSnapshot(
+    input: CreateExecutionSnapshotInput,
+    prisma: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>> {
     const {
       run,
       snapshot,
