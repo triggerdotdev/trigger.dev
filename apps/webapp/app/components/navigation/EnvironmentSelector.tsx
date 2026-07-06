@@ -2,10 +2,9 @@ import { ChevronRightIcon, Cog8ToothIcon } from "@heroicons/react/20/solid";
 import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
 import { isBranchableEnvironment } from "~/utils/branchableEnvironment";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
-import { useNavigation } from "@remix-run/react";
+import { useNavigation, useRevalidator } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
-import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEnvironmentSwitcher } from "~/hooks/useEnvironmentSwitcher";
 import { useFeatures } from "~/hooks/useFeatures";
@@ -53,9 +52,7 @@ export function EnvironmentSelector({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigation = useNavigation();
   const { urlForEnvironment } = useEnvironmentSwitcher();
-
-  // Keep branch list fresh, only fires while the menu is open
-  const revalidator = useAutoRevalidate({ interval: 5000, disabled: !isMenuOpen });
+  const revalidator = useRevalidator();
 
   useEffect(() => {
     setIsMenuOpen(false);
