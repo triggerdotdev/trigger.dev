@@ -13,6 +13,7 @@ export type RunQueueWaiting = {
   delayP50Ms: number | null;
   delayP95Ms: number | null;
   loadedAt: number;
+  ids: { organizationId: string; projectId: string; environmentId: string };
   concurrencyKey: {
     key: string;
     queued: number;
@@ -23,6 +24,7 @@ export type RunQueueWaiting = {
 
 export type RunQueueMetrics = {
   queueFriendlyId: string | null;
+  queueName: string;
   paused: boolean;
   waiting: RunQueueWaiting | null;
 };
@@ -64,6 +66,7 @@ export async function resolveRunQueueMetrics(options: {
 
     const base: RunQueueMetrics = {
       queueFriendlyId: taskQueue?.friendlyId ?? null,
+      queueName: run.queue.name,
       paused: taskQueue?.paused ?? false,
       waiting: null,
     };
@@ -106,6 +109,11 @@ export async function resolveRunQueueMetrics(options: {
         delayP50Ms: delays.p50,
         delayP95Ms: delays.p95,
         loadedAt,
+        ids: {
+          organizationId: project.organizationId,
+          projectId: project.id,
+          environmentId: environment.id,
+        },
         concurrencyKey: ck
           ? {
               key: ck,

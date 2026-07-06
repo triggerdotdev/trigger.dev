@@ -6,6 +6,7 @@ import {
   type ChartState,
 } from "~/components/primitives/charts/ChartCompound";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { UsageSparkline } from "~/components/primitives/UsageSparkline";
 import {
   useMetricResourceQuery,
   type MetricResourceTimeRange,
@@ -79,19 +80,7 @@ export function formatWaitMs(ms: number): string {
 
 export type QueueMetricSeriesConfig = { key: string; label: string; color: string };
 
-export function QueueMetricChartCard({
-  title,
-  query,
-  series,
-  ids,
-  timeRange,
-  queueName,
-  valueFormat,
-  fillGaps,
-  defaultPeriod,
-  className,
-}: {
-  title: string;
+type QueueMetricChartProps = {
   query: string;
   series: QueueMetricSeriesConfig[];
   ids: QueueMetricIds;
@@ -100,8 +89,19 @@ export function QueueMetricChartCard({
   valueFormat?: (value: number) => string;
   fillGaps?: boolean;
   defaultPeriod?: string;
-  className?: string;
-}) {
+};
+
+// Bare chart (no card chrome) so it can live inside a shared card, e.g. a tabbed panel.
+export function QueueMetricChart({
+  query,
+  series,
+  ids,
+  timeRange,
+  queueName,
+  valueFormat,
+  fillGaps,
+  defaultPeriod,
+}: QueueMetricChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(query, {
     ids,
     timeRange,
@@ -136,24 +136,34 @@ export function QueueMetricChartCard({
   const state: ChartState = showLoading ? "loading" : failed ? "invalid" : undefined;
 
   return (
+    <Chart.Root
+      config={chartConfig}
+      data={data}
+      dataKey="bucket"
+      series={series.map((s) => s.key)}
+      state={state}
+      fillContainer
+    >
+      <Chart.Line
+        lineType="monotone"
+        xAxisProps={{ tickFormatter }}
+        yAxisProps={valueFormat ? { tickFormatter: (v: number) => valueFormat(v) } : undefined}
+        tooltipLabelFormatter={tooltipLabelFormatter}
+        tooltipValueFormatter={valueFormat}
+      />
+    </Chart.Root>
+  );
+}
+
+export function QueueMetricChartCard({
+  title,
+  className,
+  ...chart
+}: QueueMetricChartProps & { title: string; className?: string }) {
+  return (
     <div className={className ?? "h-64"}>
       <ChartCard title={title}>
-        <Chart.Root
-          config={chartConfig}
-          data={data}
-          dataKey="bucket"
-          series={series.map((s) => s.key)}
-          state={state}
-          fillContainer
-        >
-          <Chart.Line
-            lineType="monotone"
-            xAxisProps={{ tickFormatter }}
-            yAxisProps={valueFormat ? { tickFormatter: (v: number) => valueFormat(v) } : undefined}
-            tooltipLabelFormatter={tooltipLabelFormatter}
-            tooltipValueFormatter={valueFormat}
-          />
-        </Chart.Root>
+        <QueueMetricChart {...chart} />
       </ChartCard>
     </div>
   );
@@ -200,6 +210,76 @@ export function QueueSidebarStats({
           : `Delay p95 ${worstP95 > 0 ? formatWaitMs(worstP95) : "–"} · Peak backlog ${peakQueued.toLocaleString()}`}
       </Paragraph>
     </>
+  );
+}
+
+// A compact stat card with a recent trend sparkline underneath, for the run inspector.
+// The headline is a live "now" value from the loader; the sparkline pulls its own series.
+const SPARKLINE_PERIOD = "30m";
+
+export function QueueSparklineStat({
+  title,
+  headline,
+  headlineClassName,
+  query,
+  color,
+  ids,
+  queueName,
+  formatPeak,
+}: {
+  title: string;
+  headline: string;
+  headlineClassName?: string;
+  query: string;
+  color: string;
+  ids: QueueMetricIds;
+  queueName: string;
+  formatPeak?: (peak: number) => string;
+}) {
+  const timeRange: QueueMetricTimeRange = { period: SPARKLINE_PERIOD, from: null, to: null };
+  const { rows } = useQueueMetric(query, {
+    ids,
+    timeRange,
+    queueName,
+    fillGaps: true,
+    defaultPeriod: SPARKLINE_PERIOD,
+  });
+
+  const { data, bucketStartMs, bucketIntervalMs, peak } = useMemo(() => {
+    const points = rows
+      .map((r) => ({ bucket: clickhouseTimeToMs(r.t), v: toNumber(r.v) }))
+      .filter((p) => Number.isFinite(p.bucket))
+      .sort((a, b) => a.bucket - b.bucket);
+    return {
+      data: points.map((p) => p.v),
+      bucketStartMs: points[0]?.bucket,
+      bucketIntervalMs: points.length > 1 ? points[1]!.bucket - points[0]!.bucket : undefined,
+      peak: points.reduce((m, p) => Math.max(m, p.v), 0),
+    };
+  }, [rows]);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs uppercase tracking-wide text-text-dimmed">{title}</span>
+        {data.length > 0 && peak > 0 ? (
+          <span className="text-xs tabular-nums text-text-dimmed">
+            peak {formatPeak ? formatPeak(peak) : peak.toLocaleString()}
+          </span>
+        ) : null}
+      </div>
+      <div className={cn("text-xl tabular-nums text-text-bright", headlineClassName)}>
+        {headline}
+      </div>
+      <UsageSparkline
+        data={data}
+        bucketStartMs={bucketStartMs}
+        bucketIntervalMs={bucketIntervalMs}
+        color={color}
+        chartClassName="h-6 w-full"
+        hideTotal
+      />
+    </div>
   );
 }
 

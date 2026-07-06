@@ -1,7 +1,7 @@
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
@@ -11,6 +11,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
@@ -33,7 +34,7 @@ import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import {
   QUEUE_METRIC_COLORS,
-  QueueMetricChartCard,
+  QueueMetricChart,
   QueueSidebarStats,
   type QueueLiveCounts,
   type QueueMetricIds,
@@ -188,15 +189,25 @@ export default function Page() {
     to: value("to") ?? null,
   };
 
-  const runsByStatusCard = (
-    <ChartCard title="Runs by status">
-      <Suspense fallback={<ActivityChartSkeleton />}>
-        <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
-          {(result) => <ActivityChart activity={result} />}
-        </TypedAwait>
-      </Suspense>
-    </ChartCard>
+  const runsByStatusChart = (
+    <Suspense fallback={<ActivityChartSkeleton />}>
+      <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
+        {(result) => <ActivityChart activity={result} />}
+      </TypedAwait>
+    </Suspense>
   );
+
+  const activityPanel =
+    queueMetrics && task.queue ? (
+      <TaskActivityCard
+        runsByStatusChart={runsByStatusChart}
+        queueName={task.queue.name}
+        ids={queueMetrics.ids}
+        timeRange={timeRange}
+      />
+    ) : (
+      <ChartCard title="Runs by status">{runsByStatusChart}</ChartCard>
+    );
 
   return (
     <PageContainer>
@@ -233,28 +244,7 @@ export default function Page() {
                 {/* Activity chart */}
                 <ResizablePanel id="task-activity" min="220px" default="320px">
                   <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-2">
-                    <ChartSyncProvider onZoom={zoomToTimeFilter}>
-                      {queueMetrics && task.queue ? (
-                        <div className="grid h-full min-h-0 grid-cols-2 gap-2">
-                          {runsByStatusCard}
-                          <QueueMetricChartCard
-                            title={`Queue backlog: ${task.queue.name}`}
-                            query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-                            fillGaps
-                            ids={queueMetrics.ids}
-                            timeRange={timeRange}
-                            queueName={task.queue.name}
-                            defaultPeriod="7d"
-                            className="h-full min-h-0"
-                            series={[
-                              { key: "queued", label: "Queued", color: QUEUE_METRIC_COLORS.queued },
-                            ]}
-                          />
-                        </div>
-                      ) : (
-                        runsByStatusCard
-                      )}
-                    </ChartSyncProvider>
+                    <ChartSyncProvider onZoom={zoomToTimeFilter}>{activityPanel}</ChartSyncProvider>
                   </div>
                 </ResizablePanel>
 
@@ -463,6 +453,58 @@ function formatRetrySummary(retry: TaskDetail["retry"]): string {
   if (!retry || retry.maxAttempts === undefined) return "–";
   if (retry.maxAttempts <= 1) return "Disabled";
   return `${retry.maxAttempts} attempts`;
+}
+
+// Activity panel for tasks with a queue: tabs in the card header switch between the
+// runs-by-status chart and the queue backlog, so we never add a second chart alongside.
+function TaskActivityCard({
+  runsByStatusChart,
+  queueName,
+  ids,
+  timeRange,
+}: {
+  runsByStatusChart: React.ReactNode;
+  queueName: string;
+  ids: QueueMetricIds;
+  timeRange: { period: string | null; from: string | null; to: string | null };
+}) {
+  const [view, setView] = useState<"runs" | "queue">("runs");
+  return (
+    <ChartCard
+      title={
+        <TabContainer>
+          <TabButton
+            isActive={view === "runs"}
+            layoutId="task-activity-view"
+            onClick={() => setView("runs")}
+          >
+            Runs by status
+          </TabButton>
+          <TabButton
+            isActive={view === "queue"}
+            layoutId="task-activity-view"
+            onClick={() => setView("queue")}
+          >
+            Queue backlog
+          </TabButton>
+        </TabContainer>
+      }
+    >
+      {view === "queue" ? (
+        <QueueMetricChart
+          query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          defaultPeriod="7d"
+          series={[{ key: "queued", label: "Queued", color: QUEUE_METRIC_COLORS.queued }]}
+        />
+      ) : (
+        runsByStatusChart
+      )}
+    </ChartCard>
+  );
 }
 
 function ActivityChart({ activity }: { activity: TaskActivity }) {

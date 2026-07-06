@@ -82,7 +82,7 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { formatWaitMs } from "~/components/queues/QueueMetricCards";
+import { formatWaitMs, QueueSparklineStat } from "~/components/queues/QueueMetricCards";
 import {
   resolveRunQueueMetrics,
   type RunQueueMetrics,
@@ -1117,6 +1117,7 @@ function RunBody({
               </div>
               {queueMetrics?.waiting ? (
                 <WaitingInQueueBlock
+                  queueName={queueMetrics.queueName}
                   queuePath={queuePath}
                   paused={queueMetrics.paused}
                   waiting={queueMetrics.waiting}
@@ -1183,11 +1184,13 @@ function RunBody({
 }
 
 function WaitingInQueueBlock({
+  queueName,
   queuePath,
   paused,
   waiting,
   status,
 }: {
+  queueName: string;
   queuePath: string | undefined;
   paused: boolean;
   waiting: RunQueueWaiting;
@@ -1205,31 +1208,50 @@ function WaitingInQueueBlock({
       : `${running.toLocaleString()} running`;
 
   return (
-    <div className="flex flex-col gap-2 rounded-sm border border-grid-bright p-3">
+    <div className="flex flex-col gap-3 border-b border-grid-bright pb-4">
       <div className="flex items-center justify-between gap-2">
         <Header3>Waiting in queue</Header3>
         {queuePath ? <TextLink to={queuePath}>View queue</TextLink> : null}
       </div>
-      <Paragraph variant="small" className="tabular-nums">
-        {waiting.queued.toLocaleString()} queued · {runningLabel(waiting.running, !key)}
-        {waiting.delayP95Ms !== null
-          ? ` · p95 delay ${formatWaitMs(waiting.delayP95Ms)} in the last hour`
+      <div className="grid grid-cols-2 gap-x-6">
+        <QueueSparklineStat
+          title="Backlog"
+          headline={`${waiting.queued.toLocaleString()} queued`}
+          query={`SELECT timeBucket() AS t, max(max_queued) AS v\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          color="#A78BFA"
+          ids={waiting.ids}
+          queueName={queueName}
+        />
+        <QueueSparklineStat
+          title="Scheduling delay (p95)"
+          headline={waiting.delayP95Ms !== null ? formatWaitMs(waiting.delayP95Ms) : "–"}
+          headlineClassName={
+            waiting.delayP95Ms !== null && waiting.delayP95Ms >= 60_000 ? "text-warning" : undefined
+          }
+          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS v\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          color="#F59E0B"
+          ids={waiting.ids}
+          queueName={queueName}
+          formatPeak={(v) => formatWaitMs(v)}
+        />
+      </div>
+      <Paragraph variant="small" className="tabular-nums text-text-dimmed">
+        {runningLabel(waiting.running, !key)}
+        {key
+          ? ` · key ${key.key}: ${key.queued.toLocaleString()} queued · ${runningLabel(
+              key.running,
+              true
+            )}${key.oldestWaitMs !== null ? ` · oldest wait ${formatWaitMs(key.oldestWaitMs)}` : ""}`
           : ""}
       </Paragraph>
-      {key ? (
-        <Paragraph variant="small" className="tabular-nums">
-          Key {key.key}: {key.queued.toLocaleString()} queued · {runningLabel(key.running, true)}
-          {key.oldestWaitMs !== null ? ` · oldest wait ${formatWaitMs(key.oldestWaitMs)}` : ""}
-        </Paragraph>
-      ) : null}
       {paused ? (
-        <Callout variant="warning">
-          This queue is paused. Runs will not start until it is resumed.
-        </Callout>
+        <Paragraph variant="small" className="text-warning">
+          Queue is paused. Runs will not start until it is resumed.
+        </Paragraph>
       ) : showAtLimit ? (
-        <Callout variant="info">
-          At the queue&apos;s concurrency limit. This run starts when a running one finishes.
-        </Callout>
+        <Paragraph variant="small" className="text-warning">
+          At the concurrency limit. This run starts when a running one finishes.
+        </Paragraph>
       ) : null}
     </div>
   );

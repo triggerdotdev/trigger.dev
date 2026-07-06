@@ -33,6 +33,10 @@ export type UsageSparklineProps = {
   formatTotal?: (total: number) => string;
   /** Class for the trailing total label. */
   totalClassName?: string;
+  /** Size of the bar chart. Defaults to the list-cell size (`h-6 w-28`). */
+  chartClassName?: string;
+  /** Hide the trailing total (e.g. when the caller shows its own headline). */
+  hideTotal?: boolean;
 };
 
 /**
@@ -49,6 +53,8 @@ export function UsageSparkline({
   total: totalOverride,
   formatTotal,
   totalClassName = "text-blue-400",
+  chartClassName = "h-6 w-28",
+  hideTotal = false,
 }: UsageSparklineProps) {
   const hasTotalOverride = totalOverride !== undefined;
   if (!data || data.length === 0 || (data.every((v) => v === 0) && !hasTotalOverride)) {
@@ -70,7 +76,7 @@ export function UsageSparkline({
 
   return (
     <div className="flex items-start gap-2">
-      <div className="h-6 w-28 rounded-sm">
+      <div className={cn("rounded-sm", chartClassName)}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
             <YAxis domain={[0, max || 1]} hide />
@@ -100,9 +106,11 @@ export function UsageSparkline({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <span className={cn("-mt-1 text-xs tabular-nums", totalClassName)}>
-        {formatTotal ? formatTotal(total) : total.toLocaleString()}
-      </span>
+      {hideTotal ? null : (
+        <span className={cn("-mt-1 text-xs tabular-nums", totalClassName)}>
+          {formatTotal ? formatTotal(total) : total.toLocaleString()}
+        </span>
+      )}
     </div>
   );
 }
