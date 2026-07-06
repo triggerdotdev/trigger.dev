@@ -20,7 +20,7 @@ permissions: {}
 jobs:
   dispatch:
     name: Dispatch preview-deploy to cloud
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     #   label added             -> create
     #   new commit while labeled -> update
     #   label removed / PR closed -> destroy

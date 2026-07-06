@@ -42,7 +42,7 @@ permissions:
 jobs:
   publish:
     name: Build and publish previews
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     if: github.repository == 'triggerdotdev/trigger.dev'
     steps:
       - name: ⬇️ Checkout repo

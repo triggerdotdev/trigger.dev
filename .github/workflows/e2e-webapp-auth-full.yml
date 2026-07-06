@@ -37,7 +37,7 @@ on:
 jobs:
   e2eAuthFull:
     name: "🛡️ E2E Auth Tests (full)"
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

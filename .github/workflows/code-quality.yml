@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   code-quality:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
 
     steps:
       - name: ⬇️ Checkout repo

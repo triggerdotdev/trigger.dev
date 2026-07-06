@@ -128,7 +128,7 @@ jobs:
     name: 📣 Dispatch main image
     needs: [publish-webapp]
     if: github.repository == (vars.MAIN_IMAGE_DISPATCH_REPO || 'triggerdotdev/trigger.dev') && github.event_name == 'push' && startsWith(github.ref_name, vars.MAIN_IMAGE_DISPATCH_REF_PREFIX || 'main')
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions: {}
     steps:
       - name: Build dispatch payload
