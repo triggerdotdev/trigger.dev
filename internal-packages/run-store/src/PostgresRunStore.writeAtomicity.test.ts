@@ -699,7 +699,9 @@ describe("createExecutionSnapshot / lockRunToWorker write the snapshot and its l
         )
       ).rejects.toThrow();
 
-      const snap = await prisma17.taskRunExecutionSnapshot.findUnique({ where: { id: snapshotId } });
+      const snap = await prisma17.taskRunExecutionSnapshot.findUnique({
+        where: { id: snapshotId },
+      });
       expect(snap).toBeNull();
       // The whole lock write must roll back, not just the status: no lock columns may leak through.
       const run = await prisma17.taskRun.findUniqueOrThrow({ where: { id: runId } });
