@@ -35,7 +35,7 @@ import {
   MockTriggerTaskValidator,
 } from "./triggerTaskTestHelpers";
 
-vi.setConfig({ testTimeout: 60_000 });
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describe("RunEngineTriggerTaskService", () => {
   containerTest("should handle idempotency keys correctly", async ({ prisma, redisOptions }) => {

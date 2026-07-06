@@ -33,7 +33,7 @@ import {
   MockTriggerTaskValidator,
 } from "./triggerTaskTestHelpers";
 
-vi.setConfig({ testTimeout: 60_000 });
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 describe("RunEngineTriggerTaskService", () => {
   containerTest("should trigger a task with minimal options", async ({ prisma, redisOptions }) => {
