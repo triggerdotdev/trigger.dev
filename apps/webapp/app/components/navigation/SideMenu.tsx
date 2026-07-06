@@ -156,6 +156,14 @@ function getSectionCollapsed(
 const SIDE_MENU_POPOVER_ITEM_ICON = "h-5 w-5 text-text-dimmed";
 const SIDE_MENU_POPOVER_ITEM_LABEL = "text-[0.90625rem] font-medium tracking-[-0.01em]";
 
+// Accent used to signal impersonation mode across the UI (the side menu border and the
+// "Stop impersonating" action). Full class strings per Tailwind's static scanning — change
+// the shade here to update everywhere.
+const IMPERSONATION_ACCENT = {
+  border: "border-yellow-500/80",
+  text: "text-yellow-500/80",
+};
+
 type SideMenuUser = Pick<
   UserWithDashboardPreferences,
   "email" | "admin" | "dashboardPreferences"
@@ -296,7 +304,8 @@ export function SideMenu({
   return (
     <div
       className={cn(
-        "relative h-full border-r border-grid-bright bg-background-bright transition-all duration-200",
+        "relative h-full border-r bg-background-bright transition-all duration-200",
+        user.isImpersonating ? IMPERSONATION_ACCENT.border : "border-grid-bright",
         isCollapsed ? "w-[2.75rem]" : "w-56"
       )}
     >
@@ -1029,7 +1038,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
               <PopoverMenuItem
                 title={
                   <div className="flex w-full items-center justify-between">
-                    <span className="text-amber-400">Stop impersonating</span>
+                    <span className={IMPERSONATION_ACCENT.text}>Stop impersonating</span>
                     <span className="flex items-center gap-1">
                       <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
                       <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
@@ -1038,7 +1047,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
                 }
                 icon={UserCrossIcon}
                 onClick={stopImpersonating}
-                leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, "text-amber-400")}
+                leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, IMPERSONATION_ACCENT.text)}
                 className={SIDE_MENU_POPOVER_ITEM_LABEL}
               />
             ) : (
