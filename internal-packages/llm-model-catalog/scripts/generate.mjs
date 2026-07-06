@@ -12,11 +12,18 @@
 //   - Catalog:  pnpm run generate-catalog  (uses Claude CLI to research models)
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcDir = join(__dirname, "..", "src");
+
+// Generated files are checked in, so their output must match oxfmt (the repo
+// formatter) exactly. JSON.stringify emits quoted keys and no trailing commas,
+// which oxfmt rewrites, so without this the files show as modified every time
+// `turbo run generate` runs (e.g. as part of `pnpm run db:migrate`).
+const written = [];
 
 // --- 1. Generate defaultPrices.ts from default-model-prices.json ---
 
@@ -49,7 +56,9 @@ if (existsSync(pricesJsonPath)) {
   out += "export const defaultModelPrices: DefaultModelDefinition[] = ";
   out += JSON.stringify(stripped, null, 2) + ";\n";
 
-  writeFileSync(join(srcDir, "defaultPrices.ts"), out);
+  const outPath = join(srcDir, "defaultPrices.ts");
+  writeFileSync(outPath, out);
+  written.push(outPath);
   console.log(`Generated defaultPrices.ts (${stripped.length} models)`);
 } else {
   console.log("Skipping defaultPrices.ts — default-model-prices.json not found");
@@ -91,8 +100,17 @@ if (existsSync(catalogJsonPath)) {
   out += "export const modelCatalog: Record<string, ModelCatalogEntry> = ";
   out += JSON.stringify(data, null, 2) + ";\n";
 
-  writeFileSync(join(srcDir, "modelCatalog.ts"), out);
+  const outPath = join(srcDir, "modelCatalog.ts");
+  writeFileSync(outPath, out);
+  written.push(outPath);
   console.log(`Generated modelCatalog.ts (${Object.keys(data).length} entries)`);
 } else {
   console.log("Skipping modelCatalog.ts — model-catalog.json not found");
+}
+
+// --- 3. Format generated files with oxfmt so they match the committed output ---
+
+if (written.length > 0) {
+  execFileSync("pnpm", ["exec", "oxfmt", ...written], { stdio: "inherit" });
+  console.log(`Formatted ${written.length} file(s) with oxfmt`);
 }
