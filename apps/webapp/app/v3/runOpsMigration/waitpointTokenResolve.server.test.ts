@@ -102,6 +102,9 @@ describe("public wait-token resolution across the split boundary", () => {
         deps: {
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma17 as unknown as PrismaReplicaClient,
+          // The run-ops-primary fallback is also pinned at run-ops, which does not hold this
+          // control-plane token, so the miss stays a miss (fallback never reads the control-plane).
+          newPrimary: prisma17 as unknown as PrismaReplicaClient,
         },
       });
 
