@@ -27,6 +27,9 @@ Refresh the side menu and account UI:
 - Align the organization settings and account side menus' horizontal padding
   with the main side menu, and tighten the "Personal Access Tokens" label so it
   no longer truncates.
+- Restyle the "Shortcuts" and "Contact us…" entries in the Help & Feedback
+  popover to match the other menu items (icon size/alignment, dimmed text, text
+  size).
 
 The org loader now exposes whether the RBAC and SSO plugins are installed so the
 side menu can gate the Roles and SSO items the same way the settings side menu

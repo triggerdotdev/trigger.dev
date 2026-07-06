@@ -13,12 +13,11 @@ import { useRecentChangelogs } from "~/routes/resources.platform-changelogs";
 import { cn } from "~/utils/cn";
 import { Feedback } from "../Feedback";
 import { Shortcuts } from "../Shortcuts";
-import { Button } from "../primitives/Buttons";
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { SimpleTooltip } from "../primitives/Tooltip";
-import { SideMenuItem } from "./SideMenuItem";
+import { SideMenuItem, SideMenuItemButton } from "./SideMenuItem";
 
 export function HelpAndFeedback({
   disableShortcut = false,
@@ -125,17 +124,11 @@ export function HelpAndFeedback({
               <Shortcuts />
               <Feedback
                 button={
-                  <Button
-                    variant="small-menu-item"
-                    className="pl-2"
-                    LeadingIcon={EnvelopeIcon}
-                    leadingIconClassName="pr-1 text-text-dimmed group-hover/button:text-text-bright"
+                  <SideMenuItemButton
+                    icon={EnvelopeIcon}
+                    name="Contact us…"
                     data-action="contact-us"
-                    fullWidth
-                    textAlignLeft
-                  >
-                    Contact us…
-                  </Button>
+                  />
                 }
               />
             </div>

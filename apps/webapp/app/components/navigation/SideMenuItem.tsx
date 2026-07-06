@@ -1,4 +1,9 @@
-import { type AnchorHTMLAttributes, type ReactNode } from "react";
+import {
+  type AnchorHTMLAttributes,
+  type ButtonHTMLAttributes,
+  forwardRef,
+  type ReactNode,
+} from "react";
 import { Link } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { usePathName } from "~/hooks/usePathName";
@@ -161,3 +166,33 @@ export function SideMenuItem({
     />
   );
 }
+
+/**
+ * A button styled to match {@link SideMenuItem}, for menu entries that open a
+ * dialog/sheet rather than navigate. Forwards its ref and props so it can be
+ * used as a Radix `asChild` trigger.
+ */
+export const SideMenuItemButton = forwardRef<
+  HTMLButtonElement,
+  { icon: RenderIcon; name: string } & ButtonHTMLAttributes<HTMLButtonElement>
+>(function SideMenuItemButton({ icon, name, className, type, ...props }, ref) {
+  return (
+    <button
+      ref={ref}
+      type={type ?? "button"}
+      className={cn(
+        "group/menuitem flex h-8 w-full items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2 text-left text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright focus-custom",
+        className
+      )}
+      {...props}
+    >
+      <Icon
+        icon={icon}
+        className="size-5 shrink-0 text-text-dimmed group-hover/menuitem:text-text-bright"
+      />
+      <span className="min-w-0 select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]">
+        {name}
+      </span>
+    </button>
+  );
+});
