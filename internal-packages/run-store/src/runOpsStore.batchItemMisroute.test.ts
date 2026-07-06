@@ -92,4 +92,40 @@ describe("run-ops split — completing a batch item routes by the batch id, not 
       expect(await prisma14.batchTaskRunItem.count({ where: { batchTaskRunId: batchId } })).toBe(0);
     }
   );
+
+  // createBatchTaskRunItem must co-locate the item with its BATCH (so the completion count, routed by
+  // batchTaskRunId, finds it), not with the child run. Routing by taskRunId would place a divergent-
+  // residency item on the child's DB -> invisible to the count -> the batch never completes -> parent hangs.
+  heteroRunOpsPostgresTest(
+    "createBatchTaskRunItem places the item on the batch's DB, routing by batchTaskRunId not taskRunId",
+    async ({ prisma14, prisma17 }: { prisma14: PrismaClient; prisma17: RunOpsPrismaClient }) => {
+      const router = makeSplitRouter(prisma14, prisma17);
+      const envId = "env_batchitem";
+      const batchId = `batch_${NEW_ID_26}`; // run-ops id -> #new
+      const runId = "c".repeat(25); // cuid -> classifies LEGACY (the divergent routing key)
+
+      await prisma17.batchTaskRun.create({
+        data: {
+          id: batchId,
+          friendlyId: "batch_create_new",
+          runtimeEnvironmentId: envId,
+          runCount: 1,
+          status: "PROCESSING",
+        },
+      });
+      // The run physically lives on #new (the batch's DB) so the item's FKs resolve there.
+      await seedDedicatedRun(prisma17, envId, runId);
+
+      await router.createBatchTaskRunItem({
+        batchTaskRunId: batchId,
+        taskRunId: runId,
+        status: "PENDING",
+      });
+
+      // GREEN: routed by batchTaskRunId (NEW) -> item on #new, visible to the batch-completion count.
+      // RED: routed by the cuid taskRunId -> #legacy -> the create FK-fails / the count never sees it.
+      expect(await prisma17.batchTaskRunItem.count({ where: { batchTaskRunId: batchId } })).toBe(1);
+      expect(await prisma14.batchTaskRunItem.count({ where: { batchTaskRunId: batchId } })).toBe(0);
+    }
+  );
 });

@@ -138,6 +138,30 @@ async function getSnapshotWaitpointIds(
   return result.map((r) => r.B);
 }
 
+// Reads the snapshot's completed-waitpoint ids AND whether the snapshot is visible on this reader, in
+// one query, so a multi-reader replica can't return the ids from a different point-in-time than the
+// snapshot. `present=false` -> this reader lacks the snapshot; its empty id list is not authoritative.
+async function getSnapshotWaitpointIdsWithPresence(
+  prisma: PrismaClientOrTransaction,
+  snapshotId: string,
+  runStore?: RunStore
+): Promise<{ present: boolean; ids: string[] }> {
+  if (runStore) {
+    return runStore.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, prisma);
+  }
+
+  const rows = await prisma.$queryRaw<{ id: string; B: string | null }[]>`
+    SELECT s."id", cw."B"
+    FROM "TaskRunExecutionSnapshot" s
+    LEFT JOIN "_completedWaitpoints" cw ON cw."A" = s."id"
+    WHERE s."id" = ${snapshotId}
+  `;
+  return {
+    present: rows.length > 0,
+    ids: rows.filter((r) => r.B !== null).map((r) => r.B as string),
+  };
+}
+
 /**
  * Fetches waitpoints in chunks to avoid NAPI string conversion limits.
  * This is necessary because waitpoints can have large outputs (100KB+),
@@ -320,9 +344,23 @@ export async function getExecutionSnapshotsSince(
   // Step 3: Get waitpoint IDs for the LATEST snapshot only (first in desc order)
   const latestSnapshot = snapshots[0];
   let readClient = prisma;
-  let waitpointIds = await getSnapshotWaitpointIds(prisma, latestSnapshot.id, runStore);
+  const { present, ids } = await getSnapshotWaitpointIdsWithPresence(
+    prisma,
+    latestSnapshot.id,
+    runStore
+  );
+  let waitpointIds = ids;
 
-  // Read-repair: completedWaitpointOrder is written on the snapshot row in the same statement as the
+  // Read-repair (multi-reader): Step 2 saw this snapshot, but on a multi-reader replica the join read
+  // can hit a laggier reader that does not have it yet. present=false means its empty id list is not
+  // authoritative - re-read from the primary so the runner is not handed a waitpoint-less continue
+  // (which it silently drops, hanging the run). Single-reader replicas never hit this (present stays true).
+  if (repairClient && repairClient !== prisma && !present) {
+    waitpointIds = await getSnapshotWaitpointIds(repairClient, latestSnapshot.id, runStore);
+    readClient = repairClient;
+  }
+
+  // Read-repair (batch): completedWaitpointOrder is written on the snapshot row in the same statement as the
   // snapshot, so it is authoritative. If it lists more waitpoints than the join read returned, the
   // _completedWaitpoints rows are stale on this client (a lagging read replica) - re-read them from the
   // primary so the runner is not handed a waitpoint-less continue, which it drops and the run hangs.

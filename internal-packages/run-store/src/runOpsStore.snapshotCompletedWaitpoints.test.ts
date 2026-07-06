@@ -44,4 +44,60 @@ describe("run-ops split — completed waitpoints for a cuid snapshot are found o
       expect(ids).toEqual([WAITPOINT_ID]);
     }
   );
+
+  // WithPresence reports, in one read, whether the snapshot is visible on the reader (so a multi-reader
+  // replica can distinguish "no waitpoints" from "reader has not applied the snapshot yet").
+  heteroRunOpsPostgresTest(
+    "findSnapshotCompletedWaitpointIdsWithPresence reports present+ids for a dedicated snapshot, absent otherwise",
+    async ({ prisma17 }: { prisma17: RunOpsPrismaClient }) => {
+      const newStore = new PostgresRunStore({
+        prisma: prisma17 as never,
+        readOnlyPrisma: prisma17 as never,
+        schemaVariant: "dedicated",
+      });
+      const runId = "run_" + "k".repeat(24) + "01";
+      await prisma17.taskRun.create({
+        data: {
+          id: runId,
+          friendlyId: "run_pres",
+          engine: "V2",
+          status: "PENDING",
+          taskIdentifier: "t",
+          payload: "{}",
+          payloadType: "application/json",
+          traceId: "tr",
+          spanId: "sp",
+          queue: "q",
+          runtimeEnvironmentId: "env_pres",
+          projectId: "proj_pres",
+        },
+      });
+      const snap = await prisma17.taskRunExecutionSnapshot.create({
+        data: {
+          id: "c".repeat(25),
+          engine: "V2",
+          executionStatus: "EXECUTING",
+          description: "continue",
+          runStatus: "PENDING",
+          runId,
+          environmentId: "env_pres",
+          environmentType: "DEVELOPMENT",
+          projectId: "proj_pres",
+          organizationId: "org_pres",
+        },
+      });
+      await prisma17.completedWaitpoint.create({
+        data: { snapshotId: snap.id, waitpointId: WAITPOINT_ID },
+      });
+
+      expect(await newStore.findSnapshotCompletedWaitpointIdsWithPresence(snap.id)).toEqual({
+        present: true,
+        ids: [WAITPOINT_ID],
+      });
+      // A snapshot the reader does not have -> present:false, so its empty ids are not trusted as authoritative.
+      expect(
+        await newStore.findSnapshotCompletedWaitpointIdsWithPresence("c".repeat(24) + "zz")
+      ).toEqual({ present: false, ids: [] });
+    }
+  );
 });

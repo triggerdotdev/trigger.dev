@@ -1527,4 +1527,56 @@ describe("RunEngine getSnapshotsSince", () => {
       }
     }
   );
+
+  // A single triggerAndWait resume has an EMPTY completedWaitpointOrder (only batch-indexed waitpoints
+  // populate it) but a real join row. On a multi-reader replica the join read can hit a laggier reader
+  // that does not yet have the snapshot, returning 0 - and the order-based repair can't see it (order is
+  // empty). The presence check must detect the reader lacks the snapshot and repair from the primary,
+  // or the runner is handed a waitpoint-less continue and the run hangs.
+  containerTest(
+    "repairs a single-wait resume from the primary when the replica reader lacks the snapshot",
+    async ({ prisma }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const scenario = await setupTestScenario(prisma, authenticatedEnvironment, {
+        totalWaitpoints: 1,
+        outputSizeKB: 1,
+        snapshotConfigs: [
+          { status: "RUN_CREATED", completedWaitpointCount: 0 },
+          { status: "EXECUTING_WITH_WAITPOINTS", completedWaitpointCount: 0 },
+          { status: "EXECUTING", completedWaitpointCount: 1 },
+        ],
+      });
+      const waitpointId = scenario.waitpoints[0].id;
+      const latestSnapshot = scenario.snapshots[scenario.snapshots.length - 1];
+      // Single-wait: keep the join row, clear the order so it's the non-batch case.
+      await prisma.taskRunExecutionSnapshot.update({
+        where: { id: latestSnapshot.id },
+        data: { completedWaitpointOrder: [] },
+      });
+
+      // A multi-reader replica reader that has NOT yet applied the snapshot: any raw read (the
+      // presence+join query) returns empty, while Step 2's findMany still returns the snapshot.
+      const laggyReader = new Proxy(prisma, {
+        get(target, prop) {
+          if (prop === "$queryRaw") {
+            return async () => [];
+          }
+          const value = (target as Record<string | symbol, unknown>)[prop];
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as unknown as PrismaClient;
+
+      const result = await getExecutionSnapshotsSince(
+        laggyReader,
+        scenario.run.id,
+        scenario.snapshots[0].id,
+        undefined,
+        prisma
+      );
+
+      const latest = result[result.length - 1];
+      // The runner must receive the completed waitpoint (repaired from the primary), not an empty set.
+      expect(latest.completedWaitpoints.map((w) => w.id)).toEqual([waitpointId]);
+    }
+  );
 });

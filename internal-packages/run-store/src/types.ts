@@ -607,6 +607,12 @@ export interface RunStore {
 
   // Implicit-join group
   findSnapshotCompletedWaitpointIds(snapshotId: string, client?: ReadClient): Promise<string[]>;
+  /** As above, but reports in the SAME read whether the snapshot is visible on the reader: `present=false`
+   * means this reader lacks the snapshot, so its empty id list is not authoritative (repair from primary). */
+  findSnapshotCompletedWaitpointIdsWithPresence(
+    snapshotId: string,
+    client?: ReadClient
+  ): Promise<{ present: boolean; ids: string[] }>;
   /** Run ids connected to a waitpoint (WaitpointRunConnection / `_WaitpointRunConnections`), this DB only. */
   findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]>;
   /** Snapshot ids that completed a waitpoint (CompletedWaitpoint / `_completedWaitpoints`), this DB only. */

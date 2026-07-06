@@ -711,12 +711,14 @@ export class RoutingRunStore implements RunStore {
   // checkpoints). Mechanical residency-routing delegates so `implements RunStore` is satisfied.
   // ---------------------------------------------------------------------------
 
-  // Membership row lives on the run's residency — route by taskRunId.
+  // Route by batchTaskRunId so the item co-resides with its BatchTaskRun and is visible to the batch
+  // completion count/update (which route by batchTaskRunId). Routing by taskRunId would place the item
+  // on the child's DB if child and batch residency ever diverge, and the batch would never complete.
   async createBatchTaskRunItem(
     data: { batchTaskRunId: string; taskRunId: string; status: BatchTaskRunItemStatus },
     tx?: PrismaClientOrTransaction
   ): Promise<void> {
-    return (await this.#routeForWrite(data.taskRunId)).createBatchTaskRunItem(data);
+    return (await this.#routeForWrite(data.batchTaskRunId)).createBatchTaskRunItem(data);
   }
 
   // Snapshot reads route by OWNING run id (a SnapshotId is a cuid, NOT classifiable). The owning
@@ -851,6 +853,28 @@ export class RoutingRunStore implements RunStore {
       ),
     ]);
     return uniqueStrings([...fromNew, ...fromLegacy]);
+  }
+
+  // Snapshot-id has no residency to route on, so fan out; the snapshot lives on exactly one store, so
+  // `present` is the OR and `ids` the union.
+  async findSnapshotCompletedWaitpointIdsWithPresence(
+    snapshotId: string,
+    client?: ReadClient
+  ): Promise<{ present: boolean; ids: string[] }> {
+    const [fromNew, fromLegacy] = await Promise.all([
+      this.#new.findSnapshotCompletedWaitpointIdsWithPresence(
+        snapshotId,
+        RoutingRunStore.#ownPrimary(this.#new, client)
+      ),
+      this.#legacy.findSnapshotCompletedWaitpointIdsWithPresence(
+        snapshotId,
+        RoutingRunStore.#ownPrimary(this.#legacy, client)
+      ),
+    ]);
+    return {
+      present: fromNew.present || fromLegacy.present,
+      ids: uniqueStrings([...fromNew.ids, ...fromLegacy.ids]),
+    };
   }
 
   // Keyed by waitpointId, but the WaitpointRunConnection / CompletedWaitpoint join co-locates with the

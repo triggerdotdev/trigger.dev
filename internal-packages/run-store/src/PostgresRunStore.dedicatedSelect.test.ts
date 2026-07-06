@@ -405,4 +405,36 @@ describe("PostgresRunStore dedicated caller-select adapter (P2-store-bodies-2)",
       expect(blocking[0].taskRun.friendlyId).toBe(r.friendlyId);
     }
   );
+
+  // The dedicated finders forward include/select to a subset client typed as the full schema, so a
+  // control-plane-only relation would throw an opaque Prisma 500 for NEW data (invisible to tsc). The
+  // boundary guard rejects the known keys with a clear message; the legacy (full-schema) store is a no-op.
+  heteroRunOpsPostgresTest(
+    "dedicated batch/attempt finders reject control-plane-only includes with a clear error",
+    async ({ prisma14, prisma17 }) => {
+      const dedicated = makeStore(prisma17, "dedicated");
+      const legacy = makeStore(prisma14, "legacy");
+
+      await expect(
+        dedicated.findBatchTaskRunById("batch_x", { include: { runsBlocked: true } as never })
+      ).rejects.toThrow(/not available on the dedicated run-ops subset/);
+      await expect(
+        dedicated.findTaskRunAttempt({
+          where: { id: "att_x" },
+          include: { backgroundWorker: true },
+        } as never)
+      ).rejects.toThrow(/not available on the dedicated run-ops subset/);
+
+      // A subset-present include passes the guard and resolves normally (null for a missing batch).
+      expect(
+        await dedicated.findBatchTaskRunById("batch_missing", { include: { items: true } as never })
+      ).toBeNull();
+      // Legacy store: guard is a no-op; the full schema has the relation, so no guard throw.
+      expect(
+        await legacy.findBatchTaskRunById("batch_missing", {
+          include: { runsBlocked: true } as never,
+        })
+      ).toBeNull();
+    }
+  );
 });
