@@ -6,6 +6,7 @@ import { $replica } from "~/db.server";
 import { resendInvite } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
+import { ssoController } from "~/services/sso.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { acceptInvitePath, organizationTeamPath } from "~/utils/pathBuilder";
 
@@ -30,12 +31,23 @@ export const action = dashboardAction(
     },
     authorization: { action: "manage", resource: { type: "members" } },
   },
-  async ({ request, user }) => {
+  async ({ request, user, context }) => {
     const formData = await request.formData();
     const submission = parseWithZod(formData, { schema: resendSchema });
 
     if (submission.status !== "success") {
       return json(submission.reply());
+    }
+
+    // Resending is an "add" — blocked when membership is directory-managed.
+    if (context.organizationId) {
+      const policy = await ssoController.getMembershipPolicy(context.organizationId);
+      if (policy.isOk() && !policy.value.manualMembershipAllowed) {
+        return json(
+          { errors: { body: "Membership is managed by Directory Sync" } },
+          { status: 403 }
+        );
+      }
     }
 
     try {

@@ -59,6 +59,69 @@ export type SsoResolutionDecision =
   | { kind: "linked_by_email"; userId: string }
   | { kind: "create_new_user"; profile: SsoProfile };
 
+// === Directory sync (SCIM) domain types ===
+
+export type DirectoryState = "active" | "inactive";
+
+// A directory group and the role it grants. `mappedRoleId === null` means the
+// group has no role mapping; its members get no role from this group (and are
+// not provisioned on its account alone).
+export type DirectoryGroupMapping = {
+  groupId: string;
+  name: string;
+  mappedRoleId: string | null;
+};
+
+export type DirectorySyncStatus = {
+  hasDirectory: boolean;
+  // True when at least one directory is in the "active" state.
+  hasActiveDirectory: boolean;
+  // Per-org override: when true, directory users whose email domain is NOT a
+  // verified org domain are still provisioned. Default false.
+  allowExternalDomainSync: boolean;
+  // Raw per-org setting (for the settings toggle). When false AND a directory
+  // is active, manual membership adds/removes are blocked (see
+  // getMembershipPolicy for the effective value). Default true.
+  allowManualMembership: boolean;
+  // Role assigned to directory users who are active but belong to no mapped
+  // group. `null` (default) means ungrouped users are NOT provisioned; set a
+  // role to provision them at it (on verified domains, subject to the
+  // external-domain setting).
+  directoryDefaultRoleId: string | null;
+  userCount: number;
+  directories: ReadonlyArray<{
+    id: string;
+    name: string | null;
+    type: string;
+    state: DirectoryState;
+  }>;
+  groups: ReadonlyArray<DirectoryGroupMapping>;
+};
+
+// A host-actionable membership mutation derived from a directory-sync event.
+// The plugin owns all `enterprise.*` writes; these effects describe the
+// `public.*` (User / OrgMember / role / token) writes the host must perform —
+// the plugin never touches those tables. The host worker applies them
+// idempotently.
+//
+// - `provision`:   ensure the User exists (create when `userId === null`),
+//                  ensure the OrgMember exists, and set its role.
+// - `deprovision`: remove the membership (guarded against last-Owner), force
+//                  logout, and revoke tokens per host policy.
+// - `set_role`:    overwrite the member's role (directory-authoritative).
+export type DirectorySyncEffect =
+  | {
+      kind: "provision";
+      userId: string | null;
+      email: string;
+      firstName: string | null;
+      lastName: string | null;
+      organizationId: string;
+      roleId: string | null;
+    }
+  | { kind: "deprovision"; userId: string; organizationId: string }
+  | { kind: "set_role"; userId: string; organizationId: string; roleId: string };
+
 // === Errors ===
 
 export type SsoDecisionError = "internal";
@@ -110,7 +173,7 @@ export interface SsoController {
   generatePortalLink(params: {
     organizationId: string;
     userId: string;
-    intent: "sso" | "domain_verification";
+    intent: "sso" | "domain_verification" | "dsync";
     returnUrl: string;
   }): ResultAsync<{ url: string }, SsoPortalError>;
 
@@ -140,6 +203,73 @@ export interface SsoController {
     enforced: boolean;
     jitProvisioningEnabled: boolean;
     jitDefaultRoleId: string | null;
+  }): ResultAsync<void, SsoMutationError>;
+
+  // --- Directory sync (SCIM) admin UI ---
+
+  // Full directory-sync state for the settings section: directories, the
+  // group→role mapping table, the external-domain toggle, and a member count.
+  getDirectorySyncStatus(
+    organizationId: string
+  ): ResultAsync<DirectorySyncStatus, SsoDecisionError>;
+
+  // Map a directory group to an RBAC role (or clear the mapping with null).
+  // The role is validated against the org's assignable roles. Returns the
+  // membership effects the change implies for the group's current members
+  // (roles recomputed against the new mapping; deprovision when the group is
+  // cleared and it was a member's last mapped group) — the host applies them
+  // so a dashboard remap takes effect immediately, like a directory event.
+  setDirectoryGroupRole(params: {
+    organizationId: string;
+    groupId: string;
+    roleId: string | null;
+  }): ResultAsync<{ effects: DirectorySyncEffect[] }, SsoMutationError>;
+
+  // Set the role for directory users with no mapped group (null = don't
+  // provision ungrouped users). Owner is reserved and rejected.
+  setDirectoryDefaultRole(params: {
+    organizationId: string;
+    roleId: string | null;
+  }): ResultAsync<void, SsoMutationError>;
+
+  // Toggle whether directory users outside the org's verified domains are
+  // provisioned. Default false (verified domains only).
+  setAllowExternalDomainSync(params: {
+    organizationId: string;
+    allowed: boolean;
+  }): ResultAsync<void, SsoMutationError>;
+
+  // --- Membership management policy + removal tombstones ---
+
+  // Effective policy for manual (dashboard) membership changes. Returns
+  // `manualMembershipAllowed: false` only when the org set allow-manual off
+  // AND a directory is active; otherwise true. Hosts use it to gate invite /
+  // accept-invite / remove / self-leave and to hide those buttons.
+  getMembershipPolicy(
+    organizationId: string
+  ): ResultAsync<{ manualMembershipAllowed: boolean }, SsoDecisionError>;
+
+  setAllowManualMembership(params: {
+    organizationId: string;
+    allowed: boolean;
+  }): ResultAsync<void, SsoMutationError>;
+
+  // Record that a user was removed from an org (manual removal or self-leave),
+  // so passive SSO-JIT won't silently re-add them on next login. Idempotent
+  // upsert keyed by (organizationId, userId). The host calls this after a
+  // successful team removal; DSync deprovisions record their own tombstone
+  // internally. No-op in the OSS fallback.
+  recordMembershipRemoval(params: {
+    organizationId: string;
+    userId: string;
+    reason: "manual_removal" | "self_leave";
+  }): ResultAsync<void, SsoMutationError>;
+
+  // Clear a removal tombstone — a deliberate re-admission (the host calls this
+  // when an invite is accepted). Idempotent; no-op when absent.
+  clearMembershipRemoval(params: {
+    organizationId: string;
+    userId: string;
   }): ResultAsync<void, SsoMutationError>;
 
   // --- Auth flow ---
@@ -228,9 +358,14 @@ export interface SsoController {
   }): ResultAsync<{ event: SsoWebhookEvent }, SsoWebhookError>;
 
   // Process a previously-verified webhook event (the host's background
-  // worker calls this). Performs the plugin's own state writes; throws
-  // nothing — failures surface as `internal` so the worker retries.
-  processWebhookEvent(event: SsoWebhookEvent): ResultAsync<void, SsoWebhookError>;
+  // worker calls this). Performs the plugin's own `enterprise.*` state writes
+  // and returns any `public.*` membership effects the host must apply (empty
+  // for SSO/domain/connection events; populated for directory-sync events).
+  // Throws nothing — failures surface as `internal` so the worker retries;
+  // effect application on the host side must be idempotent.
+  processWebhookEvent(
+    event: SsoWebhookEvent
+  ): ResultAsync<{ effects: DirectorySyncEffect[] }, SsoWebhookError>;
 }
 
 export interface SsoPlugin {

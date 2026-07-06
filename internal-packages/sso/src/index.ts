@@ -1,4 +1,6 @@
 import type {
+  DirectorySyncEffect,
+  DirectorySyncStatus,
   OrgSsoStatus,
   SsoBeginError,
   SsoCompleteError,
@@ -108,7 +110,7 @@ export class LazyController implements SsoController {
   generatePortalLink(params: {
     organizationId: string;
     userId: string;
-    intent: "sso" | "domain_verification";
+    intent: "sso" | "domain_verification" | "dsync";
     returnUrl: string;
   }): ResultAsync<{ url: string }, SsoPortalError> {
     return this.call((c) => c.generatePortalLink(params));
@@ -142,6 +144,62 @@ export class LazyController implements SsoController {
     jitDefaultRoleId: string | null;
   }): ResultAsync<void, SsoMutationError> {
     return this.call((c) => c.updateConfig(params));
+  }
+
+  getDirectorySyncStatus(
+    organizationId: string
+  ): ResultAsync<DirectorySyncStatus, SsoDecisionError> {
+    return this.call((c) => c.getDirectorySyncStatus(organizationId));
+  }
+
+  setDirectoryGroupRole(params: {
+    organizationId: string;
+    groupId: string;
+    roleId: string | null;
+  }): ResultAsync<{ effects: DirectorySyncEffect[] }, SsoMutationError> {
+    return this.call((c) => c.setDirectoryGroupRole(params));
+  }
+
+  setDirectoryDefaultRole(params: {
+    organizationId: string;
+    roleId: string | null;
+  }): ResultAsync<void, SsoMutationError> {
+    return this.call((c) => c.setDirectoryDefaultRole(params));
+  }
+
+  setAllowExternalDomainSync(params: {
+    organizationId: string;
+    allowed: boolean;
+  }): ResultAsync<void, SsoMutationError> {
+    return this.call((c) => c.setAllowExternalDomainSync(params));
+  }
+
+  getMembershipPolicy(
+    organizationId: string
+  ): ResultAsync<{ manualMembershipAllowed: boolean }, SsoDecisionError> {
+    return this.call((c) => c.getMembershipPolicy(organizationId));
+  }
+
+  setAllowManualMembership(params: {
+    organizationId: string;
+    allowed: boolean;
+  }): ResultAsync<void, SsoMutationError> {
+    return this.call((c) => c.setAllowManualMembership(params));
+  }
+
+  recordMembershipRemoval(params: {
+    organizationId: string;
+    userId: string;
+    reason: "manual_removal" | "self_leave";
+  }): ResultAsync<void, SsoMutationError> {
+    return this.call((c) => c.recordMembershipRemoval(params));
+  }
+
+  clearMembershipRemoval(params: {
+    organizationId: string;
+    userId: string;
+  }): ResultAsync<void, SsoMutationError> {
+    return this.call((c) => c.clearMembershipRemoval(params));
   }
 
   decideRouteForEmail(email: string): ResultAsync<SsoRouteDecision, SsoDecisionError> {
@@ -207,7 +265,9 @@ export class LazyController implements SsoController {
     return this.call((c) => c.verifyWebhook(params));
   }
 
-  processWebhookEvent(event: SsoWebhookEvent): ResultAsync<void, SsoWebhookError> {
+  processWebhookEvent(
+    event: SsoWebhookEvent
+  ): ResultAsync<{ effects: DirectorySyncEffect[] }, SsoWebhookError> {
     return this.call((c) => c.processWebhookEvent(event));
   }
 }

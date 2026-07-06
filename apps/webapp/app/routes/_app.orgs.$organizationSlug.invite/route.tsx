@@ -33,6 +33,7 @@ import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
 import { rbac } from "~/services/rbac.server";
+import { ssoController } from "~/services/sso.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
 import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
@@ -171,7 +172,7 @@ export const action = dashboardAction(
     },
     authorization: { action: "manage", resource: { type: "members" } },
   },
-  async ({ request, params, user }) => {
+  async ({ request, params, user, context }) => {
     const userId = user.id;
     const { organizationSlug } = params;
 
@@ -180,6 +181,18 @@ export const action = dashboardAction(
 
     if (submission.status !== "success") {
       return json(submission.reply());
+    }
+
+    // Directory-managed membership: inviting is disabled (the directory is the
+    // authority). Enforced here; the Team page also hides the invite button.
+    if (context.organizationId) {
+      const policy = await ssoController.getMembershipPolicy(context.organizationId);
+      if (policy.isOk() && !policy.value.manualMembershipAllowed) {
+        return json(
+          { errors: { body: "Membership is managed by Directory Sync" } },
+          { status: 403 }
+        );
+      }
     }
 
     // Resolve the RBAC role choice. NO_RBAC_ROLE / undefined / unknown
