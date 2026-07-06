@@ -14,6 +14,7 @@ export function SideMenuItem({
   trailingIcon,
   trailingIconClassName,
   name,
+  nameClassName,
   to,
   badge,
   target,
@@ -30,6 +31,7 @@ export function SideMenuItem({
   trailingIcon?: RenderIcon;
   trailingIconClassName?: string;
   name: string;
+  nameClassName?: string;
   to: string;
   badge?: ReactNode;
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
@@ -83,7 +85,12 @@ export function SideMenuItem({
         }}
         transition={{ duration: 0.2, ease: "easeOut" }}
       >
-        <span className="select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]">
+        <span
+          className={cn(
+            "select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]",
+            nameClassName
+          )}
+        >
           {name}
         </span>
         {badge && !isCollapsed && (

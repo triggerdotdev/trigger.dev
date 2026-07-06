@@ -24,6 +24,9 @@ Refresh the side menu and account UI:
 - Signal impersonation mode with a yellow side-menu border and a matching
   "Stop impersonating" accent.
 - Move the Settings item to the top of the organization settings side menu.
+- Align the organization settings and account side menus' horizontal padding
+  with the main side menu, and tighten the "Personal Access Tokens" label so it
+  no longer truncates.
 
 The org loader now exposes whether the RBAC and SSO plugins are installed so the
 side menu can gate the Roles and SSO items the same way the settings side menu

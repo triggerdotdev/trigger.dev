@@ -34,7 +34,7 @@ export function AccountSideMenu({ user }: { user: User }) {
           <span className="text-text-bright">Back to app</span>
         </LinkButton>
       </div>
-      <div className="mb-6 flex grow flex-col overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="mb-6 flex grow flex-col overflow-y-auto pl-2.5 pr-0 pt-2 scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <SideMenuHeader title="Account" />
         <SideMenuItem
           name="Profile"
@@ -45,6 +45,7 @@ export function AccountSideMenu({ user }: { user: User }) {
         />
         <SideMenuItem
           name="Personal Access Tokens"
+          nameClassName="tracking-[-0.04em]"
           icon={ShieldIcon}
           activeIconColor="text-text-bright"
           to={personalAccessTokensPath()}
