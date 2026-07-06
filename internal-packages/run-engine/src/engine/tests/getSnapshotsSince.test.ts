@@ -1473,24 +1473,10 @@ describe("RunEngine getSnapshotsSince", () => {
   // fires on every poll for such a snapshot even against a caught-up replica - silently defeating offload.
   containerTest(
     "does not repair from the primary when completedWaitpointOrder has duplicates but the join is complete",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const engine = new RunEngine({
-        prisma,
-        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
-        queue: { redis: redisOptions },
-        runLock: { redis: redisOptions },
-        machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
-          },
-          baseCostInCents: 0.0001,
-        },
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
-
-      try {
+      // Drives getExecutionSnapshotsSince directly, so it needs no RunEngine (Redis/worker) at all.
+      {
         const scenario = await setupTestScenario(prisma, authenticatedEnvironment, {
           totalWaitpoints: 1,
           outputSizeKB: 1,
@@ -1538,8 +1524,6 @@ describe("RunEngine getSnapshotsSince", () => {
         expect(latest.completedWaitpoints.map((w) => w.id)).toEqual([waitpointId, waitpointId]);
         // No spurious primary read: distinct(order) === join count, so the repair must not fire.
         expect(repairCalls.queryRaw).toBe(0);
-      } finally {
-        await engine.quit();
       }
     }
   );
