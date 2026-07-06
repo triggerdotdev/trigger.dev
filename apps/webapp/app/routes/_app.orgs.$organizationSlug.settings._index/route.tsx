@@ -177,7 +177,11 @@ export const action = dashboardAction(
       switch (submission.value.action) {
         case "rename": {
           if (!ability.can("manage", { type: "organization" })) {
-            return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
+            throw redirectWithErrorMessage(
+              organizationSettingsPath({ slug: organizationSlug }),
+              request,
+              "You don't have permission to rename this organization"
+            );
           }
           await prisma.organization.update({
             where: {
@@ -201,7 +205,11 @@ export const action = dashboardAction(
         }
         case "delete": {
           if (!ability.can("manage", { type: "organization" })) {
-            return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
+            throw redirectWithErrorMessage(
+              organizationSettingsPath({ slug: organizationSlug }),
+              request,
+              "You don't have permission to delete this organization"
+            );
           }
           const deleteOrganizationService = new DeleteOrganizationService();
           try {

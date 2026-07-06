@@ -7,7 +7,7 @@ import {
   MapPinIcon,
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -103,17 +103,21 @@ export const action = dashboardAction(
   async ({ user, ability, request, params }) => {
     const { organizationSlug, projectParam, envParam } = params;
 
-    if (!ability.can("manage", { type: "project" })) {
-      return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
-    }
-
-    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
-
     const redirectPath = regionsPath(
       { slug: organizationSlug },
       { slug: projectParam },
       { slug: envParam }
     );
+
+    if (!ability.can("manage", { type: "project" })) {
+      throw await redirectWithErrorMessage(
+        redirectPath,
+        request,
+        "You don't have permission to change the default region"
+      );
+    }
+
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
 
     if (!project) {
       throw await redirectWithErrorMessage(redirectPath, request, "Project not found");

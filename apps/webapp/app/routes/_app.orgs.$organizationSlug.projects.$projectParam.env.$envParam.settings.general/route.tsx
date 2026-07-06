@@ -106,7 +106,11 @@ export const action = dashboardAction(
     switch (submission.value.action) {
       case "rename": {
         if (!ability.can("manage", { type: "project" })) {
-          return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
+          throw redirectWithErrorMessage(
+            v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
+            request,
+            "You don't have permission to rename this project"
+          );
         }
         const resultOrFail = await projectSettingsService.renameProject(
           projectId,
@@ -135,7 +139,11 @@ export const action = dashboardAction(
       }
       case "delete": {
         if (!ability.can("manage", { type: "project" })) {
-          return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
+          throw redirectWithErrorMessage(
+            v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
+            request,
+            "You don't have permission to delete this project"
+          );
         }
         const resultOrFail = await projectSettingsService.deleteProject(projectId, userId);
 
