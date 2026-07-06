@@ -1,4 +1,4 @@
-import { describe, expect, vi } from "vitest";
+import { describe, expect, onTestFinished, vi } from "vitest";
 
 // db.server + splitMode are mocked so the idempotency dedup client resolves to
 // the container prisma passed into the concern (split stays off).
@@ -67,6 +67,7 @@ describe("RunEngineTriggerTaskService", () => {
       },
       tracer: trace.getTracer("test", "0.0.0"),
     });
+    onTestFinished(() => engine.quit());
 
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -144,8 +145,6 @@ describe("RunEngineTriggerTaskService", () => {
     expect(cachedResult).toBeDefined();
     expect(cachedResult?.run.friendlyId).toBe(result?.run.friendlyId);
     expect(cachedResult?.isCached).toBe(true);
-
-    await engine.quit();
   });
 
   containerTest(
@@ -180,6 +179,7 @@ describe("RunEngineTriggerTaskService", () => {
         tracer: trace.getTracer("test", "0.0.0"),
         logLevel: "debug",
       });
+      onTestFinished(() => engine.quit());
 
       const parentTask = "parent-task";
 
@@ -363,8 +363,6 @@ describe("RunEngineTriggerTaskService", () => {
       assertNonNullable(parent2RunWaitpoint);
       expect(parent2RunWaitpoint.waitpoint.type).toBe("RUN");
       expect(parent2RunWaitpoint.waitpoint.completedByTaskRunId).toBe(result2?.run.id);
-
-      await engine.quit();
     }
   );
 
@@ -399,6 +397,7 @@ describe("RunEngineTriggerTaskService", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "test-task";
@@ -525,8 +524,6 @@ describe("RunEngineTriggerTaskService", () => {
       expect(result4).toBeDefined();
       expect(result4?.run.queue).toBe("non-existent-queue");
       expect(result4?.run.status).toBe("PENDING");
-
-      await engine.quit();
     }
   );
 
@@ -561,6 +558,7 @@ describe("RunEngineTriggerTaskService", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "test-task";
@@ -648,8 +646,6 @@ describe("RunEngineTriggerTaskService", () => {
       ).rejects.toThrow(
         `Task 'not-a-registered-task' not found on locked version '${worker.worker.version}'`
       );
-
-      await engine.quit();
     }
   );
 });

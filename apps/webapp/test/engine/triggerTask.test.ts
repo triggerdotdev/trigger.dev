@@ -1,4 +1,4 @@
-import { describe, expect, vi } from "vitest";
+import { describe, expect, onTestFinished, vi } from "vitest";
 
 // db.server + splitMode are mocked so the idempotency dedup client resolves to
 // the container prisma passed into the concern (split stays off).
@@ -65,6 +65,7 @@ describe("RunEngineTriggerTaskService", () => {
       },
       tracer: trace.getTracer("test", "0.0.0"),
     });
+    onTestFinished(() => engine.quit());
 
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -121,8 +122,6 @@ describe("RunEngineTriggerTaskService", () => {
       `task/${taskIdentifier}`
     );
     expect(queueLength).toBe(1);
-
-    await engine.quit();
   });
 
   containerTest(
@@ -276,6 +275,7 @@ describe("RunEngineTriggerTaskService", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "test-task";
@@ -308,8 +308,6 @@ describe("RunEngineTriggerTaskService", () => {
       expect(result).toBeDefined();
       const run = await prisma.taskRun.findUnique({ where: { id: result!.run.id } });
       expect(run?.concurrencyKey).toBe("51262");
-
-      await engine.quit();
     }
   );
 });

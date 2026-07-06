@@ -1,4 +1,4 @@
-import { describe, expect, vi } from "vitest";
+import { describe, expect, onTestFinished, vi } from "vitest";
 
 // db.server + splitMode are mocked so the idempotency dedup client resolves to
 // the container prisma passed into the concern (split stays off).
@@ -55,12 +55,14 @@ describe("DefaultQueueManager task metadata cache", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "cached-task";
       const setup = await setupBackgroundWorker(engine, environment, taskIdentifier);
 
       const redis = new Redis(redisOptions);
+      onTestFinished(() => redis.quit());
       const cache = new RedisTaskMetadataCache({ redis });
 
       // Pre-populate cache with AGENT triggerSource; DB row has the default STANDARD.
@@ -102,9 +104,6 @@ describe("DefaultQueueManager task metadata cache", () => {
       assertNonNullable(result);
       expect(result.run.taskIdentifier).toBe(taskIdentifier);
       expect((result.run.annotations as { taskKind?: string } | null)?.taskKind).toBe("AGENT");
-
-      await redis.quit();
-      await engine.quit();
     }
   );
 
@@ -125,12 +124,14 @@ describe("DefaultQueueManager task metadata cache", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "miss-task";
       await setupBackgroundWorker(engine, environment, taskIdentifier);
 
       const redis = new Redis(redisOptions);
+      onTestFinished(() => redis.quit());
       const cache = new RedisTaskMetadataCache({ redis });
 
       // Cache starts empty. Sanity-check both keyspaces.
@@ -171,9 +172,6 @@ describe("DefaultQueueManager task metadata cache", () => {
       expect(backfilled).not.toBeNull();
       expect(backfilled?.triggerSource).toBe("STANDARD");
       expect(backfilled?.queueName).toBe(`task/${taskIdentifier}`);
-
-      await redis.quit();
-      await engine.quit();
     }
   );
 
@@ -194,12 +192,14 @@ describe("DefaultQueueManager task metadata cache", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "override-task";
       const setup = await setupBackgroundWorker(engine, environment, taskIdentifier);
 
       const redis = new Redis(redisOptions);
+      onTestFinished(() => redis.quit());
       const cache = new RedisTaskMetadataCache({ redis });
 
       // Cache says AGENT; DB row says STANDARD. Caller provides both a queue
@@ -246,9 +246,6 @@ describe("DefaultQueueManager task metadata cache", () => {
       assertNonNullable(result);
       expect(result.run.queue).toBe("caller-queue");
       expect((result.run.annotations as { taskKind?: string } | null)?.taskKind).toBe("AGENT");
-
-      await redis.quit();
-      await engine.quit();
     }
   );
 
@@ -269,12 +266,14 @@ describe("DefaultQueueManager task metadata cache", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "keyspace-task";
       const worker = await setupBackgroundWorker(engine, environment, taskIdentifier);
 
       const redis = new Redis(redisOptions);
+      onTestFinished(() => redis.quit());
       const cache = new RedisTaskMetadataCache({ redis });
 
       // Populate the two keyspaces with conflicting triggerSource values so we
@@ -338,9 +337,6 @@ describe("DefaultQueueManager task metadata cache", () => {
       });
       assertNonNullable(current);
       expect((current.run.annotations as { taskKind?: string } | null)?.taskKind).toBe("SCHEDULED");
-
-      await redis.quit();
-      await engine.quit();
     }
   );
 });

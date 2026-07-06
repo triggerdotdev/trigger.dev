@@ -1,4 +1,4 @@
-import { describe, expect, vi } from "vitest";
+import { describe, expect, onTestFinished, vi } from "vitest";
 
 // db.server + splitMode are mocked so the idempotency dedup client resolves to
 // the container prisma passed into the concern (split stays off).
@@ -64,6 +64,7 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
       },
       tracer: trace.getTracer("test", "0.0.0"),
     });
+    onTestFinished(() => engine.quit());
 
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
     const taskIdentifier = "residency-task";
@@ -94,7 +95,7 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
   containerTest(
     "root run mints by the env flag (cuid when split is off)",
     async ({ prisma, redisOptions }) => {
-      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+      const { authenticatedEnvironment, taskIdentifier, triggerTaskService } =
         await setupResidencyService(prisma, redisOptions);
 
       const result = await triggerTaskService.call({
@@ -106,15 +107,13 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
       expect(result?.run.friendlyId).toBeDefined();
       // Split disabled in CI ⇒ flag resolves "cuid".
       expect(classifyKind(result!.run.friendlyId)).toBe("cuid");
-
-      await engine.quit();
     }
   );
 
   containerTest(
     "child of a LEGACY (cuid) parent is minted cuid (born LEGACY)",
     async ({ prisma, redisOptions }) => {
-      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+      const { authenticatedEnvironment, taskIdentifier, triggerTaskService } =
         await setupResidencyService(prisma, redisOptions);
 
       // Root parent — cuid in CI (split off).
@@ -132,15 +131,13 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
       });
 
       expect(classifyKind(child!.run.friendlyId)).toBe("cuid");
-
-      await engine.quit();
     }
   );
 
   containerTest(
     "child of a NEW (run-ops id) parent is minted run-ops id (born NEW)",
     async ({ prisma, redisOptions }) => {
-      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+      const { authenticatedEnvironment, taskIdentifier, triggerTaskService } =
         await setupResidencyService(prisma, redisOptions);
 
       // Construct a NEW-resident parent directly by minting a run-ops id friendlyId
@@ -167,15 +164,13 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
       });
 
       expect(classifyKind(child!.run.friendlyId)).toBe("runOpsId");
-
-      await engine.quit();
     }
   );
 
   containerTest(
     "caller-supplied runFriendlyId wins verbatim and skips residency inheritance",
     async ({ prisma, redisOptions }) => {
-      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+      const { authenticatedEnvironment, taskIdentifier, triggerTaskService } =
         await setupResidencyService(prisma, redisOptions);
 
       // Explicit cuid id for the run, and a run-ops id/NEW parent id.
@@ -193,8 +188,6 @@ describe("RunEngineTriggerTaskService — child run residency inheritance", () =
 
       // Caller-supplied id wins verbatim — NOT re-minted to run-ops id despite the NEW parent.
       expect(result!.run.friendlyId).toBe(explicitFriendlyId);
-
-      await engine.quit();
     }
   );
 });

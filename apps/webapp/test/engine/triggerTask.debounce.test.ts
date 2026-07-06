@@ -1,4 +1,4 @@
-import { describe, expect, vi } from "vitest";
+import { describe, expect, onTestFinished, vi } from "vitest";
 
 // db.server + splitMode are mocked so the idempotency dedup client resolves to
 // the container prisma passed into the concern (split stays off).
@@ -71,6 +71,7 @@ describe("RunEngineTriggerTaskService", () => {
         tracer: trace.getTracer("test", "0.0.0"),
         logLevel: "debug",
       });
+      onTestFinished(() => engine.quit());
 
       const parentTask = "parent-task";
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -227,8 +228,6 @@ describe("RunEngineTriggerTaskService", () => {
       // Verify that we have exactly 2 unique friendlyIds (one per original request)
       const uniqueFriendlyIds = new Set(processedFriendlyIds);
       expect(uniqueFriendlyIds.size).toBe(2);
-
-      await engine.quit();
     }
   );
 
@@ -263,6 +262,7 @@ describe("RunEngineTriggerTaskService", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "test-task";
@@ -304,8 +304,6 @@ describe("RunEngineTriggerTaskService", () => {
           },
         })
       ).rejects.toThrow("Debounce requires a valid delay duration");
-
-      await engine.quit();
     }
   );
 
@@ -340,6 +338,7 @@ describe("RunEngineTriggerTaskService", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "test-task";
@@ -384,8 +383,6 @@ describe("RunEngineTriggerTaskService", () => {
           },
         })
       ).rejects.toThrow("Invalid debounce delay");
-
-      await engine.quit();
     }
   );
 
@@ -418,6 +415,7 @@ describe("RunEngineTriggerTaskService", () => {
       },
       tracer: trace.getTracer("test", "0.0.0"),
     });
+    onTestFinished(() => engine.quit());
 
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
     const taskIdentifier = "test-task";
@@ -460,7 +458,5 @@ describe("RunEngineTriggerTaskService", () => {
 
     expect(result).toBeDefined();
     expect(result?.run.friendlyId).toBeDefined();
-
-    await engine.quit();
   });
 });

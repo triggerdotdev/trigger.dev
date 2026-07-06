@@ -1,4 +1,4 @@
-import { describe, expect, vi } from "vitest";
+import { describe, expect, onTestFinished, vi } from "vitest";
 
 // db.server + splitMode are mocked so the idempotency dedup client resolves to
 // the container prisma passed into the concern (split stays off).
@@ -92,6 +92,7 @@ describe("RunEngineTriggerTaskService", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "test-task";
@@ -152,8 +153,6 @@ describe("RunEngineTriggerTaskService", () => {
       // in the buffer.
       expect(evaluateGateSpy).not.toHaveBeenCalled();
       expect(buffer.accepted).toHaveLength(0);
-
-      await engine.quit();
     }
   );
 
@@ -183,6 +182,7 @@ describe("RunEngineTriggerTaskService", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "test-task";
@@ -328,8 +328,6 @@ describe("RunEngineTriggerTaskService", () => {
         where: { friendlyId: result!.run.friendlyId },
       });
       expect(pgRun).toBeNull();
-
-      await engine.quit();
     }
   );
 
@@ -350,6 +348,7 @@ describe("RunEngineTriggerTaskService", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "test-task";
@@ -395,8 +394,6 @@ describe("RunEngineTriggerTaskService", () => {
       // request-idempotency cache for every non-mollified trigger on a
       // mollifier-enabled org, breaking lost-response retry dedup.
       expect(result?.isMollified).toBeFalsy();
-
-      await engine.quit();
     }
   );
 
@@ -430,6 +427,7 @@ describe("RunEngineTriggerTaskService", () => {
         },
         tracer: trace.getTracer("test", "0.0.0"),
       });
+      onTestFinished(() => engine.quit());
 
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const taskIdentifier = "test-task";
@@ -504,8 +502,6 @@ describe("RunEngineTriggerTaskService", () => {
       // Critical: the gate must NEVER be consulted on a cached-idempotency replay.
       expect(evaluateGateSpy).not.toHaveBeenCalled();
       expect(buffer.accepted).toHaveLength(0);
-
-      await engine.quit();
     }
   );
 });
