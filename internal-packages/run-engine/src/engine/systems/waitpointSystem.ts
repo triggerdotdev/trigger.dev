@@ -211,7 +211,6 @@ export class WaitpointSystem {
     completedAfter,
     idempotencyKey,
     idempotencyKeyExpiresAt,
-    tx,
   }: {
     runId?: string;
     projectId: string;
@@ -219,7 +218,6 @@ export class WaitpointSystem {
     completedAfter: Date;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
-    tx?: PrismaClientOrTransaction;
   }) {
     // Co-location invariant: a DATETIME wait waitpoint lives on the same run-ops DB as the run that
     // blocks on it (so the block edge's local `Waitpoint` join resolves and completion/resume stay
@@ -227,27 +225,20 @@ export class WaitpointSystem {
     // would always route to LEGACY and a run-ops run on NEW would hang. The (env,idempotencyKey) dedup
     // is within the owning run/tree (co-resident on one DB), so the dedup probe + rotation target the
     // SAME store. With no run id (a standalone token has no owning run yet) the lookup falls back to
-    // a cross-DB NEW-then-LEGACY scan and the upsert routes by id-shape. A caller-supplied tx pins a
-    // client (same physical DB as the control-plane tx → LEGACY), so it stays on direct prisma.
+    // a cross-DB NEW-then-LEGACY scan and the upsert routes by id-shape. Always routed through the
+    // run store (never a caller tx) so it can never bypass residency onto the wrong DB.
     const colocate = runId ? { coLocateWithRunId: runId } : undefined;
     const existingWaitpoint = idempotencyKey
-      ? tx
-        ? await tx.waitpoint.findFirst({
+      ? await this.$.runStore.findWaitpoint(
+          {
             where: {
               environmentId,
               idempotencyKey,
             },
-          })
-        : await this.$.runStore.findWaitpoint(
-            {
-              where: {
-                environmentId,
-                idempotencyKey,
-              },
-            },
-            undefined,
-            colocate
-          )
+          },
+          undefined,
+          colocate
+        )
       : undefined;
 
     if (existingWaitpoint) {
@@ -266,11 +257,7 @@ export class WaitpointSystem {
             inactiveIdempotencyKey: existingWaitpoint.idempotencyKey,
           },
         };
-        if (tx) {
-          await tx.waitpoint.update(rotateArgs);
-        } else {
-          await this.$.runStore.updateWaitpoint(rotateArgs, undefined, colocate);
-        }
+        await this.$.runStore.updateWaitpoint(rotateArgs, undefined, colocate);
 
         //let it fall through to create a new waitpoint
       } else {
@@ -297,9 +284,7 @@ export class WaitpointSystem {
       },
       update: {},
     };
-    const waitpoint = tx
-      ? await tx.waitpoint.upsert(upsertArgs)
-      : await this.$.runStore.upsertWaitpoint(upsertArgs, undefined, colocate);
+    const waitpoint = await this.$.runStore.upsertWaitpoint(upsertArgs, undefined, colocate);
 
     await this.$.worker.enqueue({
       id: `finishWaitpoint.${waitpoint.id}`,

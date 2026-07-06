@@ -1655,7 +1655,6 @@ export class RunEngine {
     completedAfter,
     idempotencyKey,
     idempotencyKeyExpiresAt,
-    tx,
   }: {
     /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
     runId?: string;
@@ -1664,7 +1663,6 @@ export class RunEngine {
     completedAfter: Date;
     idempotencyKey?: string;
     idempotencyKeyExpiresAt?: Date;
-    tx?: PrismaClientOrTransaction;
   }) {
     return this.waitpointSystem.createDateTimeWaitpoint({
       runId,
@@ -1673,7 +1671,6 @@ export class RunEngine {
       completedAfter,
       idempotencyKey,
       idempotencyKeyExpiresAt,
-      tx,
     });
   }
 
