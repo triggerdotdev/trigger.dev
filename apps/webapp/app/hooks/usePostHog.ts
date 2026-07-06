@@ -16,7 +16,10 @@ export const usePostHog = (apiKey?: string, logging = false, debug = false): voi
     if (postHogInitialized.current === true) return;
     if (logging) console.log("Initializing PostHog");
     posthog.init(apiKey, {
-      api_host: "https://eu.posthog.com",
+      // Same-origin first-party proxy (see app/routes/ph.$.ts) that forwards to
+      // PostHog Cloud EU server-side.
+      api_host: "/ph",
+      cross_subdomain_cookie: true,
       opt_in_site_apps: true,
       debug,
       loaded: function (posthog) {
