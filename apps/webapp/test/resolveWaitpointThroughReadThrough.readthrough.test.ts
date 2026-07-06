@@ -247,6 +247,9 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
         splitEnabled: true,
         newClient: recording(prisma17).handle,
         legacyReplica: recording(prisma14).handle,
+        // The run-ops-primary fallback also misses this never-seeded token; inject a container client
+        // so it does not reach for the unconnectable production singleton.
+        newPrimary: recording(prisma17).handle,
       },
     });
 
