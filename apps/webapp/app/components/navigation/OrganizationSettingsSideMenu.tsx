@@ -85,6 +85,14 @@ export function OrganizationSettingsSideMenu({
           <div className="mb-1">
             <SideMenuHeader title="Organization" />
           </div>
+          <SideMenuItem
+            name="Settings"
+            icon={SlidersIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            to={organizationSettingsPath(organization)}
+            data-action="settings"
+          />
           {isManagedCloud && (
             <>
               <SideMenuItem
@@ -163,14 +171,6 @@ export function OrganizationSettingsSideMenu({
               }
             />
           )}
-          <SideMenuItem
-            name="Settings"
-            icon={SlidersIcon}
-            activeIconColor="text-text-bright"
-            inactiveIconColor="text-text-dimmed"
-            to={organizationSettingsPath(organization)}
-            data-action="settings"
-          />
         </div>
         <div className="flex flex-col">
           <div className="mb-1">

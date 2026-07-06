@@ -23,6 +23,7 @@ Refresh the side menu and account UI:
   button.
 - Signal impersonation mode with a yellow side-menu border and a matching
   "Stop impersonating" accent.
+- Move the Settings item to the top of the organization settings side menu.
 
 The org loader now exposes whether the RBAC and SSO plugins are installed so the
 side menu can gate the Roles and SSO items the same way the settings side menu
