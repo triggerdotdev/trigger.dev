@@ -4,7 +4,10 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
 import { logger } from "~/services/logger.server";
-import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
+import {
+  authorizePatOrganizationAccess,
+  resolveOrganizationForApiUser,
+} from "~/services/organizationApiAccess.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 
 const ParamsSchema = z.object({
@@ -34,8 +37,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
     }
 
-    // Org delete/rename are membership-scoped only — the dashboard settings
-    // route gates them on membership, not an RBAC ability.
     const organization = await resolveOrganizationForApiUser({
       orgParam: parsedParams.data.orgParam,
       userId: authenticationResult.userId,
@@ -43,6 +44,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     if (!organization) {
       return json({ error: "Organization not found" }, { status: 404 });
+    }
+
+    // Rename/delete are Owner-only (via manage:all). Membership resolution above
+    // is the OSS floor; this is the role gate enforced when the RBAC plugin runs.
+    const denied = await authorizePatOrganizationAccess({
+      request,
+      organizationId: organization.id,
+      resource: "organization",
+      action: "manage",
+    });
+    if (denied) {
+      return denied;
     }
 
     if (method === "DELETE") {

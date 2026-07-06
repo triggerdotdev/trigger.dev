@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { logger } from "~/services/logger.server";
+import { authorizePatOrganizationAccess } from "~/services/organizationApiAccess.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
@@ -47,11 +48,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
         },
         deletedAt: null,
       },
-      select: { id: true, slug: true },
+      select: { id: true, slug: true, organizationId: true },
     });
 
     if (!project) {
       return json({ error: "Project not found" }, { status: 404 });
+    }
+
+    // Setting a project's region is Owner-only (via manage:all).
+    const denied = await authorizePatOrganizationAccess({
+      request,
+      organizationId: project.organizationId,
+      resource: "project",
+      action: "manage",
+    });
+    if (denied) {
+      return denied;
     }
 
     let rawBody: unknown;

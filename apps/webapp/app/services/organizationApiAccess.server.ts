@@ -3,10 +3,12 @@ import { isUserActorToken } from "@trigger.dev/rbac";
 import { prisma } from "~/db.server";
 import { rbac } from "~/services/rbac.server";
 
-type OrganizationScopedResource = "members";
+type OrganizationScopedResource = "members" | "organization" | "project";
 
 const RESOURCE_LABELS: Record<OrganizationScopedResource, string> = {
   members: "members",
+  organization: "organization",
+  project: "projects",
 };
 
 /**

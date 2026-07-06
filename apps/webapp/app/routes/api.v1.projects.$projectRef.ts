@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { DeleteProjectService } from "~/services/deleteProject.server";
 import { logger } from "~/services/logger.server";
+import { authorizePatOrganizationAccess } from "~/services/organizationApiAccess.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 
@@ -106,11 +107,23 @@ export async function action({ request, params }: ActionFunctionArgs) {
       organization: { deletedAt: null, members: { some: { userId: authenticationResult.userId } } },
       deletedAt: null,
     },
-    select: { id: true },
+    select: { id: true, organizationId: true },
   });
 
   if (!project) {
     return json({ error: "Project not found" }, { status: 404 });
+  }
+
+  // Rename/delete are Owner-only (via manage:all); membership resolve above is
+  // the OSS floor, this is the role gate when the RBAC plugin runs.
+  const denied = await authorizePatOrganizationAccess({
+    request,
+    organizationId: project.organizationId,
+    resource: "project",
+    action: "manage",
+  });
+  if (denied) {
+    return denied;
   }
 
   try {
