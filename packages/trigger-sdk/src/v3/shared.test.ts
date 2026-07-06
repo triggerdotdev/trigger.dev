@@ -1,5 +1,57 @@
+import { ApiClient } from "@trigger.dev/core/v3";
 import { describe, it, expect } from "vitest";
-import { readableStreamToAsyncIterable } from "./shared.js";
+import { offloadBatchItemPayloads, readableStreamToAsyncIterable } from "./shared.js";
+
+describe("offloadBatchItemPayloads", () => {
+  // A real client is required for conditionallyExportPacket's truthy check; small payloads
+  // short-circuit before any network call, so this never actually reaches the server.
+  const apiClient = new ApiClient("http://localhost:3030", "tr_dev_test");
+
+  it("returns an empty array unchanged", async () => {
+    expect(await offloadBatchItemPayloads([], apiClient)).toEqual([]);
+  });
+
+  it("passes small payloads through and records their pre-offload byte size", async () => {
+    const payload = JSON.stringify({ hello: "world" });
+    const result = await offloadBatchItemPayloads(
+      [{ index: 0, task: "my-task", payload, options: { payloadType: "application/json" } }],
+      apiClient
+    );
+    const item = result[0]!;
+
+    expect(item.payload).toBe(payload);
+    expect(item.options?.payloadType).toBe("application/json");
+    expect(item.options?.payloadSize).toBe(Buffer.byteLength(payload, "utf8"));
+  });
+
+  it("measures multi-byte payloads by byte length, not character count", async () => {
+    const payload = "€€€"; // 3 chars, 9 bytes in UTF-8
+    const result = await offloadBatchItemPayloads(
+      [{ index: 0, task: "my-task", payload, options: { payloadType: "application/json" } }],
+      apiClient
+    );
+
+    expect(result[0]!.options?.payloadSize).toBe(9);
+  });
+
+  it("leaves an already-offloaded (application/store) item untouched", async () => {
+    const item = {
+      index: 0,
+      task: "my-task",
+      payload: "trigger/my-task/123/payload.json",
+      options: { payloadType: "application/store" },
+    };
+
+    const result = await offloadBatchItemPayloads([item], apiClient);
+    expect(result[0]).toEqual(item);
+  });
+
+  it("leaves items without a string payload untouched", async () => {
+    const item = { index: 0, task: "my-task", options: {} };
+    const result = await offloadBatchItemPayloads([item], apiClient);
+    expect(result[0]).toEqual(item);
+  });
+});
 
 describe("readableStreamToAsyncIterable", () => {
   it("yields all values from the stream", async () => {
