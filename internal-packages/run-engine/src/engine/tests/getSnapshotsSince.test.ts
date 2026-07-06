@@ -3,7 +3,9 @@ import { trace } from "@internal/tracing";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { setTimeout } from "node:timers/promises";
 import { describe, expect } from "vitest";
+import type { PrismaClient } from "@trigger.dev/database";
 import { RunEngine } from "../index.js";
+import { getExecutionSnapshotsSince } from "../systems/executionSnapshotSystem.js";
 import { copySnapshotsToReplica, createTestMetricsMeter } from "./helpers/replicaTestHelpers.js";
 import { setupTestScenario } from "./helpers/snapshotTestHelpers.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
@@ -1393,6 +1395,149 @@ describe("RunEngine getSnapshotsSince", () => {
         );
 
         expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // This models a BATCH resume: production only populates completedWaitpointOrder for waitpoints that
+  // carry a batch index, so the read-repair only ever engages for batch resumes. Single-waitpoint
+  // continues have an empty order (repair is a no-op) and are covered instead by the atomic write
+  // (snapshot + join commit in one tx, which a replica applies atomically).
+  containerTest(
+    "repairs a batch resume's completed-waitpoints from the primary when the replica lags the join rows",
+    async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        // Replica has the snapshot rows but lags on the _completedWaitpoints join (see below).
+        readOnlyPrisma: schemaOnlyPrisma,
+        readReplicaSnapshotsSinceEnabled: true,
+        readReplicaSnapshotsSinceRetryDelay: { minMs: 1, maxMs: 2 },
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        // Primary: a run whose latest snapshot is a warm-continue carrying one completed waitpoint -
+        // completedWaitpointOrder is set on the row AND the _completedWaitpoints join + waitpoint exist.
+        const scenario = await setupTestScenario(prisma, authenticatedEnvironment, {
+          totalWaitpoints: 1,
+          outputSizeKB: 1,
+          snapshotConfigs: [
+            { status: "RUN_CREATED", completedWaitpointCount: 0 },
+            { status: "EXECUTING", completedWaitpointCount: 0 },
+            { status: "EXECUTING_WITH_WAITPOINTS", completedWaitpointCount: 0 },
+            { status: "EXECUTING", completedWaitpointCount: 1 },
+          ],
+        });
+        const waitpointId = scenario.waitpoints[0].id;
+
+        // Replica lag: it receives the snapshot ROWS (incl. completedWaitpointOrder) but NOT the
+        // _completedWaitpoints join rows or the waitpoint - the exact state that drops the resume.
+        await copySnapshotsToReplica(prisma, schemaOnlyPrisma, scenario.run.id);
+
+        const result = await engine.getSnapshotsSince({
+          runId: scenario.run.id,
+          snapshotId: scenario.snapshots[0].id,
+        });
+
+        expect(result).not.toBeNull();
+        const latest = result![result!.length - 1];
+        // The runner must receive the completed waitpoint (repaired from the primary), not an empty set.
+        expect(latest.completedWaitpoints.map((w) => w.id)).toEqual([waitpointId]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  // completedWaitpointOrder can contain the same waitpoint id twice (a run batched under one idempotency
+  // key), while the _completedWaitpoints join is deduped. The read-repair must compare DISTINCT ids, or it
+  // fires on every poll for such a snapshot even against a caught-up replica - silently defeating offload.
+  containerTest(
+    "does not repair from the primary when completedWaitpointOrder has duplicates but the join is complete",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = new RunEngine({
+        prisma,
+        worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+        queue: { redis: redisOptions },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const scenario = await setupTestScenario(prisma, authenticatedEnvironment, {
+          totalWaitpoints: 1,
+          outputSizeKB: 1,
+          snapshotConfigs: [
+            { status: "RUN_CREATED", completedWaitpointCount: 0 },
+            { status: "EXECUTING", completedWaitpointCount: 1 },
+          ],
+        });
+        const waitpointId = scenario.waitpoints[0].id;
+        const latestSnapshot = scenario.snapshots[scenario.snapshots.length - 1];
+        // The join stays a single row; the order column lists the same id twice (the batch-dup case).
+        await prisma.taskRunExecutionSnapshot.update({
+          where: { id: latestSnapshot.id },
+          data: { completedWaitpointOrder: [waitpointId, waitpointId] },
+        });
+
+        // Count join reads on the repair client; the replica read (`prisma`) is already complete, so a
+        // correct repair must NEVER touch the repair client for this snapshot.
+        const repairCalls = { queryRaw: 0 };
+        const repairClient = new Proxy(prisma, {
+          get(target, prop) {
+            if (prop === "$queryRaw") {
+              return (...args: unknown[]) => {
+                repairCalls.queryRaw++;
+                return (target as unknown as { $queryRaw: (...a: unknown[]) => unknown }).$queryRaw(
+                  ...args
+                );
+              };
+            }
+            const value = (target as Record<string | symbol, unknown>)[prop];
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        }) as unknown as PrismaClient;
+
+        const result = await getExecutionSnapshotsSince(
+          prisma,
+          scenario.run.id,
+          scenario.snapshots[0].id,
+          undefined,
+          repairClient
+        );
+
+        const latest = result[result.length - 1];
+        // The duplicate is intentional (batch dup) - enhance expands by completedWaitpointOrder.
+        expect(latest.completedWaitpoints.map((w) => w.id)).toEqual([waitpointId, waitpointId]);
+        // No spurious primary read: distinct(order) === join count, so the repair must not fire.
+        expect(repairCalls.queryRaw).toBe(0);
       } finally {
         await engine.quit();
       }

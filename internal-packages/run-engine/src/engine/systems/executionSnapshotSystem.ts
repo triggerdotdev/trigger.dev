@@ -260,7 +260,10 @@ export async function getExecutionSnapshotsSince(
   prisma: PrismaClientOrTransaction,
   runId: string,
   sinceSnapshotId: string,
-  runStore?: RunStore
+  runStore?: RunStore,
+  // The primary, for read-repair when `prisma` is a lagging read replica (see Step 3). Omit when
+  // `prisma` is already the primary.
+  repairClient?: PrismaClientOrTransaction
 ): Promise<EnhancedExecutionSnapshot[]> {
   // Step 1: Find the createdAt of the sinceSnapshotId
   const sinceSnapshot = runStore
@@ -316,10 +319,27 @@ export async function getExecutionSnapshotsSince(
 
   // Step 3: Get waitpoint IDs for the LATEST snapshot only (first in desc order)
   const latestSnapshot = snapshots[0];
-  const waitpointIds = await getSnapshotWaitpointIds(prisma, latestSnapshot.id, runStore);
+  let readClient = prisma;
+  let waitpointIds = await getSnapshotWaitpointIds(prisma, latestSnapshot.id, runStore);
+
+  // Read-repair: completedWaitpointOrder is written on the snapshot row in the same statement as the
+  // snapshot, so it is authoritative. If it lists more waitpoints than the join read returned, the
+  // _completedWaitpoints rows are stale on this client (a lagging read replica) - re-read them from the
+  // primary so the runner is not handed a waitpoint-less continue, which it drops and the run hangs.
+  // Distinct: completedWaitpointOrder can list the same id twice (a run batched under one idempotency
+  // key) while the _completedWaitpoints join is deduped, so compare unique ids or the repair fires every
+  // poll even against a caught-up replica.
+  const expectedCount = new Set(latestSnapshot.completedWaitpointOrder ?? []).size;
+  if (repairClient && repairClient !== prisma && waitpointIds.length < expectedCount) {
+    const repaired = await getSnapshotWaitpointIds(repairClient, latestSnapshot.id, runStore);
+    if (repaired.length > waitpointIds.length) {
+      waitpointIds = repaired;
+      readClient = repairClient;
+    }
+  }
 
   // Step 4: Fetch waitpoints in chunks to avoid NAPI string conversion limits
-  const waitpoints = await fetchWaitpointsInChunks(prisma, waitpointIds, runStore);
+  const waitpoints = await fetchWaitpointsInChunks(readClient, waitpointIds, runStore);
 
   // Step 5: Build enhanced snapshots - only latest gets waitpoints, others get empty arrays
   // The runner only uses completedWaitpoints from the latest snapshot anyway

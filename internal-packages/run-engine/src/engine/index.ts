@@ -2097,13 +2097,24 @@ export class RunEngine {
       this.readOnlyPrisma !== this.prisma;
     const prisma = tx ?? (useReplica ? this.readOnlyPrisma : this.prisma);
 
-    const query = async (client: PrismaClientOrTransaction) => {
-      const snapshots = await getExecutionSnapshotsSince(client, runId, snapshotId, this.runStore);
+    const query = async (
+      client: PrismaClientOrTransaction,
+      repairClient?: PrismaClientOrTransaction
+    ) => {
+      const snapshots = await getExecutionSnapshotsSince(
+        client,
+        runId,
+        snapshotId,
+        this.runStore,
+        repairClient
+      );
       return snapshots.map(executionDataFromSnapshot);
     };
 
     try {
-      return await query(prisma);
+      // When reading the replica, pass the primary so a snapshot whose completed-waitpoint join rows
+      // have not replicated yet is repaired from the primary instead of resuming the run waitpoint-less.
+      return await query(prisma, useReplica ? this.prisma : undefined);
     } catch (e) {
       if (useReplica && e instanceof ExecutionSnapshotNotFoundError) {
         // Replica lag: the runner learned this snapshot id from the writer before the
@@ -2115,7 +2126,7 @@ export class RunEngine {
         if (maxMs > 0) {
           await setTimeout(minMs + Math.random() * Math.max(0, maxMs - minMs));
           try {
-            const result = await query(this.readOnlyPrisma);
+            const result = await query(this.readOnlyPrisma, this.prisma);
             this.snapshotsSinceReplicaMissCounter.add(1, { outcome: "replica_retry" });
             return result;
           } catch (replicaRetryError) {
