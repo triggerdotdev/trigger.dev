@@ -5,6 +5,7 @@ import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useEnvironmentSwitcher } from "~/hooks/useEnvironmentSwitcher";
 import { useFeatures } from "~/hooks/useFeatures";
@@ -53,9 +54,20 @@ export function EnvironmentSelector({
   const navigation = useNavigation();
   const { urlForEnvironment } = useEnvironmentSwitcher();
 
+  // Keep branch list fresh, only fires while the menu is open
+  const revalidator = useAutoRevalidate({ interval: 5000, disabled: !isMenuOpen });
+
   useEffect(() => {
     setIsMenuOpen(false);
   }, [navigation.location?.pathname]);
+
+  // Fetch immediately on open so the list is fresh right away
+  useEffect(() => {
+    if (isMenuOpen && revalidator.state !== "loading") {
+      revalidator.revalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMenuOpen]);
 
   const hasStaging = project.environments.some((env) => env.type === "STAGING");
   return (
