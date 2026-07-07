@@ -121,6 +121,10 @@ The `triggerTask.server.ts` service is the **highest-throughput code path** in t
 - Pass the isolation level via options as a string: `{ isolationLevel: "Serializable" }`. Reach for `Serializable` when a read-then-write must be atomic against concurrent transactions (e.g. a count-then-delete invariant); the loser of a race fails and can retry, which is the right trade for rare, correctness-critical paths.
 - The helper returns `R | undefined` — guard the result (`if (!result) throw ...`) when callers need a definite value.
 
+## PAT-authenticated API routes
+
+- **A PAT route must resolve its target org/project scoped to the caller's membership** (`members: { some: { userId } }`, or a helper like `findProjectByRef` / `resolveOrganizationForApiUser`). A PAT is user-scoped and can name any org/project by id/slug, and the OSS RBAC fallback ability is permissive — so `ability.can(...)` alone does NOT reject a non-member on self-hosted. The RBAC `authorization` gate enforces the *role*; the membership-scoped query is the *tenant* floor. Skipping it opens cross-org access on OSS.
+
 ## React Patterns
 
 - Only use `useCallback`/`useMemo` for context provider values, expensive derived data that is a dependency elsewhere, or stable refs required by a dependency array. Don't wrap ordinary event handlers or trivial computations.
