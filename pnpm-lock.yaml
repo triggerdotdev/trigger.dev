@@ -371,6 +371,9 @@ importers:
       '@internal/run-engine':
         specifier: workspace:*
         version: link:../../internal-packages/run-engine
+      '@internal/run-ops-database':
+        specifier: workspace:*
+        version: link:../../internal-packages/run-ops-database
       '@internal/run-store':
         specifier: workspace:*
         version: link:../../internal-packages/run-store
@@ -933,6 +936,9 @@ importers:
       '@tailwindcss/typography':
         specifier: ^0.5.20
         version: 0.5.20(tailwindcss@4.3.1)
+      '@testcontainers/postgresql':
+        specifier: ^11.14.0
+        version: 11.14.0
       '@total-typescript/ts-reset':
         specifier: ^0.4.2
         version: 0.4.2
@@ -1373,8 +1379,27 @@ importers:
         specifier: 6.0.1
         version: 6.0.1
 
+  internal-packages/run-ops-database:
+    dependencies:
+      '@prisma/client':
+        specifier: 6.14.0
+        version: 6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@5.5.4))(typescript@5.5.4)
+      prisma:
+        specifier: 6.14.0
+        version: 6.14.0(magicast@0.3.5)(typescript@5.5.4)
+    devDependencies:
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
+      vitest:
+        specifier: 4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(@vitest/coverage-v8@4.1.7)(vite@6.4.2(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.22.4)(yaml@2.9.0))
+
   internal-packages/run-store:
     dependencies:
+      '@internal/run-ops-database':
+        specifier: workspace:*
+        version: link:../run-ops-database
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -1482,6 +1507,9 @@ importers:
         specifier: ~5.6.0
         version: 5.6.1
     devDependencies:
+      '@internal/run-ops-database':
+        specifier: workspace:*
+        version: link:../run-ops-database
       '@testcontainers/postgresql':
         specifier: ^11.14.0
         version: 11.14.0
@@ -1566,7 +1594,7 @@ importers:
         specifier: ^6.10.0
         version: 6.19.0(magicast@0.3.5)
       '@trigger.dev/core':
-        specifier: workspace:4.5.0
+        specifier: workspace:4.5.1
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1642,13 +1670,13 @@ importers:
         specifier: ^0.22.10
         version: 0.22.10(supports-color@10.0.0)
       '@trigger.dev/build':
-        specifier: workspace:4.5.0
+        specifier: workspace:4.5.1
         version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:4.5.0
+        specifier: workspace:4.5.1
         version: link:../core
       '@trigger.dev/schema-to-json':
-        specifier: workspace:4.5.0
+        specifier: workspace:4.5.1
         version: link:../schema-to-json
       ansi-escapes:
         specifier: ^7.0.0
@@ -2041,7 +2069,7 @@ importers:
   packages/python:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.5.0
+        specifier: workspace:4.5.1
         version: link:../core
       tinyexec:
         specifier: ^0.3.2
@@ -2051,10 +2079,10 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:4.5.0
+        specifier: workspace:4.5.1
         version: link:../build
       '@trigger.dev/sdk':
-        specifier: workspace:4.5.0
+        specifier: workspace:4.5.1
         version: link:../trigger-sdk
       '@types/node':
         specifier: 22.20.0
@@ -2078,7 +2106,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.5.0
+        specifier: workspace:^4.5.1
         version: link:../core
       react:
         specifier: 18.3.1
@@ -2112,7 +2140,7 @@ importers:
   packages/redis-worker:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.5.0
+        specifier: workspace:4.5.1
         version: link:../core
       cron-parser:
         specifier: ^4.9.0
@@ -2161,7 +2189,7 @@ importers:
   packages/rsc:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.5.0
+        specifier: workspace:^4.5.1
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -2177,7 +2205,7 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:^4.5.0
+        specifier: workspace:^4.5.1
         version: link:../build
       '@types/node':
         specifier: 22.20.0
@@ -2256,7 +2284,7 @@ importers:
         specifier: 1.41.1
         version: 1.41.1
       '@trigger.dev/core':
-        specifier: workspace:4.5.0
+        specifier: workspace:4.5.1
         version: link:../core
       chalk:
         specifier: ^5.2.0
@@ -11347,14 +11375,6 @@ packages:
 
   fdir@6.4.3:
     resolution: {integrity: sha512-PMXmW2y1hDDfTSRc9gaXIuCCRpuoz3Kaz8cUelp3smouvfT632ozg2vrT6lJsHKKOF59YLbOGfAWGUcKEfRMQw==}
-    peerDependencies:
-      picomatch: ^4.0.4
-    peerDependenciesMeta:
-      picomatch:
-        optional: true
-
-  fdir@6.4.4:
-    resolution: {integrity: sha512-1NZP+GK4GfuAv3PqKvxQRDMjdSRZjnkq7KfhlNrCNNlZ0ygQFpebfrnfnq/W7fpUnAv9aGWmY1zKx7FYL3gwhg==}
     peerDependencies:
       picomatch: ^4.0.4
     peerDependenciesMeta:
@@ -28457,10 +28477,6 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.4
 
-  fdir@6.4.4(picomatch@4.0.4):
-    optionalDependencies:
-      picomatch: 4.0.4
-
   fdir@6.5.0(picomatch@4.0.4):
     optionalDependencies:
       picomatch: 4.0.4
@@ -33689,7 +33705,7 @@ snapshots:
 
   tinyglobby@0.2.13:
     dependencies:
-      fdir: 6.4.4(picomatch@4.0.4)
+      fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
 
   tinyglobby@0.2.16:
