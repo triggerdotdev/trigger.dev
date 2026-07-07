@@ -2,8 +2,10 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { $replica } from "~/db.server";
 import { clearImpersonation, redirectWithImpersonation } from "~/models/admin.server";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
+import { isSameOriginNavigation } from "~/utils/sameOriginNavigation";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request);
@@ -27,6 +29,18 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   if (!organizationSlug) {
     logger.debug("Exiting impersonation mode");
     return clearImpersonation(request, "/admin");
+  }
+
+  // CSRF gate for the SET-impersonation path. Clearing impersonation
+  // above is benign and stays reachable without the check.
+  if (!isSameOriginNavigation(request, env.LOGIN_ORIGIN)) {
+    logger.warn("Refusing cross-site impersonation entry", {
+      userId: user.id,
+      organizationSlug,
+      referer: request.headers.get("referer"),
+      secFetchSite: request.headers.get("sec-fetch-site"),
+    });
+    return redirect("/admin");
   }
 
   const org = await $replica.organization.findFirst({
