@@ -83,9 +83,23 @@ describe("transport send events", () => {
     expect(sent.source).toBe("submit-message");
     expect(sent.durationMs).toBeGreaterThanOrEqual(0);
     expect(sent.timestamp).toBeGreaterThan(0);
+    expect(sent.partId).toMatch(/[0-9a-f-]{36}/);
+    expect(sent.bodyBytes).toBeGreaterThan(0);
 
     const connected = events[1] as Extract<ChatTransportEvent, { type: "stream-connected" }>;
     expect(connected.resumed).toBe(false);
+    expect(connected.messageId).toBe("u-1");
+
+    const firstChunk = events[2] as Extract<ChatTransportEvent, { type: "first-chunk" }>;
+    expect(firstChunk.chunkType).toBe("text-delta");
+    expect(firstChunk.lastEventId).toBe("1");
+    expect(firstChunk.messageId).toBe("u-1");
+    expect(firstChunk.sinceSendMs).toBeGreaterThanOrEqual(0);
+
+    const turnCompleted = events[3] as Extract<ChatTransportEvent, { type: "turn-completed" }>;
+    expect(turnCompleted.messageId).toBe("u-1");
+    expect(turnCompleted.sinceSendMs).toBeGreaterThanOrEqual(0);
+    expect(turnCompleted.lastEventId).toBe("2");
   });
 
   it("emits message-send-failed with the HTTP status when the append fails", async () => {

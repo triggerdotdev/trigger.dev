@@ -641,14 +641,16 @@ The `onEvent` callback receives a `ChatTransportEvent` (exported from `@trigger.
 
 | Event | Extra fields | Fires when |
 | --- | --- | --- |
-| `message-sent` | `messageId?`, `source`, `durationMs` | A send was durably acknowledged — a 2xx from the session input stream append (or the `headStart` POST), after any internal token-refresh retries. This means the message is durably written to the stream the agent consumes from, not merely "request accepted". |
-| `message-send-failed` | `messageId?`, `source`, `error`, `status?`, `durationMs` | A send definitively failed after internal retries. Fires in addition to `useChat`'s `onError`. |
-| `stream-connected` | `resumed` | The SSE subscription to the session's output stream started delivering. `resumed: true` when reconnecting from a stored cursor (page reload) rather than following a fresh send. |
-| `first-chunk` | — | The first response chunk of a turn arrived. Pair with `message-sent` for time-to-first-token. |
-| `turn-completed` | `lastEventId?` | The agent's turn-complete control record arrived — the "finished answering" signal. |
-| `stream-error` | `error` | The output stream failed unrecoverably. |
+| `message-sent` | `messageId?`, `source`, `durationMs`, `partId?`, `bodyBytes?` | A send was durably acknowledged — a 2xx from the session input stream append (or the `headStart` POST), after any internal token-refresh retries. This means the message is durably written to the stream the agent consumes from, not merely "request accepted". `partId` is the append's idempotency key, also stored on the server-side record. |
+| `message-send-failed` | `messageId?`, `source`, `error`, `status?`, `durationMs`, `partId?`, `bodyBytes?` | A send definitively failed after internal retries. Fires in addition to `useChat`'s `onError`. |
+| `stream-connected` | `resumed`, `lastEventId?`, `messageId?` | The SSE subscription to the session's output stream started delivering. `resumed: true` when reconnecting from a stored cursor (page reload) rather than following a fresh send. `lastEventId` is the cursor it connected from. |
+| `first-chunk` | `chunkType?`, `lastEventId?`, `messageId?`, `sinceSendMs?` | The first response chunk of a turn arrived. `sinceSendMs` is the delta from the last turn-producing send — time to first token without any bookkeeping. |
+| `turn-completed` | `lastEventId?`, `sessionInEventId?`, `messageId?`, `sinceSendMs?` | The agent's turn-complete control record arrived — the "finished answering" signal. `sinceSendMs` is the full turn latency; `sessionInEventId` is the agent's committed input-stream cursor. |
+| `stream-error` | `error`, `status?` | The output stream failed unrecoverably. |
 
 `source` identifies the send path: `"submit-message"`, `"regenerate-message"`, `"steer"` (`sendPendingMessage`), `"action"` (`sendAction`), `"stop"` (`stopGeneration`), or `"head-start"`.
+
+`messageId` on the response-side events is client-side attribution: the id from the most recent turn-producing send (`submit-message`, `regenerate-message`, or `head-start`) on that chat.
 
 See [Monitoring message delivery](/ai-chat/frontend#monitoring-message-delivery) for the metrics and watchdog patterns these enable.
 

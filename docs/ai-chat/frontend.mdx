@@ -615,4 +615,4 @@ onEvent: (event) => {
 };
 ```
 
-Time to first token is the delta between a `message-sent` and the following `first-chunk` on the same chat. Exceptions thrown inside `onEvent` are swallowed, so a failing metrics pipeline can never break the chat.
+Time to first token is `first-chunk`'s `sinceSendMs` (the transport tracks the last turn-producing send per chat, so no bookkeeping is needed), and `turn-completed`'s `sinceSendMs` is the full turn latency. Exceptions thrown inside `onEvent` are swallowed, so a failing metrics pipeline can never break the chat.

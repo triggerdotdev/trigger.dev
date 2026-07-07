@@ -28,9 +28,14 @@ import {
   controlSubtype,
   headerValue,
   PUBLIC_ACCESS_TOKEN_HEADER,
+  SESSION_IN_EVENT_ID_HEADER,
   SSEStreamSubscription,
   TRIGGER_CONTROL_SUBTYPE,
 } from "@trigger.dev/core/v3";
+
+function byteLength(body: string): number {
+  return new TextEncoder().encode(body).byteLength;
+}
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { slimSubmitMessageForWire } from "./ai-shared.js";
@@ -108,6 +113,10 @@ export type ChatTransportEvent =
       messageId?: string;
       source: ChatTransportSendSource;
       durationMs: number;
+      /** The append's idempotency key — also stored on the server-side record. */
+      partId?: string;
+      /** Serialized request body size in bytes. */
+      bodyBytes?: number;
     }
   | {
       type: "message-send-failed";
@@ -118,11 +127,41 @@ export type ChatTransportEvent =
       error: Error;
       status?: number;
       durationMs: number;
+      partId?: string;
+      bodyBytes?: number;
     }
-  | { type: "stream-connected"; chatId: string; timestamp: number; resumed: boolean }
-  | { type: "stream-error"; chatId: string; timestamp: number; error: Error }
-  | { type: "first-chunk"; chatId: string; timestamp: number }
-  | { type: "turn-completed"; chatId: string; timestamp: number; lastEventId?: string };
+  | {
+      type: "stream-connected";
+      chatId: string;
+      timestamp: number;
+      resumed: boolean;
+      /** The resume cursor the subscription connected from, if any. */
+      lastEventId?: string;
+      /** The last turn-producing send on this chat (client-side attribution). */
+      messageId?: string;
+    }
+  | { type: "stream-error"; chatId: string; timestamp: number; error: Error; status?: number }
+  | {
+      type: "first-chunk";
+      chatId: string;
+      timestamp: number;
+      chunkType?: string;
+      lastEventId?: string;
+      messageId?: string;
+      /** Milliseconds since the last turn-producing send on this chat (time to first token). */
+      sinceSendMs?: number;
+    }
+  | {
+      type: "turn-completed";
+      chatId: string;
+      timestamp: number;
+      lastEventId?: string;
+      /** The agent's committed input-stream cursor from the turn-complete record. */
+      sessionInEventId?: string;
+      messageId?: string;
+      /** Milliseconds since the last turn-producing send on this chat (full turn latency). */
+      sinceSendMs?: number;
+    };
 
 /**
  * Detect 401/403 from realtime/input-stream calls without relying on `instanceof`
@@ -520,6 +559,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private sessions: Map<string, ChatSessionState> = new Map();
   private activeStreams: Map<string, AbortController> = new Map();
   private pendingStarts: Map<string, Promise<ChatSessionState>> = new Map();
+  // Last turn-producing send per chat — attribution source for the
+  // response-side events' `messageId` / `sinceSendMs`.
+  private lastTurnSends: Map<string, { messageId?: string; at: number }> = new Map();
 
   constructor(options: TriggerChatTransportOptions) {
     this.taskId = options.task;
@@ -687,17 +729,20 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // Generated outside the closure so auth-retries reuse the same part id
     // and the server-side dedupe sees one logical append.
     const partId = crypto.randomUUID();
+    const serializedBody = this.serializeInputChunk({ kind: "message", payload: wirePayload });
     const sendChatMessage = async (token: string) => {
-      await this.appendInputChunk(
-        chatId,
-        token,
-        this.serializeInputChunk({ kind: "message", payload: wirePayload }),
-        partId
-      );
+      await this.appendInputChunk(chatId, token, serializedBody, partId);
     };
 
-    await this.sendWithEvents(chatId, trigger, messageId ?? messages.at(-1)?.id, () =>
-      this.callWithAuthRetry(chatId, state, sendChatMessage)
+    await this.sendWithEvents(
+      chatId,
+      trigger,
+      {
+        messageId: messageId ?? messages.at(-1)?.id,
+        partId,
+        bodyBytes: byteLength(serializedBody),
+      },
+      () => this.callWithAuthRetry(chatId, state, sendChatMessage)
     );
 
     // Cancel any in-flight stream for this chat — the new turn supersedes it.
@@ -748,10 +793,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
 
     let response!: Response;
+    const serializedBody = JSON.stringify(wirePayload);
     await this.sendWithEvents(
       args.chatId,
       "head-start",
-      args.messageId ?? args.messages.at(-1)?.id,
+      {
+        messageId: args.messageId ?? args.messages.at(-1)?.id,
+        bodyBytes: byteLength(serializedBody),
+      },
       async () => {
         response = await fetch(this.headStart!, {
           method: "POST",
@@ -759,7 +808,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             "Content-Type": "application/json",
             ...this.extraHeaders,
           },
-          body: JSON.stringify(wirePayload),
+          body: serializedBody,
           signal: args.abortSignal,
         });
 
@@ -886,18 +935,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
 
     const partId = crypto.randomUUID();
+    const serializedBody = this.serializeInputChunk({ kind: "message", payload: wirePayload });
     const send = async (token: string) => {
-      await this.appendInputChunk(
-        chatId,
-        token,
-        this.serializeInputChunk({ kind: "message", payload: wirePayload }),
-        partId
-      );
+      await this.appendInputChunk(chatId, token, serializedBody, partId);
     };
 
     try {
-      await this.sendWithEvents(chatId, "steer", message.id, () =>
-        this.callWithAuthRetry(chatId, state, send)
+      await this.sendWithEvents(
+        chatId,
+        "steer",
+        { messageId: message.id, partId, bodyBytes: byteLength(serializedBody) },
+        () => this.callWithAuthRetry(chatId, state, send)
       );
       return true;
     } catch {
@@ -950,18 +998,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (!state) return false;
 
     const partId = crypto.randomUUID();
+    const serializedBody = this.serializeInputChunk({ kind: "stop" });
     const send = async (token: string) => {
-      await this.appendInputChunk(
-        chatId,
-        token,
-        this.serializeInputChunk({ kind: "stop" }),
-        partId
-      );
+      await this.appendInputChunk(chatId, token, serializedBody, partId);
     };
 
     try {
-      await this.sendWithEvents(chatId, "stop", undefined, () =>
-        this.callWithAuthRetry(chatId, state, send)
+      await this.sendWithEvents(
+        chatId,
+        "stop",
+        { partId, bodyBytes: byteLength(serializedBody) },
+        () => this.callWithAuthRetry(chatId, state, send)
       );
     } catch {
       return false;
@@ -1015,7 +1062,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       await this.appendInputChunk(chatId, token, body, partId);
     };
 
-    await this.sendWithEvents(chatId, "action", undefined, () =>
+    await this.sendWithEvents(chatId, "action", { partId, bodyBytes: byteLength(body) }, () =>
       this.callWithAuthRetry(chatId, state, send)
     );
 
@@ -1081,19 +1128,24 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private async sendWithEvents(
     chatId: string,
     source: ChatTransportSendSource,
-    messageId: string | undefined,
+    extras: { messageId?: string; partId?: string; bodyBytes?: number },
     op: () => Promise<void>
   ): Promise<void> {
     const startedAt = Date.now();
     try {
       await op();
+      const turnProducing =
+        source === "submit-message" || source === "regenerate-message" || source === "head-start";
+      if (turnProducing) {
+        this.lastTurnSends.set(chatId, { messageId: extras.messageId, at: Date.now() });
+      }
       this.emitEvent({
         type: "message-sent",
         chatId,
         timestamp: Date.now(),
-        messageId,
         source,
         durationMs: Date.now() - startedAt,
+        ...extras,
       });
     } catch (error) {
       const status = (error as { status?: unknown }).status;
@@ -1101,14 +1153,21 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         type: "message-send-failed",
         chatId,
         timestamp: Date.now(),
-        messageId,
         source,
         error: error instanceof Error ? error : new Error(String(error)),
         status: typeof status === "number" ? status : undefined,
         durationMs: Date.now() - startedAt,
+        ...extras,
       });
       throw error;
     }
+  }
+
+  /** Attribution fields for response-side events. */
+  private turnAttribution(chatId: string): { messageId?: string; sinceSendMs?: number } {
+    const lastSend = this.lastTurnSends.get(chatId);
+    if (!lastSend) return {};
+    return { messageId: lastSend.messageId, sinceSendMs: Date.now() - lastSend.at };
   }
 
   /**
@@ -1547,6 +1606,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             chatId,
             timestamp: Date.now(),
             resumed: options?.resumed ?? false,
+            lastEventId: state.lastEventId,
+            messageId: this.lastTurnSends.get(chatId)?.messageId,
           });
           let sawFirstChunk = false;
 
@@ -1634,6 +1695,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 chatId,
                 timestamp: Date.now(),
                 lastEventId: state.lastEventId,
+                sessionInEventId: headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER),
+                ...this.turnAttribution(chatId),
               });
               state.isStreaming = false;
               this.notifySessionChange(chatId, state);
@@ -1659,7 +1722,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             if (value.chunk == null) continue;
             if (!sawFirstChunk) {
               sawFirstChunk = true;
-              this.emitEvent({ type: "first-chunk", chatId, timestamp: Date.now() });
+              this.emitEvent({
+                type: "first-chunk",
+                chatId,
+                timestamp: Date.now(),
+                chunkType: (value.chunk as { type?: string }).type,
+                lastEventId: value.id || undefined,
+                ...this.turnAttribution(chatId),
+              });
             }
             controller.enqueue(value.chunk as UIMessageChunk);
           }
@@ -1672,11 +1742,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
             return;
           }
+          const errorStatus = (error as { status?: unknown }).status;
           this.emitEvent({
             type: "stream-error",
             chatId,
             timestamp: Date.now(),
             error: error instanceof Error ? error : new Error(String(error)),
+            status: typeof errorStatus === "number" ? errorStatus : undefined,
           });
           controller.error(error);
         } finally {
