@@ -19,6 +19,8 @@ export const usePostHog = (apiKey?: string, logging = false, debug = false): voi
       // Same-origin first-party proxy (see app/routes/ph.$.ts) that forwards to
       // PostHog Cloud EU server-side.
       api_host: "/ph",
+      // Point the toolbar at the real PostHog UI; without it, it falls back to /ph.
+      ui_host: "https://eu.posthog.com",
       cross_subdomain_cookie: true,
       opt_in_site_apps: true,
       debug,
