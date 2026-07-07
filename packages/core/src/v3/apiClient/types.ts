@@ -70,6 +70,42 @@ export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQu
   env?: Array<"dev" | "staging" | "prod"> | "dev" | "staging" | "prod";
 }
 
+type RequireAtLeastOne<T, Keys extends keyof T = keyof T> = T &
+  {
+    [K in Keys]-?: Required<Pick<T, K>>;
+  }[Keys];
+
+/** Same filters as runs.list(), excluding pagination. */
+export type BulkActionFilter = RequireAtLeastOne<Omit<ListRunsQueryParams, keyof CursorPageParams>>;
+
+export type BulkActionSelection =
+  | { filter: BulkActionFilter; runIds?: never }
+  | { runIds: string[]; filter?: never };
+
+type BaseBulkActionOptions = BulkActionSelection & {
+  name?: string;
+};
+
+type TargetRegionOption = {
+  /** Region identifier to replay runs in. When omitted, each replay keeps the original run's region. */
+  targetRegion?: string;
+};
+
+export type CreateBulkActionOptions =
+  | (BaseBulkActionOptions & {
+      action: "cancel";
+      targetRegion?: never;
+    })
+  | (BaseBulkActionOptions & { action: "replay" } & TargetRegionOption);
+
+export type CreateBulkCancelActionOptions = BaseBulkActionOptions & {
+  targetRegion?: never;
+};
+
+export type CreateBulkReplayActionOptions = BaseBulkActionOptions & TargetRegionOption;
+
+export type ListBulkActionsQueryParams = CursorPageParams;
+
 export interface SubscribeToRunsQueryParams {
   tasks?: Array<string> | string;
   tags?: Array<string> | string;

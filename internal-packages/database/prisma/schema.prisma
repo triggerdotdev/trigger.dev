@@ -2521,6 +2521,11 @@ model BulkActionGroup {
   // the INCLUDE/fillfactor indexes elsewhere in this schema). `migrate dev` will report
   // drift here; do NOT accept its drop/recreate — keep the hand-written migration.
   @@index([environmentId, type, dedupeKey])
+  // Backs the per-environment concurrent-replay limit (count of PENDING REPLAY groups).
+  // Plain composite (not partial) so Prisma's parameterized count reliably uses it; the
+  // migration creates it CONCURRENTLY to avoid locking writes. See migration
+  // 20260702120000_bulk_action_group_pending_replay_index.
+  @@index([environmentId, status, type])
 }
 
 enum BulkActionType {

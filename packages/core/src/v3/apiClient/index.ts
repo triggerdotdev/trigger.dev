@@ -36,7 +36,10 @@ import {
   type UpdateScheduleOptions,
   type UpdateSessionRequestBody,
   type WaitForDurationRequestBody,
+  AbortBulkActionResponseBody,
   ApiDeploymentListResponseItem,
+  BulkActionObject,
+  CreateBulkActionResponseBody,
   AppendToStreamResponseBody,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskV3Response,
@@ -118,8 +121,10 @@ import {
   type SSEStreamPart,
 } from "./runStream.js";
 import type {
+  CreateBulkActionOptions,
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
+  ListBulkActionsQueryParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
   ListWaitpointTokensQueryParams,
@@ -141,9 +146,11 @@ export type CreateBatchApiResponse = Prettify<
 >;
 
 export type {
+  CreateBulkActionOptions,
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
   RealtimeRunSkipColumns,
+  ListBulkActionsQueryParams,
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
 };
@@ -730,6 +737,64 @@ export class ApiClient {
     return zodfetch(
       CanceledRunResponse,
       `${this.baseUrl}/api/v2/runs/${runId}/cancel`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  createBulkAction(options: CreateBulkActionOptions, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CreateBulkActionResponseBody,
+      `${this.baseUrl}/api/v1/bulk-actions`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(options),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listBulkActions(
+    query?: ListBulkActionsQueryParams,
+    requestOptions?: ZodFetchOptions
+  ): CursorPagePromise<typeof BulkActionObject> {
+    return zodfetchCursorPage(
+      BulkActionObject,
+      `${this.baseUrl}/api/v1/bulk-actions`,
+      {
+        query: new URLSearchParams(),
+        limit: query?.limit,
+        after: query?.after,
+        before: query?.before,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveBulkAction(bulkActionId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      BulkActionObject,
+      `${this.baseUrl}/api/v1/bulk-actions/${bulkActionId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  abortBulkAction(bulkActionId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      AbortBulkActionResponseBody,
+      `${this.baseUrl}/api/v1/bulk-actions/${bulkActionId}/abort`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
