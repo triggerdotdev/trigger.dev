@@ -3036,4 +3036,20 @@ describe("API", () => {
       expect(res.status).toBe(400);
     });
   });
+
+  // Multi-method PAT action routes declare their allowed verbs, so a verb they
+  // don't handle (e.g. POST on a PATCH/DELETE route) is rejected rather than
+  // falling through to the rename branch.
+  describe("Multi-method routes reject other verbs", () => {
+    it("POST to the org rename/delete route: 405", async () => {
+      const server = getTestServer();
+      const { organization, pat } = await seedTestUserProject(server.prisma);
+      const res = await server.webapp.fetch(`/api/v1/orgs/${organization.id}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "New name" }),
+      });
+      expect(res.status).toBe(405);
+    });
+  });
 });

@@ -13,10 +13,12 @@ const RenameOrgRequestBody = z.object({
   title: z.string().min(1),
 });
 
-// Multi-method (PATCH rename / DELETE), so no `method` and no builder body
-// schema — the handler branches and parses the PATCH body itself.
+// Multi-method (PATCH rename / DELETE): declare both so other verbs 405, and
+// the handler branches. No builder body schema — DELETE has none, so the PATCH
+// branch parses its own body.
 export const action = createActionPATApiRoute(
   {
+    method: ["PATCH", "DELETE"],
     params: ParamsSchema,
     // Resolve the org (id only, no membership) so the plugin can compute the
     // caller's role floor for the manage:organization gate below.

@@ -644,13 +644,16 @@ export function createLoaderPATApiRoute<
 // can raise typed 4xx errors instead of the route string-matching messages.
 // Deliberately self-contained (not sharing internals with the loader) so
 // existing PAT loader routes are untouched.
+type PATActionMethod = "POST" | "PUT" | "DELETE" | "PATCH";
+
 type PATActionRouteBuilderOptions<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
   THeadersSchema extends AnyZodSchema | undefined = undefined,
   TBodySchema extends AnyZodSchema | undefined = undefined,
 > = PATRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema> & {
-  method?: "POST" | "PUT" | "DELETE" | "PATCH";
+  // A single verb, or a list for multi-method routes (e.g. ["PATCH", "DELETE"]).
+  method?: PATActionMethod | PATActionMethod[];
   body?: TBodySchema;
 };
 
@@ -710,10 +713,14 @@ export function createActionPATApiRoute<
       return apiCors(request, json({}));
     }
 
-    if (method && request.method.toUpperCase() !== method) {
+    const allowedMethods = method ? (Array.isArray(method) ? method : [method]) : undefined;
+    if (allowedMethods && !(allowedMethods as string[]).includes(request.method.toUpperCase())) {
       return await wrapResponse(
         request,
-        json({ error: "Method not allowed" }, { status: 405, headers: { Allow: method } }),
+        json(
+          { error: "Method not allowed" },
+          { status: 405, headers: { Allow: allowedMethods.join(", ") } }
+        ),
         corsStrategy !== "none"
       );
     }
