@@ -42,9 +42,15 @@ The body text (below the frontmatter) is a one-line description of the change. K
 
 These entries are public-facing - they ship verbatim in user-visible release notes. A few rules to keep them clean:
 
+- **Write for the user, not the reviewer.** Lead with what the user notices or has to do. If a reader who doesn't know the codebase can't tell what changed for them, rewrite it.
 - **One sentence is usually enough.** The body is the bullet in the changelog. If you need a paragraph, you're probably describing the implementation rather than the change.
 - **Describe behavior, not implementation.** Skip internal scopes, middleware names, library specifics, framework internals. Users care about what's different for them, not how it's wired.
 - **Never name internal tools or infra.** Observability stacks, internal services, infra components, monitoring backends, CI surfaces, AWS specifics - none of these belong in user-facing notes.
+
+Before / after:
+
+- ❌ _"The image verification step now parses the manifest's layer media types and returns a new result the finalizer rejects."_ (describes the wiring; a user can't act on it)
+- ✅ _"Deploying with an outdated CLI could produce an image that fails to start on every run. These deploys are now stopped before going live, with a message asking you to upgrade the CLI and re-deploy."_ (what the user sees and does)
 
 ## Lifecycle
 
