@@ -30,13 +30,30 @@ const DiscoverySchema = z.object({
   matchBehavior: z.enum(["show-if-found", "show-if-not-found"]),
 });
 
+// Constrain URL fields to http/https; `.url()` alone accepts other schemes
+// that would be unsafe to render into an `<a href>`.
+const httpUrl = z
+  .string()
+  .url()
+  .refine(
+    (v) => {
+      try {
+        const proto = new URL(v).protocol;
+        return proto === "http:" || proto === "https:";
+      } catch {
+        return false;
+      }
+    },
+    { message: "URL must use http or https" }
+  );
+
 const CardDataV1Schema = z.object({
   type: z.enum(["card", "info", "warn", "error", "success", "changelog"]),
   title: z.string(),
   description: z.string(),
-  image: z.string().url().optional(),
+  image: httpUrl.optional(),
   actionLabel: z.string().optional(),
-  actionUrl: z.string().url().optional(),
+  actionUrl: httpUrl.optional(),
   dismissOnAction: z.boolean().optional(),
   discovery: DiscoverySchema.optional(),
 });

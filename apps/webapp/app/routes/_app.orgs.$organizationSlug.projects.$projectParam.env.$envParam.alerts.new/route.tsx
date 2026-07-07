@@ -42,6 +42,10 @@ import {
   type CreateAlertChannelOptions,
   CreateAlertChannelService,
 } from "~/v3/services/alerts/createAlertChannel.server";
+import {
+  assertSafeWebhookUrl,
+  UnsafeWebhookUrlError,
+} from "~/v3/services/alerts/safeWebhookUrl.server";
 
 const FormSchema = z
   .object({
@@ -187,6 +191,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   if (!project) {
     return json(submission.reply({ formErrors: ["Project not found"] }));
+  }
+
+  // Validate the webhook URL before storing it, for an inline field error.
+  if (submission.value.type === "WEBHOOK") {
+    try {
+      await assertSafeWebhookUrl(submission.value.channelValue);
+    } catch (error) {
+      if (error instanceof UnsafeWebhookUrlError) {
+        return json(submission.reply({ fieldErrors: { channelValue: [error.message] } }));
+      }
+      throw error;
+    }
   }
 
   const service = new CreateAlertChannelService();
