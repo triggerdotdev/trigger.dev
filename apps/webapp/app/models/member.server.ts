@@ -1,5 +1,5 @@
 import type { Organization, OrgMember, Project } from "@trigger.dev/database";
-import { Prisma as PrismaNamespace, type Prisma, prisma } from "~/db.server";
+import { Prisma as PrismaNamespace, type Prisma, prisma, $transaction } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { logger } from "~/services/logger.server";

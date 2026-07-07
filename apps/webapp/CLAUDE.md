@@ -115,6 +115,12 @@ The `triggerTask.server.ts` service is the **highest-throughput code path** in t
 
 - **Always use `findFirst` instead of `findUnique`.** Prisma's `findUnique` has an implicit DataLoader that batches concurrent calls into a single `IN` query. This batching cannot be disabled and has active bugs even in Prisma 6.x: uppercase UUIDs returning null (#25484, confirmed 6.4.1), composite key SQL correctness issues (#22202), and 5-10x worse performance than manual DataLoader (#6573, open since 2021). `findFirst` is never batched and avoids this entire class of issues.
 
+## Transactions
+
+- **Always use the `$transaction` helper from `~/db.server`, never `prisma.$transaction` (or `$replica.$transaction`) directly.** The helper wraps the raw call with tracing (an OTEL span + an `isolation_level` attribute) and boundary logging for infrastructure errors (e.g. `PrismaClientInitializationError`) that the raw client swallows. Signature: `$transaction(prisma, name?, async (tx) => { ... }, options?)`.
+- Pass the isolation level via options as a string: `{ isolationLevel: "Serializable" }`. Reach for `Serializable` when a read-then-write must be atomic against concurrent transactions (e.g. a count-then-delete invariant); the loser of a race fails and can retry, which is the right trade for rare, correctness-critical paths.
+- The helper returns `R | undefined` — guard the result (`if (!result) throw ...`) when callers need a definite value.
+
 ## React Patterns
 
 - Only use `useCallback`/`useMemo` for context provider values, expensive derived data that is a dependency elsewhere, or stable refs required by a dependency array. Don't wrap ordinary event handlers or trivial computations.
