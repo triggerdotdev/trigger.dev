@@ -244,7 +244,7 @@ If runs are staying in the `QUEUED` state for extended periods, check your concu
 
 ### Runs queued because a billing limit was reached
 
-If your organization has a [billing limit](/billing-limits) configured and your monthly spend reaches it, billable environments (`production`, `staging`, and `preview`) pause: new runs are still triggered and queued, but they won't start executing. Check the **Billing limits** page in your organization settings — increasing or removing the limit resumes execution.
+If your organization reaches a billing limit, billable environments (`production`, `staging`, and `preview`) pause: new runs still queue, but they won't start executing until you raise or remove the limit and choose whether to resume or cancel the queued runs. See [Billing limits and alerts](/billing-limits) for the full flow.
 
 ### `Crypto is not defined`
 
