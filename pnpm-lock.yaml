@@ -1054,7 +1054,7 @@ importers:
         specifier: ^4.0.2
         version: 4.0.2(react@18.3.1)(tailwindcss@4.3.1)
       tailwindcss:
-        specifier: 4.3.1
+        specifier: ^4.3.1
         version: 4.3.1
       tsconfig-paths:
         specifier: ^3.14.1
@@ -15613,9 +15613,6 @@ packages:
     engines: {node: '>=12.13.0'}
     peerDependencies:
       tailwindcss: 4.x
-
-  tailwindcss@4.3.0:
-    resolution: {integrity: sha512-y6nxMGB1nMW9R6k96e5gdIFzcfL/gTJRNaqGes1YvkLnPVXzWgbqFF2yLC0T8G774n24cx3Pe8XrKoniCOAH+Q==}
 
   tailwindcss@4.3.1:
     resolution: {integrity: sha512-hk+TB1m+K8CYNrP6rjQaq/Y+4Zylwpa87mLYBKCunwnnQ9p+fHb7kmSfGqyEJoxF/O6CDyABWVFEafNSYKll+Q==}
@@ -32116,7 +32113,7 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       socket.io: 4.8.3(bufferutil@4.0.9)
-      tailwindcss: 4.3.0
+      tailwindcss: 4.3.1
       tsconfig-paths: 4.2.0
     transitivePeerDependencies:
       - bufferutil
@@ -33537,8 +33534,6 @@ snapshots:
       tailwindcss: 4.3.1
     transitivePeerDependencies:
       - react
-
-  tailwindcss@4.3.0: {}
 
   tailwindcss@4.3.1: {}
 

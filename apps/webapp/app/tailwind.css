@@ -351,6 +351,13 @@
   scrollbar-gutter: stable;
 }
 
+/* Shared stop list for the animated glow utilities below. The gradient itself
+   is assembled per-element so the animated --gradient-angle resolves there. */
+:root {
+  --glow-gradient-stops: rgb(99 102 241), rgb(245 158 11), rgb(236 72 153), rgb(245 158 11),
+    rgb(99 102 241);
+}
+
 @utility animated-gradient-glow {
   position: relative;
   overflow: visible;
@@ -360,14 +367,7 @@
     position: absolute;
     inset: -8px;
     z-index: -1;
-    background: conic-gradient(
-      from var(--gradient-angle),
-      rgb(99 102 241),
-      rgb(245 158 11),
-      rgb(236 72 153),
-      rgb(245 158 11),
-      rgb(99 102 241)
-    );
+    background: conic-gradient(from var(--gradient-angle), var(--glow-gradient-stops));
     border-radius: inherit;
     animation: gradient-rotation 3s linear infinite;
     pointer-events: none;
@@ -385,14 +385,7 @@
     position: absolute;
     inset: -1px;
     z-index: -1;
-    background: conic-gradient(
-      from var(--gradient-angle),
-      rgb(99 102 241),
-      rgb(245 158 11),
-      rgb(236 72 153),
-      rgb(245 158 11),
-      rgb(99 102 241)
-    );
+    background: conic-gradient(from var(--gradient-angle), var(--glow-gradient-stops));
     border-radius: inherit;
     animation: gradient-rotation 3s linear infinite;
     pointer-events: none;
@@ -435,6 +428,9 @@
   ::selection {
     @apply bg-text-bright/30 text-text-bright;
   }
+  /* Kept separate from ::selection on purpose: grouping them makes older
+     Firefox drop the whole rule. */
+  /* stylelint-disable-next-line selector-no-vendor-prefix */
   ::-moz-selection {
     @apply bg-text-bright/30 text-text-bright;
   }

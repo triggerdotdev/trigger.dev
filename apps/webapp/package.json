@@ -288,7 +288,7 @@
     "style-loader": "^3.3.4",
     "supertest": "^7.0.0",
     "tailwind-scrollbar": "^4.0.2",
-    "tailwindcss": "4.3.1",
+    "tailwindcss": "^4.3.1",
     "tsconfig-paths": "^3.14.1",
     "tsx": "^4.20.6",
     "vite-tsconfig-paths": "^4.0.5"
