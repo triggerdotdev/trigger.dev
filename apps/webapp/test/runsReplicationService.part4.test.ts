@@ -93,8 +93,6 @@ describe("RunsReplicationService (part 4/7)", () => {
         data: { status: TaskRunStatus.COMPLETED_SUCCESSFULLY },
       });
 
-      await setTimeout(1000);
-
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-update",
         query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL WHERE run_id = {run_id:String}",
@@ -102,15 +100,20 @@ describe("RunsReplicationService (part 4/7)", () => {
         params: z.object({ run_id: z.string() }),
       });
 
-      const [queryError, result] = await queryRuns({ run_id: taskRun.id });
+      await vi.waitFor(
+        async () => {
+          const [queryError, result] = await queryRuns({ run_id: taskRun.id });
 
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1);
-      expect(result?.[0]).toEqual(
-        expect.objectContaining({
-          run_id: taskRun.id,
-          status: TaskRunStatus.COMPLETED_SUCCESSFULLY,
-        })
+          expect(queryError).toBeNull();
+          expect(result?.length).toBe(1);
+          expect(result?.[0]).toEqual(
+            expect.objectContaining({
+              run_id: taskRun.id,
+              status: TaskRunStatus.COMPLETED_SUCCESSFULLY,
+            })
+          );
+        },
+        { timeout: 30_000, interval: 250 }
       );
 
       await runsReplicationService.stop();
@@ -193,14 +196,6 @@ describe("RunsReplicationService (part 4/7)", () => {
         },
       });
 
-      await setTimeout(1000);
-
-      await prisma.taskRun.delete({
-        where: { id: taskRun.id },
-      });
-
-      await setTimeout(1000);
-
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-delete",
         query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL WHERE run_id = {run_id:String}",
@@ -208,10 +203,33 @@ describe("RunsReplicationService (part 4/7)", () => {
         params: z.object({ run_id: z.string() }),
       });
 
-      const [queryError, result] = await queryRuns({ run_id: taskRun.id });
+      // Wait for the insert to replicate so there is a row to delete (length transitions to 1).
+      // Asserting presence first keeps the deletion poll below sound: length 0 can only mean the
+      // DELETE propagated, not that the insert never arrived.
+      await vi.waitFor(
+        async () => {
+          const [queryError, result] = await queryRuns({ run_id: taskRun.id });
 
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(0);
+          expect(queryError).toBeNull();
+          expect(result?.length).toBe(1);
+        },
+        { timeout: 30_000, interval: 250 }
+      );
+
+      await prisma.taskRun.delete({
+        where: { id: taskRun.id },
+      });
+
+      // Wait for the deletion to replicate (length transitions from 1 to 0).
+      await vi.waitFor(
+        async () => {
+          const [queryError, result] = await queryRuns({ run_id: taskRun.id });
+
+          expect(queryError).toBeNull();
+          expect(result?.length).toBe(0);
+        },
+        { timeout: 30_000, interval: 250 }
+      );
 
       await runsReplicationService.stop();
     }
@@ -320,16 +338,21 @@ describe("RunsReplicationService (part 4/7)", () => {
         },
       });
 
-      await setTimeout(1000);
-
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-shutdown-handover",
         query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL ORDER BY created_at ASC",
         schema: z.any(),
       });
-      const [queryError, result] = await queryRuns({});
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1);
+      const result = await vi.waitFor(
+        async () => {
+          const [queryError, rows] = await queryRuns({});
+          expect(queryError).toBeNull();
+          expect(rows?.length).toBe(1);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       expect(result?.[0]).toEqual(expect.objectContaining({ run_id: taskRun1.id }));
 
       // Service B
@@ -351,12 +374,18 @@ describe("RunsReplicationService (part 4/7)", () => {
 
       await runsReplicationServiceB.start();
 
-      await setTimeout(1000);
+      const resultB = await vi.waitFor(
+        async () => {
+          const [queryErrorB, rows] = await queryRuns({});
 
-      const [queryErrorB, resultB] = await queryRuns({});
+          expect(queryErrorB).toBeNull();
+          expect(rows?.length).toBe(2);
 
-      expect(queryErrorB).toBeNull();
-      expect(resultB?.length).toBe(2);
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
+
       expect(resultB).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ run_id: taskRun1.id }),
@@ -445,8 +474,6 @@ describe("RunsReplicationService (part 4/7)", () => {
         },
       });
 
-      await setTimeout(1000);
-
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-shutdown-after-processed",
         query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL WHERE run_id = {run_id:String}",
@@ -454,9 +481,16 @@ describe("RunsReplicationService (part 4/7)", () => {
         params: z.object({ run_id: z.string() }),
       });
 
-      const [queryErrorA, resultA] = await queryRuns({ run_id: taskRun1.id });
-      expect(queryErrorA).toBeNull();
-      expect(resultA?.length).toBe(1);
+      const resultA = await vi.waitFor(
+        async () => {
+          const [queryErrorA, rows] = await queryRuns({ run_id: taskRun1.id });
+          expect(queryErrorA).toBeNull();
+          expect(rows?.length).toBe(1);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       expect(resultA?.[0]).toEqual(expect.objectContaining({ run_id: taskRun1.id }));
 
       await runsReplicationServiceA.shutdown();
@@ -500,11 +534,16 @@ describe("RunsReplicationService (part 4/7)", () => {
 
       await runsReplicationServiceB.start();
 
-      await setTimeout(1000);
+      const resultB = await vi.waitFor(
+        async () => {
+          const [queryErrorB, rows] = await queryRuns({ run_id: taskRun2.id });
+          expect(queryErrorB).toBeNull();
+          expect(rows?.length).toBe(1);
 
-      const [queryErrorB, resultB] = await queryRuns({ run_id: taskRun2.id });
-      expect(queryErrorB).toBeNull();
-      expect(resultB?.length).toBe(1);
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       expect(resultB?.[0]).toEqual(expect.objectContaining({ run_id: taskRun2.id }));
 
       await runsReplicationServiceB.stop();
