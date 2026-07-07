@@ -1,69 +1,54 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { revokeInvite } from "~/models/member.server";
-import { logger } from "~/services/logger.server";
-import {
-  authorizePatOrganizationAccess,
-  resolveOrganizationForApiUser,
-} from "~/services/organizationApiAccess.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
+import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   orgParam: z.string(),
   inviteId: z.string(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method.toUpperCase() !== "DELETE") {
-    return json({ error: "Method Not Allowed" }, { status: 405 });
-  }
-
-  const parsedParams = ParamsSchema.safeParse(params);
-
-  if (!parsedParams.success) {
-    return json({ error: "Invalid Params" }, { status: 400 });
-  }
-
-  const { orgParam, inviteId } = parsedParams.data;
-
-  try {
-    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-    if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-    }
-
+export const action = createActionPATApiRoute(
+  {
+    method: "DELETE",
+    params: ParamsSchema,
+    // Resolve the org (id only, no membership) so the plugin can compute the
+    // caller's role floor for the manage:members gate below.
+    context: async ({ orgParam }) => {
+      const org = await prisma.organization.findFirst({
+        where: { OR: [{ id: orgParam }, { slug: orgParam }], deletedAt: null },
+        select: { id: true },
+      });
+      return org ? { organizationId: org.id } : {};
+    },
+    authorization: { action: "manage", resource: () => ({ type: "members" }) },
+  },
+  async ({ params, authentication }) => {
+    // Membership floor: a non-member gets a 404.
     const organization = await resolveOrganizationForApiUser({
-      orgParam,
-      userId: authenticationResult.userId,
+      orgParam: params.orgParam,
+      userId: authentication.userId,
     });
 
     if (!organization) {
       return json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const denied = await authorizePatOrganizationAccess({
-      request,
-      organizationId: organization.id,
-      resource: "members",
-      action: "manage",
-    });
-    if (denied) return denied;
+    try {
+      const revoked = await revokeInvite({
+        userId: authentication.userId,
+        orgSlug: organization.slug,
+        inviteId: params.inviteId,
+      });
 
-    const revoked = await revokeInvite({
-      userId: authenticationResult.userId,
-      orgSlug: organization.slug,
-      inviteId,
-    });
-
-    return json({ id: inviteId, email: revoked.email });
-  } catch (error) {
-    if (error instanceof Response) throw error;
-    if (error instanceof Error && error.message === "Invite not found") {
-      return json({ error: error.message }, { status: 404 });
+      return json({ id: params.inviteId, email: revoked.email });
+    } catch (error) {
+      if (error instanceof Error && error.message === "Invite not found") {
+        return json({ error: error.message }, { status: 404 });
+      }
+      throw error;
     }
-    logger.error("Failed to revoke invite", { error });
-    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+);

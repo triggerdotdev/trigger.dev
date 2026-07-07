@@ -1,56 +1,40 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { removeTeamMember } from "~/models/member.server";
-import { logger } from "~/services/logger.server";
-import {
-  authorizePatOrganizationAccess,
-  resolveOrganizationForApiUser,
-} from "~/services/organizationApiAccess.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
+import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   orgParam: z.string(),
   memberId: z.string(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method.toUpperCase() !== "DELETE") {
-    return json({ error: "Method Not Allowed" }, { status: 405 });
-  }
-
-  const parsedParams = ParamsSchema.safeParse(params);
-
-  if (!parsedParams.success) {
-    return json({ error: "Invalid Params" }, { status: 400 });
-  }
-
-  const { orgParam, memberId } = parsedParams.data;
-
-  try {
-    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-    if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-    }
-
+export const action = createActionPATApiRoute(
+  {
+    method: "DELETE",
+    params: ParamsSchema,
+    // Resolve the org (id only, no membership) so the plugin can compute the
+    // caller's role floor for the manage:members gate below.
+    context: async ({ orgParam }) => {
+      const org = await prisma.organization.findFirst({
+        where: { OR: [{ id: orgParam }, { slug: orgParam }], deletedAt: null },
+        select: { id: true },
+      });
+      return org ? { organizationId: org.id } : {};
+    },
+    authorization: { action: "manage", resource: () => ({ type: "members" }) },
+  },
+  async ({ params, authentication }) => {
+    // Membership floor: a non-member gets a 404.
     const organization = await resolveOrganizationForApiUser({
-      orgParam,
-      userId: authenticationResult.userId,
+      orgParam: params.orgParam,
+      userId: authentication.userId,
     });
 
     if (!organization) {
       return json({ error: "Organization not found" }, { status: 404 });
     }
-
-    const denied = await authorizePatOrganizationAccess({
-      request,
-      organizationId: organization.id,
-      resource: "members",
-      action: "manage",
-    });
-    if (denied) return denied;
 
     // An org must keep at least one member. The dashboard guards this in the
     // UI only; enforce it here since removeTeamMember doesn't.
@@ -61,10 +45,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Cannot remove the last member of an organization" }, { status: 400 });
     }
 
+    // removeTeamMember throws ServiceValidationError; the builder maps it to
+    // its status (e.g. 404 for a member not in this org).
     const removed = await removeTeamMember({
-      userId: authenticationResult.userId,
+      userId: authentication.userId,
       slug: organization.slug,
-      memberId,
+      memberId: params.memberId,
     });
 
     return json({
@@ -75,12 +61,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
         email: removed.user.email,
       },
     });
-  } catch (error) {
-    if (error instanceof Response) throw error;
-    if (error instanceof Error && error.message === "Member not found in this organization") {
-      return json({ error: error.message }, { status: 404 });
-    }
-    logger.error("Failed to remove org member", { error });
-    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+);

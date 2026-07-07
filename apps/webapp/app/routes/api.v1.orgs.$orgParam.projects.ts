@@ -1,4 +1,3 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import type { GetProjectResponseBody, GetProjectsResponseBody } from "@trigger.dev/core/v3";
 import { CreateProjectRequestBody, tryCatch } from "@trigger.dev/core/v3";
@@ -6,33 +5,29 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createProject } from "~/models/project.server";
 import { logger } from "~/services/logger.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import {
+  createActionPATApiRoute,
+  createLoaderPATApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { isCuid } from "cuid";
 
 const ParamsSchema = z.object({
   orgParam: z.string(),
 });
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  logger.info("get projects", { url: request.url });
-
-  try {
-    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-    if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-    }
-
-    const { orgParam } = ParamsSchema.parse(params);
-
+export const loader = createLoaderPATApiRoute(
+  {
+    params: ParamsSchema,
+  },
+  async ({ params, authentication }) => {
     const projects = await prisma.project.findMany({
       where: {
         organization: {
-          ...orgParamWhereClause(orgParam),
+          ...orgParamWhereClause(params.orgParam),
           deletedAt: null,
           members: {
             some: {
-              userId: authenticationResult.userId,
+              userId: authentication.userId,
             },
           },
         },
@@ -65,30 +60,33 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     }));
 
     return json(result);
-  } catch (error) {
-    if (error instanceof Response) throw error;
-    logger.error("Failed to list org projects", { error });
-    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+);
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  try {
-    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-    if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-    }
-
-    const { orgParam } = ParamsSchema.parse(params);
-
+export const action = createActionPATApiRoute(
+  {
+    method: "POST",
+    params: ParamsSchema,
+    body: CreateProjectRequestBody,
+    // Resolve the org (id only, no membership) so the plugin can compute the
+    // caller's role floor.
+    context: async ({ orgParam }) => {
+      const org = await prisma.organization.findFirst({
+        where: { ...orgParamWhereClause(orgParam), deletedAt: null },
+        select: { id: true },
+      });
+      return org ? { organizationId: org.id } : {};
+    },
+    // authorization intentionally omitted — gating TBD
+  },
+  async ({ params, body, authentication }) => {
     const organization = await prisma.organization.findFirst({
       where: {
-        ...orgParamWhereClause(orgParam),
+        ...orgParamWhereClause(params.orgParam),
         deletedAt: null,
         members: {
           some: {
-            userId: authenticationResult.userId,
+            userId: authentication.userId,
           },
         },
       },
@@ -98,18 +96,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const body = await request.json();
-    const parsedBody = CreateProjectRequestBody.safeParse(body);
-
-    if (!parsedBody.success) {
-      return json({ error: "Invalid request body" }, { status: 400 });
-    }
-
     const [error, project] = await tryCatch(
       createProject({
         organizationSlug: organization.slug,
-        name: parsedBody.data.name,
-        userId: authenticationResult.userId,
+        name: body.name,
+        userId: authentication.userId,
         version: "v3",
       })
     );
@@ -146,12 +137,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     };
 
     return json(result);
-  } catch (error) {
-    if (error instanceof Response) throw error;
-    logger.error("Failed to create org project", { error });
-    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+);
 
 function orgParamWhereClause(orgParam: string) {
   // If the orgParam is an ID, or if it's a slug

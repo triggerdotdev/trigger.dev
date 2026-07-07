@@ -1,14 +1,9 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
-import { logger } from "~/services/logger.server";
-import {
-  authorizePatOrganizationAccess,
-  resolveOrganizationForApiUser,
-} from "~/services/organizationApiAccess.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
+import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   orgParam: z.string(),
@@ -18,49 +13,41 @@ const RenameOrgRequestBody = z.object({
   title: z.string().min(1),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  const method = request.method.toUpperCase();
-  if (method !== "DELETE" && method !== "PATCH") {
-    return json({ error: "Method Not Allowed" }, { status: 405 });
-  }
-
-  const parsedParams = ParamsSchema.safeParse(params);
-
-  if (!parsedParams.success) {
-    return json({ error: "Invalid Params" }, { status: 400 });
-  }
-
-  try {
-    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-    if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-    }
-
+// Multi-method (PATCH rename / DELETE), so no `method` and no builder body
+// schema — the handler branches and parses the PATCH body itself.
+export const action = createActionPATApiRoute(
+  {
+    params: ParamsSchema,
+    // Resolve the org (id only, no membership) so the plugin can compute the
+    // caller's role floor for the manage:organization gate below.
+    context: async ({ orgParam }) => {
+      const org = await prisma.organization.findFirst({
+        where: { OR: [{ id: orgParam }, { slug: orgParam }], deletedAt: null },
+        select: { id: true },
+      });
+      return org ? { organizationId: org.id } : {};
+    },
+    authorization: { action: "manage", resource: () => ({ type: "organization" }) },
+  },
+  async ({ request, params, authentication }) => {
+    // Membership floor: a non-member gets a 404 (the authorization block
+    // enforces the role; this enforces membership).
     const organization = await resolveOrganizationForApiUser({
-      orgParam: parsedParams.data.orgParam,
-      userId: authenticationResult.userId,
+      orgParam: params.orgParam,
+      userId: authentication.userId,
     });
 
     if (!organization) {
       return json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const denied = await authorizePatOrganizationAccess({
-      request,
-      organizationId: organization.id,
-      resource: "organization",
-      action: "manage",
-    });
-    if (denied) {
-      return denied;
-    }
+    const method = request.method.toUpperCase();
 
     if (method === "DELETE") {
       try {
         await new DeleteOrganizationService().call({
           organizationSlug: organization.slug,
-          userId: authenticationResult.userId,
+          userId: authentication.userId,
           request,
         });
       } catch (error) {
@@ -95,9 +82,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
 
     return json(updated);
-  } catch (error) {
-    if (error instanceof Response) throw error;
-    logger.error("Failed to update organization", { error });
-    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+);

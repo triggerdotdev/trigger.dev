@@ -1,51 +1,41 @@
-import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { getTeamMembersAndInvites } from "~/models/member.server";
-import { logger } from "~/services/logger.server";
-import {
-  authorizePatOrganizationAccess,
-  resolveOrganizationForApiUser,
-} from "~/services/organizationApiAccess.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
+import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
   orgParam: z.string(),
 });
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  const parsedParams = ParamsSchema.safeParse(params);
-
-  if (!parsedParams.success) {
-    return json({ error: "Invalid Params" }, { status: 400 });
-  }
-
-  try {
-    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-    if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-    }
-
+export const loader = createLoaderPATApiRoute(
+  {
+    params: ParamsSchema,
+    // Resolve the org (id only, no membership) so the plugin can compute the
+    // caller's role floor for the read:members gate below.
+    context: async ({ orgParam }) => {
+      const org = await prisma.organization.findFirst({
+        where: { OR: [{ id: orgParam }, { slug: orgParam }], deletedAt: null },
+        select: { id: true },
+      });
+      return org ? { organizationId: org.id } : {};
+    },
+    authorization: { action: "read", resource: () => ({ type: "members" }) },
+  },
+  async ({ params, authentication }) => {
+    // Membership floor: a non-member gets a 404.
     const organization = await resolveOrganizationForApiUser({
-      orgParam: parsedParams.data.orgParam,
-      userId: authenticationResult.userId,
+      orgParam: params.orgParam,
+      userId: authentication.userId,
     });
 
     if (!organization) {
       return json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const denied = await authorizePatOrganizationAccess({
-      request,
-      organizationId: organization.id,
-      resource: "members",
-      action: "read",
-    });
-    if (denied) return denied;
-
     const result = await getTeamMembersAndInvites({
-      userId: authenticationResult.userId,
+      userId: authentication.userId,
       organizationId: organization.id,
     });
 
@@ -75,9 +65,5 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         },
       })),
     });
-  } catch (error) {
-    if (error instanceof Response) throw error;
-    logger.error("Failed to list org members", { error });
-    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+);

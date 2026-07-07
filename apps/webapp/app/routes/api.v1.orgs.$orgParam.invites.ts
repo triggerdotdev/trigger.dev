@@ -1,14 +1,11 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { inviteMembers } from "~/models/member.server";
 import { logger } from "~/services/logger.server";
-import {
-  authorizePatOrganizationAccess,
-  resolveOrganizationForApiUser,
-} from "~/services/organizationApiAccess.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
+import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
 import { acceptInvitePath } from "~/utils/pathBuilder";
 
@@ -20,58 +17,37 @@ const InviteRequestBody = z.object({
   emails: z.string().email().array().nonempty("At least one email is required"),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method.toUpperCase() !== "POST") {
-    return json({ error: "Method Not Allowed" }, { status: 405 });
-  }
-
-  const parsedParams = ParamsSchema.safeParse(params);
-
-  if (!parsedParams.success) {
-    return json({ error: "Invalid Params" }, { status: 400 });
-  }
-
-  try {
-    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-    if (!authenticationResult) {
-      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-    }
-
+export const action = createActionPATApiRoute(
+  {
+    method: "POST",
+    params: ParamsSchema,
+    body: InviteRequestBody,
+    // Resolve the org (id only, no membership) so the plugin can compute the
+    // caller's role floor for the manage:members gate below.
+    context: async ({ orgParam }) => {
+      const org = await prisma.organization.findFirst({
+        where: { OR: [{ id: orgParam }, { slug: orgParam }], deletedAt: null },
+        select: { id: true },
+      });
+      return org ? { organizationId: org.id } : {};
+    },
+    authorization: { action: "manage", resource: () => ({ type: "members" }) },
+  },
+  async ({ params, body, authentication }) => {
+    // Membership floor: a non-member gets a 404.
     const organization = await resolveOrganizationForApiUser({
-      orgParam: parsedParams.data.orgParam,
-      userId: authenticationResult.userId,
+      orgParam: params.orgParam,
+      userId: authentication.userId,
     });
 
     if (!organization) {
       return json({ error: "Organization not found" }, { status: 404 });
     }
 
-    const denied = await authorizePatOrganizationAccess({
-      request,
-      organizationId: organization.id,
-      resource: "members",
-      action: "manage",
-    });
-    if (denied) return denied;
-
-    let rawBody: unknown;
-    try {
-      rawBody = await request.json();
-    } catch {
-      return json({ error: "Invalid request body" }, { status: 400 });
-    }
-
-    const body = InviteRequestBody.safeParse(rawBody);
-
-    if (!body.success) {
-      return json({ error: "Invalid request body" }, { status: 400 });
-    }
-
     const invites = await inviteMembers({
       slug: organization.slug,
-      emails: body.data.emails,
-      userId: authenticationResult.userId,
+      emails: body.emails,
+      userId: authentication.userId,
     });
 
     // Send invite emails the same way the dashboard invite action does. A
@@ -98,9 +74,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
       { status: 201 }
     );
-  } catch (error) {
-    if (error instanceof Response) throw error;
-    logger.error("Failed to invite org members", { error });
-    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-}
+);
