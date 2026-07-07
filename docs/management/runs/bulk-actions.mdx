@@ -1,0 +1,173 @@
+---
+title: "Bulk actions"
+description: "Cancel or replay many runs from the SDK using run IDs or the same filters as runs.list()."
+---
+
+**Bulk actions let you cancel or replay many runs asynchronously from the SDK by selecting runs with run IDs or `runs.list()` filters.**
+
+A bulk action returns a handle immediately. Use the handle to retrieve progress, poll until completion, list previous actions, or abort pending work.
+
+## Create a bulk replay
+
+Use `runs.bulk.replay()` to replay every run that matches a filter.
+
+```ts Your backend code
+import { runs } from "@trigger.dev/sdk";
+
+const action = await runs.bulk.replay({
+  filter: {
+    status: "FAILED",
+    taskIdentifier: "sync-customer",
+    period: "24h",
+  },
+  name: "Replay failed customer syncs",
+  targetRegion: "eu-central-1",
+});
+
+const completed = await runs.bulk.poll(action.id);
+console.log(completed.status, completed.counts);
+```
+
+`filter` accepts the same filters as [`runs.list()`](/management/runs/list), excluding pagination fields. Provide at least one filter field; use `runIds` when you want to target specific runs. Relative time filters such as `period` are resolved when the bulk action is created, so later batches process the same fixed time range.
+
+<Warning>
+  Filters inherit the same time semantics as `runs.list()`: when you don't pass `from`, `to`, or `period`, the action defaults to the **last 7 days** and won't target older matching runs. To cover a wider range, pass an explicit `period` (such as `"30d"`), a `from` timestamp, or a `from`/`to` pair. This default only applies to `filter` selections; `runIds` selections are never time-bounded.
+</Warning>
+
+<Note>
+  Each environment can only run a limited number of bulk replays at the same time. If you start a replay while too many are still in progress, the call fails and returns an error. Wait for an in-progress replay to finish (or [abort](#abort-a-bulk-action) one) before starting another. Bulk cancels are not subject to this limit.
+</Note>
+
+<ParamField body="filter" type="BulkActionFilter">
+  Selects runs using the same filter shape as `runs.list()`, excluding `limit`, `after`, and `before`.
+</ParamField>
+
+<ParamField body="runIds" type="string[]">
+  Selects specific run IDs. Provide either `filter` or `runIds`, not both.
+</ParamField>
+
+<ParamField body="name" type="string" optional>
+  A name for the bulk action.
+</ParamField>
+
+<ParamField body="targetRegion" type="string" optional>
+  Replays matching runs in a specific region. When omitted, each replay keeps the original run's region. This option is only available for `runs.bulk.replay()`.
+</ParamField>
+
+## Create a bulk cancel
+
+Use `runs.bulk.cancel()` to cancel every run that matches a filter, or specific run IDs.
+
+```ts Your backend code
+import { runs } from "@trigger.dev/sdk";
+
+const action = await runs.bulk.cancel({
+  runIds: ["run_1234", "run_5678"],
+  name: "Cancel selected runs",
+});
+
+console.log(action.id);
+```
+
+Only runs that are still cancelable when the action reaches them are canceled. Runs that have already reached a final state count as failures in the bulk action summary.
+
+## Retrieve progress
+
+Use `runs.bulk.retrieve()` to read the current status and aggregate counts.
+
+```ts Your backend code
+import { runs } from "@trigger.dev/sdk";
+
+const action = await runs.bulk.retrieve("bulk_1234");
+
+console.log(action.status);
+console.log(action.counts.total, action.counts.success, action.counts.failure);
+```
+
+The returned bulk action object has these fields:
+
+<ResponseField name="id" type="string">
+  The bulk action ID, starting with `bulk_`.
+</ResponseField>
+
+<ResponseField name="type" type="'CANCEL' | 'REPLAY'">
+  The action being performed.
+</ResponseField>
+
+<ResponseField name="status" type="'PENDING' | 'COMPLETED' | 'ABORTED'">
+  The current bulk action status.
+</ResponseField>
+
+<ResponseField name="counts" type="object">
+  Aggregate processing counts.
+
+  <Expandable title="properties">
+    <ResponseField name="total" type="number">
+      The number of runs selected when the bulk action was created.
+    </ResponseField>
+    <ResponseField name="success" type="number">
+      The number of runs processed successfully.
+    </ResponseField>
+    <ResponseField name="failure" type="number">
+      The number of runs that could not be processed.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="createdAt" type="Date">
+  The date and time the bulk action was created.
+</ResponseField>
+
+<ResponseField name="completedAt" type="Date" optional>
+  The date and time the bulk action completed.
+</ResponseField>
+
+## Poll for completion
+
+Use `runs.bulk.poll()` to wait until the bulk action leaves the `PENDING` state.
+
+```ts Your backend code
+import { runs } from "@trigger.dev/sdk";
+
+const completed = await runs.bulk.poll("bulk_1234", {
+  pollIntervalMs: 2_000,
+});
+
+console.log(completed.status);
+```
+
+## Abort a bulk action
+
+Use `runs.bulk.abort()` to stop future batches from being processed.
+
+```ts Your backend code
+import { runs } from "@trigger.dev/sdk";
+
+await runs.bulk.abort("bulk_1234");
+```
+
+Abort is best effort. Runs already being processed in the current batch may still finish.
+
+## List bulk actions
+
+Use `runs.bulk.list()` to page through previous bulk actions in the current environment.
+
+```ts Your backend code
+import { runs } from "@trigger.dev/sdk";
+
+const page = await runs.bulk.list({ limit: 25 });
+
+for (const action of page.data) {
+  console.log(action.id, action.status);
+}
+```
+
+List results support the same auto-pagination helpers as other management API list methods:
+
+```ts Your backend code
+import { runs } from "@trigger.dev/sdk";
+
+for await (const action of runs.bulk.list({ limit: 25 })) {
+  console.log(action.id, action.status);
+}
+```

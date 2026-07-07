@@ -333,6 +333,7 @@
               "management/runs/retrieve",
               "management/runs/replay",
               "management/runs/cancel",
+              "management/runs/bulk-actions",
               "management/runs/reschedule",
               "management/runs/update-metadata",
               "management/runs/add-tags",
