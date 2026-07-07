@@ -3,8 +3,14 @@ import { SpanKind } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { createJsonErrorObject, sanitizeError, TaskRunErrorCodes } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import type { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
-import { $replica, prisma } from "~/db.server";
+import {
+  $replica,
+  prisma,
+  runOpsLegacyPrisma,
+  runOpsNewPrisma,
+  runOpsNewReplica,
+  runOpsLegacyReplica,
+} from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById, findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
 import { TriggerFailedTaskService } from "~/runEngine/services/triggerFailedTask.server";
@@ -22,39 +28,53 @@ import { getEventRepositoryForStore, recordRunDebugLog } from "./eventRepository
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { runStore } from "./runStore.server";
+import { mintAnchoredRunFriendlyId } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
+import { isSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
+import {
+  handleBatchCompletion,
+  QUEUE_SIZE_LIMIT_EXCEEDED_ERROR_CODE,
+  readRunForEvent,
+  readRunForEventOrThrow,
+  type EventReadDeps,
+} from "./runEngineHandlersShared.server";
 
 export function registerRunEngineEventBusHandlers() {
+  // Resolve the split-mode gate ONCE at registration scope (never per-event).
+  const splitEnabledPromise = isSplitEnabled();
+  const eventReadDeps = async (): Promise<EventReadDeps> => ({
+    store: runStore,
+    newReplica: runOpsNewReplica,
+    legacyReplica: runOpsLegacyReplica,
+    splitEnabled: await splitEnabledPromise,
+  });
   engine.eventBus.on("runSucceeded", async ({ time, run, organization, environment }) => {
     const [taskRunError, taskRun] = await tryCatch(
-      runStore.findRunOrThrow(
+      readRunForEventOrThrow(
+        run.id,
+        environment.id,
         {
-          id: run.id,
+          id: true,
+          friendlyId: true,
+          traceId: true,
+          spanId: true,
+          parentSpanId: true,
+          createdAt: true,
+          completedAt: true,
+          taskIdentifier: true,
+          projectId: true,
+          runtimeEnvironmentId: true,
+          environmentType: true,
+          isTest: true,
+          organizationId: true,
+          taskEventStore: true,
+          // Piggyback the realtime run-changed publish on this existing read so the
+          // per-env channel carries the membership keys (no separate query). No-op when
+          // the native backend is disabled.
+          runTags: true,
+          batchId: true,
         },
-        {
-          select: {
-            id: true,
-            friendlyId: true,
-            traceId: true,
-            spanId: true,
-            parentSpanId: true,
-            createdAt: true,
-            completedAt: true,
-            taskIdentifier: true,
-            projectId: true,
-            runtimeEnvironmentId: true,
-            environmentType: true,
-            isTest: true,
-            organizationId: true,
-            taskEventStore: true,
-            // Piggyback the realtime run-changed publish on this existing read so the
-            // per-env channel carries the membership keys (no separate query). No-op when
-            // the native backend is disabled.
-            runTags: true,
-            batchId: true,
-          },
-        },
-        $replica
+        await eventReadDeps()
       )
     );
 
@@ -113,33 +133,30 @@ export function registerRunEngineEventBusHandlers() {
     const exception = createExceptionPropertiesFromError(sanitizedError);
 
     const [taskRunError, taskRun] = await tryCatch(
-      runStore.findRunOrThrow(
+      readRunForEventOrThrow(
+        run.id,
+        environment.id,
         {
-          id: run.id,
+          id: true,
+          friendlyId: true,
+          traceId: true,
+          spanId: true,
+          parentSpanId: true,
+          createdAt: true,
+          completedAt: true,
+          taskIdentifier: true,
+          projectId: true,
+          runtimeEnvironmentId: true,
+          environmentType: true,
+          isTest: true,
+          organizationId: true,
+          taskEventStore: true,
+          // Piggyback the realtime run-changed publish on this existing read (no-op when
+          // the native backend is disabled).
+          runTags: true,
+          batchId: true,
         },
-        {
-          select: {
-            id: true,
-            friendlyId: true,
-            traceId: true,
-            spanId: true,
-            parentSpanId: true,
-            createdAt: true,
-            completedAt: true,
-            taskIdentifier: true,
-            projectId: true,
-            runtimeEnvironmentId: true,
-            environmentType: true,
-            isTest: true,
-            organizationId: true,
-            taskEventStore: true,
-            // Piggyback the realtime run-changed publish on this existing read (no-op when
-            // the native backend is disabled).
-            runTags: true,
-            batchId: true,
-          },
-        },
-        $replica
+        await eventReadDeps()
       )
     );
 
@@ -185,33 +202,33 @@ export function registerRunEngineEventBusHandlers() {
     const exception = createExceptionPropertiesFromError(sanitizedError);
 
     const [taskRunError, taskRun] = await tryCatch(
-      runStore.findRunOrThrow(
+      readRunForEventOrThrow(
+        run.id,
+        // runAttemptFailed carries no environment param; the env is derived from
+        // the read row afterwards. environmentId is informational for read-through
+        // (residency is keyed on runId), so an empty value is safe here.
+        "",
         {
-          id: run.id,
+          id: true,
+          friendlyId: true,
+          traceId: true,
+          spanId: true,
+          parentSpanId: true,
+          createdAt: true,
+          completedAt: true,
+          taskIdentifier: true,
+          projectId: true,
+          runtimeEnvironmentId: true,
+          environmentType: true,
+          isTest: true,
+          organizationId: true,
+          taskEventStore: true,
+          // Piggyback the realtime run-changed publish on this existing read (no-op when
+          // the native backend is disabled).
+          runTags: true,
+          batchId: true,
         },
-        {
-          select: {
-            id: true,
-            friendlyId: true,
-            traceId: true,
-            spanId: true,
-            parentSpanId: true,
-            createdAt: true,
-            completedAt: true,
-            taskIdentifier: true,
-            projectId: true,
-            runtimeEnvironmentId: true,
-            environmentType: true,
-            isTest: true,
-            organizationId: true,
-            taskEventStore: true,
-            // Piggyback the realtime run-changed publish on this existing read (no-op when
-            // the native backend is disabled).
-            runTags: true,
-            batchId: true,
-          },
-        },
-        $replica
+        await eventReadDeps()
       )
     );
 
@@ -273,29 +290,28 @@ export function registerRunEngineEventBusHandlers() {
         return;
       }
 
+      const deps = await eventReadDeps();
+
       const [cachedRunError, cachedRun] = await tryCatch(
-        runStore.findRunOrThrow(
+        readRunForEventOrThrow(
+          cachedRunId ?? "",
+          "",
           {
-            id: cachedRunId,
+            id: true,
+            friendlyId: true,
+            traceId: true,
+            spanId: true,
+            parentSpanId: true,
+            createdAt: true,
+            completedAt: true,
+            taskIdentifier: true,
+            projectId: true,
+            runtimeEnvironmentId: true,
+            environmentType: true,
+            isTest: true,
+            organizationId: true,
           },
-          {
-            select: {
-              id: true,
-              friendlyId: true,
-              traceId: true,
-              spanId: true,
-              parentSpanId: true,
-              createdAt: true,
-              completedAt: true,
-              taskIdentifier: true,
-              projectId: true,
-              runtimeEnvironmentId: true,
-              environmentType: true,
-              isTest: true,
-              organizationId: true,
-            },
-          },
-          $replica
+          deps
         )
       );
 
@@ -308,29 +324,26 @@ export function registerRunEngineEventBusHandlers() {
       }
 
       const [blockedRunError, blockedRun] = await tryCatch(
-        runStore.findRun(
+        readRunForEvent(
+          blockedRunId,
+          "",
           {
-            id: blockedRunId,
+            id: true,
+            friendlyId: true,
+            traceId: true,
+            spanId: true,
+            parentSpanId: true,
+            createdAt: true,
+            completedAt: true,
+            taskIdentifier: true,
+            projectId: true,
+            runtimeEnvironmentId: true,
+            environmentType: true,
+            isTest: true,
+            organizationId: true,
+            taskEventStore: true,
           },
-          {
-            select: {
-              id: true,
-              friendlyId: true,
-              traceId: true,
-              spanId: true,
-              parentSpanId: true,
-              createdAt: true,
-              completedAt: true,
-              taskIdentifier: true,
-              projectId: true,
-              runtimeEnvironmentId: true,
-              environmentType: true,
-              isTest: true,
-              organizationId: true,
-              taskEventStore: true,
-            },
-          },
-          $replica
+          deps
         )
       );
 
@@ -387,33 +400,30 @@ export function registerRunEngineEventBusHandlers() {
     }
 
     const [taskRunError, taskRun] = await tryCatch(
-      runStore.findRunOrThrow(
+      readRunForEventOrThrow(
+        run.id,
+        environment.id,
         {
-          id: run.id,
+          id: true,
+          friendlyId: true,
+          traceId: true,
+          spanId: true,
+          parentSpanId: true,
+          createdAt: true,
+          completedAt: true,
+          taskIdentifier: true,
+          projectId: true,
+          runtimeEnvironmentId: true,
+          environmentType: true,
+          isTest: true,
+          organizationId: true,
+          taskEventStore: true,
+          // Piggyback the realtime run-changed publish on this existing read (no-op when
+          // the native backend is disabled).
+          runTags: true,
+          batchId: true,
         },
-        {
-          select: {
-            id: true,
-            friendlyId: true,
-            traceId: true,
-            spanId: true,
-            parentSpanId: true,
-            createdAt: true,
-            completedAt: true,
-            taskIdentifier: true,
-            projectId: true,
-            runtimeEnvironmentId: true,
-            environmentType: true,
-            isTest: true,
-            organizationId: true,
-            taskEventStore: true,
-            // Piggyback the realtime run-changed publish on this existing read (no-op when
-            // the native backend is disabled).
-            runTags: true,
-            batchId: true,
-          },
-        },
-        $replica
+        await eventReadDeps()
       )
     );
 
@@ -456,33 +466,30 @@ export function registerRunEngineEventBusHandlers() {
 
   engine.eventBus.on("runCancelled", async ({ time, run, organization, environment }) => {
     const [taskRunError, taskRun] = await tryCatch(
-      runStore.findRunOrThrow(
+      readRunForEventOrThrow(
+        run.id,
+        environment.id,
         {
-          id: run.id,
+          id: true,
+          friendlyId: true,
+          traceId: true,
+          spanId: true,
+          parentSpanId: true,
+          createdAt: true,
+          completedAt: true,
+          taskIdentifier: true,
+          projectId: true,
+          runtimeEnvironmentId: true,
+          environmentType: true,
+          isTest: true,
+          organizationId: true,
+          taskEventStore: true,
+          // Piggyback the realtime run-changed publish on this existing read (no-op when
+          // the native backend is disabled).
+          runTags: true,
+          batchId: true,
         },
-        {
-          select: {
-            id: true,
-            friendlyId: true,
-            traceId: true,
-            spanId: true,
-            parentSpanId: true,
-            createdAt: true,
-            completedAt: true,
-            taskIdentifier: true,
-            projectId: true,
-            runtimeEnvironmentId: true,
-            environmentType: true,
-            isTest: true,
-            organizationId: true,
-            taskEventStore: true,
-            // Piggyback the realtime run-changed publish on this existing read (no-op when
-            // the native backend is disabled).
-            runTags: true,
-            batchId: true,
-          },
-        },
-        $replica
+        await eventReadDeps()
       )
     );
 
@@ -772,15 +779,6 @@ export function registerRunEngineEventBusHandlers() {
 }
 
 /**
- * errorCode returned by the batch process-item callback when the trigger was
- * rejected because the environment's queue is at its maximum size. The
- * BatchQueue (via `skipRetries`) short-circuits retries for this code, and the
- * batch completion callback collapses per-item errors into a single aggregate
- * `BatchTaskRunError` row instead of writing one per item.
- */
-const QUEUE_SIZE_LIMIT_EXCEEDED_ERROR_CODE = "QUEUE_SIZE_LIMIT_EXCEEDED";
-
-/**
  * Set up the BatchQueue processing callbacks.
  * These handle creating runs from batch items and completing batches.
  *
@@ -790,6 +788,9 @@ const QUEUE_SIZE_LIMIT_EXCEEDED_ERROR_CODE = "QUEUE_SIZE_LIMIT_EXCEEDED";
  * - The run engine will download from R2 when the task executes
  */
 export function setupBatchQueueCallbacks() {
+  // Resolve the split-mode gate ONCE at registration scope (never per-callback).
+  const splitEnabledPromise = isSplitEnabled();
+
   // Item processing callback - creates a run for each batch item
   engine.setBatchProcessItemCallback(
     async ({ batchId, friendlyId, itemIndex, item, meta, attempt, isFinalAttempt }) => {
@@ -808,6 +809,14 @@ export function setupBatchQueueCallbacks() {
           },
         },
         async (span) => {
+          // Anchor every item mint on the BATCH's friendlyId so a mid-batch mint-flag flip
+          // can't split an item (or pre-failed item) from its BatchTaskRun row.
+          const mintItemRunFriendlyId = () =>
+            mintAnchoredRunFriendlyId(
+              friendlyId,
+              (item.options as { region?: string } | undefined)?.region
+            );
+
           const triggerFailedTaskService = new TriggerFailedTaskService({
             prisma,
             engine,
@@ -837,6 +846,7 @@ export function setupBatchQueueCallbacks() {
                 parentRunId: meta.parentRunId,
                 resumeParentOnCompletion: meta.resumeParentOnCompletion,
                 batch: { id: batchId, index: itemIndex },
+                runFriendlyId: mintItemRunFriendlyId(),
                 traceContext: meta.traceContext as Record<string, unknown> | undefined,
                 spanParentAsLink: meta.spanParentAsLink,
               });
@@ -874,6 +884,8 @@ export function setupBatchQueueCallbacks() {
             // Normalize payload - for application/store (R2 paths), this passes through as-is
             const payload = normalizePayload(item.payload, item.payloadType);
 
+            const runFriendlyId = mintItemRunFriendlyId();
+
             const result = await triggerTaskService.call(
               item.task,
               environment,
@@ -893,6 +905,7 @@ export function setupBatchQueueCallbacks() {
                 spanParentAsLink: meta.spanParentAsLink,
                 batchId,
                 batchIndex: itemIndex,
+                runFriendlyId,
                 realtimeStreamsVersion: meta.realtimeStreamsVersion,
                 planType: meta.planType,
                 triggerSource: meta.parentRunId ? "sdk" : (meta.triggerSource ?? "api"),
@@ -929,6 +942,7 @@ export function setupBatchQueueCallbacks() {
                   parentRunId: meta.parentRunId,
                   resumeParentOnCompletion: meta.resumeParentOnCompletion,
                   batch: { id: batchId, index: itemIndex },
+                  runFriendlyId: mintItemRunFriendlyId(),
                   options: item.options as Record<string, unknown>,
                   traceContext: meta.traceContext as Record<string, unknown> | undefined,
                   spanParentAsLink: meta.spanParentAsLink,
@@ -1009,6 +1023,7 @@ export function setupBatchQueueCallbacks() {
                 parentRunId: meta.parentRunId,
                 resumeParentOnCompletion: meta.resumeParentOnCompletion,
                 batch: { id: batchId, index: itemIndex },
+                runFriendlyId: mintItemRunFriendlyId(),
                 options: item.options as Record<string, unknown>,
                 traceContext: meta.traceContext as Record<string, unknown> | undefined,
                 spanParentAsLink: meta.spanParentAsLink,
@@ -1035,104 +1050,17 @@ export function setupBatchQueueCallbacks() {
     }
   );
 
-  // Batch completion callback - updates Postgres with results
+  // Batch completion callback - updates Postgres with results. The source callback
+  // is a thin wrapper that resolves the split-mode gate and supplies the run-ops
+  // handles; the body lives in handleBatchCompletion for testability.
   engine.setBatchCompletionCallback(async (result: CompleteBatchResult) => {
-    const { batchId, runIds, successfulRunCount, failedRunCount, failures } = result;
-
-    // Determine final status
-    let status: BatchTaskRunStatus;
-    if (failedRunCount > 0 && successfulRunCount === 0) {
-      status = "ABORTED";
-    } else if (failedRunCount > 0) {
-      status = "PARTIAL_FAILED";
-    } else {
-      status = "PENDING"; // All runs created, waiting for completion
-    }
-
-    try {
-      // Use a transaction to ensure atomicity of batch update and error record creation
-      // skipDuplicates handles idempotency when callback is retried (relies on unique constraint)
-      await prisma.$transaction(async (tx) => {
-        // Update BatchTaskRun
-        await tx.batchTaskRun.update({
-          where: { id: batchId },
-          data: {
-            status,
-            runIds,
-            successfulRunCount,
-            failedRunCount,
-            completedAt: status === "ABORTED" ? new Date() : undefined,
-            processingCompletedAt: new Date(),
-          },
-        });
-
-        // Create error records if there were failures.
-        //
-        // Fast-path for queue-size-limit overload: when every failure is the
-        // same QUEUE_SIZE_LIMIT_EXCEEDED error, collapse them into a single
-        // aggregate row instead of writing one per item. This keeps the DB
-        // write volume bounded to O(batches) instead of O(items) when a noisy
-        // tenant fills their queue and all of their batches start bouncing.
-        if (failures.length > 0) {
-          const allQueueSizeLimit = failures.every(
-            (f) => f.errorCode === QUEUE_SIZE_LIMIT_EXCEEDED_ERROR_CODE
-          );
-
-          if (allQueueSizeLimit) {
-            const sample = failures[0]!;
-            await tx.batchTaskRunError.createMany({
-              data: [
-                {
-                  batchTaskRunId: batchId,
-                  // Use the first item's index as a stable anchor for the
-                  // (batchTaskRunId, index) unique constraint so callback
-                  // retries remain idempotent.
-                  index: sample.index,
-                  taskIdentifier: sample.taskIdentifier,
-                  payload: sample.payload,
-                  options: sample.options as Prisma.InputJsonValue | undefined,
-                  error: `${sample.error} (${failures.length} items in this batch failed with the same error)`,
-                  errorCode: sample.errorCode,
-                },
-              ],
-              skipDuplicates: true,
-            });
-          } else {
-            await tx.batchTaskRunError.createMany({
-              data: failures.map((failure) => ({
-                batchTaskRunId: batchId,
-                index: failure.index,
-                taskIdentifier: failure.taskIdentifier,
-                payload: failure.payload,
-                options: failure.options as Prisma.InputJsonValue | undefined,
-                error: failure.error,
-                errorCode: failure.errorCode,
-              })),
-              skipDuplicates: true,
-            });
-          }
-        }
-      });
-
-      // Try to complete the batch (handles waitpoint completion if all runs are done)
-      if (status !== "ABORTED") {
-        await engine.tryCompleteBatch({ batchId });
-      }
-
-      logger.info("Batch completion handled", {
-        batchId,
-        status,
-        successfulRunCount,
-        failedRunCount,
-      });
-    } catch (error) {
-      logger.error("Failed to handle batch completion", {
-        batchId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      // Re-throw to preserve Redis data for retry (BatchQueue expects errors to propagate)
-      throw error;
-    }
+    await handleBatchCompletion(result, {
+      splitEnabled: await splitEnabledPromise,
+      newReplica: runOpsNewReplica,
+      newWriter: runOpsNewPrisma,
+      legacyWriter: runOpsLegacyPrisma,
+      tryCompleteBatch: (batchId) => engine.tryCompleteBatch({ batchId }),
+    });
   });
 
   logger.info("BatchQueue callbacks configured");

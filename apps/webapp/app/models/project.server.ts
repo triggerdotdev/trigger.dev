@@ -32,7 +32,7 @@ export async function createProject(
     select: {
       id: true,
       slug: true,
-      v3Enabled: true,
+      isActivated: true,
       maximumConcurrencyLimit: true,
       maximumProjectCount: true,
     },
@@ -49,7 +49,7 @@ export async function createProject(
   }
 
   if (version === "v3") {
-    if (!organization.v3Enabled) {
+    if (!organization.isActivated) {
       throw new Error(`Organization can't create v3 projects.`);
     }
   }

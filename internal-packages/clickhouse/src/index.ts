@@ -78,6 +78,7 @@ export {
   PAYLOAD_INDEX,
   getTaskRunField,
   getPayloadField,
+  composeTaskRunVersion,
 } from "./taskRuns.js";
 
 export { SESSION_COLUMNS, SESSION_INDEX, getSessionField } from "./sessions.js";

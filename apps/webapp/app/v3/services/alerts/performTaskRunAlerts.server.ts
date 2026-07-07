@@ -1,27 +1,44 @@
+import { type RunStore } from "@internal/run-store";
 import { type Prisma, type ProjectAlertChannel } from "@trigger.dev/database";
-import { type prisma } from "~/db.server";
+import { type PrismaClientOrTransaction, type prisma } from "~/db.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
+import type { ControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { controlPlaneResolver as defaultControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { BaseService } from "../baseService.server";
 import { DeliverAlertService } from "./deliverAlert.server";
 
+// The alert hydration reads only run-ops scalars (id/projectId/runtimeEnvironmentId); the env's
+// type (and its parent's) is resolved via the control-plane resolver so the run-ops DB can split
+// without a cross-provider join. The prior `lockedBy` + `runtimeEnvironment` includes were unused.
 type FoundRun = Prisma.Result<
   typeof prisma.taskRun,
-  { include: { lockedBy: true; runtimeEnvironment: true } },
+  { select: { id: true; projectId: true; runtimeEnvironmentId: true } },
   "findUniqueOrThrow"
 >;
 
 export class PerformTaskRunAlertsService extends BaseService {
+  #controlPlaneResolver: ControlPlaneResolver;
+
+  constructor(
+    opts: {
+      prisma?: PrismaClientOrTransaction;
+      replica?: PrismaClientOrTransaction;
+      runStore?: RunStore;
+      controlPlaneResolver?: ControlPlaneResolver;
+    } = {}
+  ) {
+    super(opts.prisma, opts.replica, opts.runStore);
+    this.#controlPlaneResolver = opts.controlPlaneResolver ?? defaultControlPlaneResolver;
+  }
+
   public async call(runId: string) {
     const run = await this.runStore.findRun(
       { id: runId },
       {
-        include: {
-          lockedBy: true,
-          runtimeEnvironment: {
-            include: {
-              parentEnvironment: true,
-            },
-          },
+        select: {
+          id: true,
+          projectId: true,
+          runtimeEnvironmentId: true,
         },
       },
       this._prisma
@@ -31,7 +48,12 @@ export class PerformTaskRunAlertsService extends BaseService {
       return;
     }
 
-    // Find all the alert channels
+    const env = await this.#controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+    if (!env) {
+      return;
+    }
+
     const alertChannels = await this._prisma.projectAlertChannel.findMany({
       where: {
         projectId: run.projectId,
@@ -39,7 +61,7 @@ export class PerformTaskRunAlertsService extends BaseService {
           has: "TASK_RUN",
         },
         environmentTypes: {
-          has: run.runtimeEnvironment.parentEnvironment?.type ?? run.runtimeEnvironment.type,
+          has: env.parentEnvironmentType ?? env.type,
         },
         enabled: true,
       },

@@ -1,4 +1,5 @@
 import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { NoSymbolIcon } from "@heroicons/react/24/solid";
 import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
@@ -7,8 +8,9 @@ import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { BulkActionsNone } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -24,11 +26,13 @@ import {
   TableBlankRow,
   TableBody,
   TableCell,
+  TableCellMenu,
   TableHeader,
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
+import { AbortBulkActionDialog } from "~/components/runs/v3/AbortBulkActionDialog";
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -40,6 +44,8 @@ import {
   type BulkActionListItem,
   BulkActionListPresenter,
 } from "~/presenters/v3/BulkActionListPresenter.server";
+import { rbac } from "~/services/rbac.server";
+import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -92,7 +98,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       throw new Error(error.message);
     }
 
-    return typedjson(data);
+    // Display flag for the row-menu Abort control. The abort action route
+    // enforces write:runs independently. Permissive in OSS.
+    const bulkAuth = await rbac.authenticateSession(request, {
+      userId,
+      organizationId: project.organizationId,
+    });
+    const { canAbort } = bulkAuth.ok
+      ? checkPermissions(bulkAuth.ability, {
+          canAbort: { action: "write", resource: { type: "runs" } },
+        })
+      : { canAbort: true };
+
+    return typedjson({ ...data, canAbort });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -108,6 +126,7 @@ export default function Page() {
     currentPage,
     totalPages,
     totalCount: _totalCount,
+    canAbort,
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -164,7 +183,11 @@ export default function Page() {
                   </div>
                 )}
 
-                <BulkActionsTable bulkActions={bulkActions} totalPages={totalPages} />
+                <BulkActionsTable
+                  bulkActions={bulkActions}
+                  totalPages={totalPages}
+                  canAbort={canAbort}
+                />
                 {totalPages > 1 && (
                   <div
                     className={cn(
@@ -207,9 +230,11 @@ export default function Page() {
 function BulkActionsTable({
   bulkActions,
   totalPages,
+  canAbort,
 }: {
   bulkActions: BulkActionListItem[];
   totalPages: number;
+  canAbort: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -260,11 +285,14 @@ function BulkActionsTable({
           <TableHeaderCell>User</TableHeaderCell>
           <TableHeaderCell>Created</TableHeaderCell>
           <TableHeaderCell>Completed</TableHeaderCell>
+          <TableHeaderCell>
+            <span className="sr-only">Actions</span>
+          </TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
         {bulkActions.length === 0 ? (
-          <TableBlankRow colSpan={8}>There are no matching bulk actions</TableBlankRow>
+          <TableBlankRow colSpan={9}>There are no matching bulk actions</TableBlankRow>
         ) : (
           bulkActions.map((bulkAction) => {
             const path = v3BulkActionPath(organization, project, environment, bulkAction);
@@ -306,11 +334,59 @@ function BulkActionsTable({
                 <TableCell to={path}>
                   {bulkAction.completedAt ? <DateTime date={bulkAction.completedAt} /> : "–"}
                 </TableCell>
+                <BulkActionActionsCell bulkAction={bulkAction} path={path} canAbort={canAbort} />
               </TableRow>
             );
           })
         )}
       </TableBody>
     </Table>
+  );
+}
+
+function BulkActionActionsCell({
+  bulkAction,
+  path,
+  canAbort,
+}: {
+  bulkAction: BulkActionListItem;
+  path: string;
+  canAbort: boolean;
+}) {
+  // Abort is the only action, and only while the bulk action is still running.
+  if (bulkAction.status !== "PENDING") {
+    return <TableCell to={path}>{""}</TableCell>;
+  }
+
+  return (
+    <TableCellMenu
+      isSticky
+      hiddenButtons={
+        canAbort ? (
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="minimal/small"
+                LeadingIcon={NoSymbolIcon}
+                leadingIconClassName="text-error"
+              >
+                <span className="text-text-bright">Abort…</span>
+              </Button>
+            </DialogTrigger>
+            <AbortBulkActionDialog formAction={path} />
+          </Dialog>
+        ) : (
+          <Button
+            variant="minimal/small"
+            LeadingIcon={NoSymbolIcon}
+            leadingIconClassName="text-error"
+            disabled
+            tooltip="You don't have permission to abort bulk actions"
+          >
+            <span className="text-text-bright">Abort…</span>
+          </Button>
+        )
+      }
+    />
   );
 }

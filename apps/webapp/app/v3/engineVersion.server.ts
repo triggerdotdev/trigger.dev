@@ -5,6 +5,11 @@ import {
   getCurrentWorkerDeploymentEngineVersion,
 } from "./models/workerDeployment.server";
 
+// Co-locate the per-env run-ops residency/mint decision next to the
+// engine-version decision. determineEngineVersion is intentionally left untouched so its
+// read-only callers (presenters, admin routes, pauseQueue) never pay the mint flag read.
+export { resolveRunIdMintKind, type RunIdMintKind } from "./runOpsMigration/runOpsMintKind.server";
+
 type Environment = {
   id: string;
   type: RuntimeEnvironmentType;

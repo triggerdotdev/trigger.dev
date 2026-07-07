@@ -1,20 +1,22 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
-import { Form } from "@remix-run/react";
+import { NoSymbolIcon } from "@heroicons/react/24/solid";
 import { tryCatch } from "@trigger.dev/core";
 import type { BulkActionType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { BulkActionFilterSummary } from "~/components/BulkActionFilterSummary";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
+import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { PermissionButton } from "~/components/primitives/PermissionButton";
 import * as Property from "~/components/primitives/PropertyTable";
+import { AbortBulkActionDialog } from "~/components/runs/v3/AbortBulkActionDialog";
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { env } from "~/env.server";
@@ -183,16 +185,10 @@ export default function Page() {
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 text-sm">
         <BulkActionStatusCombo status={bulkAction.status} />
         {bulkAction.status === "PENDING" ? (
-          <Form method="post">
-            <PermissionButton
-              type="submit"
-              variant="danger/small"
-              hasPermission={canAbort}
-              noPermissionTooltip="You don't have permission to abort bulk actions"
-            >
-              Abort bulk action
-            </PermissionButton>
-          </Form>
+          <ControlledAbortBulkActionDialog
+            canAbort={canAbort}
+            formAction={v3BulkActionPath(organization, project, environment, bulkAction)}
+          />
         ) : null}
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -357,4 +353,29 @@ function typeText(type: BulkActionType) {
     case "REPLAY":
       return "replayed";
   }
+}
+
+function ControlledAbortBulkActionDialog({
+  canAbort,
+  formAction,
+}: {
+  canAbort: boolean;
+  formAction: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="danger/small"
+          LeadingIcon={NoSymbolIcon}
+          disabled={!canAbort}
+          tooltip={canAbort ? undefined : "You don't have permission to abort bulk actions"}
+        >
+          Abort…
+        </Button>
+      </DialogTrigger>
+      <AbortBulkActionDialog formAction={formAction} onAbortSubmitted={() => setOpen(false)} />
+    </Dialog>
+  );
 }

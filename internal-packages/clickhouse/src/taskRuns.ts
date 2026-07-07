@@ -203,6 +203,32 @@ export function getTaskRunField<K extends TaskRunColumnName>(
   return run[TASK_RUN_INDEX[field]] as TaskRunFieldTypes[K];
 }
 
+/**
+ * Compose a globally-comparable ReplacingMergeTree version for task_runs_v2
+ * when the same run can be replicated from more than one Postgres producer.
+ *
+ * Each producer has its own, mutually-incomparable LSN space, so the raw
+ * LSN-derived version cannot be compared across producers. We reserve the top
+ * 8 bits for an `originGeneration` epoch (monotonic across producers: the more
+ * authoritative / later-cutover producer gets the higher generation) and keep
+ * the producer's own LSN in the low 56 bits to preserve in-producer ordering.
+ *
+ * Self-host single-DB never calls this (one producer => generation is constant
+ * and the existing raw LSN path is sufficient); the split gate skips it.
+ */
+export function composeTaskRunVersion(opts: {
+  originGeneration: number;
+  lsnVersion: bigint;
+}): bigint {
+  const gen = BigInt(opts.originGeneration);
+  if (gen < BigInt(0) || gen > BigInt(0xff)) {
+    throw new Error(`originGeneration out of range (0-255): ${opts.originGeneration}`);
+  }
+  const LSN_BITS = BigInt(56);
+  const LSN_MASK = (BigInt(1) << LSN_BITS) - BigInt(1); // low 56 bits
+  return (gen << LSN_BITS) | (opts.lsnVersion & LSN_MASK);
+}
+
 export function insertTaskRunsCompactArrays(ch: ClickhouseWriter, settings?: ClickHouseSettings) {
   return ch.insertCompactRaw({
     name: "insertTaskRunsCompactArrays",

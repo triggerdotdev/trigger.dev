@@ -33,6 +33,7 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader as tagsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.tags";
+import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 import {
   appliedSummary,
   FilterMenuProvider,
@@ -398,6 +399,8 @@ function PermanentTagsFilter() {
   );
 }
 
+const validateWaitpointId = makeFriendlyIdValidator("waitpoint", "Waitpoint");
+
 function WaitpointIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
 ) {
@@ -407,11 +410,7 @@ function WaitpointIdDropdown(
       label="Waitpoint ID"
       placeholder="waitpoint_"
       paramKey="id"
-      validate={(v) => {
-        if (!v.startsWith("waitpoint_")) return "Waitpoint IDs start with 'waitpoint_'";
-        if (v.length !== 35) return "Waitpoint IDs are 35 characters long";
-        return undefined;
-      }}
+      validate={validateWaitpointId}
     />
   );
 }

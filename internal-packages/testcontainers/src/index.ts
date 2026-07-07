@@ -2,6 +2,7 @@ import { type ClickHouseClient, createClient } from "@clickhouse/client";
 import { type StartedPostgreSqlContainer, PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
+import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import Redis, { type RedisOptions } from "ioredis";
 import path from "path";
 import { type StartedNetwork, Network } from "testcontainers";
@@ -21,12 +22,14 @@ import {
   createRedisContainer,
   postgresUriWithDatabase,
   pushDatabaseSchema,
+  pushRunOpsSchema,
   useContainer,
   withCiResourceLimits,
   withContainerSetup,
 } from "./utils";
 
 export { assertNonNullable, createPostgresContainer } from "./utils";
+export { laggingReplica, type LaggingModel } from "./laggingReplica";
 export { logCleanup };
 export type { MinIOConnectionConfig };
 
@@ -82,7 +85,6 @@ export const network = async ({ task }: TestContext, use: Use<StartedNetwork>) =
   try {
     await use(network);
   } finally {
-    // Make sure to stop the network after use
     await logCleanup("network", network.stop(), metadata);
   }
 };
@@ -165,6 +167,54 @@ const getWorkerPostgresContainer = () => {
     })();
   }
   return workerPostgresContainer;
+};
+
+// --- Heterogeneous PG14 + PG17 fixture ---
+// `und-x-icu` is a predefined ICU collation available by default in BOTH PG14 and PG17, so it is the
+// version-symmetric per-column source of truth for cross-version sort equality.
+export const HETERO_PINNED_ICU_COLLATION = "und-x-icu";
+
+// PG17 worker singleton mirroring getWorkerPostgresContainer. PG17 supports the ICU cluster locale
+// provider (PG14 does not - it arrived in PG15), so only this side sets the cluster locale; the real
+// cross-version guarantee is the per-column COLLATE in the proof test.
+async function bootstrapPg17TemplateContainer(
+  pushSchema: (databaseUrl: string) => Promise<unknown>
+): Promise<StartedPostgreSqlContainer> {
+  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:17"))
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
+    .withEnvironment({
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=en-US --encoding=UTF8",
+    })
+    .start();
+  const admin = new PrismaClient({
+    datasources: {
+      db: { url: postgresUriWithDatabase(container.getConnectionUri(), "postgres") },
+    },
+  });
+  await admin.$executeRawUnsafe(`CREATE DATABASE "${POSTGRES_TEMPLATE_DB}"`);
+  await admin.$disconnect();
+  await pushSchema(postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB));
+  return container;
+}
+
+let workerPostgresContainer17: Promise<StartedPostgreSqlContainer> | undefined;
+const getWorkerPostgresContainer17 = () => {
+  if (!workerPostgresContainer17) {
+    workerPostgresContainer17 = bootstrapPg17TemplateContainer(pushDatabaseSchema);
+  }
+  return workerPostgresContainer17;
+};
+
+// PG17 worker singleton for the DEDICATED run-ops fixture. This is a SEPARATE container from
+// getWorkerPostgresContainer17 on purpose: that one's template db has the FULL @trigger.dev/database
+// schema pushed (consumed by heteroPostgresTest), whereas this one pushes the dedicated run-ops
+// SUBSET schema. Keeping them apart avoids a schema collision in the shared template db.
+let runOpsWorkerPostgresContainer17: Promise<StartedPostgreSqlContainer> | undefined;
+const getRunOpsWorkerPostgresContainer17 = () => {
+  if (!runOpsWorkerPostgresContainer17) {
+    runOpsWorkerPostgresContainer17 = bootstrapPg17TemplateContainer(pushRunOpsSchema);
+  }
+  return runOpsWorkerPostgresContainer17;
 };
 
 // Per test: clone a fresh database from the template (fast filesystem copy), then hand back a view
@@ -262,6 +312,129 @@ const prismaFromContainer = async (
 export const postgresTest = test.extend<PostgresTestContext>({
   postgresContainer: clonedPostgresContainer,
   prisma: prismaFromContainer,
+});
+
+type HeteroPostgresTestContext = {
+  // PG14 (legacy / control-plane DB analog)
+  postgresContainer14: StartedPostgreSqlContainer;
+  prisma14: PrismaClient;
+  uri14: string;
+  // PG17 (new / dedicated run-ops DB analog)
+  postgresContainer17: StartedPostgreSqlContainer;
+  prisma17: PrismaClient;
+  uri17: string;
+  pinnedCollation: string; // === HETERO_PINNED_ICU_COLLATION
+};
+
+// Hands a test two prisma clients + two connection URIs (one PG14, one PG17) over the same migrated
+// schema, each on a fresh per-test clone of its version's template. Consumed only by explicit
+// cross-version test files - never wired into a product fixture.
+export const heteroPostgresTest = test.extend<HeteroPostgresTestContext>({
+  postgresContainer14: async ({}, use) => {
+    await use(await getWorkerPostgresContainer());
+  },
+  postgresContainer17: async ({}, use) => {
+    await use(await getWorkerPostgresContainer17());
+  },
+  uri14: async ({ postgresContainer14 }, use) => {
+    const baseUri = postgresContainer14.getConnectionUri();
+    const cloneDb = `hetero14_${pgCloneCounter++}`;
+    await createDatabaseFromTemplate(baseUri, cloneDb);
+    try {
+      await use(postgresUriWithDatabase(baseUri, cloneDb));
+    } finally {
+      await dropCloneDatabase(baseUri, cloneDb);
+    }
+  },
+  uri17: async ({ postgresContainer17 }, use) => {
+    const baseUri = postgresContainer17.getConnectionUri();
+    const cloneDb = `hetero17_${pgCloneCounter++}`;
+    await createDatabaseFromTemplate(baseUri, cloneDb);
+    try {
+      await use(postgresUriWithDatabase(baseUri, cloneDb));
+    } finally {
+      await dropCloneDatabase(baseUri, cloneDb);
+    }
+  },
+  prisma14: async ({ uri14 }, use) => {
+    const prisma = new PrismaClient({ datasources: { db: { url: uri14 } } });
+    try {
+      await use(prisma);
+    } finally {
+      await prisma.$disconnect();
+    }
+  },
+  prisma17: async ({ uri17 }, use) => {
+    const prisma = new PrismaClient({ datasources: { db: { url: uri17 } } });
+    try {
+      await use(prisma);
+    } finally {
+      await prisma.$disconnect();
+    }
+  },
+  pinnedCollation: async ({}, use) => {
+    await use(HETERO_PINNED_ICU_COLLATION);
+  },
+});
+
+type HeteroRunOpsPostgresTestContext = {
+  // PG14 (legacy / control-plane DB analog) — full @trigger.dev/database control-plane schema.
+  postgresContainer14: StartedPostgreSqlContainer;
+  prisma14: PrismaClient;
+  uri14: string;
+  // PG17 (new / dedicated run-ops DB) — the @internal/run-ops-database SUBSET schema.
+  postgresContainer17: StartedPostgreSqlContainer;
+  prisma17: RunOpsPrismaClient;
+  uri17: string;
+};
+
+// Additive sibling of heteroPostgresTest for the dedicated run-ops migration: prisma14 is the full
+// control-plane schema on PG14 (legacy), prisma17 is a RunOpsPrismaClient over the dedicated SUBSET
+// schema on a SEPARATE PG17 container. Lets a test prove the two sides carry different schemas
+// without disturbing the existing heteroPostgresTest (which keeps the full schema on both sides).
+export const heteroRunOpsPostgresTest = test.extend<HeteroRunOpsPostgresTestContext>({
+  postgresContainer14: async ({}, use) => {
+    await use(await getWorkerPostgresContainer());
+  },
+  postgresContainer17: async ({}, use) => {
+    await use(await getRunOpsWorkerPostgresContainer17());
+  },
+  uri14: async ({ postgresContainer14 }, use) => {
+    const baseUri = postgresContainer14.getConnectionUri();
+    const cloneDb = `heteroRunOps14_${pgCloneCounter++}`;
+    await createDatabaseFromTemplate(baseUri, cloneDb);
+    try {
+      await use(postgresUriWithDatabase(baseUri, cloneDb));
+    } finally {
+      await dropCloneDatabase(baseUri, cloneDb);
+    }
+  },
+  uri17: async ({ postgresContainer17 }, use) => {
+    const baseUri = postgresContainer17.getConnectionUri();
+    const cloneDb = `heteroRunOps17_${pgCloneCounter++}`;
+    await createDatabaseFromTemplate(baseUri, cloneDb);
+    try {
+      await use(postgresUriWithDatabase(baseUri, cloneDb));
+    } finally {
+      await dropCloneDatabase(baseUri, cloneDb);
+    }
+  },
+  prisma14: async ({ uri14 }, use) => {
+    const prisma = new PrismaClient({ datasources: { db: { url: uri14 } } });
+    try {
+      await use(prisma);
+    } finally {
+      await prisma.$disconnect();
+    }
+  },
+  prisma17: async ({ uri17 }, use) => {
+    const prisma = new RunOpsPrismaClient({ datasources: { db: { url: uri17 } } });
+    try {
+      await use(prisma);
+    } finally {
+      await prisma.$disconnect();
+    }
+  },
 });
 
 export const redisContainer = async (

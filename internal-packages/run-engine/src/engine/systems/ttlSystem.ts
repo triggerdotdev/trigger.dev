@@ -25,7 +25,7 @@ export class TtlSystem {
   async expireRun({ runId, tx }: { runId: string; tx?: PrismaClientOrTransaction }) {
     const prisma = tx ?? this.$.prisma;
     await this.$.runLock.lock("expireRun", [runId], async () => {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
       //if we're executing then we won't expire the run
       if (isExecuting(snapshot.executionStatus)) {
@@ -81,18 +81,12 @@ export class TtlSystem {
         {
           select: {
             id: true,
+            runtimeEnvironmentId: true,
             spanId: true,
             ttl: true,
             updatedAt: true,
             associatedWaitpoint: {
               select: {
-                id: true,
-              },
-            },
-            runtimeEnvironment: {
-              select: {
-                organizationId: true,
-                projectId: true,
                 id: true,
               },
             },
@@ -107,13 +101,9 @@ export class TtlSystem {
         prisma
       );
 
-      await this.$.runQueue.acknowledgeMessage(
-        updatedRun.runtimeEnvironment.organizationId,
-        runId,
-        {
-          removeFromWorkerQueue: true,
-        }
-      );
+      await this.$.runQueue.acknowledgeMessage(snapshot.organizationId, runId, {
+        removeFromWorkerQueue: true,
+      });
 
       // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
       if (updatedRun.associatedWaitpoint) {
@@ -126,9 +116,9 @@ export class TtlSystem {
       this.$.eventBus.emit("runExpired", {
         run: updatedRun,
         time: new Date(),
-        organization: { id: updatedRun.runtimeEnvironment.organizationId },
-        project: { id: updatedRun.runtimeEnvironment.projectId },
-        environment: { id: updatedRun.runtimeEnvironment.id },
+        organization: { id: snapshot.organizationId },
+        project: { id: snapshot.projectId },
+        environment: { id: snapshot.environmentId },
       });
     });
   }
@@ -249,7 +239,6 @@ export class TtlSystem {
               return;
             }
 
-            // Emit event
             this.$.eventBus.emit("runExpired", {
               run: {
                 id: run.id,

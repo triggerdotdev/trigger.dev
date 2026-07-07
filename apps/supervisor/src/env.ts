@@ -9,6 +9,9 @@ export const Env = z
     TRIGGER_WORKER_INSTANCE_NAME: z.string().default(randomUUID()),
     TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().default(30),
 
+    // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
+    SUPERVISOR_TELNET_LOGS_PORT: z.coerce.number().optional(),
+
     // Required settings
     TRIGGER_API_URL: z.string().url(),
     TRIGGER_WORKER_TOKEN: z.string(), // accepts file:// path to read from a file

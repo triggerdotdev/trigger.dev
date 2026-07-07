@@ -15,7 +15,8 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { LiveCountdown } from "~/components/runs/v3/LiveTimer";
-import { $replica } from "~/db.server";
+import { $replica, type PrismaReplicaClient } from "~/db.server";
+import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
 import { env } from "~/env.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -80,14 +81,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
-    const waitpoint = await $replica.waitpoint.findFirst({
-      select: {
-        projectId: true,
-        environmentId: true,
-      },
-      where: {
-        id: waitpointId,
-      },
+    const waitpoint = await resolveWaitpointThroughReadThrough({
+      waitpointId,
+      environmentId: "",
+      read: (client: PrismaReplicaClient) =>
+        client.waitpoint.findFirst({
+          select: {
+            projectId: true,
+            environmentId: true,
+          },
+          where: {
+            id: waitpointId,
+          },
+        }),
     });
 
     if (waitpoint?.projectId !== project.id) {

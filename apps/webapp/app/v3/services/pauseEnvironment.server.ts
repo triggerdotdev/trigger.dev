@@ -5,6 +5,7 @@ import { getManualPauseEnvironmentResult } from "~/v3/services/billingLimit/manu
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { WithRunEngine } from "./baseService.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 export type PauseStatus = "paused" | "resumed";
 
@@ -78,7 +79,12 @@ export class PauseEnvironmentService extends WithRunEngine {
         const resumed = await this._prisma.runtimeEnvironment.updateMany({
           where: {
             id: environment.id,
-            NOT: { pauseSource: EnvironmentPauseSource.BILLING_LIMIT },
+            // NOT on a nullable field excludes NULL rows in Prisma, which made
+            // user-paused envs (pauseSource null) unresumable.
+            OR: [
+              { pauseSource: null },
+              { NOT: { pauseSource: EnvironmentPauseSource.BILLING_LIMIT } },
+            ],
           },
           data: {
             paused: false,
@@ -122,8 +128,13 @@ export class PauseEnvironmentService extends WithRunEngine {
             pauseSource: previousPauseState?.pauseSource ?? null,
           },
         });
+        // Rollback still wrote the env row; drop any cached copy before rethrowing.
+        controlPlaneResolver.invalidateEnvironment(environment.id);
         throw error;
       }
+
+      // The env's `paused` state changed in the control-plane; drop any cached copy.
+      controlPlaneResolver.invalidateEnvironment(environment.id);
 
       return {
         success: true,

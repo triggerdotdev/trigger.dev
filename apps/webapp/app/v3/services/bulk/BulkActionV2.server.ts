@@ -25,6 +25,9 @@ import parseDuration from "parse-duration";
 import { v3BulkActionPath } from "~/utils/pathBuilder";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import pMap from "p-map";
+import { type PrismaReplicaClient } from "~/db.server";
+import { isSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
+import { hydrateRunsAcrossSeam, type SeamReadDeps } from "./BulkActionV2.batchReadThrough.server";
 
 export type ProcessToCompletionOptions = {
   /** Absolute timestamp (ms) after which processing stops and returns incomplete. */
@@ -36,6 +39,20 @@ export type ProcessToCompletionResult = {
 };
 
 export class BulkActionService extends BaseService {
+  #splitEnabledPromise?: Promise<boolean>;
+
+  // Resolves split mode once per service instance and returns the read-through deps for
+  // bulk member hydration. Single-DB: read through the service replica (byte-identical to
+  // the pre-migration read). Split: adapter defaults to run-ops new + legacy read replica.
+  async #seamReadDeps(): Promise<SeamReadDeps> {
+    this.#splitEnabledPromise ??= isSplitEnabled();
+    const splitEnabled = await this.#splitEnabledPromise;
+    return {
+      splitEnabled,
+      newClient: splitEnabled ? undefined : (this._replica as unknown as PrismaReplicaClient),
+    };
+  }
+
   public async create(
     organizationId: string,
     projectId: string,
@@ -218,7 +235,6 @@ export class BulkActionService extends BaseService {
       prisma: this._replica as PrismaClient,
     });
 
-    // In the future we can support multiple query names, when we make changes
     if (group.queryName !== "bulk_action_v1") {
       throw new Error(`Bulk action group has invalid query name: ${group.queryName}`);
     }
@@ -246,25 +262,37 @@ export class BulkActionService extends BaseService {
       case BulkActionType.CANCEL: {
         const cancelService = new CancelTaskRunService(this._prisma);
 
-        const runs = await this.runStore.findRuns(
-          {
-            where: {
-              id: {
-                in: runIdsToProcess,
+        const seamDeps = await this.#seamReadDeps();
+        const runs = await hydrateRunsAcrossSeam({
+          runIds: runIdsToProcess,
+          readNew: (client, ids) =>
+            client.taskRun.findMany({
+              where: { id: { in: ids } },
+              select: {
+                id: true,
+                engine: true,
+                friendlyId: true,
+                status: true,
+                createdAt: true,
+                completedAt: true,
+                taskEventStore: true,
               },
-            },
-            select: {
-              id: true,
-              engine: true,
-              friendlyId: true,
-              status: true,
-              createdAt: true,
-              completedAt: true,
-              taskEventStore: true,
-            },
-          },
-          this._replica
-        );
+            }),
+          readLegacyReplica: (replica, ids) =>
+            replica.taskRun.findMany({
+              where: { id: { in: ids } },
+              select: {
+                id: true,
+                engine: true,
+                friendlyId: true,
+                status: true,
+                createdAt: true,
+                completedAt: true,
+                taskEventStore: true,
+              },
+            }),
+          deps: seamDeps,
+        });
 
         await pMap(
           runs,
@@ -300,16 +328,14 @@ export class BulkActionService extends BaseService {
       case BulkActionType.REPLAY: {
         const replayService = new ReplayTaskRunService(this._prisma);
 
-        const runs = await this.runStore.findRuns(
-          {
-            where: {
-              id: {
-                in: runIdsToProcess,
-              },
-            },
-          },
-          this._replica
-        );
+        const seamDeps = await this.#seamReadDeps();
+        const runs = await hydrateRunsAcrossSeam({
+          runIds: runIdsToProcess,
+          readNew: (client, ids) => client.taskRun.findMany({ where: { id: { in: ids } } }),
+          readLegacyReplica: (replica, ids) =>
+            replica.taskRun.findMany({ where: { id: { in: ids } } }),
+          deps: seamDeps,
+        });
 
         await pMap(
           runs,

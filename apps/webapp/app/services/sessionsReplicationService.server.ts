@@ -187,6 +187,7 @@ export class SessionsReplicationService {
       table: "Session",
       redisOptions: options.redisOptions,
       autoAcknowledge: false,
+      resubscribeOnFailure: true,
       publicationActions: ["insert", "update", "delete"],
       logger: options.logger ?? new Logger("LogicalReplicationClient", options.logLevel ?? "info"),
       leaderLockTimeoutMs: options.leaderLockTimeoutMs ?? 30_000,
@@ -265,7 +266,7 @@ export class SessionsReplicationService {
 
     if (!this._currentTransaction) {
       this.logger.info("No transaction to commit, shutting down immediately");
-      await this._replicationClient.stop();
+      await this._replicationClient.shutdown();
       this._isSubscribed = false;
       this._isShutDownComplete = true;
       return;
@@ -294,7 +295,7 @@ export class SessionsReplicationService {
   async stop() {
     this.logger.info("Stopping replication client");
 
-    await this._replicationClient.stop();
+    await this._replicationClient.shutdown();
 
     if (this._acknowledgeInterval) {
       clearInterval(this._acknowledgeInterval);
@@ -430,10 +431,15 @@ export class SessionsReplicationService {
     if (this._isShutDownComplete) return;
 
     if (this._isShuttingDown) {
-      this._replicationClient.stop().finally(() => {
-        this._isSubscribed = false;
-        this._isShutDownComplete = true;
-      });
+      this._replicationClient
+        .shutdown()
+        .catch((error) => {
+          this.logger.error("Error stopping replication client during shutdown", { error });
+        })
+        .finally(() => {
+          this._isSubscribed = false;
+          this._isShutDownComplete = true;
+        });
     }
 
     // If there are no events, do nothing

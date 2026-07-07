@@ -3,34 +3,31 @@ import { commonWorker } from "../commonWorker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import type { BatchTaskRun } from "@trigger.dev/database";
+import type { BatchTaskRun, Prisma } from "@trigger.dev/database";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { workerQueue } from "~/services/worker.server";
 import { isV3Disabled } from "../engineDeprecation.server";
 
 const finishedBatchRunStatuses = ["COMPLETED", "FAILED", "CANCELED"];
 
-type RetrieveBatchRunResult = NonNullable<Awaited<ReturnType<typeof retrieveBatchRun>>>;
+const BATCH_RUN_INCLUDE = {
+  items: {
+    select: {
+      status: true,
+      taskRunAttemptId: true,
+    },
+  },
+} satisfies Prisma.BatchTaskRunInclude;
+
+type RetrieveBatchRunResult = Prisma.BatchTaskRunGetPayload<{
+  include: typeof BATCH_RUN_INCLUDE;
+}>;
 
 export class ResumeBatchRunService extends BaseService {
   public async call(batchRunId: string) {
-    const batchRun = await this._prisma.batchTaskRun.findFirst({
-      where: {
-        id: batchRunId,
-      },
-      include: {
-        runtimeEnvironment: {
-          include: {
-            project: true,
-            organization: true,
-          },
-        },
-        items: {
-          select: {
-            status: true,
-            taskRunAttemptId: true,
-          },
-        },
-      },
+    const batchRun = await this.runStore.findBatchTaskRunById(batchRunId, {
+      include: BATCH_RUN_INCLUDE,
     });
 
     if (!batchRun) {
@@ -44,8 +41,21 @@ export class ResumeBatchRunService extends BaseService {
       return "ERROR";
     }
 
+    // BatchTaskRun -> RuntimeEnvironment FK is dropped; resolve the env from the scalar id.
+    const environment = await findEnvironmentById(batchRun.runtimeEnvironmentId);
+    if (!environment) {
+      logger.error("ResumeBatchRunService: Environment not found", {
+        batchRunId,
+        runtimeEnvironmentId: batchRun.runtimeEnvironmentId,
+      });
+
+      return "ERROR";
+    }
+
     // v3 (engine V1) shutdown: don't resume batches for abandoned V1 projects. v4 is unaffected.
-    if (isV3Disabled() && batchRun.runtimeEnvironment.project.engine === "V1") {
+    // The BatchTaskRun -> RuntimeEnvironment relation is dropped, so read the engine from the
+    // resolved environment's project rather than the unloaded batchRun.runtimeEnvironment relation.
+    if (isV3Disabled() && environment.project.engine === "V1") {
       logger.debug("[ResumeBatchRunService] Skipping resume for shut-down v3 batch", {
         batchRunId,
       });
@@ -53,13 +63,13 @@ export class ResumeBatchRunService extends BaseService {
     }
 
     if (batchRun.batchVersion === "v3") {
-      return await this.#handleV3BatchRun(batchRun);
+      return await this.#handleV3BatchRun(batchRun, environment);
     } else {
-      return await this.#handleLegacyBatchRun(batchRun);
+      return await this.#handleLegacyBatchRun(batchRun, environment);
     }
   }
 
-  async #handleV3BatchRun(batchRun: RetrieveBatchRunResult) {
+  async #handleV3BatchRun(batchRun: RetrieveBatchRunResult, environment: AuthenticatedEnvironment) {
     // V3 batch runs should already be complete by the time this is called
     if (batchRun.status !== "COMPLETED") {
       logger.debug("ResumeBatchRunService: Batch run is already completed", {
@@ -82,10 +92,17 @@ export class ResumeBatchRunService extends BaseService {
       return "ERROR";
     }
 
-    return await this.#handleDependentTaskAttempt(batchRun, batchRun.dependentTaskAttemptId);
+    return await this.#handleDependentTaskAttempt(
+      batchRun,
+      batchRun.dependentTaskAttemptId,
+      environment
+    );
   }
 
-  async #handleLegacyBatchRun(batchRun: RetrieveBatchRunResult) {
+  async #handleLegacyBatchRun(
+    batchRun: RetrieveBatchRunResult,
+    environment: AuthenticatedEnvironment
+  ) {
     if (batchRun.status === "COMPLETED") {
       logger.debug("ResumeBatchRunService: Batch run is already completed", {
         batchRunId: batchRun.id,
@@ -99,7 +116,6 @@ export class ResumeBatchRunService extends BaseService {
     }
 
     if (batchRun.batchVersion === "v2") {
-      // Make sure batchRun.items.length is equal to or greater than batchRun.runCount
       if (batchRun.items.length < batchRun.runCount) {
         logger.debug("ResumeBatchRunService: All items aren't yet completed [v2]", {
           batchRunId: batchRun.id,
@@ -128,26 +144,32 @@ export class ResumeBatchRunService extends BaseService {
     }
 
     // If we are in development, or there is no dependent attempt, we can just mark the batch as completed and return
-    if (batchRun.runtimeEnvironment.type === "DEVELOPMENT" || !batchRun.dependentTaskAttemptId) {
+    if (environment.type === "DEVELOPMENT" || !batchRun.dependentTaskAttemptId) {
       // We need to update the batchRun status so we don't resume it again
-      await this._prisma.batchTaskRun.update({
+      await this.runStore.updateBatchTaskRun({
         where: {
           id: batchRun.id,
         },
         data: {
           status: "COMPLETED",
         },
+        select: { id: true },
       });
 
       return "COMPLETED";
     }
 
-    return await this.#handleDependentTaskAttempt(batchRun, batchRun.dependentTaskAttemptId);
+    return await this.#handleDependentTaskAttempt(
+      batchRun,
+      batchRun.dependentTaskAttemptId,
+      environment
+    );
   }
 
   async #handleDependentTaskAttempt(
     batchRun: RetrieveBatchRunResult,
-    dependentTaskAttemptId: string
+    dependentTaskAttemptId: string,
+    environment: AuthenticatedEnvironment
   ) {
     const dependentTaskAttempt = await this._prisma.taskRunAttempt.findFirst({
       where: {
@@ -179,7 +201,6 @@ export class ResumeBatchRunService extends BaseService {
     }
 
     // This batch has a dependent attempt and just finalized, we should resume that attempt
-    const environment = batchRun.runtimeEnvironment;
     const dependentRun = dependentTaskAttempt.taskRun;
 
     if (dependentTaskAttempt.status === "PAUSED" && batchRun.checkpointEventId) {
@@ -298,7 +319,7 @@ export class ResumeBatchRunService extends BaseService {
   async #setBatchToResumedOnce(batchRun: BatchTaskRun) {
     // v3 batches don't use the status for deciding whether a batch has been resumed
     if (batchRun.batchVersion === "v3") {
-      const result = await this._prisma.batchTaskRun.updateMany({
+      const result = await this.runStore.updateManyBatchTaskRun({
         where: {
           id: batchRun.id,
           resumedAt: null,
@@ -308,16 +329,14 @@ export class ResumeBatchRunService extends BaseService {
         },
       });
 
-      // Check if any records were updated
       if (result.count > 0) {
-        // The status was changed, so we return true
         return true;
       } else {
         return false;
       }
     }
 
-    const result = await this._prisma.batchTaskRun.updateMany({
+    const result = await this.runStore.updateManyBatchTaskRun({
       where: {
         id: batchRun.id,
         status: {
@@ -329,9 +348,7 @@ export class ResumeBatchRunService extends BaseService {
       },
     });
 
-    // Check if any records were updated
     if (result.count > 0) {
-      // The status was changed, so we return true
       return true;
     } else {
       return false;
@@ -379,26 +396,4 @@ export class ResumeBatchRunService extends BaseService {
       });
     }
   }
-}
-
-async function retrieveBatchRun(id: string, prisma: PrismaClientOrTransaction) {
-  return await prisma.batchTaskRun.findFirst({
-    where: {
-      id,
-    },
-    include: {
-      runtimeEnvironment: {
-        include: {
-          project: true,
-          organization: true,
-        },
-      },
-      items: {
-        select: {
-          status: true,
-          taskRunAttemptId: true,
-        },
-      },
-    },
-  });
 }

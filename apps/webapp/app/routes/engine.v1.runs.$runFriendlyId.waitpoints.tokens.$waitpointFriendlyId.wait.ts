@@ -2,7 +2,8 @@ import { json } from "@remix-run/server-runtime";
 import { type WaitForWaitpointTokenResponseBody } from "@trigger.dev/core/v3";
 import { RunId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
-import { $replica } from "~/db.server";
+import type { PrismaReplicaClient } from "~/db.server";
+import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
@@ -23,11 +24,16 @@ const { action } = createActionApiRoute(
 
     try {
       //check permissions
-      const waitpoint = await $replica.waitpoint.findFirst({
-        where: {
-          id: waitpointId,
-          environmentId: authentication.environment.id,
-        },
+      const waitpoint = await resolveWaitpointThroughReadThrough({
+        waitpointId,
+        environmentId: authentication.environment.id,
+        read: (client: PrismaReplicaClient) =>
+          client.waitpoint.findFirst({
+            where: {
+              id: waitpointId,
+              environmentId: authentication.environment.id,
+            },
+          }),
       });
 
       if (!waitpoint) {

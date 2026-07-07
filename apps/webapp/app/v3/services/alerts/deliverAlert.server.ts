@@ -15,7 +15,11 @@ import {
   type RunFailedWebhook,
   TaskRunError,
 } from "@trigger.dev/core/v3";
-import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
+import {
+  type ProjectAlertChannelType,
+  type ProjectAlertType,
+  type RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
 import { environmentTitle } from "~/components/environments/EnvironmentLabel";
@@ -46,6 +50,44 @@ import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { fromPromise } from "neverthrow";
 import { BaseService } from "../baseService.server";
 import { CURRENT_API_VERSION } from "~/api/versions";
+import type { RunStore } from "@internal/run-store";
+import type { ControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { controlPlaneResolver as defaultControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+
+// Run-ops scalars read off `alert.taskRun` downstream. The control-plane fields (env type/branch,
+// lockedBy file/export, lockedToVersion version) are resolved via the resolver and stitched on
+// below, so the run-ops findRun selects scalars only.
+const taskRunAlertSelect = {
+  id: true,
+  friendlyId: true,
+  taskIdentifier: true,
+  taskVersion: true,
+  sdkVersion: true,
+  cliVersion: true,
+  status: true,
+  number: true,
+  isTest: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true,
+  idempotencyKey: true,
+  runTags: true,
+  machinePreset: true,
+  error: true,
+  runtimeEnvironmentId: true,
+  lockedById: true,
+  lockedToVersionId: true,
+} satisfies Prisma.TaskRunSelect;
+
+type ResolvedAlertTaskRun = Prisma.Result<
+  typeof prisma.taskRun,
+  { select: typeof taskRunAlertSelect },
+  "findUniqueOrThrow"
+> & {
+  runtimeEnvironment: { type: RuntimeEnvironmentType; branchName: string | null };
+  lockedBy: { filePath: string; exportName: string | null } | null;
+  lockedToVersion: { version: string } | null;
+};
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -58,18 +100,6 @@ type FoundAlert = Prisma.Result<
         };
       };
       environment: true;
-      taskRun: {
-        include: {
-          lockedBy: true;
-          lockedToVersion: true;
-          runtimeEnvironment: {
-            select: {
-              type: true;
-              branchName: true;
-            };
-          };
-        };
-      };
       workerDeployment: {
         include: {
           worker: {
@@ -88,7 +118,9 @@ type FoundAlert = Prisma.Result<
     };
   },
   "findUniqueOrThrow"
->;
+> & {
+  taskRun: ResolvedAlertTaskRun | null;
+};
 
 class SkipRetryError extends Error {}
 
@@ -98,6 +130,20 @@ type DeploymentIntegrationMetadata = {
 };
 
 export class DeliverAlertService extends BaseService {
+  #controlPlaneResolver: ControlPlaneResolver;
+
+  constructor(
+    opts: {
+      prisma?: PrismaClientOrTransaction;
+      replica?: PrismaClientOrTransaction;
+      runStore?: RunStore;
+      controlPlaneResolver?: ControlPlaneResolver;
+    } = {}
+  ) {
+    super(opts.prisma, opts.replica, opts.runStore);
+    this.#controlPlaneResolver = opts.controlPlaneResolver ?? defaultControlPlaneResolver;
+  }
+
   public async call(alertId: string) {
     const alertWithoutRun = await this._prisma.projectAlert.findFirst({
       where: { id: alertId },
@@ -133,22 +179,42 @@ export class DeliverAlertService extends BaseService {
 
     let taskRun: FoundAlert["taskRun"] = null;
     if (alertWithoutRun.taskRunId) {
-      taskRun = await this.runStore.findRun(
+      const resolvedTaskRun = await this.runStore.findRun(
         { id: alertWithoutRun.taskRunId },
-        {
-          include: {
-            lockedBy: true,
-            lockedToVersion: true,
-            runtimeEnvironment: {
-              select: {
-                type: true,
-                branchName: true,
-              },
-            },
-          },
-        },
+        { select: taskRunAlertSelect },
         this._prisma
       );
+
+      if (resolvedTaskRun) {
+        const env = await this.#controlPlaneResolver.resolveAuthenticatedEnv(
+          resolvedTaskRun.runtimeEnvironmentId
+        );
+
+        if (!env) {
+          throw new Error(
+            `Could not resolve environment ${resolvedTaskRun.runtimeEnvironmentId} for alert ${alertId}`
+          );
+        }
+
+        const lockedWorker = await this.#controlPlaneResolver.resolveRunLockedWorker({
+          lockedById: resolvedTaskRun.lockedById,
+          lockedToVersionId: resolvedTaskRun.lockedToVersionId,
+        });
+
+        taskRun = {
+          ...resolvedTaskRun,
+          runtimeEnvironment: { type: env.type, branchName: env.branchName },
+          lockedBy: lockedWorker?.lockedBy
+            ? {
+                filePath: lockedWorker.lockedBy.filePath,
+                exportName: lockedWorker.lockedBy.exportName,
+              }
+            : null,
+          lockedToVersion: lockedWorker?.lockedToVersion
+            ? { version: lockedWorker.lockedToVersion.version }
+            : null,
+        };
+      }
     }
 
     const alert: FoundAlert = { ...alertWithoutRun, taskRun };
@@ -686,7 +752,6 @@ export class DeliverAlertService extends BaseService {
       return;
     }
 
-    // Get the org integration
     const integration = slackProperties.data.integrationId
       ? await this._prisma.organizationIntegration.findFirst({
           where: {
@@ -793,7 +858,6 @@ export class DeliverAlertService extends BaseService {
             ],
           });
 
-          // Upsert the storage
           if (message.ts) {
             if (storage) {
               await this._prisma.projectAlertStorage.update({
@@ -969,7 +1033,6 @@ export class DeliverAlertService extends BaseService {
     const signature = await subtle.sign("HMAC", key, hashPayload);
     const signatureHex = Buffer.from(signature).toString("hex");
 
-    // Send the webhook to the URL specified in webhook.url
     const response = await fetch(webhook.url, {
       method: "POST",
       headers: {

@@ -146,14 +146,16 @@ export class CreateCheckpointService extends BaseService {
         break;
       }
       case "WAIT_FOR_BATCH": {
-        const batchRun = await this._prisma.batchTaskRun.findFirst({
-          where: {
-            friendlyId: reason.batchFriendlyId,
-          },
-          select: {
-            resumedAt: true,
-          },
-        });
+        // Routed by friendlyId so a run-ops id (NEW-resident) batch is found on the owning DB;
+        // env-scoped to the dependent attempt's run (a batch shares its dependent's env). Read the
+        // primary: a batch that just resumed the parent may lag the replica, and a stale resumedAt
+        // (null) would checkpoint (suspend) an already-resumed run -> it stalls until a sweep.
+        const batchRun = await this.runStore.findBatchTaskRunByFriendlyId(
+          reason.batchFriendlyId,
+          attempt.taskRun.runtimeEnvironmentId,
+          undefined,
+          this._prisma
+        );
 
         if (!batchRun) {
           logger.error("CreateCheckpointService: Pre-check - Batch not found", {
@@ -363,15 +365,14 @@ export class CreateCheckpointService extends BaseService {
           });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
-          const batchRun = await this._prisma.batchTaskRun.findFirst({
-            select: {
-              id: true,
-              batchVersion: true,
-            },
-            where: {
-              friendlyId: reason.batchFriendlyId,
-            },
-          });
+          // Routed by friendlyId; read the primary (this._prisma) so a just-resumed batch that still
+          // lags the replica doesn't leave a stale resumedAt and suspend an already-resumed run.
+          const batchRun = await this.runStore.findBatchTaskRunByFriendlyId(
+            reason.batchFriendlyId,
+            attempt.taskRun.runtimeEnvironmentId,
+            undefined,
+            this._prisma
+          );
 
           if (!batchRun) {
             logger.error("CreateCheckpointService: Batch not found", {

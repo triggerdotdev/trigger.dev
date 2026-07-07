@@ -59,7 +59,7 @@ async function seedInviteFixture(
     data: {
       title: `invite-org-${suffix}`,
       slug: `invite-org-${suffix}`,
-      v3Enabled: true,
+      isActivated: true,
       members: { create: { userId: inviter.id, role: "ADMIN" } },
     },
   });

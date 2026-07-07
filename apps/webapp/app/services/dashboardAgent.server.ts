@@ -3,6 +3,7 @@ import { TriggerClient } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { runStore } from "~/v3/runStore.server";
 import { githubApp } from "./gitHub.server";
 import { logger } from "./logger.server";
 
@@ -57,13 +58,22 @@ export function isDashboardAgentConfigured(): boolean {
   return Boolean(env.DASHBOARD_AGENT_SECRET_KEY);
 }
 
+// Pins every agent session (and its continuation runs) to a deployed version
+// when DASHBOARD_AGENT_VERSION is set; unset runs on the env's current version.
+export function dashboardAgentTriggerConfig(): { lockToVersion: string } | undefined {
+  return env.DASHBOARD_AGENT_VERSION ? { lockToVersion: env.DASHBOARD_AGENT_VERSION } : undefined;
+}
+
 export async function startDashboardAgentSession(params: {
   chatId: string;
   clientData?: Record<string, unknown>;
 }): Promise<{ publicAccessToken: string }> {
   const config = dashboardAgentConfig();
   if (!config) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
-  const startSession = chat.createStartSessionAction(TASK_ID, { apiClient: config });
+  const startSession = chat.createStartSessionAction(TASK_ID, {
+    apiClient: config,
+    triggerConfig: dashboardAgentTriggerConfig(),
+  });
   return startSession({ chatId: params.chatId, clientData: params.clientData });
 }
 
@@ -202,10 +212,10 @@ export async function resolveRunCommit(
   environmentId: string,
   runFriendlyId: string
 ): Promise<{ sha: string; version: string; dirty: boolean } | null> {
-  const run = await prisma.taskRun.findFirst({
-    where: { friendlyId: runFriendlyId, runtimeEnvironmentId: environmentId },
-    select: { lockedToVersionId: true },
-  });
+  const run = await runStore.findRun(
+    { friendlyId: runFriendlyId, runtimeEnvironmentId: environmentId },
+    { select: { lockedToVersionId: true } }
+  );
   if (!run?.lockedToVersionId) return null;
 
   const deployment = await prisma.workerDeployment.findFirst({

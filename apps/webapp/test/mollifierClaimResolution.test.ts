@@ -3,8 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 // Stub `~/db.server` before importing the concern — the real module
 // eagerly calls `prisma.$connect()` at singleton construction, which
 // would fail without a database. The concern under test receives its
-// prisma via the constructor, so the stub is never used by the code path.
-vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
+// prisma via the constructor, so these empty stubs are never used by the
+// tested path; the run-ops singletons only satisfy the concern's static
+// imports (vitest validates every named import against the mock).
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+  runOpsNewPrisma: {},
+  runOpsLegacyPrisma: {},
+  runOpsNewReplica: {},
+  runOpsLegacyReplica: {},
+}));
 
 // The IdempotencyKeyConcern resolves the pre-gate claim through the
 // global mollifier buffer (`getMollifierBuffer`), shared by both
@@ -21,6 +30,13 @@ vi.mock("~/v3/mollifier/mollifierBuffer.server", () => ({
 // orgs without touching real env or feature-flag wiring.
 vi.mock("~/v3/mollifier/mollifierGate.server", () => ({
   makeResolveMollifierFlag: () => async () => h.orgFlag,
+}));
+// Pin the idempotency dedup routing to the injected fake prisma: split OFF
+// makes resolveIdempotencyDedupClient return the concern's constructor client,
+// so these tests exercise claim resolution deterministically regardless of the
+// ambient RUN_OPS_SPLIT_ENABLED (the split path routes to the empty runOps mocks).
+vi.mock("~/v3/runOpsMigration/splitMode.server", () => ({
+  isSplitEnabled: async () => false,
 }));
 
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";

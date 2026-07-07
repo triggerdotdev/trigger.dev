@@ -11,6 +11,12 @@ import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { WaitpointPresenter } from "~/presenters/v3/WaitpointPresenter.server";
+import {
+  runOpsNewReplicaClient,
+  runOpsLegacyReplica,
+  runOpsSplitReadEnabled,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3WaitpointTokensPath } from "~/utils/pathBuilder";
@@ -45,7 +51,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const presenter = new WaitpointPresenter();
+    const presenter = new WaitpointPresenter(undefined, undefined, {
+      newClient: runOpsNewReplicaClient as unknown as PrismaClientOrTransaction,
+      legacyReplica: runOpsLegacyReplica as unknown as PrismaClientOrTransaction,
+      splitEnabled: runOpsSplitReadEnabled,
+    });
     const result = await presenter.call({
       friendlyId: waitpointParam,
       environmentId: environment.id,

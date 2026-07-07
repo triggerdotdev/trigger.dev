@@ -118,7 +118,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     select: {
       id: true,
       title: true,
-      v3Enabled: true,
+      isActivated: true,
       v2Enabled: true,
       hasRequestedV3: true,
       _count: {
@@ -138,7 +138,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const { isManagedCloud } = featuresForRequest(request);
-  if (isManagedCloud && !organization.v3Enabled) {
+  if (isManagedCloud && !organization.isActivated) {
     return redirect(selectPlanPath({ slug: organizationSlug }));
   }
 
@@ -151,7 +151,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       title: organization.title,
       slug: organizationSlug,
       projectsCount: organization._count.projects,
-      v3Enabled: organization.v3Enabled,
+      isActivated: organization.isActivated,
       v2Enabled: organization.v2Enabled,
       hasRequestedV3: organization.hasRequestedV3,
     },
@@ -324,7 +324,7 @@ export default function Page() {
   const { organization, message } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
 
-  const canCreateV3Projects = organization.v3Enabled;
+  const canCreateV3Projects = organization.isActivated;
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",

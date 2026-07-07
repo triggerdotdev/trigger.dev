@@ -11,6 +11,10 @@ import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.se
 import { claimOrAwait } from "~/v3/mollifier/idempotencyClaim.server";
 import { makeResolveMollifierFlag } from "~/v3/mollifier/mollifierGate.server";
 import { runStore } from "~/v3/runStore.server";
+import { runOpsLegacyPrisma, runOpsNewPrisma } from "~/db.server";
+import { isSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
+import { resolveIdempotencyDedupClient } from "./idempotencyResidency.server";
 import type { TraceEventConcern, TriggerTaskRequest } from "../types";
 
 // In-memory per-org mollifier-enabled check, shared with `evaluateGate`
@@ -147,6 +151,28 @@ export class IdempotencyKeyConcern {
       return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
     }
 
+    // Probe and clears must hit the DB where the would-be run will physically live.
+    const dedupClient = await resolveIdempotencyDedupClient(
+      {
+        environmentForMint: {
+          organizationId: request.environment.organizationId,
+          id: request.environment.id,
+          orgFeatureFlags: request.environment.organization?.featureFlags,
+        },
+        parentRunFriendlyId: request.body.options?.parentRunId,
+      },
+      {
+        isSplitEnabled,
+        fallbackClient: this.prisma,
+        newClient: runOpsNewPrisma,
+        legacyClient: runOpsLegacyPrisma,
+        resolveMintKind: resolveRunIdMintKind,
+        // `isMigrated` is intentionally omitted: until a child of a swept
+        // legacy-id parent can be born on the new DB, the swept-marker override
+        // would never change the answer, so a child routes by parent id-shape.
+      }
+    );
+
     const existingRun = idempotencyKey
       ? await runStore.findRun(
           {
@@ -159,7 +185,7 @@ export class IdempotencyKeyConcern {
               associatedWaitpoint: true,
             },
           },
-          this.prisma
+          dedupClient
         )
       : undefined;
 
@@ -193,7 +219,7 @@ export class IdempotencyKeyConcern {
         // Update the existing run to remove the idempotency key
         await runStore.clearIdempotencyKey(
           { byId: { runId: existingRun.id, idempotencyKey } },
-          this.prisma
+          dedupClient
         );
 
         return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
@@ -210,7 +236,7 @@ export class IdempotencyKeyConcern {
         // Update the existing run to remove the idempotency key
         await runStore.clearIdempotencyKey(
           { byId: { runId: existingRun.id, idempotencyKey } },
-          this.prisma
+          dedupClient
         );
 
         return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
@@ -249,7 +275,6 @@ export class IdempotencyKeyConcern {
                   ? `${event.traceparent.spanId}:${event.spanId}`
                   : event.spanId;
 
-            //block run with waitpoint
             await this.engine.blockRunWithWaitpoint({
               runId: RunId.fromFriendlyId(parentRunId),
               waitpoints: associatedWaitpoint!.id,
@@ -262,7 +287,7 @@ export class IdempotencyKeyConcern {
                 : undefined,
               projectId: request.environment.projectId,
               organizationId: request.environment.organizationId,
-              tx: this.prisma,
+              tx: dedupClient,
             });
           }
         );
@@ -277,24 +302,13 @@ export class IdempotencyKeyConcern {
     // (resumeParentOnCompletion) — that path bypasses the gate entirely
     // and its existing PG-side dedup is sufficient.
     //
-    // Also gated on the same per-org mollifier flag the gate uses: when
-    // `TRIGGER_MOLLIFIER_ENABLED=1` globally for staged rollout, the buffer
-    // singleton is constructed and `claimOrAwait` would otherwise issue a
-    // Redis SETNX for EVERY idempotency-keyed trigger — including orgs
-    // that haven't opted in. Those orgs never enter the mollify branch
-    // (the gate always returns pass_through for them), so there's no
-    // buffer activity to serialise against; PG's unique constraint
-    // already deduplicates concurrent same-key races. Resolving the org
-    // flag is a pure in-memory read of `Organization.featureFlags` — no
-    // DB query, same predicate the gate uses — keeping the claim's Redis
-    // RTT off the hot path for non-opted-in orgs during incremental
-    // rollout.
-    // Match the gate's bypass list (`mollifierGate.server.ts:158-175`).
-    // debounce + oneTimeUseToken triggers always return pass_through from
-    // the gate, so claiming a Redis SETNX here is wasted RTT on the
-    // trigger hot path. Excluding them keeps the claim aligned with the
-    // gate — if the gate would never mollify the request, there's no
-    // buffer to serialise against.
+    // Gated on the same per-org mollifier flag the gate uses, and the same
+    // bypass list (debounce + oneTimeUseToken): if the gate would never mollify
+    // the request, there's no buffer to serialise against and PG's unique
+    // constraint already deduplicates concurrent same-key races. Skipping the
+    // claim's Redis SETNX keeps its RTT off the hot path for those requests
+    // during staged rollout. The org-flag check is a pure in-memory read of
+    // `Organization.featureFlags`, no DB query.
     const claimEligible =
       !request.body.options?.resumeParentOnCompletion &&
       !request.body.options?.debounce &&
@@ -336,7 +350,7 @@ export class IdempotencyKeyConcern {
             taskIdentifier: request.taskId,
           },
           { include: { associatedWaitpoint: true } },
-          this.prisma
+          dedupClient
         );
         if (writerRun) {
           return { isCached: true, run: writerRun };
@@ -350,27 +364,18 @@ export class IdempotencyKeyConcern {
         if (buffered) {
           return { isCached: true, run: buffered };
         }
-        // Claim resolved to a runId nothing can find — the run was
-        // genuinely lost (claimant errored after publish, drain failed,
-        // or both the PG row and buffer entry TTL'd out). This is
-        // terminal, not transient: `lookupIdempotency` self-heals a
-        // dangling pointer, and `ack` keeps the entry hash as a
-        // read-fallback past the PG write, so re-polling cannot conjure
-        // a run that is gone. Falling through to a fresh trigger is the
-        // correct recovery.
+        // Claim resolved to a runId nothing can find — the run was genuinely
+        // lost (claimant errored after publish, or both the PG row and buffer
+        // entry TTL'd out). Terminal, not transient, so falling through to a
+        // fresh trigger is the correct recovery.
         //
-        // Why falling through claimless is safe (no duplicate runs):
-        // concurrent triggers that also fall through here converge on a
-        // single run via the same dedup backstops the claim layer relies
-        // on — the PG unique constraint on the idempotency key
-        // (RunDuplicateIdempotencyKeyError → retry resolves to the
-        // winner) for the pass-through path, and `accept`'s idempotency
-        // SETNX (`duplicate_idempotency`) for the mollify path. Once the
-        // first fall-through commits a run, later callers find it via the
-        // writer-PG / buffer lookups above despite the stale `resolved:`
-        // slot, which the slot's TTL clears within ~30s. The residual
-        // cost is a few redundant (deduped) trigger attempts in that
-        // window, not duplicate runs.
+        // Falling through claimless doesn't duplicate runs: concurrent
+        // fall-throughs converge on one run via the same dedup backstops the
+        // claim layer relies on — PG's unique constraint on the idempotency key
+        // (pass-through path) and `accept`'s SETNX (mollify path). Once the
+        // first commits, later callers find it via the writer-PG / buffer
+        // lookups above despite the stale `resolved:` slot (cleared by its ~30s
+        // TTL). Residual cost is a few deduped trigger attempts, not dup runs.
         logger.warn("idempotency claim resolved but runId not findable", {
           envId: request.environment.id,
           taskIdentifier: request.taskId,

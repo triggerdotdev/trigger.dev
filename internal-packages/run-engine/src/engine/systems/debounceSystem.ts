@@ -745,7 +745,7 @@ return 0
       // Get the latest execution snapshot
       let snapshot;
       try {
-        snapshot = await getLatestExecutionSnapshot(prisma, existingRunId);
+        snapshot = await getLatestExecutionSnapshot(prisma, existingRunId, this.$.runStore);
       } catch (error) {
         // Run no longer exists or has no snapshot
         this.$.logger.debug("handleExistingRun: existing run not found or has no snapshot", {

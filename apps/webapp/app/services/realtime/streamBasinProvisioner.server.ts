@@ -11,6 +11,7 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { parseDuration } from "./duration.server";
 
 export function isPerOrgBasinsEnabled(): boolean {
@@ -75,6 +76,9 @@ export async function provisionBasinForOrg(
     where: { id: org.id },
     data: { streamBasinName: basin },
   });
+
+  // streamBasinName is embedded in every env of the org; drop all its cached env rows.
+  controlPlaneResolver.invalidateOrganization(org.id);
 
   logger.info("[streamBasinProvisioner] provisioned basin for org", {
     orgId: org.id,
@@ -157,6 +161,9 @@ export async function deprovisionBasinForOrg(
     where: { id: org.id },
     data: { streamBasinName: null },
   });
+
+  // streamBasinName is embedded in every env of the org; drop all its cached env rows.
+  controlPlaneResolver.invalidateOrganization(org.id);
 
   logger.info("[streamBasinProvisioner] deprovisioned basin for org", {
     orgId,

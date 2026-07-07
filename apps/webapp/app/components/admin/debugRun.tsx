@@ -77,6 +77,7 @@ function DebugRunData(props: UseDataFunctionReturn<typeof loader>) {
 
 function DebugRunDataEngineV1({
   run,
+  environment,
   queueConcurrencyLimit,
   queueCurrentConcurrency,
   envConcurrencyLimit,
@@ -121,7 +122,7 @@ function DebugRunDataEngineV1({
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
             value={withPrefix(
-              keys.queueKey(run.runtimeEnvironment, run.queue, run.concurrencyKey ?? undefined)
+              keys.queueKey(environment, run.queue, run.concurrencyKey ?? undefined)
             )}
             variant="tertiary/small"
             iconButton
@@ -133,7 +134,7 @@ function DebugRunDataEngineV1({
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
             value={`ZRANGE ${withPrefix(
-              keys.queueKey(run.runtimeEnvironment, run.queue, run.concurrencyKey ?? undefined)
+              keys.queueKey(environment, run.queue, run.concurrencyKey ?? undefined)
             )} 0 -1`}
             variant="tertiary/small"
             iconButton
@@ -146,7 +147,7 @@ function DebugRunDataEngineV1({
           <ClipboardField
             value={withPrefix(
               keys.queueCurrentConcurrencyKey(
-                run.runtimeEnvironment,
+                environment,
                 run.queue,
                 run.concurrencyKey ?? undefined
               )
@@ -163,7 +164,7 @@ function DebugRunDataEngineV1({
           <ClipboardField
             value={`SMEMBERS ${withPrefix(
               keys.queueCurrentConcurrencyKey(
-                run.runtimeEnvironment,
+                environment,
                 run.queue,
                 run.concurrencyKey ?? undefined
               )
@@ -185,7 +186,7 @@ function DebugRunDataEngineV1({
           <ClipboardField
             value={withPrefix(
               keys.queueReserveConcurrencyKeyFromQueue(
-                keys.queueKey(run.runtimeEnvironment, run.queue, run.concurrencyKey ?? undefined)
+                keys.queueKey(environment, run.queue, run.concurrencyKey ?? undefined)
               )
             )}
             variant="tertiary/small"
@@ -200,7 +201,7 @@ function DebugRunDataEngineV1({
           <ClipboardField
             value={`SMEMBERS ${withPrefix(
               keys.queueReserveConcurrencyKeyFromQueue(
-                keys.queueKey(run.runtimeEnvironment, run.queue, run.concurrencyKey ?? undefined)
+                keys.queueKey(environment, run.queue, run.concurrencyKey ?? undefined)
               )
             )}`}
             variant="tertiary/small"
@@ -218,7 +219,7 @@ function DebugRunDataEngineV1({
         <Property.Label>Queue concurrency limit key</Property.Label>
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
-            value={withPrefix(keys.queueConcurrencyLimitKey(run.runtimeEnvironment, run.queue))}
+            value={withPrefix(keys.queueConcurrencyLimitKey(environment, run.queue))}
             variant="tertiary/small"
             iconButton
           />
@@ -228,9 +229,7 @@ function DebugRunDataEngineV1({
         <Property.Label>GET queue concurrency limit</Property.Label>
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
-            value={`GET ${withPrefix(
-              keys.queueConcurrencyLimitKey(run.runtimeEnvironment, run.queue)
-            )}`}
+            value={`GET ${withPrefix(keys.queueConcurrencyLimitKey(environment, run.queue))}`}
             variant="tertiary/small"
             iconButton
           />
@@ -246,7 +245,7 @@ function DebugRunDataEngineV1({
         <Property.Label>Env current concurrency key</Property.Label>
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
-            value={withPrefix(keys.envCurrentConcurrencyKey(run.runtimeEnvironment))}
+            value={withPrefix(keys.envCurrentConcurrencyKey(environment))}
             variant="tertiary/small"
             iconButton
           />
@@ -256,7 +255,7 @@ function DebugRunDataEngineV1({
         <Property.Label>Get env current concurrency</Property.Label>
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
-            value={`SMEMBERS ${withPrefix(keys.envCurrentConcurrencyKey(run.runtimeEnvironment))}`}
+            value={`SMEMBERS ${withPrefix(keys.envCurrentConcurrencyKey(environment))}`}
             variant="tertiary/small"
             iconButton
           />
@@ -272,7 +271,7 @@ function DebugRunDataEngineV1({
         <Property.Label>Env reserve concurrency key</Property.Label>
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
-            value={withPrefix(keys.envReserveConcurrencyKey(run.runtimeEnvironment.id))}
+            value={withPrefix(keys.envReserveConcurrencyKey(environment.id))}
             variant="tertiary/small"
             iconButton
           />
@@ -282,9 +281,7 @@ function DebugRunDataEngineV1({
         <Property.Label>Get env reserve concurrency</Property.Label>
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
-            value={`SMEMBERS ${withPrefix(
-              keys.envReserveConcurrencyKey(run.runtimeEnvironment.id)
-            )}`}
+            value={`SMEMBERS ${withPrefix(keys.envReserveConcurrencyKey(environment.id))}`}
             variant="tertiary/small"
             iconButton
           />
@@ -300,7 +297,7 @@ function DebugRunDataEngineV1({
         <Property.Label>Env concurrency limit key</Property.Label>
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
-            value={withPrefix(keys.envConcurrencyLimitKey(run.runtimeEnvironment))}
+            value={withPrefix(keys.envConcurrencyLimitKey(environment))}
             variant="tertiary/small"
             iconButton
           />
@@ -310,7 +307,7 @@ function DebugRunDataEngineV1({
         <Property.Label>GET env concurrency limit</Property.Label>
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
-            value={`GET ${withPrefix(keys.envConcurrencyLimitKey(run.runtimeEnvironment))}`}
+            value={`GET ${withPrefix(keys.envConcurrencyLimitKey(environment))}`}
             variant="tertiary/small"
             iconButton
           />
@@ -326,7 +323,7 @@ function DebugRunDataEngineV1({
         <Property.Label>Shared queue key</Property.Label>
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
-            value={`GET ${withPrefix(keys.envSharedQueueKey(run.runtimeEnvironment))}`}
+            value={`GET ${withPrefix(keys.envSharedQueueKey(environment))}`}
             variant="tertiary/small"
             iconButton
           />
@@ -337,7 +334,7 @@ function DebugRunDataEngineV1({
         <Property.Value className="flex items-center gap-2">
           <ClipboardField
             value={`ZRANGEBYSCORE ${withPrefix(
-              keys.envSharedQueueKey(run.runtimeEnvironment)
+              keys.envSharedQueueKey(environment)
             )} -inf ${Date.now()} WITHSCORES`}
             variant="tertiary/small"
             iconButton

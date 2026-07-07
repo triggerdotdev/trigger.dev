@@ -27,6 +27,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunStreamParamsSchema } from "~/utils/pathBuilder";
 import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 type ViewMode = "list" | "compact";
 
@@ -60,40 +61,34 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const run = await runStore.findRun(
+    { friendlyId: runParam, projectId: project.id },
     {
-      friendlyId: runParam,
-      projectId: project.id,
-    },
-    {
-      include: {
-        runtimeEnvironment: {
-          include: {
-            project: true,
-            organization: true,
-            orgMember: true,
-          },
-        },
+      select: {
+        id: true,
+        friendlyId: true,
+        realtimeStreamsVersion: true,
+        streamBasinName: true,
+        runtimeEnvironmentId: true,
       },
-    },
-    $replica
+    }
   );
 
   if (!run) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  if (run.runtimeEnvironment.slug !== envParam) {
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+  if (!environment || environment.slug !== envParam) {
     throw new Response("Not Found", { status: 404 });
   }
 
   // Get Last-Event-ID header for resuming from a specific position
   const lastEventId = request.headers.get("Last-Event-ID") || undefined;
 
-  const realtimeStream = getRealtimeStreamInstance(
-    run.runtimeEnvironment,
-    run.realtimeStreamsVersion,
-    { run }
-  );
+  const realtimeStream = getRealtimeStreamInstance(environment, run.realtimeStreamsVersion, {
+    run: { streamBasinName: run.streamBasinName },
+  });
 
   return realtimeStream.streamResponse(
     request,
@@ -211,7 +206,6 @@ export function RealtimeStreamViewer({
     const handleScroll = () => {
       if (!scrollElement || !bottomElement) return;
 
-      // Clear any existing timeout
       if (scrollTimeout) {
         clearTimeout(scrollTimeout);
       }
@@ -560,7 +554,6 @@ export function useRealtimeStream(resourcePath: string, startIndex?: number) {
 
         reader = stream.getReader();
 
-        // Read from the stream
         while (true) {
           const { done, value } = await reader.read();
 

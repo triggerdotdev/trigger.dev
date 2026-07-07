@@ -15,6 +15,7 @@ vi.mock("~/services/platform.v3.server", async (importOriginal) => {
 });
 
 import { RunEngine } from "@internal/run-engine";
+import { PostgresRunStore } from "@internal/run-store";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
 // Per-test redis isolation: each test runs its own RunEngine whose background work outlives the test
 // body. NoClickhouse because this suite never touches ClickHouse - skips the worker-scoped boot+migrate.
@@ -41,9 +42,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 vi.setConfig({ testTimeout: 120_000 });
 
 describe("StreamBatchItemsService", () => {
-  /**
-   * Helper to create a batch directly in the database
-   */
   async function createBatch(
     prisma: PrismaClient,
     environmentId: string,
@@ -74,9 +72,6 @@ describe("StreamBatchItemsService", () => {
     return batch;
   }
 
-  /**
-   * Helper to create an async iterable from items
-   */
   async function* itemsToAsyncIterable(
     items: Array<{ task: string; payload: string; index: number }>
   ) {
@@ -85,9 +80,6 @@ describe("StreamBatchItemsService", () => {
     }
   }
 
-  /**
-   * Build N valid batch items.
-   */
   function makeItems(count: number, taskId = "test-task") {
     return Array.from({ length: count }, (_, index) => ({
       task: taskId,
@@ -660,6 +652,14 @@ describe("StreamBatchItemsService", () => {
         },
       } as unknown as PrismaClient;
 
+      // The batch find + seal updateMany now route through the engine's run-store
+      // (route-by-batch-id under the run-ops split), so the racing client must back the
+      // store the service reads through.
+      engine.runStore = new PostgresRunStore({
+        prisma: racingPrisma,
+        readOnlyPrisma: racingPrisma,
+      });
+
       const service = new StreamBatchItemsService({
         prisma: racingPrisma,
         engine,
@@ -783,6 +783,14 @@ describe("StreamBatchItemsService", () => {
           findUnique: prisma.batchTaskRun.findUnique.bind(prisma.batchTaskRun),
         },
       } as unknown as PrismaClient;
+
+      // The batch find + seal updateMany now route through the engine's run-store
+      // (route-by-batch-id under the run-ops split), so the racing client must back the
+      // store the service reads through.
+      engine.runStore = new PostgresRunStore({
+        prisma: racingPrisma,
+        readOnlyPrisma: racingPrisma,
+      });
 
       const service = new StreamBatchItemsService({
         prisma: racingPrisma,
@@ -908,6 +916,14 @@ describe("StreamBatchItemsService", () => {
         },
       } as unknown as PrismaClient;
 
+      // The batch find + seal updateMany now route through the engine's run-store
+      // (route-by-batch-id under the run-ops split), so the racing client must back the
+      // store the service reads through.
+      engine.runStore = new PostgresRunStore({
+        prisma: racingPrisma,
+        readOnlyPrisma: racingPrisma,
+      });
+
       const service = new StreamBatchItemsService({
         prisma: racingPrisma,
         engine,
@@ -1032,6 +1048,14 @@ describe("StreamBatchItemsService", () => {
           findUnique: prisma.batchTaskRun.findUnique.bind(prisma.batchTaskRun),
         },
       } as unknown as PrismaClient;
+
+      // The batch find + seal updateMany now route through the engine's run-store
+      // (route-by-batch-id under the run-ops split), so the racing client must back the
+      // store the service reads through.
+      engine.runStore = new PostgresRunStore({
+        prisma: racingPrisma,
+        readOnlyPrisma: racingPrisma,
+      });
 
       const service = new StreamBatchItemsService({
         prisma: racingPrisma,
@@ -1245,6 +1269,14 @@ describe("StreamBatchItemsService", () => {
         },
       } as unknown as PrismaClient;
 
+      // The batch find + seal updateMany now route through the engine's run-store
+      // (route-by-batch-id under the run-ops split), so the racing client must back the
+      // store the service reads through.
+      engine.runStore = new PostgresRunStore({
+        prisma: racingPrisma,
+        readOnlyPrisma: racingPrisma,
+      });
+
       const service = new StreamBatchItemsService({
         prisma: racingPrisma,
         engine,
@@ -1375,6 +1407,14 @@ describe("StreamBatchItemsService", () => {
           findUnique: prisma.batchTaskRun.findUnique.bind(prisma.batchTaskRun),
         },
       } as unknown as PrismaClient;
+
+      // The batch find + seal updateMany now route through the engine's run-store
+      // (route-by-batch-id under the run-ops split), so the racing client must back the
+      // store the service reads through.
+      engine.runStore = new PostgresRunStore({
+        prisma: racingPrisma,
+        readOnlyPrisma: racingPrisma,
+      });
 
       const service = new StreamBatchItemsService({
         prisma: racingPrisma,
@@ -1529,12 +1569,11 @@ describe("StreamBatchItemsService", () => {
         processingConcurrency: 10,
       });
 
-      // Force the count-mismatch branch by leaving Redis at 0 items vs
-      // runCount=4. The pre-loop must see "initial" state (so it passes
-      // through to the loop), and the count-mismatch re-query must see
-      // "post-callback" state. Use a findFirst counter to flip the DB
-      // between those two reads, exactly matching the production timing
-      // where the callback fires while our loop is running.
+      // The pre-loop validate-find must see "initial" state (so it passes through to the
+      // loop), and the count-mismatch re-query must see "post-callback" state. Use a findFirst
+      // counter to flip the DB between those two reads, matching production timing where the
+      // callback fires while our loop runs. Both reads route through the engine's run-store
+      // (route-by-batch-id under the split), so the racing client backs the store.
       let findFirstCallCount = 0;
       const racingPrisma = {
         ...prisma,
@@ -1543,10 +1582,6 @@ describe("StreamBatchItemsService", () => {
           findFirst: async (args: Parameters<typeof prisma.batchTaskRun.findFirst>[0]) => {
             findFirstCallCount++;
             if (findFirstCallCount === 2) {
-              // The post-loop count-mismatch re-query: BatchQueue completed
-              // all items and the callback fired in the window before this
-              // read. Status stays PENDING (all runs created OK) but
-              // processingCompletedAt is now set.
               await prisma.batchTaskRun.update({
                 where: { id: batch.id },
                 data: {
@@ -1561,6 +1596,11 @@ describe("StreamBatchItemsService", () => {
           findUnique: prisma.batchTaskRun.findUnique.bind(prisma.batchTaskRun),
         },
       } as unknown as PrismaClient;
+
+      engine.runStore = new PostgresRunStore({
+        prisma: racingPrisma,
+        readOnlyPrisma: racingPrisma,
+      });
 
       const service = new StreamBatchItemsService({
         prisma: racingPrisma,
@@ -1925,9 +1965,6 @@ describe("StreamBatchItemsService", () => {
 });
 
 describe("createNdjsonParserStream", () => {
-  /**
-   * Helper to collect all items from a ReadableStream
-   */
   async function collectStream<T>(stream: ReadableStream<T>): Promise<T[]> {
     const results: T[] = [];
     for await (const item of streamToAsyncIterable(stream)) {
@@ -1936,9 +1973,6 @@ describe("createNdjsonParserStream", () => {
     return results;
   }
 
-  /**
-   * Helper to create a ReadableStream from an array of Uint8Array chunks
-   */
   function chunksToStream(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
     let index = 0;
     return new ReadableStream({

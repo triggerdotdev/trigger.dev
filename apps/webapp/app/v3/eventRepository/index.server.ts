@@ -3,6 +3,7 @@ import { eventRepository } from "./eventRepository.server";
 import { type IEventRepository, type TraceEventOptions } from "./eventRepository.types";
 import { prisma } from "~/db.server";
 import { runStore } from "../runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "../featureFlags";
 import { flag } from "../featureFlags.server";
@@ -261,7 +262,7 @@ async function recordRunEvent(
 }
 
 async function findRunForEventCreation(runId: string) {
-  return runStore.findRun(
+  const foundRun = await runStore.findRun(
     {
       id: runId,
     },
@@ -271,21 +272,29 @@ async function findRunForEventCreation(runId: string) {
         taskIdentifier: true,
         traceContext: true,
         taskEventStore: true,
-        runtimeEnvironment: {
-          select: {
-            id: true,
-            type: true,
-            organizationId: true,
-            projectId: true,
-            project: {
-              select: {
-                externalRef: true,
-              },
-            },
-          },
-        },
+        runtimeEnvironmentId: true,
       },
     },
     prisma
   );
+
+  if (!foundRun) {
+    return null;
+  }
+
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(
+    foundRun.runtimeEnvironmentId
+  );
+
+  if (!environment) {
+    // Run exists but its environment could not be resolved (e.g. a lagging replica
+    // under split); distinguish this from a genuinely missing run.
+    logger.warn("Run found but environment unresolved for event creation", {
+      runId,
+      runtimeEnvironmentId: foundRun.runtimeEnvironmentId,
+    });
+    return null;
+  }
+
+  return { ...foundRun, runtimeEnvironment: environment };
 }

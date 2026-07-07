@@ -2,6 +2,8 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { RunOpsCascadeCleanupService } from "~/v3/runOpsMigration/runOpsCascadeCleanup.server";
 
 type Options = ({ projectId: string } | { projectSlug: string }) & {
   userId: string;
@@ -49,6 +51,10 @@ export class DeleteProjectService {
       });
     }
 
+    // Hard-delete the project's run-ops rows across both run-ops DBs (replaces the cloud-only
+    // dropped cross-seam FK cascades). Idempotent; uses the run-ops writers, not #prismaClient.
+    await new RunOpsCascadeCleanupService().cleanupProject(project.id);
+
     // Mark the project as deleted (do this last because it makes it impossible to try again)
     // - This disables all API keys
     // - This disables all schedules from being scheduled
@@ -60,6 +66,11 @@ export class DeleteProjectService {
         deletedAt: new Date(),
       },
     });
+
+    // project.deletedAt (which gates env resolution) changed; drop every cached env of this project.
+    for (const environment of project.environments) {
+      controlPlaneResolver.invalidateEnvironment(environment.id);
+    }
   }
 
   async #getProjectId(options: Options) {

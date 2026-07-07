@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ClickhouseClient } from "./client/client.js";
 import {
   TASK_RUN_INDEX,
+  composeTaskRunVersion,
   getChildRunStatusCounts,
   getTaskRunsQueryBuilder,
   insertRawTaskRunPayloadsCompactArrays,
@@ -884,6 +885,315 @@ describe("Task Runs V2", () => {
       expect(queryPayloadsError).toBeNull();
       expect(resultPayloads).toEqual(
         expect.arrayContaining([expect.objectContaining({ run_id: "run_1234" })])
+      );
+    }
+  );
+
+  clickhouseTest(
+    "should collapse the same run from two producers to one latest-snapshot row",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+      const insert = insertTaskRunsCompactArrays(client, { async_insert: 0 });
+
+      const createdAt = new Date("2025-04-30 16:34:04.312").getTime();
+
+      const base: TaskRunInsertArray = [
+        "cm9kddfcs01zqdy88ld9mmrli",
+        "cm8zs78wb0002dy616dg75tv3",
+        "cm9kddfbz01zpdy88t9dstecu",
+        "cma45oli70002qrdy47w0j4n7",
+        createdAt,
+        createdAt,
+        "PENDING",
+        "PRODUCTION",
+        "run_cma45oli70002qrdy47w0j4n7",
+        1,
+        "V2",
+        "retry-task",
+        "task/retry-task",
+        "",
+        "",
+        null,
+        null,
+        null,
+        null,
+        createdAt,
+        null,
+        0,
+        0,
+        0,
+        { data: null },
+        { data: null },
+        "",
+        [],
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        0,
+        "span",
+        "trace",
+        "",
+        "",
+        "",
+        "",
+        true,
+        "1",
+        0,
+        "",
+        [],
+        "",
+        "",
+        "",
+        null,
+        "",
+        "",
+        "",
+        null,
+      ];
+
+      const rdsSnapshot: TaskRunInsertArray = [...base];
+      rdsSnapshot[TASK_RUN_INDEX.status] = "PENDING";
+      rdsSnapshot[TASK_RUN_INDEX._version] = composeTaskRunVersion({
+        originGeneration: 0,
+        lsnVersion: 9_000_000_000n,
+      }).toString();
+
+      const psSnapshot: TaskRunInsertArray = [...base];
+      psSnapshot[TASK_RUN_INDEX.status] = "COMPLETED_SUCCESSFULLY";
+      psSnapshot[TASK_RUN_INDEX._version] = composeTaskRunVersion({
+        originGeneration: 1,
+        lsnVersion: 10n,
+      }).toString();
+
+      const [insertError] = await insert([rdsSnapshot, psSnapshot]);
+      expect(insertError).toBeNull();
+
+      const query = client.query({
+        name: "q",
+        query:
+          "SELECT run_id, status, count() OVER () AS total FROM trigger_dev.task_runs_v2 FINAL",
+        schema: z.object({ run_id: z.string(), status: z.string(), total: z.number().int() }),
+      });
+      const [queryError, result] = await query({});
+      expect(queryError).toBeNull();
+      expect(result).toHaveLength(1);
+      expect(result?.[0]).toEqual(
+        expect.objectContaining({
+          run_id: "cma45oli70002qrdy47w0j4n7",
+          status: "COMPLETED_SUCCESSFULLY",
+        })
+      );
+    }
+  );
+
+  clickhouseTest(
+    "should keep the latest intra-producer snapshot (same generation, ascending LSN)",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+      const insert = insertTaskRunsCompactArrays(client, { async_insert: 0 });
+
+      const createdAt = new Date("2025-04-30 16:34:04.312").getTime();
+
+      const base: TaskRunInsertArray = [
+        "cm9kddfcs01zqdy88ld9mmrli",
+        "cm8zs78wb0002dy616dg75tv3",
+        "cm9kddfbz01zpdy88t9dstecu",
+        "cma45oli70002qrdy47w0j4n7",
+        createdAt,
+        createdAt,
+        "PENDING",
+        "PRODUCTION",
+        "run_cma45oli70002qrdy47w0j4n7",
+        1,
+        "V2",
+        "retry-task",
+        "task/retry-task",
+        "",
+        "",
+        null,
+        null,
+        null,
+        null,
+        createdAt,
+        null,
+        0,
+        0,
+        0,
+        { data: null },
+        { data: null },
+        "",
+        [],
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        0,
+        "span",
+        "trace",
+        "",
+        "",
+        "",
+        "",
+        true,
+        "1",
+        0,
+        "",
+        [],
+        "",
+        "",
+        "",
+        null,
+        "",
+        "",
+        "",
+        null,
+      ];
+
+      const earlier: TaskRunInsertArray = [...base];
+      earlier[TASK_RUN_INDEX.status] = "EXECUTING";
+      earlier[TASK_RUN_INDEX._version] = composeTaskRunVersion({
+        originGeneration: 1,
+        lsnVersion: 10n,
+      }).toString();
+
+      const later: TaskRunInsertArray = [...base];
+      later[TASK_RUN_INDEX.status] = "COMPLETED_SUCCESSFULLY";
+      later[TASK_RUN_INDEX._version] = composeTaskRunVersion({
+        originGeneration: 1,
+        lsnVersion: 20n,
+      }).toString();
+
+      const [insertError] = await insert([earlier, later]);
+      expect(insertError).toBeNull();
+
+      const query = client.query({
+        name: "q",
+        query:
+          "SELECT run_id, status, count() OVER () AS total FROM trigger_dev.task_runs_v2 FINAL",
+        schema: z.object({ run_id: z.string(), status: z.string(), total: z.number().int() }),
+      });
+      const [queryError, result] = await query({});
+      expect(queryError).toBeNull();
+      expect(result).toHaveLength(1);
+      expect(result?.[0]).toEqual(
+        expect.objectContaining({
+          run_id: "cma45oli70002qrdy47w0j4n7",
+          status: "COMPLETED_SUCCESSFULLY",
+        })
+      );
+    }
+  );
+
+  clickhouseTest(
+    "should collapse to the same winner regardless of insert order",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+      const insert = insertTaskRunsCompactArrays(client, { async_insert: 0 });
+
+      const createdAt = new Date("2025-04-30 16:34:04.312").getTime();
+
+      const base: TaskRunInsertArray = [
+        "cm9kddfcs01zqdy88ld9mmrli",
+        "cm8zs78wb0002dy616dg75tv3",
+        "cm9kddfbz01zpdy88t9dstecu",
+        "cma45oli70002qrdy47w0j4n7",
+        createdAt,
+        createdAt,
+        "PENDING",
+        "PRODUCTION",
+        "run_cma45oli70002qrdy47w0j4n7",
+        1,
+        "V2",
+        "retry-task",
+        "task/retry-task",
+        "",
+        "",
+        null,
+        null,
+        null,
+        null,
+        createdAt,
+        null,
+        0,
+        0,
+        0,
+        { data: null },
+        { data: null },
+        "",
+        [],
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        0,
+        "span",
+        "trace",
+        "",
+        "",
+        "",
+        "",
+        true,
+        "1",
+        0,
+        "",
+        [],
+        "",
+        "",
+        "",
+        null,
+        "",
+        "",
+        "",
+        null,
+      ];
+
+      const rdsSnapshot: TaskRunInsertArray = [...base];
+      rdsSnapshot[TASK_RUN_INDEX.status] = "PENDING";
+      rdsSnapshot[TASK_RUN_INDEX._version] = composeTaskRunVersion({
+        originGeneration: 0,
+        lsnVersion: 9_000_000_000n,
+      }).toString();
+
+      const psSnapshot: TaskRunInsertArray = [...base];
+      psSnapshot[TASK_RUN_INDEX.status] = "COMPLETED_SUCCESSFULLY";
+      psSnapshot[TASK_RUN_INDEX._version] = composeTaskRunVersion({
+        originGeneration: 1,
+        lsnVersion: 10n,
+      }).toString();
+
+      const [insertError] = await insert([psSnapshot, rdsSnapshot]);
+      expect(insertError).toBeNull();
+
+      const query = client.query({
+        name: "q",
+        query:
+          "SELECT run_id, status, count() OVER () AS total FROM trigger_dev.task_runs_v2 FINAL",
+        schema: z.object({ run_id: z.string(), status: z.string(), total: z.number().int() }),
+      });
+      const [queryError, result] = await query({});
+      expect(queryError).toBeNull();
+      expect(result).toHaveLength(1);
+      expect(result?.[0]).toEqual(
+        expect.objectContaining({
+          run_id: "cma45oli70002qrdy47w0j4n7",
+          status: "COMPLETED_SUCCESSFULLY",
+        })
       );
     }
   );

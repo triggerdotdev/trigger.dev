@@ -8,11 +8,13 @@ import type {
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import type { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
 import {
   type Worker,
   type WorkerConcurrencyOptions,
   type GlobalRateLimiter,
 } from "@trigger.dev/redis-worker";
+import type { ControlPlaneResolver } from "./controlPlaneResolver.js";
 import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import type { LockRetryConfig } from "./locking.js";
@@ -21,9 +23,44 @@ import { type BillingPlan } from "./billingCache.js";
 import type { DRRConfig } from "../batch-queue/types.js";
 import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 
+/**
+ * Structural mirror of the webapp's CrossSeamGuardDecision
+ * (apps/webapp/app/v3/runOpsMigration/crossSeamGuard.server.ts).
+ * Re-declared here because @internal/run-engine must not depend on the webapp.
+ * Keep field names identical so the injected value is assignable.
+ */
+export type CrossSeamGuardDecision = {
+  store: "new" | "legacy";
+  residency: "NEW" | "LEGACY";
+  routeKind: string;
+  pinnedReason?: string;
+};
+
+/**
+ * Optional cross-seam residency store-selection guard for waitpoint completion.
+ * Injected by the webapp as `pickRunOpsStoreForCompletion`.
+ * A no-op (returns store="legacy", the single store) when the split is OFF — the
+ * webapp wrapper short-circuits without classifying.
+ * When omitted entirely (self-host, tests), completeWaitpoint behaves exactly
+ * as today.
+ */
+export type CrossSeamGuardHook = (input: {
+  waitpointId: string;
+  routeKind: "MANUAL" | "DATETIME" | "RESUME_TOKEN" | "IDEMPOTENCY_REUSE" | "RUN";
+}) => Promise<CrossSeamGuardDecision>;
+
 export type RunEngineOptions = {
   prisma: PrismaClient;
   readOnlyPrisma?: PrismaReplicaClient;
+  /** Optional RunStore implementation to inject. Defaults to a PostgresRunStore
+   *  built from `prisma`/`readOnlyPrisma`, so single-DB / self-host behavior is unchanged. */
+  store?: RunStore;
+  /** Optional ControlPlaneResolver to inject. Defaults to a PassthroughControlPlaneResolver
+   *  built from `prisma`/`readOnlyPrisma` (in-DB joins), so single-DB / self-host behavior is
+   *  unchanged. The webapp injects an adapter over its cross-DB cached resolver. */
+  controlPlaneResolver?: ControlPlaneResolver;
+  /** Optional cross-seam store-selection guard. Omit for single-DB / tests. */
+  crossSeamGuard?: CrossSeamGuardHook;
   worker: {
     disabled?: boolean;
     redis: RedisOptions;

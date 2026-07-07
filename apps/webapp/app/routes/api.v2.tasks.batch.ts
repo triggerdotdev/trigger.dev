@@ -1,8 +1,8 @@
 import { json } from "@remix-run/server-runtime";
 import type { BatchTriggerTaskV3Response } from "@trigger.dev/core/v3";
 import { BatchTriggerTaskV3RequestBody, generateJWT } from "@trigger.dev/core/v3";
-import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { runStore } from "~/v3/runStore.server";
 import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { getOneTimeUseToken } from "~/services/apiAuth.server";
@@ -90,16 +90,9 @@ const { action, loader } = createActionApiRoute(
     const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
       requestType: "batch-trigger",
       findCachedEntity: async (cachedRequestId) => {
-        return await prisma.batchTaskRun.findFirst({
-          where: {
-            id: cachedRequestId,
-            runtimeEnvironmentId: authentication.environment.id,
-          },
-          select: {
-            friendlyId: true,
-            runCount: true,
-          },
-        });
+        const batch = await runStore.findBatchTaskRunById(cachedRequestId);
+        if (!batch || batch.runtimeEnvironmentId !== authentication.environment.id) return null;
+        return batch;
       },
       buildResponse: (cachedBatch) => ({
         id: cachedBatch.friendlyId,

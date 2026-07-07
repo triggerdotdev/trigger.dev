@@ -3,6 +3,7 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { RedisContainer } from "@testcontainers/redis";
+import { PrismaClient } from "@trigger.dev/database";
 import { tryCatch } from "@trigger.dev/core";
 import Redis from "ioredis";
 import path from "path";
@@ -26,10 +27,67 @@ export function postgresUriWithDatabase(uri: string, database: string): string {
 export async function pushDatabaseSchema(databaseUrl: string) {
   const databasePath = path.resolve(__dirname, "../../database");
 
+  return pushPrismaSchema({
+    prismaBin: `${databasePath}/node_modules/.bin/prisma`,
+    schemaPath: `${databasePath}/prisma/schema.prisma`,
+    // The full @trigger.dev/database datasource reads DATABASE_URL/DIRECT_URL.
+    env: { DATABASE_URL: databaseUrl, DIRECT_URL: databaseUrl },
+  });
+}
+
+/**
+ * Pushes the DEDICATED run-ops subset schema (@internal/run-ops-database) into the database at
+ * `databaseUrl`. The run-ops datasource reads RUN_OPS_DATABASE_URL, and its schema is a subset of
+ * the control-plane schema (run-ops tables, no Organization/Project/etc).
+ */
+export async function pushRunOpsSchema(databaseUrl: string) {
+  // Resolve the schema (and the package's own prisma binary) through the @internal/run-ops-database
+  // package so this keeps working regardless of where pnpm hoists it.
+  const schemaPath = require.resolve("@internal/run-ops-database/prisma/schema.prisma");
+  const runOpsPackagePath = path.resolve(schemaPath, "../..");
+
+  const result = await pushPrismaSchema({
+    prismaBin: `${runOpsPackagePath}/node_modules/.bin/prisma`,
+    schemaPath,
+    env: { RUN_OPS_DATABASE_URL: databaseUrl },
+  });
+
+  // `db push` derives DDL from the schema datamodel and so cannot create the SQL-only partial unique
+  // index Prisma can't express (the NULL-batchIndex dedup). Apply it here so the test DB matches what
+  // `migrate deploy` builds in production; otherwise ON CONFLICT DO NOTHING can't dedupe a re-blocked
+  // NULL-batchIndex edge and the idempotency contract goes untested.
+  await applyRunOpsSqlOnlyIndexes(databaseUrl);
+
+  return result;
+}
+
+async function applyRunOpsSqlOnlyIndexes(databaseUrl: string) {
+  // Reuse @trigger.dev/database's PrismaClient purely as a raw-SQL connection (the established
+  // primitive in this package — see createDatabaseFromTemplate). No model access, so the subset
+  // schema mismatch is irrelevant.
+  const client = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  try {
+    await client.$executeRawUnsafe(
+      `CREATE UNIQUE INDEX IF NOT EXISTS "TaskRunWaitpoint_taskRunId_waitpointId_batchIndex_null_key" ON "public"."TaskRunWaitpoint"("taskRunId", "waitpointId") WHERE "batchIndex" IS NULL`
+    );
+  } finally {
+    await client.$disconnect();
+  }
+}
+
+async function pushPrismaSchema({
+  prismaBin,
+  schemaPath,
+  env,
+}: {
+  prismaBin: string;
+  schemaPath: string;
+  env: Record<string, string>;
+}) {
   // throwOnError is essential: without it tinyexec swallows a non-zero `prisma db push`, so a failed
   // push looks like success and only surfaces much later as a confusing downstream error.
   const result = await x(
-    `${databasePath}/node_modules/.bin/prisma`,
+    prismaBin,
     [
       "db",
       "push",
@@ -37,15 +95,14 @@ export async function pushDatabaseSchema(databaseUrl: string) {
       "--accept-data-loss",
       "--skip-generate",
       "--schema",
-      `${databasePath}/prisma/schema.prisma`,
+      schemaPath,
     ],
     {
       throwOnError: true,
       nodeOptions: {
         env: {
           ...process.env,
-          DATABASE_URL: databaseUrl,
-          DIRECT_URL: databaseUrl,
+          ...env,
         },
       },
     }
@@ -83,12 +140,21 @@ function parsePositiveNumberEnv(name: string): number | undefined {
   return value;
 }
 
-export async function createPostgresContainer(network: StartedNetwork) {
-  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
+export async function createPostgresContainer(
+  network: StartedNetwork,
+  opts?: { imageTag?: string; initdbArgs?: string }
+) {
+  const imageTag = opts?.imageTag ?? "docker.io/postgres:14";
+  let builder = withCiResourceLimits(new PostgreSqlContainer(imageTag))
     .withNetwork(network)
     .withNetworkAliases("database")
-    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
-    .start();
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"]);
+  if (opts?.initdbArgs) {
+    // POSTGRES_INITDB_ARGS is the official postgres image hook for initdb flags
+    // (locale/collation provider). No dedicated PostgreSqlContainer method exists.
+    builder = builder.withEnvironment({ POSTGRES_INITDB_ARGS: opts.initdbArgs });
+  }
+  const container = await builder.start();
 
   await pushDatabaseSchema(container.getConnectionUri());
 
@@ -106,7 +172,6 @@ export async function createClickHouseContainer(network: StartedNetwork) {
 
   await client.ping();
 
-  // Now we run the migrations
   const migrationsPath = path.resolve(__dirname, "../../clickhouse/schema");
 
   await runClickhouseMigrations(client, migrationsPath);
@@ -140,7 +205,6 @@ export async function createRedisContainer({
     .withWaitStrategy(Wait.forLogMessage("Ready to accept connections"))
     .start();
 
-  // Add a verification step
   const [error] = await tryCatch(verifyRedisConnection(startedContainer));
 
   if (error) {

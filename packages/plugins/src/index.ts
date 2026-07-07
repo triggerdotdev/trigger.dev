@@ -47,6 +47,10 @@ export type {
   SsoValidateError,
   SsoWebhookError,
   SsoWebhookEvent,
+  DirectoryState,
+  DirectoryGroupMapping,
+  DirectorySyncStatus,
+  DirectorySyncEffect,
 } from "./sso.js";
 
 export { SSO_FLOWS } from "./sso.js";

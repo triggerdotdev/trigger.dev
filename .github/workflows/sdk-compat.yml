@@ -13,8 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [blacksmith-4vcpu-ubuntu-2404]
-        node: ["20.20", "22.12"]
+        os: [warp-ubuntu-latest-x64-4x]
+        node: ["20.20", "22.23", "24.18", "26.4"]
 
     steps:
       - name: ⬇️ Checkout repo
@@ -54,7 +54,7 @@ jobs:
 
   bun-compat:
     name: "Bun Runtime"
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: warp-ubuntu-latest-x64-4x
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -70,7 +70,7 @@ jobs:
       - name: ⎔ Setup node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 20.20.2
+          node-version: 22.23.1
           cache: "pnpm"
 
       - name: 🥟 Setup Bun
@@ -96,7 +96,7 @@ jobs:
 
   deno-compat:
     name: "Deno Runtime"
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: warp-ubuntu-latest-x64-4x
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -112,7 +112,7 @@ jobs:
       - name: ⎔ Setup node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 20.20.2
+          node-version: 22.23.1
           cache: "pnpm"
 
       - name: 🦕 Setup Deno
@@ -142,7 +142,7 @@ jobs:
 
   cloudflare-compat:
     name: "Cloudflare Workers"
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: warp-ubuntu-latest-x64-4x
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -158,7 +158,7 @@ jobs:
       - name: ⎔ Setup node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 20.20.2
+          node-version: 22.23.1
           cache: "pnpm"
 
       - name: 📥 Download deps

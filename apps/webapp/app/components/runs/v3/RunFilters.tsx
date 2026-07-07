@@ -65,6 +65,7 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
+import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 import { Button } from "../../primitives/Buttons";
 import { AIFilterInput } from "./AIFilterInput";
 import { BulkActionTypeCombo } from "./BulkAction";
@@ -1713,10 +1714,7 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
   );
 }
 
-function validateRunId(value: string): string | undefined {
-  if (!value.startsWith("run_")) return "Run IDs start with 'run_'";
-  if (value.length !== 25 && value.length !== 29) return "Run IDs are 25 or 29 characters long";
-}
+const validateRunId = makeFriendlyIdValidator("run", "Run");
 
 function RunIdDropdown(
   props: Omit<
@@ -1768,10 +1766,7 @@ function AppliedRunIdFilter() {
   );
 }
 
-function validateBatchId(value: string): string | undefined {
-  if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
-  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27 or 31 characters long";
-}
+const validateBatchId = makeFriendlyIdValidator("batch", "Batch");
 
 function BatchIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
@@ -1819,10 +1814,7 @@ function AppliedBatchIdFilter() {
   );
 }
 
-function validateScheduleId(value: string): string | undefined {
-  if (!value.startsWith("sched_")) return "Schedule IDs start with 'sched_'";
-  if (value.length !== 27) return "Schedule IDs are 27 characters long";
-}
+const validateScheduleId = makeFriendlyIdValidator("sched", "Schedule");
 
 function ScheduleIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
@@ -1870,6 +1862,8 @@ function AppliedScheduleIdFilter() {
   );
 }
 
+// Error ids are `error_<16-char sha256 fingerprint>`, not a fixed-length generated
+// id, so they intentionally skip makeFriendlyIdValidator (its length check would reject them).
 function validateErrorId(value: string): string | undefined {
   if (!value.startsWith("error_")) return "Error IDs start with 'error_'";
 }

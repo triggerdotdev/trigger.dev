@@ -9,7 +9,10 @@ import {
 import { chat as chatServer } from "@trigger.dev/sdk/chat-server";
 import { streamText, type UIMessage } from "ai";
 import { env } from "~/env.server";
-import { dashboardAgentApiOrigin } from "~/services/dashboardAgent.server";
+import {
+  dashboardAgentApiOrigin,
+  dashboardAgentTriggerConfig,
+} from "~/services/dashboardAgent.server";
 import { logger } from "~/services/logger.server";
 
 const TASK_ID = "dashboard-agent";
@@ -43,6 +46,7 @@ export async function startDashboardAgentHeadStart(params: {
     chatId: params.chatId,
     messages: params.messages,
     metadata: params.metadata,
+    triggerConfig: dashboardAgentTriggerConfig(),
     // Scope session creation + the agent trigger to the agent's project/env. The
     // Anthropic key here only powers the warm step-1 call.
     apiClient: {

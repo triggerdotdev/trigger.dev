@@ -38,7 +38,7 @@ on:
 
 jobs:
   publish:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: warp-ubuntu-latest-x64-2x
     env:
       PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
     outputs:
@@ -75,6 +75,10 @@ jobs:
           # variable); the webapp image lives at <registry>/<repo-name>. A fork
           # therefore publishes to its own package automatically.
           image_tags=$REF_WITHOUT_TAG:${STEPS_GET_TAG_OUTPUTS_TAG}
+
+          if [[ "${STEPS_GET_TAG_OUTPUTS_TAG}" =~ ^v4\.[0-9]+\.[0-9]+$ ]]; then
+            image_tags=$image_tags,$REF_WITHOUT_TAG:v4,$REF_WITHOUT_TAG:latest
+          fi
 
           # when pushing the mutable main tag, also push an immutable-by-convention
           # full-commit-sha tag so a commit can be resolved to a specific digest

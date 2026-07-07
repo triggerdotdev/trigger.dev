@@ -2,11 +2,18 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type CompleteWaitpointTokenResponseBody, stringifyIO } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
-import { $replica } from "~/db.server";
+import {
+  $replica,
+  type PrismaReplicaClient,
+  runOpsNewReplica,
+  runOpsSplitReadEnabled,
+} from "~/db.server";
 import { env } from "~/env.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
+import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
 import { verifyHttpCallbackHash } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { engine } from "~/v3/runEngine.server";
 
 const paramsSchema = z.object({
@@ -32,24 +39,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
   try {
-    const waitpoint = await $replica.waitpoint.findFirst({
-      where: {
-        id: waitpointId,
-      },
-      include: {
-        environment: {
-          include: {
-            project: true,
-            organization: true,
-            orgMember: true,
-            parentEnvironment: {
-              select: {
-                id: true,
-                apiKey: true,
-              },
-            },
+    // Resolve wherever the waitpoint resides. The env is resolved below from the row; residency
+    // is classified off the waitpoint id, so env "" is fine. Fan-out reads the run-ops replica
+    // first, then the control-plane replica so both a co-located and a standalone token resolve,
+    // gated on the URL-presence read gate so the fan-out spans both DBs independent of the mint flag.
+    const waitpoint = await resolveWaitpointThroughReadThrough({
+      waitpointId,
+      environmentId: "",
+      read: (client: PrismaReplicaClient) =>
+        client.waitpoint.findFirst({
+          where: {
+            id: waitpointId,
           },
-        },
+          select: { id: true, status: true, environmentId: true },
+        }),
+      deps: {
+        newClient: runOpsNewReplica,
+        legacyReplica: $replica,
+        splitEnabled: runOpsSplitReadEnabled,
       },
     });
 
@@ -57,11 +64,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return json({ error: "Waitpoint not found" }, { status: 404 });
     }
 
+    const environment = await controlPlaneResolver.resolveAuthenticatedEnv(waitpoint.environmentId);
+
+    if (!environment) {
+      return json({ error: "Waitpoint not found" }, { status: 404 });
+    }
+
     if (
       !verifyHttpCallbackHash(
         waitpoint.id,
         hash,
-        waitpoint.environment.parentEnvironment?.apiKey ?? waitpoint.environment.apiKey
+        environment.parentEnvironment?.apiKey ?? environment.apiKey
       )
     ) {
       return json({ error: "Invalid URL, hash doesn't match" }, { status: 401 });
@@ -79,7 +92,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const stringifiedData = await stringifyIO(body);
     const finalData = await processWaitpointCompletionPacket(
       stringifiedData,
-      waitpoint.environment,
+      environment,
       `${WaitpointId.toFriendlyId(waitpointId)}/http-callback`
     );
 

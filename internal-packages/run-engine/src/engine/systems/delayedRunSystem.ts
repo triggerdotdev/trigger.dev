@@ -38,7 +38,7 @@ export class DelayedRunSystem {
       "rescheduleDelayedRun",
       async () => {
         return await this.$.runLock.lock("rescheduleDelayedRun", [runId], async () => {
-          const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+          const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
           // Check if the run is still in DELAYED status (or legacy RUN_CREATED for older runs)
           if (
@@ -100,7 +100,7 @@ export class DelayedRunSystem {
     return await this.$.runLock.lock("enqueueDelayedRun", [runId], async () => {
       // Check if run is still in DELAYED status before enqueuing
       // This prevents a race where debounce reschedules the run while we're about to enqueue it
-      const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore);
 
       if (snapshot.executionStatus !== "DELAYED" && snapshot.executionStatus !== "RUN_CREATED") {
         this.$.logger.debug("enqueueDelayedRun: run is no longer delayed, skipping enqueue", {
@@ -110,23 +110,18 @@ export class DelayedRunSystem {
         return;
       }
 
-      const run = await this.$.runStore.findRun(
-        { id: runId },
-        {
-          include: {
-            runtimeEnvironment: {
-              include: {
-                project: true,
-                organization: true,
-              },
-            },
-          },
-        },
-        this.$.prisma
-      );
+      // Read run-ops scalars only; resolve the control-plane env separately so the run-ops DB can
+      // split without a cross-provider join.
+      const run = await this.$.runStore.findRun({ id: runId }, this.$.prisma);
 
       if (!run) {
         throw new Error(`#enqueueDelayedRun: run not found: ${runId}`);
+      }
+
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+      if (!env) {
+        throw new Error(`#enqueueDelayedRun: environment not found for run: ${runId}`);
       }
 
       // Check if delayUntil has been rescheduled to the future (e.g., by debounce)
@@ -146,7 +141,7 @@ export class DelayedRunSystem {
       // For DEV environments where the dev CLI may not be running, fast-pathed
       // runs can sit on the worker queue indefinitely. Keep the legacy per-run
       // expireRun job armed for DEV so those runs still expire.
-      if (run.ttl && run.runtimeEnvironment.type === "DEVELOPMENT") {
+      if (run.ttl && env.type === "DEVELOPMENT") {
         const expireAt = parseNaturalLanguageDuration(run.ttl);
         if (expireAt) {
           await this.$.worker.enqueue({
@@ -158,7 +153,6 @@ export class DelayedRunSystem {
         }
       }
 
-      // Now we need to enqueue the run into the RunQueue
       // Skip the lock in enqueueRun since we already hold it.
       // includeTtl: true so the run's TTL is armed from the moment it enters
       // the queue (not from taskRun.createdAt). The TTL system tracks runs
@@ -166,7 +160,7 @@ export class DelayedRunSystem {
       // enqueued here, so this is the correct point to arm TTL.
       await this.enqueueSystem.enqueueRun({
         run,
-        env: run.runtimeEnvironment,
+        env,
         batchId: run.batchId ?? undefined,
         skipRunLock: true,
         includeTtl: true,
@@ -194,10 +188,10 @@ export class DelayedRunSystem {
           batchId: updatedRun.batchId,
         },
         organization: {
-          id: run.runtimeEnvironment.organizationId,
+          id: env.organizationId,
         },
         project: {
-          id: run.runtimeEnvironment.projectId,
+          id: env.projectId,
         },
         environment: {
           id: run.runtimeEnvironmentId,

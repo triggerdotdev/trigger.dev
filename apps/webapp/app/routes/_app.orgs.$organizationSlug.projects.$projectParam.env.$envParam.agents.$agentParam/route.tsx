@@ -431,7 +431,7 @@ function AgentDetailSidebar({
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
+      <div className="flex min-w-0 items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
         <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
           <CubeSparkleIcon className="size-4.5 shrink-0 text-agents" />
           <span className="truncate">{agent.slug}</span>

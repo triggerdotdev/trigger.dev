@@ -2,6 +2,7 @@ import type { RuntimeEnvironment } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { customAlphabet } from "nanoid";
 import { RuntimeEnvironmentType } from "~/database-types";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 const apiKeyId = customAlphabet(
   "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
@@ -86,6 +87,9 @@ export async function regenerateApiKey({ userId, environmentId }: RegenerateAPIK
       },
     });
   });
+
+  // The env's apiKey changed in the control-plane; drop any cached copy.
+  controlPlaneResolver.invalidateEnvironment(environmentId);
 
   return updatedEnviroment;
 }

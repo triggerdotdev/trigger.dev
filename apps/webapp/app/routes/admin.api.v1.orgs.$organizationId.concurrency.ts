@@ -3,6 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { updateEnvConcurrencyLimits } from "~/v3/runQueue.server";
 
 const ParamsSchema = z.object({
@@ -82,6 +83,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     await updateEnvConcurrencyLimits({ ...modifiedEnvironment, organization });
   }
+
+  // Org + every affected env's concurrency changed; one org invalidation covers them all.
+  controlPlaneResolver.invalidateOrganization(organizationId);
 
   return json({ success: true });
 }

@@ -8,6 +8,9 @@ import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { allMachines } from "./machinePresets.server";
 import { runEnginePendingVersionLookup } from "./runEnginePendingVersionLookup.server";
+import { pickRunOpsStoreForCompletion } from "./runOpsMigration/crossSeamGuard.server";
+import { runEngineControlPlaneResolver } from "./runOpsMigration/runEngineControlPlaneResolver.server";
+import { runStore } from "./runStore.server";
 import { meter, tracer } from "./tracer.server";
 
 export const engine = singleton("RunEngine", createRunEngine);
@@ -18,6 +21,12 @@ function createRunEngine() {
   const engine = new RunEngine({
     prisma,
     readOnlyPrisma: $replica,
+    crossSeamGuard: pickRunOpsStoreForCompletion,
+    // Inject the shared run-store singleton so the engine and the webapp presenters/
+    // services route through ONE store. When split is off this is the same passthrough
+    // PostgresRunStore the engine would have defaulted to, so behavior is unchanged.
+    store: runStore,
+    controlPlaneResolver: runEngineControlPlaneResolver,
     logLevel: env.RUN_ENGINE_WORKER_LOG_LEVEL,
     treatProductionExecutionStallsAsOOM:
       env.RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM === "1",

@@ -178,6 +178,31 @@ export function formatDateTimeISO(date: Date, timeZone: string): string {
   );
 }
 
+/**
+ * Human-readable UTC offset for a timezone at a specific instant, e.g. "(UTC +3)".
+ * Returns "" for UTC. The offset must be derived from the same (date, timeZone) pair
+ * used to render the displayed time so the label always matches the value shown — and
+ * so it stays correct across DST boundaries regardless of the viewer's current season.
+ */
+export function formatUtcOffset(date: Date, timeZone: string): string {
+  if (timeZone === "UTC") return "";
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    timeZoneName: "longOffset",
+  }).formatToParts(date);
+
+  // longOffset yields "GMT+03:00", "GMT-08:00", "GMT+05:30", or "GMT" for UTC-equivalent zones.
+  const raw = parts.find((part) => part.type === "timeZoneName")?.value.replace("GMT", "") ?? "";
+  const match = raw.match(/^([+-])(\d{2}):(\d{2})$/);
+  if (!match) return "(UTC +0)";
+
+  const [, sign, hh, mm] = match;
+  const hours = parseInt(hh, 10);
+  const minutes = parseInt(mm, 10);
+  return `(UTC ${sign}${hours}${minutes ? `:${minutes.toString().padStart(2, "0")}` : ""})`;
+}
+
 // New component that only shows date when it changes
 export const SmartDateTime = ({ date, previousDate = null, hour12 = true }: DateTimeProps) => {
   const locales = useLocales();
@@ -445,6 +470,7 @@ type DateTimeTooltipContentProps = {
   dateTime: string;
   isoDateTime: string;
   icon: ReactNode;
+  offset?: string;
 };
 
 function DateTimeTooltipContent({
@@ -452,25 +478,14 @@ function DateTimeTooltipContent({
   dateTime,
   isoDateTime,
   icon,
+  offset,
 }: DateTimeTooltipContentProps) {
-  const getUtcOffset = useMemo(
-    () => () => {
-      if (title !== "Local") return "";
-      const offset = -new Date().getTimezoneOffset();
-      const sign = offset >= 0 ? "+" : "-";
-      const hours = Math.abs(Math.floor(offset / 60));
-      const minutes = Math.abs(offset % 60);
-      return `(UTC ${sign}${hours}${minutes ? `:${minutes.toString().padStart(2, "0")}` : ""})`;
-    },
-    [title]
-  );
-
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1 text-sm">
         {icon}
         <span className="font-medium">{title}</span>
-        <span className="font-normal text-text-dimmed">{getUtcOffset()}</span>
+        {offset ? <span className="font-normal text-text-dimmed">{offset}</span> : null}
       </div>
       <div className="flex items-center justify-between gap-2">
         <Paragraph variant="extra-small" className="text-text-dimmed">
@@ -515,6 +530,7 @@ function TooltipContent({
           dateTime={formatDateTime(realDate, localTimeZone, locales, true, true, true)}
           isoDateTime={formatDateTimeISO(realDate, localTimeZone)}
           icon={<Laptop className="size-4 text-green-500" />}
+          offset={formatUtcOffset(realDate, localTimeZone)}
         />
       </div>
     </div>

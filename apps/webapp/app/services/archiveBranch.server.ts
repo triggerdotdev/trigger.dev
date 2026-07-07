@@ -2,6 +2,7 @@ import { type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { nanoid } from "nanoid";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 export class ArchiveBranchService {
   #prismaClient: PrismaClient;
@@ -80,6 +81,9 @@ export class ArchiveBranchService {
         };
       }
 
+      // Branch archive is a SOFT update — do NOT hard-delete run-ops rows here (it would destroy a
+      // retained branch's history). RunOpsCascadeCleanupService.cleanupEnvironment belongs on the
+      // env hard-delete/purge path (owned by the cloud env-purge runbook), which has no site today.
       const slug = `${environment.slug}-${nanoid(6)}`;
       const shortcode = slug;
 
@@ -87,6 +91,9 @@ export class ArchiveBranchService {
         where: { id: environmentId },
         data: { archivedAt: new Date(), slug, shortcode },
       });
+
+      // archivedAt/slug/shortcode changed in the control-plane; drop any cached copy.
+      controlPlaneResolver.invalidateEnvironment(environmentId);
 
       return {
         success: true as const,

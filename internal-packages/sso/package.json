@@ -11,7 +11,7 @@
   },
   "devDependencies": {
     "@trigger.dev/database": "workspace:*",
-    "@types/node": "^20.14.14",
+    "@types/node": "^22.20.0",
     "rimraf": "6.0.1"
   },
   "scripts": {

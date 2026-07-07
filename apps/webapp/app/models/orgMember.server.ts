@@ -1,6 +1,10 @@
 import { Prisma, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
+import {
+  getValidPersonalAccessTokens,
+  revokePersonalAccessToken,
+} from "~/services/personalAccessToken.server";
 
 export type EnsureOrgMemberParams = {
   userId: string;
@@ -9,7 +13,7 @@ export type EnsureOrgMemberParams = {
   // value is an RBAC role id; when an RBAC plugin is installed it gets
   // attached after the OrgMember row is created.
   roleId: string | null;
-  source: "sso_jit" | "invite" | "manual";
+  source: "sso_jit" | "invite" | "manual" | "directory_sync";
 };
 
 export type EnsureOrgMemberResult = { created: boolean; orgMemberId: string };
@@ -131,4 +135,155 @@ export async function ensureOrgMember(
   }
 
   return { created: true, orgMemberId: member.id };
+}
+
+// Find-or-create a User for a directory-provisioned member. Directory Sync
+// can provision a user before they have ever logged in, so the User row may
+// not exist yet. Email is the natural key (lowercased). New rows are marked
+// SSO since the user will authenticate via the org's IdP.
+export async function ensureUserForDirectory(params: {
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+}): Promise<{ userId: string }> {
+  const email = params.email.toLowerCase().trim();
+  const existing = await prisma.user.findFirst({ where: { email }, select: { id: true } });
+  if (existing) return { userId: existing.id };
+
+  const name = [params.firstName, params.lastName].filter(Boolean).join(" ").trim() || null;
+  // `User.email` is unique, so two concurrent directory events for the same
+  // email can both miss the lookup above and race on create; the loser gets
+  // P2002. Treat that as the idempotent "already exists" case (same pattern as
+  // `ensureOrgMember`) rather than throwing and burning a webhook retry.
+  try {
+    const created = await prisma.user.create({
+      data: {
+        email,
+        authenticationMethod: "SSO",
+        name,
+        displayName: name,
+      },
+      select: { id: true },
+    });
+    return { userId: created.id };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      const existingAfterConflict = await prisma.user.findFirst({
+        where: { email },
+        select: { id: true },
+      });
+      if (existingAfterConflict) return { userId: existingAfterConflict.id };
+    }
+    throw error;
+  }
+}
+
+// Whether the user holds the Owner system role in this org. Owner is the one
+// role Directory Sync must never strip (it can't be auto-granted and is the
+// org's recovery anchor), so deprovision is guarded against removing the last
+// one. Identified by the RBAC system role; OSS-safe (no plugin → not Owner).
+function isOwnerRole(role: { name: string; isSystem: boolean } | null): boolean {
+  return !!role && role.isSystem && role.name === "Owner";
+}
+
+export type RemoveOrgMemberForDirectoryResult =
+  | { removed: true }
+  | { removed: false; reason: "not_a_member" | "last_owner_protected" };
+
+// Deprovision a directory-removed user from an org: hard-delete the
+// OrgMember, drop the RBAC role, force-logout (nextSessionEnd), and revoke
+// the user's personal access tokens ONLY when this was their last org (PATs
+// are user-global, so revoking on a single-org removal would break their CLI
+// access to other orgs). Refuses to remove the org's last Owner.
+export async function removeOrgMemberForDirectory(params: {
+  userId: string;
+  organizationId: string;
+}): Promise<RemoveOrgMemberForDirectoryResult> {
+  const { userId, organizationId } = params;
+
+  const member = await prisma.orgMember.findFirst({
+    where: { userId, organizationId },
+    select: { id: true },
+  });
+  if (!member) return { removed: false, reason: "not_a_member" };
+
+  // Last-Owner guard: never leave the org without an Owner. Resolve every
+  // member's RBAC role and bail if this user is the only Owner.
+  const members = await prisma.orgMember.findMany({
+    where: { organizationId },
+    select: { userId: true },
+  });
+  const roles = await rbac.getUserRoles(
+    members.map((m) => m.userId),
+    organizationId
+  );
+  if (isOwnerRole(roles.get(userId) ?? null)) {
+    const otherOwners = members.filter(
+      (m) => m.userId !== userId && isOwnerRole(roles.get(m.userId) ?? null)
+    );
+    if (otherOwners.length === 0) {
+      logger.warn("removeOrgMemberForDirectory: refusing to remove last Owner", {
+        userId,
+        organizationId,
+      });
+      return { removed: false, reason: "last_owner_protected" };
+    }
+  }
+
+  await prisma.orgMember.delete({ where: { id: member.id } });
+  const removeRole = await rbac.removeUserRole({ userId, organizationId });
+  if (!removeRole.ok) {
+    logger.warn("removeOrgMemberForDirectory: failed to remove RBAC role", {
+      userId,
+      organizationId,
+      error: removeRole.error,
+    });
+  }
+
+  // Post-delete cleanup is best-effort: the membership (the critical state) is
+  // already gone, so any throw here must not propagate. If it did, the webhook
+  // worker would retry, hit the `not_a_member` guard above, and skip the rest
+  // of the cleanup entirely — leaving sessions or PATs behind. Swallowing lets
+  // this single pass finish force-logout + PAT revocation.
+
+  // Force logout everywhere.
+  try {
+    await prisma.user.update({ where: { id: userId }, data: { nextSessionEnd: new Date() } });
+  } catch (error) {
+    logger.warn("removeOrgMemberForDirectory: failed to force logout", {
+      userId,
+      organizationId,
+      error,
+    });
+  }
+
+  // Revoke PATs only if the user no longer belongs to ANY org — PATs are
+  // user-global and used by the CLI across every org the user is in. Each
+  // revoke is guarded so a concurrent self-revoke (which would throw) or one
+  // bad token doesn't abort the rest.
+  try {
+    const remainingMemberships = await prisma.orgMember.count({ where: { userId } });
+    if (remainingMemberships === 0) {
+      const tokens = await getValidPersonalAccessTokens(userId);
+      for (const token of tokens) {
+        try {
+          await revokePersonalAccessToken(token.id, userId);
+        } catch (error) {
+          logger.warn("removeOrgMemberForDirectory: failed to revoke PAT", {
+            userId,
+            tokenId: token.id,
+            error,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    logger.warn("removeOrgMemberForDirectory: PAT cleanup failed", {
+      userId,
+      organizationId,
+      error,
+    });
+  }
+
+  return { removed: true };
 }

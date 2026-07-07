@@ -86,7 +86,7 @@ export async function createOrganization(
     );
   }
 
-  const _features = featuresForUrl(new URL(env.APP_ORIGIN));
+  const features = featuresForUrl(new URL(env.APP_ORIGIN));
 
   const organization = await prisma.organization.create({
     data: {
@@ -102,7 +102,10 @@ export async function createOrganization(
           role: "ADMIN",
         },
       },
-      v3Enabled: true,
+      // Managed-cloud orgs start deactivated so they're routed through
+      // select-plan, which provisions their billing entitlement and activates
+      // them. Self-hosters have no billing gate, so they're active immediately.
+      isActivated: !features.isManagedCloud,
     },
     include: {
       members: true,

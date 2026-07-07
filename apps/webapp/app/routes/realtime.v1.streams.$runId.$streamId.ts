@@ -5,6 +5,7 @@ import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -31,19 +32,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
         id: true,
         friendlyId: true,
         streamBasinName: true,
-        runtimeEnvironment: {
-          include: {
-            project: true,
-            organization: true,
-            orgMember: true,
-          },
-        },
+        runtimeEnvironmentId: true,
       },
     },
     $replica
   );
 
   if (!run) {
+    return new Response("Run not found", { status: 404 });
+  }
+
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+  if (!environment) {
     return new Response("Run not found", { status: 404 });
   }
 
@@ -67,8 +68,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     resumeFromChunkNumber = parsed;
   }
 
-  // The runtimeEnvironment from the run is already in the correct shape for AuthenticatedEnvironment
-  const realtimeStream = getRealtimeStreamInstance(run.runtimeEnvironment, streamVersion, {
+  const realtimeStream = getRealtimeStreamInstance(environment, streamVersion, {
     run,
   });
 

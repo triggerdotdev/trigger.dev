@@ -25,6 +25,9 @@ import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
+import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
+import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -125,6 +128,34 @@ export class RunEngineTriggerTaskService {
       opts.isMollifierGloballyEnabled ?? (() => env.TRIGGER_MOLLIFIER_ENABLED === "1");
   }
 
+  // Mint a new run's friendlyId. The id-kind decides which store the run is born
+  // in (cuid → legacy store, run-ops id → new store), so the whole subgraph of a run
+  // must agree. Two cases:
+  //
+  //  - ROOT run (no parent): mint by the environment's cutover setting.
+  //  - CHILD run (has a parent): inherit the parent's residency by id-shape, so a
+  //    parent and child never split across stores (run-ops parent → run-ops child,
+  //    cuid parent → cuid child).
+  // `region` is the caller-requested region (body.options.region). The id is
+  // minted before the worker queue is resolved (the idempotency concern needs
+  // the friendlyId first), so the stamped region char reflects the requested
+  // region — or the default char when the run targets the default region.
+  private async mintRunFriendlyId(
+    environment: AuthenticatedEnvironment,
+    parentRunFriendlyId?: string,
+    region?: string
+  ): Promise<string> {
+    const mintKind = parentRunFriendlyId
+      ? resolveInheritedMintKind(parentRunFriendlyId)
+      : await resolveRunIdMintKind({
+          organizationId: environment.organizationId,
+          id: environment.id,
+          orgFeatureFlags: environment.organization.featureFlags,
+        });
+
+    return mintFriendlyIdForKind(mintKind, region);
+  }
+
   public async call({
     taskId,
     environment,
@@ -150,7 +181,16 @@ export class RunEngineTriggerTaskService {
           span.setAttribute("taskId", taskId);
           span.setAttribute("attempt", attempt);
 
-          const runFriendlyId = options?.runFriendlyId ?? RunId.generate().friendlyId;
+          // Mint the run id. A caller-supplied id (idempotent retry) wins;
+          // otherwise mint by residency — inheriting the parent's store when a
+          // parent is present, else the environment's setting.
+          const runFriendlyId =
+            options?.runFriendlyId ??
+            (await this.mintRunFriendlyId(
+              environment,
+              body.options?.parentRunId,
+              body.options?.region
+            ));
           const triggerRequest = {
             taskId,
             friendlyId: runFriendlyId,
@@ -159,7 +199,6 @@ export class RunEngineTriggerTaskService {
             options,
           } satisfies TriggerTaskRequest;
 
-          // Validate max attempts
           const maxAttemptsValidation = this.validator.validateMaxAttempts({
             taskId,
             attempt,
@@ -169,7 +208,6 @@ export class RunEngineTriggerTaskService {
             throw maxAttemptsValidation.error;
           }
 
-          // Validate tags
           const tagValidation = this.validator.validateTags({
             tags: body.options?.tags,
           });
@@ -178,7 +216,6 @@ export class RunEngineTriggerTaskService {
             throw tagValidation.error;
           }
 
-          // Validate entitlement (unless skipChecks is enabled)
           let planType: string | undefined;
 
           if (!options.skipChecks) {
@@ -190,7 +227,6 @@ export class RunEngineTriggerTaskService {
               throw entitlementValidation.error;
             }
 
-            // Extract plan type from entitlement response
             planType = entitlementValidation.plan?.type;
           } else {
             // When skipChecks is enabled, planType should be passed via options
@@ -239,7 +275,6 @@ export class RunEngineTriggerTaskService {
             }
           }
 
-          // Get parent run if specified
           const parentRun = body.options?.parentRunId
             ? await runStore.findRun(
                 {
@@ -250,7 +285,6 @@ export class RunEngineTriggerTaskService {
               )
             : undefined;
 
-          // Validate parent run
           const parentRunValidation = this.validator.validateParentRun({
             taskId,
             parentRun: parentRun ?? undefined,
@@ -390,7 +424,6 @@ export class RunEngineTriggerTaskService {
             envType: environment.type,
           });
 
-          // Build annotations for this run
           const triggerSource = options.triggerSource ?? "api";
           const triggerAction = options.triggerAction ?? "trigger";
           const parentAnnotations = RunAnnotations.safeParse(parentRun?.annotations).data;
