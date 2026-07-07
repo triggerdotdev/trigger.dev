@@ -51,6 +51,7 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs._index/shouldRevalidateRunsList";
@@ -188,14 +189,25 @@ export const action = dashboardAction(
 
     const service = new BulkActionService();
     const [error, result] = await tryCatch(
-      service.create(
-        project.organizationId,
-        project.id,
-        environment.id,
-        user.id,
-        submission.value,
-        request
-      )
+      (async () => {
+        const filters =
+          submission.value.mode === "selected"
+            ? { runId: submission.value.selectedRunIds }
+            : await getRunFiltersFromRequest(request);
+
+        return service.create({
+          organizationId: project.organizationId,
+          projectId: project.id,
+          environmentId: environment.id,
+          userId: user.id,
+          action: submission.value.action,
+          title: submission.value.title,
+          region: submission.value.region,
+          emailNotification: submission.value.emailNotification,
+          filters,
+          triggerSource: "dashboard",
+        });
+      })()
     );
 
     if (error) {

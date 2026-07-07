@@ -1,5 +1,12 @@
 # @trigger.dev/sdk
 
+## 4.5.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.1`
+
 ## 4.5.0
 
 ### Minor Changes

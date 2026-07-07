@@ -2,7 +2,10 @@ import type {
   AnyRetrieveRunResult,
   AnyRunShape,
   ApiRequestOptions,
+  CreateBulkCancelActionOptions,
+  CreateBulkReplayActionOptions,
   InferRunTypes,
+  ListBulkActionsQueryParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
   RescheduleRunRequestBody,
@@ -16,7 +19,10 @@ import type {
   AsyncIterableStream,
   ApiPromise,
   RealtimeRunSkipColumns,
+  AbortBulkActionResponseBody,
+  BulkActionObject,
   CanceledRunResponse,
+  CreateBulkActionResponseBody,
   CursorPagePromise,
   ListRunResponseItem,
   ReplayRunResponse,
@@ -49,6 +55,14 @@ export const runs = {
   retrieve: retrieveRun,
   list: listRuns,
   reschedule: rescheduleRun,
+  bulk: {
+    cancel: bulkCancelRuns,
+    replay: bulkReplayRuns,
+    retrieve: retrieveBulkAction,
+    abort: abortBulkAction,
+    list: listBulkActions,
+    poll: pollBulkAction,
+  },
   poll,
   subscribeToRun,
   subscribeToRunsWithTag,
@@ -57,6 +71,7 @@ export const runs = {
 };
 
 export type ListRunsItem = ListRunResponseItem;
+export type BulkAction = BulkActionObject;
 
 function listRuns(
   projectRef: string,
@@ -276,6 +291,139 @@ function cancelRun(
   );
 
   return apiClient.cancelRun(runId, $requestOptions);
+}
+
+function bulkCancelRuns(
+  options: CreateBulkCancelActionOptions,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<CreateBulkActionResponseBody> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "runs.bulk.cancel()",
+      icon: "runs",
+      attributes: {
+        ...flattenAttributes(options as Record<string, unknown>, "bulkAction"),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.createBulkAction({ ...options, action: "cancel" }, $requestOptions);
+}
+
+function bulkReplayRuns(
+  options: CreateBulkReplayActionOptions,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<CreateBulkActionResponseBody> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "runs.bulk.replay()",
+      icon: "runs",
+      attributes: {
+        ...flattenAttributes(options as Record<string, unknown>, "bulkAction"),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.createBulkAction({ ...options, action: "replay" }, $requestOptions);
+}
+
+function retrieveBulkAction(
+  bulkActionId: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<BulkActionObject> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "runs.bulk.retrieve()",
+      icon: "runs",
+      attributes: {
+        bulkActionId,
+        ...accessoryAttributes({
+          items: [{ text: bulkActionId, variant: "normal" }],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.retrieveBulkAction(bulkActionId, $requestOptions);
+}
+
+function abortBulkAction(
+  bulkActionId: string,
+  requestOptions?: ApiRequestOptions
+): ApiPromise<AbortBulkActionResponseBody> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "runs.bulk.abort()",
+      icon: "runs",
+      attributes: {
+        bulkActionId,
+        ...accessoryAttributes({
+          items: [{ text: bulkActionId, variant: "normal" }],
+          style: "codepath",
+        }),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.abortBulkAction(bulkActionId, $requestOptions);
+}
+
+function listBulkActions(
+  params?: ListBulkActionsQueryParams,
+  requestOptions?: ApiRequestOptions
+): CursorPagePromise<typeof BulkActionObject> {
+  const apiClient = apiClientManager.clientOrThrow();
+
+  const $requestOptions = mergeRequestOptions(
+    {
+      tracer,
+      name: "runs.bulk.list()",
+      icon: "runs",
+      attributes: {
+        ...flattenAttributes(params as Record<string, unknown>, "queryParams"),
+      },
+    },
+    requestOptions
+  );
+
+  return apiClient.listBulkActions(params, $requestOptions);
+}
+
+async function pollBulkAction(
+  bulkActionId: string,
+  options?: { pollIntervalMs?: number },
+  requestOptions?: ApiRequestOptions
+): Promise<BulkActionObject> {
+  let attempts = 0;
+
+  while (attempts++ < MAX_POLL_ATTEMPTS) {
+    const bulkAction = await retrieveBulkAction(bulkActionId, requestOptions);
+
+    if (bulkAction.status !== "PENDING") {
+      return bulkAction;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, options?.pollIntervalMs ?? 1000));
+  }
+
+  throw new Error(`Bulk action ${bulkActionId} did not finish after ${MAX_POLL_ATTEMPTS} attempts`);
 }
 
 function rescheduleRun(

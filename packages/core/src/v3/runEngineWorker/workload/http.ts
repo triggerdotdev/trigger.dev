@@ -132,6 +132,20 @@ export class WorkloadHttpClient {
           headers: {
             ...this.defaultHeaders(),
           },
+        },
+        {
+          // This hop only reaches the supervisor's workload server, so retry
+          // generously with jittered backoff to ride out a transient blip
+          // talking to the supervisor (e.g. a restart) rather than aborting the
+          // run. Database outages surface one hop further in, on the
+          // supervisor-to-engine call, which carries its own retry for them.
+          retry: {
+            minTimeoutInMs: 500,
+            maxTimeoutInMs: 10_000,
+            maxAttempts: 8,
+            factor: 2,
+            randomize: true,
+          },
         }
       )
     );

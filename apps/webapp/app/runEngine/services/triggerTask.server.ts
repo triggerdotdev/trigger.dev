@@ -14,7 +14,6 @@ import {
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import {
-  generateRunOpsId,
   parseTraceparent,
   RunId,
   serializeTraceparent,
@@ -28,6 +27,7 @@ import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
 import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
 import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
+import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -153,9 +153,7 @@ export class RunEngineTriggerTaskService {
           orgFeatureFlags: environment.organization.featureFlags,
         });
 
-    return mintKind === "runOpsId"
-      ? RunId.toFriendlyId(generateRunOpsId(region))
-      : RunId.generate().friendlyId;
+    return mintFriendlyIdForKind(mintKind, region);
   }
 
   public async call({

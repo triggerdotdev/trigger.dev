@@ -43,6 +43,9 @@ export type TriggerFailedTaskRequest = {
   spanParentAsLink?: boolean;
 
   errorCode?: TaskRunErrorCodes;
+
+  /** Pre-minted friendlyId; when set it wins over the mint. Batch callers pass a batch-anchored id. */
+  runFriendlyId?: string;
 };
 
 /**
@@ -86,14 +89,20 @@ export class TriggerFailedTaskService {
 
   // Mint a failed run's friendlyId. The id-kind decides which store the run is
   // born in (cuid → legacy store, run-ops id → new store); the whole subgraph of a
-  // run must agree. Root failed runs mint by the environment's setting; child
-  // failed runs inherit the parent's current store so they never split.
+  // run must agree. A caller-supplied runFriendlyId (batch-anchored id) wins verbatim;
+  // otherwise root failed runs mint by the environment's setting and child failed runs
+  // inherit the parent's current store so they never split.
   private async mintFailedRunFriendlyId(args: {
     organizationId: string;
     environmentId: string;
     orgFeatureFlags?: unknown;
     parentRunFriendlyId?: string;
+    runFriendlyId?: string;
   }): Promise<string> {
+    if (args.runFriendlyId) {
+      return args.runFriendlyId;
+    }
+
     const mintKind = args.parentRunFriendlyId
       ? resolveInheritedMintKind(args.parentRunFriendlyId)
       : await resolveRunIdMintKind({
@@ -125,6 +134,7 @@ export class TriggerFailedTaskService {
         environmentId: request.environment.id,
         orgFeatureFlags: request.environment.organization.featureFlags,
         parentRunFriendlyId: request.parentRunId,
+        runFriendlyId: request.runFriendlyId,
       });
       mintedFriendlyId = failedRunFriendlyId;
 
@@ -321,6 +331,8 @@ export class TriggerFailedTaskService {
     resumeParentOnCompletion?: boolean;
     batch?: { id: string; index: number };
     errorCode?: TaskRunErrorCodes;
+    /** Pre-minted friendlyId; when set it wins over the mint. Batch callers pass a batch-anchored id. */
+    runFriendlyId?: string;
   }): Promise<string | null> {
     // Held for the catch's log line; the in-try `const` is what consumers use.
     let mintedFriendlyId: string | undefined;
@@ -335,6 +347,7 @@ export class TriggerFailedTaskService {
         // single replica lookup by organizationId only when there is no parent.
         orgFeatureFlags: undefined,
         parentRunFriendlyId: opts.parentRunId,
+        runFriendlyId: opts.runFriendlyId,
       });
       mintedFriendlyId = failedRunFriendlyId;
 

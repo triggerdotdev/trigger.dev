@@ -290,6 +290,7 @@ export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
   controlPlaneReplica: $replica,
   hasNewUrl: !!env.RUN_OPS_DATABASE_URL,
   hasLegacyUrl: !!env.RUN_OPS_LEGACY_DATABASE_URL,
+  logger,
 });
 
 // Boot-time interlock: if the flag is on but the distinct-DB sentinel does not

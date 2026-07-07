@@ -18,6 +18,7 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { batchTriggerWorker } from "~/v3/batchTriggerWorker.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { mintAnchoredRunFriendlyId } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
 import {
   downloadPacketFromObjectStore,
@@ -588,6 +589,9 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
           parentRunId,
           resumeParentOnCompletion,
           batch: { id: batch.id, index: workingIndex },
+          // Anchor the pre-failed run on the BATCH's residency (same as the happy path) so it
+          // co-resides with its BatchTaskRun row regardless of a mid-batch mint-flag flip.
+          runFriendlyId: mintAnchoredRunFriendlyId(batch.friendlyId, item.options?.region),
           options: item.options as Record<string, unknown>,
           traceContext: options?.traceContext as Record<string, unknown> | undefined,
           spanParentAsLink: options?.spanParentAsLink,
@@ -677,6 +681,12 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
     const triggerTaskService = new TriggerTaskService();
 
+    // Anchor the item's mint on the BATCH's own friendlyId (not a fresh per-org flag read) so
+    // an org's mint flag flipping between batch creation and this (possibly much later,
+    // worker-processed) item never splits the item from its BatchTaskRun row. See
+    // mintAnchoredRunFriendlyId.server.ts.
+    const runFriendlyId = mintAnchoredRunFriendlyId(batch.friendlyId, item.options?.region);
+
     const result = await triggerTaskService.call(
       item.task,
       environment,
@@ -695,6 +705,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         spanParentAsLink: options?.spanParentAsLink,
         batchId: batch.id,
         batchIndex: currentIndex,
+        runFriendlyId,
         realtimeStreamsVersion: options?.realtimeStreamsVersion,
         triggerSource: options?.triggerSource ?? "api",
         triggerAction: options?.triggerAction ?? "trigger",

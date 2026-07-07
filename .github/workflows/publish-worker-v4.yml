@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   # check-branch:
-  #   runs-on: ubuntu-latest
+  #   runs-on: warp-ubuntu-latest-x64-2x
   #   steps:
   #     - name: Fail if re2-prod-* is pushed from a non-main branch
   #       if: startsWith(github.ref_name, 're2-prod-') && github.base_ref != 'main'
@@ -37,7 +37,7 @@ jobs:
     strategy:
       matrix:
         package: [supervisor]
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     env:
       DOCKER_BUILDKIT: "1"
     steps:

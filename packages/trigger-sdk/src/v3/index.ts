@@ -55,6 +55,7 @@ export {
   type AnyRealtimeRun,
   type RetrieveRunResult,
   type AnyRetrieveRunResult,
+  type BulkAction,
 } from "./runs.js";
 export * as schedules from "./schedules/index.js";
 export {

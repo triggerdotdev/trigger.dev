@@ -12,7 +12,6 @@ import {
   Prisma,
 } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
-import { generateRunOpsId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -26,6 +25,7 @@ import { getEntitlement } from "~/services/platform.v3.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { resolveRunIdMintKind, type RunIdMintKind } from "~/v3/engineVersion.server";
 import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
+import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
 import { batchTriggerWorker } from "../batchTriggerWorker.server";
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
@@ -361,9 +361,7 @@ export class BatchTriggerV3Service extends BaseService {
           orgFeatureFlags: environment.organization.featureFlags,
         });
 
-    return mintKind === "runOpsId"
-      ? RunId.toFriendlyId(generateRunOpsId(region))
-      : RunId.generate().friendlyId;
+    return mintFriendlyIdForKind(mintKind, region);
   }
 
   async #prepareRunData(

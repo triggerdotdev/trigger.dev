@@ -18,7 +18,7 @@ concurrency:
 jobs:
   release-pr:
     name: Create Release PR
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     permissions:
       contents: write
       pull-requests: write

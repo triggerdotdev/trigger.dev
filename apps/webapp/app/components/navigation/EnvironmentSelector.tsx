@@ -2,7 +2,7 @@ import { ChevronRightIcon, Cog8ToothIcon } from "@heroicons/react/20/solid";
 import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
 import { isBranchableEnvironment } from "~/utils/branchableEnvironment";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
-import { useNavigation } from "@remix-run/react";
+import { useNavigation, useRevalidator } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -52,10 +52,19 @@ export function EnvironmentSelector({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigation = useNavigation();
   const { urlForEnvironment } = useEnvironmentSwitcher();
+  const revalidator = useRevalidator();
 
   useEffect(() => {
     setIsMenuOpen(false);
   }, [navigation.location?.pathname]);
+
+  // Fetch immediately on open so the list is fresh right away
+  useEffect(() => {
+    if (isMenuOpen && revalidator.state !== "loading") {
+      revalidator.revalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMenuOpen]);
 
   const hasStaging = project.environments.some((env) => env.type === "STAGING");
   return (
