@@ -159,9 +159,6 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
           }
 
           await seedFkRows(prisma, "legacy", TaskRunStatus.PENDING, "run_dual_legacy");
-
-          // Wait for BOTH streams to flush into ClickHouse.
-          await setTimeout(3000);
         } finally {
           await newPrisma.$disconnect();
         }
@@ -177,15 +174,21 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
           }),
         });
 
-        const [queryError, result] = await queryRuns({});
+        // Poll until BOTH streams have flushed and the gen-1 winner has settled in ClickHouse.
+        await vi.waitFor(
+          async () => {
+            const [queryError, result] = await queryRuns({});
 
-        expect(queryError).toBeNull();
-        expect(result).toHaveLength(1);
-        expect(result?.[0]).toEqual(
-          expect.objectContaining({
-            run_id: sharedRunId,
-            status: "COMPLETED_SUCCESSFULLY",
-          })
+            expect(queryError).toBeNull();
+            expect(result).toHaveLength(1);
+            expect(result?.[0]).toEqual(
+              expect.objectContaining({
+                run_id: sharedRunId,
+                status: "COMPLETED_SUCCESSFULLY",
+              })
+            );
+          },
+          { timeout: 30_000, interval: 250 }
         );
       } finally {
         await runsReplicationService?.stop();
@@ -329,7 +332,6 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
 
           // THEN flush the LEGACY (gen-0, PENDING) snapshot.
           await seedFkRows(prisma, "legacy", TaskRunStatus.PENDING, "run_dual_legacy");
-          await setTimeout(3000);
         } finally {
           await newPrisma.$disconnect();
         }
@@ -345,15 +347,21 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
           }),
         });
 
-        const [queryError, result] = await queryRuns({});
+        // Poll until BOTH streams have flushed and the gen-1 winner has settled in ClickHouse.
+        await vi.waitFor(
+          async () => {
+            const [queryError, result] = await queryRuns({});
 
-        expect(queryError).toBeNull();
-        expect(result).toHaveLength(1);
-        expect(result?.[0]).toEqual(
-          expect.objectContaining({
-            run_id: sharedRunId,
-            status: "COMPLETED_SUCCESSFULLY",
-          })
+            expect(queryError).toBeNull();
+            expect(result).toHaveLength(1);
+            expect(result?.[0]).toEqual(
+              expect.objectContaining({
+                run_id: sharedRunId,
+                status: "COMPLETED_SUCCESSFULLY",
+              })
+            );
+          },
+          { timeout: 30_000, interval: 250 }
         );
       } finally {
         await runsReplicationService?.stop();
@@ -498,9 +506,6 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
           // Seed run X ONLY in legacy and run Y ONLY in new.
           await seedRun(prisma, "legacy", legacyRunId, TaskRunStatus.PENDING);
           await seedRun(newPrisma, "new", newRunId, TaskRunStatus.COMPLETED_SUCCESSFULLY);
-
-          // Wait for BOTH streams to flush into ClickHouse.
-          await setTimeout(3000);
         } finally {
           await newPrisma.$disconnect();
         }
@@ -514,10 +519,18 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
           }),
         });
 
-        const [queryError, result] = await queryRuns({});
+        // Poll until BOTH sources have independently flushed their run into ClickHouse.
+        const result = await vi.waitFor(
+          async () => {
+            const [queryError, rows] = await queryRuns({});
 
-        expect(queryError).toBeNull();
-        expect(result).toHaveLength(2);
+            expect(queryError).toBeNull();
+            expect(rows).toHaveLength(2);
+
+            return rows;
+          },
+          { timeout: 30_000, interval: 250 }
+        );
 
         const byRunId = new Map(result?.map((row) => [row.run_id, row.status]));
         expect(byRunId.get(legacyRunId)).toBe("PENDING");
