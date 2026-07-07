@@ -2,13 +2,36 @@ import { RepositoryNotFoundException } from "@aws-sdk/client-ecr";
 import { describe, expect, it } from "vitest";
 import {
   ecrImageExists,
+  inspectManifest,
   interpretBatchGetImageResponse,
   parseEcrImageReference,
+  treeHasUnpullableLayer,
 } from "~/v3/services/verifyDeploymentImage.server";
 import { type RegistryConfig } from "~/v3/registryConfig.server";
 
 const ECR_HOST = "123456789012.dkr.ecr.us-east-1.amazonaws.com";
 const ecrConfig: RegistryConfig = { host: ECR_HOST, namespace: "deployments-test" };
+
+const DIGEST_A = `sha256:${"a".repeat(64)}`;
+const DIGEST_B = `sha256:${"b".repeat(64)}`;
+const ZSTD_DOCKER = "application/vnd.docker.image.rootfs.diff.tar.zstd";
+
+const imageManifest = (layerMediaTypes: string[]) =>
+  JSON.stringify({
+    schemaVersion: 2,
+    mediaType: "application/vnd.docker.distribution.manifest.v2+json",
+    layers: layerMediaTypes.map((mediaType) => ({ mediaType, digest: DIGEST_A })),
+  });
+
+const indexManifest = (childDigests: string[]) =>
+  JSON.stringify({
+    schemaVersion: 2,
+    mediaType: "application/vnd.oci.image.index.v1+json",
+    manifests: childDigests.map((digest) => ({
+      digest,
+      mediaType: "application/vnd.oci.image.manifest.v1+json",
+    })),
+  });
 
 describe("parseEcrImageReference", () => {
   it("splits repository and tag for a ref under the configured host", () => {
@@ -58,6 +81,73 @@ describe("interpretBatchGetImageResponse", () => {
       "unknown"
     );
     expect(interpretBatchGetImageResponse({} as any)).toBe("unknown");
+  });
+});
+
+describe("inspectManifest", () => {
+  it("flags an unpullable zstd layer in an image manifest", () => {
+    const result = inspectManifest(
+      imageManifest(["application/vnd.docker.image.rootfs.diff.tar.gzip", ZSTD_DOCKER])
+    );
+    expect(result.hasUnpullableLayer).toBe(true);
+    expect(result.childDigests).toEqual([]);
+  });
+
+  it("passes OCI zstd and gzip layers (runtime-supported media types)", () => {
+    const result = inspectManifest(
+      imageManifest([
+        "application/vnd.oci.image.layer.v1.tar+gzip",
+        "application/vnd.oci.image.layer.v1.tar+zstd",
+      ])
+    );
+    expect(result.hasUnpullableLayer).toBe(false);
+  });
+
+  it("returns child digests for an index and does not flag it directly", () => {
+    const result = inspectManifest(indexManifest([DIGEST_A, DIGEST_B]));
+    expect(result.hasUnpullableLayer).toBe(false);
+    expect(result.childDigests).toEqual([DIGEST_A, DIGEST_B]);
+  });
+
+  it("fails open (empty) when the manifest is absent or unparseable", () => {
+    expect(inspectManifest(undefined)).toEqual({ hasUnpullableLayer: false, childDigests: [] });
+    expect(inspectManifest("not json")).toEqual({ hasUnpullableLayer: false, childDigests: [] });
+  });
+});
+
+describe("treeHasUnpullableLayer", () => {
+  const neverFetch = async () => undefined;
+
+  it("detects an unpullable layer in a flat image manifest", async () => {
+    expect(await treeHasUnpullableLayer(imageManifest([ZSTD_DOCKER]), neverFetch)).toBe(true);
+  });
+
+  it("follows an index and detects an unpullable layer in a child", async () => {
+    const children: Record<string, string> = {
+      [DIGEST_A]: imageManifest(["application/vnd.oci.image.layer.v1.tar+gzip"]),
+      [DIGEST_B]: imageManifest([ZSTD_DOCKER]),
+    };
+    const result = await treeHasUnpullableLayer(
+      indexManifest([DIGEST_A, DIGEST_B]),
+      async (digest) => children[digest]
+    );
+    expect(result).toBe(true);
+  });
+
+  it("returns false for an index whose children are all conformant", async () => {
+    const children: Record<string, string> = {
+      [DIGEST_A]: imageManifest(["application/vnd.oci.image.layer.v1.tar+zstd"]),
+      [DIGEST_B]: imageManifest(["application/vnd.docker.image.rootfs.diff.tar.gzip"]),
+    };
+    const result = await treeHasUnpullableLayer(
+      indexManifest([DIGEST_A, DIGEST_B]),
+      async (digest) => children[digest]
+    );
+    expect(result).toBe(false);
+  });
+
+  it("fails open when a child manifest can't be fetched", async () => {
+    expect(await treeHasUnpullableLayer(indexManifest([DIGEST_A]), neverFetch)).toBe(false);
   });
 });
 
@@ -173,5 +263,55 @@ describe("ecrImageExists", () => {
       }
     );
     expect(seen.imageIds).toEqual([{ imageTag: "v1.prod.a1b2c3d4" }]);
+  });
+
+  // Resolve a manifest by tag or digest against a fixture map, mimicking BatchGetImage.
+  const sendFrom =
+    (byRef: Record<string, string>) =>
+    async (input: any): Promise<any> => {
+      const id = input.imageIds[0];
+      const manifest = byRef[id.imageDigest ?? id.imageTag];
+      return manifest ? { images: [{ imageManifest: manifest }] } : { images: [{}] };
+    };
+
+  it("returns nonconformant for a single-arch image with an unpullable zstd layer", async () => {
+    const result = await ecrImageExists(
+      {
+        imageReference: `${ECR_HOST}/deployments-test/proj_abc:v1.prod.a1b2c3d4`,
+        registryConfig: ecrConfig,
+      },
+      sendFrom({ "v1.prod.a1b2c3d4": imageManifest([ZSTD_DOCKER]) })
+    );
+    expect(result).toBe("nonconformant");
+  });
+
+  it("returns nonconformant when a multi-arch index has an unpullable child", async () => {
+    const result = await ecrImageExists(
+      {
+        imageReference: `${ECR_HOST}/deployments-test/proj_abc:v1.prod.a1b2c3d4`,
+        registryConfig: ecrConfig,
+      },
+      sendFrom({
+        "v1.prod.a1b2c3d4": indexManifest([DIGEST_A, DIGEST_B]),
+        [DIGEST_A]: imageManifest(["application/vnd.oci.image.layer.v1.tar+gzip"]),
+        [DIGEST_B]: imageManifest([ZSTD_DOCKER]),
+      })
+    );
+    expect(result).toBe("nonconformant");
+  });
+
+  it("returns found when a multi-arch index's children are all conformant", async () => {
+    const result = await ecrImageExists(
+      {
+        imageReference: `${ECR_HOST}/deployments-test/proj_abc:v1.prod.a1b2c3d4`,
+        registryConfig: ecrConfig,
+      },
+      sendFrom({
+        "v1.prod.a1b2c3d4": indexManifest([DIGEST_A, DIGEST_B]),
+        [DIGEST_A]: imageManifest(["application/vnd.oci.image.layer.v1.tar+zstd"]),
+        [DIGEST_B]: imageManifest(["application/vnd.docker.image.rootfs.diff.tar.gzip"]),
+      })
+    );
+    expect(result).toBe("found");
   });
 });
