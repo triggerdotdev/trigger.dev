@@ -9,6 +9,7 @@ import {
   createActionPATApiRoute,
   createLoaderPATApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
 import { isCuid } from "cuid";
 
 const ParamsSchema = z.object({
@@ -108,6 +109,9 @@ export const action = createActionPATApiRoute(
 
     if (error) {
       logger.error("Failed to create project", { error });
+      if (error instanceof ServiceValidationError) {
+        return json({ error: error.message }, { status: error.status ?? 400 });
+      }
       return json({ error: "Failed to create project" }, { status: 400 });
     }
 
