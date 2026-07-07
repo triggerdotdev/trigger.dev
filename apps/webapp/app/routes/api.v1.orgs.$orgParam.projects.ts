@@ -77,7 +77,8 @@ export const action = createActionPATApiRoute(
       });
       return org ? { organizationId: org.id } : {};
     },
-    // authorization intentionally omitted — gating TBD
+    // No authorization gate: creating a project is a member-level action
+    // (mirrors the dashboard), not an owner-only one like rename/delete.
   },
   async ({ params, body, authentication }) => {
     const organization = await prisma.organization.findFirst({

@@ -295,6 +295,9 @@ export const action = dashboardAction(
         }
       }
     } catch (error: unknown) {
+      // Permission checks throw a redirect Response (toast) — let it through
+      // rather than flattening it into a generic 400.
+      if (error instanceof Response) throw error;
       const message = error instanceof Error ? error.message : "An unexpected error occurred";
       return json({ errors: { body: message } }, { status: 400 });
     }
