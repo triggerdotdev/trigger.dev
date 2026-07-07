@@ -1,21 +1,20 @@
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
 import { motion, useMotionValue, useTransform } from "framer-motion";
+import { useThemeColor } from "~/hooks/useThemeColor";
 import { cn } from "~/utils/cn";
 
 export function FreePlanUsage({ to, percentage }: { to: string; percentage: number }) {
   const cappedPercentage = Math.min(percentage, 1);
   const widthProgress = useMotionValue(cappedPercentage * 100);
+  // Resolved to concrete colors - framer-motion can't interpolate var() strings
+  const successColor = useThemeColor("--color-success", "#28bf5c");
+  const warningColor = useThemeColor("--color-warning", "#f59e0b");
+  const errorColor = useThemeColor("--color-error", "#e11d48");
   const color = useTransform(
     widthProgress,
     [0, 74, 75, 95, 100],
-    [
-      "var(--color-success)",
-      "var(--color-success)",
-      "var(--color-warning)",
-      "var(--color-error)",
-      "var(--color-error)",
-    ]
+    [successColor, successColor, warningColor, errorColor, errorColor]
   );
 
   const hasHitLimit = cappedPercentage >= 1;
