@@ -9766,6 +9766,8 @@ function createChatSession(
         },
 
         async return() {
+          activeMsgSub?.off();
+          activeMsgSub = undefined;
           // `stop` only exists once next() has booted the iterator.
           stop?.cleanup();
           return { done: true, value: undefined };
