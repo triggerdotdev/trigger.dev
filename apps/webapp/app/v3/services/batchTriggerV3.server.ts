@@ -20,6 +20,7 @@ import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { dependentAttemptWhere } from "./dependentAttemptScope";
 import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -193,7 +194,8 @@ export class BatchTriggerV3Service extends BaseService {
 
           const dependentAttempt = body?.dependentAttempt
             ? await this._prisma.taskRunAttempt.findFirst({
-                where: { friendlyId: body.dependentAttempt },
+                // Scope to the caller's environment (see dependentAttemptWhere).
+                where: dependentAttemptWhere(body.dependentAttempt, environment.id),
                 include: {
                   taskRun: {
                     select: {
