@@ -174,8 +174,8 @@ export function SideMenuItem({
  */
 export const SideMenuItemButton = forwardRef<
   HTMLButtonElement,
-  { icon: RenderIcon; name: string } & ButtonHTMLAttributes<HTMLButtonElement>
->(function SideMenuItemButton({ icon, name, className, type, ...props }, ref) {
+  { icon: RenderIcon; name: string; trailing?: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>
+>(function SideMenuItemButton({ icon, name, trailing, className, type, ...props }, ref) {
   return (
     <button
       ref={ref}
@@ -190,9 +190,10 @@ export const SideMenuItemButton = forwardRef<
         icon={icon}
         className="size-5 shrink-0 text-text-dimmed group-hover/menuitem:text-text-bright"
       />
-      <span className="min-w-0 select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]">
+      <span className="min-w-0 flex-1 select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]">
         {name}
       </span>
+      {trailing && <span className="flex shrink-0 items-center gap-1">{trailing}</span>}
     </button>
   );
 });

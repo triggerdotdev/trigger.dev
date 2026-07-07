@@ -11,7 +11,12 @@ export function Shortcuts() {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <SideMenuItemButton icon={KeyboardIcon} name="Shortcuts" data-action="shortcuts" />
+        <SideMenuItemButton
+          icon={KeyboardIcon}
+          name="Shortcuts"
+          data-action="shortcuts"
+          trailing={<ShortcutKey shortcut={{ modifiers: ["shift"], key: "?" }} variant="medium" />}
+        />
       </SheetTrigger>
       <ShortcutContent />
     </Sheet>
