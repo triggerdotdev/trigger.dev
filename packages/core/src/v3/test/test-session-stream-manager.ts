@@ -33,6 +33,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
   private onceWaiters = new Map<string, OnceWaiter[]>();
   private buffer = new Map<string, unknown[]>();
   private seqNums = new Map<string, number>();
+  private dispatchedSeqNums = new Map<string, number>();
 
   on(sessionId: string, io: SessionChannelIO, handler: Handler): { off: () => void } {
     const key = keyFor(sessionId, io);
@@ -150,15 +151,20 @@ export class TestSessionStreamManager implements SessionStreamManager {
     this.seqNums.set(keyFor(sessionId, io), seqNum);
   }
 
-  lastDispatchedSeqNum(_sessionId: string, _io: SessionChannelIO): number | undefined {
-    // The test harness drives records via `__sendFromTest` without seq
-    // numbers, so the committed-consume cursor stays undefined. Tests
-    // that need cursor behaviour exercise it via the real manager.
-    return undefined;
+  lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
+    // `__sendFromTest` carries no seq numbers, so this only reflects
+    // explicit `setLastDispatchedSeqNum` calls (e.g. the waitpoint
+    // delivery path). Full cursor behaviour is exercised via the real
+    // manager.
+    return this.dispatchedSeqNums.get(keyFor(sessionId, io));
   }
 
-  setLastDispatchedSeqNum(_sessionId: string, _io: SessionChannelIO, _seqNum: number): void {
-    // no-op — see comment on `lastDispatchedSeqNum`.
+  setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
+    const key = keyFor(sessionId, io);
+    const current = this.dispatchedSeqNums.get(key);
+    if (current === undefined || seqNum > current) {
+      this.dispatchedSeqNums.set(key, seqNum);
+    }
   }
 
   setMinTimestamp(
@@ -202,6 +208,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
     this.handlers.clear();
     this.buffer.clear();
     this.seqNums.clear();
+    this.dispatchedSeqNums.clear();
   }
 
   disconnect(): void {

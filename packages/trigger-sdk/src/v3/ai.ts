@@ -5569,6 +5569,14 @@ function chatAgent<
       // `messagesInput.waitWithIdleTimeout` so recovered turns fire first.
       const bootInjectedQueue: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>[] =
         [];
+      // Messages consumed by a turn's `messagesInput.on` handler, dispatched
+      // one per turn by the end-of-turn pickup. Loop-level on purpose:
+      // consuming a record advances the committed `.in` cursor, so entries
+      // dropped with a turn-local buffer are lost permanently.
+      const pendingWireMessages: ChatTaskWirePayload<
+        TUIMessage,
+        inferSchemaIn<TClientDataSchema>
+      >[] = [];
       const couldHavePriorState = payload.continuation === true || ctx.attempt.number > 1;
 
       // `.in` resume cursor, computed at most once per boot. The boot
@@ -6479,11 +6487,6 @@ function chatAgent<
                 const cancelSignal = runSignal;
                 const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
 
-                // Buffer messages that arrive during streaming
-                const pendingMessages: ChatTaskWirePayload<
-                  TUIMessage,
-                  inferSchemaIn<TClientDataSchema>
-                >[] = [];
                 const pmConfig = locals.get(chatPendingMessagesKey);
                 const msgSub = messagesInput.on(async (msg) => {
                   // If pendingMessages is configured, route to the steering queue
@@ -6532,7 +6535,7 @@ function chatAgent<
                   }
 
                   // No pendingMessages config — standard wire buffer for next turn
-                  pendingMessages.push(
+                  pendingWireMessages.push(
                     msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
                   );
                 });
@@ -7738,9 +7741,10 @@ function chatAgent<
                 }
 
                 // If messages arrived during streaming (without pendingMessages config),
-                // use the first one immediately as the next turn.
-                if (pendingMessages.length > 0) {
-                  currentWirePayload = pendingMessages[0]!;
+                // dispatch the oldest as the next turn. The rest stay queued
+                // and drain one per turn.
+                if (pendingWireMessages.length > 0) {
+                  currentWirePayload = pendingWireMessages.shift()!;
                   return "continue";
                 }
 
@@ -7979,6 +7983,12 @@ function chatAgent<
             // until an unrelated live message arrives.
             if (bootInjectedQueue.length > 0) {
               currentWirePayload = bootInjectedQueue.shift()!;
+              continue;
+            }
+
+            // Same for messages buffered during the errored turn — already consumed, idling strands them.
+            if (pendingWireMessages.length > 0) {
+              currentWirePayload = pendingWireMessages.shift()!;
               continue;
             }
 
@@ -9309,6 +9319,10 @@ function createChatSession(
       const accumulator = new ChatMessageAccumulator();
       let previousTurnUsage: LanguageModelUsage | undefined;
       let cumulativeUsage: LanguageModelUsage = emptyUsage();
+      // Messages consumed mid-turn, dispatched one per next(). Iterator-level
+      // for the same reason as the agent loop's `pendingWireMessages`:
+      // consumed records never replay, so a turn-local buffer loses them.
+      const sessionPendingWire: ChatTaskWirePayload[] = [];
 
       return {
         async next(): Promise<IteratorResult<ChatTurn>> {
@@ -9380,24 +9394,29 @@ function createChatSession(
             }
           }
 
-          // Subsequent turns: wait for the next message
+          // Subsequent turns: drain buffered mid-turn messages first (they
+          // were consumed and won't be re-delivered), then wait.
           if (turn > 0) {
-            // chat.requestUpgrade() / chat.endRun() — exit before waiting
-            if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
-              stop.cleanup();
-              return { done: true, value: undefined };
-            }
+            if (sessionPendingWire.length > 0) {
+              currentPayload = sessionPendingWire.shift()!;
+            } else {
+              // chat.requestUpgrade() / chat.endRun() — exit before waiting
+              if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+                stop.cleanup();
+                return { done: true, value: undefined };
+              }
 
-            const next = await messagesInput.waitWithIdleTimeout({
-              idleTimeoutInSeconds,
-              timeout,
-              spanName: "waiting for next message",
-            });
-            if (!next.ok || runSignal.aborted) {
-              stop.cleanup();
-              return { done: true, value: undefined };
+              const next = await messagesInput.waitWithIdleTimeout({
+                idleTimeoutInSeconds,
+                timeout,
+                spanName: "waiting for next message",
+              });
+              if (!next.ok || runSignal.aborted) {
+                stop.cleanup();
+                return { done: true, value: undefined };
+              }
+              currentPayload = next.output;
             }
-            currentPayload = next.output;
           }
 
           // Check limits
@@ -9426,11 +9445,10 @@ function createChatSession(
           });
 
           // Listen for messages during streaming (steering + next-turn buffer)
-          const sessionPendingWire: ChatTaskWirePayload[] = [];
           const sessionMsgSub = messagesInput.on(async (msg) => {
-            sessionPendingWire.push(msg);
-
             if (sessionPendingMessages) {
+              // Steering route — the frontend re-sends non-injected
+              // messages on turn complete, so don't also buffer the wire.
               // Slim wire: at most one delta message per record. Read
               // `msg.message` directly — no array slicing needed.
               const lastUIMessage = msg.message;
@@ -9453,7 +9471,10 @@ function createChatSession(
                   /* non-fatal */
                 }
               }
+              return;
             }
+
+            sessionPendingWire.push(msg);
           });
 
           // Accumulate messages. Slim wire: pass the single delta message as
