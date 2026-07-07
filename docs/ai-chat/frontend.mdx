@@ -605,7 +605,9 @@ const pending = new Map<string, ReturnType<typeof setTimeout>>();
 onEvent: (event) => {
   if (event.type === "message-sent" && event.source === "submit-message") {
     pending.set(event.chatId, setTimeout(() => {
-      metrics.increment("chat.sent_but_unanswered", { chatId: event.chatId });
+      // Log the chatId; don't tag the metric with it (unbounded cardinality).
+      metrics.increment("chat.sent_but_unanswered");
+      console.warn("sent but unanswered", event.chatId);
     }, 30_000));
   }
   if (event.type === "first-chunk" || event.type === "turn-completed" || event.type === "stream-error") {
