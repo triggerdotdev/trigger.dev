@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { computeRunOpsSplitReadEnabled } from "~/v3/runOpsMigration/runOpsSplitReadGate";
 
 // Distinct sentinel objects standing in for the prisma client singletons.
@@ -71,5 +71,97 @@ describe("computeRunOpsSplitReadEnabled", () => {
     expect(computeRunOpsSplitReadEnabled({ ...base, hasNewUrl: true, hasLegacyUrl: false })).toBe(
       false
     );
+  });
+
+  // Observability regression guard: split-configured (both URLs set) but the NEW client is not a
+  // distinct instance must WARN loudly. Without this signal, an accidental refactor that makes the
+  // NEW client alias a control-plane client silently disables read fan-out with zero error/warning.
+  describe("warn signal when configured-but-aliased", () => {
+    it("warns when both URLs are set but NEW aliases the control-plane replica", () => {
+      const warn = vi.fn();
+      const enabled = computeRunOpsSplitReadEnabled({
+        newReplica: cpReplica, // aliasing regression: NEW === control-plane replica
+        controlPlaneWriter: cpWriter,
+        controlPlaneReplica: cpReplica,
+        hasNewUrl: true,
+        hasLegacyUrl: true,
+        logger: { warn },
+      });
+
+      expect(enabled).toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toMatch(/split.*configured/i);
+    });
+
+    it("warns when both URLs are set but NEW aliases the control-plane writer", () => {
+      const warn = vi.fn();
+      const enabled = computeRunOpsSplitReadEnabled({
+        newReplica: cpWriter, // aliasing regression: NEW === control-plane writer
+        controlPlaneWriter: cpWriter,
+        controlPlaneReplica: cpReplica,
+        hasNewUrl: true,
+        hasLegacyUrl: true,
+        logger: { warn },
+      });
+
+      expect(enabled).toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT warn in ordinary single mode (both URLs unset, clients naturally aliased)", () => {
+      const warn = vi.fn();
+      const enabled = computeRunOpsSplitReadEnabled({
+        newReplica: cpReplica,
+        controlPlaneWriter: cpWriter,
+        controlPlaneReplica: cpReplica,
+        hasNewUrl: false,
+        hasLegacyUrl: false,
+        logger: { warn },
+      });
+
+      expect(enabled).toBe(false);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("does NOT warn when only one URL is set (not truly configured for split)", () => {
+      const warn = vi.fn();
+      computeRunOpsSplitReadEnabled({
+        newReplica: cpReplica,
+        controlPlaneWriter: cpWriter,
+        controlPlaneReplica: cpReplica,
+        hasNewUrl: true,
+        hasLegacyUrl: false,
+        logger: { warn },
+      });
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("does NOT warn when the NEW client is genuinely distinct (healthy split)", () => {
+      const warn = vi.fn();
+      const enabled = computeRunOpsSplitReadEnabled({
+        newReplica: dedicatedNew,
+        controlPlaneWriter: cpWriter,
+        controlPlaneReplica: cpReplica,
+        hasNewUrl: true,
+        hasLegacyUrl: true,
+        logger: { warn },
+      });
+
+      expect(enabled).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("does not throw when no logger is supplied (logger stays optional)", () => {
+      expect(() =>
+        computeRunOpsSplitReadEnabled({
+          newReplica: cpReplica,
+          controlPlaneWriter: cpWriter,
+          controlPlaneReplica: cpReplica,
+          hasNewUrl: true,
+          hasLegacyUrl: true,
+        })
+      ).not.toThrow();
+    });
   });
 });
