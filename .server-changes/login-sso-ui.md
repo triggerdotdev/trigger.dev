@@ -3,6 +3,4 @@ area: webapp
 type: improvement
 ---
 
-Rework the login and SSO sign-in screens: inline magic-link email form on
-`/login`, SSO as a button, `/login/magic` is now confirmation-only, and
-refreshed `/login/sso` copy.
+A cleaner sign-in flow: request a magic link right from the login page, or continue with SSO.
