@@ -1,13 +1,12 @@
 import {
-  ArrowTopRightOnSquareIcon,
+  ArrowUpRightIcon,
   CheckCircleIcon,
   ClockIcon,
   ExclamationCircleIcon,
-  LockClosedIcon,
 } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { redirect } from "@remix-run/server-runtime";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { z } from "zod";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -16,6 +15,7 @@ import {
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import {
@@ -25,7 +25,8 @@ import {
   DialogFooter,
   DialogHeader,
 } from "~/components/primitives/Dialog";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Label } from "~/components/primitives/Label";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
@@ -40,6 +41,7 @@ import { applyDirectorySyncEffects } from "~/services/directorySyncEffects.serve
 import { flag } from "~/v3/featureFlags.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { cn } from "~/utils/cn";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { v3BillingPath } from "~/utils/pathBuilder";
@@ -49,9 +51,8 @@ export const meta: MetaFunction = () => [{ title: "SSO & Directory Sync | Trigge
 const Params = z.object({ organizationSlug: z.string() });
 
 async function resolveOrg(slug: string) {
-  // Use primary: this slug→id lookup scopes the org-level RBAC/entitlement
-  // checks (loader and action), and replica lag could run them against a
-  // stale or missing org scope.
+  // Primary (not replica): this scopes the RBAC/entitlement checks, so lag
+  // could run them against a stale/missing org.
   return prisma.organization.findFirst({
     where: { slug },
     select: { id: true, title: true },
@@ -64,9 +65,7 @@ function planAllowsSso(plan: unknown): boolean {
   return subscription?.plan?.code === "enterprise";
 }
 
-// The render-level upsell (planAllowsSso on the client) is cosmetic —
-// any org member could still POST the actions directly. Mutations that
-// provision real IdP-side resources are gated here, server-side.
+// Client-side upsell is cosmetic; gate real IdP mutations server-side.
 async function requireSsoEntitlement(orgId: string): Promise<void> {
   const plan = await getCurrentPlan(orgId);
   if (!planAllowsSso(plan)) {
@@ -85,9 +84,8 @@ const EMPTY_DIRECTORY_SYNC_STATUS: DirectorySyncStatus = {
   groups: [],
 };
 
-// SSO availability for an org: the per-org feature flag wins, else the global
-// flag (default off). This is the single rollout knob for the whole feature —
-// SSO and Directory Sync are both gated by it (there is no separate dsync flag).
+// Per-org flag wins, else global (default off). Single knob for both SSO and
+// Directory Sync (no separate dsync flag).
 async function resolveHasSso(orgId: string): Promise<boolean> {
   const org = await prisma.organization.findFirst({
     where: { id: orgId },
@@ -127,14 +125,11 @@ export const loader = dashboardLoader(
       const org = await resolveOrg(params.organizationSlug);
       return org ? { organizationId: org.id, orgTitle: org.title } : {};
     },
-    // No static `authorization` gate here: SSO is plan-gated *before* it's
-    // role-gated. A non-Enterprise org must render the upsell for everyone —
-    // gating on manage:sso at the wrapper would show a non-Owner "Permission
-    // denied" for a feature their org can't use yet. We resolve the plan in
-    // the body and only enforce manage:sso once the org is actually entitled.
+    // Plan-gated before role-gated: non-Enterprise orgs render the upsell for
+    // everyone, so we enforce manage:sso in the body only once entitled.
   },
   async ({ context, ability }) => {
-    // True only when SSO_ENABLED is on and a real SSO plugin is loaded.
+    // True only with SSO_ENABLED on and a real plugin loaded.
     if (!(await ssoController.isUsingPlugin())) {
       throw new Response("Not Found", { status: 404 });
     }
@@ -144,9 +139,8 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    // Plan first. When the org isn't on Enterprise the page renders the
-    // upsell state for every role, so we skip the role check (and the
-    // SSO/role queries it would gate) and return empty data.
+    // Not Enterprise: render the upsell for every role, skip role check +
+    // queries, return empty data.
     const plan = await getCurrentPlan(orgId);
     if (!planAllowsSso(plan)) {
       return typedjson({
@@ -158,9 +152,8 @@ export const loader = dashboardLoader(
       });
     }
 
-    // Entitled: the page is now a real config surface, so enforce the role
-    // gate. A non-Owner without manage:sso gets the permission panel — the
-    // same 403 the dashboardLoader `authorization` block would have thrown.
+    // Entitled: real config surface, so enforce the role gate (403 for
+    // non-Owner without manage:sso).
     if (!ability.can("manage", { type: "sso" })) {
       throwPermissionDenied();
     }
@@ -175,10 +168,8 @@ export const loader = dashboardLoader(
     const status = statusResult.isOk() ? statusResult.value : EMPTY_SSO_STATUS;
     const directorySync = dsyncResult.isOk() ? dsyncResult.value : EMPTY_DIRECTORY_SYNC_STATUS;
 
-    // JIT can't promote new users to Owner — that role is reserved for
-    // the founding member and explicit transfers. Plan-gated roles are
-    // filtered out via the assignable set so the UI doesn't offer
-    // something the org can't actually use.
+    // JIT can't grant Owner (reserved), and non-assignable/plan-gated roles
+    // are filtered out.
     const assignable = new Set(assignableIds);
     const jitRoles = allRoles.filter((r) => r.name !== "Owner" && assignable.has(r.id));
 
@@ -195,11 +186,10 @@ export const loader = dashboardLoader(
 const NULL_ROLE_VALUE = "__none__";
 const DEFAULT_JIT_ROLE_NAME = "Developer";
 
-// Don't use `z.coerce.boolean()` — it goes through JS `Boolean()`,
-// which treats the string "false" as truthy (any non-empty string).
+// Not `z.coerce.boolean()`: it treats the string "false" as truthy.
 const boolish = z.union([z.literal("true"), z.literal("false")]).transform((v) => v === "true");
 
-// Only-changed group→role mappings sent by the deferred Directory Sync Save.
+// Changed group→role mappings from the deferred Directory Sync Save.
 const GroupRolesSchema = z.array(z.object({ groupId: z.string(), roleId: z.string() }));
 
 const ActionSchema = z.discriminatedUnion("action", [
@@ -213,8 +203,7 @@ const ActionSchema = z.discriminatedUnion("action", [
     action: z.literal("portal_link"),
     intent: z.enum(["sso", "domain_verification", "dsync"]),
   }),
-  // Directory Sync section is a single deferred Save (like the SSO config
-  // form): all settings + changed group mappings commit together.
+  // Single deferred Save: settings + changed group mappings commit together.
   z.object({
     action: z.literal("save_dsync_config"),
     allowExternalDomainSync: boolish,
@@ -264,10 +253,8 @@ export const action = dashboardAction(
     switch (parsed.data.action) {
       case "save_config": {
         const jitRoleId = parsed.data.jitRoleId === NULL_ROLE_VALUE ? null : parsed.data.jitRoleId;
-        // The form is a single Save, so the three fields must commit
-        // all-or-nothing: `updateConfig` writes them in one transaction
-        // (with the JIT-role RBAC check inside it), so a failure leaves
-        // none of the fields changed rather than a partial config.
+        // All-or-nothing: `updateConfig` writes the three fields in one
+        // transaction (with the JIT-role RBAC check inside).
         const result = await ssoController.updateConfig({
           organizationId: orgId,
           enforced: parsed.data.enforced,
@@ -294,7 +281,7 @@ export const action = dashboardAction(
         return Response.json({ ok: true, url: result.value.url });
       }
       case "save_dsync_config": {
-        // Parse the changed group→role mappings the deferred Save sent.
+        // Parse the changed group→role mappings.
         let groupRoles: Array<{ groupId: string; roleId: string }>;
         try {
           groupRoles = GroupRolesSchema.parse(JSON.parse(parsed.data.groupRoles));
@@ -305,15 +292,12 @@ export const action = dashboardAction(
           parsed.data.directoryDefaultRoleId === NULL_ROLE_VALUE
             ? null
             : parsed.data.directoryDefaultRoleId;
-        // Hoist out of the narrowed `parsed.data` — the discriminated-union
-        // narrowing doesn't survive into the thunk closures below.
+        // Hoist out: the union narrowing doesn't survive into the thunks below.
         const { allowExternalDomainSync, allowManualMembership } = parsed.data;
 
-        // Apply the OrgSsoConfig columns first. Not one transaction (group
-        // mappings are separate rows), but each write is idempotent, so a retry
-        // of the whole Save converges. Thunks (not pre-started ResultAsyncs) so
-        // they run strictly one at a time and the first failure stops the rest
-        // rather than leaving later writes to apply in the background.
+        // Config columns first. Not transactional, but each write is
+        // idempotent so retrying the whole Save converges. Thunks run serially
+        // so the first failure stops the rest.
         const configWrites = [
           () =>
             ssoController.setAllowExternalDomainSync({
@@ -335,10 +319,8 @@ export const action = dashboardAction(
           }
         }
 
-        // Each group remap returns the membership effects it implies for that
-        // group's current members (roles recomputed against the new mapping,
-        // deprovision when cleared to "No access" and it was their last mapped
-        // group). Collect and apply them so the remap takes effect immediately.
+        // Each remap returns membership effects for its members (role
+        // recompute, or deprovision when cleared); apply them immediately.
         const effects: DirectorySyncEffect[] = [];
         for (const g of groupRoles) {
           const result = await ssoController.setDirectoryGroupRole({
@@ -361,20 +343,15 @@ export const action = dashboardAction(
 );
 
 function defaultJitRoleId(jitRoles: ReadonlyArray<Role>, current: string | null): string {
-  // Persisted value wins, even when it points at something the picker
-  // can no longer offer — keeps the user's prior choice visible.
+  // Persisted value wins, even if the picker can no longer offer it.
   if (current) return current;
   const dev = jitRoles.find((r) => r.name === DEFAULT_JIT_ROLE_NAME);
   return dev?.id ?? NULL_ROLE_VALUE;
 }
 
-// A settings field that mirrors a server value but is locally editable, safe
-// to use while the whole page polls: as long as the user hasn't touched the
-// field, it adopts fresh server values from revalidation; once edited (dirty)
-// it holds the user's value until the server catches up (a successful Save, or
-// another admin setting the same value), at which point it snaps back to clean.
-// `dirty` never fires a false positive from a poll because the override is
-// dropped as soon as the server value matches it.
+// Locally-editable mirror of a server value, poll-safe: untouched fields adopt
+// fresh server values; edited (dirty) fields hold until the server catches up,
+// then snap back to clean.
 function useOverrideDraft<T>(serverValue: T): {
   value: T;
   set: (next: T) => void;
@@ -382,7 +359,7 @@ function useOverrideDraft<T>(serverValue: T): {
 } {
   const [override, setOverride] = useState<{ value: T } | null>(null);
   useEffect(() => {
-    // Server caught up to the pending edit → clear the override (back to clean).
+    // Server matches the pending edit → clear the override.
     setOverride((current) => (current && Object.is(current.value, serverValue) ? null : current));
   }, [serverValue]);
   const value = override ? override.value : serverValue;
@@ -391,6 +368,58 @@ function useOverrideDraft<T>(serverValue: T): {
     set: (next) => setOverride({ value: next }),
     dirty: override != null && !Object.is(override.value, serverValue),
   };
+}
+
+// Shared layout primitives (mirrors /account/security): a section header with a
+// bottom divide, then rows of title+subtitle left / action right.
+function SettingsSection({ children }: { children: ReactNode }) {
+  return <section className="w-full [&:not(:first-child)]:mt-10">{children}</section>;
+}
+
+function SectionHeader({
+  title,
+  description,
+  action,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex w-full items-end justify-between gap-4 border-b border-grid-dimmed pb-3">
+      <div className="space-y-1">
+        <Header2>{title}</Header2>
+        {description ? (
+          <Paragraph variant="small" className="text-text-dimmed">
+            {description}
+          </Paragraph>
+        ) : null}
+      </div>
+      {action ? <div className="flex flex-none items-center">{action}</div> : null}
+    </div>
+  );
+}
+
+function SettingRow({
+  title,
+  description,
+  action,
+  htmlFor,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  action: ReactNode;
+  htmlFor?: string;
+}) {
+  return (
+    <div className="flex w-full items-center justify-between gap-4 border-b border-grid-dimmed py-4">
+      <div className="flex-1 space-y-1">
+        <Label htmlFor={htmlFor}>{title}</Label>
+        {description ? <Paragraph variant="small">{description}</Paragraph> : null}
+      </div>
+      <div className="flex flex-none items-center">{action}</div>
+    </div>
+  );
 }
 
 export default function Page() {
@@ -402,9 +431,7 @@ export default function Page() {
   const activeConnections = status.connections.filter((c) => c.state === "active");
   const hasActive = activeConnections.length > 0;
 
-  // Deferred-save: each field mirrors `status` but stays locally editable.
-  // `useOverrideDraft` lets the page poll safely — untouched fields adopt
-  // fresh server values, edited fields are preserved until Save.
+  // Deferred-save drafts; `useOverrideDraft` keeps them poll-safe until Save.
   const initialJitRoleId = defaultJitRoleId(jitRoles, status.jitDefaultRoleId);
   const enforcedDraft = useOverrideDraft(status.enforced);
   const jitEnabledDraft = useOverrideDraft(status.jitProvisioningEnabled);
@@ -434,13 +461,8 @@ export default function Page() {
     }
   }, [portalFetcher.data]);
 
-  // Poll the whole page while entitled — before an active connection this
-  // reflects portal progress (domain verified, connection activated), and
-  // once active it keeps SSO + Directory Sync state fresh (connection
-  // deleted/deactivated, directory activated/deactivated/deleted, new
-  // groups). Draft edits survive revalidation because every editable field
-  // goes through `useOverrideDraft` (dirty fields preserved, clean fields
-  // adopt server values). The upsell state is excluded by `isEntitled`.
+  // Poll while entitled to reflect portal progress and keep SSO + Directory
+  // Sync state fresh; drafts survive via `useOverrideDraft`.
   const shouldPoll = isEntitled;
   useEffect(() => {
     if (!shouldPoll) return;
@@ -482,7 +504,7 @@ export default function Page() {
         <PageTitle title="SSO & Directory Sync" />
       </NavBar>
       <PageBody scrollable={true}>
-        <MainHorizontallyCenteredContainer className="max-w-3xl space-y-6">
+        <MainHorizontallyCenteredContainer className="max-w-[37.5rem] overflow-visible">
           {!isEntitled ? (
             <EnterpriseUpsellState organizationSlug={organization.slug} />
           ) : !status.hasIdpOrg ? (
@@ -512,9 +534,7 @@ export default function Page() {
               isSaving={isSaving}
               onOpenPortal={openPortal}
               onToggleEnforced={(next) => {
-                // Going on→off is harmless; going off→on locks users out so
-                // we still require explicit confirmation. The modal updates
-                // the draft only; nothing is persisted until Save.
+                // off→on locks users out, so confirm first (draft only).
                 if (next && !status.enforced) {
                   setEnforceModalOpen(true);
                 } else {
@@ -546,49 +566,54 @@ export default function Page() {
 
 function EnterpriseUpsellState({ organizationSlug }: { organizationSlug: string }) {
   return (
-    <div className="space-y-4 rounded-md border border-indigo-500/30 bg-indigo-500/5 p-5">
-      <div className="flex items-center gap-2">
-        <LockClosedIcon className="size-5 text-indigo-400" />
-        <Header2>SSO is available on the Enterprise plan</Header2>
+    <SettingsSection>
+      <SectionHeader
+        title="SSO & Directory Sync"
+        description="Single sign-on (SAML / OIDC) and Directory Sync (SCIM) let your IT admins manage who can access Trigger.dev through your identity provider — Okta, Azure AD, Google Workspace, OneLogin, and more."
+        action={<Badge variant="small">Enterprise</Badge>}
+      />
+      <div className="w-full space-y-4 py-4">
+        <ul className="ml-4 list-disc space-y-1.5 text-sm text-text-dimmed">
+          <li>Self-service domain verification and connection setup via the admin portal.</li>
+          <li>Just-in-time user provisioning for your verified domains.</li>
+          <li>Per-domain enforcement so contractors keep using existing sign-in methods.</li>
+          <li>Directory Sync (SCIM) to provision users and map directory groups to roles.</li>
+        </ul>
+        <div className="flex flex-wrap gap-2">
+          <LinkButton variant="primary/small" to={v3BillingPath({ slug: organizationSlug })}>
+            Talk to sales
+          </LinkButton>
+          <LinkButton
+            variant="secondary/small"
+            to="https://trigger.dev/contact"
+            target="_blank"
+            TrailingIcon={ArrowUpRightIcon}
+          >
+            Contact us
+          </LinkButton>
+        </div>
       </div>
-      <Paragraph variant="base">
-        Single sign-on (SAML / OIDC) lets your IT admins manage who can access Trigger.dev through
-        your identity provider — Okta, Azure AD, Google Workspace, OneLogin, and more. Upgrade your
-        organization to Enterprise to configure it.
-      </Paragraph>
-      <ul className="ml-4 list-disc space-y-1 text-sm text-text-dimmed">
-        <li>Self-service domain verification and connection setup via the admin portal.</li>
-        <li>Just-in-time user provisioning for your verified domains.</li>
-        <li>Per-domain enforcement so contractors keep using existing sign-in methods.</li>
-      </ul>
-      <div className="flex flex-wrap gap-2 pt-1">
-        <LinkButton variant="primary/small" to={v3BillingPath({ slug: organizationSlug })}>
-          Talk to sales
-        </LinkButton>
-        <LinkButton variant="tertiary/small" to="https://trigger.dev/contact" target="_blank">
-          Contact us
-        </LinkButton>
-      </div>
-    </div>
+    </SettingsSection>
   );
 }
 
 function NoIdpOrgState({ onOpenPortal }: { onOpenPortal: () => void }) {
   return (
-    <div className="space-y-3">
-      <Header2>Configure SSO for your organization</Header2>
-      <Paragraph variant="base">
-        Single sign-on lets your IT admins manage who can access Trigger.dev through your identity
-        provider (Okta, Azure AD, Google Workspace, OneLogin, and more).
-      </Paragraph>
-      <Button
-        variant="tertiary/small"
-        onClick={onOpenPortal}
-        LeadingIcon={ArrowTopRightOnSquareIcon}
-      >
-        Start the process
-      </Button>
-    </div>
+    <SettingsSection>
+      <SectionHeader
+        title="SSO"
+        description="Single sign-on lets your IT admins manage who can access Trigger.dev through your identity provider (Okta, Azure AD, Google Workspace, OneLogin, and more)."
+      />
+      <SettingRow
+        title="Get started"
+        description="Verify your team's email domains, then connect your identity provider in the admin portal."
+        action={
+          <Button variant="secondary/small" onClick={onOpenPortal} TrailingIcon={ArrowUpRightIcon}>
+            Start setup
+          </Button>
+        }
+      />
+    </SettingsSection>
   );
 }
 
@@ -621,49 +646,52 @@ function NoActiveConnectionState({
   const hasVerifiedDomain = verifiedDomains.length > 0;
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Header2>Domains</Header2>
-        <Paragraph variant="small" className="text-text-dimmed">
-          Verify the email domains your team signs in with. Once a domain is verified you can
-          connect your identity provider.
-        </Paragraph>
+    <>
+      <SettingsSection>
+        <SectionHeader
+          title="Domains"
+          description="Verify the email domains your team signs in with. Once a domain is verified you can connect your identity provider."
+          action={
+            <Button
+              variant="secondary/small"
+              onClick={onOpenDomain}
+              TrailingIcon={ArrowUpRightIcon}
+            >
+              {domains.length > 0 ? "Add domain" : "Verify domain"}
+            </Button>
+          }
+        />
         {failedDomains.length > 0 && (
-          <Callout variant="error">
-            {failedDomains.length === 1
-              ? `Domain verification failed for ${failedDomains[0].domain}. Re-check the DNS records in the admin portal and re-run verification.`
-              : `${failedDomains.length} domains failed verification. Re-check the DNS records in the admin portal and re-run verification.`}
-          </Callout>
+          <div className="w-full border-b border-grid-dimmed py-4">
+            <Callout variant="error">
+              {failedDomains.length === 1
+                ? `Domain verification failed for ${failedDomains[0].domain}. Re-check the DNS records in the admin portal and re-run verification.`
+                : `${failedDomains.length} domains failed verification. Re-check the DNS records in the admin portal and re-run verification.`}
+            </Callout>
+          </div>
         )}
         {domains.length > 0 && <DomainList domains={domains} />}
-        <Button
-          variant="tertiary/small"
-          onClick={onOpenDomain}
-          LeadingIcon={ArrowTopRightOnSquareIcon}
-        >
-          {domains.length > 0 ? "Verify another domain" : "Verify domain"}
-        </Button>
-      </div>
+      </SettingsSection>
 
       {hasVerifiedDomain && (
-        <div className="space-y-2">
-          <Header2>SSO</Header2>
-          <Paragraph variant="small" className="text-text-dimmed">
-            Connect your identity provider to finish setting up single sign-on for your verified
-            domains.
-          </Paragraph>
-          <Button
-            variant="tertiary/small"
-            onClick={onOpenSso}
-            LeadingIcon={ArrowTopRightOnSquareIcon}
-          >
-            Configure SSO
-          </Button>
-        </div>
+        <SettingsSection>
+          <SectionHeader
+            title="SSO"
+            description="Connect your identity provider to finish setting up single sign-on for your verified domains."
+          />
+          <SettingRow
+            title="Identity provider"
+            description="Connect Okta, Azure AD, Google Workspace, OneLogin, and more."
+            action={
+              <Button variant="secondary/small" onClick={onOpenSso} TrailingIcon={ArrowUpRightIcon}>
+                Configure SSO
+              </Button>
+            }
+          />
+        </SettingsSection>
       )}
 
-      {/* Directory Sync is independent of SSO — once a domain is verified an org
-          can connect a directory without ever configuring SSO. */}
+      {/* Directory Sync is independent of SSO (needs only a verified domain). */}
       {hasVerifiedDomain && hasSso ? (
         <DirectorySyncSection
           directorySync={directorySync}
@@ -671,29 +699,31 @@ function NoActiveConnectionState({
           onOpenPortal={onOpenDsync}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
 function DomainList({ domains }: { domains: ReadonlyArray<DomainRow> }) {
   return (
-    <ul className="space-y-1">
+    <ul className="w-full">
       {domains.map((d) => {
         const visual = domainVisual(d.state);
         return (
           <li
             key={d.domain}
-            className={`flex items-start justify-between gap-3 rounded-md border px-3 py-1.5 ${visual.row}`}
+            className="flex items-center justify-between gap-4 border-b border-grid-dimmed py-3"
           >
             <div className="flex flex-col">
-              <span className="font-mono text-sm">{d.domain}</span>
+              <span className="font-mono text-sm text-text-bright">{d.domain}</span>
               {d.state === "failed" && d.verificationFailedReason && (
-                <span className="mt-0.5 text-xxs text-rose-300">
+                <span className="mt-0.5 text-xs text-rose-400">
                   Reason: <span className="font-mono">{d.verificationFailedReason}</span>
                 </span>
               )}
             </div>
-            <span className={`flex shrink-0 items-center gap-1 text-xs ${visual.label}`}>
+            <span
+              className={cn("flex shrink-0 items-center gap-1 text-xs capitalize", visual.label)}
+            >
               {visual.icon}
               {d.state}
             </span>
@@ -708,20 +738,17 @@ function domainVisual(state: DomainRow["state"]) {
   switch (state) {
     case "verified":
       return {
-        row: "border-emerald-500/30 bg-emerald-500/5",
         label: "text-emerald-400",
         icon: <CheckCircleIcon className="size-3.5" />,
       };
     case "failed":
       return {
-        row: "border-rose-500/30 bg-rose-500/5",
         label: "text-rose-400",
         icon: <ExclamationCircleIcon className="size-3.5" />,
       };
     case "pending":
     default:
       return {
-        row: "border-amber-500/20 bg-amber-500/5",
         label: "text-amber-400",
         icon: <ClockIcon className="size-3.5" />,
       };
@@ -769,110 +796,104 @@ function ActiveConnectionState({
   onSave: () => void;
 }) {
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Header2>Verified domains</Header2>
+    <>
+      <SettingsSection>
+        <SectionHeader
+          title="Domains"
+          description="The verified email domains your team signs in with."
+          action={
+            <Button
+              variant="secondary/small"
+              onClick={() => onOpenPortal("domain_verification")}
+              TrailingIcon={ArrowUpRightIcon}
+            >
+              {status.domains.length > 0 ? "Add domain" : "Verify domain"}
+            </Button>
+          }
+        />
         {status.domains.length === 0 ? (
-          <Paragraph variant="small" className="text-text-dimmed">
-            No domains verified yet.
-          </Paragraph>
+          <div className="w-full border-b border-grid-dimmed py-4">
+            <Paragraph variant="small">No domains verified yet.</Paragraph>
+          </div>
         ) : (
           <DomainList domains={status.domains} />
         )}
-        <Button
-          variant="tertiary/small"
-          onClick={() => onOpenPortal("domain_verification")}
-          LeadingIcon={ArrowTopRightOnSquareIcon}
-        >
-          {status.domains.length > 0 ? "Verify another domain" : "Verify domain"}
-        </Button>
-      </div>
+      </SettingsSection>
 
-      <div className="space-y-2">
-        <Header2>{orgTitle} – SSO connection</Header2>
+      <SettingsSection>
+        <SectionHeader
+          title="SSO"
+          description={`Single sign-on connection for ${orgTitle}.`}
+          action={
+            <Button
+              variant="secondary/small"
+              onClick={() => onOpenPortal("sso")}
+              TrailingIcon={ArrowUpRightIcon}
+            >
+              Manage connection
+            </Button>
+          }
+        />
         {activeConnections.map((conn) => (
           <div
             key={conn.id}
-            className="rounded-md border border-grid-bright bg-charcoal-800 px-3 py-2"
+            className="flex w-full items-center justify-between gap-4 border-b border-grid-dimmed py-4"
           >
-            <Paragraph variant="small" className="text-text-bright">
-              {conn.name ?? conn.connectionType}
-            </Paragraph>
-            <Paragraph variant="extra-small" className="text-text-dimmed">
-              Type: {conn.connectionType}
-            </Paragraph>
+            <div className="flex-1 space-y-1">
+              <Paragraph variant="small/bright">{conn.name ?? conn.connectionType}</Paragraph>
+              <Paragraph variant="extra-small">Type: {conn.connectionType}</Paragraph>
+            </div>
+            <StatusIndicator label="Active" />
           </div>
         ))}
-        <Button
-          variant="tertiary/small"
-          onClick={() => onOpenPortal("sso")}
-          LeadingIcon={ArrowTopRightOnSquareIcon}
-        >
-          Manage SSO connection
-        </Button>
-      </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between rounded-md border border-grid-bright px-3 py-2.5">
-          <div>
-            <Paragraph variant="small" className="text-text-bright">
-              Require SSO for matching domains
-            </Paragraph>
-            <Paragraph variant="extra-small" className="text-text-dimmed">
-              When on, users whose email matches a verified domain must use SSO to sign in.
-            </Paragraph>
-          </div>
-          <Switch variant="small" checked={draftEnforced} onCheckedChange={onToggleEnforced} />
-        </div>
-        <div className="flex items-center justify-between rounded-md border border-grid-bright px-3 py-2.5">
-          <div>
-            <Paragraph variant="small" className="text-text-bright">
-              JIT provisioning
-            </Paragraph>
-            <Paragraph variant="extra-small" className="text-text-dimmed">
-              Auto-create memberships for first-time SSO sign-ins from your verified domains.
-            </Paragraph>
-          </div>
-          <Switch variant="small" checked={draftJitEnabled} onCheckedChange={onToggleJit} />
-        </div>
-        <div className="flex items-center justify-between rounded-md border border-grid-bright px-3 py-2.5">
-          <div>
-            <Paragraph variant="small" className="text-text-bright">
-              Default role for JIT provisioned users
-            </Paragraph>
-            <Paragraph variant="extra-small" className="text-text-dimmed pr-0.5">
-              Role assigned to new users created via JIT provisioning. Owner is reserved and cannot
-              be granted automatically.
-            </Paragraph>
-          </div>
-          <Select<string, Role>
-            value={draftJitRoleId}
-            setValue={(v) => onChangeJitRole(v)}
-            items={[...jitRoles]}
-            variant="tertiary/small"
-            dropdownIcon
-            text={(v) => jitRoles.find((r) => r.id === v)?.name ?? "Select a role"}
-          >
-            {(items) =>
-              items.map((role) => (
-                <SelectItem key={role.id} value={role.id}>
-                  <span className="flex flex-col">
-                    <span>{role.name}</span>
-                    {role.description ? (
-                      <span className="text-xs text-text-dimmed">{role.description}</span>
-                    ) : null}
-                  </span>
-                </SelectItem>
-              ))
-            }
-          </Select>
-        </div>
-        <div className="flex justify-end pt-1">
+        <SettingRow
+          title="Require SSO for matching domains"
+          description="When on, users whose email matches a verified domain must use SSO to sign in."
+          action={
+            <Switch variant="small" checked={draftEnforced} onCheckedChange={onToggleEnforced} />
+          }
+        />
+        <SettingRow
+          title="JIT provisioning"
+          description="Auto-create memberships for first-time SSO sign-ins from your verified domains."
+          action={
+            <Switch variant="small" checked={draftJitEnabled} onCheckedChange={onToggleJit} />
+          }
+        />
+        <SettingRow
+          title="Default role for JIT provisioned users"
+          description="Role assigned to new users created via JIT provisioning. Owner is reserved and cannot be granted automatically."
+          action={
+            <Select<string, Role>
+              value={draftJitRoleId}
+              setValue={(v) => onChangeJitRole(v)}
+              items={[...jitRoles]}
+              variant="secondary/small"
+              dropdownIcon
+              text={(v) => jitRoles.find((r) => r.id === v)?.name ?? "Select a role"}
+            >
+              {(items) =>
+                items.map((role) => (
+                  <SelectItem key={role.id} value={role.id}>
+                    <span className="flex flex-col">
+                      <span>{role.name}</span>
+                      {role.description ? (
+                        <span className="text-xs text-text-dimmed">{role.description}</span>
+                      ) : null}
+                    </span>
+                  </SelectItem>
+                ))
+              }
+            </Select>
+          }
+        />
+        <div className="flex justify-end py-4">
           <Button variant="primary/small" disabled={!isDirty || isSaving} onClick={onSave}>
             {isSaving ? "Saving…" : "Save"}
           </Button>
         </div>
-      </div>
+      </SettingsSection>
 
       {hasSso ? (
         <DirectorySyncSection
@@ -881,7 +902,18 @@ function ActiveConnectionState({
           onOpenPortal={() => onOpenPortal("dsync")}
         />
       ) : null}
-    </div>
+    </>
+  );
+}
+
+function StatusIndicator({ label, active = true }: { label: string; active?: boolean }) {
+  return (
+    <span className="flex flex-none items-center gap-1.5 text-xs text-text-dimmed">
+      <span
+        className={cn("size-1.5 rounded-full", active ? "bg-emerald-500" : "bg-charcoal-500")}
+      />
+      {label}
+    </span>
   );
 }
 
@@ -897,11 +929,8 @@ function DirectorySyncSection({
   const fetcher = useFetcher();
   const isSaving = fetcher.state !== "idle";
 
-  // Deferred save: edits stay local until Save commits them all together
-  // (mirrors the SSO Configuration form). `useOverrideDraft` keeps the fields
-  // safe under whole-page polling — untouched fields adopt fresh server
-  // values, edited ones are preserved. Role values keep the NULL_ROLE_VALUE
-  // sentinel in the draft; the action converts it to null on write.
+  // Deferred save; `useOverrideDraft` keeps fields poll-safe. Role drafts hold
+  // the NULL_ROLE_VALUE sentinel; the action converts it to null.
   const externalDraft = useOverrideDraft(directorySync.allowExternalDomainSync);
   const manualDraft = useOverrideDraft(directorySync.allowManualMembership);
   const defaultRoleDraft = useOverrideDraft(
@@ -914,10 +943,8 @@ function DirectorySyncSection({
   const draftDefaultRole = defaultRoleDraft.value;
   const setDraftDefaultRole = defaultRoleDraft.set;
 
-  // Group mappings vary in count, so instead of one draft per group we keep a
-  // sparse map of only the groups the user has edited (overrides). Rendering
-  // falls back to the server value, so new groups arriving via polling show up
-  // immediately, and an override is dropped once the server catches up to it.
+  // Sparse override map of only edited groups; rendering falls back to the
+  // server value so polled-in groups appear and matched overrides drop.
   const [draftGroupRoles, setDraftGroupRoles] = useState<Record<string, string>>({});
   useEffect(() => {
     setDraftGroupRoles((current) => {
@@ -925,8 +952,7 @@ function DirectorySyncSection({
       for (const g of directorySync.groups) {
         const override = current[g.groupId];
         if (override === undefined) continue;
-        // Keep only overrides that still diverge from the server (drops
-        // saved/externally-matched edits and edits for removed groups).
+        // Keep only overrides still diverging from the server.
         if (override !== (g.mappedRoleId ?? NULL_ROLE_VALUE)) next[g.groupId] = override;
       }
       const currentKeys = Object.keys(current);
@@ -945,7 +971,7 @@ function DirectorySyncSection({
     externalDraft.dirty || manualDraft.dirty || defaultRoleDraft.dirty || groupRolesDirty;
 
   const submitSave = () => {
-    // Send only the group mappings that actually changed.
+    // Send only changed mappings.
     const changedGroups = directorySync.groups
       .filter((g) => {
         const override = draftGroupRoles[g.groupId];
@@ -965,187 +991,169 @@ function DirectorySyncSection({
   };
 
   return (
-    <div className="space-y-3">
-      <Header2>Directory Sync</Header2>
-      <Paragraph variant="small" className="text-text-dimmed">
-        Sync users and groups from your identity provider (SCIM). Members in mapped groups are
-        provisioned automatically, their role follows the group mapping, and removing a user from
-        your directory removes their access here.
-      </Paragraph>
+    <SettingsSection>
+      <SectionHeader
+        title="Directory Sync"
+        description="Sync users and groups from your identity provider (SCIM). Members in mapped groups are provisioned automatically, their role follows the group mapping, and removing a user from your directory removes their access here."
+        action={
+          <Button variant="secondary/small" onClick={onOpenPortal} TrailingIcon={ArrowUpRightIcon}>
+            {directorySync.directories.length === 0 ? "Connect a directory" : "Manage directory"}
+          </Button>
+        }
+      />
 
       {directorySync.directories.length === 0 ? (
-        <Button
-          variant="tertiary/small"
-          onClick={onOpenPortal}
-          LeadingIcon={ArrowTopRightOnSquareIcon}
-        >
-          Connect a directory
-        </Button>
+        <div className="w-full border-b border-grid-dimmed py-4">
+          <Paragraph variant="small">
+            No directory connected yet. Once you connect a directory, users in mapped groups are
+            provisioned automatically.
+          </Paragraph>
+        </div>
       ) : (
         <>
           {directorySync.directories.map((dir) => (
             <div
               key={dir.id}
-              className="flex items-center justify-between rounded-md border border-grid-bright bg-charcoal-800 px-3 py-2"
+              className="flex w-full items-center justify-between gap-4 border-b border-grid-dimmed py-4"
             >
-              <div>
-                <Paragraph variant="small" className="text-text-bright">
-                  {dir.name ?? dir.type}
-                </Paragraph>
-                <Paragraph variant="extra-small" className="text-text-dimmed">
-                  {dir.type} · {dir.state === "active" ? "Active" : "Inactive"} ·{" "}
-                  {directorySync.userCount} {directorySync.userCount === 1 ? "user" : "users"}
+              <div className="flex-1 space-y-1">
+                <Paragraph variant="small/bright">{dir.name ?? dir.type}</Paragraph>
+                <Paragraph variant="extra-small">
+                  {dir.type} · {directorySync.userCount}{" "}
+                  {directorySync.userCount === 1 ? "user" : "users"}
                 </Paragraph>
               </div>
+              <StatusIndicator
+                label={dir.state === "active" ? "Active" : "Inactive"}
+                active={dir.state === "active"}
+              />
             </div>
           ))}
-          <Button
-            variant="tertiary/small"
-            onClick={onOpenPortal}
-            LeadingIcon={ArrowTopRightOnSquareIcon}
-          >
-            Manage directory
-          </Button>
 
-          <div className="flex items-center justify-between rounded-md border border-grid-bright px-3 py-2.5">
-            <div>
-              <Paragraph variant="small" className="text-text-bright">
-                Sync users outside verified domains
-              </Paragraph>
-              <Paragraph variant="extra-small" className="text-text-dimmed">
-                By default only directory users whose email domain is verified for this org are
-                provisioned. Turn on to also provision users on other domains (e.g. contractors).
-              </Paragraph>
-            </div>
-            <Switch
-              variant="small"
-              disabled={isSaving}
-              checked={draftExternal}
-              onCheckedChange={setDraftExternal}
-            />
-          </div>
+          <SettingRow
+            title="Sync users outside verified domains"
+            description="By default only directory users whose email domain is verified for this org are provisioned. Turn on to also provision users on other domains (e.g. contractors)."
+            action={
+              <Switch
+                variant="small"
+                disabled={isSaving}
+                checked={draftExternal}
+                onCheckedChange={setDraftExternal}
+              />
+            }
+          />
 
-          <div className="flex items-center justify-between rounded-md border border-grid-bright px-3 py-2.5">
-            <div>
-              <Paragraph variant="small" className="text-text-bright">
-                Allow manual membership management
-              </Paragraph>
-              <Paragraph variant="extra-small" className="text-text-dimmed">
-                On by default. Turn off to let Directory Sync manage membership exclusively — while
-                a directory is active, inviting, removing, and leaving are disabled in the
-                dashboard.
-              </Paragraph>
-            </div>
-            <Switch
-              variant="small"
-              disabled={isSaving}
-              checked={draftManual}
-              onCheckedChange={setDraftManual}
-            />
-          </div>
+          <SettingRow
+            title="Allow manual membership management"
+            description="On by default. Turn off to let Directory Sync manage membership exclusively — while a directory is active, inviting, removing, and leaving are disabled in the dashboard."
+            action={
+              <Switch
+                variant="small"
+                disabled={isSaving}
+                checked={draftManual}
+                onCheckedChange={setDraftManual}
+              />
+            }
+          />
 
-          <div className="flex items-center justify-between rounded-md border border-grid-bright px-3 py-2.5">
-            <div>
-              <Paragraph variant="small" className="text-text-bright">
-                Default role for users without a mapped group
-              </Paragraph>
-              <Paragraph variant="extra-small" className="text-text-dimmed pr-0.5">
-                Directory users who belong to no mapped group are provisioned at this role
-                (Developer by default). Choose "No access" to leave them unprovisioned until they
-                join a mapped group.
-              </Paragraph>
-            </div>
-            <Select<string, Role | { id: string; name: string; description: string }>
-              value={draftDefaultRole}
-              setValue={(v) => setDraftDefaultRole(v)}
-              items={[{ id: NULL_ROLE_VALUE, name: "No access", description: "" }, ...jitRoles]}
-              variant="tertiary/small"
-              dropdownIcon
-              text={(v) =>
-                v === NULL_ROLE_VALUE
-                  ? "No access"
-                  : (jitRoles.find((r) => r.id === v)?.name ?? "Select a role")
-              }
-            >
-              {(items) =>
-                items.map((role) => (
-                  <SelectItem key={role.id} value={role.id}>
-                    <span className="flex flex-col">
-                      <span>{role.name}</span>
-                      {role.description ? (
-                        <span className="text-xs text-text-dimmed">{role.description}</span>
-                      ) : null}
-                    </span>
-                  </SelectItem>
-                ))
-              }
-            </Select>
-          </div>
+          <SettingRow
+            title="Default role for users without a mapped group"
+            description='Directory users who belong to no mapped group are provisioned at this role (Developer by default). Choose "No access" to leave them unprovisioned until they join a mapped group.'
+            action={
+              <Select<string, Role | { id: string; name: string; description: string }>
+                value={draftDefaultRole}
+                setValue={(v) => setDraftDefaultRole(v)}
+                items={[{ id: NULL_ROLE_VALUE, name: "No access", description: "" }, ...jitRoles]}
+                variant="secondary/small"
+                dropdownIcon
+                text={(v) =>
+                  v === NULL_ROLE_VALUE
+                    ? "No access"
+                    : (jitRoles.find((r) => r.id === v)?.name ?? "Select a role")
+                }
+              >
+                {(items) =>
+                  items.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      <span className="flex flex-col">
+                        <span>{role.name}</span>
+                        {role.description ? (
+                          <span className="text-xs text-text-dimmed">{role.description}</span>
+                        ) : null}
+                      </span>
+                    </SelectItem>
+                  ))
+                }
+              </Select>
+            }
+          />
 
-          <div className="space-y-1">
-            <Paragraph variant="small" className="text-text-bright">
-              Group → role mapping
+          <div className="w-full border-b border-grid-dimmed py-4">
+            <Header3>Group → role mapping</Header3>
+            <Paragraph variant="small" className="mt-1">
+              Map each directory group to a role. Members inherit the role of their mapped group.
             </Paragraph>
-            {directorySync.groups.length === 0 ? (
-              <Paragraph variant="extra-small" className="text-text-dimmed">
+          </div>
+          {directorySync.groups.length === 0 ? (
+            <div className="w-full border-b border-grid-dimmed py-4">
+              <Paragraph variant="small">
                 No directory groups synced yet. Groups appear here once your directory syncs them.
               </Paragraph>
-            ) : (
-              directorySync.groups.map((group) => {
-                const value =
-                  draftGroupRoles[group.groupId] ?? group.mappedRoleId ?? NULL_ROLE_VALUE;
-                return (
-                  <div
-                    key={group.groupId}
-                    className="flex items-center justify-between rounded-md border border-grid-bright px-3 py-2"
+            </div>
+          ) : (
+            directorySync.groups.map((group) => {
+              const value = draftGroupRoles[group.groupId] ?? group.mappedRoleId ?? NULL_ROLE_VALUE;
+              return (
+                <div
+                  key={group.groupId}
+                  className="flex w-full items-center justify-between gap-4 border-b border-grid-dimmed py-3"
+                >
+                  <Paragraph variant="small/bright" className="flex-1">
+                    {group.name}
+                  </Paragraph>
+                  <Select<string, Role | { id: string; name: string; description: string }>
+                    value={value}
+                    setValue={(v) =>
+                      setDraftGroupRoles((prev) => ({ ...prev, [group.groupId]: v }))
+                    }
+                    items={[
+                      { id: NULL_ROLE_VALUE, name: "No access", description: "" },
+                      ...jitRoles,
+                    ]}
+                    variant="secondary/small"
+                    dropdownIcon
+                    text={(v) =>
+                      v === NULL_ROLE_VALUE
+                        ? "No access"
+                        : (jitRoles.find((r) => r.id === v)?.name ?? "Select a role")
+                    }
                   >
-                    <Paragraph variant="small" className="text-text-bright">
-                      {group.name}
-                    </Paragraph>
-                    <Select<string, Role | { id: string; name: string; description: string }>
-                      value={value}
-                      setValue={(v) =>
-                        setDraftGroupRoles((prev) => ({ ...prev, [group.groupId]: v }))
-                      }
-                      items={[
-                        { id: NULL_ROLE_VALUE, name: "No access", description: "" },
-                        ...jitRoles,
-                      ]}
-                      variant="tertiary/small"
-                      dropdownIcon
-                      text={(v) =>
-                        v === NULL_ROLE_VALUE
-                          ? "No access"
-                          : (jitRoles.find((r) => r.id === v)?.name ?? "Select a role")
-                      }
-                    >
-                      {(items) =>
-                        items.map((role) => (
-                          <SelectItem key={role.id} value={role.id}>
-                            <span className="flex flex-col">
-                              <span>{role.name}</span>
-                              {role.description ? (
-                                <span className="text-xs text-text-dimmed">{role.description}</span>
-                              ) : null}
-                            </span>
-                          </SelectItem>
-                        ))
-                      }
-                    </Select>
-                  </div>
-                );
-              })
-            )}
-          </div>
+                    {(items) =>
+                      items.map((role) => (
+                        <SelectItem key={role.id} value={role.id}>
+                          <span className="flex flex-col">
+                            <span>{role.name}</span>
+                            {role.description ? (
+                              <span className="text-xs text-text-dimmed">{role.description}</span>
+                            ) : null}
+                          </span>
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                </div>
+              );
+            })
+          )}
 
-          <div className="flex justify-end pt-1">
+          <div className="flex justify-end py-4">
             <Button variant="primary/small" disabled={!isDirty || isSaving} onClick={submitSave}>
               {isSaving ? "Saving…" : "Save"}
             </Button>
           </div>
         </>
       )}
-    </div>
+    </SettingsSection>
   );
 }
 
@@ -1177,12 +1185,12 @@ function PortalLinkDialog({
           {url ?? ""}
         </div>
         <DialogFooter>
-          <Button variant="tertiary/small" onClick={onClose}>
+          <Button variant="secondary/small" onClick={onClose}>
             Cancel
           </Button>
           <div className="flex items-center gap-2">
             <Button
-              variant="tertiary/small"
+              variant="secondary/small"
               onClick={() => {
                 if (url) {
                   navigator.clipboard?.writeText(url);
@@ -1193,11 +1201,10 @@ function PortalLinkDialog({
             </Button>
             <Button
               variant="primary/small"
-              LeadingIcon={ArrowTopRightOnSquareIcon}
+              TrailingIcon={ArrowUpRightIcon}
               onClick={() => {
                 if (!url) return;
-                // Single-use links — `noopener,noreferrer` keeps the new
-                // tab from inheriting any session context from the dashboard.
+                // Single-use link; `noopener,noreferrer` isolates the new tab.
                 window.open(url, "_blank", "noopener,noreferrer");
                 onClose();
               }}
@@ -1236,7 +1243,7 @@ function EnforceConfirmDialog({
           use existing methods.
         </DialogDescription>
         <DialogFooter>
-          <Button variant="tertiary/small" onClick={onCancel}>
+          <Button variant="secondary/small" onClick={onCancel}>
             Cancel
           </Button>
           <Button variant="primary/small" onClick={onConfirm}>
