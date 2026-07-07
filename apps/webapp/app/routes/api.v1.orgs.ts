@@ -1,12 +1,14 @@
 import { json } from "@remix-run/server-runtime";
 import type { GetOrgsResponseBody } from "@trigger.dev/core/v3";
-import { z } from "zod";
+import { CreateOrgRequestBody } from "@trigger.dev/core/v3";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { createOrganization } from "~/models/organization.server";
 import {
   createActionPATApiRoute,
   createLoaderPATApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
+import { extractDomain, faviconUrl } from "~/utils/favicon";
 
 // Identity-only: lists the caller's own orgs, so no authorization gate.
 export const loader = createLoaderPATApiRoute({}, async ({ authentication }) => {
@@ -35,11 +37,6 @@ export const loader = createLoaderPATApiRoute({}, async ({ authentication }) => 
   return json(result);
 });
 
-const CreateOrgRequestBody = z.object({
-  title: z.string().min(1),
-  companySize: z.string().optional(),
-});
-
 // No org exists yet, so no authorization gate; any authenticated user can
 // create an org and becomes its ADMIN.
 export const action = createActionPATApiRoute(
@@ -48,10 +45,34 @@ export const action = createActionPATApiRoute(
     body: CreateOrgRequestBody,
   },
   async ({ body, authentication }) => {
+    if (env.ORG_CREATION_API_ENABLED !== "1") {
+      return json({ error: "Not found" }, { status: 404 });
+    }
+
+    // Mirror the dashboard: stash companyUrl/companySize as onboarding data and
+    // derive the org avatar from the company domain's favicon.
+    const onboardingData: Record<string, string> = {};
+    if (body.companyUrl) {
+      onboardingData.companyUrl = body.companyUrl;
+    }
+    if (body.companySize) {
+      onboardingData.companySize = body.companySize;
+    }
+
+    let avatar: { type: "image"; url: string } | undefined;
+    if (body.companyUrl) {
+      const domain = extractDomain(body.companyUrl);
+      if (domain) {
+        avatar = { type: "image", url: faviconUrl(domain) };
+      }
+    }
+
     const organization = await createOrganization({
       title: body.title,
       companySize: body.companySize ?? null,
       userId: authentication.userId,
+      onboardingData: Object.keys(onboardingData).length > 0 ? onboardingData : undefined,
+      avatar,
     });
 
     return json(

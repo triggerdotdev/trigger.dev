@@ -67,6 +67,21 @@ export const GetOrgsResponseBody = z.array(
 
 export type GetOrgsResponseBody = z.infer<typeof GetOrgsResponseBody>;
 
+export const CreateOrgRequestBody = z.object({
+  title: z.string().trim().min(3).max(50),
+  companySize: z.string().optional(),
+  companyUrl: z.string().optional(),
+});
+export type CreateOrgRequestBody = z.infer<typeof CreateOrgRequestBody>;
+
+export const CreateOrgResponseBody = z.object({
+  id: z.string(),
+  title: z.string(),
+  slug: z.string(),
+  createdAt: z.coerce.date(),
+});
+export type CreateOrgResponseBody = z.infer<typeof CreateOrgResponseBody>;
+
 export const CreateProjectRequestBody = z.object({
   name: z
     .string()
