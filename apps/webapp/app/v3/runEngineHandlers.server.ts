@@ -28,6 +28,7 @@ import { getEventRepositoryForStore, recordRunDebugLog } from "./eventRepository
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
 import { runStore } from "./runStore.server";
+import { mintAnchoredRunFriendlyId } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { isSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 import {
@@ -837,6 +838,12 @@ export function setupBatchQueueCallbacks() {
                 parentRunId: meta.parentRunId,
                 resumeParentOnCompletion: meta.resumeParentOnCompletion,
                 batch: { id: batchId, index: itemIndex },
+                // Anchor the pre-failed run on the BATCH's residency so it co-resides with its
+                // BatchTaskRun row regardless of a mid-batch mint-flag flip.
+                runFriendlyId: mintAnchoredRunFriendlyId(
+                  friendlyId,
+                  (item.options as { region?: string } | undefined)?.region
+                ),
                 traceContext: meta.traceContext as Record<string, unknown> | undefined,
                 spanParentAsLink: meta.spanParentAsLink,
               });
@@ -874,6 +881,14 @@ export function setupBatchQueueCallbacks() {
             // Normalize payload - for application/store (R2 paths), this passes through as-is
             const payload = normalizePayload(item.payload, item.payloadType);
 
+            // Anchor the item's mint on the BATCH's own friendlyId (not a fresh per-org flag
+            // read) so an org's mint flag flipping between batch creation and this queue-driven
+            // (possibly much later) callback never splits the item from its BatchTaskRun row.
+            const runFriendlyId = mintAnchoredRunFriendlyId(
+              friendlyId,
+              (item.options as { region?: string } | undefined)?.region
+            );
+
             const result = await triggerTaskService.call(
               item.task,
               environment,
@@ -893,6 +908,7 @@ export function setupBatchQueueCallbacks() {
                 spanParentAsLink: meta.spanParentAsLink,
                 batchId,
                 batchIndex: itemIndex,
+                runFriendlyId,
                 realtimeStreamsVersion: meta.realtimeStreamsVersion,
                 planType: meta.planType,
                 triggerSource: meta.parentRunId ? "sdk" : (meta.triggerSource ?? "api"),
@@ -929,6 +945,10 @@ export function setupBatchQueueCallbacks() {
                   parentRunId: meta.parentRunId,
                   resumeParentOnCompletion: meta.resumeParentOnCompletion,
                   batch: { id: batchId, index: itemIndex },
+                  runFriendlyId: mintAnchoredRunFriendlyId(
+                    friendlyId,
+                    (item.options as { region?: string } | undefined)?.region
+                  ),
                   options: item.options as Record<string, unknown>,
                   traceContext: meta.traceContext as Record<string, unknown> | undefined,
                   spanParentAsLink: meta.spanParentAsLink,
@@ -1009,6 +1029,10 @@ export function setupBatchQueueCallbacks() {
                 parentRunId: meta.parentRunId,
                 resumeParentOnCompletion: meta.resumeParentOnCompletion,
                 batch: { id: batchId, index: itemIndex },
+                runFriendlyId: mintAnchoredRunFriendlyId(
+                  friendlyId,
+                  (item.options as { region?: string } | undefined)?.region
+                ),
                 options: item.options as Record<string, unknown>,
                 traceContext: meta.traceContext as Record<string, unknown> | undefined,
                 spanParentAsLink: meta.spanParentAsLink,
