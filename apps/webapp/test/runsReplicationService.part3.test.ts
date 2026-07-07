@@ -1,7 +1,6 @@
 import { ClickHouse, getTaskRunField } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
 import { readFile } from "node:fs/promises";
-import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
@@ -140,9 +139,6 @@ describe("RunsReplicationService (part 3/7)", () => {
         },
       });
 
-      // Wait for replication
-      await setTimeout(5000);
-
       // Query ClickHouse for all runs using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-stress-bulk-insert",
@@ -150,30 +146,35 @@ describe("RunsReplicationService (part 3/7)", () => {
         schema: z.any(),
       });
 
-      const [queryError, result] = await queryRuns({});
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(10);
+      await vi.waitFor(
+        async () => {
+          const [queryError, result] = await queryRuns({});
+          expect(queryError).toBeNull();
+          expect(result?.length).toBe(10);
 
-      // Check a few random runs for correctness
-      for (let i = 0; i < 9; i++) {
-        const expected = runsData[i];
-        const found = result?.find((r: any) => r.friendly_id === expected.friendlyId);
-        expect(found).toBeDefined();
-        expect(found).toEqual(
-          expect.objectContaining({
-            friendly_id: expected.friendlyId,
-            trace_id: expected.traceId,
-            task_identifier: expected.taskIdentifier,
-            status: "COMPLETED_SUCCESSFULLY",
-          })
-        );
-        expect(found?.output).toBeDefined();
-      }
+          // Check a few random runs for correctness
+          for (let i = 0; i < 9; i++) {
+            const expected = runsData[i];
+            const found = result?.find((r: any) => r.friendly_id === expected.friendlyId);
+            expect(found).toBeDefined();
+            expect(found).toEqual(
+              expect.objectContaining({
+                friendly_id: expected.friendlyId,
+                trace_id: expected.traceId,
+                task_identifier: expected.taskIdentifier,
+                status: "COMPLETED_SUCCESSFULLY",
+              })
+            );
+            expect(found?.output).toBeDefined();
+          }
 
-      // Check the run with the bad JSON
-      const foundBad = result?.find((r: any) => r.span_id === "bulk-10");
-      expect(foundBad).toBeDefined();
-      expect(foundBad?.output).toStrictEqual({});
+          // Check the run with the bad JSON
+          const foundBad = result?.find((r: any) => r.span_id === "bulk-10");
+          expect(foundBad).toBeDefined();
+          expect(foundBad?.output).toStrictEqual({});
+        },
+        { timeout: 30_000, interval: 250 }
+      );
 
       await runsReplicationService.stop();
     }
@@ -287,9 +288,12 @@ describe("RunsReplicationService (part 3/7)", () => {
         data: { status: "COMPLETED_SUCCESSFULLY" },
       });
 
-      await setTimeout(1000);
-
-      expect(batchFlushedEvents?.[0].taskRunInserts).toHaveLength(2);
+      await vi.waitFor(
+        () => {
+          expect(batchFlushedEvents?.[0].taskRunInserts).toHaveLength(2);
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       // Use getTaskRunField for type-safe array access
       expect(getTaskRunField(batchFlushedEvents![0].taskRunInserts[0], "run_id")).toEqual(run.id);
       expect(getTaskRunField(batchFlushedEvents![0].taskRunInserts[0], "status")).toEqual(
