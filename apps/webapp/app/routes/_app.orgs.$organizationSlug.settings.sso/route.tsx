@@ -569,15 +569,15 @@ function EnterpriseUpsellState({ organizationSlug }: { organizationSlug: string 
     <SettingsSection>
       <SectionHeader
         title="SSO & Directory Sync"
-        description="Single sign-on (SAML / OIDC) and Directory Sync (SCIM) let your IT admins manage who can access Trigger.dev through your identity provider — Okta, Azure AD, Google Workspace, OneLogin, and more."
+        description="Single sign-on (SAML/OIDC) and Directory Sync (SCIM) let your IT team manage access to Trigger.dev from your identity provider, such as Okta, Azure AD, or Google Workspace."
         action={<Badge variant="small">Enterprise</Badge>}
       />
       <div className="w-full space-y-4 py-4">
         <ul className="ml-4 list-disc space-y-1.5 text-sm text-text-dimmed">
-          <li>Self-service domain verification and connection setup via the admin portal.</li>
-          <li>Just-in-time user provisioning for your verified domains.</li>
-          <li>Per-domain enforcement so contractors keep using existing sign-in methods.</li>
-          <li>Directory Sync (SCIM) to provision users and map directory groups to roles.</li>
+          <li>Verify domains and connect your identity provider from the admin portal.</li>
+          <li>Just-in-time provisioning for your verified domains.</li>
+          <li>Enforce SSO by domain, so contractors keep their existing sign-in.</li>
+          <li>Sync users and map directory groups to roles with SCIM.</li>
         </ul>
         <div className="flex flex-wrap gap-2">
           <LinkButton variant="primary/small" to={v3BillingPath({ slug: organizationSlug })}>
@@ -602,11 +602,11 @@ function NoIdpOrgState({ onOpenPortal }: { onOpenPortal: () => void }) {
     <SettingsSection>
       <SectionHeader
         title="SSO"
-        description="Single sign-on lets your IT admins manage who can access Trigger.dev through your identity provider (Okta, Azure AD, Google Workspace, OneLogin, and more)."
+        description="Manage access to Trigger.dev from your identity provider, such as Okta, Azure AD, or Google Workspace."
       />
       <SettingRow
         title="Get started"
-        description="Verify your team's email domains, then connect your identity provider in the admin portal."
+        description="Verify your email domains, then connect your identity provider."
         action={
           <Button variant="secondary/small" onClick={onOpenPortal} TrailingIcon={ArrowUpRightIcon}>
             Start setup
@@ -650,7 +650,7 @@ function NoActiveConnectionState({
       <SettingsSection>
         <SectionHeader
           title="Domains"
-          description="Verify the email domains your team signs in with. Once a domain is verified you can connect your identity provider."
+          description="Verify the email domains your team signs in with. Connect your identity provider once a domain is verified."
           action={
             <Button
               variant="secondary/small"
@@ -665,8 +665,8 @@ function NoActiveConnectionState({
           <div className="w-full border-b border-grid-dimmed py-4">
             <Callout variant="error">
               {failedDomains.length === 1
-                ? `Domain verification failed for ${failedDomains[0].domain}. Re-check the DNS records in the admin portal and re-run verification.`
-                : `${failedDomains.length} domains failed verification. Re-check the DNS records in the admin portal and re-run verification.`}
+                ? `Verification failed for ${failedDomains[0].domain}. Check the DNS records in the admin portal and try again.`
+                : `${failedDomains.length} domains failed verification. Check the DNS records in the admin portal and try again.`}
             </Callout>
           </div>
         )}
@@ -677,11 +677,11 @@ function NoActiveConnectionState({
         <SettingsSection>
           <SectionHeader
             title="SSO"
-            description="Connect your identity provider to finish setting up single sign-on for your verified domains."
+            description="Connect your identity provider to enable SSO for your verified domains."
           />
           <SettingRow
             title="Identity provider"
-            description="Connect Okta, Azure AD, Google Workspace, OneLogin, and more."
+            description="Connect Okta, Azure AD, Google Workspace, and more."
             action={
               <Button variant="secondary/small" onClick={onOpenSso} TrailingIcon={ArrowUpRightIcon}>
                 Configure SSO
@@ -800,7 +800,7 @@ function ActiveConnectionState({
       <SettingsSection>
         <SectionHeader
           title="Domains"
-          description="The verified email domains your team signs in with."
+          description="The email domains your team signs in with."
           action={
             <Button
               variant="secondary/small"
@@ -823,7 +823,7 @@ function ActiveConnectionState({
       <SettingsSection>
         <SectionHeader
           title="SSO"
-          description={`Single sign-on connection for ${orgTitle}.`}
+          description={`SSO connection for ${orgTitle}.`}
           action={
             <Button
               variant="secondary/small"
@@ -849,21 +849,21 @@ function ActiveConnectionState({
 
         <SettingRow
           title="Require SSO for matching domains"
-          description="When on, users whose email matches a verified domain must use SSO to sign in."
+          description="Users with an email on a verified domain must sign in with SSO."
           action={
             <Switch variant="small" checked={draftEnforced} onCheckedChange={onToggleEnforced} />
           }
         />
         <SettingRow
-          title="JIT provisioning"
-          description="Auto-create memberships for first-time SSO sign-ins from your verified domains."
+          title="Just-in-time provisioning"
+          description="Automatically add members on their first SSO sign-in from a verified domain."
           action={
             <Switch variant="small" checked={draftJitEnabled} onCheckedChange={onToggleJit} />
           }
         />
         <SettingRow
-          title="Default role for JIT provisioned users"
-          description="Role assigned to new users created via JIT provisioning. Owner is reserved and cannot be granted automatically."
+          title="Default role for new users"
+          description="Assigned to users created by just-in-time provisioning. Owner can't be granted automatically."
           action={
             <Select<string, Role>
               value={draftJitRoleId}
@@ -994,7 +994,7 @@ function DirectorySyncSection({
     <SettingsSection>
       <SectionHeader
         title="Directory Sync"
-        description="Sync users and groups from your identity provider (SCIM). Members in mapped groups are provisioned automatically, their role follows the group mapping, and removing a user from your directory removes their access here."
+        description="Sync users and groups from your identity provider over SCIM. Members of mapped groups are provisioned with the group's role, and removing them from your directory revokes their access."
         action={
           <Button variant="secondary/small" onClick={onOpenPortal} TrailingIcon={ArrowUpRightIcon}>
             {directorySync.directories.length === 0 ? "Connect a directory" : "Manage directory"}
@@ -1005,8 +1005,8 @@ function DirectorySyncSection({
       {directorySync.directories.length === 0 ? (
         <div className="w-full border-b border-grid-dimmed py-4">
           <Paragraph variant="small">
-            No directory connected yet. Once you connect a directory, users in mapped groups are
-            provisioned automatically.
+            No directory connected. Once connected, members of mapped groups are provisioned
+            automatically.
           </Paragraph>
         </div>
       ) : (
@@ -1032,7 +1032,7 @@ function DirectorySyncSection({
 
           <SettingRow
             title="Sync users outside verified domains"
-            description="By default only directory users whose email domain is verified for this org are provisioned. Turn on to also provision users on other domains (e.g. contractors)."
+            description="By default, only users on a verified domain are provisioned. Turn on to also provision users on other domains, such as contractors."
             action={
               <Switch
                 variant="small"
@@ -1045,7 +1045,7 @@ function DirectorySyncSection({
 
           <SettingRow
             title="Allow manual membership management"
-            description="On by default. Turn off to let Directory Sync manage membership exclusively — while a directory is active, inviting, removing, and leaving are disabled in the dashboard."
+            description="On by default. Turn off to let Directory Sync manage membership exclusively. While a directory is active, inviting, removing, and leaving are disabled in the dashboard."
             action={
               <Switch
                 variant="small"
@@ -1057,8 +1057,8 @@ function DirectorySyncSection({
           />
 
           <SettingRow
-            title="Default role for users without a mapped group"
-            description='Directory users who belong to no mapped group are provisioned at this role (Developer by default). Choose "No access" to leave them unprovisioned until they join a mapped group.'
+            title="Default role for unmapped users"
+            description={`Assigned to directory users who aren't in a mapped group. Choose "No access" to leave them unprovisioned until they join one.`}
             action={
               <Select<string, Role | { id: string; name: string; description: string }>
                 value={draftDefaultRole}
@@ -1091,13 +1091,13 @@ function DirectorySyncSection({
           <div className="w-full border-b border-grid-dimmed py-4">
             <Header3>Group → role mapping</Header3>
             <Paragraph variant="small" className="mt-1">
-              Map each directory group to a role. Members inherit the role of their mapped group.
+              Map each directory group to a role. Members inherit their group's role.
             </Paragraph>
           </div>
           {directorySync.groups.length === 0 ? (
             <div className="w-full border-b border-grid-dimmed py-4">
               <Paragraph variant="small">
-                No directory groups synced yet. Groups appear here once your directory syncs them.
+                No groups synced yet. Groups appear here after your directory syncs.
               </Paragraph>
             </div>
           ) : (
@@ -1168,18 +1168,18 @@ function PortalLinkDialog({
 }) {
   const purpose =
     intent === "domain_verification"
-      ? "This single-use link opens domain verification. Send it to whoever manages your DNS or identity provider so they can confirm your organization owns its email domains."
+      ? "This single-use link opens domain verification. Share it with whoever manages your DNS to confirm you own the domains."
       : intent === "sso"
-        ? "This single-use link opens identity-provider setup. Send it to whoever manages your identity provider so they can connect it to Trigger.dev."
+        ? "This single-use link opens identity provider setup. Share it with whoever manages your identity provider to connect it."
         : intent === "dsync"
-          ? "This single-use link opens directory sync (SCIM) setup. Send it to whoever manages your identity provider so they can connect your directory to Trigger.dev."
-          : "This single-use link opens your organization's SSO setup.";
+          ? "This single-use link opens Directory Sync (SCIM) setup. Share it with whoever manages your identity provider to connect your directory."
+          : "This single-use link opens your SSO setup.";
   return (
     <Dialog open={url !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>Admin portal link</DialogHeader>
         <DialogDescription>
-          {purpose} The link expires 5 minutes after you open this dialog.
+          {purpose} The link expires 5 minutes after this dialog opens.
         </DialogDescription>
         <div className="mt-4 break-all rounded-md border border-grid-bright bg-charcoal-800 p-3 font-mono text-xs">
           {url ?? ""}
@@ -1234,13 +1234,11 @@ function EnforceConfirmDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>Enable SSO enforcement for {orgTitle}?</DialogHeader>
         <DialogDescription>
-          Once enabled, users whose email domain matches your verified domains will be redirected to
-          your identity provider to sign in. They will no longer be able to use magic link, GitHub,
-          or Google via that domain.
+          Users with an email on a verified domain will be redirected to your identity provider to
+          sign in. They can no longer use magic link, GitHub, or Google for that domain.
           <br />
           <br />
-          Users with non-matching emails (e.g. contractors with personal emails) will continue to
-          use existing methods.
+          Users with other emails, such as contractors, keep their existing sign-in methods.
         </DialogDescription>
         <DialogFooter>
           <Button variant="secondary/small" onClick={onCancel}>
