@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { prisma } from "~/db.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
+import { normalizePromptOverrideSource } from "./promptOverrideSource";
 
 export class PromptService extends BaseService {
   async promoteVersion(promptId: string, versionId: string, options?: { sourceGuard?: boolean }) {
@@ -62,13 +63,17 @@ export class PromptService extends BaseService {
         WHERE "promptId" = ${promptId} AND 'override' = ANY("labels")
       `;
 
+      // Defence in depth: reject the reserved `code` source regardless of
+      // caller, in case a future caller skips the route-layer check.
+      const safeSource = normalizePromptOverrideSource(data.source);
+
       await tx.promptVersion.create({
         data: {
           promptId,
           version: nextVersion,
           textContent: data.textContent,
           model: data.model || null,
-          source: data.source || "dashboard",
+          source: safeSource,
           commitMessage: data.commitMessage || null,
           contentHash,
           labels: ["override"],
