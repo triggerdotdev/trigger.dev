@@ -188,6 +188,27 @@ spec:
               value: {{ .Values.webapp.apiOrigin | quote }}
             - name: ELECTRIC_ORIGIN
               value: {{ include "trigger-v4.electric.url" . | quote }}
+            {{- if include "trigger-v4.s2.enabled" . }}
+            # Realtime streams v2, backed by S2 (bundled s2-lite or an external endpoint)
+            - name: REALTIME_STREAMS_DEFAULT_VERSION
+              value: {{ .Values.s2.defaultStreamVersion | quote }}
+            - name: REALTIME_STREAMS_S2_ENDPOINT
+              value: {{ include "trigger-v4.s2.url" . | quote }}
+            - name: REALTIME_STREAMS_S2_BASIN
+              value: {{ .Values.s2.basin | quote }}
+            - name: REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS
+              value: {{ .Values.s2.skipAccessTokens | quote }}
+            {{- if and .Values.s2.external.endpoint .Values.s2.external.existingSecret }}
+            - name: REALTIME_STREAMS_S2_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.s2.external.existingSecret }}
+                  key: {{ .Values.s2.external.existingSecretAccessTokenKey }}
+            {{- else if .Values.s2.external.accessToken }}
+            - name: REALTIME_STREAMS_S2_ACCESS_TOKEN
+              value: {{ .Values.s2.external.accessToken | quote }}
+            {{- end }}
+            {{- end }}
             {{- if include "trigger-v4.postgres.useSecretUrl" . }}
             - name: DATABASE_URL
               valueFrom:

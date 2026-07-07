@@ -388,6 +388,27 @@ http://{{ include "trigger-v4.fullname" . }}-electric:{{ .Values.electric.servic
 {{- end }}
 
 {{/*
+Whether realtime streams v2 (S2) is wired up: either the bundled s2-lite is
+deployed, or an external S2 endpoint has been configured.
+*/}}
+{{- define "trigger-v4.s2.enabled" -}}
+{{- if or .Values.s2.deploy .Values.s2.external.endpoint -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+S2 API endpoint URL, including the /v1 suffix expected by the client.
+*/}}
+{{- define "trigger-v4.s2.url" -}}
+{{- if .Values.s2.deploy -}}
+http://{{ include "trigger-v4.fullname" . }}-s2:{{ .Values.s2.service.port }}/v1
+{{- else -}}
+{{ .Values.s2.external.endpoint }}
+{{- end -}}
+{{- end }}
+
+{{/*
 ClickHouse hostname
 */}}
 {{- define "trigger-v4.clickhouse.hostname" -}}

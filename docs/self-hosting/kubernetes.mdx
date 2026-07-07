@@ -375,6 +375,32 @@ webapp:
 
 This only affects new runs; existing runs continue to read from wherever their events were originally stored.
 
+## Realtime streams
+
+Realtime streams power AI-agent token streaming and run streams. They default to **v2**, backed by the bundled `s2` deployment — [s2-lite](https://s2.dev), the open-source, self-hostable S2 server. The chart deploys it with a persistent volume, so no extra services are required.
+
+To fall back to the Redis-backed **v1** streams, set the default version to `v1`:
+
+```yaml
+s2:
+  defaultStreamVersion: "v1"
+```
+
+To use a hosted S2 at [s2.dev](https://s2.dev) instead of the bundled s2-lite, disable the bundled deployment and point at your basin. Supply the access token via an existing secret:
+
+```yaml
+s2:
+  deploy: false
+  skipAccessTokens: false
+  external:
+    endpoint: "https://your-basin.b.aws.s2.dev/v1"
+    existingSecret: "s2-credentials"
+    existingSecretAccessTokenKey: "access-token"
+  basin: "your-basin"
+```
+
+To disable realtime streams v2 entirely and use v1, set `s2.deploy: false` with no external endpoint. See `helm show values` for all `s2` options.
+
 ## Worker token
 
 When using the default bootstrap configuration, worker creation and authentication is handled automatically. The webapp generates a worker token and makes it available to the supervisor via a shared volume.

@@ -354,6 +354,27 @@ EVENT_REPOSITORY_DEFAULT_STORE=clickhouse_v2
 
 This only affects new runs; existing runs continue to read from wherever their events were originally stored.
 
+## Realtime streams
+
+Realtime streams power AI-agent token streaming and run streams. They default to **v2**, backed by the bundled `s2` service — [s2-lite](https://s2.dev), the open-source, self-hostable S2 server. It stores stream data in a persistent volume and is preconfigured in the webapp compose file, so no setup is required.
+
+To fall back to the Redis-backed **v1** streams, set on the webapp in your `.env`:
+
+```bash
+REALTIME_STREAMS_DEFAULT_VERSION=v1
+```
+
+To use a hosted S2 at [s2.dev](https://s2.dev) instead of the bundled s2-lite, point the endpoint at your basin and supply an access token:
+
+```bash
+REALTIME_STREAMS_S2_BASIN=your-basin
+REALTIME_STREAMS_S2_ENDPOINT=https://your-basin.b.aws.s2.dev/v1
+REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS=false
+REALTIME_STREAMS_S2_ACCESS_TOKEN=your-access-token
+```
+
+See the [webapp environment variables](/self-hosting/env/webapp) for the full list of realtime stream settings.
+
 ## Troubleshooting
 
 - **Deployment fails at the push step.** The machine running `deploy` needs registry access. See the [registry setup](#registry-setup) section for more details.
