@@ -36,17 +36,9 @@ export const action = createActionPATApiRoute(
       return json({ error: "Organization not found" }, { status: 404 });
     }
 
-    // An org must keep at least one member. The dashboard guards this in the
-    // UI only; enforce it here since removeTeamMember doesn't.
-    const memberCount = await prisma.orgMember.count({
-      where: { organizationId: organization.id },
-    });
-    if (memberCount <= 1) {
-      return json({ error: "Cannot remove the last member of an organization" }, { status: 400 });
-    }
-
-    // removeTeamMember throws ServiceValidationError; the builder maps it to
-    // its status (e.g. 404 for a member not in this org).
+    // removeTeamMember enforces the last-member guard and throws
+    // ServiceValidationError (member-not-found / last-member), which the
+    // builder maps to its status.
     const removed = await removeTeamMember({
       userId: authentication.userId,
       slug: organization.slug,

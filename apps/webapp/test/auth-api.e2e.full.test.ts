@@ -3016,4 +3016,24 @@ describe("API", () => {
       expect(res.status).not.toBe(405);
     });
   });
+
+  // Member removal via the PAT action route. The last-member guard lives in
+  // removeTeamMember and surfaces as a ServiceValidationError the builder maps
+  // to 400 — so an org can't be emptied of its only member.
+  describe("Member removal — last-member guard", () => {
+    it("removing the last member is rejected: 400", async () => {
+      const server = getTestServer();
+      const { user, organization, pat } = await seedTestUserProject(server.prisma);
+      const member = await server.prisma.orgMember.findFirst({
+        where: { organizationId: organization.id, userId: user.id },
+      });
+      if (!member) throw new Error("seed did not create an org member");
+
+      const res = await server.webapp.fetch(
+        `/api/v1/orgs/${organization.id}/members/${member.id}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${pat.token}` } }
+      );
+      expect(res.status).toBe(400);
+    });
+  });
 });
