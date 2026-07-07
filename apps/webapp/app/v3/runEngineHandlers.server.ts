@@ -809,6 +809,14 @@ export function setupBatchQueueCallbacks() {
           },
         },
         async (span) => {
+          // Anchor every item mint on the BATCH's friendlyId so a mid-batch mint-flag flip
+          // can't split an item (or pre-failed item) from its BatchTaskRun row.
+          const mintItemRunFriendlyId = () =>
+            mintAnchoredRunFriendlyId(
+              friendlyId,
+              (item.options as { region?: string } | undefined)?.region
+            );
+
           const triggerFailedTaskService = new TriggerFailedTaskService({
             prisma,
             engine,
@@ -838,12 +846,7 @@ export function setupBatchQueueCallbacks() {
                 parentRunId: meta.parentRunId,
                 resumeParentOnCompletion: meta.resumeParentOnCompletion,
                 batch: { id: batchId, index: itemIndex },
-                // Anchor the pre-failed run on the BATCH's residency so it co-resides with its
-                // BatchTaskRun row regardless of a mid-batch mint-flag flip.
-                runFriendlyId: mintAnchoredRunFriendlyId(
-                  friendlyId,
-                  (item.options as { region?: string } | undefined)?.region
-                ),
+                runFriendlyId: mintItemRunFriendlyId(),
                 traceContext: meta.traceContext as Record<string, unknown> | undefined,
                 spanParentAsLink: meta.spanParentAsLink,
               });
@@ -881,13 +884,7 @@ export function setupBatchQueueCallbacks() {
             // Normalize payload - for application/store (R2 paths), this passes through as-is
             const payload = normalizePayload(item.payload, item.payloadType);
 
-            // Anchor the item's mint on the BATCH's own friendlyId (not a fresh per-org flag
-            // read) so an org's mint flag flipping between batch creation and this queue-driven
-            // (possibly much later) callback never splits the item from its BatchTaskRun row.
-            const runFriendlyId = mintAnchoredRunFriendlyId(
-              friendlyId,
-              (item.options as { region?: string } | undefined)?.region
-            );
+            const runFriendlyId = mintItemRunFriendlyId();
 
             const result = await triggerTaskService.call(
               item.task,
@@ -945,10 +942,7 @@ export function setupBatchQueueCallbacks() {
                   parentRunId: meta.parentRunId,
                   resumeParentOnCompletion: meta.resumeParentOnCompletion,
                   batch: { id: batchId, index: itemIndex },
-                  runFriendlyId: mintAnchoredRunFriendlyId(
-                    friendlyId,
-                    (item.options as { region?: string } | undefined)?.region
-                  ),
+                  runFriendlyId: mintItemRunFriendlyId(),
                   options: item.options as Record<string, unknown>,
                   traceContext: meta.traceContext as Record<string, unknown> | undefined,
                   spanParentAsLink: meta.spanParentAsLink,
@@ -1029,10 +1023,7 @@ export function setupBatchQueueCallbacks() {
                 parentRunId: meta.parentRunId,
                 resumeParentOnCompletion: meta.resumeParentOnCompletion,
                 batch: { id: batchId, index: itemIndex },
-                runFriendlyId: mintAnchoredRunFriendlyId(
-                  friendlyId,
-                  (item.options as { region?: string } | undefined)?.region
-                ),
+                runFriendlyId: mintItemRunFriendlyId(),
                 options: item.options as Record<string, unknown>,
                 traceContext: meta.traceContext as Record<string, unknown> | undefined,
                 spanParentAsLink: meta.spanParentAsLink,

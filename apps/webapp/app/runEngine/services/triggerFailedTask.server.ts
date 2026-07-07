@@ -331,6 +331,8 @@ export class TriggerFailedTaskService {
     resumeParentOnCompletion?: boolean;
     batch?: { id: string; index: number };
     errorCode?: TaskRunErrorCodes;
+    /** Pre-minted friendlyId; when set it wins over the mint. Batch callers pass a batch-anchored id. */
+    runFriendlyId?: string;
   }): Promise<string | null> {
     // Held for the catch's log line; the in-try `const` is what consumers use.
     let mintedFriendlyId: string | undefined;
@@ -345,6 +347,7 @@ export class TriggerFailedTaskService {
         // single replica lookup by organizationId only when there is no parent.
         orgFeatureFlags: undefined,
         parentRunFriendlyId: opts.parentRunId,
+        runFriendlyId: opts.runFriendlyId,
       });
       mintedFriendlyId = failedRunFriendlyId;
 

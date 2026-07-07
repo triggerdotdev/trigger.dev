@@ -60,12 +60,12 @@ function stripComments(schema: string): string {
   return schema.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 }
 
-interface FieldInfo {
+type FieldInfo = {
   type: string;
   optional: boolean;
   array: boolean;
   default: string | null;
-}
+};
 
 type ModelFields = Map<string, FieldInfo>;
 

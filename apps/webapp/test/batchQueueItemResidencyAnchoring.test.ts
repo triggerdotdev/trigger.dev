@@ -2,7 +2,8 @@
 // through BatchQueue to setupBatchQueueCallbacks) must anchor each item's mint on the BATCH's own
 // friendlyId, like batchTriggerV3.server.ts's mintChildFriendlyId does — not re-resolve the
 // per-org mint flag, which can flip between batch creation and this async callback. Covers the
-// happy path AND the pre-failed-run failure branch, in BOTH residency directions.
+// happy path (both residency directions) and all three pre-failed-run branches: trigger returned
+// undefined, pre-marked error item, and a thrown trigger error.
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -90,12 +91,21 @@ beforeEach(() => {
   mocks.triggerFailedTaskCall.mockReset();
 });
 
-async function runItem(friendlyId: string, isFinalAttempt = false) {
+async function runItem(
+  friendlyId: string,
+  isFinalAttempt = false,
+  itemOptions: Record<string, unknown> = {}
+) {
   await processItemCallback({
     batchId: "batch_internal_1",
     friendlyId,
     itemIndex: 0,
-    item: { task: "some-task", payload: "{}", payloadType: "application/json", options: {} },
+    item: {
+      task: "some-task",
+      payload: "{}",
+      payloadType: "application/json",
+      options: itemOptions,
+    },
     meta: { environmentId: "env_1" },
     attempt: 1,
     isFinalAttempt,
@@ -175,5 +185,40 @@ describe("setupBatchQueueCallbacks — batch item residency anchoring", () => {
     const [request] = mocks.triggerFailedTaskCall.mock.calls[0] as [{ runFriendlyId?: string }];
     expect(request.runFriendlyId).toBeDefined();
     expect(classifyKind(request.runFriendlyId!)).toBe("cuid");
+  });
+
+  // Pre-marked error items (e.g. oversized payloads) are pre-failed before the trigger runs; that
+  // pre-failed run also carries batchId, so it must anchor to the batch too.
+  it("pre-marked error branch: a run-ops (NEW) batch anchors the pre-failed run to the batch", async () => {
+    const friendlyId = BatchId.toFriendlyId(generateRunOpsId());
+    expect(ownerEngine(friendlyId)).toBe("NEW");
+    mocks.triggerFailedTaskCall.mockResolvedValue("run_prefailed_fake");
+
+    await runItem(friendlyId, false, {
+      __error: "payload too large",
+      __errorCode: "PAYLOAD_TOO_LARGE",
+    });
+
+    expect(mocks.triggerTaskServiceCall).not.toHaveBeenCalled();
+    expect(mocks.triggerFailedTaskCall).toHaveBeenCalledTimes(1);
+    const [request] = mocks.triggerFailedTaskCall.mock.calls[0] as [{ runFriendlyId?: string }];
+    expect(request.runFriendlyId).toBeDefined();
+    expect(classifyKind(request.runFriendlyId!)).toBe("runOpsId");
+  });
+
+  // The catch branch (the item trigger throws) creates a pre-failed run on the final attempt; it
+  // carries batchId, so it must anchor to the batch too.
+  it("catch branch: a run-ops (NEW) batch anchors the pre-failed run when the trigger throws", async () => {
+    const friendlyId = BatchId.toFriendlyId(generateRunOpsId());
+    expect(ownerEngine(friendlyId)).toBe("NEW");
+    mocks.triggerTaskServiceCall.mockRejectedValue(new Error("trigger boom"));
+    mocks.triggerFailedTaskCall.mockResolvedValue("run_prefailed_fake");
+
+    await runItem(friendlyId, true);
+
+    expect(mocks.triggerFailedTaskCall).toHaveBeenCalledTimes(1);
+    const [request] = mocks.triggerFailedTaskCall.mock.calls[0] as [{ runFriendlyId?: string }];
+    expect(request.runFriendlyId).toBeDefined();
+    expect(classifyKind(request.runFriendlyId!)).toBe("runOpsId");
   });
 });
