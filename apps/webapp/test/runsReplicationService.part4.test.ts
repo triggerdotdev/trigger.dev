@@ -196,14 +196,6 @@ describe("RunsReplicationService (part 4/7)", () => {
         },
       });
 
-      await setTimeout(1000);
-
-      await prisma.taskRun.delete({
-        where: { id: taskRun.id },
-      });
-
-      await setTimeout(1000);
-
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-delete",
         query: "SELECT * FROM trigger_dev.task_runs_v2 FINAL WHERE run_id = {run_id:String}",
@@ -211,10 +203,33 @@ describe("RunsReplicationService (part 4/7)", () => {
         params: z.object({ run_id: z.string() }),
       });
 
-      const [queryError, result] = await queryRuns({ run_id: taskRun.id });
+      // Wait for the insert to replicate so there is a row to delete (length transitions to 1).
+      // Asserting presence first keeps the deletion poll below sound: length 0 can only mean the
+      // DELETE propagated, not that the insert never arrived.
+      await vi.waitFor(
+        async () => {
+          const [queryError, result] = await queryRuns({ run_id: taskRun.id });
 
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(0);
+          expect(queryError).toBeNull();
+          expect(result?.length).toBe(1);
+        },
+        { timeout: 30_000, interval: 250 }
+      );
+
+      await prisma.taskRun.delete({
+        where: { id: taskRun.id },
+      });
+
+      // Wait for the deletion to replicate (length transitions from 1 to 0).
+      await vi.waitFor(
+        async () => {
+          const [queryError, result] = await queryRuns({ run_id: taskRun.id });
+
+          expect(queryError).toBeNull();
+          expect(result?.length).toBe(0);
+        },
+        { timeout: 30_000, interval: 250 }
+      );
 
       await runsReplicationService.stop();
     }
