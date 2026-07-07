@@ -59,6 +59,42 @@ describe("interpretBatchGetImageResponse", () => {
     );
     expect(interpretBatchGetImageResponse({} as any)).toBe("unknown");
   });
+
+  const manifestWith = (layerMediaTypes: string[]) =>
+    JSON.stringify({
+      schemaVersion: 2,
+      mediaType: "application/vnd.docker.distribution.manifest.v2+json",
+      layers: layerMediaTypes.map((mediaType) => ({ mediaType, digest: `sha256:${"a".repeat(64)}` })),
+    });
+
+  it("returns nonconformant when any layer is a zstd layer in a Docker manifest", () => {
+    const imageManifest = manifestWith([
+      "application/vnd.docker.image.rootfs.diff.tar.gzip",
+      "application/vnd.docker.image.rootfs.diff.tar.zstd",
+    ]);
+    expect(interpretBatchGetImageResponse({ images: [{ imageManifest }] } as any)).toBe(
+      "nonconformant"
+    );
+  });
+
+  it("returns found for OCI zstd layers (the runtime-supported media type)", () => {
+    const imageManifest = manifestWith([
+      "application/vnd.oci.image.layer.v1.tar+gzip",
+      "application/vnd.oci.image.layer.v1.tar+zstd",
+    ]);
+    expect(interpretBatchGetImageResponse({ images: [{ imageManifest }] } as any)).toBe("found");
+  });
+
+  it("returns found (does not block) when the manifest is absent, unparseable, or an index", () => {
+    expect(interpretBatchGetImageResponse({ images: [{}] } as any)).toBe("found");
+    expect(interpretBatchGetImageResponse({ images: [{ imageManifest: "not json" }] } as any)).toBe(
+      "found"
+    );
+    const index = JSON.stringify({ schemaVersion: 2, manifests: [{ digest: "sha256:x" }] });
+    expect(interpretBatchGetImageResponse({ images: [{ imageManifest: index }] } as any)).toBe(
+      "found"
+    );
+  });
 });
 
 describe("ecrImageExists", () => {

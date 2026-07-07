@@ -186,6 +186,12 @@ export class FinalizeDeploymentV2Service extends BaseService {
       );
     }
 
+    if (result === "nonconformant") {
+      throw new ServiceValidationError(
+        "Deployment image is not runnable: it contains zstd-compressed layers inside a Docker (v2s2) manifest, which the container runtime cannot pull. This typically comes from an outdated CLI version. Please upgrade to the latest trigger.dev CLI and re-deploy."
+      );
+    }
+
     // Fail closed: if we can't confirm the image is present, don't promote a version
     // that might not start. Set DEPLOY_IMAGE_VERIFICATION_ENABLED=0 for out-of-band pushes.
     if (result === "unknown") {

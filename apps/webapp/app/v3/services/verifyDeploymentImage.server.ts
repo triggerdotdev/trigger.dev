@@ -5,6 +5,7 @@ import {
 } from "@aws-sdk/client-ecr";
 import { tryCatch } from "@trigger.dev/core";
 import pRetry, { AbortError } from "p-retry";
+import { z } from "zod";
 import { logger } from "~/services/logger.server";
 import {
   type AssumeRoleConfig,
@@ -16,7 +17,39 @@ import { type RegistryConfig } from "../registryConfig.server";
 
 const SHA256_DIGEST = /^sha256:[a-f0-9]{64}$/;
 
-export type ImageLookupResult = "found" | "missing" | "unknown";
+export type ImageLookupResult = "found" | "missing" | "unknown" | "nonconformant";
+
+// A zstd layer carried in a Docker (v2s2) manifest rather than an OCI manifest is
+// unpullable by cri-o/containerd/podman. OCI zstd (...tar+zstd) is fine - only this
+// Docker media type is rejected. An outdated CLI that predates OCI-media-type output
+// can emit it when reusing zstd layers from a prior build or the registry cache.
+const UNPULLABLE_LAYER_MEDIA_TYPE = "application/vnd.docker.image.rootfs.diff.tar.zstd";
+
+// Lenient: we only need layer media types. A manifest list / OCI index has no top-level
+// layers[], so it just parses to `layers: undefined` and is treated as conformant.
+const ImageManifestSchema = z.object({
+  layers: z.array(z.object({ mediaType: z.string().optional() })).optional(),
+});
+
+function manifestHasUnpullableLayers(imageManifest: string | undefined): boolean {
+  if (!imageManifest) {
+    return false;
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(imageManifest);
+  } catch {
+    return false; // fail open on a manifest we can't read
+  }
+
+  const parsed = ImageManifestSchema.safeParse(json);
+  if (!parsed.success) {
+    return false; // fail open
+  }
+
+  return parsed.data.layers?.some((layer) => layer.mediaType === UNPULLABLE_LAYER_MEDIA_TYPE) ?? false;
+}
 
 /**
  * Split a stored ECR image reference into repository + tag.
@@ -55,7 +88,13 @@ export function parseEcrImageReference(
 export function interpretBatchGetImageResponse(
   response: BatchGetImageCommandOutput
 ): ImageLookupResult {
-  if (response.images && response.images.length > 0) {
+  const image = response.images?.[0];
+  if (image) {
+    // Present but built with a runtime-incompatible layer media type - promoting it
+    // would 100%-fail every run at pull time, so treat it as a distinct failure.
+    if (manifestHasUnpullableLayers(image.imageManifest)) {
+      return "nonconformant";
+    }
     return "found";
   }
 
@@ -183,5 +222,14 @@ export async function ecrImageExists(
     return "unknown";
   }
 
-  return interpretBatchGetImageResponse(response);
+  const result = interpretBatchGetImageResponse(response);
+
+  if (result === "nonconformant") {
+    logger.error("Deployment image has a runtime-incompatible layer media type", {
+      imageReference,
+      repositoryName: parsed.repositoryName,
+    });
+  }
+
+  return result;
 }
