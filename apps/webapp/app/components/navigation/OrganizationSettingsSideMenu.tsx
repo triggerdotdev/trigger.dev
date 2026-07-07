@@ -149,7 +149,7 @@ export function OrganizationSettingsSideMenu({
           )}
           {isSsoUsingPlugin && (
             <SideMenuItem
-              name="Identity & Access"
+              name="SSO & Directory Sync"
               icon={PadlockIcon}
               activeIconColor="text-text-bright"
               inactiveIconColor="text-text-dimmed"

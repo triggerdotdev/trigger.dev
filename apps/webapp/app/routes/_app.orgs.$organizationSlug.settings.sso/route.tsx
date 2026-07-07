@@ -44,7 +44,7 @@ import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { v3BillingPath } from "~/utils/pathBuilder";
 
-export const meta: MetaFunction = () => [{ title: "Identity & Access | Trigger.dev" }];
+export const meta: MetaFunction = () => [{ title: "SSO & Directory Sync | Trigger.dev" }];
 
 const Params = z.object({ organizationSlug: z.string() });
 
@@ -479,7 +479,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Identity & Access" />
+        <PageTitle title="SSO & Directory Sync" />
       </NavBar>
       <PageBody scrollable={true}>
         <MainHorizontallyCenteredContainer className="max-w-3xl space-y-6">
