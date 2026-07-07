@@ -1,6 +1,7 @@
 import { ArrowLeftIcon } from "@heroicons/react/20/solid";
 import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
 import {
+  createCookie,
   redirect,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
@@ -35,6 +36,17 @@ import { logger, tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 
+// The submitted email is carried to the confirmation screen in a short-lived,
+// httpOnly cookie rather than the URL, so the address never lands in access
+// logs, browser history, or error-tracker breadcrumbs.
+const magicLinkEmailCookie = createCookie("magiclink-email", {
+  maxAge: 60 * 10,
+  httpOnly: true,
+  sameSite: "lax",
+  secure: env.NODE_ENV === "production",
+  path: "/",
+});
+
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
     .flatMap((match) => match.meta ?? [])
@@ -65,7 +77,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // "magic link sent" confirmation. A visit without a pending magic link
   // forwards to /login — keeping the inlined form the single source of truth,
   // avoiding an orphaned duplicate page, and letting /login surface any flashed
-  // auth:error (e.g. an invalid-email submit that never sent a link). The guard
+  // auth:error. The guard
   // runs before reading auth:error so that error isn't consumed here before
   // /login can show it. An expired/invalid link click (routes/magic.tsx) is
   // different: the email-link strategy only clears the magic-link key on a
@@ -73,10 +85,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // confirmation renders the flashed error as magicLinkError below.
   const url = new URL(request.url);
   const sanitized = sanitizeRedirectPath(url.searchParams.get("redirectTo"));
-  // The submitted address is carried on the success redirect so the
-  // confirmation can name it. Validate before echoing it back.
-  const emailParam = url.searchParams.get("email");
-  const email = emailParam && z.string().email().safeParse(emailParam).success ? emailParam : null;
+  // The submitted address is carried in a short-lived cookie (not the URL) so
+  // the confirmation can name it. Validate before echoing it back.
+  const emailCookie = await magicLinkEmailCookie.parse(request.headers.get("Cookie"));
+  const email =
+    typeof emailCookie === "string" && z.string().email().safeParse(emailCookie).success
+      ? emailCookie
+      : null;
   if (!session.has("triggerdotdev:magiclink")) {
     // Throw (not return) so the redirect doesn't widen the loader's return
     // type — otherwise useTypedLoaderData sees TypedResponse<never> in the
@@ -141,7 +156,7 @@ export async function action({ request }: ActionFunctionArgs) {
       message: "Please enter a valid email address.",
     });
 
-    return redirect("/login/magic", {
+    return redirect("/login", {
       headers: {
         "Set-Cookie": await commitSession(session),
       },
@@ -191,7 +206,7 @@ export async function action({ request }: ActionFunctionArgs) {
             message: errorMessage,
           });
 
-          return redirect("/login/magic", {
+          return redirect("/login", {
             headers: {
               "Set-Cookie": await commitSession(session),
             },
@@ -211,10 +226,20 @@ export async function action({ request }: ActionFunctionArgs) {
         return redirect(ssoRedirect);
       }
 
-      return authenticator.authenticate("email-link", request, {
-        successRedirect: `/login/magic?email=${encodeURIComponent(email)}`,
-        failureRedirect: "/login/magic",
-      });
+      // authenticator.authenticate throws its redirect Response; attach the
+      // sent-to email as a short-lived cookie so the confirmation can name it
+      // without putting the address in the URL.
+      try {
+        return await authenticator.authenticate("email-link", request, {
+          successRedirect: "/login/magic",
+          failureRedirect: "/login",
+        });
+      } catch (thrown) {
+        if (thrown instanceof Response) {
+          thrown.headers.append("Set-Cookie", await magicLinkEmailCookie.serialize(email));
+        }
+        throw thrown;
+      }
     }
     case "reset":
     default: {
