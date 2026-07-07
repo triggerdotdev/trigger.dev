@@ -191,7 +191,9 @@ describe("enrichLlmMetrics — provider-reported cost", () => {
 
   it("falls back to catalog pricing when providerMetadata carries no cost field", () => {
     // The cheap `"cost"` guard should skip parsing and let the registry price this span.
-    setLlmPricingRegistry(registryReturning(catalogCost({ totalCost: 0.03, matchedModelName: "claude" })));
+    setLlmPricingRegistry(
+      registryReturning(catalogCost({ totalCost: 0.03, matchedModelName: "claude" }))
+    );
 
     const out = enrichOne(
       makeEvent({
