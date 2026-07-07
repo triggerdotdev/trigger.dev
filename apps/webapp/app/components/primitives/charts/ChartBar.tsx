@@ -320,7 +320,10 @@ export function ChartBarRenderer({
                 highlight.setHoveredBar(hoveredKey, index);
               }
             }}
-            onMouseLeave={highlight.reset}
+            // No per-Bar onMouseLeave: moving between bars would fire leave→reset
+            // (all bars snap bright) before the next bar's enter, causing a hover
+            // flicker. The chart-level onMouseLeave (handleMouseLeave) clears the
+            // highlight when the cursor exits the whole chart.
             isAnimationActive={false}
           />
         );
