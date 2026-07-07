@@ -6386,6 +6386,9 @@ function chatAgent<
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
+          // Declared here so the finally can detach it — a handler leaked past
+          // its turn duplicates every mid-stream message into the shared buffer.
+          let turnMsgSub: { off: () => void } | undefined;
           try {
             // Extract turn-level context before entering the span. Slim
             // wire: at most one delta message per record. `headStartMessages`
@@ -6539,6 +6542,7 @@ function chatAgent<
                     msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
                   );
                 });
+                turnMsgSub = msgSub;
 
                 // Track new messages for this turn (user input + assistant response).
                 const turnNewModelMessages: ModelMessage[] = [];
@@ -7851,6 +7855,9 @@ function chatAgent<
             // Turn error handler: write an error chunk + turn-complete to the stream
             // so the client sees the error, then wait for the next message instead
             // of killing the entire run. This keeps the conversation alive.
+            // Detach the turn's message handler first — left attached it would
+            // eat the very message the wait below is waiting for.
+            turnMsgSub?.off();
             if (
               turnError instanceof Error &&
               turnError.name === "AbortError" &&
@@ -8014,6 +8021,8 @@ function chatAgent<
               inferSchemaIn<TClientDataSchema>
             >;
             // Continue to next iteration of the for loop
+          } finally {
+            turnMsgSub?.off();
           }
         }
       } finally {
@@ -9323,9 +9332,14 @@ function createChatSession(
       // for the same reason as the agent loop's `pendingWireMessages`:
       // consumed records never replay, so a turn-local buffer loses them.
       const sessionPendingWire: ChatTaskWirePayload[] = [];
+      // The current turn's message subscription — detached defensively at the
+      // top of next() in case user code threw without complete()/done().
+      let activeMsgSub: { off: () => void } | undefined;
 
       return {
         async next(): Promise<IteratorResult<ChatTurn>> {
+          activeMsgSub?.off();
+          activeMsgSub = undefined;
           if (!booted) {
             booted = true;
             await seedSessionInResumeCursorForCustomLoop(currentPayload);
@@ -9476,6 +9490,7 @@ function createChatSession(
 
             sessionPendingWire.push(msg);
           });
+          activeMsgSub = sessionMsgSub;
 
           // Accumulate messages. Slim wire: pass the single delta message as
           // a 0-or-1-length array. The accumulator's behavior is unchanged —
