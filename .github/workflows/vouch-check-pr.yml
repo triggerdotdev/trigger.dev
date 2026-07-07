@@ -8,7 +8,7 @@ permissions: {}
 
 jobs:
   check-vouch:
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     permissions:
       contents: read
       pull-requests: write # auto-close unvouched PRs
@@ -34,7 +34,7 @@ jobs:
       github.event.pull_request.user.login != 'devin-ai-integration[bot]' &&
       github.event.pull_request.user.login != 'dependabot[bot]' &&
       github.event.pull_request.user.login != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     steps:
       - name: Close non-draft PR
         env:

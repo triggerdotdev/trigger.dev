@@ -14,7 +14,7 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests: Internal"
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-8x
     strategy:
       # one flaky shard shouldn't cancel its siblings - lets us re-run only the failed shard
       fail-fast: false
@@ -131,7 +131,7 @@ jobs:
     name: "📊 Merge Reports"
     if: ${{ !cancelled() }}
     needs: [unitTests]
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

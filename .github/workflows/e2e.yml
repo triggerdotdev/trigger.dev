@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [warp-ubuntu-latest-x64-4x, warp-windows-latest-x64-4x]
         package-manager: ["npm", "pnpm"]
     steps:
       - name: ⬇️ Checkout repo

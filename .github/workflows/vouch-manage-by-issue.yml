@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   manage:
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     if: >-
       contains(github.event.comment.body, 'vouch') ||
       contains(github.event.comment.body, 'denounce') ||

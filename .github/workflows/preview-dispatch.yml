@@ -20,7 +20,7 @@ permissions: {}
 jobs:
   dispatch:
     name: Dispatch preview-deploy to cloud
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     #   label added             -> create
     #   new commit while labeled -> update
     #   label removed / PR closed -> destroy

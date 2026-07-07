@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   typecheck:
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-8x
 
     steps:
       - name: ⬇️ Checkout repo

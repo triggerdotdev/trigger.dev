@@ -33,7 +33,7 @@ jobs:
     strategy:
       matrix:
         package: [coordinator, docker-provider, kubernetes-provider]
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-8x
     env:
       DOCKER_BUILDKIT: "1"
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

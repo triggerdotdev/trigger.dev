@@ -38,7 +38,7 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     env:
       PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
     outputs:
