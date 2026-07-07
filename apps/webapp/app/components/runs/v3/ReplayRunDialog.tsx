@@ -236,7 +236,7 @@ function ReplayForm({
         className="-mx-3 mt-3 w-auto flex-1 border-b border-t border-grid-dimmed"
       >
         <ResizablePanel id="payload" min="300px">
-          <div className="rounded-smbg-background-deep mb-3 h-full min-h-40 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          <div className="mb-3 h-full min-h-40 overflow-y-auto rounded-sm bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <JSONEditor
               className="h-full"
               autoFocus
