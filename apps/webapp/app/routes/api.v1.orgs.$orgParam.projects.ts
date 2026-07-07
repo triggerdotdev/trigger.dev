@@ -7,7 +7,8 @@ import { prisma } from "~/db.server";
 import { createProject } from "~/models/project.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
-import { isCuid } from "cuid";
+import cuid from "cuid";
+const { isCuid } = cuid;
 
 const ParamsSchema = z.object({
   orgParam: z.string(),

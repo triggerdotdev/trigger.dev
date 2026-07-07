@@ -79,7 +79,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 // wraps it in auth + body parsing + error-handler middleware), but the
 // fan-out helper carries the load-bearing logic — including the ops-
 // visibility branch this change adds.
-export async function routeOperationsToRun(
+async function routeOperationsToRun(
   targetRunId: string | undefined,
   operations: RunMetadataChangeOperation[] | undefined,
   env: AuthenticatedEnvironment

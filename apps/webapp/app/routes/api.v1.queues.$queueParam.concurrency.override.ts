@@ -10,7 +10,7 @@ const BodySchema = z.object({
   concurrencyLimit: z.number().int().min(0).max(100000),
 });
 
-export const { action } = createActionApiRoute(
+const route = createActionApiRoute(
   {
     body: BodySchema,
     params: z.object({
@@ -73,3 +73,5 @@ export const { action } = createActionApiRoute(
       );
   }
 );
+
+export const action = route.action;

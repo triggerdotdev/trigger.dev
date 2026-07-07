@@ -9,7 +9,7 @@ const BodySchema = z.object({
   type: RetrieveQueueType.default("id"),
 });
 
-export const { action } = createActionApiRoute(
+const route = createActionApiRoute(
   {
     body: BodySchema,
     params: z.object({
@@ -73,3 +73,5 @@ export const { action } = createActionApiRoute(
     );
   }
 );
+
+export const action = route.action;

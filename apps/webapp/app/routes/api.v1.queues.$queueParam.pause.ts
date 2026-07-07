@@ -9,7 +9,7 @@ const BodySchema = z.object({
   action: z.enum(["pause", "resume"]),
 });
 
-export const { action } = createActionApiRoute(
+const route = createActionApiRoute(
   {
     body: BodySchema,
     params: z.object({
@@ -44,3 +44,5 @@ export const { action } = createActionApiRoute(
     return json(q);
   }
 );
+
+export const action = route.action;
