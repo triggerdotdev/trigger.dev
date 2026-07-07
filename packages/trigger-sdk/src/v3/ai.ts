@@ -9576,6 +9576,10 @@ function createChatSession(
                 } else {
                   throw error;
                 }
+              } finally {
+                // Detach at stream end (like the agent loop): the steering queue
+                // can't inject anymore, so later arrivals must buffer for the next turn.
+                sessionMsgSub.off();
               }
 
               if (response) {

@@ -157,6 +157,49 @@ describe("chat.createSession pending wire buffer", () => {
   });
 });
 
+describe("chat.createSession stop + immediate send", () => {
+  it("dispatches a message that arrives right after a stopped turn", { timeout: 20000 }, async () => {
+    const agent = chat.customAgent({
+      id: "pending-drain.session-stop",
+      run: async (payload) => {
+        const session = chat.createSession(payload, {
+          signal: new AbortController().signal,
+          idleTimeoutInSeconds: 2,
+          // Steering config active — the failure mode routed post-stream
+          // arrivals into the dead steering queue instead of the next turn.
+          pendingMessages: {},
+        });
+        for await (const turn of session) {
+          const result = streamText({
+            model: echoModel(),
+            messages: turn.messages,
+            abortSignal: turn.signal,
+          });
+          await turn.complete(result);
+        }
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "pending-drain-3" });
+    try {
+      const first = harness.sendMessage(userMessage("write a long essay", "u-1"));
+      await waitFor(() => streamedText(harness).length > 0);
+      await harness.sendStop();
+      // Land the next message inside the stopped turn's post-stream window
+      // (the ~2s totalUsage race), after the abort has settled — previously
+      // the still-attached handler steering-routed it into the dead queue.
+      await new Promise((r) => setTimeout(r, 150));
+      void harness.sendMessage(userMessage("m2", "u-2"));
+      await first;
+
+      await waitFor(() => turnCompleteCount(harness) >= 2);
+      await waitFor(() => streamedText(harness).includes("ANSWER(m2)"));
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
 describe("session.in.wait() consume cursor", () => {
   it("advances lastDispatchedSeqNum alongside lastSeqNum on waitpoint delivery", async () => {
     __setSessionOpenImplForTests(undefined);
