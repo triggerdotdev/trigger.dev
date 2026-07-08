@@ -558,7 +558,7 @@ function NoIdpOrgState({ onOpenPortal }: { onOpenPortal: () => void }) {
         title="Get started"
         description="Verify your email domains, then connect your identity provider."
         action={
-          <Button variant="secondary/small" onClick={onOpenPortal} TrailingIcon={ArrowUpRightIcon}>
+          <Button variant="secondary/small" onClick={onOpenPortal}>
             Start setup
           </Button>
         }
@@ -602,11 +602,7 @@ function NoActiveConnectionState({
           title="Domains"
           description="Verify the email domains your team signs in with. Connect your identity provider once a domain is verified."
           action={
-            <Button
-              variant="secondary/small"
-              onClick={onOpenDomain}
-              TrailingIcon={ArrowUpRightIcon}
-            >
+            <Button variant="secondary/small" onClick={onOpenDomain}>
               {domains.length > 0 ? "Add domain" : "Verify domain"}
             </Button>
           }
@@ -633,7 +629,7 @@ function NoActiveConnectionState({
             title="Identity provider"
             description="Connect Okta, Azure AD, Google Workspace, and more."
             action={
-              <Button variant="secondary/small" onClick={onOpenSso} TrailingIcon={ArrowUpRightIcon}>
+              <Button variant="secondary/small" onClick={onOpenSso}>
                 Configure SSO
               </Button>
             }
@@ -754,11 +750,7 @@ function ActiveConnectionState({
           title="Domains"
           description="The email domains your team signs in with."
           action={
-            <Button
-              variant="secondary/small"
-              onClick={() => onOpenPortal("domain_verification")}
-              TrailingIcon={ArrowUpRightIcon}
-            >
+            <Button variant="secondary/small" onClick={() => onOpenPortal("domain_verification")}>
               {status.domains.length > 0 ? "Add domain" : "Verify domain"}
             </Button>
           }
@@ -777,11 +769,7 @@ function ActiveConnectionState({
           title="SSO"
           description={`SSO connection for ${orgTitle}.`}
           action={
-            <Button
-              variant="secondary/small"
-              onClick={() => onOpenPortal("sso")}
-              TrailingIcon={ArrowUpRightIcon}
-            >
+            <Button variant="secondary/small" onClick={() => onOpenPortal("sso")}>
               Manage connection
             </Button>
           }
@@ -969,7 +957,7 @@ function DirectorySyncSection({
         title="Directory Sync"
         description="Sync users and groups from your identity provider over SCIM. Members of mapped groups are provisioned with the group's role, and removing them from your directory revokes their access."
         action={
-          <Button variant="secondary/small" onClick={onOpenPortal} TrailingIcon={ArrowUpRightIcon}>
+          <Button variant="secondary/small" onClick={onOpenPortal}>
             {directorySync.directories.length === 0 ? "Connect a directory" : "Manage directory"}
           </Button>
         }
