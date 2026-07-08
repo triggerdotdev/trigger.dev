@@ -46,3 +46,5 @@ const route = createActionApiRoute(
 );
 
 export const action = route.action;
+// The builder's loader handles CORS OPTIONS preflight
+export const loader = route.loader;
