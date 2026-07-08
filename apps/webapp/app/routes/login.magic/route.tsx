@@ -1,12 +1,13 @@
-import { ArrowLeftIcon, EnvelopeIcon } from "@heroicons/react/20/solid";
+import { ArrowLeftIcon } from "@heroicons/react/20/solid";
 import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
 import {
+  createCookie,
   redirect,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
   type MetaFunction,
 } from "@remix-run/node";
-import { Form, useNavigation } from "@remix-run/react";
+import { Form } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
@@ -15,11 +16,7 @@ import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Header1 } from "~/components/primitives/Headers";
-import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Spinner } from "~/components/primitives/Spinner";
-import { TextLink } from "~/components/primitives/TextLink";
 import { authenticator } from "~/services/auth.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 import {
@@ -38,6 +35,17 @@ import { ssoRedirectForEmail } from "~/services/ssoAutoDiscovery.server";
 import { logger, tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
+
+// The submitted email is carried to the confirmation screen in a short-lived,
+// httpOnly cookie rather than the URL, so the address never lands in access
+// logs, browser history, or error-tracker breadcrumbs.
+const magicLinkEmailCookie = createCookie("magiclink-email", {
+  maxAge: 60 * 10,
+  httpOnly: true,
+  sameSite: "lax",
+  secure: env.NODE_ENV === "production",
+  path: "/",
+});
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -64,13 +72,37 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 
   const session = await getUserSession(request);
-  const error = session.get("auth:error");
 
-  // Get redirectTo from URL params and store in session if present.
-  // Sanitize to drop non-page paths (fetcher routes, callbacks) which would
-  // render blank if the user was sent there post-login.
+  // The email form now lives inline on /login; this route is only the
+  // "magic link sent" confirmation. A visit without a pending magic link
+  // forwards to /login — keeping the inlined form the single source of truth,
+  // avoiding an orphaned duplicate page, and letting /login surface any flashed
+  // auth:error. The guard
+  // runs before reading auth:error so that error isn't consumed here before
+  // /login can show it. An expired/invalid link click (routes/magic.tsx) is
+  // different: the email-link strategy only clears the magic-link key on a
+  // successful verify, so the key is still set and the request lands here — the
+  // confirmation renders the flashed error as magicLinkError below.
   const url = new URL(request.url);
   const sanitized = sanitizeRedirectPath(url.searchParams.get("redirectTo"));
+  // The submitted address is carried in a short-lived cookie (not the URL) so
+  // the confirmation can name it. Validate before echoing it back.
+  const emailCookie = await magicLinkEmailCookie.parse(request.headers.get("Cookie"));
+  const email =
+    typeof emailCookie === "string" && z.string().email().safeParse(emailCookie).success
+      ? emailCookie
+      : null;
+  if (!session.has("triggerdotdev:magiclink")) {
+    // Throw (not return) so the redirect doesn't widen the loader's return
+    // type — otherwise useTypedLoaderData sees TypedResponse<never> in the
+    // union and the component can't read magicLinkError/email.
+    throw redirect(
+      sanitized === "/" ? "/login" : `/login?redirectTo=${encodeURIComponent(sanitized)}`
+    );
+  }
+
+  const error = session.get("auth:error");
+
   const redirectTo = sanitized === "/" ? null : sanitized;
   const headers = new Headers();
 
@@ -92,8 +124,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   return typedjson(
     {
-      magicLinkSent: session.has("triggerdotdev:magiclink"),
       magicLinkError,
+      email,
     },
     {
       headers,
@@ -124,7 +156,7 @@ export async function action({ request }: ActionFunctionArgs) {
       message: "Please enter a valid email address.",
     });
 
-    return redirect("/login/magic", {
+    return redirect("/login", {
       headers: {
         "Set-Cookie": await commitSession(session),
       },
@@ -174,7 +206,7 @@ export async function action({ request }: ActionFunctionArgs) {
             message: errorMessage,
           });
 
-          return redirect("/login/magic", {
+          return redirect("/login", {
             headers: {
               "Set-Cookie": await commitSession(session),
             },
@@ -194,10 +226,20 @@ export async function action({ request }: ActionFunctionArgs) {
         return redirect(ssoRedirect);
       }
 
-      return authenticator.authenticate("email-link", request, {
-        successRedirect: "/login/magic",
-        failureRedirect: "/login/magic",
-      });
+      // authenticator.authenticate throws its redirect Response; attach the
+      // sent-to email as a short-lived cookie so the confirmation can name it
+      // without putting the address in the URL.
+      try {
+        return await authenticator.authenticate("email-link", request, {
+          successRedirect: "/login/magic",
+          failureRedirect: "/login",
+        });
+      } catch (thrown) {
+        if (thrown instanceof Response) {
+          thrown.headers.append("Set-Cookie", await magicLinkEmailCookie.serialize(email));
+        }
+        throw thrown;
+      }
     }
     case "reset":
     default: {
@@ -206,7 +248,9 @@ export async function action({ request }: ActionFunctionArgs) {
       const session = await getUserSession(request);
       session.unset("triggerdotdev:magiclink");
 
-      return redirect("/login/magic", {
+      // The email form now lives on /login, so send "Re-enter email" straight
+      // there rather than bouncing through this route's loader redirect.
+      return redirect("/login", {
         headers: {
           "Set-Cookie": await commitSession(session),
         },
@@ -216,121 +260,53 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function LoginMagicLinkPage() {
-  const { magicLinkSent, magicLinkError } = useTypedLoaderData<typeof loader>();
-  const navigate = useNavigation();
-
-  const isLoading =
-    (navigate.state === "loading" || navigate.state === "submitting") &&
-    navigate.formAction !== undefined &&
-    navigate.formData?.get("action") === "send";
+  const { magicLinkError, email } = useTypedLoaderData<typeof loader>();
 
   return (
     <LoginPageLayout>
       <Form method="post">
         <div className="flex flex-col items-center justify-center">
-          {magicLinkSent ? (
-            <>
-              <Header1 className="pb-6 text-center text-xl font-normal leading-7 md:text-xl lg:text-2xl">
-                We've sent you a magic link!
-              </Header1>
-              <Fieldset className="flex w-full flex-col items-center gap-y-2">
-                <InboxArrowDownIcon className="mb-4 h-12 w-12 text-indigo-500" />
-                <Paragraph className="mb-6 text-center">
-                  We sent you an email which contains a magic link that will log you in to your
-                  account.
-                </Paragraph>
-                <FormButtons
-                  cancelButton={
-                    <Button
-                      type="submit"
-                      name="action"
-                      value="reset"
-                      variant="minimal/small"
-                      LeadingIcon={ArrowLeftIcon}
-                      leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
-                      data-action="re-enter email"
-                    >
-                      Re-enter email
-                    </Button>
-                  }
-                  confirmButton={
-                    <LinkButton
-                      to="/login"
-                      variant="minimal/small"
-                      data-action="log in using another option"
-                    >
-                      Log in using another option
-                    </LinkButton>
-                  }
-                />
-              </Fieldset>
-            </>
-          ) : (
-            <>
-              <Header1 className="pb-4 font-semibold sm:text-2xl md:text-3xl lg:text-4xl">
-                Welcome
-              </Header1>
-              <Paragraph variant="base" className="mb-6 text-center">
-                Create an account or login using email
-              </Paragraph>
-              <Fieldset className="flex w-full flex-col items-center gap-y-2">
-                <InputGroup>
-                  <Input
-                    type="email"
-                    name="email"
-                    spellCheck={false}
-                    placeholder="Email Address"
-                    variant="large"
-                    required
-                    autoFocus
-                  />
-                </InputGroup>
-
+          <Header1 className="pb-6 text-center text-xl font-normal leading-7 md:text-xl lg:text-2xl">
+            We've sent you a magic link!
+          </Header1>
+          <Fieldset className="flex w-full flex-col items-center gap-y-2">
+            <InboxArrowDownIcon className="mb-4 h-12 w-12 text-indigo-500" />
+            <Paragraph className="mb-6 text-center [text-wrap:balance]">
+              {email ? (
+                <>
+                  We emailed a magic link to <span className="text-text-bright">{email}</span> to
+                  log you in to your account.
+                </>
+              ) : (
+                "We emailed you a magic link to log you in to your account."
+              )}
+            </Paragraph>
+            {magicLinkError && <FormError>{magicLinkError}</FormError>}
+            <FormButtons
+              cancelButton={
                 <Button
-                  name="action"
-                  value="send"
                   type="submit"
-                  variant="primary/large"
-                  disabled={isLoading}
-                  fullWidth
-                  data-action="send a magic link"
+                  name="action"
+                  value="reset"
+                  variant="minimal/small"
+                  LeadingIcon={ArrowLeftIcon}
+                  leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
+                  data-action="re-enter email"
                 >
-                  {isLoading ? (
-                    <Spinner className="mr-2 size-5" color="white" />
-                  ) : (
-                    <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
-                  )}
-                  {isLoading ? (
-                    <span className="text-text-bright">Sending…</span>
-                  ) : (
-                    <span className="text-text-bright">Send a magic link</span>
-                  )}
+                  Re-enter email
                 </Button>
-                {magicLinkError && <FormError>{magicLinkError}</FormError>}
-              </Fieldset>
-              <Paragraph variant="extra-small" className="mb-4 mt-6 text-center">
-                By signing up you agree to our{" "}
-                <TextLink href="https://trigger.dev/legal" target="_blank">
-                  terms
-                </TextLink>
-                {" "}and{" "}
-                <TextLink href="https://trigger.dev/legal/privacy" target="_blank">
-                  privacy
-                </TextLink>
-                {" "}policy.
-              </Paragraph>
-
-              <LinkButton
-                to="/login"
-                variant={"minimal/small"}
-                LeadingIcon={ArrowLeftIcon}
-                leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
-                data-action="all login options"
-              >
-                All login options
-              </LinkButton>
-            </>
-          )}
+              }
+              confirmButton={
+                <LinkButton
+                  to="/login"
+                  variant="minimal/small"
+                  data-action="log in using another option"
+                >
+                  Log in using another option
+                </LinkButton>
+              }
+            />
+          </Fieldset>
         </div>
       </Form>
     </LoginPageLayout>

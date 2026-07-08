@@ -26,6 +26,6 @@ export function UserAvatar({
       />
     </div>
   ) : (
-    <UserCircleIcon className={cn("aspect-square text-charcoal-400", className)} />
+    <UserCircleIcon className={cn("aspect-square text-text-dimmed", className)} />
   );
 }

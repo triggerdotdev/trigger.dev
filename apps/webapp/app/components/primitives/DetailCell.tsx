@@ -55,7 +55,7 @@ export function DetailCell({
     <div className={cn("group flex h-11 w-full items-center gap-3 rounded-md p-1 pr-3", className)}>
       <IconInBox
         icon={leadingIcon}
-        className={cn("flex-none transition group-hover:border-charcoal-750", leadingIconClassName)}
+        className={cn("flex-none transition group-hover:border-grid-dimmed", leadingIconClassName)}
         boxClassName={boxClassName}
       />
       <div className="flex flex-1 flex-col">
@@ -78,7 +78,7 @@ export function DetailCell({
         <Icon
           icon={trailingIcon}
           className={cn(
-            "h-6 w-6 flex-none transition group-hover:border-charcoal-750",
+            "h-6 w-6 flex-none transition group-hover:border-grid-dimmed",
             trailingIconClassName
           )}
         />

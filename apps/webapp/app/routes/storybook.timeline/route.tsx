@@ -101,7 +101,7 @@ export default function Story() {
               <Slider.Range className="absolute h-full rounded-full bg-secondary" />
             </Slider.Track>
             <Slider.Thumb
-              className="block h-2 w-2 rounded-full border-4 border-secondary bg-charcoal-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-secondary hover:bg-charcoal-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
+              className="block h-2 w-2 rounded-full border-4 border-secondary bg-background-dimmed shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)] transition hover:border-secondary hover:bg-background-bright focus:shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)] focus:outline-hidden"
               aria-label="Concurrent runs slider"
             />
           </Slider.Root>
@@ -120,7 +120,7 @@ export default function Story() {
               <Slider.Range className="absolute h-full rounded-full bg-secondary" />
             </Slider.Track>
             <Slider.Thumb
-              className="block h-2 w-2 rounded-full border-4 border-secondary bg-charcoal-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-secondary hover:bg-charcoal-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
+              className="block h-2 w-2 rounded-full border-4 border-secondary bg-background-dimmed shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)] transition hover:border-secondary hover:bg-background-bright focus:shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)] focus:outline-hidden"
               aria-label="Concurrent runs slider"
             />
           </Slider.Root>
@@ -141,7 +141,7 @@ export default function Story() {
               <Slider.Range className="absolute h-full rounded-full bg-secondary" />
             </Slider.Track>
             <Slider.Thumb
-              className="block h-2 w-2 rounded-full border-4 border-secondary bg-charcoal-850 shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] transition hover:border-secondary hover:bg-charcoal-800 focus:shadow-[0_1px_3px_4px_rgb(0_0_0_/_0.2),_0_1px_2px_-1px_rgb(0_0_0_/_0.1)] focus:outline-none"
+              className="block h-2 w-2 rounded-full border-4 border-secondary bg-background-dimmed shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)] transition hover:border-secondary hover:bg-background-bright focus:shadow-[0_1px_3px_4px_rgb(0_0_0/0.2),0_1px_2px_-1px_rgb(0_0_0/0.1)] focus:outline-hidden"
               aria-label="Concurrent runs slider"
             />
           </Slider.Root>
@@ -171,7 +171,7 @@ export default function Story() {
                 {(ms) => (
                   <div className="relative z-50 flex h-full flex-col">
                     <div className="relative flex h-9 items-end">
-                      <div className="absolute left-1/2 w-fit -translate-x-1/2 rounded-sm border border-charcoal-600 bg-charcoal-750 px-0.5 py-0.5 text-xxs tabular-nums text-text-bright">
+                      <div className="absolute left-1/2 w-fit -translate-x-1/2 rounded-sm border border-border-bright bg-background-hover px-0.5 py-0.5 text-xxs tabular-nums text-text-bright">
                         {formatDurationMilliseconds(ms, {
                           style: "short",
                           maxDecimalPoints: ms < 1000 ? 0 : 1,
@@ -197,7 +197,7 @@ export default function Story() {
                             index === 0
                               ? "left-0.5"
                               : index === tickCount - 1
-                                ? "-right-0 -translate-x-full"
+                                ? "right-0 -translate-x-full"
                                 : "left-1/2 -translate-x-1/2"
                           }
                         >

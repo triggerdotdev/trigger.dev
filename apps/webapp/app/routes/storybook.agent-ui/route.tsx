@@ -93,7 +93,7 @@ function Example({ title, block }: { title: string; block: ViewBlock }) {
   return (
     <div className="flex flex-col gap-2">
       <Header2>{title}</Header2>
-      <div className="w-[26rem] max-w-full">
+      <div className="w-104 max-w-full">
         <ViewBlocks blocks={[block]} />
       </div>
     </div>

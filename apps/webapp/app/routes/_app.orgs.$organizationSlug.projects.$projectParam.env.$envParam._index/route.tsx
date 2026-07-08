@@ -287,7 +287,7 @@ export default function Page() {
                           <Button
                             variant="primary/small"
                             LeadingIcon={PlusIcon}
-                            leadingIconClassName="-mr-[0.7rem]"
+                            leadingIconClassName="mr-[-0.7rem]"
                             onClick={() => toggleUsefulLinks(true)}
                             className="pl-1.5"
                           >
@@ -607,21 +607,21 @@ function formatAgentType(type: string): string {
 }
 
 const STATUS_BARS: { status: TaskRunStatus; fill: string }[] = [
-  { status: "DELAYED", fill: "#5F6570" },
-  { status: "PENDING", fill: "#5F6570" },
-  { status: "PENDING_VERSION", fill: "#F59E0B" },
-  { status: "EXECUTING", fill: "#3B82F6" },
-  { status: "RETRYING_AFTER_FAILURE", fill: "#3B82F6" },
-  { status: "WAITING_TO_RESUME", fill: "#3B82F6" },
-  { status: "COMPLETED_SUCCESSFULLY", fill: "#28BF5C" },
-  { status: "CANCELED", fill: "#5F6570" },
-  { status: "COMPLETED_WITH_ERRORS", fill: "#F43F5E" },
-  { status: "INTERRUPTED", fill: "#F43F5E" },
-  { status: "SYSTEM_FAILURE", fill: "#F43F5E" },
-  { status: "PAUSED", fill: "#FCD34D" },
-  { status: "CRASHED", fill: "#F43F5E" },
-  { status: "EXPIRED", fill: "#5F6570" },
-  { status: "TIMED_OUT", fill: "#F43F5E" },
+  { status: "DELAYED", fill: "var(--color-run-delayed)" },
+  { status: "PENDING", fill: "var(--color-run-pending)" },
+  { status: "PENDING_VERSION", fill: "var(--color-run-pending-version)" },
+  { status: "EXECUTING", fill: "var(--color-run-executing)" },
+  { status: "RETRYING_AFTER_FAILURE", fill: "var(--color-run-retrying-after-failure)" },
+  { status: "WAITING_TO_RESUME", fill: "var(--color-run-waiting-to-resume)" },
+  { status: "COMPLETED_SUCCESSFULLY", fill: "var(--color-run-completed-successfully)" },
+  { status: "CANCELED", fill: "var(--color-run-canceled)" },
+  { status: "COMPLETED_WITH_ERRORS", fill: "var(--color-run-completed-with-errors)" },
+  { status: "INTERRUPTED", fill: "var(--color-run-interrupted)" },
+  { status: "SYSTEM_FAILURE", fill: "var(--color-run-system-failure)" },
+  { status: "PAUSED", fill: "var(--color-run-paused)" },
+  { status: "CRASHED", fill: "var(--color-run-crashed)" },
+  { status: "EXPIRED", fill: "var(--color-run-expired)" },
+  { status: "TIMED_OUT", fill: "var(--color-run-timed-out)" },
 ];
 
 // Fixed px dims skip ResponsiveContainer's ResizeObserver — otherwise every panel resize re-renders all 25 charts.
@@ -630,7 +630,7 @@ const ACTIVITY_CHART_HEIGHT = 24;
 // chart (112) + gap-1.5 (6) + count min-w (28). Reserved so the column stays put while the chart unmounts.
 const ACTIVITY_CELL_WIDTH = 146;
 const ACTIVITY_CHART_COUNT_CLASS =
-  "-mt-1 inline-block min-w-[1.75rem] text-xxs tabular-nums text-text-dimmed";
+  "-mt-1 inline-block min-w-7 text-xxs tabular-nums text-text-dimmed";
 
 function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] }) {
   const maxTotal = Math.max(...activity.map((d) => d.total));
@@ -665,9 +665,14 @@ function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] 
               isAnimationActive={false}
             />
           ))}
-          <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+          <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
           {maxTotal > 0 && (
-            <ReferenceLine y={maxTotal} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+            <ReferenceLine
+              y={maxTotal}
+              stroke="var(--color-border-brighter)"
+              strokeDasharray="4 4"
+              strokeWidth={1}
+            />
           )}
         </BarChart>
       </div>
@@ -690,7 +695,7 @@ function TaskActivityBlankState() {
           y1={ACTIVITY_CHART_HEIGHT}
           x2={ACTIVITY_CHART_WIDTH}
           y2={ACTIVITY_CHART_HEIGHT}
-          stroke="#333539"
+          stroke="var(--color-border-bright)"
           strokeWidth={1}
         />
       </svg>
@@ -713,7 +718,7 @@ const TaskActivityTooltip = ({ active, payload }: TooltipProps<number, string>) 
     return (
       <TooltipPortal active={active}>
         <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-          <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+          <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
           {items.length === 0 ? (
             <div className="mt-2 text-xs text-text-dimmed">No runs</div>
           ) : (
@@ -858,7 +863,7 @@ function NewTaskPromptsPanel({ onClose }: { onClose: () => void }) {
           className="pl-1"
         />
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <Paragraph variant="small/bright" className="mb-6">
           Copy any example below into your project's{" "}
           <InlineCode variant="extra-small">trigger/</InlineCode> directory and customize it from

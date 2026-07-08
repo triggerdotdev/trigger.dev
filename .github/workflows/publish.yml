@@ -30,7 +30,6 @@ on:
       - ".github/workflows/unit-tests.yml"
       - ".github/workflows/e2e.yml"
       - ".github/workflows/publish-webapp.yml"
-      - ".github/workflows/publish-worker.yml"
       - "packages/**"
       - "!packages/**/*.md"
       - "!packages/**/*.eslintrc"
@@ -78,19 +77,6 @@ jobs:
       image_tag: ${{ inputs.image_tag }}
       # Target registry namespace. Defaults to ghcr.io/<owner> so a fork publishes
       # to its own namespace; set the IMAGE_REGISTRY repository variable to override.
-      image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
-
-  publish-worker:
-    needs: [typecheck]
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/publish-worker.yml
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-    with:
-      image_tag: ${{ inputs.image_tag }}
       image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
 
   publish-worker-v4:

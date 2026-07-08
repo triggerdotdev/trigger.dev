@@ -55,7 +55,7 @@ export function HelpAndFeedback({
           button={
             <PopoverTrigger
               className={cn(
-                "group flex h-8 items-center gap-1.5 rounded pl-[0.4375rem] pr-2 transition-colors hover:bg-charcoal-750 focus-custom",
+                "group flex h-8 items-center gap-1.5 rounded pl-1.75 pr-2 transition-colors hover:bg-background-hover focus-custom",
                 isCollapsed ? "w-full" : "w-full justify-between"
               )}
             >
@@ -89,12 +89,12 @@ export function HelpAndFeedback({
           side="right"
           sideOffset={8}
           hidden={!isCollapsed}
-          buttonClassName="!h-8 w-full"
+          buttonClassName="h-8! w-full"
           asChild
           disableHoverableContent
         />
         <PopoverContent
-          className="min-w-[14rem] divide-y divide-grid-bright overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-56 divide-y divide-grid-bright overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           side={isCollapsed ? "right" : "top"}
           sideOffset={isCollapsed ? 8 : 4}
           align="start"

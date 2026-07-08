@@ -49,14 +49,14 @@ function FunctionCategory({ title, functions }: { title: string; functions: Func
           <SimpleTooltip
             key={fn.name}
             button={
-              <code className="cursor-help rounded bg-charcoal-750 px-1.5 py-0.5 font-mono text-xxs text-indigo-400 transition-colors hover:bg-charcoal-700 hover:text-indigo-300">
+              <code className="cursor-help rounded bg-background-hover px-1.5 py-0.5 font-mono text-xxs text-indigo-400 transition-colors hover:bg-background-raised hover:text-indigo-300">
                 {fn.name}
               </code>
             }
             content={
               <div className="max-w-xs space-y-1">
                 <div className="text-text-bright">{fn.desc}</div>
-                <code className="block rounded bg-charcoal-800 px-1.5 py-1 font-mono text-xxs text-indigo-300">
+                <code className="block rounded bg-background-bright px-1.5 py-1 font-mono text-xxs text-indigo-300">
                   {fn.example}
                 </code>
               </div>

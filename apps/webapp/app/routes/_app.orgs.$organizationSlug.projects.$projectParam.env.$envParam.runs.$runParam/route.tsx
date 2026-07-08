@@ -472,7 +472,7 @@ export default function Page() {
               <CopyableText
                 value={run.friendlyId}
                 variant="text-below"
-                className="-ml-[0.4375rem] h-6 px-1.5 font-mono text-xs hover:text-text-bright"
+                className="-ml-1.75 h-6 px-1.5 font-mono text-xs hover:text-text-bright"
               />
               {tableState && (
                 <div className="flex">
@@ -658,7 +658,7 @@ function TraceView({
         >
           <div className="flex h-full flex-col overflow-hidden">
             {isTruncated && (
-              <div className="shrink-0 border-b border-charcoal-700 px-3 py-2">
+              <div className="shrink-0 border-b border-grid-bright px-3 py-2">
                 <Callout variant="warning" className="text-sm">
                   {missingAnchor
                     ? "Trace too large to display completely."
@@ -1015,7 +1015,7 @@ function TasksTreeView({
                   }}
                 />
               ) : (
-                <Paragraph variant="extra-small" className="flex-1 pl-3 text-charcoal-500">
+                <Paragraph variant="extra-small" className="flex-1 pl-3 text-text-faint">
                   This is the root task
                 </Paragraph>
               )}
@@ -1059,7 +1059,7 @@ function TasksTreeView({
                       <div
                         className={cn(
                           "flex h-8 w-4 items-center",
-                          node.hasChildren && "hover:bg-charcoal-600"
+                          node.hasChildren && "hover:bg-surface-control"
                         )}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1077,9 +1077,9 @@ function TasksTreeView({
                       >
                         {node.hasChildren ? (
                           state.expanded ? (
-                            <ChevronDownIcon className="h-4 w-4 text-charcoal-400" />
+                            <ChevronDownIcon className="h-4 w-4 text-text-dimmed" />
                           ) : (
-                            <ChevronRightIcon className="h-4 w-4 text-charcoal-400" />
+                            <ChevronRightIcon className="h-4 w-4 text-text-dimmed" />
                           )
                         ) : (
                           <div className="h-8 w-4" />
@@ -1159,7 +1159,7 @@ function TasksTreeView({
             <Popover>
               <PopoverArrowTrigger>Shortcuts</PopoverArrowTrigger>
               <PopoverContent
-                className="min-w-[20rem] overflow-y-auto p-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                className="min-w-80 overflow-y-auto p-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
                 align="start"
               >
                 <Header3 spacing>Keyboard shortcuts</Header3>
@@ -1255,7 +1255,7 @@ function TimelineView({
 
   return (
     <div
-      className="h-full overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+      className="h-full overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
       ref={timelineContainerRef}
     >
       <Timeline.Root
@@ -1400,7 +1400,7 @@ function TimelineView({
                               {(ms) => (
                                 <motion.div
                                   className={cn(
-                                    "-ml-[0.5px] h-[0.5625rem] w-px rounded-none",
+                                    "ml-[-0.5px] h-2.25 w-px rounded-none",
                                     eventBackgroundClassName(node.data)
                                   )}
                                   layoutId={
@@ -1421,7 +1421,7 @@ function TimelineView({
                               {(ms) => (
                                 <motion.div
                                   className={cn(
-                                    "-ml-[0.1562rem] size-[0.3125rem] rounded-full border bg-background-bright",
+                                    "ml-[-0.1562rem] size-1.25 rounded-full border bg-background-bright",
                                     eventBorderClassName(node.data)
                                   )}
                                   layoutId={
@@ -1738,7 +1738,7 @@ function SpanWithDuration({
         className={cn(
           "relative flex h-4 w-full min-w-0.5 items-center",
           eventBackgroundClassName(node.data),
-          fadeLeft ? "rounded-r-sm bg-gradient-to-r from-black/50 to-transparent" : "rounded-sm"
+          fadeLeft ? "rounded-r-sm bg-linear-to-r from-black/50 to-transparent" : "rounded-sm"
         )}
         style={{ backgroundSize: "20px 100%", backgroundRepeat: "no-repeat" }}
         layoutId={disableAnimations ? undefined : node.id}
@@ -1806,7 +1806,7 @@ function CurrentTimeIndicator({
           <div className="relative z-50 flex h-full flex-col">
             <div className="relative flex h-6 items-end">
               <div
-                className="absolute w-fit whitespace-nowrap rounded-sm border border-charcoal-600 bg-charcoal-750 px-1 py-0.5 text-xxs tabular-nums text-text-bright"
+                className="absolute w-fit whitespace-nowrap rounded-sm border border-border-bright bg-background-hover px-1 py-0.5 text-xxs tabular-nums text-text-bright"
                 style={{
                   left: `${offset * 100}%`,
                   transform: `translateX(-${offset * 100}%)`,
@@ -1831,7 +1831,7 @@ function CurrentTimeIndicator({
                 )}
               </div>
             </div>
-            <div className="w-px grow border-r border-charcoal-600" />
+            <div className="w-px grow border-r border-border-bright" />
           </div>
         );
       }}

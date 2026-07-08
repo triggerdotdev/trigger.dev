@@ -6,11 +6,9 @@ import { MiddayLogo } from "~/assets/logos/MiddayLogo";
 import { TldrawLogo } from "~/assets/logos/TldrawLogo";
 import { UnkeyLogo } from "~/assets/logos/UnkeyLogo";
 import { LogoType } from "./LogoType";
-import { LinkButton } from "./primitives/Buttons";
 import { Header3 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
 import { TextLink } from "./primitives/TextLink";
-import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 interface QuoteType {
   quote: string;
@@ -53,13 +51,6 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
             <a href="https://trigger.dev">
               <LogoType className="w-36" />
             </a>
-            <LinkButton
-              to="https://trigger.dev/docs"
-              variant={"tertiary/small"}
-              LeadingIcon={BookOpenIcon}
-            >
-              Documentation
-            </LinkButton>
           </div>
           <div className="flex h-full max-w-sm items-center justify-center">{children}</div>
           <Paragraph variant="small" className="text-center">
@@ -77,7 +68,7 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
         </div>
         <div className="flex flex-col items-center gap-4 px-8">
           <Paragraph>Trusted by developers at</Paragraph>
-          <div className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-3 text-charcoal-500 xl:justify-between xl:gap-0">
+          <div className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-3 text-text-faint xl:justify-between xl:gap-0">
             <LyftLogo className="w-11" />
             <UnkeyLogo />
             <MiddayLogo />

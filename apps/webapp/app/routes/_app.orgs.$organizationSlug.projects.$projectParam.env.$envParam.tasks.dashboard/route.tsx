@@ -329,7 +329,7 @@ function EmptyContent({
         <button
           type="button"
           onClick={copyExample}
-          className="inline-flex items-center rounded border border-charcoal-700 bg-background-bright px-2 py-1 text-xs text-text-dimmed transition-colors hover:text-text-bright"
+          className="inline-flex items-center rounded border border-grid-bright bg-background-bright px-2 py-1 text-xs text-text-dimmed transition-colors hover:text-text-bright"
         >
           Copy example code
         </button>

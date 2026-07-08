@@ -4,27 +4,28 @@ import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
 export function darkTheme(): Extension {
-  const chalky = "#e5c07b",
-    coral = "#e06c75",
-    cyan = "#56b6c2",
-    invalid = "#ffffff",
-    ivory = "#abb2bf",
-    stone = "#7d8799",
-    malibu = "#61afef",
-    sage = "#afec73",
-    whiskey = "#d19a66",
-    violet = "#c678dd",
-    lilac = "#9b99ff",
-    darkBackground = "#21252b",
-    highlightBackground = "rgba(71,85,105,0.2)",
-    background = "#121317",
-    tooltipBackground = "#353a42",
-    selection = "rgb(71 85 105)",
-    cursor = "#528bff",
+  // Values come from the --color-editor-* theme palette in tailwind.css.
+  const chalky = "var(--color-editor-type)",
+    coral = "var(--color-editor-heading)",
+    cyan = "var(--color-editor-operator)",
+    invalid = "var(--color-editor-invalid)",
+    ivory = "var(--color-editor-foreground)",
+    stone = "var(--color-editor-comment)",
+    malibu = "var(--color-editor-function)",
+    sage = "var(--color-editor-string)",
+    whiskey = "var(--color-editor-constant)",
+    violet = "var(--color-editor-keyword)",
+    lilac = "var(--color-editor-name)",
+    darkBackground = "var(--color-editor-panel-background)",
+    highlightBackground = "var(--color-editor-highlight-background)",
+    background = "var(--color-editor-background)",
+    tooltipBackground = "var(--color-editor-tooltip-background)",
+    selection = "var(--color-editor-selection)",
+    cursor = "var(--color-editor-cursor)",
     scrollbarTrack = "rgba(0,0,0,0)",
-    scrollbarTrackActive = "#131B2B",
-    scrollbarThumb = "#293649",
-    scrollbarThumbActive = "#3C4B62",
+    scrollbarTrackActive = "var(--color-editor-scrollbar-track-active)",
+    scrollbarThumb = "var(--color-editor-scrollbar-thumb)",
+    scrollbarThumbActive = "var(--color-editor-scrollbar-thumb-active)",
     scrollbarBg = "rgba(0,0,0,0)";
 
   const jsonHeroEditorTheme = EditorView.theme(
@@ -52,18 +53,18 @@ export function darkTheme(): Extension {
       },
 
       ".cm-diagnostic-error": {
-        borderLeft: "2px solid #e11d48",
+        borderLeft: "2px solid var(--color-error)",
       },
 
       ".cm-lint-marker-error": {
         content: "none",
-        backgroundColor: "#e11d48",
+        backgroundColor: "var(--color-error)",
         height: "100%",
         width: "2px",
       },
 
       ".cm-lintPoint:after": {
-        borderBottom: "4px solid #e11d48",
+        borderBottom: "4px solid var(--color-error)",
       },
 
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: cursor },
@@ -76,19 +77,19 @@ export function darkTheme(): Extension {
       ".cm-panels.cm-panels-bottom": { borderTop: "2px solid black" },
 
       ".cm-searchMatch": {
-        backgroundColor: "#72a1ff59",
-        outline: "1px solid #457dff",
+        backgroundColor: "var(--color-editor-search-match)",
+        outline: "1px solid var(--color-editor-search-match-outline)",
       },
       ".cm-searchMatch.cm-searchMatch-selected": {
-        backgroundColor: "#6199ff2f",
+        backgroundColor: "var(--color-editor-search-match-selected)",
       },
 
       ".cm-activeLine": { backgroundColor: highlightBackground },
-      ".cm-selectionMatch": { backgroundColor: "#aafe661a" },
+      ".cm-selectionMatch": { backgroundColor: "var(--color-editor-selection-match)" },
 
       "&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket": {
-        backgroundColor: "rgba(18, 19, 23, 0.9)",
-        outline: "1px solid rgba(81, 90, 107, 0.5)",
+        backgroundColor: "var(--color-editor-matching-bracket)",
+        outline: "1px solid var(--color-editor-matching-bracket-outline)",
       },
 
       ".cm-gutters": {
@@ -104,7 +105,7 @@ export function darkTheme(): Extension {
       ".cm-foldPlaceholder": {
         backgroundColor: "transparent",
         border: "none",
-        color: "#ddd",
+        color: "var(--color-editor-fold-placeholder)",
       },
 
       ".cm-tooltip": {

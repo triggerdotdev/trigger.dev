@@ -100,7 +100,7 @@ export function AIFilterInput() {
                 "disabled:text-text-dimmed/50",
                 isFocused && "placeholder:text-text-dimmed/70"
               )}
-              containerClassName="has-[:disabled]:opacity-100"
+              containerClassName="has-disabled:opacity-100"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && text.trim() && !isLoading) {
                   e.preventDefault();
@@ -145,7 +145,7 @@ export function AIFilterInput() {
                           type="button"
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => setText("")}
-                          className="flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed transition hover:bg-charcoal-600 hover:text-text-bright"
+                          className="flex size-4.5 items-center justify-center rounded-[2px] border border-text-dimmed/40 text-text-dimmed transition hover:bg-surface-control hover:text-text-bright"
                         >
                           <XMarkIcon className="size-3" />
                         </button>
@@ -206,7 +206,7 @@ function ErrorPopover({
       <PopoverContent
         align="start"
         side="bottom"
-        className="w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] max-w-[var(--radix-popover-trigger-width)] border border-error/20 bg-[#2F1D24] px-3 py-2 text-xs text-text-dimmed"
+        className="w-(--radix-popover-trigger-width) min-w-(--radix-popover-trigger-width) max-w-(--radix-popover-trigger-width) border border-error/20 bg-[#2F1D24] px-3 py-2 text-xs text-text-dimmed"
       >
         {error}
       </PopoverContent>

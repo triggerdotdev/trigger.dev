@@ -17,11 +17,11 @@ export function DefinitionTip({
     <TooltipProvider>
       <Tooltip disableHoverableContent={disableHoverableContent}>
         <TooltipTrigger className="text-left">
-          <span className="cursor-default underline decoration-charcoal-500 decoration-dashed underline-offset-4 transition hover:decoration-charcoal-400">
+          <span className="cursor-default underline decoration-text-faint decoration-dashed underline-offset-4 transition hover:decoration-text-dimmed">
             {children}
           </span>
         </TooltipTrigger>
-        <TooltipContent align="end" side="right" className="w-[16rem] min-w-[16rem]">
+        <TooltipContent align="end" side="right" className="w-64 min-w-64">
           <Header3 className="mb-1">{title}</Header3>
           {typeof content === "string" ? (
             <Paragraph variant="small">{content}</Paragraph>

@@ -93,8 +93,8 @@ export default function Page() {
 }
 
 const CTA_CLASSNAME = cn(
-  "group flex h-full min-h-[10rem] flex-col gap-3 rounded-lg border border-grid-bright bg-background-bright p-5 text-left transition-colors",
-  "hover:border-charcoal-600 hover:bg-charcoal-750"
+  "group flex h-full min-h-40 flex-col gap-3 rounded-lg border border-grid-bright bg-background-bright p-5 text-left transition-colors",
+  "hover:border-border-bright hover:bg-background-hover"
 );
 
 type DashboardCtaProps = {

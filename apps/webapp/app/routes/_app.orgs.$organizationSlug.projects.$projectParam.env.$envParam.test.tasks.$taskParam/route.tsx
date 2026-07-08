@@ -516,7 +516,7 @@ function StandardTaskForm({
 
       <ResizablePanelGroup orientation="horizontal" className="grow">
         <ResizablePanel id="test-task-main" min="300px">
-          <div className="flex h-full flex-col overflow-hidden bg-charcoal-900">
+          <div className="flex h-full flex-col overflow-hidden bg-background-deep">
             <div className="flex-1 overflow-hidden">
               <JSONEditor
                 defaultValue={!tab || tab === "payload" ? defaultPayloadJson : defaultMetadataJson}
@@ -698,7 +698,7 @@ function StandardTaskForm({
                           <SelectItem
                             key={queueItem.value}
                             value={queueItem.value}
-                            className="max-w-[var(--popover-anchor-width)]"
+                            className="max-w-(--popover-anchor-width)"
                             icon={
                               queueItem.type === "task" ? (
                                 <TaskIcon className="size-4 shrink-0 text-blue-500" />
@@ -1022,7 +1022,7 @@ function ScheduledTaskForm({
       <input {...getInputProps(environmentId, { type: "hidden" })} value={environment.id} />
       {/* Main area: scrolling form with the toolbar floating on top-right in the same grid cell */}
       <div className="grid min-h-0 grid-cols-1 grid-rows-1 overflow-hidden">
-        <div className="col-start-1 row-start-1 overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="col-start-1 row-start-1 overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="mx-auto w-fit p-3">
             <div className="mb-6 flex items-center gap-1.5">
               <TaskTriggerSourceIcon source={"SCHEDULED"} />
@@ -1248,7 +1248,7 @@ function ScheduledTaskForm({
                         <SelectItem
                           key={queueItem.value}
                           value={queueItem.value}
-                          className="max-w-[var(--popover-anchor-width)]"
+                          className="max-w-(--popover-anchor-width)"
                           icon={
                             queueItem.type === "task" ? (
                               <TaskIcon className="size-4 shrink-0 text-blue-500" />
@@ -1503,7 +1503,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="min-w-[294px] p-0" align="end" sideOffset={6}>
-        <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="p-1">
             {runs.map((run) => (
               <button
@@ -1513,7 +1513,7 @@ function RecentRunsPopover<T extends StandardRun | ScheduledRun>({
                   onRunSelected(run);
                   setIsRecentRunsPopoverOpen(false);
                 }}
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors focus-custom hover:bg-charcoal-900	"
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-hidden transition-colors focus-custom hover:bg-background-deep	"
               >
                 <div className="flex flex-col items-start">
                   <Paragraph variant="small/bright">
@@ -1584,12 +1584,12 @@ function RunTemplatesPopover({
           </Button>
         </PopoverTrigger>
         <PopoverContent className="min-w-[279px] p-0" align="end" sideOffset={6}>
-          <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <div className="p-1">
               {templates.map((template) => (
                 <div
                   key={template.id}
-                  className="group flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-none transition-colors hover:bg-charcoal-900"
+                  className="group flex w-full items-center gap-2 rounded-sm px-2 py-2 outline-hidden transition-colors hover:bg-background-deep"
                 >
                   <button
                     type="button"
@@ -1597,7 +1597,7 @@ function RunTemplatesPopover({
                       onTemplateSelected(template);
                       setIsPopoverOpen(false);
                     }}
-                    className="flex-1 text-left outline-none focus-custom"
+                    className="flex-1 text-left outline-hidden focus-custom"
                   >
                     <div className="flex flex-col items-start">
                       <Paragraph variant="small/bright" className="truncate">
@@ -1660,7 +1660,7 @@ function RunTemplatesPopover({
               damping: 25,
               duration: 0.15,
             }}
-            className="absolute -left-1/2 top-full z-10 mt-1 flex min-w-max max-w-64 items-center gap-1 rounded border border-charcoal-700 bg-background-bright px-2 py-1 text-xs shadow-md outline-none before:absolute before:-top-2 before:left-1/2 before:-translate-x-1/2 before:border-4 before:border-transparent before:border-b-charcoal-700 before:content-[''] after:absolute after:-top-[7px] after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-background-bright after:content-['']"
+            className="absolute -left-1/2 top-full z-10 mt-1 flex min-w-max max-w-64 items-center gap-1 rounded border border-grid-bright bg-background-bright px-2 py-1 text-xs shadow-md outline-hidden before:absolute before:-top-2 before:left-1/2 before:-translate-x-1/2 before:border-4 before:border-transparent before:border-b-grid-bright before:content-[''] after:absolute after:top-[-7px] after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-background-bright after:content-['']"
           >
             <CheckCircleIcon className="h-4 w-4 shrink-0 text-success" /> Template saved
             successfully

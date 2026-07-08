@@ -8,7 +8,7 @@ export function DashboardAgentContextBanner({
   currentPage: string;
 }) {
   return (
-    <div className="flex items-center gap-1.5 border-b border-grid-bright bg-charcoal-800/30 px-3 py-1.5 text-xs text-text-dimmed">
+    <div className="flex items-center gap-1.5 border-b border-grid-bright bg-background-bright/30 px-3 py-1.5 text-xs text-text-dimmed">
       <span className="shrink-0">Context:</span>
       <span className="truncate font-medium text-text-bright">{projectSlug}</span>
       <span>/</span>

@@ -31,20 +31,20 @@ export function SpanHorizontalTimeline({
           <span className="shrink-0 tabular-nums text-xxs text-text-dimmed @[350px]/timeline:text-xs">
             <DateTimeAccurate date={startDate} showTooltip={false} />
           </span>
-          <div className="ml-2 h-3 w-px bg-charcoal-600" />
-          <div className="h-px flex-1 bg-charcoal-600" />
+          <div className="ml-2 h-3 w-px bg-surface-control" />
+          <div className="h-px flex-1 bg-surface-control" />
           {duration != null && (
             <span className="shrink-0 tabular-nums px-2 text-xxs text-text-dimmed @[350px]/timeline:text-xs">
               {formatSpanDuration(duration)}
             </span>
           )}
-          <div className="h-px flex-1 bg-charcoal-600" />
-          <div className="mr-2 h-3 w-px bg-charcoal-600" />
+          <div className="h-px flex-1 bg-surface-control" />
+          <div className="mr-2 h-3 w-px bg-surface-control" />
           <span className="shrink-0 tabular-nums text-xxs text-text-dimmed @[350px]/timeline:text-xs">
             {endDate ? (
               <DateTimeAccurate date={endDate} previousDate={startDate} showTooltip={false} />
             ) : (
-              <span className="text-charcoal-500">—</span>
+              <span className="text-text-faint">—</span>
             )}
           </span>
         </div>

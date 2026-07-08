@@ -310,7 +310,7 @@ export default function Page() {
                                   activity={result}
                                   seriesKey="cost"
                                   label="Spend"
-                                  color="#A855F7"
+                                  color="var(--color-agents)"
                                   valueFormatter={formatCurrency}
                                 />
                               )}
@@ -375,7 +375,7 @@ function AgentContentArea({
           <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
             {(list) =>
               list ? (
-                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                   <SessionsTable
                     sessions={list.sessions}
                     filters={list.filters}
@@ -395,7 +395,7 @@ function AgentContentArea({
           <TypedAwait resolve={runList} errorElement={<TableLoading />}>
             {(list) =>
               list ? (
-                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                   <TaskRunsTable
                     total={list.runs.length}
                     hasFilters={list.hasFilters}
@@ -447,7 +447,7 @@ function AgentDetailSidebar({
           Test agent
         </LinkButton>
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <Property.Table>
           <Property.Item>
             <Property.Label>Slug</Property.Label>
@@ -538,7 +538,7 @@ function ActivityChartSkeleton() {
   return (
     <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
       {Array.from({ length: 42 }).map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-charcoal-850" />
+        <div key={i} className="h-full flex-1 bg-background-dimmed" />
       ))}
     </div>
   );

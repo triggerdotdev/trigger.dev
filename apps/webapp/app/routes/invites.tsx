@@ -132,11 +132,11 @@ export default function Page() {
   });
 
   return (
-    <AppContainer className="bg-charcoal-900">
+    <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
         <MainCenteredContainer
           variant="onboarding"
-          className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+          className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
         >
           <div>
             <FormTitle
@@ -148,7 +148,7 @@ export default function Page() {
             {invites.map((invite) => (
               <Form key={invite.id} method="post" {...getFormProps(form)}>
                 <Fieldset>
-                  <InputGroup className="flex items-center justify-between border-b border-charcoal-800 py-4">
+                  <InputGroup className="flex items-center justify-between border-b border-background-bright py-4">
                     <div className="flex flex-col gap-y-0.5 overflow-hidden">
                       <Header2 className="truncate">{invite.organization.title}</Header2>
                       <Paragraph variant="small" className="truncate">

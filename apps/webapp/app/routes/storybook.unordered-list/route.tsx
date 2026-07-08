@@ -50,7 +50,7 @@ export default function Story() {
           <Header2>{group.label}</Header2>
           {group.variants.map((variant) => (
             <div key={variant} className="flex flex-col">
-              <code className="mb-2 font-mono text-xs text-charcoal-400">{variant}</code>
+              <code className="mb-2 font-mono text-xs text-text-dimmed">{variant}</code>
               <Paragraph variant={variant}>This is a paragraph before the list.</Paragraph>
               <UnorderedList variant={variant}>
                 {sampleItems.map((item) => (

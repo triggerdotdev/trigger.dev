@@ -27,7 +27,7 @@ const PopoverContent = React.forwardRef<
       sideOffset={sideOffset}
       avoidCollisions={true}
       className={cn(
-        "z-50 min-w-max rounded border border-charcoal-700 bg-background-bright p-4 shadow-md outline-none animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        "z-50 min-w-max rounded border border-grid-bright bg-background-bright p-4 shadow-md outline-hidden animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
       )}
       style={{
@@ -47,7 +47,7 @@ function PopoverSectionHeader({
   variant?: ParagraphVariant;
 }) {
   return (
-    <Paragraph variant={variant} className="bg-charcoal-750 px-2.5 py-1.5">
+    <Paragraph variant={variant} className="bg-background-hover px-2.5 py-1.5">
       {title}
     </Paragraph>
   );
@@ -102,9 +102,9 @@ const PopoverMenuItem = React.forwardRef<
       TrailingIcon: isSelected ? CheckIcon : undefined,
       className: cn(
         danger
-          ? "transition-colors group-hover/button:bg-error/10 group-hover/button:text-error [&_span]:transition-colors [&_span]:group-hover/button:text-error"
-          : "group-hover:bg-charcoal-700",
-        isSelected ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined,
+          ? "transition-colors group-hover/button:bg-error/10 group-hover/button:text-error [&_span]:transition-colors group-hover/button:[&_span]:text-error"
+          : "group-hover:bg-background-raised",
+        isSelected ? "bg-background-hover group-hover:bg-surface-control/50" : undefined,
         className
       ),
     } as const;
@@ -130,7 +130,7 @@ const PopoverMenuItem = React.forwardRef<
         onClick={onClick}
         disabled={disabled}
         className={cn(
-          "group/button outline-none focus-custom",
+          "group/button outline-hidden focus-custom",
           contentProps.fullWidth ? "w-full" : ""
         )}
         name={name}
@@ -154,7 +154,7 @@ function PopoverCustomTrigger({
     <PopoverTrigger
       {...props}
       className={cn(
-        "group flex items-center justify-end gap-1 rounded text-text-dimmed transition focus-custom hover:bg-charcoal-850 hover:text-text-bright",
+        "group flex items-center justify-end gap-1 rounded text-text-dimmed transition focus-custom hover:bg-background-dimmed hover:text-text-bright",
         className
       )}
     >
@@ -192,7 +192,7 @@ function PopoverSideMenuTrigger({
       {...props}
       ref={ref}
       className={cn(
-        "flex h-[1.8rem] shrink-0 select-none items-center rounded-sm bg-transparent pl-[0.4rem] pr-2.5 text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-charcoal-750",
+        "flex h-[1.8rem] shrink-0 select-none items-center rounded-sm bg-transparent pl-[0.4rem] pr-2.5 text-center font-sans text-2sm font-normal text-text-bright transition duration-150 focus-custom hover:bg-background-hover",
         shortcut && !hideShortcutKey ? "justify-between gap-x-1.5" : "",
         className
       )}
@@ -207,7 +207,7 @@ function PopoverSideMenuTrigger({
 
 const popoverArrowTriggerVariants = {
   minimal: {
-    trigger: "text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright",
+    trigger: "text-text-dimmed hover:bg-background-raised hover:text-text-bright",
     text: "group-hover:text-text-bright",
     icon: "text-text-dimmed group-hover:text-text-bright",
   },
@@ -219,12 +219,12 @@ const popoverArrowTriggerVariants = {
   },
   secondary: {
     trigger:
-      "bg-secondary border border-charcoal-600 text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550 disabled:opacity-60 disabled:pointer-events-none",
+      "bg-secondary border border-border-bright text-text-bright hover:bg-surface-control hover:border-border-brighter disabled:opacity-60 disabled:pointer-events-none",
     text: "text-text-bright",
     icon: "text-text-bright",
   },
   tertiary: {
-    trigger: "bg-tertiary text-text-bright hover:bg-charcoal-600",
+    trigger: "bg-tertiary text-text-bright hover:bg-surface-control",
     text: "text-text-bright",
     icon: "text-text-bright",
   },
@@ -276,7 +276,7 @@ const popoverVerticalEllipseVariants = {
   },
   secondary: {
     trigger:
-      "size-6 rounded border border-charcoal-600 bg-secondary text-text-bright hover:bg-charcoal-600 hover:border-charcoal-550",
+      "size-6 rounded border border-border-bright bg-secondary text-text-bright hover:bg-surface-control hover:border-border-brighter",
     icon: "size-4",
   },
 } as const;

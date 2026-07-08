@@ -317,7 +317,7 @@ export default function Page() {
   const emailFields = emails.getFieldList();
 
   return (
-    <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+    <MainCenteredContainer className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
       <div>
         <FormTitle
           LeadingIcon={<UserPlusIcon className="size-6 text-indigo-500" />}

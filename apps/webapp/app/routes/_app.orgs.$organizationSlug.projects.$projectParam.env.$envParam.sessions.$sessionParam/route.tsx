@@ -196,7 +196,7 @@ function ConversationPane({ session }: { session: LoadedSession }) {
       ) : (
         <>
           <ConversationUtilityBar isRaw={isRaw} onChangeView={setView} />
-          <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <AgentView agentView={session.agentView} />
           </div>
         </>
@@ -490,10 +490,10 @@ function RawConversationView({
   return (
     <>
       <ConversationUtilityBar isRaw={isRaw} onChangeView={onChangeView} right={controls} />
-      <div className="flex min-h-0 flex-1 flex-col bg-charcoal-900">
+      <div className="flex min-h-0 flex-1 flex-col bg-background-deep">
         <div
           ref={scrollRef}
-          className="flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <div
             className="font-mono text-xs leading-tight"
@@ -601,7 +601,7 @@ function StreamColumnHeader({
   return (
     <div
       className={cn(
-        "relative flex h-9 select-none items-center bg-charcoal-900 font-sans text-sm font-medium leading-normal text-text-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
+        "relative flex h-9 select-none items-center bg-background-deep font-sans text-sm font-medium leading-normal text-text-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
         className
       )}
     >
@@ -657,7 +657,7 @@ function MergedStreamRow({
     <div
       ref={measure}
       data-index={index}
-      className="group flex items-start py-1 hover:bg-charcoal-800"
+      className="group flex items-start py-1 hover:bg-background-bright"
       style={{
         position: "absolute",
         top: 0,
@@ -667,12 +667,12 @@ function MergedStreamRow({
       }}
     >
       <div
-        className="flex-none select-none pl-2 text-right text-charcoal-500"
+        className="flex-none select-none pl-2 text-right text-text-faint"
         style={{ width: `${rowNumberWidthCh}ch` }}
       >
         {lineNumber}
       </div>
-      <div className="flex-none select-none pl-3 text-charcoal-500" style={{ width: timeColWidth }}>
+      <div className="flex-none select-none pl-3 text-text-faint" style={{ width: timeColWidth }}>
         {timestamp}
       </div>
       <div className="flex-none px-3" style={{ width: typeColWidth }}>
@@ -693,7 +693,7 @@ function MergedStreamRow({
       <div
         className={cn(
           "min-w-0 flex-1 px-3 text-text-bright",
-          isWrapped ? "whitespace-pre-wrap break-words" : "whitespace-nowrap"
+          isWrapped ? "whitespace-pre-wrap wrap-break-word" : "whitespace-nowrap"
         )}
       >
         {isWrapped ? wrappedData : inlineData}
@@ -721,7 +721,7 @@ function InspectorPane({ session, status }: { session: LoadedSession; status: Se
           <span className="truncate font-mono text-sm text-text-dimmed">{session.friendlyId}</span>
         </div>
       </div>
-      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <TabContainer>
           <TabButton
             isActive={tab === "overview"}
@@ -749,7 +749,7 @@ function InspectorPane({ session, status }: { session: LoadedSession; status: Se
           </TabButton>
         </TabContainer>
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {tab === "overview" ? (
           <OverviewTab session={session} status={status} />
         ) : tab === "runs" ? (
@@ -1044,12 +1044,12 @@ function TimelineRow({
   return (
     <div className="flex gap-3">
       <div className="flex flex-none flex-col items-center">
-        <div className="my-1.5 size-2.5 shrink-0 rounded-full border border-charcoal-500" />
+        <div className="my-1.5 size-2.5 shrink-0 rounded-full border border-border-brightest" />
         {!isLast &&
           (lineVariant === "dashed" ? (
-            <div className="flex-1 border-l border-dashed border-charcoal-600" />
+            <div className="flex-1 border-l border-dashed border-border-bright" />
           ) : (
-            <div className="w-px flex-1 bg-charcoal-600" />
+            <div className="w-px flex-1 bg-surface-control" />
           ))}
       </div>
       <div className={cn("flex min-w-0 flex-1 flex-col gap-0.5", !isLast && "pb-4")}>

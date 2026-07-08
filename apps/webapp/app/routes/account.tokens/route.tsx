@@ -464,7 +464,7 @@ function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessT
         <Dialog>
           <DialogTrigger
             asChild
-            className="size-6 rounded-sm p-1 text-error transition hover:bg-charcoal-700"
+            className="size-6 rounded-sm p-1 text-error transition hover:bg-background-raised"
           >
             <TrashIcon className="size-3" />
           </DialogTrigger>

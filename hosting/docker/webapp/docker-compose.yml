@@ -18,6 +18,7 @@ services:
       - postgres
       - redis
       - clickhouse
+      - s2
     networks:
       - webapp
       - supervisor
@@ -44,6 +45,15 @@ services:
       LOGIN_ORIGIN: ${LOGIN_ORIGIN:-http://localhost:8030}
       API_ORIGIN: ${API_ORIGIN:-http://localhost:8030}
       ELECTRIC_ORIGIN: http://electric:3000
+      # Realtime streams v2, backed by the bundled s2-lite service. This powers
+      # AI-agent token streaming and run streams. Point the endpoint at a hosted
+      # S2 (https://s2.dev) instead by overriding these and setting an access token.
+      # To fall back to the Redis-backed v1 streams, set the version to `v1`.
+      REALTIME_STREAMS_DEFAULT_VERSION: ${REALTIME_STREAMS_DEFAULT_VERSION:-v2}
+      REALTIME_STREAMS_S2_BASIN: ${REALTIME_STREAMS_S2_BASIN:-trigger-realtime}
+      REALTIME_STREAMS_S2_ENDPOINT: ${REALTIME_STREAMS_S2_ENDPOINT:-http://s2/v1}
+      REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: ${REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS:-true}
+      REALTIME_STREAMS_S2_ACCESS_TOKEN: ${REALTIME_STREAMS_S2_ACCESS_TOKEN:-}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
       DIRECT_URL: ${DIRECT_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
       SESSION_SECRET: ${SESSION_SECRET}
@@ -225,12 +235,62 @@ services:
       retries: 5
       start_period: 10s
 
+  # Generates the s2-lite basin spec from REALTIME_STREAMS_S2_BASIN so the bundled
+  # basin always matches the basin the webapp targets. s2-lite is distroless (no
+  # shell), so a tiny init container writes the spec into a shared volume first.
+  s2-init:
+    image: busybox:${BUSYBOX_IMAGE_TAG:-1.37}
+    restart: "no"
+    logging: *logging-config
+    environment:
+      REALTIME_STREAMS_S2_BASIN: ${REALTIME_STREAMS_S2_BASIN:-trigger-realtime}
+    command:
+      - sh
+      - -c
+      - |
+        cat > /config/s2-spec.json <<JSON
+        {
+          "basins": [
+            {
+              "name": "$$REALTIME_STREAMS_S2_BASIN",
+              "config": { "create_stream_on_append": true, "create_stream_on_read": true }
+            }
+          ]
+        }
+        JSON
+    volumes:
+      - s2-config:/config
+    networks:
+      - webapp
+
+  # s2-lite: the open-source, self-hostable S2 (https://s2.dev) server that backs
+  # realtime streams v2. It's distroless (no shell), so a wget/curl healthcheck
+  # always reports unhealthy even when the API is up — hence no healthcheck.
+  # Runs as root so it can write to the named volume; storage lives in SlateDB
+  # under /data, and the basin is created on startup from the generated spec.
+  s2:
+    image: ${S2_IMAGE:-ghcr.io/s2-streamstore/s2:latest@sha256:d6ded5ca7dd619fa7c946f06e39a98f9c95c6883c8bb884e5eaa129f232c920c}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    logging: *logging-config
+    depends_on:
+      s2-init:
+        condition: service_completed_successfully
+    command: ["lite", "--init-file", "/config/s2-spec.json", "--local-root", "/data"]
+    user: "0:0"
+    volumes:
+      - s2-config:/config
+      - s2:/data
+    networks:
+      - webapp
+
 volumes:
   clickhouse:
   postgres:
   redis:
   shared:
   minio:
+  s2:
+  s2-config:
 
 networks:
   docker-proxy:

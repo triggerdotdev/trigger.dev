@@ -1,7 +1,10 @@
-import { ArrowLeftIcon, LockClosedIcon } from "@heroicons/react/20/solid";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
+import { ArrowLeftIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -29,8 +32,8 @@ function parseReason(value: string | null): Reason {
 
 const CONTENT: Record<Reason, { heading: string; body: string }> = {
   default: {
-    heading: "Sign in with SSO",
-    body: "Enter your work email.",
+    heading: "Welcome",
+    body: "Sign in with your enterprise account",
   },
   domain_policy: {
     heading: "SSO required",
@@ -57,6 +60,16 @@ const ERROR_MESSAGES: Record<string, string> = {
   sso_failed: "We couldn't complete sign-in. Try again.",
   missing_code: "We couldn't complete sign-in. Try again.",
 };
+
+// Client-side validation for the enterprise email field. The form posts
+// cross-route to /auth/sso, so there's no same-route action result to hydrate
+// from — conform validates the format in the browser and renders the styled
+// inline error before submit. Server-side errors keep flowing via ?error=.
+const ssoEmailSchema = z.object({
+  email: z
+    .string({ required_error: "Enter your enterprise email address" })
+    .email("Enter a valid email address"),
+});
 
 export const meta: MetaFunction = () => [
   { title: "Sign in with SSO – Trigger.dev" },
@@ -98,9 +111,19 @@ export default function LoginSsoPage() {
   const content = CONTENT[reason];
   const emailReadOnly = reason === "oauth_blocked";
 
+  const [form, fields] = useForm({
+    id: "login-sso",
+    defaultValue: { email },
+    onValidate({ formData }) {
+      return parseWithZod(formData, { schema: ssoEmailSchema });
+    },
+    shouldValidate: "onBlur",
+    shouldRevalidate: "onInput",
+  });
+
   return (
     <LoginPageLayout>
-      <Form method="post" action="/auth/sso">
+      <Form method="post" action="/auth/sso" {...getFormProps(form)}>
         <input type="hidden" name="redirectTo" value={redirectTo} />
         <input type="hidden" name="flow" value="user_initiated" />
         <div className="flex flex-col items-center justify-center">
@@ -113,16 +136,14 @@ export default function LoginSsoPage() {
           <Fieldset className="flex w-full flex-col items-center gap-y-2">
             <InputGroup>
               <Input
-                type="email"
-                name="email"
+                {...getInputProps(fields.email, { type: "email" })}
                 spellCheck={false}
-                placeholder="Work email"
+                placeholder="Enterprise email address"
                 variant="large"
-                required
                 autoFocus={!emailReadOnly}
-                defaultValue={email}
                 readOnly={emailReadOnly}
               />
+              <FormError id={fields.email.errorId}>{fields.email.errors}</FormError>
             </InputGroup>
 
             <Button
@@ -132,11 +153,7 @@ export default function LoginSsoPage() {
               fullWidth
               data-action="continue with sso"
             >
-              {isLoading ? (
-                <Spinner className="mr-2 size-5" color="white" />
-              ) : (
-                <LockClosedIcon className="mr-2 size-5 text-text-bright" />
-              )}
+              {isLoading && <Spinner className="mr-2 size-5" color="white" />}
               <span className="text-text-bright">
                 {isLoading
                   ? "Redirecting…"
@@ -149,16 +166,24 @@ export default function LoginSsoPage() {
             {errorMessage && <FormError>{errorMessage}</FormError>}
           </Fieldset>
 
-          <LinkButton
-            to="/login"
-            variant="minimal/small"
-            LeadingIcon={ArrowLeftIcon}
-            leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
-            className="mt-6"
-            data-action="all login options"
-          >
-            All login options
-          </LinkButton>
+          <div className="mt-6 flex w-full items-center justify-between">
+            <LinkButton
+              to="/login"
+              variant="minimal/small"
+              LeadingIcon={ArrowLeftIcon}
+              leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
+              data-action="all login options"
+            >
+              All login options
+            </LinkButton>
+            <LinkButton
+              to="https://trigger.dev/contact"
+              variant="minimal/small"
+              data-action="ask about sso"
+            >
+              Ask about SSO
+            </LinkButton>
+          </div>
         </div>
       </Form>
     </LoginPageLayout>

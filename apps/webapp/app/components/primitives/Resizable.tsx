@@ -53,15 +53,15 @@ const ResizableHandle = ({
     {withHandle && (
       <>
         {/* Horizontal orientation dots (vertical arrangement) */}
-        <div className="relative z-[1] flex h-5 w-0.75 flex-col items-center justify-center gap-[0.1875rem] bg-background-dimmed transition-opacity group-hover:opacity-0 group-data-[handle-orientation=vertical]:hidden">
+        <div className="relative z-1 flex h-5 w-0.75 flex-col items-center justify-center gap-0.75 bg-background-dimmed transition-opacity group-hover:opacity-0 group-data-[handle-orientation=vertical]:hidden">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="h-[0.1875rem] w-0.75 rounded-full bg-charcoal-600" />
+            <div key={index} className="h-[0.1875rem] w-0.75 rounded-full bg-surface-control" />
           ))}
         </div>
         {/* Vertical orientation dots (horizontal arrangement) */}
-        <div className="relative z-[1] hidden h-0.75 w-5 flex-row items-center justify-center gap-[0.1875rem] bg-background-dimmed transition-opacity group-hover:opacity-0 group-data-[handle-orientation=vertical]:flex">
+        <div className="relative z-1 hidden h-0.75 w-5 flex-row items-center justify-center gap-0.75 bg-background-dimmed transition-opacity group-hover:opacity-0 group-data-[handle-orientation=vertical]:flex">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="h-0.75 w-[0.1875rem] rounded-full bg-charcoal-600" />
+            <div key={index} className="h-0.75 w-[0.1875rem] rounded-full bg-surface-control" />
           ))}
         </div>
       </>

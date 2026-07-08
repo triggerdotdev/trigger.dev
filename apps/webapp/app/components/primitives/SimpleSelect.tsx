@@ -7,8 +7,8 @@ import { cn } from "~/utils/cn";
 
 const sizes = {
   "secondary/small":
-    "text-xs h-6 bg-tertiary border border-tertiary group-hover:text-text-bright hover:border-charcoal-600 pr-2 pl-1.5",
-  medium: "text-sm h-8 bg-tertiary border border-tertiary hover:border-charcoal-600 px-2.5",
+    "text-xs h-6 bg-tertiary border border-tertiary group-hover:text-text-bright hover:border-border-bright pr-2 pl-1.5",
+  medium: "text-sm h-8 bg-tertiary border border-tertiary hover:border-border-bright px-2.5",
   minimal: "text-xs h-6 bg-transparent hover:bg-tertiary pl-1.5 pr-2",
 };
 
@@ -57,7 +57,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        "relative z-50 min-w-max overflow-hidden rounded-md border border-charcoal-700 bg-background-dimmed text-text-bright shadow-md animate-in fade-in-40",
+        "relative z-50 min-w-max overflow-hidden rounded-md border border-grid-bright bg-background-dimmed text-text-bright shadow-md animate-in fade-in-40",
         position === "popper" && "translate-y-1",
         className
       )}
@@ -68,7 +68,7 @@ const SelectContent = React.forwardRef<
         className={cn(
           "space-y-0.5 px-1 py-1",
           position === "popper" &&
-            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
+            "h-(--radix-select-trigger-height) w-full min-w-(--radix-select-trigger-width)"
         )}
       >
         {children}
@@ -85,7 +85,7 @@ const SelectLabel = React.forwardRef<
   <SelectPrimitive.Label
     ref={ref}
     className={cn(
-      "-ml-1 -mr-1 mb-1 bg-charcoal-900 py-1.5 pl-2 pr-2 font-sans text-xxs font-normal uppercase leading-normal tracking-wider text-text-dimmed first-of-type:-mt-0",
+      "-ml-1 -mr-1 mb-1 bg-background-deep py-1.5 pl-2 pr-2 font-sans text-xxs font-normal uppercase leading-normal tracking-wider text-text-dimmed first-of-type:mt-0",
       className
     )}
     {...props}
@@ -102,7 +102,7 @@ const SelectItem = React.forwardRef<React.ElementRef<typeof SelectPrimitive.Item
     <SelectPrimitive.Item
       ref={ref}
       className={cn(
-        "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-12 text-sm outline-none transition data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-charcoal-750 focus:bg-charcoal-750/50",
+        "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-12 text-sm outline-hidden transition data-disabled:pointer-events-none data-disabled:opacity-50 hover:bg-background-hover focus:bg-background-hover/50",
         className
       )}
       {...props}

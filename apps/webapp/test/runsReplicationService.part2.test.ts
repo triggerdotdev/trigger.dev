@@ -109,8 +109,6 @@ describe("RunsReplicationService (part 2/7)", () => {
         },
       });
 
-      await setTimeout(10_000);
-
       // Check that the row was replicated to clickhouse
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication",
@@ -118,10 +116,17 @@ describe("RunsReplicationService (part 2/7)", () => {
         schema: z.any(),
       });
 
-      const [queryError, result] = await queryRuns({});
+      const result = await vi.waitFor(
+        async () => {
+          const [queryError, rows] = await queryRuns({});
 
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1);
+          expect(queryError).toBeNull();
+          expect(rows?.length).toBe(1);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       expect(result?.[0]).toEqual(
         expect.objectContaining({
           run_id: taskRun.id,
@@ -221,9 +226,6 @@ describe("RunsReplicationService (part 2/7)", () => {
       const created = await prisma.taskRun.createMany({ data: runsData });
       expect(created.count).toBe(1000);
 
-      // Wait for replication
-      await setTimeout(5000);
-
       // Query ClickHouse for all runs using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-stress-bulk-insert",
@@ -231,9 +233,16 @@ describe("RunsReplicationService (part 2/7)", () => {
         schema: z.any(),
       });
 
-      const [queryError, result] = await queryRuns({});
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1000);
+      const result = await vi.waitFor(
+        async () => {
+          const [queryError, rows] = await queryRuns({});
+          expect(queryError).toBeNull();
+          expect(rows?.length).toBe(1000);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
 
       // Check a few random runs for correctness
       for (let i = 0; i < 10; i++) {
@@ -341,9 +350,6 @@ describe("RunsReplicationService (part 2/7)", () => {
         data: { status: "COMPLETED_SUCCESSFULLY" },
       });
 
-      // Wait for replication
-      await setTimeout(5000);
-
       // Query ClickHouse for all runs using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-stress-bulk-insert",
@@ -351,25 +357,30 @@ describe("RunsReplicationService (part 2/7)", () => {
         schema: z.any(),
       });
 
-      const [queryError, result] = await queryRuns({});
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1000);
+      await vi.waitFor(
+        async () => {
+          const [queryError, result] = await queryRuns({});
+          expect(queryError).toBeNull();
+          expect(result?.length).toBe(1000);
 
-      // Check a few random runs for correctness
-      for (let i = 0; i < 10; i++) {
-        const idx = Math.floor(Math.random() * 1000);
-        const expected = runsData[idx];
-        const found = result?.find((r: any) => r.friendly_id === expected.friendlyId);
-        expect(found).toBeDefined();
-        expect(found).toEqual(
-          expect.objectContaining({
-            friendly_id: expected.friendlyId,
-            trace_id: expected.traceId,
-            task_identifier: expected.taskIdentifier,
-            status: "COMPLETED_SUCCESSFULLY",
-          })
-        );
-      }
+          // Check a few random runs for correctness
+          for (let i = 0; i < 10; i++) {
+            const idx = Math.floor(Math.random() * 1000);
+            const expected = runsData[idx];
+            const found = result?.find((r: any) => r.friendly_id === expected.friendlyId);
+            expect(found).toBeDefined();
+            expect(found).toEqual(
+              expect.objectContaining({
+                friendly_id: expected.friendlyId,
+                trace_id: expected.traceId,
+                task_identifier: expected.taskIdentifier,
+                status: "COMPLETED_SUCCESSFULLY",
+              })
+            );
+          }
+        },
+        { timeout: 30_000, interval: 250 }
+      );
 
       await runsReplicationService.stop();
     }

@@ -196,6 +196,15 @@ const EnvironmentSchema = z
     SERVICE_NAME: z.string().default("trigger.dev webapp"),
     SENTRY_DSN: z.string().optional(),
     POSTHOG_PROJECT_KEY: z.string().default("phc_LFH7kJiGhdIlnO22hTAKgHpaKhpM8gkzWAFvHmf5vfS"),
+    // Upstream hosts the /ph reverse proxy forwards to (defaults: PostHog Cloud
+    // EU). The client points api_host at the same-origin /ph path; the proxy
+    // fans out to the ingest vs assets host by path.
+    POSTHOG_INGEST_HOST: z.string().default("eu.i.posthog.com"),
+    POSTHOG_ASSETS_HOST: z.string().default("eu-assets.i.posthog.com"),
+    // PostHog app host, used for the browser toolbar (ui_host) and the server
+    // client. Set to https://us.posthog.com for a US project (also switch the
+    // ingest/assets hosts to their us.i / us-assets equivalents).
+    POSTHOG_HOST: z.string().default("https://eu.posthog.com"),
     TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
     AUTH_GITHUB_CLIENT_ID: z.string().optional(),
     AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),

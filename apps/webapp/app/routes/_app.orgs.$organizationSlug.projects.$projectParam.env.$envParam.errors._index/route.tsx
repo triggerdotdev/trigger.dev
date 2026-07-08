@@ -505,7 +505,7 @@ function ErrorsList({
   if (errorGroups.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3">
-        <BugIcon className="size-16 text-charcoal-650" />
+        <BugIcon className="size-16 text-secondary" />
         <Paragraph className="text-center text-text-dimmed">
           No errors found for this time period.
         </Paragraph>
@@ -514,7 +514,7 @@ function ErrorsList({
   }
 
   return (
-    <Table containerClassName="max-h-full pb-[2.5rem]" showTopBorder={false}>
+    <Table containerClassName="max-h-full pb-10" showTopBorder={false}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
@@ -699,7 +699,7 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
 
   return (
     <div className="flex items-start gap-1.5">
-      <div className="h-6 w-[7rem] rounded-sm">
+      <div className="h-6 w-28 rounded-sm">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={activity} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
             <YAxis domain={[0, maxCount || 1]} hide />
@@ -717,9 +717,14 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
               isAnimationActive={false}
               minPointSize={1}
             />
-            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+            <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
             {maxCount > 0 && (
-              <ReferenceLine y={maxCount} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+              <ReferenceLine
+                y={maxCount}
+                stroke="var(--color-border-brighter)"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+              />
             )}
           </BarChart>
         </ResponsiveContainer>
@@ -746,7 +751,7 @@ const ErrorActivityTooltip = ({ active, payload }: TooltipProps<number, string>)
     return (
       <TooltipPortal active={active}>
         <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-          <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+          <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
           <div className="mt-2 text-xs text-text-bright">
             <span className="tabular-nums">{entry.count}</span>{" "}
             <span className="text-text-dimmed">
@@ -763,9 +768,9 @@ const ErrorActivityTooltip = ({ active, payload }: TooltipProps<number, string>)
 
 function ErrorActivityBlankState() {
   return (
-    <div className="flex h-6 w-[7rem] items-end gap-px rounded-sm">
+    <div className="flex h-6 w-28 items-end gap-px rounded-sm">
       {[...Array(24)].map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-[#212327]" />
+        <div key={i} className="h-full flex-1 bg-background-hover" />
       ))}
     </div>
   );

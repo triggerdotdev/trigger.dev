@@ -48,7 +48,7 @@ export const PageBody = forwardRef<
       ref={ref}
       className={cn(
         scrollable
-          ? "overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          ? "overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           : "overflow-hidden",
         className
       )}
@@ -70,7 +70,7 @@ export function MainCenteredContainer({
   return (
     <div
       className={cn(
-        "h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+        "h-full w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
         variant === "onboarding" && "flex flex-col p-4 lg:p-0"
       )}
     >
@@ -95,10 +95,10 @@ export function MainHorizontallyCenteredContainer({
   className?: string;
 }) {
   return (
-    <div className="w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="w-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div
         className={cn(
-          "mx-auto mt-6 max-w-lg overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 md:mt-14",
+          "mx-auto mt-6 max-w-lg overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control md:mt-14",
           className
         )}
       >

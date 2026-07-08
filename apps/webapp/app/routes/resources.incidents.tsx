@@ -113,7 +113,7 @@ export function IncidentStatusPanel({
         >
           <SimpleTooltip
             button={
-              <PopoverTrigger className="flex !h-8 w-full items-center justify-center rounded border border-yellow-500/30 bg-yellow-500/15 transition-colors hover:border-yellow-500/50 hover:bg-yellow-500/25">
+              <PopoverTrigger className="flex h-8! w-full items-center justify-center rounded border border-yellow-500/30 bg-yellow-500/15 transition-colors hover:border-yellow-500/50 hover:bg-yellow-500/25">
                 <ExclamationTriangleIcon className="size-5 text-yellow-400" />
               </PopoverTrigger>
             }
@@ -125,7 +125,7 @@ export function IncidentStatusPanel({
           />
         </motion.div>
       </div>
-      <PopoverContent side="right" sideOffset={8} align="start" className="!min-w-0 w-52 p-0">
+      <PopoverContent side="right" sideOffset={8} align="start" className="min-w-0! w-52 p-0">
         <IncidentPanelContent message={message} />
       </PopoverContent>
     </Popover>
@@ -149,7 +149,7 @@ function IncidentPanelContent({ message }: { message: string }) {
         to="https://status.trigger.dev"
         target="_blank"
         fullWidth
-        className="border-yellow-500/30 bg-yellow-500/15 hover:!border-yellow-500/50 hover:!bg-yellow-500/25"
+        className="border-yellow-500/30 bg-yellow-500/15 hover:border-yellow-500/50! hover:bg-yellow-500/25!"
       >
         <span className="text-yellow-300">View status page</span>
       </LinkButton>

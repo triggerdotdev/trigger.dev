@@ -48,7 +48,10 @@ export function TabContainer({
   if (variant === "segmented") {
     return (
       <div
-        className={cn("relative flex h-10 items-center rounded bg-charcoal-700/50 p-1", className)}
+        className={cn(
+          "relative flex h-10 items-center rounded bg-background-raised/50 p-1",
+          className
+        )}
       >
         {children}
       </div>
@@ -104,7 +107,7 @@ export function TabLink({
                 <motion.div
                   layoutId={layoutId}
                   transition={{ duration: 0.4, type: "spring" }}
-                  className="absolute inset-0 rounded-[2px] border border-charcoal-500/50 bg-charcoal-600"
+                  className="absolute inset-0 rounded-[2px] border border-border-brightest/50 bg-surface-control"
                 />
               )}
             </>
@@ -118,7 +121,7 @@ export function TabLink({
     return (
       <NavLink
         to={to}
-        className="group flex flex-col items-center border-r border-charcoal-700 px-2 pt-1 focus-custom first:pl-0 last:border-none"
+        className="group flex flex-col items-center border-r border-grid-bright px-2 pt-1 focus-custom first:pl-0 last:border-none"
         end={end}
       >
         {({ isActive, isPending }) => {
@@ -161,7 +164,7 @@ export function TabLink({
                 className="mt-1 h-0.5 w-full bg-indigo-500"
               />
             ) : (
-              <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
+              <div className="mt-1 h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover:opacity-100" />
             )}
           </>
         );
@@ -219,7 +222,7 @@ export function TabButton({
             className="mt-1 h-0.5 w-full bg-indigo-500"
           />
         ) : (
-          <div className="mt-1 h-0.5 w-full bg-charcoal-500 opacity-0 transition duration-200 group-hover:opacity-100" />
+          <div className="mt-1 h-0.5 w-full bg-surface-control-active opacity-0 transition duration-200 group-hover:opacity-100" />
         )}
       </>
     </button>

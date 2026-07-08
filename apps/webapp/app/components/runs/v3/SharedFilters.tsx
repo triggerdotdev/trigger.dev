@@ -424,7 +424,7 @@ export function TimeFilter({
                 />
               </Ariakit.TooltipAnchor>
               {shortcut && (
-                <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
                   <div className="flex items-center gap-2">
                     <span>Filter by time period</span>
                     <ShortcutKey className="size-4 flex-none" shortcut={shortcut} variant="small" />
@@ -680,10 +680,10 @@ export function TimeDropdown({
                 {/* Custom duration row */}
                 <div
                   className={cn(
-                    "col-span-4 flex h-[1.8rem] w-full items-center gap-2 rounded border bg-charcoal-750 py-0.5 pl-0 pr-2 transition-colors",
+                    "col-span-4 flex h-[1.8rem] w-full items-center gap-2 rounded border bg-background-hover py-0.5 pl-0 pr-2 transition-colors",
                     activeSection === "duration" && selectedPeriod === "custom"
                       ? "border-indigo-500 "
-                      : "border-charcoal-650 hover:border-charcoal-600",
+                      : "border-border-bright hover:border-border-bright",
                     validationError &&
                       activeSection === "duration" &&
                       selectedPeriod === "custom" &&
@@ -709,7 +709,7 @@ export function TimeDropdown({
                       setActiveSection("duration");
                       setValidationError(null);
                     }}
-                    className="h-full w-full translate-y-px border-none bg-transparent py-0 pl-2 pr-0 text-xs leading-none text-text-bright outline-none placeholder:text-text-dimmed focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="h-full w-full translate-y-px border-none bg-transparent py-0 pl-2 pr-0 text-xs leading-none text-text-bright outline-hidden placeholder:text-text-dimmed focus:outline-hidden focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                   <div className="flex items-center gap-2">
                     {timeUnits.map((unit) => (

@@ -314,7 +314,7 @@ export function CreateBulkActionInspector({
             className="pl-1"
           />
         </div>
-        <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="px-3 pt-3">
             <Accordion
               type="single"

@@ -128,7 +128,7 @@ export function NotificationPanel({
             button={
               <div className="relative">
                 <PopoverTrigger asChild>
-                  <Button variant="small-menu-item" className="h-8 w-[2.1875rem] justify-center">
+                  <Button variant="small-menu-item" className="h-8 w-8.75 justify-center">
                     <NotificationIcon className="size-5 text-success" />
                   </Button>
                 </PopoverTrigger>
@@ -143,7 +143,7 @@ export function NotificationPanel({
           card
         )}
       </div>
-      <PopoverContent side="right" sideOffset={8} align="end" className="w-56 !min-w-0 p-0">
+      <PopoverContent side="right" sideOffset={8} align="end" className="w-56 min-w-0! p-0">
         {card}
       </PopoverContent>
     </Popover>

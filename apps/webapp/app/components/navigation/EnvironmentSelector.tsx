@@ -73,7 +73,7 @@ export function EnvironmentSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded pl-1.75 transition-colors hover:bg-background-hover",
               isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
               className
             )}
@@ -107,12 +107,12 @@ export function EnvironmentSelector({
         side="right"
         sideOffset={8}
         hidden={!isCollapsed}
-        buttonClassName="!h-8"
+        buttonClassName="h-8!"
         asChild
         disableHoverableContent
       />
       <PopoverContent
-        className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-56 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         side={isCollapsed ? "right" : "bottom"}
         sideOffset={isCollapsed ? 8 : 4}
         align="start"
@@ -257,7 +257,7 @@ function Branches({
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
-            className="hover:bg-charcoal-750"
+            className="hover:bg-background-hover"
             TrailingIcon={ChevronRightIcon}
             trailingIconClassName="text-text-dimmed"
             textAlignLeft
@@ -267,7 +267,7 @@ function Branches({
           </ButtonContent>
         </PopoverTrigger>
         <PopoverContent
-          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           align="start"
           style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
           side="right"
@@ -339,7 +339,7 @@ function Branches({
               </div>
             )}
           </div>
-          <div className="border-t border-charcoal-700 p-1">
+          <div className="border-t border-grid-bright p-1">
             {parentEnvironment.type === "DEVELOPMENT" ? (
               <PopoverMenuItem
                 to={branchesDevPath(organization, project, environment)}

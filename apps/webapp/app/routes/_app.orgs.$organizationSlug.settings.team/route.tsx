@@ -449,7 +449,7 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid max-h-full min-h-full grid-rows-[1fr_auto]">
-          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <div className="mx-auto max-w-3xl px-4 pb-4 pt-20">
               {invites.length > 0 && (
                 <>
@@ -457,7 +457,7 @@ export default function Page() {
                   <ul className="divide-ui-border mb-6 flex w-full flex-col divide-y border-y">
                     {invites.map((invite) => (
                       <li key={invite.id} className="flex items-center gap-4 py-4">
-                        <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
+                        <div className="rounded-md border border-grid-dimmed bg-background-bright p-1.5">
                           <EnvelopeIcon className="size-7 text-text-dimmed" />
                         </div>
                         <div className="flex flex-col gap-0.5">

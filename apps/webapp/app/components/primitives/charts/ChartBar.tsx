@@ -20,8 +20,8 @@ import { useXAxisTicks } from "./useXAxisTicks";
 import { useChartSync } from "./ChartSyncContext";
 import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
 
-// charcoal-500: dashed line mirroring the hovered x across synced charts.
-const SYNC_LINE_COLOR = "#5F6570";
+// Dashed line mirroring the hovered x across synced charts.
+const SYNC_LINE_COLOR = "var(--color-text-faint)";
 
 // Shared with ChartLine so bar/line align when toggling. Right margin keeps the
 // centered last x-axis label from clipping; bottom gives angled labels room.
@@ -228,7 +228,7 @@ export function ChartBarRenderer({
       onClick={zoomHandlers.onClick}
       onMouseLeave={handleMouseLeave}
     >
-      <CartesianGrid vertical={false} stroke="#272A2E" />
+      <CartesianGrid vertical={false} stroke="var(--color-grid-bright)" />
       <XAxis
         dataKey={dataKey}
         tickLine={false}
@@ -237,7 +237,7 @@ export function ChartBarRenderer({
         ticks={baseXTicks}
         interval={baseXInterval}
         tick={{
-          fill: "#878C99",
+          fill: "var(--color-text-dimmed)",
           fontSize: 11,
           style: { fontVariantNumeric: "tabular-nums" },
         }}
@@ -249,7 +249,7 @@ export function ChartBarRenderer({
         tickMargin={8}
         width={computedYAxisWidth}
         tick={{
-          fill: "#878C99",
+          fill: "var(--color-text-dimmed)",
           fontSize: 11,
           style: { fontVariantNumeric: "tabular-nums" },
         }}
@@ -288,7 +288,7 @@ export function ChartBarRenderer({
           x1={zoom.refAreaLeft}
           x2={zoom.refAreaRight}
           strokeOpacity={0.4}
-          fill="#3B82F6"
+          fill="var(--color-pending)"
           fillOpacity={0.3}
         />
       )}
@@ -332,9 +332,9 @@ export function ChartBarRenderer({
           x1={syncZoomSelection.start}
           x2={syncZoomSelection.current}
           isFront
-          stroke="#3B82F6"
+          stroke="var(--color-pending)"
           strokeOpacity={0.3}
-          fill="#3B82F6"
+          fill="var(--color-pending)"
           fillOpacity={0.15}
           className="pointer-events-none"
         />
@@ -360,11 +360,11 @@ export function ChartBarRenderer({
           label={{
             position: "top",
             value: referenceLine.label,
-            fill: "#878C99",
+            fill: "var(--color-text-dimmed)",
             fontSize: 11,
           }}
           isFront={true}
-          stroke="#3B3E45"
+          stroke="var(--color-border-bright)"
           strokeDasharray="4 4"
           className="pointer-events-none"
         />
@@ -374,7 +374,7 @@ export function ChartBarRenderer({
       {enableZoom && zoom?.inspectionLine && (
         <ReferenceLine
           x={zoom.inspectionLine}
-          stroke="#D7D9DD"
+          stroke="var(--color-text-bright)"
           strokeWidth={2}
           isFront={true}
           onClick={(e: any) => {

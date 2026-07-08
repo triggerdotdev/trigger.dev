@@ -238,6 +238,12 @@ export const TriggerTaskRequestBody = z
         metadata: z.any(),
         metadataType: z.string().optional(),
         payloadType: z.string().optional(),
+        /**
+         * Byte size of the (pre-offload) serialized payload, measured by the caller
+         * before any object-store offload. Lets the pipeline know how large a payload
+         * is without downloading an "application/store" reference.
+         */
+        payloadSize: z.number().int().nonnegative().optional(),
         tags: RunTags.optional(),
         test: z.boolean().optional(),
         ttl: z.string().or(z.number().nonnegative().int()).optional(),
@@ -311,6 +317,8 @@ export const BatchTriggerTaskItem = z.object({
       metadataType: z.string().optional(),
       parentAttempt: z.string().optional(),
       payloadType: z.string().optional(),
+      /** Byte size of the (pre-offload) serialized payload for this item. */
+      payloadSize: z.number().int().nonnegative().optional(),
       queue: z
         .object({
           name: z.string(),

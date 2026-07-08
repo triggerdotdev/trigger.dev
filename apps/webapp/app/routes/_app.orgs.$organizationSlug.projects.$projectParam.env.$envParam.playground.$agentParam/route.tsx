@@ -251,8 +251,10 @@ function PlaygroundChat() {
     return data.publicAccessToken;
   }, [actionPath, agent.slug, chatId, tags, machine, maxAttempts, maxDuration, version, region]);
 
-  // Resource route prefix — all realtime traffic goes through session-authed routes
-  const playgroundBaseURL = `${apiOrigin}/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground`;
+  // Same-origin resource routes: use the page origin, not apiOrigin, so in/append
+  // doesn't go cross-origin (CORS preflight) when API_ORIGIN != APP_ORIGIN.
+  const origin = typeof window !== "undefined" ? window.location.origin : apiOrigin;
+  const playgroundBaseURL = `${origin}/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground`;
 
   // The transport is constructed once (guarded ref below); reading
   // `startSession` directly there would freeze its closure to the
@@ -458,7 +460,7 @@ function PlaygroundChat() {
 
           {/* Scroll container is always mounted — useAutoScrollToBottom caches
               its container on mount and won't refind it across remounts. */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <div
               ref={messagesRootRef}
               className={cn(
@@ -506,7 +508,7 @@ function PlaygroundChat() {
                   ))}
                   {isSubmitted && (
                     <div className="flex justify-start">
-                      <div className="flex items-center gap-2 rounded-lg bg-charcoal-750 px-4 py-2.5">
+                      <div className="flex items-center gap-2 rounded-lg bg-background-hover px-4 py-2.5">
                         <Spinner className="size-3" />
                         <span className="text-sm text-text-dimmed">Thinking…</span>
                       </div>
@@ -557,7 +559,7 @@ function PlaygroundChat() {
                             "rounded px-1.5 py-0.5",
                             msg.mode === "steering"
                               ? "bg-amber-500/10 text-amber-400"
-                              : "bg-charcoal-700 text-text-dimmed"
+                              : "bg-background-raised text-text-dimmed"
                           )}
                         >
                           {msg.mode === "steering" ? "Steering" : "Queued"}
@@ -641,7 +643,7 @@ function ChatComposer({
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-charcoal-650 bg-background-bright p-2 transition focus-within:border-charcoal-550">
+    <div className="rounded-2xl border border-border-bright bg-background-bright p-2 transition focus-within:border-border-brighter">
       <div className="flex items-end gap-2">
         <textarea
           ref={inputRef}
@@ -650,7 +652,7 @@ function ChatComposer({
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           className={cn(
-            "scrollbar-gutter-stable flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-none ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [field-sizing:content] focus:border-0 focus:outline-none focus:ring-0",
+            "scrollbar-gutter-stable flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:border-0 focus:outline-hidden focus:ring-0",
             minHeightClassName,
             maxHeightClassName
           )}
@@ -789,7 +791,7 @@ function PlaygroundSidebar({
         defaultValue="clientData"
         className="flex h-full min-h-0 flex-col overflow-hidden pt-1"
       >
-        <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <ClientTabsList variant="underline" className="mx-3 shrink-0">
             <ClientTabsTrigger
               value="clientData"
@@ -829,7 +831,7 @@ function PlaygroundSidebar({
         {/* Client Data tab */}
         <ClientTabsContent
           value="clientData"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <div className="min-w-64 space-y-4 p-3">
             <div className="space-y-2">
@@ -839,7 +841,7 @@ function PlaygroundSidebar({
                   Sent with each conversation turn.
                 </Paragraph>
               </div>
-              <div className="overflow-hidden rounded border border-charcoal-650">
+              <div className="overflow-hidden rounded border border-border-bright">
                 <JSONEditor
                   defaultValue={clientDataJson}
                   readOnly={false}
@@ -882,7 +884,7 @@ function PlaygroundSidebar({
         {/* Options tab */}
         <ClientTabsContent
           value="options"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <div className="space-y-4 p-3">
             <InputGroup fullWidth>
@@ -1020,7 +1022,7 @@ function PlaygroundSidebar({
         {/* Session tab */}
         <ClientTabsContent
           value="session"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <div className="min-w-64 space-y-3 p-3">
             {session ? (
@@ -1053,7 +1055,7 @@ function PlaygroundSidebar({
         {/* History tab */}
         <ClientTabsContent
           value="history"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <HistoryTabContent
             conversations={recentConversations}
@@ -1206,7 +1208,7 @@ function ConversationMenu({
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverVerticalEllipseTrigger variant="minimal" />
-      <PopoverContent className="w-fit min-w-[12rem] p-1" align="end">
+      <PopoverContent className="w-fit min-w-48 p-1" align="end">
         <div className="flex flex-col gap-1">
           <PopoverMenuItem
             icon={PlusIcon}
@@ -1301,8 +1303,8 @@ function HistoryTabContent({
           <li key={conv.id}>
             <div
               className={cn(
-                "group flex items-start gap-2 rounded-sm px-2 py-1.5 transition-colors hover:bg-charcoal-800",
-                isActive && "bg-charcoal-750 hover:bg-charcoal-750",
+                "group flex items-start gap-2 rounded-sm px-2 py-1.5 transition-colors hover:bg-background-bright",
+                isActive && "bg-background-hover hover:bg-background-hover",
                 deletingId === conv.id && "pointer-events-none opacity-50"
               )}
             >
@@ -1311,7 +1313,7 @@ function HistoryTabContent({
               </span>
               <Link
                 to={`?conversation=${conv.id}`}
-                className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-none focus-custom"
+                className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-hidden focus-custom"
               >
                 <Paragraph variant="small/bright" className="line-clamp-1 text-left">
                   {conv.title}

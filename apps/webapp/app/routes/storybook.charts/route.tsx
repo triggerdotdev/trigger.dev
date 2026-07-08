@@ -87,7 +87,7 @@ function ChartsDashboard() {
 
   return (
     <div className="grid">
-      <div className="flex items-center justify-between gap-4 border-b border-charcoal-700 bg-background-bright p-2 pl-3">
+      <div className="flex items-center justify-between gap-4 border-b border-grid-bright bg-background-bright p-2 pl-3">
         <div className="flex w-fit items-center">
           <RadioGroup
             name="chartState"

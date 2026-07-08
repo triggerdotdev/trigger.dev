@@ -24,7 +24,11 @@ export class DefaultPayloadProcessor implements PayloadProcessor {
       );
 
       span.setAttribute("needsOffloading", needsOffloading);
-      span.setAttribute("size", size);
+      // When the caller already offloaded the payload (payloadType "application/store"), the
+      // packet here is just the small object-store reference, so `size` measures the reference,
+      // not the payload. Prefer the caller-reported pre-offload size when it's provided so the
+      // span reflects the real payload size. For inline payloads the two agree.
+      span.setAttribute("size", request.body.options?.payloadSize ?? size);
 
       if (!needsOffloading) {
         return packet;

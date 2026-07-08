@@ -299,7 +299,7 @@ export default function Page() {
       <DialogContent className="p-0 pt-2.5 md:max-w-2xl lg:max-w-3xl">
         <DialogHeader className="px-4">New environment variables</DialogHeader>
         <Form method="post" {...getFormProps(form)}>
-          <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <InputGroup fullWidth>
               <Label>Environments</Label>
               {selectedBranchId ? (
@@ -356,9 +356,9 @@ export default function Page() {
                         <TooltipTrigger>
                           <TextLink
                             to={v3BillingPath(organization)}
-                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-border-bright py-2.5 pl-3 pr-4 transition hover:border-border-brightest hover:bg-background-dimmed"
                           >
-                            <LockClosedIcon className="size-4 text-charcoal-500" />
+                            <LockClosedIcon className="size-4 text-text-faint" />
                             <EnvironmentLabel
                               environment={{ type: "STAGING" }}
                               className="text-sm"
@@ -376,9 +376,9 @@ export default function Page() {
                         <TooltipTrigger>
                           <TextLink
                             to={v3BillingPath(organization)}
-                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
+                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-border-bright py-2.5 pl-3 pr-4 transition hover:border-border-brightest hover:bg-background-dimmed"
                           >
-                            <LockClosedIcon className="size-4 text-charcoal-500" />
+                            <LockClosedIcon className="size-4 text-text-faint" />
                             <EnvironmentLabel
                               environment={{ type: "PREVIEW" }}
                               className="text-sm"

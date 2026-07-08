@@ -213,7 +213,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
                     <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
                       <BatchStatusCombo status={status} />
                     </div>
-                    <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                    <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
                       {descriptionForBatchStatus(status)}
                     </Paragraph>
                   </div>

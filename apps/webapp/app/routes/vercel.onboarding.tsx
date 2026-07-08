@@ -327,11 +327,11 @@ export default function VercelOnboardingPage() {
 
   if (data.step === "error") {
     return (
-      <AppContainer className="bg-charcoal-900">
+      <AppContainer className="bg-background-deep">
         <BackgroundWrapper>
           <MainCenteredContainer
             variant="onboarding"
-            className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+            className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
           >
             <FormTitle title="Installation Expired" description={data.error} />
             <Button variant="primary/medium" onClick={() => window.close()} className="w-full">
@@ -358,11 +358,11 @@ export default function VercelOnboardingPage() {
     })();
 
     return (
-      <AppContainer className="bg-charcoal-900">
+      <AppContainer className="bg-background-deep">
         <BackgroundWrapper>
           <MainCenteredContainer
             variant="onboarding"
-            className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+            className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
           >
             <FormTitle
               LeadingIcon={<BuildingOfficeIcon className="size-7 text-indigo-500" />}
@@ -438,11 +438,11 @@ export default function VercelOnboardingPage() {
   const isLoading = isSubmitting || isInstalling;
 
   return (
-    <AppContainer className="bg-charcoal-900">
+    <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
         <MainCenteredContainer
           variant="onboarding"
-          className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+          className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
         >
           <FormTitle
             LeadingIcon={<FolderIcon className="size-7 text-indigo-500" />}

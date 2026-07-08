@@ -233,7 +233,7 @@ export function AIPayloadTabContent({
               onChange={(e) => setPrompt(e.target.value)}
               disabled={isLoading}
               rows={5}
-              className="m-0 min-h-10 w-full resize-none border-0 bg-background-bright px-3 py-2.5 text-sm text-text-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 placeholder:text-text-dimmed focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+              className="focus-custom m-0 min-h-10 w-full resize-none border-0 bg-background-bright px-3 py-2.5 text-sm text-text-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control placeholder:text-text-dimmed focus:border-0 focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && prompt.trim() && !isLoading) {
                   e.preventDefault();
@@ -332,7 +332,7 @@ export function AIPayloadTabContent({
                               void navigator.clipboard.writeText(lastPayload);
                             }
                           }}
-                          className="rounded p-1 text-text-dimmed transition-colors hover:bg-charcoal-700 hover:text-text-bright"
+                          className="rounded p-1 text-text-dimmed transition-colors hover:bg-background-raised hover:text-text-bright"
                         >
                           <ClipboardIcon className="size-4" />
                         </button>
@@ -356,7 +356,7 @@ export function AIPayloadTabContent({
                           setShowThinking(false);
                           setThinking("");
                         }}
-                        className="rounded p-1 text-text-dimmed transition-colors hover:bg-charcoal-700 hover:text-text-bright"
+                        className="rounded p-1 text-text-dimmed transition-colors hover:bg-background-raised hover:text-text-bright"
                       >
                         <XMarkIcon className="size-4" />
                       </button>
@@ -367,20 +367,20 @@ export function AIPayloadTabContent({
               <div
                 className={cn(
                   "streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed",
-                  "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                  "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
                   // Strip Streamdown's code-block chrome
-                  "[&_[data-streamdown=code-block-header]]:hidden",
-                  "[&_[data-streamdown=code-block]]:!border-0",
-                  "[&_[data-streamdown=code-block]]:!bg-transparent",
-                  "[&_[data-streamdown=code-block]]:!p-0",
-                  "[&_[data-streamdown=code-block]]:!my-0",
-                  "[&_[data-streamdown=code-block]]:!gap-0",
+                  "**:data-[streamdown=code-block-header]:hidden",
+                  "**:data-[streamdown=code-block]:border-0!",
+                  "**:data-[streamdown=code-block]:bg-transparent!",
+                  "**:data-[streamdown=code-block]:p-0!",
+                  "**:data-[streamdown=code-block]:my-0!",
+                  "**:data-[streamdown=code-block]:gap-0!",
                   // Strip the inner code-block-body border (it draws a faint inset frame)
-                  "[&_[data-streamdown=code-block-body]]:!border-0",
+                  "**:data-[streamdown=code-block-body]:border-0!",
                   // Style Streamdown's inner code-block (where the horizontal scrollbar lives)
-                  "[&_[data-streamdown=code-block-body]]:scrollbar-thin",
-                  "[&_[data-streamdown=code-block-body]]:scrollbar-track-transparent",
-                  "[&_[data-streamdown=code-block-body]]:scrollbar-thumb-charcoal-600"
+                  "**:data-[streamdown=code-block-body]:scrollbar-thin",
+                  "**:data-[streamdown=code-block-body]:scrollbar-track-transparent",
+                  "**:data-[streamdown=code-block-body]:scrollbar-thumb-surface-control"
                 )}
               >
                 <Suspense fallback={<p className="whitespace-pre-wrap">{thinking}</p>}>
@@ -407,7 +407,7 @@ export function AIPayloadTabContent({
                 setPrompt(example);
                 submitGeneration(example);
               }}
-              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors focus-custom hover:border-solid hover:border-indigo-500 focus-visible:!rounded-full disabled:cursor-not-allowed disabled:opacity-50"
+              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-border-bright px-4 py-2 transition-colors focus-custom hover:border-solid hover:border-indigo-500 focus-visible:rounded-full! disabled:cursor-not-allowed disabled:opacity-50"
             >
               <SparkleListIcon className="size-4 shrink-0 text-text-dimmed transition group-hover:text-indigo-500" />
               <Paragraph
