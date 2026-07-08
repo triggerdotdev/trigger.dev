@@ -111,7 +111,7 @@ export interface SelectProps<TValue extends string | string[], TItem> extends Om
   clearSearchOnSelection?: boolean;
   dropdownIcon?: boolean | React.ReactNode;
   popoverClassName?: string;
-  placement?: Ariakit.SelectPopoverProps["placement"];
+  placement?: Ariakit.SelectProviderProps<TValue>["placement"];
 }
 
 export function Select<TValue extends string | string[], TItem>({
