@@ -201,6 +201,10 @@ const EnvironmentSchema = z
     // fans out to the ingest vs assets host by path.
     POSTHOG_INGEST_HOST: z.string().default("eu.i.posthog.com"),
     POSTHOG_ASSETS_HOST: z.string().default("eu-assets.i.posthog.com"),
+    // PostHog app host, used for the browser toolbar (ui_host) and the server
+    // client. Set to https://us.posthog.com for a US project (also switch the
+    // ingest/assets hosts to their us.i / us-assets equivalents).
+    POSTHOG_HOST: z.string().default("https://eu.posthog.com"),
     TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
     AUTH_GITHUB_CLIENT_ID: z.string().optional(),
     AUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
