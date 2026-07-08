@@ -39,6 +39,10 @@ This template will fail the Helm deployment if external config is missing for re
 {{- end }}
 {{- end }}
 
+{{- if and .Values.s2.deploy .Values.s2.external.endpoint }}
+{{- fail "S2 configuration conflict: s2.external.endpoint is set but s2.deploy=true, so the external endpoint would be ignored. Set s2.deploy=false to use an external S2 endpoint, or clear s2.external.endpoint to use the bundled s2-lite." }}
+{{- end }}
+
 {{- if not .Values.registry.deploy }}
 {{- if or (not .Values.registry.external.host) }}
 {{- fail "Registry external configuration is required when registry.deploy=false. Please provide registry.external.host" }}

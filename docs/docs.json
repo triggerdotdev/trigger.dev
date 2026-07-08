@@ -282,6 +282,7 @@
               "self-hosting/overview",
               "self-hosting/docker",
               "self-hosting/kubernetes",
+              "self-hosting/security",
               {
                 "group": "Environment variables",
                 "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
