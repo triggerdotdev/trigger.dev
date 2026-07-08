@@ -986,7 +986,7 @@ function DirectorySyncSection({
           {directorySync.directories.map((dir) => (
             <div
               key={dir.id}
-              className="flex items-center justify-between rounded-md border border-grid-bright bg-charcoal-800 px-3 py-2"
+              className="flex items-center justify-between rounded-md border border-grid-bright bg-background-bright px-3 py-2"
             >
               <div>
                 <Paragraph variant="small" className="text-text-bright">
