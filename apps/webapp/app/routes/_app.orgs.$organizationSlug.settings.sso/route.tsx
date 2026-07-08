@@ -6,15 +6,11 @@ import {
 } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { redirect } from "@remix-run/server-runtime";
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { z } from "zod";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
-import {
-  MainHorizontallyCenteredContainer,
-  PageBody,
-  PageContainer,
-} from "~/components/layout/AppLayout";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -25,10 +21,16 @@ import {
   DialogFooter,
   DialogHeader,
 } from "~/components/primitives/Dialog";
-import { Header2, Header3 } from "~/components/primitives/Headers";
-import { Label } from "~/components/primitives/Label";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import {
+  SettingsActions,
+  SettingsBlock,
+  SettingsContainer,
+  SettingsHeader,
+  SettingsRow,
+  SettingsSection,
+} from "~/components/primitives/SettingsLayout";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
 import { prisma } from "~/db.server";
@@ -370,58 +372,6 @@ function useOverrideDraft<T>(serverValue: T): {
   };
 }
 
-// Shared layout primitives (mirrors /account/security): a section header with a
-// bottom divide, then rows of title+subtitle left / action right.
-function SettingsSection({ children }: { children: ReactNode }) {
-  return <section className="w-full [&:not(:first-child)]:mt-10">{children}</section>;
-}
-
-function SectionHeader({
-  title,
-  description,
-  action,
-}: {
-  title: ReactNode;
-  description?: ReactNode;
-  action?: ReactNode;
-}) {
-  return (
-    <div className="flex w-full items-end justify-between gap-4 border-b border-grid-dimmed pb-3">
-      <div className="space-y-1">
-        <Header2>{title}</Header2>
-        {description ? (
-          <Paragraph variant="small" className="text-text-dimmed">
-            {description}
-          </Paragraph>
-        ) : null}
-      </div>
-      {action ? <div className="flex flex-none items-center">{action}</div> : null}
-    </div>
-  );
-}
-
-function SettingRow({
-  title,
-  description,
-  action,
-  htmlFor,
-}: {
-  title: ReactNode;
-  description?: ReactNode;
-  action: ReactNode;
-  htmlFor?: string;
-}) {
-  return (
-    <div className="flex w-full items-center justify-between gap-4 border-b border-grid-dimmed py-4">
-      <div className="flex-1 space-y-1">
-        <Label htmlFor={htmlFor}>{title}</Label>
-        {description ? <Paragraph variant="small">{description}</Paragraph> : null}
-      </div>
-      <div className="flex flex-none items-center">{action}</div>
-    </div>
-  );
-}
-
 export default function Page() {
   const { status, orgTitle, jitRoles, directorySync, hasSso } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
@@ -504,7 +454,7 @@ export default function Page() {
         <PageTitle title="SSO & Directory Sync" />
       </NavBar>
       <PageBody scrollable={true}>
-        <MainHorizontallyCenteredContainer className="max-w-[37.5rem] overflow-visible">
+        <SettingsContainer>
           {!isEntitled ? (
             <EnterpriseUpsellState organizationSlug={organization.slug} />
           ) : !status.hasIdpOrg ? (
@@ -546,7 +496,7 @@ export default function Page() {
               onSave={submitSave}
             />
           )}
-        </MainHorizontallyCenteredContainer>
+        </SettingsContainer>
       </PageBody>
 
       <PortalLinkDialog url={portalUrl} intent={portalIntent} onClose={() => setPortalUrl(null)} />
@@ -567,7 +517,7 @@ export default function Page() {
 function EnterpriseUpsellState({ organizationSlug }: { organizationSlug: string }) {
   return (
     <SettingsSection>
-      <SectionHeader
+      <SettingsHeader
         title="SSO & Directory Sync"
         description="Single sign-on (SAML/OIDC) and Directory Sync (SCIM) let your IT team manage access to Trigger.dev from your identity provider, such as Okta, Azure AD, or Google Workspace."
         action={<Badge variant="small">Enterprise</Badge>}
@@ -600,11 +550,11 @@ function EnterpriseUpsellState({ organizationSlug }: { organizationSlug: string 
 function NoIdpOrgState({ onOpenPortal }: { onOpenPortal: () => void }) {
   return (
     <SettingsSection>
-      <SectionHeader
+      <SettingsHeader
         title="SSO"
         description="Manage access to Trigger.dev from your identity provider, such as Okta, Azure AD, or Google Workspace."
       />
-      <SettingRow
+      <SettingsRow
         title="Get started"
         description="Verify your email domains, then connect your identity provider."
         action={
@@ -648,7 +598,7 @@ function NoActiveConnectionState({
   return (
     <>
       <SettingsSection>
-        <SectionHeader
+        <SettingsHeader
           title="Domains"
           description="Verify the email domains your team signs in with. Connect your identity provider once a domain is verified."
           action={
@@ -662,24 +612,24 @@ function NoActiveConnectionState({
           }
         />
         {failedDomains.length > 0 && (
-          <div className="w-full border-b border-grid-dimmed py-4">
+          <SettingsBlock>
             <Callout variant="error">
               {failedDomains.length === 1
                 ? `Verification failed for ${failedDomains[0].domain}. Check the DNS records in the admin portal and try again.`
                 : `${failedDomains.length} domains failed verification. Check the DNS records in the admin portal and try again.`}
             </Callout>
-          </div>
+          </SettingsBlock>
         )}
         {domains.length > 0 && <DomainList domains={domains} />}
       </SettingsSection>
 
       {hasVerifiedDomain && (
         <SettingsSection>
-          <SectionHeader
+          <SettingsHeader
             title="SSO"
             description="Connect your identity provider to enable SSO for your verified domains."
           />
-          <SettingRow
+          <SettingsRow
             title="Identity provider"
             description="Connect Okta, Azure AD, Google Workspace, and more."
             action={
@@ -705,13 +655,21 @@ function NoActiveConnectionState({
 
 function DomainList({ domains }: { domains: ReadonlyArray<DomainRow> }) {
   return (
-    <ul className="w-full">
+    <>
       {domains.map((d) => {
         const visual = domainVisual(d.state);
         return (
-          <li
+          <SettingsRow
             key={d.domain}
-            className="flex items-center justify-between gap-4 border-b border-grid-dimmed py-3"
+            size="sm"
+            action={
+              <span
+                className={cn("flex shrink-0 items-center gap-1 text-sm capitalize", visual.label)}
+              >
+                {visual.icon}
+                {d.state}
+              </span>
+            }
           >
             <div className="flex flex-col">
               <span className="font-mono text-sm text-text-bright">{d.domain}</span>
@@ -721,16 +679,10 @@ function DomainList({ domains }: { domains: ReadonlyArray<DomainRow> }) {
                 </span>
               )}
             </div>
-            <span
-              className={cn("flex shrink-0 items-center gap-1 text-xs capitalize", visual.label)}
-            >
-              {visual.icon}
-              {d.state}
-            </span>
-          </li>
+          </SettingsRow>
         );
       })}
-    </ul>
+    </>
   );
 }
 
@@ -738,18 +690,18 @@ function domainVisual(state: DomainRow["state"]) {
   switch (state) {
     case "verified":
       return {
-        label: "text-emerald-400",
+        label: "text-success",
         icon: <CheckCircleIcon className="size-3.5" />,
       };
     case "failed":
       return {
-        label: "text-rose-400",
+        label: "text-error",
         icon: <ExclamationCircleIcon className="size-3.5" />,
       };
     case "pending":
     default:
       return {
-        label: "text-amber-400",
+        label: "text-warning",
         icon: <ClockIcon className="size-3.5" />,
       };
   }
@@ -798,7 +750,7 @@ function ActiveConnectionState({
   return (
     <>
       <SettingsSection>
-        <SectionHeader
+        <SettingsHeader
           title="Domains"
           description="The email domains your team signs in with."
           action={
@@ -812,16 +764,16 @@ function ActiveConnectionState({
           }
         />
         {status.domains.length === 0 ? (
-          <div className="w-full border-b border-grid-dimmed py-4">
+          <SettingsBlock>
             <Paragraph variant="small">No domains verified yet.</Paragraph>
-          </div>
+          </SettingsBlock>
         ) : (
           <DomainList domains={status.domains} />
         )}
       </SettingsSection>
 
       <SettingsSection>
-        <SectionHeader
+        <SettingsHeader
           title="SSO"
           description={`SSO connection for ${orgTitle}.`}
           action={
@@ -835,33 +787,29 @@ function ActiveConnectionState({
           }
         />
         {activeConnections.map((conn) => (
-          <div
+          <SettingsRow
             key={conn.id}
-            className="flex w-full items-center justify-between gap-4 border-b border-grid-dimmed py-4"
-          >
-            <div className="flex-1 space-y-1">
-              <Paragraph variant="small/bright">{conn.name ?? conn.connectionType}</Paragraph>
-              <Paragraph variant="extra-small">Type: {conn.connectionType}</Paragraph>
-            </div>
-            <StatusIndicator label="Active" />
-          </div>
+            title={conn.name ?? conn.connectionType}
+            description={`Type: ${conn.connectionType}`}
+            action={<StatusIndicator label="Active" />}
+          />
         ))}
 
-        <SettingRow
+        <SettingsRow
           title="Require SSO for matching domains"
           description="Users with an email on a verified domain must sign in with SSO."
           action={
-            <Switch variant="small" checked={draftEnforced} onCheckedChange={onToggleEnforced} />
+            <Switch variant="medium" checked={draftEnforced} onCheckedChange={onToggleEnforced} />
           }
         />
-        <SettingRow
+        <SettingsRow
           title="Just-in-time provisioning"
           description="Automatically add members on their first SSO sign-in from a verified domain."
           action={
-            <Switch variant="small" checked={draftJitEnabled} onCheckedChange={onToggleJit} />
+            <Switch variant="medium" checked={draftJitEnabled} onCheckedChange={onToggleJit} />
           }
         />
-        <SettingRow
+        <SettingsRow
           title="Default role for new users"
           description="Assigned to users created by just-in-time provisioning. Owner can't be granted automatically."
           action={
@@ -871,28 +819,28 @@ function ActiveConnectionState({
               items={[...jitRoles]}
               variant="secondary/small"
               dropdownIcon
+              popoverClassName="max-w-xs"
+              placement="bottom-end"
               text={(v) => jitRoles.find((r) => r.id === v)?.name ?? "Select a role"}
             >
               {(items) =>
                 items.map((role) => (
-                  <SelectItem key={role.id} value={role.id}>
-                    <span className="flex flex-col">
-                      <span>{role.name}</span>
-                      {role.description ? (
-                        <span className="text-xs text-text-dimmed">{role.description}</span>
-                      ) : null}
-                    </span>
-                  </SelectItem>
+                  <RoleSelectItem
+                    key={role.id}
+                    id={role.id}
+                    name={role.name}
+                    description={role.description}
+                  />
                 ))
               }
             </Select>
           }
         />
-        <div className="flex justify-end py-4">
+        <SettingsActions>
           <Button variant="primary/small" disabled={!isDirty || isSaving} onClick={onSave}>
             {isSaving ? "Saving…" : "Save"}
           </Button>
-        </div>
+        </SettingsActions>
       </SettingsSection>
 
       {hasSso ? (
@@ -908,12 +856,37 @@ function ActiveConnectionState({
 
 function StatusIndicator({ label, active = true }: { label: string; active?: boolean }) {
   return (
-    <span className="flex flex-none items-center gap-1.5 text-xs text-text-dimmed">
-      <span
-        className={cn("size-1.5 rounded-full", active ? "bg-emerald-500" : "bg-charcoal-500")}
-      />
+    <span
+      className={cn(
+        "flex flex-none items-center gap-1.5 text-sm",
+        active ? "text-success" : "text-text-dimmed"
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", active ? "bg-success" : "bg-charcoal-500")} />
       {label}
     </span>
+  );
+}
+
+// Option content for the role dropdowns: a bright title with a wrapping,
+// dimmed description beneath it. `wrap` lets long descriptions flow onto
+// multiple lines instead of running off the popover edge.
+function RoleSelectItem({
+  id,
+  name,
+  description,
+}: {
+  id: string;
+  name: string;
+  description?: string;
+}) {
+  return (
+    <SelectItem value={id} wrap>
+      <span className="flex flex-col gap-1">
+        <span className="text-text-bright">{name}</span>
+        {description ? <span className="text-xs text-text-dimmed">{description}</span> : null}
+      </span>
+    </SelectItem>
   );
 }
 
@@ -992,7 +965,7 @@ function DirectorySyncSection({
 
   return (
     <SettingsSection>
-      <SectionHeader
+      <SettingsHeader
         title="Directory Sync"
         description="Sync users and groups from your identity provider over SCIM. Members of mapped groups are provisioned with the group's role, and removing them from your directory revokes their access."
         action={
@@ -1003,39 +976,36 @@ function DirectorySyncSection({
       />
 
       {directorySync.directories.length === 0 ? (
-        <div className="w-full border-b border-grid-dimmed py-4">
+        <SettingsBlock>
           <Paragraph variant="small">
             No directory connected. Once connected, members of mapped groups are provisioned
             automatically.
           </Paragraph>
-        </div>
+        </SettingsBlock>
       ) : (
         <>
           {directorySync.directories.map((dir) => (
-            <div
+            <SettingsRow
               key={dir.id}
-              className="flex w-full items-center justify-between gap-4 border-b border-grid-dimmed py-4"
-            >
-              <div className="flex-1 space-y-1">
-                <Paragraph variant="small/bright">{dir.name ?? dir.type}</Paragraph>
-                <Paragraph variant="extra-small">
-                  {dir.type} · {directorySync.userCount}{" "}
-                  {directorySync.userCount === 1 ? "user" : "users"}
-                </Paragraph>
-              </div>
-              <StatusIndicator
-                label={dir.state === "active" ? "Active" : "Inactive"}
-                active={dir.state === "active"}
-              />
-            </div>
+              title={dir.name ?? dir.type}
+              description={`${dir.type} · ${directorySync.userCount} ${
+                directorySync.userCount === 1 ? "user" : "users"
+              }`}
+              action={
+                <StatusIndicator
+                  label={dir.state === "active" ? "Active" : "Inactive"}
+                  active={dir.state === "active"}
+                />
+              }
+            />
           ))}
 
-          <SettingRow
+          <SettingsRow
             title="Sync users outside verified domains"
             description="By default, only users on a verified domain are provisioned. Turn on to also provision users on other domains, such as contractors."
             action={
               <Switch
-                variant="small"
+                variant="medium"
                 disabled={isSaving}
                 checked={draftExternal}
                 onCheckedChange={setDraftExternal}
@@ -1043,12 +1013,12 @@ function DirectorySyncSection({
             }
           />
 
-          <SettingRow
+          <SettingsRow
             title="Allow manual membership management"
             description="On by default. Turn off to let Directory Sync manage membership exclusively. While a directory is active, inviting, removing, and leaving are disabled in the dashboard."
             action={
               <Switch
-                variant="small"
+                variant="medium"
                 disabled={isSaving}
                 checked={draftManual}
                 onCheckedChange={setDraftManual}
@@ -1056,7 +1026,7 @@ function DirectorySyncSection({
             }
           />
 
-          <SettingRow
+          <SettingsRow
             title="Default role for unmapped users"
             description={`Assigned to directory users who aren't in a mapped group. Choose "No access" to leave them unprovisioned until they join one.`}
             action={
@@ -1066,6 +1036,8 @@ function DirectorySyncSection({
                 items={[{ id: NULL_ROLE_VALUE, name: "No access", description: "" }, ...jitRoles]}
                 variant="secondary/small"
                 dropdownIcon
+                popoverClassName="max-w-xs"
+                placement="bottom-end"
                 text={(v) =>
                   v === NULL_ROLE_VALUE
                     ? "No access"
@@ -1074,83 +1046,80 @@ function DirectorySyncSection({
               >
                 {(items) =>
                   items.map((role) => (
-                    <SelectItem key={role.id} value={role.id}>
-                      <span className="flex flex-col">
-                        <span>{role.name}</span>
-                        {role.description ? (
-                          <span className="text-xs text-text-dimmed">{role.description}</span>
-                        ) : null}
-                      </span>
-                    </SelectItem>
+                    <RoleSelectItem
+                      key={role.id}
+                      id={role.id}
+                      name={role.name}
+                      description={role.description}
+                    />
                   ))
                 }
               </Select>
             }
           />
 
-          <div className="w-full border-b border-grid-dimmed py-4">
-            <Header3>Group → role mapping</Header3>
-            <Paragraph variant="small" className="mt-1">
-              Map each directory group to a role. Members inherit their group's role.
-            </Paragraph>
-          </div>
+          <SettingsHeader
+            as="h3"
+            title="Group roles"
+            description="Map each directory group to a role. Members inherit their group's role."
+          />
           {directorySync.groups.length === 0 ? (
-            <div className="w-full border-b border-grid-dimmed py-4">
+            <SettingsBlock>
               <Paragraph variant="small">
                 No groups synced yet. Groups appear here after your directory syncs.
               </Paragraph>
-            </div>
+            </SettingsBlock>
           ) : (
             directorySync.groups.map((group) => {
               const value = draftGroupRoles[group.groupId] ?? group.mappedRoleId ?? NULL_ROLE_VALUE;
               return (
-                <div
+                <SettingsRow
                   key={group.groupId}
-                  className="flex w-full items-center justify-between gap-4 border-b border-grid-dimmed py-3"
-                >
-                  <Paragraph variant="small/bright" className="flex-1">
-                    {group.name}
-                  </Paragraph>
-                  <Select<string, Role | { id: string; name: string; description: string }>
-                    value={value}
-                    setValue={(v) =>
-                      setDraftGroupRoles((prev) => ({ ...prev, [group.groupId]: v }))
-                    }
-                    items={[
-                      { id: NULL_ROLE_VALUE, name: "No access", description: "" },
-                      ...jitRoles,
-                    ]}
-                    variant="secondary/small"
-                    dropdownIcon
-                    text={(v) =>
-                      v === NULL_ROLE_VALUE
-                        ? "No access"
-                        : (jitRoles.find((r) => r.id === v)?.name ?? "Select a role")
-                    }
-                  >
-                    {(items) =>
-                      items.map((role) => (
-                        <SelectItem key={role.id} value={role.id}>
-                          <span className="flex flex-col">
-                            <span>{role.name}</span>
-                            {role.description ? (
-                              <span className="text-xs text-text-dimmed">{role.description}</span>
-                            ) : null}
-                          </span>
-                        </SelectItem>
-                      ))
-                    }
-                  </Select>
-                </div>
+                  size="sm"
+                  title={group.name}
+                  titleClassName="font-medium"
+                  action={
+                    <Select<string, Role | { id: string; name: string; description: string }>
+                      value={value}
+                      setValue={(v) =>
+                        setDraftGroupRoles((prev) => ({ ...prev, [group.groupId]: v }))
+                      }
+                      items={[
+                        { id: NULL_ROLE_VALUE, name: "No access", description: "" },
+                        ...jitRoles,
+                      ]}
+                      variant="secondary/small"
+                      dropdownIcon
+                      popoverClassName="max-w-xs"
+                      placement="bottom-end"
+                      text={(v) =>
+                        v === NULL_ROLE_VALUE
+                          ? "No access"
+                          : (jitRoles.find((r) => r.id === v)?.name ?? "Select a role")
+                      }
+                    >
+                      {(items) =>
+                        items.map((role) => (
+                          <RoleSelectItem
+                            key={role.id}
+                            id={role.id}
+                            name={role.name}
+                            description={role.description}
+                          />
+                        ))
+                      }
+                    </Select>
+                  }
+                />
               );
             })
           )}
 
-          <div className="flex justify-end py-4">
+          <SettingsActions>
             <Button variant="primary/small" disabled={!isDirty || isSaving} onClick={submitSave}>
               {isSaving ? "Saving…" : "Save"}
             </Button>
-          </div>
+          </SettingsActions>
         </>
       )}
     </SettingsSection>
