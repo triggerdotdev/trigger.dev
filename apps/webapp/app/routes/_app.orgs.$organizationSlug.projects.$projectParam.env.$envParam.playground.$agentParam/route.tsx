@@ -251,8 +251,10 @@ function PlaygroundChat() {
     return data.publicAccessToken;
   }, [actionPath, agent.slug, chatId, tags, machine, maxAttempts, maxDuration, version, region]);
 
-  // Resource route prefix — all realtime traffic goes through session-authed routes
-  const playgroundBaseURL = `${apiOrigin}/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground`;
+  // Same-origin resource routes: use the page origin, not apiOrigin, so in/append
+  // doesn't go cross-origin (CORS preflight) when API_ORIGIN != APP_ORIGIN.
+  const origin = typeof window !== "undefined" ? window.location.origin : apiOrigin;
+  const playgroundBaseURL = `${origin}/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground`;
 
   // The transport is constructed once (guarded ref below); reading
   // `startSession` directly there would freeze its closure to the
