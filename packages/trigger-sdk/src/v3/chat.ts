@@ -1705,6 +1705,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 lastEventId: state.lastEventId,
               });
 
+              // Re-arm per-turn events for watch mode's next turn.
+              sawFirstChunk = false;
               if (this.watchMode) continue;
 
               internalAbort.abort();

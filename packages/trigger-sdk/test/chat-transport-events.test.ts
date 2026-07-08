@@ -194,6 +194,37 @@ describe("transport stream events", () => {
     expect(events.some((e) => e.type === "turn-completed")).toBe(true);
   });
 
+  it("re-arms first-chunk per turn on a watch-mode stream", async () => {
+    const TWO_TURNS = [
+      `id: 1`,
+      `data: {"type":"text-delta","id":"t1","delta":"turn one"}`,
+      ``,
+      `id: 2`,
+      `data: {"type":"trigger:turn-complete"}`,
+      ``,
+      `id: 3`,
+      `data: {"type":"text-delta","id":"t2","delta":"turn two"}`,
+      ``,
+      `id: 4`,
+      `data: {"type":"trigger:turn-complete"}`,
+      ``,
+      ``,
+    ].join("\n");
+
+    const { transport, events } = makeTransport({
+      watch: true,
+      sessions: { c1: { publicAccessToken: "tok_test", isStreaming: true } },
+      fetch: async (_url, _init, ctx) =>
+        ctx.endpoint === "in" ? jsonOk() : sseResponse(TWO_TURNS),
+    });
+
+    const stream = await transport.reconnectToStream({ chatId: "c1" });
+    await readAll(stream!);
+
+    expect(events.filter((e) => e.type === "first-chunk")).toHaveLength(2);
+    expect(events.filter((e) => e.type === "turn-completed")).toHaveLength(2);
+  });
+
   it("emits stream-error when the output stream fails unrecoverably", async () => {
     const { transport, events } = makeTransport({
       fetch: async (_url, _init, ctx) =>
