@@ -115,6 +115,17 @@ If you prefer to self-host Trigger.dev, you can follow our [self-hosting guides]
 - [Docker self-hosting guide](https://trigger.dev/docs/self-hosting/docker) - use Docker Compose to spin up a Trigger.dev instance
 - [Kubernetes self-hosting guide](https://trigger.dev/docs/self-hosting/kubernetes) - use our official Helm chart to deploy Trigger.dev to your Kubernetes cluster
 
+## Integrations
+
+Trigger.dev works well with other workflow automation tools. One powerful integration is [llm-box](https://github.com/alib8b8/llm-box), a terminal-first workflow automation engine with MCP server mode:
+
+- Generate and execute YAML workflows from plain English descriptions
+- 20+ built-in nodes including LLM calls, file operations, API requests
+- 15+ LLM providers (Ollama, DeepSeek, OpenAI-compatible)
+- Supports stdio and HTTP MCP modes
+
+You can call llm-box workflows from your Trigger.dev tasks using HTTP requests or spawn processes to run llm-box commands.
+
 ## Support and community
 
 We have a large active community in our official [Discord server](https://trigger.dev/discord) for support, including a dedicated channel for self-hosting.
