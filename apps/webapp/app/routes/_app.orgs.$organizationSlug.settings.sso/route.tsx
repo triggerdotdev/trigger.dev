@@ -14,6 +14,7 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { ClipboardField } from "~/components/primitives/ClipboardField";
 import {
   Dialog,
   DialogContent,
@@ -1114,6 +1115,23 @@ function DirectorySyncSection({
   );
 }
 
+// The portal is hosted by our SSO vendor, so the friendly name is derived from
+// the link's host (e.g. setup.workos.com -> WorkOS). Falls back to the
+// capitalized root label, then to a generic label if the URL can't be parsed.
+const KNOWN_PORTAL_PROVIDERS: Record<string, string> = { workos: "WorkOS" };
+
+function portalProviderName(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const labels = new URL(url).hostname.split(".").filter(Boolean);
+    const root = labels.length >= 2 ? labels[labels.length - 2] : labels[0];
+    if (!root) return null;
+    return KNOWN_PORTAL_PROVIDERS[root.toLowerCase()] ?? root[0].toUpperCase() + root.slice(1);
+  } catch {
+    return null;
+  }
+}
+
 function PortalLinkDialog({
   url,
   intent,
@@ -1125,50 +1143,37 @@ function PortalLinkDialog({
 }) {
   const purpose =
     intent === "domain_verification"
-      ? "This single-use link opens domain verification. Share it with whoever manages your DNS to confirm you own the domains."
+      ? "Single-use link to verify your email domains. Share it with whoever manages your DNS."
       : intent === "sso"
-        ? "This single-use link opens identity provider setup. Share it with whoever manages your identity provider to connect it."
+        ? "Single-use link to connect your identity provider. Share it with whoever manages it."
         : intent === "dsync"
-          ? "This single-use link opens Directory Sync (SCIM) setup. Share it with whoever manages your identity provider to connect your directory."
-          : "This single-use link opens your SSO setup.";
+          ? "Single-use link to set up Directory Sync over SCIM. Share it with whoever manages your identity provider."
+          : "Single-use link to set up SSO.";
+  const providerName = portalProviderName(url);
   return (
     <Dialog open={url !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>Admin portal link</DialogHeader>
-        <DialogDescription>
-          {purpose} The link expires 5 minutes after this dialog opens.
+        <DialogDescription className="text-sm">
+          {purpose} It expires 5 minutes after this dialog opens.
         </DialogDescription>
-        <div className="mt-4 break-all rounded-md border border-grid-bright bg-charcoal-800 p-3 font-mono text-xs">
-          {url ?? ""}
-        </div>
+        <ClipboardField value={url ?? ""} variant="secondary/medium" />
         <DialogFooter>
           <Button variant="secondary/small" onClick={onClose}>
             Cancel
           </Button>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary/small"
-              onClick={() => {
-                if (url) {
-                  navigator.clipboard?.writeText(url);
-                }
-              }}
-            >
-              Copy link
-            </Button>
-            <Button
-              variant="primary/small"
-              TrailingIcon={ArrowUpRightIcon}
-              onClick={() => {
-                if (!url) return;
-                // Single-use link; `noopener,noreferrer` isolates the new tab.
-                window.open(url, "_blank", "noopener,noreferrer");
-                onClose();
-              }}
-            >
-              Open in new tab
-            </Button>
-          </div>
+          <Button
+            variant="primary/small"
+            TrailingIcon={ArrowUpRightIcon}
+            onClick={() => {
+              if (!url) return;
+              // Single-use link; `noopener,noreferrer` isolates the new tab.
+              window.open(url, "_blank", "noopener,noreferrer");
+              onClose();
+            }}
+          >
+            {providerName ? `Open in ${providerName}` : "Open in new tab"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
