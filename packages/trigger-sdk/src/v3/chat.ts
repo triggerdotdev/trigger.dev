@@ -879,6 +879,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         notifyChange(chatId, state);
       }
     };
+    const emit = (event: ChatTransportEvent) => this.emitEvent(event);
+    const attribution = () => this.turnAttribution(chatId);
+    let sawFirstChunk = false;
+
+    emit({
+      type: "stream-connected",
+      chatId,
+      timestamp: Date.now(),
+      resumed: false,
+      messageId: this.lastTurnSends.get(chatId)?.messageId,
+    });
 
     return response.body
       .pipeThrough(new TextDecoderStream())
@@ -890,6 +901,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               const type = (chunk as { type?: unknown }).type;
               if (type === TRIGGER_TURN_COMPLETE) {
                 clearStreaming();
+                emit({
+                  type: "turn-completed",
+                  chatId,
+                  timestamp: Date.now(),
+                  lastEventId: sessions.get(chatId)?.lastEventId,
+                  ...attribution(),
+                });
                 return; // drop — not a real UIMessageChunk
               }
               if (type === TRIGGER_SESSION_STATE) {
@@ -899,6 +917,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 }
                 return; // drop
               }
+            }
+            if (!sawFirstChunk) {
+              sawFirstChunk = true;
+              emit({
+                type: "first-chunk",
+                chatId,
+                timestamp: Date.now(),
+                chunkType: (chunk as { type?: string } | undefined)?.type,
+                ...attribution(),
+              });
             }
             controller.enqueue(chunk);
           },

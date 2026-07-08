@@ -225,6 +225,53 @@ describe("transport stream events", () => {
     expect(events.filter((e) => e.type === "turn-completed")).toHaveLength(2);
   });
 
+  it("emits the full lifecycle on the headStart first-turn path", async () => {
+    const handoverSse = [
+      `data: {"type":"start","messageId":"a-1"}`,
+      ``,
+      `data: {"type":"text-delta","id":"t1","delta":"warm"}`,
+      ``,
+      `data: {"type":"trigger:turn-complete"}`,
+      ``,
+      ``,
+    ].join("\n");
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(handoverSse, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "X-Trigger-Chat-Access-Token": "tok_handover",
+        },
+      })) as typeof fetch;
+
+    try {
+      const { transport, events } = makeTransport({
+        headStart: "/api/chat",
+        sessions: {},
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "c-hs",
+        messageId: undefined,
+        messages: [user("hi", "u-hs")],
+        abortSignal: undefined,
+      });
+      await readAll(stream);
+
+      const types = events.map((e) => e.type);
+      expect(types).toEqual(["message-sent", "stream-connected", "first-chunk", "turn-completed"]);
+      expect(events[0]).toMatchObject({ source: "head-start", messageId: "u-hs" });
+      const firstChunk = events[2] as Extract<ChatTransportEvent, { type: "first-chunk" }>;
+      expect(firstChunk.chunkType).toBe("start");
+      expect(firstChunk.messageId).toBe("u-hs");
+      expect(firstChunk.sinceSendMs).toBeGreaterThanOrEqual(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("emits stream-error when the output stream fails unrecoverably", async () => {
     const { transport, events } = makeTransport({
       fetch: async (_url, _init, ctx) =>
