@@ -74,7 +74,8 @@
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit -p tsconfig.src.json",
     "update-version": "tsx ../../scripts/updateVersion.ts",
-    "check-exports": "attw --pack ."
+    "check-exports": "attw --pack .",
+    "test": "vitest"
   },
   "dependencies": {
     "@prisma/config": "^6.10.0",
