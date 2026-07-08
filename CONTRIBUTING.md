@@ -265,7 +265,7 @@ Most of the time the changes you'll make are likely to be categorized as patch r
 
 ## Adding server changes
 
-Changesets only track published npm packages. If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, `apps/coordinator/`, etc.) with no package changes, add a `.server-changes/` file so the change appears in release notes.
+Changesets only track published npm packages. If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes, add a `.server-changes/` file so the change appears in release notes.
 
 Create a markdown file with a descriptive name:
 

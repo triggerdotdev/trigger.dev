@@ -14,9 +14,6 @@
   "updateInternalDependencies": "patch",
   "ignore": [
     "webapp",
-    "coordinator",
-    "docker-provider",
-    "kubernetes-provider",
     "supervisor"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {

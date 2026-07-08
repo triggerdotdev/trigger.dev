@@ -21,7 +21,7 @@ Speed up batch queue processing by removing stalls and fixing retry race
 EOF
 ```
 
-- `area`: `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
+- `area`: `webapp` | `supervisor`
 - `type`: `feature` | `fix` | `improvement` | `breaking`
 
 For **mixed PRs** (both packages and server): just add a changeset. No `.server-changes/` file needed.
