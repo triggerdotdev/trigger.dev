@@ -600,6 +600,8 @@ const transport = useTriggerChatTransport({
 A `message-sent` event means the message is durably written to the session's input stream (the stream the agent consumes from), so it's a true "sent successfully" signal. Because send and response events share the same callback, "sent but never answered" becomes a small client-side watchdog:
 
 ```ts
+// Module scope (or a ref) so re-renders don't recreate it. Keyed by chatId
+// on purpose: a new send on the same chat supersedes the in-flight turn.
 const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
 onEvent: (event) => {
