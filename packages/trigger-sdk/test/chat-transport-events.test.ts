@@ -272,6 +272,43 @@ describe("transport stream events", () => {
     }
   });
 
+  it("emits stream-error when the headStart response body fails mid-read", async () => {
+    const encoder = new TextEncoder();
+    const failingBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: {"type":"text-delta","id":"t1","delta":"w"}\n\n`));
+        controller.error(new Error("network drop"));
+      },
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(failingBody, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "X-Trigger-Chat-Access-Token": "tok_handover",
+        },
+      })) as typeof fetch;
+
+    try {
+      const { transport, events } = makeTransport({ headStart: "/api/chat", sessions: {} });
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "c-hs-err",
+        messageId: undefined,
+        messages: [user("hi", "u-hs")],
+        abortSignal: undefined,
+      });
+      await expect(readAll(stream)).rejects.toThrow("network drop");
+
+      const streamError = events.find((e) => e.type === "stream-error");
+      expect(streamError).toBeDefined();
+      expect(events.some((e) => e.type === "turn-completed")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("emits stream-error when the output stream fails unrecoverably", async () => {
     const { transport, events } = makeTransport({
       fetch: async (_url, _init, ctx) =>

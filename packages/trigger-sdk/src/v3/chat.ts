@@ -891,7 +891,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       messageId: this.lastTurnSends.get(chatId)?.messageId,
     });
 
-    return response.body
+    const piped = response.body
       .pipeThrough(new TextDecoderStream())
       .pipeThrough(parseUIMessageSseTransform())
       .pipeThrough(
@@ -935,6 +935,44 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           },
         })
       );
+
+    // Pump wrapper: a TransformStream can't observe upstream errors, so
+    // read here to emit stream-error (aborts close cleanly, matching the
+    // session subscribe path).
+    const pipedReader = piped.getReader();
+    return new ReadableStream<UIMessageChunk>({
+      async pull(controller) {
+        try {
+          const next = await pipedReader.read();
+          if (next.done) {
+            controller.close();
+            return;
+          }
+          controller.enqueue(next.value);
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            try {
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+            return;
+          }
+          const errorStatus = (error as { status?: unknown }).status;
+          emit({
+            type: "stream-error",
+            chatId,
+            timestamp: Date.now(),
+            error: error instanceof Error ? error : new Error(String(error)),
+            status: typeof errorStatus === "number" ? errorStatus : undefined,
+          });
+          controller.error(error);
+        }
+      },
+      cancel(reason) {
+        return pipedReader.cancel(reason);
+      },
+    });
   }
 
   /**
