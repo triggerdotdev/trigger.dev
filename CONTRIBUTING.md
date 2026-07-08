@@ -281,7 +281,7 @@ EOF
 ```
 
 **Fields:**
-- `area` (required): `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
+- `area` (required): `webapp` | `supervisor`
 - `type` (required): `feature` | `fix` | `improvement` | `breaking`
 
 The body text (below the frontmatter) is a one-line description of the change. Keep it concise — it will appear in release notes.

@@ -1,6 +1,6 @@
 # Server Changes
 
-This directory tracks changes to server-only components (webapp, supervisor, coordinator, etc.) that are not captured by changesets. Changesets only track published npm packages — server changes would otherwise go undocumented.
+This directory tracks changes to server-only components (webapp, supervisor, etc.) that are not captured by changesets. Changesets only track published npm packages — server changes would otherwise go undocumented.
 
 ## When to add a file
 
@@ -31,7 +31,7 @@ Speed up batch queue processing by removing stalls and fixing retry race
 
 ### Fields
 
-- **area** (required): `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
+- **area** (required): `webapp` | `supervisor`
 - **type** (required): `feature` | `fix` | `improvement` | `breaking`
 
 ### Description
