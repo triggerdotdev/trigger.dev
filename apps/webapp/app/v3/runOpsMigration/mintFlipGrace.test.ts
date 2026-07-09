@@ -149,5 +149,11 @@ describe("stampMintKindFlip", () => {
     const result = stampMintKindFlip(existing, outgoing, T, GRACE_MS);
 
     expect(result.runOpsMintKind).toBe("runOpsId");
+    // The malformed flippedAt is carried forward verbatim, but an unparseable timestamp is
+    // inert when resolved (Date.parse -> NaN -> effectiveMintKind returns the target kind).
+    expect(result.runOpsMintKindFlippedAt).toBe("not-a-date");
+    expect(
+      effectiveMintKind({ kind: "runOpsId", prev: "cuid", flippedAtMs: NaN }, T, GRACE_MS)
+    ).toBe("runOpsId");
   });
 });
