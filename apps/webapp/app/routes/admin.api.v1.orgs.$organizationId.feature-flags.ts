@@ -1,9 +1,12 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import type { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { validatePartialFeatureFlags } from "~/v3/featureFlags";
 
 const ParamsSchema = z.object({
@@ -82,10 +85,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
       ? validatePartialFeatureFlags(organization.featureFlags as Record<string, unknown>)
       : { success: false as const };
 
-    const mergedFlags = {
-      ...(existingFlags.success ? existingFlags.data : {}),
-      ...validationResult.data,
-    };
+    const mergedFlags = stampMintKindFlip(
+      existingFlags.success ? existingFlags.data : {},
+      {
+        ...(existingFlags.success ? existingFlags.data : {}),
+        ...validationResult.data,
+      },
+      Date.now(),
+      env.RUN_OPS_MINT_FLIP_GRACE_MS
+    );
 
     // Update the organization's feature flags
     const updatedOrganization = await prisma.organization.update({
@@ -93,7 +101,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         id: organizationId,
       },
       data: {
-        featureFlags: mergedFlags,
+        featureFlags: mergedFlags as Prisma.InputJsonValue,
       },
       select: {
         id: true,
