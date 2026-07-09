@@ -117,7 +117,7 @@ export default function LoginSsoPage() {
     onValidate({ formData }) {
       return parseWithZod(formData, { schema: ssoEmailSchema });
     },
-    shouldValidate: "onBlur",
+    shouldValidate: "onSubmit",
     shouldRevalidate: "onInput",
   });
 
