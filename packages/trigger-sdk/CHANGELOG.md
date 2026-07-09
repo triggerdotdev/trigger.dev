@@ -1,5 +1,27 @@
 # @trigger.dev/sdk
 
+## 4.5.2
+
+### Patch Changes
+
+- Add SDK and API client helpers for run bulk actions. ([#4105](https://github.com/triggerdotdev/trigger.dev/pull/4105))
+- Fix chat turns that throw (for example from an `onTurnStart` hook) leaking their message listener, which lost or duplicated messages sent during later turns. ([#4176](https://github.com/triggerdotdev/trigger.dev/pull/4176))
+- Fix `chat.agent` and `chat.createSession` permanently dropping user messages when several arrived during a single turn: every buffered message is now dispatched as its own turn instead of only the first. ([#4176](https://github.com/triggerdotdev/trigger.dev/pull/4176))
+- Fix chat continuation runs replaying already-answered messages: turns delivered while the run was suspended now advance the session.in resume cursor, so a new run picks up exactly where the previous one left off. ([#4176](https://github.com/triggerdotdev/trigger.dev/pull/4176))
+- Fix `chat.createSession` swallowing a message sent shortly after stopping a turn: the turn's message listener now detaches when the stream settles, so those messages run as the next turn. ([#4176](https://github.com/triggerdotdev/trigger.dev/pull/4176))
+- Add an `onEvent` callback to `TriggerChatTransport` / `useTriggerChatTransport` that emits typed lifecycle events for sends, stream connects, first chunk, and turn completion. Send-success metrics, time-to-first-token, and "sent but never answered" watchdogs become a few lines of client code. ([#4187](https://github.com/triggerdotdev/trigger.dev/pull/4187))
+
+  ```ts
+  onEvent: (event) => {
+    if (event.type === "message-sent") metrics.timing("chat.send_ms", event.durationMs);
+    if (event.type === "first-chunk") metrics.timing("chat.ttft_ms", event.sinceSendMs ?? 0);
+  },
+  ```
+
+- Large batch payloads now offload to object storage instead of riding inline in the trigger request. `batchTrigger` and `batchTriggerAndWait` (and the by-id and by-task variants) offload any per-item payload over 128KB before sending, the same way single `trigger` and `triggerAndWait` already do, so a big batch no longer blows past the API body limit. ([#4165](https://github.com/triggerdotdev/trigger.dev/pull/4165))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.2`
+
 ## 4.5.1
 
 ### Patch Changes

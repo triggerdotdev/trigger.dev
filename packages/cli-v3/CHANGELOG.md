@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.5.2
+
+### Patch Changes
+
+- fix(cli): honor the MCP server's `--dev-only` flag ([#4199](https://github.com/triggerdotdev/trigger.dev/pull/4199))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.2`
+  - `@trigger.dev/build@4.5.2`
+  - `@trigger.dev/schema-to-json@4.5.2`
+
 ## 4.5.1
 
 ### Patch Changes

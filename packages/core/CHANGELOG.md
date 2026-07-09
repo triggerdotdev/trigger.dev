@@ -1,5 +1,13 @@
 # internal-platform
 
+## 4.5.2
+
+### Patch Changes
+
+- Add SDK and API client helpers for run bulk actions. ([#4105](https://github.com/triggerdotdev/trigger.dev/pull/4105))
+- Large batch payloads now offload to object storage instead of riding inline in the trigger request. `batchTrigger` and `batchTriggerAndWait` (and the by-id and by-task variants) offload any per-item payload over 128KB before sending, the same way single `trigger` and `triggerAndWait` already do, so a big batch no longer blows past the API body limit. ([#4165](https://github.com/triggerdotdev/trigger.dev/pull/4165))
+- Removed internal helpers that were only used by the end-of-life v3 self-hosted compute providers. ([#4194](https://github.com/triggerdotdev/trigger.dev/pull/4194))
+
 ## 4.5.1
 
 ## 4.5.0
