@@ -18,6 +18,11 @@ const emailStrategy = new EmailLinkStrategy(
     secret,
     callbackURL: "/magic",
     sessionMagicLinkKey: "triggerdotdev:magiclink",
+    // Pin explicitly to the library default rather than relying on it: the
+    // /login/magic loader reads the submitted address via
+    // session.get("auth:email") to name it on the confirmation screen, so a
+    // future remix-auth-email-link default change can't silently break that.
+    sessionEmailKey: "auth:email",
   },
   async ({
     email,
