@@ -121,12 +121,22 @@ function projectionOf(sub: SubProjection): { select?: any; include?: any } | und
 }
 
 // Apply a caller sub-projection to a hydrated row (or array) so only requested fields remain.
+//
+// Bare-projection path (no `select`): return a SHALLOW CLONE, not the row itself, so every parent
+// bucket that links the same target gets a distinct top-level object — two parents sharing one
+// target (e.g. two waitpoints connected to the same run) must not alias through a shared reference.
+// This only protects top-level mutation; a deep in-place mutation of a nested field would still
+// alias, which matches the realistic redaction/patch cases and avoids a costly deep clone on hot
+// reads.
 function applyProjection<T extends Record<string, unknown> | null>(
   row: T,
   projection: { select?: any; include?: any } | undefined
 ): T {
-  if (!row || !projection?.select) {
+  if (!row) {
     return row;
+  }
+  if (!projection?.select) {
+    return { ...row } as T;
   }
   const keys = Object.keys(projection.select).filter((k) => projection.select[k]);
   const out: Record<string, unknown> = {};
