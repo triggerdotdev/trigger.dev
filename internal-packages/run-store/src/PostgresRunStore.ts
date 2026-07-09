@@ -89,6 +89,10 @@ export interface RunOpsTransactionalClient extends RunOpsCapableClient {
  */
 export type RunStoreSchemaVariant = "legacy" | "dedicated";
 
+// Mirrors the webapp's `CONNECTED_RUNS_DISPLAY_LIMIT`
+// (apps/webapp/app/presenters/v3/WaitpointPresenter.server.ts) — keep the values in sync.
+export const CONNECTED_RUNS_LIMIT = 5;
+
 export type PostgresRunStoreOptions = {
   prisma: RunOpsCapableClient;
   readOnlyPrisma: RunOpsCapableClient;
@@ -1816,23 +1820,34 @@ export class PostgresRunStore implements RunStore {
   // Reverse of `connectedRuns`: the run ids linked to a waitpoint. Co-resident with the RUN (the join
   // is written on the run's DB in blockRunWithWaitpointEdges), so the waitpoint's own store can MISS a
   // cross-DB run — the router fans this across BOTH DBs.
+  // Bounded to CONNECTED_RUNS_LIMIT via an existence-JOIN to TaskRun, mirroring the webapp's
+  // `#connectedRunIdsOn`: a dangling connection row (dedicated schema: FK-free `taskRunId`) can
+  // never occupy a LIMIT slot ahead of a real run, and a heavily-fanned-in waitpoint can never emit
+  // an unbounded id list.
   async findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
     const joinDelegate = (prisma as RunOpsCapableClient).waitpointRunConnection;
     if (this.schemaVariant === "dedicated" && joinDelegate) {
-      const links = (await joinDelegate.findMany({
-        where: { waitpointId },
-        select: { taskRunId: true },
-      })) as { taskRunId: string }[];
-      return links.map((l) => l.taskRunId);
+      const rows = await prisma.$queryRaw<{ taskRunId: string }[]>`
+        SELECT c."taskRunId" AS "taskRunId"
+        FROM "WaitpointRunConnection" c
+        JOIN "TaskRun" t ON t."id" = c."taskRunId"
+        WHERE c."waitpointId" = ${waitpointId}
+        LIMIT ${CONNECTED_RUNS_LIMIT}
+      `;
+      return rows.map((row) => row.taskRunId);
     }
 
     // Legacy implicit M2M `_WaitpointRunConnections`: A = TaskRun.id, B = Waitpoint.id (alphabetical).
-    const result = await prisma.$queryRaw<{ A: string }[]>`
-      SELECT "A" FROM "_WaitpointRunConnections" WHERE "B" = ${waitpointId}
+    const rows = await prisma.$queryRaw<{ A: string }[]>`
+      SELECT c."A" AS "A"
+      FROM "_WaitpointRunConnections" c
+      JOIN "TaskRun" t ON t."id" = c."A"
+      WHERE c."B" = ${waitpointId}
+      LIMIT ${CONNECTED_RUNS_LIMIT}
     `;
-    return result.map((r) => r.A);
+    return rows.map((row) => row.A);
   }
 
   // Reverse of `completedExecutionSnapshots`: the snapshot ids that completed a waitpoint. The join is

@@ -27,6 +27,7 @@ import type {
   WaitpointColocationOptions,
 } from "./types.js";
 import { isReadReplicaClient } from "./readReplicaClient.js";
+import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
 
 /**
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore}
@@ -936,7 +937,8 @@ export class RoutingRunStore implements RunStore {
   // Keyed by waitpointId, but the WaitpointRunConnection / CompletedWaitpoint join co-locates with the
   // RUN/snapshot — which can be on the OTHER DB from a cross-DB token — so fan out to BOTH stores and
   // merge. Dedup by value: a token mirrored onto both DBs during drain can carry the same join
-  // row on each leg.
+  // row on each leg. Each sub-store already caps at CONNECTED_RUNS_LIMIT, but a disjoint run set on
+  // each side can still make the union exceed it, so slice again after the merge.
   async findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]> {
     const [fromNew, fromLegacy] = await Promise.all([
       this.#new.findWaitpointConnectedRunIds(
@@ -948,7 +950,7 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(this.#legacy, client)
       ),
     ]);
-    return uniqueStrings([...fromNew, ...fromLegacy]);
+    return uniqueStrings([...fromNew, ...fromLegacy]).slice(0, CONNECTED_RUNS_LIMIT);
   }
 
   async findWaitpointCompletedSnapshotIds(
