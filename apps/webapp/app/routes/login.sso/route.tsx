@@ -1,6 +1,6 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { ArrowLeftIcon } from "@heroicons/react/20/solid";
+import { ArrowLeftIcon, ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -37,7 +37,7 @@ const CONTENT: Record<Reason, { heading: string; body: string }> = {
   },
   domain_policy: {
     heading: "SSO required",
-    body: "Trigger.dev couldn't send a magic link because your organization requires single sign-on. Continue to your identity provider.",
+    body: "Your organization requires single sign-on. Continue with your identity provider.",
   },
   oauth_blocked: {
     heading: "SSO required",
@@ -117,7 +117,7 @@ export default function LoginSsoPage() {
     onValidate({ formData }) {
       return parseWithZod(formData, { schema: ssoEmailSchema });
     },
-    shouldValidate: "onBlur",
+    shouldValidate: "onSubmit",
     shouldRevalidate: "onInput",
   });
 
@@ -179,6 +179,8 @@ export default function LoginSsoPage() {
             <LinkButton
               to="https://trigger.dev/contact"
               variant="minimal/small"
+              TrailingIcon={ArrowUpRightIcon}
+              trailingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
               data-action="ask about sso"
             >
               Ask about SSO

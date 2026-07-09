@@ -14,6 +14,8 @@ import {
 } from "~/models/runtimeEnvironment.server";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { logger } from "./logger.server";
+import { safeEnvironmentLogFields } from "./safeEnvironmentLog";
+import { missingJwtLogContext } from "./safeRequestLogContext";
 import {
   type PersonalAccessTokenAuthenticationResult,
   authenticateApiRequestWithPersonalAccessToken,
@@ -673,9 +675,9 @@ export async function validateJWTTokenAndRenew<T extends z.ZodTypeAny>(
     const jwt = request.headers.get("x-trigger-jwt");
 
     if (!jwt) {
-      logger.debug("Missing JWT token in request", {
-        headers: Object.fromEntries(request.headers),
-      });
+      // Log a safe breadcrumb, not the raw headers (which carry the
+      // caller's Authorization credential).
+      logger.debug("Missing JWT token in request", missingJwtLogContext(request));
 
       return;
     }
@@ -735,8 +737,9 @@ export async function validateJWTTokenAndRenew<T extends z.ZodTypeAny>(
         ...payload.data,
       });
 
+      // The environment carries secret material; log only non-secret fields.
       logger.debug("Renewed JWT token from Authorization header API Key", {
-        environment: authenticatedEnv.environment,
+        environment: safeEnvironmentLogFields(authenticatedEnv.environment),
         payload: payload.data,
       });
 

@@ -24,6 +24,42 @@ type OverrideOptions = {
 
 export class ReplayTaskRunService extends BaseService {
   public async call(existingTaskRun: TaskRun, overrideOptions: OverrideOptions = {}) {
+    // An override environment must belong to the same project as the source
+    // run. The source project is derived from the run's own environment rather
+    // than existingTaskRun.projectId, since the buffered-run fallback passes a
+    // synthetic TaskRun with no projectId. Only check when a distinct override
+    // is supplied; otherwise the run's own environment is used.
+    if (
+      overrideOptions.environmentId &&
+      overrideOptions.environmentId !== existingTaskRun.runtimeEnvironmentId
+    ) {
+      const [overrideEnvironment, sourceEnvironment] = await Promise.all([
+        this._prisma.runtimeEnvironment.findFirst({
+          where: { id: overrideOptions.environmentId },
+          select: { projectId: true },
+        }),
+        this._prisma.runtimeEnvironment.findFirst({
+          where: { id: existingTaskRun.runtimeEnvironmentId },
+          select: { projectId: true },
+        }),
+      ]);
+      if (
+        !overrideEnvironment ||
+        !sourceEnvironment ||
+        overrideEnvironment.projectId !== sourceEnvironment.projectId
+      ) {
+        logger.warn("Refusing to replay a run into an environment outside its project", {
+          taskRunId: existingTaskRun.id,
+          taskRunFriendlyId: existingTaskRun.friendlyId,
+          sourceEnvironmentId: existingTaskRun.runtimeEnvironmentId,
+          sourceProjectId: sourceEnvironment?.projectId ?? null,
+          overrideEnvironmentId: overrideOptions.environmentId,
+          overrideProjectId: overrideEnvironment?.projectId ?? null,
+        });
+        throw new Error("Cannot replay a run into an environment outside its project");
+      }
+    }
+
     const authenticatedEnvironment = await findEnvironmentById(
       overrideOptions.environmentId ?? existingTaskRun.runtimeEnvironmentId
     );

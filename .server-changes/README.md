@@ -1,10 +1,10 @@
 # Server Changes
 
-This directory tracks changes to server-only components (webapp, supervisor, coordinator, etc.) that are not captured by changesets. Changesets only track published npm packages — server changes would otherwise go undocumented.
+This directory tracks changes to server-only components (webapp, supervisor, etc.) that are not captured by changesets. Changesets only track published npm packages — server changes would otherwise go undocumented.
 
 ## When to add a file
 
-**Server-only PRs**: If your PR only changes `apps/webapp/`, `apps/supervisor/`, `apps/coordinator/`, or other server components (and does NOT change anything in `packages/`), add a `.server-changes/` file.
+**Server-only PRs**: If your PR only changes `apps/webapp/`, `apps/supervisor/`, or other server components (and does NOT change anything in `packages/`), add a `.server-changes/` file.
 
 **Mixed PRs** (both packages and server): Just add a changeset as usual. No `.server-changes/` file needed — the changeset covers it.
 
@@ -31,7 +31,7 @@ Speed up batch queue processing by removing stalls and fixing retry race
 
 ### Fields
 
-- **area** (required): `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
+- **area** (required): `webapp` | `supervisor`
 - **type** (required): `feature` | `fix` | `improvement` | `breaking`
 
 ### Description

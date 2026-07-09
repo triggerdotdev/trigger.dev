@@ -13,7 +13,11 @@ const CreateBody = z.object({
   textContent: z.string(),
   model: z.string().optional(),
   commitMessage: z.string().optional(),
-  source: z.string().optional(),
+  // `code` is reserved for deploy-created versions.
+  source: z
+    .string()
+    .refine((source) => source !== "code")
+    .optional(),
 });
 
 const UpdateBody = z.object({

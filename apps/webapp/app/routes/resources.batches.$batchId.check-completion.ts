@@ -3,8 +3,13 @@ import type { ActionFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { assertExhaustive } from "@trigger.dev/core/utils";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
+import { requireUserId } from "~/services/session.server";
+import { sanitizeRedirectPath } from "~/utils";
+import { runStore } from "~/v3/runStore.server";
+import { findBatchRunIdForUser } from "~/v3/services/batchRunAccess.server";
 import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
 
 export const checkCompletionSchema = z.object({
@@ -16,6 +21,8 @@ const ParamSchema = z.object({
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
+  // Require a logged-in user; org membership is checked below before resuming.
+  const userId = await requireUserId(request);
   const { batchId } = ParamSchema.parse(params);
 
   const formData = await request.formData();
@@ -25,9 +32,22 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission.reply());
   }
 
+  // Keep the post-action redirect same-origin.
+  const safeRedirectUrl = sanitizeRedirectPath(submission.value.redirectUrl);
+
+  // Only act on a batch in an org the caller belongs to. Accepts either the
+  // friendlyId or the internal id; both forms stay org-scoped.
+  const ownedBatchRunId = await findBatchRunIdForUser(prisma, runStore, batchId, userId);
+
+  if (!ownedBatchRunId) {
+    return redirectWithErrorMessage(safeRedirectUrl, request, "Batch not found");
+  }
+
   try {
     const resumeBatchRunService = new ResumeBatchRunService();
-    const resumeResult = await resumeBatchRunService.call(batchId);
+    // Resume by the resolved internal id: the service looks up strictly by
+    // `{ id }`, so passing a friendlyId param would resolve to nothing.
+    const resumeResult = await resumeBatchRunService.call(ownedBatchRunId);
 
     let message: string | undefined;
 
@@ -52,7 +72,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       }
     }
 
-    return redirectWithSuccessMessage(submission.value.redirectUrl, request, message);
+    return redirectWithSuccessMessage(safeRedirectUrl, request, message);
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Failed to check batch completion", {
@@ -62,10 +82,10 @@ export const action: ActionFunction = async ({ request, params }) => {
           stack: error.stack,
         },
       });
-      return redirectWithErrorMessage(submission.value.redirectUrl, request, error.message);
+      return redirectWithErrorMessage(safeRedirectUrl, request, error.message);
     } else {
       logger.error("Failed to check batch completion", { error });
-      return redirectWithErrorMessage(submission.value.redirectUrl, request, "Unknown error");
+      return redirectWithErrorMessage(safeRedirectUrl, request, "Unknown error");
     }
   }
 };

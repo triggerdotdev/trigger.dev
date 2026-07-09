@@ -18,6 +18,7 @@ import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { WORKER_HEADERS, type WorkerQueueClass } from "@trigger.dev/core/v3/workers";
 import type { RuntimeEnvironment, WorkerInstanceGroup } from "@trigger.dev/database";
 import { Prisma, WorkerInstanceGroupType } from "@trigger.dev/database";
+import { SENSITIVE_WORKER_HEADERS, sanitizeWorkerHeaders } from "./sanitizeWorkerHeaders";
 import { createHash, timingSafeEqual } from "crypto";
 import { customAlphabet } from "nanoid";
 import { z } from "zod";
@@ -187,7 +188,6 @@ export class WorkerGroupTokenService extends WithRunEngine {
 
     if (a.byteLength !== b.byteLength) {
       logger.error("[WorkerGroupTokenService] Managed secret length mismatch", {
-        managedWorkerSecret,
         headers: this.sanitizeHeaders(request),
       });
       return;
@@ -195,7 +195,6 @@ export class WorkerGroupTokenService extends WithRunEngine {
 
     if (!timingSafeEqual(a, b)) {
       logger.error("[WorkerGroupTokenService] Managed secret mismatch", {
-        managedWorkerSecret,
         headers: this.sanitizeHeaders(request),
       });
       return;
@@ -317,16 +316,10 @@ export class WorkerGroupTokenService extends WithRunEngine {
     }
   }
 
-  private sanitizeHeaders(request: Request, skipHeaders = ["authorization"]) {
-    const sanitizedHeaders: Partial<Record<string, string>> = {};
-
-    for (const [key, value] of request.headers.entries()) {
-      if (!skipHeaders.includes(key.toLowerCase())) {
-        sanitizedHeaders[key] = value;
-      }
-    }
-
-    return sanitizedHeaders;
+  // Strip sensitive headers before logging request headers — see
+  // `sanitizeWorkerHeaders`.
+  private sanitizeHeaders(request: Request, denylist = SENSITIVE_WORKER_HEADERS) {
+    return sanitizeWorkerHeaders(request.headers, denylist);
   }
 }
 
