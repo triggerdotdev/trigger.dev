@@ -1746,6 +1746,10 @@ const EnvironmentSchema = z
     RUN_OPS_MINT_ENABLED: BoolEnv.default(false),
     RUN_OPS_MINT_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     RUN_OPS_MINT_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(10_000),
+    // Deterministic wall-clock cutover after a runOpsMintKind flip. Must exceed the sum
+    // of RUN_OPS_MINT_FLAG_CACHE_TTL_MS and the control-plane cache TTL so every process
+    // (stale or fresh) resolves to the same kind for the whole window. See mintFlipGrace.ts.
+    RUN_OPS_MINT_FLIP_GRACE_MS: z.coerce.number().int().default(90_000),
 
     // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
     // with the runs replicator for leader locking but has its own slot and

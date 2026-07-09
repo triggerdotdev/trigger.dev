@@ -3,8 +3,10 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { BoundedTtlCache } from "~/services/realtime/boundedTtlCache";
 import { singleton } from "~/utils/singleton";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
+import { DEFAULT_CP_CACHE_TTL_MS } from "./controlPlaneCache.server";
+import { effectiveMintKind, type MintFlagResolution } from "./mintFlipGrace";
 import { isSplitEnabled } from "./splitMode.server";
 
 export type RunIdMintKind = "cuid" | "runOpsId";
@@ -38,11 +40,37 @@ const flagFn = singleton("runOpsMintFlag", () => makeFlag($replica));
 const mintCache = singleton(
   "runOpsMintCache",
   () =>
-    new BoundedTtlCache<RunIdMintKind>(
+    new BoundedTtlCache<MintFlagResolution>(
       env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS,
       env.RUN_OPS_MINT_FLAG_CACHE_MAX_ENTRIES
     )
 );
+
+// BOOT-TIME SAFETY CHECK (warning only, never throws): the grace window only collapses
+// the cross-process divergence window if it outlasts BOTH caches a flag flip has to drain
+// through — this process's own mint-flag cache AND the org-flags control-plane cache a
+// stale process might still be reading through. If it doesn't, warn loudly but keep booting.
+const controlPlaneCacheTtlMs = env.CONTROL_PLANE_CACHE_TTL_MS ?? DEFAULT_CP_CACHE_TTL_MS;
+if (env.RUN_OPS_MINT_FLIP_GRACE_MS <= env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS + controlPlaneCacheTtlMs) {
+  logger.warn(
+    "[runOpsMintKind] RUN_OPS_MINT_FLIP_GRACE_MS does not exceed the sum of " +
+      "RUN_OPS_MINT_FLAG_CACHE_TTL_MS and the control-plane cache TTL; a flag flip can still " +
+      "cross-DB-duplicate a concurrent root trigger during the divergence window",
+    {
+      RUN_OPS_MINT_FLIP_GRACE_MS: env.RUN_OPS_MINT_FLIP_GRACE_MS,
+      RUN_OPS_MINT_FLAG_CACHE_TTL_MS: env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS,
+      controlPlaneCacheTtlMs,
+    }
+  );
+}
+
+function readValidatedFlag<T extends "runOpsMintKindPrev" | "runOpsMintKindFlippedAt">(
+  overrides: Record<string, unknown>,
+  key: T
+): string | undefined {
+  const parsed = FeatureFlagCatalog[FEATURE_FLAG[key]].safeParse(overrides[FEATURE_FLAG[key]]);
+  return parsed.success ? parsed.data : undefined;
+}
 
 export async function resolveRunIdMintKind(environment: {
   organizationId: string;
@@ -54,10 +82,14 @@ export async function resolveRunIdMintKind(environment: {
     masterEnabled: env.RUN_OPS_MINT_ENABLED,
     splitEnabled: isSplitEnabled,
     flag: async (orgId, orgFeatureFlags) => {
-      // The cache stores only "cuid"|"runOpsId" (never undefined), so the cache's
-      // "stored-undefined == miss" caveat never applies here.
+      // The cache stores the full { kind, prev, flippedAtMs } trio (never undefined), so the
+      // cache's "stored-undefined == miss" caveat never applies here. A cache HIT still passes
+      // back through effectiveMintKind so a cached-but-stale entry crosses the grace boundary
+      // on schedule, without needing an invalidation hook.
       const cached = mintCache.get(orgId);
-      if (cached !== undefined) return cached;
+      if (cached !== undefined) {
+        return effectiveMintKind(cached, Date.now(), env.RUN_OPS_MINT_FLIP_GRACE_MS);
+      }
 
       // Hot-path pass-through: use the org flags the authenticated environment already
       // carries; only fall back to a DB read when the caller did NOT pass them (non-trigger
@@ -72,13 +104,26 @@ export async function resolveRunIdMintKind(environment: {
               })
             )?.featureFlags;
 
+      const overridesRecord = (overrides as Record<string, unknown>) ?? {};
+
       const kind = await flagFn({
         key: FEATURE_FLAG.runOpsMintKind,
         defaultValue: "cuid",
-        overrides: (overrides as Record<string, unknown>) ?? {},
+        overrides: overridesRecord,
       });
-      mintCache.set(orgId, kind);
-      return kind;
+
+      // Read the grace-linger stamp DIRECTLY from the already-in-memory org overrides — no
+      // extra DB read, and no forcing these optional fields through flagFn's defaultValue path.
+      const prev = readValidatedFlag(overridesRecord, "runOpsMintKindPrev") as
+        | RunIdMintKind
+        | undefined;
+      const flippedAtRaw = readValidatedFlag(overridesRecord, "runOpsMintKindFlippedAt");
+      const parsedFlippedAt = flippedAtRaw !== undefined ? Date.parse(flippedAtRaw) : NaN;
+      const flippedAtMs = Number.isNaN(parsedFlippedAt) ? undefined : parsedFlippedAt;
+
+      const resolution: MintFlagResolution = { kind, prev, flippedAtMs };
+      mintCache.set(orgId, resolution);
+      return effectiveMintKind(resolution, Date.now(), env.RUN_OPS_MINT_FLIP_GRACE_MS);
     },
   });
 }

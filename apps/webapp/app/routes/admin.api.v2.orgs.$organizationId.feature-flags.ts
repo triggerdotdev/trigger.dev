@@ -2,9 +2,11 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-r
 import { json } from "@remix-run/server-runtime";
 import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
   FEATURE_FLAG,
@@ -119,6 +121,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
       );
     }
     featureFlags = validationResult.data;
+
+    const existingOrg = await prisma.organization.findFirst({
+      where: { id: organizationId },
+      select: { featureFlags: true },
+    });
+    featureFlags = stampMintKindFlip(
+      existingOrg?.featureFlags as Record<string, unknown> | null | undefined,
+      featureFlags,
+      Date.now(),
+      env.RUN_OPS_MINT_FLIP_GRACE_MS
+    );
   }
 
   try {
