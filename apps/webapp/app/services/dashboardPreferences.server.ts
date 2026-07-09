@@ -25,6 +25,7 @@ export type { SideMenuSectionId };
 
 const DashboardPreferences = z.object({
   version: z.literal("1"),
+  theme: z.enum(["dark", "light"]).optional(),
   currentProjectId: z.string().optional(),
   projects: z.record(
     z.string(),
@@ -98,6 +99,32 @@ export async function updateCurrentProjectEnvironmentId({
     data: {
       dashboardPreferences: updatedPreferences,
     },
+  });
+}
+
+export async function updateThemePreference({
+  user,
+  theme,
+}: {
+  user: UserFromSession;
+  theme: "dark" | "light";
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  if (user.dashboardPreferences.theme === theme) {
+    return;
+  }
+
+  const updatedPreferences: DashboardPreferences = {
+    ...user.dashboardPreferences,
+    theme,
+  };
+
+  return prisma.user.update({
+    where: { id: user.id },
+    data: { dashboardPreferences: updatedPreferences },
   });
 }
 

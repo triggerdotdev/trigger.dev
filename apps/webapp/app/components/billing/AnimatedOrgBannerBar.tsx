@@ -44,7 +44,9 @@ export function AnimatedOrgBannerBar({
             />
             <Paragraph
               variant="small"
-              className={variant === "warning" ? "text-amber-200" : "text-error"}
+              className={
+                variant === "warning" ? "text-amber-700 dark:text-amber-200" : "text-error"
+              }
             >
               {children}
             </Paragraph>

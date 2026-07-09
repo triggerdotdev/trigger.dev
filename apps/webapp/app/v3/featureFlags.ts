@@ -10,6 +10,7 @@ export const FEATURE_FLAG = {
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
   hasSso: "hasSso",
+  hasThemeSwitcher: "hasThemeSwitcher",
   mollifierEnabled: "mollifierEnabled",
   workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
   realtimeBackend: "realtimeBackend",
@@ -33,6 +34,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
   [FEATURE_FLAG.hasSso]: z.coerce.boolean(),
+  // Gates the Interface theme setting in /account. Off by default.
+  [FEATURE_FLAG.hasThemeSwitcher]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
   // Which backend serves the realtime run feed. Controllable

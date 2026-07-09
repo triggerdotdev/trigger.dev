@@ -668,7 +668,7 @@ function DomainList({ domains }: { domains: ReadonlyArray<DomainRow> }) {
             <div className="flex flex-col">
               <span className="font-mono text-sm text-text-bright">{d.domain}</span>
               {d.state === "failed" && d.verificationFailedReason && (
-                <span className="mt-0.5 text-xs text-rose-400">
+                <span className="mt-0.5 text-xs text-rose-500 dark:text-rose-400">
                   Reason: <span className="font-mono">{d.verificationFailedReason}</span>
                 </span>
               )}

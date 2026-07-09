@@ -40,7 +40,7 @@ function Content({ children }: { children: React.ReactNode }) {
   const user = useUser();
 
   return (
-    <div className="flex flex-col gap-2 divide-y divide-slate-700">
+    <div className="flex flex-col gap-2 divide-y divide-grid-bright">
       <Property.Table>
         <Property.Item>
           <Property.Label>User ID</Property.Label>

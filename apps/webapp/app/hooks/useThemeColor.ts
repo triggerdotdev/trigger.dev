@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Normalize any CSS color (hex, oklch, hsl, ...) to rgb()/rgba() by rendering
@@ -17,16 +17,17 @@ function toRgb(color: string): string {
 }
 
 /**
- * Resolve a theme CSS variable to a concrete, animatable color once on mount.
+ * Resolve a theme CSS variable to a concrete, animatable color on mount.
  * framer-motion can't interpolate `var()` strings or oklch values, so animated
- * colors must be resolved and normalized first. The fallback is used during
- * SSR and should match the default dark theme (see tailwind.css).
+ * colors must be resolved and normalized first. Resolution happens in an
+ * effect so server and hydration renders both use the fallback — resolving
+ * during render caused hydration style mismatches.
  */
 export function useThemeColor(variable: `--${string}`, fallback: string): string {
-  const [color] = useState(() => {
-    if (typeof document === "undefined") return fallback;
+  const [color, setColor] = useState(fallback);
+  useEffect(() => {
     const value = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
-    return value ? toRgb(value) : fallback;
-  });
+    if (value) setColor(toRgb(value));
+  }, [variable]);
   return color;
 }

@@ -5,7 +5,7 @@ import { CopyButton } from "./CopyButton";
 const variants = {
   "primary/small": {
     container:
-      "flex items-center text-text-dimmed font-mono rounded border bg-background-hover text-xs transition hover:bg-background-raised focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-hidden focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border border-border-bright/50 shadow-xs bg-input-bg text-xs transition hover:bg-background-raised focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-hidden focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "primary" as const,
@@ -14,7 +14,7 @@ const variants = {
   },
   "secondary/small": {
     container:
-      "flex items-center text-text-dimmed font-mono rounded border bg-background-hover text-xs transition hover:bg-background-raised focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-hidden focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border border-border-bright/50 shadow-xs bg-input-bg text-xs transition hover:bg-background-raised focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-hidden focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-xs px-2 w-auto rounded-l h-6 leading-6 focus:ring-transparent",
     buttonVariant: "tertiary" as const,
@@ -33,7 +33,7 @@ const variants = {
   },
   "primary/medium": {
     container:
-      "flex items-center text-text-dimmed font-mono rounded border bg-background-hover text-sm transition hover:bg-background-raised focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-hidden focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border border-border-bright/50 shadow-xs bg-input-bg text-sm transition hover:bg-background-raised focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-hidden focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "primary" as const,
@@ -42,7 +42,7 @@ const variants = {
   },
   "secondary/medium": {
     container:
-      "flex items-center text-text-dimmed font-mono rounded bg-background-hover text-sm transition hover:bg-background-raised focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-hidden focus:ring-0 focus:ring-transparent",
+      "flex items-center text-text-dimmed font-mono rounded border border-border-bright/50 shadow-xs bg-input-bg text-sm transition hover:bg-background-raised focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-transparent focus:outline-hidden focus:ring-0 focus:ring-transparent",
     input:
       "bg-transparent border-0 text-sm px-3 w-auto rounded-l h-8 leading-6 focus:ring-transparent",
     buttonVariant: "tertiary" as const,

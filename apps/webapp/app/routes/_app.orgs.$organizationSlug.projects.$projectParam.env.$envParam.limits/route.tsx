@@ -11,7 +11,6 @@ import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { EnvironmentSelector } from "~/components/navigation/EnvironmentSelector";
 import { AnimatedNumber } from "~/components/primitives/AnimatedNumber";
-import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -445,21 +444,24 @@ function RateLimitTypeBadge({
   switch (rateLimitType) {
     case "tokenBucket":
       return (
-        <Badge variant="small" className="w-fit bg-blue-500/20 text-blue-400">
-          Token bucket
-        </Badge>
+        <RateLimitTypePill
+          className="bg-blue-500/20 text-blue-600 dark:text-blue-400"
+          label="Token bucket"
+        />
       );
     case "fixedWindow":
       return (
-        <Badge variant="small" className="w-fit bg-purple-500/20 text-purple-400">
-          Fixed window
-        </Badge>
+        <RateLimitTypePill
+          className="bg-purple-500/20 text-purple-600 dark:text-purple-400"
+          label="Fixed window"
+        />
       );
     case "slidingWindow":
       return (
-        <Badge variant="small" className="w-fit bg-green-500/20 text-green-400">
-          Sliding window
-        </Badge>
+        <RateLimitTypePill
+          className="bg-green-500/20 text-green-700 dark:text-green-400"
+          label="Sliding window"
+        />
       );
     default:
       return null;
@@ -858,19 +860,32 @@ function getUsageColorClass(
   }
 }
 
+function RateLimitTypePill({ className, label }: { className: string; label: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit items-center rounded px-1.5 py-0.5 text-xs font-medium",
+        className
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
 function SourceBadge({ source }: { source: "default" | "plan" | "override" }) {
   const variants: Record<typeof source, { label: string; className: string }> = {
     default: {
       label: "Default",
-      className: "bg-indigo-500/20 text-indigo-400",
+      className: "bg-indigo-500/20 text-indigo-600 dark:text-indigo-400",
     },
     plan: {
       label: "Plan",
-      className: "bg-purple-500/20 text-purple-400",
+      className: "bg-purple-500/20 text-purple-600 dark:text-purple-400",
     },
     override: {
       label: "Override",
-      className: "bg-amber-500/20 text-amber-400",
+      className: "bg-amber-500/20 text-amber-700 dark:text-amber-400",
     },
   };
 

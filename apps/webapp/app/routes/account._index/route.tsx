@@ -1,7 +1,14 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { conformZodMessage, parseWithZod } from "@conform-to/zod";
-import { Form, type MetaFunction, useActionData } from "@remix-run/react";
-import { type ActionFunction, json } from "@remix-run/server-runtime";
+import { MoonIcon, SunIcon } from "@heroicons/react/20/solid";
+import {
+  Form,
+  type MetaFunction,
+  useActionData,
+  useFetcher,
+  useLoaderData,
+} from "@remix-run/react";
+import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
 import { EnvelopeIcon } from "~/assets/icons/EnvelopeIcon";
@@ -13,6 +20,7 @@ import {
 } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -26,7 +34,9 @@ import { prisma } from "~/db.server";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
-import { requireUserId } from "~/services/session.server";
+import { updateThemePreference } from "~/services/dashboardPreferences.server";
+import { flag } from "~/v3/featureFlags.server";
+import { requireUser, requireUserId } from "~/services/session.server";
 import { accountPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
@@ -75,10 +85,27 @@ function createSchema(
   });
 }
 
+export async function loader({ request }: LoaderFunctionArgs) {
+  await requireUserId(request);
+  const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: false });
+  return json({ showThemeSwitcher });
+}
+
 export const action: ActionFunction = async ({ request }) => {
   const userId = await requireUserId(request);
 
   const formData = await request.formData();
+
+  if (formData.get("action") === "update-theme") {
+    const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: false });
+    if (!showThemeSwitcher) {
+      return json({ error: "Not available" }, { status: 404 });
+    }
+    const user = await requireUser(request);
+    const theme = formData.get("theme") === "light" ? "light" : "dark";
+    await updateThemePreference({ user, theme });
+    return json({ success: true });
+  }
 
   const formSchema = createSchema({
     isEmailUnique: async (email) => {
@@ -126,7 +153,14 @@ export const action: ActionFunction = async ({ request }) => {
 
 export default function Page() {
   const user = useUser();
+  const { showThemeSwitcher } = useLoaderData<typeof loader>();
   const lastSubmission = useActionData();
+  const themeFetcher = useFetcher();
+  const pendingTheme = themeFetcher.formData?.get("theme");
+  const theme =
+    typeof pendingTheme === "string"
+      ? (pendingTheme as "dark" | "light")
+      : (user.dashboardPreferences.theme ?? "dark");
 
   const [form, { name, email, marketingEmails }] = useForm({
     id: "account",
@@ -195,6 +229,61 @@ export default function Page() {
               />
             </Fieldset>
           </Form>
+          {showThemeSwitcher && (
+            <>
+              <div className="mb-3 mt-8 w-full border-b border-grid-dimmed pb-3">
+                <Header2>Appearance</Header2>
+              </div>
+              <div className="flex w-full items-center justify-between gap-4">
+                <Label>Interface theme</Label>
+                <Select<"dark" | "light", "dark" | "light">
+                  value={theme}
+                  setValue={(value) =>
+                    themeFetcher.submit(
+                      { action: "update-theme", theme: value },
+                      { method: "post" }
+                    )
+                  }
+                  variant="secondary/small"
+                  dropdownIcon
+                  items={["dark", "light"]}
+                  text={(value) => (
+                    <span className="flex items-center gap-1.5">
+                      {value === "dark" ? (
+                        <span className="grid size-4 place-items-center">
+                          <MoonIcon className="size-3 text-text-dimmed" />
+                        </span>
+                      ) : (
+                        <SunIcon className="size-4 text-text-dimmed" />
+                      )}
+                      {value === "dark" ? "Dark" : "Light"}
+                    </span>
+                  )}
+                  className="w-32"
+                >
+                  {(items) =>
+                    items.map((item) => (
+                      <SelectItem
+                        key={item}
+                        value={item}
+                        icon={
+                          item === "dark" ? (
+                            <span className="grid size-4 place-items-center">
+                              <MoonIcon className="size-3 text-text-dimmed" />
+                            </span>
+                          ) : (
+                            <SunIcon className="size-4 text-text-dimmed" />
+                          )
+                        }
+                      >
+                        {item === "dark" ? "Dark" : "Light"}
+                      </SelectItem>
+                    ))
+                  }
+                </Select>
+              </div>
+            </>
+          )}
         </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>

@@ -158,6 +158,7 @@
   --color-surface-control: var(--color-charcoal-600);
   --color-surface-control-hover: var(--color-charcoal-550);
   --color-surface-control-active: var(--color-charcoal-500);
+  --color-input-bg: var(--color-charcoal-750);
 
   /* Borders, from subtlest to most visible */
   --color-grid-dimmed: var(--color-charcoal-750);
@@ -597,5 +598,170 @@
   }
   & [data-code-block] .line {
     @apply leading-relaxed;
+  }
+}
+
+/*
+  Light theme. Overrides the themable variables only; raw palettes stay put.
+  Code/editor values come from the trigger.light VS Code theme.
+*/
+[data-theme="light"] {
+  --color-secondary: #ffffff;
+  --color-input-bg: #ffffff;
+
+  /* shadcn vars consumed by charts/streamdown (tooltip cursor fill etc.) */
+  --background: #ffffff;
+  --foreground: #1a1b1f;
+  --muted: #eceef1;
+  --muted-foreground: #5f6570;
+  --border: #e2e4e9;
+  --sidebar: #f6f7f8;
+  --primary-foreground: #ffffff;
+
+  /* Text */
+  --color-primary: var(--color-apple-600);
+  --color-tertiary: #eef0f3;
+  --color-text-link: var(--color-lavender-600);
+  --color-text-faint: var(--color-charcoal-400);
+  --color-text-dimmed: var(--color-charcoal-500);
+  --color-text-bright: var(--color-charcoal-800);
+
+  /* Surfaces */
+  --color-background-deep: #f1f2f4;
+  --color-background-dimmed: #fbfbfc;
+  --color-background-bright: #ffffff;
+  --color-background-hover: #f2f3f5;
+  --color-background-raised: #e9eaee;
+  --color-surface-control: #dcdee3;
+  --color-surface-control-hover: #cfd2d9;
+  --color-surface-control-active: #b8bcc6;
+
+  /* Borders */
+  --color-grid-dimmed: #eceef1;
+  --color-grid-bright: #e2e4e9;
+  --color-border-bright: #d2d5db;
+  --color-border-brighter: #b9bdc7;
+  --color-border-brightest: #9ba1ad;
+
+  /* Status - darker steps for contrast on white */
+  --color-success: var(--color-mint-600);
+  --color-warning: var(--color-amber-600);
+  --color-dev: var(--color-pink-600);
+  --color-prod: var(--color-mint-600);
+  --color-staging: var(--color-orange-600);
+  --color-preview: var(--color-yellow-700);
+
+  /* Neutral run statuses: soft light grays for sparkbars and charts */
+  --color-run-pending: #ccd0d6;
+  --color-run-delayed: #d3d6db;
+  --color-run-waiting-to-resume: #c5c9d0;
+  --color-run-canceled: #d8dbdf;
+  --color-run-expired: #dee0e4;
+
+  /* Icons that fail contrast on white */
+  --color-schedules: var(--color-yellow-600);
+  --color-previewBranches: var(--color-yellow-600);
+  --color-customDashboards: var(--color-charcoal-500);
+
+  /* Callouts - deep tints instead of the dark theme's pastels */
+  --color-callout-warning-text: var(--color-yellow-800);
+  --color-callout-error-text: var(--color-rose-700);
+  --color-callout-success-text: var(--color-green-800);
+  --color-callout-docs-text: var(--color-blue-800);
+  --color-callout-pending-bg: var(--color-blue-100);
+  --color-callout-pending-text: var(--color-blue-800);
+  --color-callout-pricing-bg: var(--color-indigo-100);
+  --color-callout-pricing-text: var(--color-indigo-800);
+
+  /* Code syntax - trigger.light */
+  --color-code-background: #ffffff;
+  --color-code-foreground: #333333;
+  --color-code-line-number: #a8a8ad;
+  --color-code-plain: #2e2e4b;
+  --color-code-muted: #333333;
+  --color-code-comment: #767a81;
+  --color-code-keyword: #b114d3;
+  --color-code-storage: #b114d3;
+  --color-code-type: #b114d3;
+  --color-code-function: #6532f5;
+  --color-code-variable: #404040;
+  --color-code-constant: #1e1e1e;
+  --color-code-language: #b114d3;
+  --color-code-object-key: #222222;
+  --color-code-string: #262626;
+  --color-code-template-punctuation: #0879e2;
+  --color-code-number: #262626;
+  --color-code-builtin: #3080e0;
+  --color-code-attribute: #222222;
+  --color-code-escape: #222222;
+  --color-code-regexp: #dc3545;
+  --color-code-regexp-constant: #5f6570;
+  --color-code-invalid: #dc3545;
+  --color-code-deleted: #dc3545;
+  --color-code-jsx-text: #2e2e4b;
+
+  /* CodeMirror - trigger.light */
+  --color-editor-background: #ffffff;
+  --color-editor-foreground: #2e2e4b;
+  --color-editor-keyword: #b114d3;
+  --color-editor-name: #197c3c;
+  --color-editor-function: #6532f5;
+  --color-editor-constant: #3080e0;
+  --color-editor-type: #2980b9;
+  --color-editor-operator: #333333;
+  --color-editor-comment: #767a81;
+  --color-editor-heading: #2c3e50;
+  --color-editor-string: #262626;
+  --color-editor-invalid: #dc3545;
+  --color-editor-panel-background: #f4f4f6;
+  --color-editor-highlight-background: #f8f8fa;
+  --color-editor-tooltip-background: #ffffff;
+  --color-editor-selection: #d9dce3;
+  --color-editor-cursor: #2e2e4b;
+  --color-editor-search-match: #0879e226;
+  --color-editor-search-match-outline: #0879e2;
+  --color-editor-search-match-selected: #0879e240;
+  --color-editor-selection-match: #e8e8ed;
+  --color-editor-matching-bracket: rgba(240, 241, 244, 0.9);
+  --color-editor-matching-bracket-outline: rgba(160, 166, 180, 0.5);
+  --color-editor-fold-placeholder: #555555;
+  --color-editor-scrollbar-track-active: #e8e9ec;
+  --color-editor-scrollbar-thumb: #c9ccd4;
+  --color-editor-scrollbar-thumb-active: #aeb3be;
+}
+
+/* Streamdown's muted surface has no semantic token (charcoal-775); theme it here */
+[data-theme="light"] .streamdown-container {
+  --muted: #eceef1;
+}
+
+/* The timeline label shadow is a dark-theme legibility aid; drop it on light */
+[data-theme="light"] .text-shadow-custom {
+  text-shadow: none;
+}
+
+/* Neutral timeline points: invert to a light dot with a gray ring */
+[data-theme="light"] .timeline-point.bg-surface-control-active {
+  border-color: var(--color-surface-control-active);
+  background-color: var(--color-background-bright);
+}
+
+/* Run timeline bars: no fade gradient on light */
+[data-theme="light"] .timeline-span {
+  background-image: none;
+}
+/* On saturated bars the duration label keeps the dark-theme treatment,
+   but only when the bar is wide enough to contain the label — on narrow
+   bars the sticky label overflows onto the page background, where the
+   default dark-on-light text is correct. */
+[data-theme="light"] .timeline-span.bg-success,
+[data-theme="light"] .timeline-span.bg-error {
+  container-type: inline-size;
+}
+@container (min-width: 3.5rem) {
+  [data-theme="light"] .timeline-span.bg-success .text-shadow-custom,
+  [data-theme="light"] .timeline-span.bg-error .text-shadow-custom {
+    color: #ffffff;
+    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
   }
 }

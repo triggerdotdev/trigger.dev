@@ -24,10 +24,11 @@ const theme = {
     selected: "absolute inset-0 rounded-[2px] outline-solid outline-3 outline-primary",
   },
   secondary: {
-    base: "bg-background-raised/50",
+    base: "bg-transparent dark:bg-background-raised/50",
     active: "text-text-bright",
     inactive: "text-text-dimmed transition hover:text-text-bright",
-    selected: "absolute inset-0 rounded bg-background-raised border border-border-bright",
+    selected:
+      "absolute inset-0 rounded bg-white border border-[#e2e4e9] dark:bg-background-raised dark:border-border-bright",
   },
 };
 

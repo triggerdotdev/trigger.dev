@@ -30,7 +30,7 @@ const style = {
   },
   secondary: {
     button:
-      "bg-secondary focus-custom border border-border-bright hover:text-text-bright hover:border-border-brighter text-text-bright hover:bg-surface-control",
+      "bg-secondary focus-custom border border-border-bright/50 shadow-xs hover:text-text-bright text-text-bright hover:bg-background-raised",
   },
 };
 

@@ -18,6 +18,7 @@ import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { getUser } from "./services/session.server";
+import { flag } from "~/v3/featureFlags.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";
 
@@ -63,6 +64,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 
   const user = await getUser(request);
+  // Theme switching is feature-flagged; while off, everyone stays on dark
+  // even if a preference was saved earlier.
+  const showThemeSwitcher = user
+    ? await flag({ key: "hasThemeSwitcher", defaultValue: false })
+    : false;
 
   const headers = new Headers();
   headers.append("Set-Cookie", await commitSession(session));
@@ -80,6 +86,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       triggerCliTag: env.TRIGGER_CLI_TAG,
       kapa,
       timezone,
+      showThemeSwitcher,
+      // Consumed by ResizablePanel: the browser check must match between SSR
+      // and hydration, so it is derived from the request user-agent.
+      isFirefox: /firefox/i.test(request.headers.get("user-agent") ?? ""),
     },
     { headers }
   );
@@ -121,12 +131,19 @@ export function ErrorBoundary() {
 }
 
 export default function App() {
-  const { posthogProjectKey, posthogUiHost, kapa: _kapa } = useTypedLoaderData<typeof loader>();
+  const {
+    posthogProjectKey,
+    posthogUiHost,
+    kapa: _kapa,
+    user,
+    showThemeSwitcher,
+  } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey, posthogUiHost);
+  const theme = (showThemeSwitcher ? user?.dashboardPreferences.theme : "dark") ?? "dark";
 
   return (
     <>
-      <html lang="en" className="h-full" data-theme="dark">
+      <html lang="en" className="h-full" data-theme={theme}>
         <head>
           <Meta />
           <Links />

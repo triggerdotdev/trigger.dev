@@ -673,7 +673,7 @@ function PermanentStatusFilter() {
                     className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1 rounded border border-border-bright bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-border-brighter group-hover:bg-surface-control">
+                  <div className="flex h-6 items-center gap-1 rounded border border-border-bright/50 shadow-xs bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:bg-background-raised">
                     <div className="grid size-4 place-items-center">
                       <div className="size-[75%] rounded-full border-2 border-text-bright" />
                     </div>
@@ -852,7 +852,7 @@ function PermanentTasksFilter({ possibleTasks }: Pick<RunFiltersProps, "possible
                     className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1.5 rounded border border-border-bright bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-border-brighter group-hover:bg-surface-control">
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-border-bright/50 shadow-xs bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:bg-background-raised">
                     {filterIcon("tasks")}
                     <span>Tasks</span>
                   </div>

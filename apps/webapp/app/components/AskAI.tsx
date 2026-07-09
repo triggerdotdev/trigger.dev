@@ -389,7 +389,7 @@ function ChatMessages({
         <div className="flex flex-col">
           <Callout variant="error" className="mb-4">
             <Paragraph className="font-semibold text-error">Error generating answer:</Paragraph>
-            <Paragraph className="text-rose-300">
+            <Paragraph className="text-rose-500 dark:text-rose-300">
               {error} If the problem persists after retrying, please contact support.
             </Paragraph>
           </Callout>

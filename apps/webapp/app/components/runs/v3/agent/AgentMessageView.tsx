@@ -136,7 +136,9 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     return (
       <div key={i} className="border-l-2 border-amber-500/40 pl-2">
         <ChatBubble>
-          <div className="whitespace-pre-wrap text-xs italic text-amber-200/70">{p.text ?? ""}</div>
+          <div className="whitespace-pre-wrap text-xs italic text-amber-600/70 dark:text-amber-200/70">
+            {p.text ?? ""}
+          </div>
         </ChatBubble>
       </div>
     );

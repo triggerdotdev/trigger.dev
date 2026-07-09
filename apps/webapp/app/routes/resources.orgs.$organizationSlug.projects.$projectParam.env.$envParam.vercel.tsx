@@ -1125,7 +1125,7 @@ function VercelSettingsPanel({
           <ExclamationTriangleIcon className="h-5 w-5 shrink-0 text-rose-500" />
           <div>
             <p className="font-medium text-rose-400">Failed to load Vercel settings</p>
-            <p className="mt-1 text-sm text-rose-300">
+            <p className="mt-1 text-sm text-rose-500 dark:text-rose-300">
               There was an error loading the Vercel integration settings. Please refresh the page to
               try again.
             </p>

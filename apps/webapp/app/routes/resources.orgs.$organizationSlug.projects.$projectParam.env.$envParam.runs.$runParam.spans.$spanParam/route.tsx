@@ -1226,7 +1226,7 @@ function RunError({ error }: { error: TaskRunError }) {
           <Header3 className="text-rose-500">{name}</Header3>
           {enhancedError.message && (
             <Callout variant="error">
-              <pre className="text-wrap font-sans text-sm font-normal text-rose-200 [word-break:break-word]">
+              <pre className="text-wrap font-sans text-sm font-normal text-rose-500 dark:text-rose-200 [word-break:break-word]">
                 {enhancedError.message}
               </pre>
             </Callout>
