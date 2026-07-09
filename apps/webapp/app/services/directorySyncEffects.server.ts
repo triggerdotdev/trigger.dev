@@ -11,6 +11,18 @@ import { createPlatformNotification } from "~/services/platformNotifications.ser
 
 const LAST_OWNER_NOTIFICATION_TITLE = "Directory Sync: last Owner protected";
 
+// Directory-sync effects are idempotent and the accounts-webhook worker retries
+// the whole event (maxAttempts: 5). A single failed attempt is therefore an
+// expected, self-healing condition rather than an alert-worthy error — the most
+// common case is a role assignment losing a serializable race during a backfill
+// burst (the plugin already retries that internally; the worker retry mops up
+// the rest). Tag the thrown error with `logLevel: "warn"` so the worker logs it
+// at warn instead of error (see redis-worker `processItem`), keeping it visible
+// for triage without paging as an error on every transient retry.
+function retryableEffectError(message: string): Error {
+  return Object.assign(new Error(message), { logLevel: "warn" as const });
+}
+
 // Raise a user-scoped, deduped notification when the directory tried to
 // remove the org's last Owner. We keep the member and tell the Owner what to
 // do; a single undismissed notification is enough (don't spam on every retry).
@@ -92,7 +104,7 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
           roleId: effect.roleId,
         });
         if (!result.ok) {
-          throw new Error(`directorySync provision setUserRole failed: ${result.error}`);
+          throw retryableEffectError(`directorySync provision setUserRole failed: ${result.error}`);
         }
       }
       return;
@@ -104,7 +116,7 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
         roleId: effect.roleId,
       });
       if (!result.ok) {
-        throw new Error(`directorySync set_role failed: ${result.error}`);
+        throw retryableEffectError(`directorySync set_role failed: ${result.error}`);
       }
       return;
     }

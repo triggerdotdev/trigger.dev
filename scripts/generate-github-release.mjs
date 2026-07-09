@@ -239,6 +239,21 @@ async function main() {
   }
 
   const changesContent = extractChangesFromPrBody(prBody);
+
+  // Fail loudly when a stable (non-prerelease) release resolved no changelog. This
+  // guards against publishing an empty "What's changed" section, which previously
+  // happened silently on workflow_dispatch re-runs where RELEASE_PR_BODY was empty.
+  // Prereleases (any version with a hyphen, e.g. 4.5.0-rc.0) are allowed to be empty.
+  const isPrerelease = version.includes("-");
+  if (!changesContent && !isPrerelease) {
+    console.error(
+      `Error: no "What's changed" content could be resolved for v${version}. ` +
+        `RELEASE_PR_BODY was empty or contained no changelog entries. ` +
+        `Refusing to publish a release with an empty changelog.`
+    );
+    process.exit(1);
+  }
+
   const contributors = getContributors(getPreviousVersion(version));
   const packages = getPublishedPackages();
 
