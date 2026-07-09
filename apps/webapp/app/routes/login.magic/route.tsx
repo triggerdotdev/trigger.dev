@@ -1,7 +1,6 @@
 import { ArrowLeftIcon } from "@heroicons/react/20/solid";
 import { InboxArrowDownIcon } from "@heroicons/react/24/solid";
 import {
-  createCookie,
   redirect,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
@@ -35,17 +34,7 @@ import { ssoRedirectForEmail } from "~/services/ssoAutoDiscovery.server";
 import { logger, tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
-
-// The submitted email is carried to the confirmation screen in a short-lived,
-// httpOnly cookie rather than the URL, so the address never lands in access
-// logs, browser history, or error-tracker breadcrumbs.
-const magicLinkEmailCookie = createCookie("magiclink-email", {
-  maxAge: 60 * 10,
-  httpOnly: true,
-  sameSite: "lax",
-  secure: env.NODE_ENV === "production",
-  path: "/",
-});
+import { magicLinkEmailCookie } from "./magicLinkEmailCookie.server";
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
