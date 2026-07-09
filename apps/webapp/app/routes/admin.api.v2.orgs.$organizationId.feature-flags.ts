@@ -126,10 +126,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
       where: { id: organizationId },
       select: { featureFlags: true },
     });
+    // Anchor the flip stamp to the control-plane DB clock (see the v1 route) rather than this process's.
+    const [{ now: controlPlaneNow }] = await prisma.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
     featureFlags = stampMintKindFlip(
       existingOrg?.featureFlags as Record<string, unknown> | null | undefined,
       featureFlags,
-      Date.now(),
+      controlPlaneNow.getTime(),
       env.RUN_OPS_MINT_FLIP_GRACE_MS
     );
   }

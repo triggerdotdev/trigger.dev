@@ -85,13 +85,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
       ? validatePartialFeatureFlags(organization.featureFlags as Record<string, unknown>)
       : { success: false as const };
 
+    // Stamp the flip from the control-plane DB clock so the grace-window cutover is anchored to one
+    // authoritative time source, not whichever webapp process happened to handle this request.
+    const [{ now: controlPlaneNow }] = await prisma.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+
     const mergedFlags = stampMintKindFlip(
       existingFlags.success ? existingFlags.data : {},
       {
         ...(existingFlags.success ? existingFlags.data : {}),
         ...validationResult.data,
       },
-      Date.now(),
+      controlPlaneNow.getTime(),
       env.RUN_OPS_MINT_FLIP_GRACE_MS
     );
 
