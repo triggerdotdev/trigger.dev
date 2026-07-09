@@ -12,7 +12,8 @@ import { z } from "zod";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
+import { Feedback } from "~/components/Feedback";
 import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import {
@@ -47,7 +48,6 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import { cn } from "~/utils/cn";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { v3BillingPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => [{ title: "SSO & Directory Sync | Trigger.dev" }];
 
@@ -457,7 +457,7 @@ export default function Page() {
       <PageBody scrollable={true}>
         <SettingsContainer>
           {!isEntitled ? (
-            <EnterpriseUpsellState organizationSlug={organization.slug} />
+            <EnterpriseUpsellState />
           ) : !status.hasIdpOrg ? (
             <NoIdpOrgState onOpenPortal={() => openPortal("domain_verification")} />
           ) : !hasActive ? (
@@ -515,13 +515,17 @@ export default function Page() {
   );
 }
 
-function EnterpriseUpsellState({ organizationSlug }: { organizationSlug: string }) {
+function EnterpriseUpsellState() {
   return (
     <SettingsSection>
       <SettingsHeader
-        title="SSO & Directory Sync"
+        title={
+          <span className="flex items-center gap-2">
+            SSO & Directory Sync
+            <Badge variant="small">Enterprise</Badge>
+          </span>
+        }
         description="Single sign-on (SAML/OIDC) and Directory Sync (SCIM) let your IT team manage access to Trigger.dev from your identity provider, such as Okta, Azure AD, or Google Workspace."
-        action={<Badge variant="small">Enterprise</Badge>}
       />
       <div className="w-full space-y-4 py-4">
         <ul className="ml-4 list-disc space-y-1.5 text-sm text-text-dimmed">
@@ -531,17 +535,10 @@ function EnterpriseUpsellState({ organizationSlug }: { organizationSlug: string 
           <li>Sync users and map directory groups to roles with SCIM.</li>
         </ul>
         <div className="flex flex-wrap gap-2">
-          <LinkButton variant="primary/small" to={v3BillingPath({ slug: organizationSlug })}>
-            Talk to sales
-          </LinkButton>
-          <LinkButton
-            variant="secondary/small"
-            to="https://trigger.dev/contact"
-            target="_blank"
-            TrailingIcon={ArrowUpRightIcon}
-          >
-            Contact us
-          </LinkButton>
+          <Feedback
+            defaultValue="enterprise"
+            button={<Button variant="primary/small">Contact us</Button>}
+          />
         </div>
       </div>
     </SettingsSection>
