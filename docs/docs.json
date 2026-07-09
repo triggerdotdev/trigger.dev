@@ -526,6 +526,7 @@
               "guides/example-projects/claude-changelog-generator",
               "guides/example-projects/claude-github-wiki",
               "guides/example-projects/claude-thinking-chatbot",
+              "guides/example-projects/clickhouse-chat-agent",
               "guides/example-projects/cursor-background-agent",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
