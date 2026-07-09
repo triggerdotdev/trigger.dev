@@ -330,6 +330,13 @@ const EnvironmentSchema = z
       .string()
       .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     TASK_META_CACHE_CURRENT_ENV_TTL_SECONDS: z.coerce.number().default(86400),
+
+    // Runs-list empty-state check: how far back the ClickHouse "does this env have any run"
+    // probe looks. Bounds the prove-absence partition scan. 0 = unbounded ("any run ever").
+    RUN_LIST_HAS_RUNS_LOOKBACK_DAYS: z.coerce.number().default(30),
+    // SWR TTLs for the empty-state has-runs cache (memory + Redis).
+    RUN_LIST_HAS_RUNS_CACHE_FRESH_MS: z.coerce.number().default(86_400_000),
+    RUN_LIST_HAS_RUNS_CACHE_STALE_MS: z.coerce.number().default(604_800_000),
     TASK_META_CACHE_BY_WORKER_TTL_SECONDS: z.coerce.number().default(2592000),
 
     REALTIME_STREAMS_REDIS_HOST: z
