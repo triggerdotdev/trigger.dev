@@ -463,8 +463,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     Object.keys(childVars).length > 0 ||
     Object.keys(secretChildVars).length > 0 ||
     // Only sync parent variables if this is a branch environment
-    (branch &&
-      (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
+    (branch && (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
 
   if (hasVarsToSync) {
     const numberOfEnvVars =
