@@ -11,10 +11,46 @@ import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
+import { env } from "~/env.server";
+import {
+  createCache,
+  createLRUMemoryStore,
+  DefaultStatefulContext,
+  Namespace,
+} from "@internal/cache";
+import { RedisCacheStore } from "~/services/unkey/redisCacheStore.server";
+import { singleton } from "~/utils/singleton";
 import { regionForDisplay } from "~/runEngine/concerns/workerQueueSplit.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
+
+// Positive-only cache: only envs known to have runs are stored (empty envs are re-checked),
+// so "has runs" is monotonic and the TTL can be very long. Tiered memory + Redis.
+const runsExistCache = singleton("runsExistCache", () => {
+  const ctx = new DefaultStatefulContext();
+  const memory = createLRUMemoryStore(5000, "runs-has-runs-cache");
+  const redis = new RedisCacheStore({
+    name: "runs-has-runs",
+    connection: {
+      keyPrefix: "tr:cache:runs-has-runs",
+      port: env.CACHE_REDIS_PORT,
+      host: env.CACHE_REDIS_HOST,
+      username: env.CACHE_REDIS_USERNAME,
+      password: env.CACHE_REDIS_PASSWORD,
+      tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
+    },
+  });
+
+  return createCache({
+    hasRuns: new Namespace<boolean>(ctx, {
+      stores: [memory, redis],
+      fresh: env.RUN_LIST_HAS_RUNS_CACHE_FRESH_MS,
+      stale: env.RUN_LIST_HAS_RUNS_CACHE_STALE_MS,
+    }),
+  });
+});
 
 export type RunListOptions = {
   userId?: string;
@@ -42,6 +78,8 @@ export type RunListOptions = {
   direction?: Direction;
   cursor?: string;
   pageSize?: number;
+  // Run the empty-state "has any run ever" probe. Only the runs list consumes it.
+  includeHasAnyRuns?: boolean;
 };
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -65,37 +103,31 @@ export class NextRunListPresenter {
     }
   ) {}
 
-  // Existence probe for the empty-state. run-ops (TaskRun) read.
-  // Split off / single-DB: one plain findFirst on `replica` (passthrough).
-  // Split on: true if a row exists in the NEW run-ops DB OR the LEGACY run-ops
-  // read replica only (never the legacy writer). New first to avoid touching
-  // legacy whenever the new DB already answers.
-  async #anyRunExistsInEnv(environmentId: string): Promise<boolean> {
-    const splitEnabled = this.readThroughDeps?.splitEnabled ?? false;
+  // Empty-state existence probe, served from ClickHouse (same connection as the runs
+  // list) so it no longer scans TaskRun in Postgres. SWR-cached to spare ClickHouse;
+  // RUN_LIST_HAS_RUNS_LOOKBACK_DAYS bounds the prove-absence partition scan.
+  async #anyRunExistsInEnv(
+    runsRepository: RunsRepository,
+    organizationId: string,
+    projectId: string,
+    environmentId: string
+  ): Promise<boolean> {
+    const lookbackDays = env.RUN_LIST_HAS_RUNS_LOOKBACK_DAYS;
+    const createdAtLowerBoundMs =
+      lookbackDays > 0 ? Date.now() - lookbackDays * 24 * 60 * 60 * 1000 : undefined;
 
-    if (!splitEnabled) {
-      const firstRun = await this.replica.taskRun.findFirst({
-        where: { runtimeEnvironmentId: environmentId },
-        select: { id: true },
+    const result = await runsExistCache.hasRuns.swr(environmentId, async () => {
+      const exists = await runsRepository.runExistsInEnvironment({
+        organizationId,
+        projectId,
+        environmentId,
+        createdAtLowerBoundMs,
       });
-      return firstRun !== null;
-    }
-
-    const newClient = this.readThroughDeps?.newClient ?? this.replica;
-    const newRun = await newClient.taskRun.findFirst({
-      where: { runtimeEnvironmentId: environmentId },
-      select: { id: true },
+      // undefined (not false) so swr does NOT cache the empty result — re-check until a run exists.
+      return exists ? true : undefined;
     });
-    if (newRun) {
-      return true;
-    }
 
-    const legacyReplica = this.readThroughDeps?.legacyReplica ?? this.replica;
-    const legacyRun = await legacyReplica.taskRun.findFirst({
-      where: { runtimeEnvironmentId: environmentId },
-      select: { id: true },
-    });
-    return legacyRun !== null;
+    return result.val ?? false;
   }
 
   public async call(
@@ -125,6 +157,7 @@ export class NextRunListPresenter {
       direction = "forward",
       cursor,
       pageSize = DEFAULT_PAGE_SIZE,
+      includeHasAnyRuns = false,
     }: RunListOptions
   ) {
     //get the time values from the raw values (including a default period)
@@ -252,8 +285,13 @@ export class NextRunListPresenter {
 
     let hasAnyRuns = runs.length > 0;
 
-    if (!hasAnyRuns) {
-      hasAnyRuns = await this.#anyRunExistsInEnv(environmentId);
+    if (!hasAnyRuns && includeHasAnyRuns) {
+      hasAnyRuns = await this.#anyRunExistsInEnv(
+        runsRepository,
+        organizationId,
+        projectId,
+        environmentId
+      );
     }
 
     return {

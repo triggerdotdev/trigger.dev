@@ -15,6 +15,7 @@ import {
   getTaskRunsCountQueryBuilder,
   getTaskRunTagsQueryBuilder,
   getPendingVersionIdsQueryBuilder,
+  getTaskRunExistsQueryBuilder,
 } from "./taskRuns.js";
 import {
   getSpanDetailsQueryBuilder,
@@ -228,6 +229,7 @@ export class ClickHouse {
       insertPayloadsCompactArrays: insertRawTaskRunPayloadsCompactArrays(this.writer),
       queryBuilder: getTaskRunsQueryBuilder(this.reader),
       countQueryBuilder: getTaskRunsCountQueryBuilder(this.reader),
+      existsQueryBuilder: getTaskRunExistsQueryBuilder(this.reader, { max_execution_time: 10 }),
       tagQueryBuilder: getTaskRunTagsQueryBuilder(this.reader),
       pendingVersionIdsQueryBuilder: getPendingVersionIdsQueryBuilder(this.reader),
       getTaskActivity: getTaskActivityQueryBuilder(this.reader),

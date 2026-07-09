@@ -35,6 +35,38 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     return "clickhouse";
   }
 
+  async runExistsInEnvironment(options: {
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    createdAtLowerBoundMs?: number;
+  }): Promise<boolean> {
+    const queryBuilder = this.options.clickhouse.taskRuns.existsQueryBuilder();
+
+    queryBuilder
+      .where("organization_id = {organizationId: String}", {
+        organizationId: options.organizationId,
+      })
+      .where("project_id = {projectId: String}", { projectId: options.projectId })
+      .where("environment_id = {environmentId: String}", { environmentId: options.environmentId });
+
+    if (typeof options.createdAtLowerBoundMs === "number") {
+      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({createdAtLowerBound: Int64})", {
+        createdAtLowerBound: options.createdAtLowerBoundMs,
+      });
+    }
+
+    queryBuilder.limit(1);
+
+    const [queryError, result] = await queryBuilder.execute();
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    return (result?.length ?? 0) > 0;
+  }
+
   /**
    * Runs the keyset-paginated query and returns `{ runId, createdAt }` rows
    * (one extra beyond `page.size` to signal "has more"). The ordering is always

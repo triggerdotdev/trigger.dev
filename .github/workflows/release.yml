@@ -32,7 +32,7 @@ concurrency:
 jobs:
   show-release-summary:
     name: 📋 Release Summary
-    runs-on: warp-ubuntu-latest-x64-2x
+    runs-on: ubuntu-latest
     permissions: {}
     if: |
       github.repository == 'triggerdotdev/trigger.dev' &&
@@ -48,7 +48,7 @@ jobs:
 
   release:
     name: 🚀 Release npm packages
-    runs-on: warp-ubuntu-latest-x64-8x
+    runs-on: ubuntu-latest
     environment: npm-publish
     permissions:
       contents: write
@@ -266,7 +266,7 @@ jobs:
   # The prerelease job needs to be on the same workflow file due to a limitation related to how npm verifies OIDC claims.
   prerelease:
     name: 🧪 Prerelease
-    runs-on: warp-ubuntu-latest-x64-8x
+    runs-on: ubuntu-latest
     environment: npm-publish
     permissions:
       contents: read

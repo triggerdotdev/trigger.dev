@@ -286,8 +286,7 @@
               {
                 "group": "Environment variables",
                 "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
-              },
-              "open-source-self-hosting"
+              }
             ]
           },
           {
@@ -737,8 +736,12 @@
       "destination": "/guides/use-cases/upgrading-from-v2"
     },
     {
+      "source": "/open-source-self-hosting",
+      "destination": "/self-hosting/overview"
+    },
+    {
       "source": "/v3/open-source-self-hosting",
-      "destination": "/open-source-self-hosting"
+      "destination": "/self-hosting/overview"
     },
     {
       "source": "/v3/:slug*",
