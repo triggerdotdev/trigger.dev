@@ -178,7 +178,7 @@ describe("RoutingRunStore.findRunsByIds — grouped, residency-partitioned read 
       newCounting.counts.findFirst = 0;
 
       const result = await router.findRunsByIds(allIds, {
-        select: { id: true, friendlyId: true },
+        select: { friendlyId: true },
       });
 
       // All N rows returned, keyed by id.
@@ -188,6 +188,10 @@ describe("RoutingRunStore.findRunsByIds — grouped, residency-partitioned read 
       }
       expect(result.get(legacyIds[0])?.friendlyId).toBe("run_grp_leg_0");
       expect(result.get(newIds[0])?.friendlyId).toBe("run_grp_new_0");
+
+      // The select omitted `id`; the id we force-inject for keying must not leak into the value.
+      expect("id" in (result.get(legacyIds[0]) as object)).toBe(false);
+      expect("id" in (result.get(newIds[0]) as object)).toBe(false);
 
       // GROUPED: exactly one findMany call per store queried (NEW always queried for the whole
       // set; LEGACY queried once more for the misses) — never N per-id findFirst calls.

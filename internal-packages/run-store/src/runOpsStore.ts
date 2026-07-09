@@ -419,8 +419,15 @@ export class RoutingRunStore implements RunStore {
       client
     )) as Record<string, unknown>[];
     const byId = new Map<string, unknown>();
+    // Strip the id we force-injected for map keying when the caller's select did not ask for it,
+    // so returned values match the declared payload type and never leak an unrequested id.
+    const stripInjectedId = args?.select != null && !("id" in (args.select as object));
     for (const row of rows) {
-      byId.set(row.id as string, row);
+      const key = row.id as string;
+      if (stripInjectedId) {
+        delete row.id;
+      }
+      byId.set(key, row);
     }
     return byId;
   }

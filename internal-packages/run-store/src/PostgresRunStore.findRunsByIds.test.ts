@@ -162,6 +162,11 @@ describe("PostgresRunStore.findRunsByIds", () => {
       expect(byId.get(runId2)?.friendlyId).toBe("run_findbyids_2_friendly");
       expect(byId.get(runId2)?.status).toBe("PENDING");
 
+      // The select omitted `id`; the id we force-inject for keying must not leak into the value
+      // (it would otherwise violate the declared payload type and expose an unrequested id).
+      expect("id" in (byId.get(runId1) as object)).toBe(false);
+      expect("id" in (byId.get(runId2) as object)).toBe(false);
+
       // GROUPED: one findMany for the WHOLE batch, never one findFirst per id.
       expect(counting.counts.taskRun.findMany).toBe(1);
       expect(counting.counts.taskRun.findFirst).toBe(0);
