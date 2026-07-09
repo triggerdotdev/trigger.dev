@@ -788,7 +788,11 @@ export async function syncEnvVarsWithServer(
     Object.keys(secretParentEnvVars ?? {}).length > 0;
 
   // The import API applies isSecret per call, so secret and non-secret vars go in separate calls.
-  let result: Awaited<ReturnType<typeof apiClient.importEnvVars>> | undefined;
+  // Default to success so an all-empty call (no vars to sync) is a no-op, not undefined.
+  let result: Awaited<ReturnType<typeof apiClient.importEnvVars>> = {
+    success: true,
+    data: { success: true },
+  };
 
   if (hasNonSecret) {
     result = await apiClient.importEnvVars(projectRef, environmentSlug, {
@@ -798,7 +802,7 @@ export async function syncEnvVarsWithServer(
     });
   }
 
-  if (hasSecret && (!result || result.success)) {
+  if (hasSecret && result.success) {
     result = await apiClient.importEnvVars(projectRef, environmentSlug, {
       variables: secretEnvVars ?? {},
       parentVariables: secretParentEnvVars,
@@ -807,7 +811,7 @@ export async function syncEnvVarsWithServer(
     });
   }
 
-  return result!;
+  return result;
 }
 
 async function failDeploy(
