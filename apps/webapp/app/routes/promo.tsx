@@ -158,7 +158,7 @@ export default function PromoPage() {
             </Header2>
             {data.view === "valid" ? (
               <Paragraph variant="base" spacing>
-                These are only available for new accounts.
+                These are only available for new accounts on the Free plan.
                 {formatExpiry(data.expiresAt)
                   ? ` The credits expire on ${formatExpiry(data.expiresAt)}.`
                   : ""}
