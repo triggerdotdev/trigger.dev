@@ -52,7 +52,9 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
               <LogoType className="w-36" />
             </a>
           </div>
-          <div className="flex h-full max-w-sm items-center justify-center">{children}</div>
+          <div className="flex h-full w-full max-w-xs items-center justify-center">
+            <div className="w-full">{children}</div>
+          </div>
           <Paragraph variant="small" className="text-center">
             Having login issues? <TextLink href="https://trigger.dev/contact">Email us</TextLink> or{" "}
             <TextLink href="https://trigger.dev/discord">ask us in Discord</TextLink>
