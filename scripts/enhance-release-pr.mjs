@@ -213,13 +213,26 @@ async function parseServerChanges() {
 }
 
 async function getServerChangeFileData() {
-  const liveFileData = await getLiveServerChangeFileData();
-  if (liveFileData.length > 0) return liveFileData;
-
   // The changesets version command deletes .server-changes before this script
-  // enhances the release PR body. Recover those consumed files from the release
-  // branch diff so they still make it into the release notes handoff.
-  return getDeletedServerChangeFileDataFromReleaseBranch();
+  // enhances the release PR body. We combine files still live on disk with the
+  // ones recovered from the release branch diff, deduped by filename, rather
+  // than picking one source or the other. This is additive so a partial cleanup
+  // (some files deleted, some still live) can't silently drop entries. Live
+  // files win on collision since they are the current on-disk truth.
+  const [live, deleted] = await Promise.all([
+    getLiveServerChangeFileData(),
+    getDeletedServerChangeFileDataFromReleaseBranch(),
+  ]);
+
+  const byName = new Map();
+  for (const fileData of deleted) {
+    byName.set(fileData.filePath.split("/").pop(), fileData);
+  }
+  for (const fileData of live) {
+    byName.set(fileData.filePath.split("/").pop(), fileData);
+  }
+
+  return [...byName.values()].sort((a, b) => a.filePath.localeCompare(b.filePath));
 }
 
 async function getLiveServerChangeFileData() {
