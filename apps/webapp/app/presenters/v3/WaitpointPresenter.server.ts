@@ -11,6 +11,10 @@ import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
 
+// Single-sourced bound for connected run friendlyIds: applied at the FETCH in #connectedRunIdsOn,
+// not just at display time.
+export const CONNECTED_RUNS_DISPLAY_LIMIT = 5;
+
 export class WaitpointPresenter extends BasePresenter {
   constructor(
     prisma?: PrismaClientOrTransaction,
@@ -98,16 +102,16 @@ export class WaitpointPresenter extends BasePresenter {
       const runs = await client.taskRun.findMany({
         where: { id: { in: runIds } },
         select: { friendlyId: true },
-        take: 5,
+        take: CONNECTED_RUNS_DISPLAY_LIMIT,
       });
       for (const run of runs) {
         friendlyIds.add(run.friendlyId);
       }
-      if (friendlyIds.size >= 5) {
+      if (friendlyIds.size >= CONNECTED_RUNS_DISPLAY_LIMIT) {
         break;
       }
     }
-    return Array.from(friendlyIds).slice(0, 5);
+    return Array.from(friendlyIds).slice(0, CONNECTED_RUNS_DISPLAY_LIMIT);
   }
 
   // Schema-aware read of the run ids linked to a waitpoint: the dedicated subset uses the explicit
@@ -125,11 +129,14 @@ export class WaitpointPresenter extends BasePresenter {
       const links = await joinDelegate.findMany({
         where: { waitpointId },
         select: { taskRunId: true },
+        take: CONNECTED_RUNS_DISPLAY_LIMIT,
       });
       return links.map((link) => link.taskRunId);
     }
+    // CONNECTED_RUNS_DISPLAY_LIMIT is a compile-time constant int, not an interpolated value.
     const rows = await client.$queryRaw<{ A: string }[]>`
       SELECT "A" FROM "_WaitpointRunConnections" WHERE "B" = ${waitpointId}
+      LIMIT ${CONNECTED_RUNS_DISPLAY_LIMIT}
     `;
     return rows.map((row) => row.A);
   }

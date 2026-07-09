@@ -573,6 +573,21 @@ export interface RunStore {
     client?: ReadClient
   ): Promise<TaskRun[]>;
 
+  // Grouped replacement for `Promise.all(ids.map(id => findRun(id)))`: one round trip for the
+  // whole id batch instead of one per id. Returns an id-keyed Map; missing/duplicate ids are
+  // simply absent/collapsed.
+  findRunsByIds<S extends Prisma.TaskRunSelect>(
+    ids: string[],
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ select: S }>>>;
+  findRunsByIds<I extends Prisma.TaskRunInclude>(
+    ids: string[],
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ include: I }>>>;
+  findRunsByIds(ids: string[], client?: ReadClient): Promise<Map<string, TaskRun>>;
+
   // --- run-ops persistence ---
   // Snapshots, waitpoints, implicit M:N joins, dependents, attempts and checkpoints. The
   // generic model wrappers are thin generics over the Prisma `*Args` types so include/select

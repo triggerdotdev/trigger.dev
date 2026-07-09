@@ -99,13 +99,15 @@ export type PostgresRunStoreOptions = {
 // A caller sub-select for a relation: `{ select?, include? }` or `true` for a bare `key: true`.
 type SubProjection = { select?: any; include?: any } | true | undefined;
 
-// Hydrates one dedicated-schema relation for a single parent row, honoring the caller's sub-projection.
+// Hydrates one dedicated-schema relation for a WHOLE batch of parent rows in one grouped pass:
+// one query for the join/target rows spanning every parent id, never one per parent. Returns a
+// Map keyed by parent `id` to the already-defaulted (null / []) hydrated value.
 type DedicatedRelationHydrator = (
   client: RunOpsCapableClient,
-  parent: Record<string, unknown>,
+  parents: Record<string, unknown>[],
   projection: { select?: any; include?: any } | undefined,
   store: PostgresRunStore
-) => Promise<unknown>;
+) => Promise<Map<string, unknown>>;
 
 // The dedicated-schema relation keys (with hydrators) for a single Prisma model.
 type DedicatedRelationSpec = Record<string, DedicatedRelationHydrator>;
@@ -175,153 +177,192 @@ function stripDedicatedRelations(
   return { stripped: args, requested };
 }
 
-// --- per-model dedicated-schema relation hydrators ---
+// --- per-model dedicated-schema relation hydrators (batched across the WHOLE parent array) ---
+
+// Generic to-many relation reached via an explicit join model: one grouped query for the join rows
+// spanning every parent id, then one grouped query for the distinct target rows, then an in-memory
+// (DB-free) assembly per parent. `joinParentField`/`joinTargetField` name the join row's two FK
+// columns; `targetDelegate` is the model the join points at.
+async function batchHydrateJoinRelation(
+  join: RunOpsDelegate<"findMany"> | undefined,
+  targetDelegate: RunOpsDelegate<"findMany">,
+  parentIds: string[],
+  joinParentField: string,
+  joinTargetField: string,
+  projection: { select?: any; include?: any } | undefined
+): Promise<Map<string, unknown[]>> {
+  const byParent = new Map<string, unknown[]>(parentIds.map((id) => [id, []]));
+  if (!join || parentIds.length === 0) {
+    return byParent;
+  }
+  const links = (await join.findMany({
+    where: { [joinParentField]: { in: parentIds } },
+    select: { [joinParentField]: true, [joinTargetField]: true },
+  })) as Record<string, string>[];
+  if (links.length === 0) {
+    return byParent;
+  }
+  const targetIds = [...new Set(links.map((l) => l[joinTargetField]))];
+  const rows = (await targetDelegate.findMany({
+    where: { id: { in: targetIds } },
+  })) as Record<string, unknown>[];
+  const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
+  for (const link of links) {
+    const target = byTargetId.get(link[joinTargetField]);
+    const bucket = byParent.get(link[joinParentField]);
+    if (target && bucket) {
+      bucket.push(applyProjection(target, projection));
+    }
+  }
+  return byParent;
+}
 
 // Waitpoint where completedByTaskRunId = run.id (the @unique scalar back-pointer); at most one.
 const hydrateAssociatedWaitpoint: DedicatedRelationHydrator = async (
   client,
-  parent,
+  parents,
   projection
 ) => {
-  const wp = (await client.waitpoint.findFirst({
-    where: { completedByTaskRunId: parent.id as string },
-  })) as Record<string, unknown> | null;
-  return applyProjection(wp, projection);
+  const parentIds = parents.map((p) => p.id as string);
+  const byParent = new Map<string, unknown>(parentIds.map((id) => [id, null]));
+  if (parentIds.length === 0) {
+    return byParent;
+  }
+  const rows = (await client.waitpoint.findMany({
+    where: { completedByTaskRunId: { in: parentIds } },
+  })) as Record<string, unknown>[];
+  for (const row of rows) {
+    const runId = row.completedByTaskRunId as string | undefined;
+    if (runId && byParent.has(runId)) {
+      byParent.set(runId, applyProjection(row, projection));
+    }
+  }
+  return byParent;
 };
 
 // Display connections for a run: WaitpointRunConnection → Waitpoint rows.
-const hydrateConnectedWaitpoints: DedicatedRelationHydrator = async (
-  client,
-  parent,
-  projection
-) => {
-  const join = client.waitpointRunConnection;
-  if (!join) {
-    return [];
-  }
-  const links = (await join.findMany({
-    where: { taskRunId: parent.id as string },
-    select: { waitpointId: true },
-  })) as { waitpointId: string }[];
-  if (links.length === 0) {
-    return [];
-  }
-  const rows = (await client.waitpoint.findMany({
-    where: { id: { in: links.map((l) => l.waitpointId) } },
-  })) as Record<string, unknown>[];
-  return rows.map((r) => applyProjection(r, projection));
-};
+const hydrateConnectedWaitpoints: DedicatedRelationHydrator = async (client, parents, projection) =>
+  batchHydrateJoinRelation(
+    client.waitpointRunConnection,
+    client.waitpoint,
+    parents.map((p) => p.id as string),
+    "taskRunId",
+    "waitpointId",
+    projection
+  );
 
 // Completed waitpoints for a snapshot: CompletedWaitpoint join → Waitpoint rows.
-const hydrateCompletedWaitpoints: DedicatedRelationHydrator = async (
-  client,
-  parent,
-  projection
-) => {
-  const join = client.completedWaitpoint;
-  if (!join) {
-    return [];
-  }
-  const links = (await join.findMany({
-    where: { snapshotId: parent.id as string },
-    select: { waitpointId: true },
-  })) as { waitpointId: string }[];
-  if (links.length === 0) {
-    return [];
-  }
-  const rows = (await client.waitpoint.findMany({
-    where: { id: { in: links.map((l) => l.waitpointId) } },
-  })) as Record<string, unknown>[];
-  return rows.map((r) => applyProjection(r, projection));
-};
+const hydrateCompletedWaitpoints: DedicatedRelationHydrator = async (client, parents, projection) =>
+  batchHydrateJoinRelation(
+    client.completedWaitpoint,
+    client.waitpoint,
+    parents.map((p) => p.id as string),
+    "snapshotId",
+    "waitpointId",
+    projection
+  );
 
 // Runs a waitpoint is blocking: TaskRunWaitpoint rows keyed by waitpointId. A nested `taskRun`
 // select (the run-engine's getWaitpoint shape) is resolved from the scalar TaskRunWaitpoint.taskRunId.
-const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parent, projection) => {
+const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parents, projection) => {
+  const parentIds = parents.map((p) => p.id as string);
+  const byParent = new Map<string, unknown[]>(parentIds.map((id) => [id, []]));
+  if (parentIds.length === 0) {
+    return byParent;
+  }
   const edges = (await client.taskRunWaitpoint.findMany({
-    where: { waitpointId: parent.id as string },
+    where: { waitpointId: { in: parentIds } },
   })) as Record<string, unknown>[];
   const nestedTaskRun = projection?.select?.taskRun;
-  if (!nestedTaskRun) {
-    return edges;
+  const runProjection = nestedTaskRun ? projectionOf(nestedTaskRun as SubProjection) : undefined;
+  let byRunId = new Map<string, Record<string, unknown>>();
+  if (nestedTaskRun) {
+    const runIds = [...new Set(edges.map((e) => e.taskRunId as string))];
+    const runs = (
+      runIds.length > 0 ? await client.taskRun.findMany({ where: { id: { in: runIds } } }) : []
+    ) as Record<string, unknown>[];
+    byRunId = new Map(runs.map((r) => [r.id as string, r]));
   }
-  const runProjection = projectionOf(nestedTaskRun as SubProjection);
-  return Promise.all(
-    edges.map(async (edge) => {
-      const run = (await client.taskRun.findFirst({
-        where: { id: edge.taskRunId as string },
-      })) as Record<string, unknown> | null;
-      return { ...edge, taskRun: applyProjection(run, runProjection) };
-    })
-  );
+  for (const edge of edges) {
+    const bucket = byParent.get(edge.waitpointId as string);
+    if (!bucket) continue;
+    bucket.push(
+      nestedTaskRun
+        ? {
+            ...edge,
+            taskRun: applyProjection(byRunId.get(edge.taskRunId as string) ?? null, runProjection),
+          }
+        : edge
+    );
+  }
+  return byParent;
 };
 
 // Display connections for a waitpoint: WaitpointRunConnection → TaskRun rows.
-const hydrateConnectedRuns: DedicatedRelationHydrator = async (client, parent, projection) => {
-  const join = client.waitpointRunConnection;
-  if (!join) {
-    return [];
-  }
-  const links = (await join.findMany({
-    where: { waitpointId: parent.id as string },
-    select: { taskRunId: true },
-  })) as { taskRunId: string }[];
-  if (links.length === 0) {
-    return [];
-  }
-  const rows = (await client.taskRun.findMany({
-    where: { id: { in: links.map((l) => l.taskRunId) } },
-  })) as Record<string, unknown>[];
-  return rows.map((r) => applyProjection(r, projection));
-};
+const hydrateConnectedRuns: DedicatedRelationHydrator = async (client, parents, projection) =>
+  batchHydrateJoinRelation(
+    client.waitpointRunConnection,
+    client.taskRun,
+    parents.map((p) => p.id as string),
+    "waitpointId",
+    "taskRunId",
+    projection
+  );
 
 // Snapshots that completed a waitpoint: CompletedWaitpoint join → TaskRunExecutionSnapshot rows.
 const hydrateCompletedExecutionSnapshots: DedicatedRelationHydrator = async (
   client,
-  parent,
+  parents,
   projection
-) => {
-  const join = client.completedWaitpoint;
-  if (!join) {
-    return [];
+) =>
+  batchHydrateJoinRelation(
+    client.completedWaitpoint,
+    client.taskRunExecutionSnapshot,
+    parents.map((p) => p.id as string),
+    "waitpointId",
+    "snapshotId",
+    projection
+  );
+
+// The waitpoint each block edge points at, resolved from its scalar `waitpointId`. The edge's own
+// client only finds a co-resident token; the router re-resolves cross-DB.
+const hydrateEdgeWaitpoint: DedicatedRelationHydrator = async (client, parents, projection) =>
+  batchHydrateEdgeTarget(client.waitpoint, parents, "waitpointId", projection);
+
+// The run each block edge belongs to, resolved from its scalar `taskRunId`.
+const hydrateEdgeTaskRun: DedicatedRelationHydrator = async (client, parents, projection) =>
+  batchHydrateEdgeTarget(client.taskRun, parents, "taskRunId", projection);
+
+// Generic to-one relation reached via a scalar FK ON the parent itself (not a join model): one
+// grouped target query for every distinct FK value across the batch.
+async function batchHydrateEdgeTarget(
+  targetDelegate: RunOpsDelegate<"findMany">,
+  parents: Record<string, unknown>[],
+  fkField: string,
+  projection: { select?: any; include?: any } | undefined
+): Promise<Map<string, unknown>> {
+  const byParent = new Map<string, unknown>();
+  const targetIds: string[] = [];
+  for (const p of parents) {
+    byParent.set(p.id as string, null);
+    const fk = p[fkField] as string | undefined;
+    if (fk) targetIds.push(fk);
   }
-  const links = (await join.findMany({
-    where: { waitpointId: parent.id as string },
-    select: { snapshotId: true },
-  })) as { snapshotId: string }[];
-  if (links.length === 0) {
-    return [];
+  if (targetIds.length === 0) {
+    return byParent;
   }
-  const rows = (await client.taskRunExecutionSnapshot.findMany({
-    where: { id: { in: links.map((l) => l.snapshotId) } },
+  const rows = (await targetDelegate.findMany({
+    where: { id: { in: [...new Set(targetIds)] } },
   })) as Record<string, unknown>[];
-  return rows.map((r) => applyProjection(r, projection));
-};
-
-// The waitpoint a block edge points at, resolved from the edge's scalar `waitpointId`. The edge's
-// own client only finds a co-resident token; the router re-resolves cross-DB.
-const hydrateEdgeWaitpoint: DedicatedRelationHydrator = async (client, parent, projection) => {
-  const waitpointId = parent.waitpointId as string | undefined;
-  if (!waitpointId) {
-    return null;
+  const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
+  for (const p of parents) {
+    const fk = p[fkField] as string | undefined;
+    if (fk) {
+      byParent.set(p.id as string, applyProjection(byTargetId.get(fk) ?? null, projection));
+    }
   }
-  const wp = (await client.waitpoint.findFirst({
-    where: { id: waitpointId },
-  })) as Record<string, unknown> | null;
-  return applyProjection(wp, projection);
-};
-
-// The run a block edge belongs to, resolved from the edge's scalar `taskRunId`.
-const hydrateEdgeTaskRun: DedicatedRelationHydrator = async (client, parent, projection) => {
-  const taskRunId = parent.taskRunId as string | undefined;
-  if (!taskRunId) {
-    return null;
-  }
-  const run = (await client.taskRun.findFirst({
-    where: { id: taskRunId },
-  })) as Record<string, unknown> | null;
-  return applyProjection(run, projection);
-};
+  return byParent;
+}
 
 const TASK_RUN_DEDICATED: DedicatedRelationSpec = {
   associatedWaitpoint: hydrateAssociatedWaitpoint,
@@ -1444,15 +1485,65 @@ export class PostgresRunStore implements RunStore {
       cursor,
       ...stripped,
     })) as Record<string, unknown>[];
-    for (const row of rows) {
-      await this.#hydrateDedicatedRelations(
-        prisma as RunOpsCapableClient,
-        row,
-        requested,
-        TASK_RUN_DEDICATED
-      );
-    }
+    await this.#hydrateDedicatedRelations(
+      prisma as RunOpsCapableClient,
+      rows,
+      requested,
+      TASK_RUN_DEDICATED
+    );
     return rows;
+  }
+
+  // Grouped replacement for `Promise.all(ids.map(id => findRun(id)))`: a thin wrapper over
+  // `findRuns` (so it inherits dedicated-relation hydration + read-your-writes client routing),
+  // bounding the whole id batch into one round trip instead of one per id.
+  findRunsByIds<S extends Prisma.TaskRunSelect>(
+    ids: string[],
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ select: S }>>>;
+  findRunsByIds<I extends Prisma.TaskRunInclude>(
+    ids: string[],
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ include: I }>>>;
+  findRunsByIds(ids: string[], client?: ReadClient): Promise<Map<string, TaskRun>>;
+  async findRunsByIds(
+    ids: string[],
+    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,
+    _client?: ReadClient
+  ): Promise<Map<string, unknown>> {
+    if (ids.length === 0) {
+      return new Map();
+    }
+    const hasSelectOrInclude =
+      argsOrClient != null &&
+      typeof argsOrClient === "object" &&
+      ("select" in argsOrClient || "include" in argsOrClient);
+    const args = hasSelectOrInclude
+      ? (argsOrClient as { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude })
+      : undefined;
+    // Slot recovery mirrors `findRuns`'s overloads: when `argsOrClient` isn't a
+    // `{ select | include }` object it may itself BE the client (2-arg call) or be undefined
+    // with the client in the 3rd slot (an explicit `(ids, undefined, client)` call).
+    const client =
+      args === undefined ? ((argsOrClient as ReadClient | undefined) ?? _client) : _client;
+    // Force `id` into the projection so the map can key off it, even when the caller's select
+    // omits it — `findRuns` would otherwise strip it back out as an added-for-merge-only field.
+    const projected = args?.select
+      ? { select: { ...args.select, id: true } }
+      : args?.include
+        ? { include: args.include }
+        : {};
+    const rows = (await this.findRuns(
+      { where: { id: { in: ids } }, ...projected } as Parameters<PostgresRunStore["findRuns"]>[0],
+      client
+    )) as Record<string, unknown>[];
+    const byId = new Map<string, unknown>();
+    for (const row of rows) {
+      byId.set(row.id as string, row);
+    }
+    return byId;
   }
 
   // --- run-ops persistence ---
@@ -1563,14 +1654,12 @@ export class PostgresRunStore implements RunStore {
       cursor,
       ...stripped,
     })) as Record<string, unknown>[];
-    for (const row of rows) {
-      await this.#hydrateDedicatedRelations(
-        prisma as RunOpsCapableClient,
-        row,
-        requested,
-        SNAPSHOT_DEDICATED
-      );
-    }
+    await this.#hydrateDedicatedRelations(
+      prisma as RunOpsCapableClient,
+      rows,
+      requested,
+      SNAPSHOT_DEDICATED
+    );
     return rows as Prisma.TaskRunExecutionSnapshotGetPayload<T>[];
   }
 
@@ -1949,14 +2038,12 @@ export class PostgresRunStore implements RunStore {
       cursor,
       ...stripped,
     })) as Record<string, unknown>[];
-    for (const row of rows) {
-      await this.#hydrateDedicatedRelations(
-        prisma as RunOpsCapableClient,
-        row,
-        requested,
-        WAITPOINT_DEDICATED
-      );
-    }
+    await this.#hydrateDedicatedRelations(
+      prisma as RunOpsCapableClient,
+      rows,
+      requested,
+      WAITPOINT_DEDICATED
+    );
     return rows as Prisma.WaitpointGetPayload<T>[];
   }
 
@@ -2019,14 +2106,12 @@ export class PostgresRunStore implements RunStore {
       cursor,
       ...stripped,
     })) as Record<string, unknown>[];
-    for (const row of rows) {
-      await this.#hydrateDedicatedRelations(
-        prisma as RunOpsCapableClient,
-        row,
-        requested,
-        TASK_RUN_WAITPOINT_DEDICATED
-      );
-    }
+    await this.#hydrateDedicatedRelations(
+      prisma as RunOpsCapableClient,
+      rows,
+      requested,
+      TASK_RUN_WAITPOINT_DEDICATED
+    );
     return rows as Prisma.TaskRunWaitpointGetPayload<T>[];
   }
 
@@ -2267,14 +2352,15 @@ export class PostgresRunStore implements RunStore {
     if (!row) {
       return row;
     }
-    await this.#hydrateDedicatedRelations(client, row, requested, spec);
+    await this.#hydrateDedicatedRelations(client, [row], requested, spec);
     return row;
   }
 
-  // Hydrate each requested dedicated-schema relation key onto `row` in place, honoring the caller's sub-select.
+  // Hydrate each requested dedicated-schema relation key onto EVERY row in `rows` in ONE grouped
+  // pass per key (never one query per row), honoring the caller's sub-select.
   async #hydrateDedicatedRelations(
     client: RunOpsCapableClient,
-    row: Record<string, unknown>,
+    rows: Record<string, unknown>[],
     requested: Record<string, SubProjection>,
     spec: DedicatedRelationSpec
   ): Promise<void> {
@@ -2284,7 +2370,10 @@ export class PostgresRunStore implements RunStore {
         continue;
       }
       const subArgs = requested[key];
-      row[key] = await hydrator(client, row, projectionOf(subArgs), this);
+      const byParentId = await hydrator(client, rows, projectionOf(subArgs), this);
+      for (const row of rows) {
+        row[key] = byParentId.get(row.id as string);
+      }
     }
   }
 
