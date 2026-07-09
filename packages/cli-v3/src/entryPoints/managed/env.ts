@@ -236,6 +236,11 @@ export class RunnerEnv {
       OTEL_EXPORTER_OTLP_ENDPOINT: this.OTEL_EXPORTER_OTLP_ENDPOINT,
       TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT: this.OTEL_EXPORTER_OTLP_ENDPOINT,
       UV_USE_IO_URING: this.UV_USE_IO_URING,
+      // Forward the worker instance name (spec.nodeName on k8s) into the run
+      // process so it can be attached as an OTEL host/node resource attribute.
+      // Without this, run spans/logs exported to an off-node OTLP collector
+      // have no host and Datadog tags them issue_type:empty_hostname.
+      TRIGGER_WORKER_INSTANCE_NAME: this.TRIGGER_WORKER_INSTANCE_NAME,
     };
 
     // Filter out undefined values
