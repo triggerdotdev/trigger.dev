@@ -115,27 +115,32 @@ export class WaitpointPresenter extends BasePresenter {
   }
 
   // Schema-aware read of the run ids linked to a waitpoint: the dedicated subset uses the explicit
-  // `WaitpointRunConnection` model, the control-plane full schema the implicit `_WaitpointRunConnections`
-  // M2M (A = TaskRun.id, B = Waitpoint.id). The dedicated join delegate is absent on the full client.
+  // `WaitpointRunConnection` model (scalar `taskRunId`, no FK -- a row can dangle after its run is
+  // deleted), the control-plane full schema the implicit `_WaitpointRunConnections` M2M
+  // (A = TaskRun.id, B = Waitpoint.id). Both branches existence-filter AT THE QUERY via a JOIN to
+  // TaskRun, so a dangling connection row can never occupy a LIMIT slot ahead of a real one.
+  // CONNECTED_RUNS_DISPLAY_LIMIT is a compile-time constant int, not an interpolated value.
   async #connectedRunIdsOn(client: PrismaReplicaClient, waitpointId: string): Promise<string[]> {
-    const joinDelegate = (
-      client as unknown as {
-        waitpointRunConnection?: {
-          findMany: (args: unknown) => Promise<{ taskRunId: string }[]>;
-        };
-      }
-    ).waitpointRunConnection;
-    if (joinDelegate && typeof joinDelegate.findMany === "function") {
-      const links = await joinDelegate.findMany({
-        where: { waitpointId },
-        select: { taskRunId: true },
-        take: CONNECTED_RUNS_DISPLAY_LIMIT,
-      });
-      return links.map((link) => link.taskRunId);
+    const isDedicated = Boolean(
+      (client as unknown as { waitpointRunConnection?: unknown }).waitpointRunConnection
+    );
+
+    if (isDedicated) {
+      const rows = await client.$queryRaw<{ taskRunId: string }[]>`
+        SELECT c."taskRunId" AS "taskRunId"
+        FROM "WaitpointRunConnection" c
+        JOIN "TaskRun" t ON t."id" = c."taskRunId"
+        WHERE c."waitpointId" = ${waitpointId}
+        LIMIT ${CONNECTED_RUNS_DISPLAY_LIMIT}
+      `;
+      return rows.map((row) => row.taskRunId);
     }
-    // CONNECTED_RUNS_DISPLAY_LIMIT is a compile-time constant int, not an interpolated value.
+
     const rows = await client.$queryRaw<{ A: string }[]>`
-      SELECT "A" FROM "_WaitpointRunConnections" WHERE "B" = ${waitpointId}
+      SELECT c."A" AS "A"
+      FROM "_WaitpointRunConnections" c
+      JOIN "TaskRun" t ON t."id" = c."A"
+      WHERE c."B" = ${waitpointId}
       LIMIT ${CONNECTED_RUNS_DISPLAY_LIMIT}
     `;
     return rows.map((row) => row.A);
