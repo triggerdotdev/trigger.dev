@@ -100,42 +100,44 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
-  const invites = [...new Set(emails)].map(
-    (email) =>
-      ({
-        email,
-        token: tokenGenerator(),
-        organizationId: org.id,
-        inviterId: userId,
-        role: "MEMBER",
-        rbacRoleId: rbacRoleId ?? null,
-      }) satisfies Prisma.OrgMemberInviteCreateManyInput
-  );
+  // Create one invite per unique email and return ONLY the invites actually
+  // created by this call. A P2002 means the email is already invited to this org
+  // (unique org+email) — skip it so one duplicate can't fail the batch, and
+  // don't return it: callers email exactly what they created, and re-sending an
+  // already-pending invite is the dedicated resend flow's job (its own cooldown).
+  const created: Prisma.OrgMemberInviteGetPayload<{
+    include: { organization: true; inviter: true };
+  }>[] = [];
 
-  // Skip already-invited emails (unique org+email) so re-inviting one address
-  // doesn't P2002 the whole batch.
-  await prisma.orgMemberInvite.createMany({
-    data: invites,
-    skipDuplicates: true,
-  });
+  for (const email of new Set(emails)) {
+    try {
+      const invite = await prisma.orgMemberInvite.create({
+        data: {
+          email,
+          token: tokenGenerator(),
+          organizationId: org.id,
+          inviterId: userId,
+          role: "MEMBER",
+          rbacRoleId: rbacRoleId ?? null,
+        },
+        include: {
+          organization: true,
+          inviter: true,
+        },
+      });
+      created.push(invite);
+    } catch (error) {
+      if (
+        error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        continue;
+      }
+      throw error;
+    }
+  }
 
-  // Return the invite for each submitted email scoped to the org, NOT to the
-  // current inviter: with skipDuplicates an email already invited by someone
-  // else is skipped, and filtering by inviterId here would drop it from the
-  // result — leaving the caller with a misleading empty list for an email that
-  // is in fact invited.
-  return await prisma.orgMemberInvite.findMany({
-    where: {
-      organizationId: org.id,
-      email: {
-        in: emails,
-      },
-    },
-    include: {
-      organization: true,
-      inviter: true,
-    },
-  });
+  return created;
 }
 
 export async function getInviteFromToken({ token }: { token: string }) {

@@ -3051,36 +3051,44 @@ describe("API", () => {
     });
   });
 
-  // Invites are idempotent per email: createMany uses skipDuplicates, so
-  // re-inviting an already-invited address returns success rather than a
-  // P2002-driven 500.
+  // Re-invite is idempotent: an already-invited email is skipped (not created,
+  // not re-emailed) and reported as alreadyInvited, so a repeat call neither
+  // 500s (P2002) nor sends a duplicate invite email.
   describe("Member invites — re-invite is idempotent", () => {
-    it("inviting the same email twice does not 500", async () => {
+    it("inviting the same email twice: 201 then 200, second reports alreadyInvited", async () => {
       const server = getTestServer();
       const { organization, pat } = await seedTestUserProject(server.prisma);
       const path = `/api/v1/orgs/${organization.id}/invites`;
+      const email = "dup-invite@example.com";
       const invite = () =>
         server.webapp.fetch(path, {
           method: "POST",
           headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ emails: ["dup-invite@example.com"] }),
+          body: JSON.stringify({ emails: [email] }),
         });
 
       const first = await invite();
       expect(first.status).toBe(201);
+      const firstBody = (await first.json()) as { invited: { email: string }[] };
+      expect(firstBody.invited.map((i) => i.email)).toContain(email);
 
       const second = await invite();
-      expect(second.status).toBe(201);
-      expect(second.status).not.toBe(500);
+      expect(second.status).toBe(200);
+      const secondBody = (await second.json()) as {
+        invited: { email: string }[];
+        alreadyInvited: string[];
+      };
+      expect(secondBody.invited).toHaveLength(0);
+      expect(secondBody.alreadyInvited).toContain(email);
     });
 
-    it("re-inviting an email another org member already invited still returns it", async () => {
+    it("re-inviting an email another org member already invited reports alreadyInvited", async () => {
       const server = getTestServer();
       const { organization, pat } = await seedTestUserProject(server.prisma);
 
-      // A different user invited this email first; skipDuplicates will skip the
-      // re-insert, so the response must still surface the existing invite rather
-      // than an empty list scoped to the current caller.
+      // A different user invited this email first: the create hits P2002, so it's
+      // skipped (not re-created, not re-emailed) and surfaced as alreadyInvited
+      // rather than being reported as a fresh invite.
       const otherUser = await server.prisma.user.create({
         data: {
           email: `other_${organization.id}@example.com`,
@@ -3103,9 +3111,13 @@ describe("API", () => {
         headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ emails: [sharedEmail] }),
       });
-      expect(res.status).toBe(201);
-      const body = (await res.json()) as { invites: { email: string }[] };
-      expect(body.invites.map((i) => i.email)).toContain(sharedEmail);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        invited: { email: string }[];
+        alreadyInvited: string[];
+      };
+      expect(body.invited).toHaveLength(0);
+      expect(body.alreadyInvited).toContain(sharedEmail);
     });
   });
 

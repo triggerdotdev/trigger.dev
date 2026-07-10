@@ -15,7 +15,12 @@ const ParamsSchema = z.object({
 });
 
 const InviteRequestBody = z.object({
-  emails: z.string().email().array().nonempty("At least one email is required"),
+  emails: z
+    .string()
+    .email()
+    .array()
+    .nonempty("At least one email is required")
+    .max(50, "At most 50 emails per request"),
 });
 
 export const action = createActionPATApiRoute(
@@ -52,16 +57,17 @@ export const action = createActionPATApiRoute(
       return json({ error: "Membership is managed by Directory Sync" }, { status: 403 });
     }
 
-    const invites = await inviteMembers({
+    // Returns only the invites created by this call; already-invited emails are
+    // skipped (re-sending is the dashboard's dedicated resend flow, not this).
+    const created = await inviteMembers({
       slug: organization.slug,
       emails: body.emails,
       userId: authentication.userId,
     });
 
-    // Send invite emails the same way the dashboard invite action does. A
-    // failed send must not fail the invite (the row already exists); in local
-    // dev with no SMTP config, scheduleEmail's transport logs instead.
-    for (const invite of invites) {
+    // Email only the newly-created invites. A failed send must not fail the
+    // request (the row exists); locally scheduleEmail's transport just logs.
+    for (const invite of created) {
       try {
         await scheduleEmail({
           email: "invite",
@@ -76,11 +82,20 @@ export const action = createActionPATApiRoute(
       }
     }
 
+    // Report per-email outcome so callers aren't misled by an empty list on
+    // re-invite. 201 when something was created, 200 when everything already
+    // existed.
+    const createdEmails = new Set(created.map((invite) => invite.email));
+    const alreadyInvited = [...new Set(body.emails)].filter(
+      (email) => !createdEmails.has(email)
+    );
+
     return json(
       {
-        invites: invites.map((invite) => ({ id: invite.id, email: invite.email })),
+        invited: created.map((invite) => ({ id: invite.id, email: invite.email })),
+        alreadyInvited,
       },
-      { status: 201 }
+      { status: created.length > 0 ? 201 : 200 }
     );
   }
 );
