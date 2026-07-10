@@ -80,7 +80,7 @@ export const action = dashboardAction(
     });
 
     if (!organization) {
-      throw redirectWithErrorMessage(form.callerPath, request, "Organization not found");
+      throw await redirectWithErrorMessage(form.callerPath, request, "Organization not found");
     }
 
     let payload: SetPlanBody;
@@ -139,7 +139,7 @@ export const action = dashboardAction(
       }
       case "paid": {
         if (form.planCode === undefined) {
-          throw redirectWithErrorMessage(form.callerPath, request, "Not a valid plan");
+          throw await redirectWithErrorMessage(form.callerPath, request, "Not a valid plan");
         }
         payload = {
           type: "paid" as const,
