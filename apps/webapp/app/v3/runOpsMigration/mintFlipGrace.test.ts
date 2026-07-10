@@ -134,14 +134,17 @@ describe("stampMintKindFlip", () => {
     expect(result.runOpsMintKindFlippedAt).toBe(new Date(now).toISOString());
   });
 
-  it("defaults outgoing kind to 'cuid' when runOpsMintKind is absent", () => {
+  it("leaves runOpsMintKind untouched when the save omits it (unrelated flag change: no inject, no spurious flip)", () => {
     const existing = { runOpsMintKind: "runOpsId" };
-    const outgoing: Record<string, unknown> = {};
+    const outgoing: Record<string, unknown> = { someOtherFlag: true };
     const result = stampMintKindFlip(existing, outgoing, T, GRACE_MS);
 
-    expect(result.runOpsMintKind).toBe("cuid");
-    expect(result.runOpsMintKindPrev).toBe("runOpsId");
-    expect(result.runOpsMintKindFlippedAt).toBe(new Date(T).toISOString());
+    // Must not inject a default kind or stamp a flip: doing so would pin the org to an explicit
+    // per-org override and make a later global flip silently skip it.
+    expect(result.runOpsMintKind).toBeUndefined();
+    expect(result.runOpsMintKindPrev).toBeUndefined();
+    expect(result.runOpsMintKindFlippedAt).toBeUndefined();
+    expect(result.someOtherFlag).toBe(true);
   });
 
   it("treats a malformed existing flippedAt as no stamp", () => {

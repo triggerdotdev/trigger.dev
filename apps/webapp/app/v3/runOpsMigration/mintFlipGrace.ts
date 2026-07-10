@@ -75,9 +75,13 @@ export function stampMintKindFlip(
   nowMs: number,
   graceMs: number
 ): Record<string, unknown> {
+  // Only act when the save actually SETS runOpsMintKind. Omitting it (an unrelated flag change)
+  // must not inject the default kind, which would pin the org and make a later global flip skip it.
+  const outgoingKind = readMintKind(outgoingFlags, "runOpsMintKind");
+  if (outgoingKind === undefined) {
+    return outgoingFlags;
+  }
   const storedKind = readMintKind(existingFlags ?? {}, "runOpsMintKind") ?? DEFAULT_MINT_KIND;
-  const outgoingKind = readMintKind(outgoingFlags, "runOpsMintKind") ?? DEFAULT_MINT_KIND;
-  outgoingFlags.runOpsMintKind = outgoingKind;
 
   if (outgoingKind !== storedKind) {
     // Genuine target change: serve the currently-effective kind through the new grace window.
