@@ -121,6 +121,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // attempts look like they failed.
   const userSession = await getUserSession(request);
   const error = userSession.get("auth:error");
+  // get() only auto-clears flash-stored values. Sessions written before this
+  // fix stored the error with set(), which survives get() + commit — unset it
+  // explicitly so those sessions heal too instead of showing the stale error
+  // until the cookie's one-year maxAge runs out.
+  userSession.unset("auth:error");
 
   let authError: string | undefined;
   if (error) {

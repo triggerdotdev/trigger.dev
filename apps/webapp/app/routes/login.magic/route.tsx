@@ -91,6 +91,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   const error = session.get("auth:error");
+  // Same migration hygiene as /login: pre-fix sessions stored this with
+  // set(), which get() doesn't clear — unset so the commit below removes it.
+  session.unset("auth:error");
 
   const redirectTo = sanitized === "/" ? null : sanitized;
   const headers = new Headers();
