@@ -1,4 +1,5 @@
 import { type BatchTaskRunStatus } from "@trigger.dev/database";
+import { type RunOpsPrismaClient } from "@internal/run-ops-database";
 import parse from "parse-duration";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
@@ -51,8 +52,8 @@ export class BatchListPresenter extends BasePresenter {
     prismaClient?: PrismaClientOrTransaction,
     replicaClient?: PrismaClientOrTransaction,
     private readonly readRoute?: {
-      runOpsNew?: PrismaClientOrTransaction; // new run-ops client
-      runOpsLegacyReplica?: PrismaClientOrTransaction; // legacy run-ops READ REPLICA only — never the legacy primary
+      runOpsNew?: RunOpsPrismaClient; // new run-ops client (run-ops brand ⇒ guard classifies as runops)
+      runOpsLegacyReplica?: RunOpsPrismaClient; // legacy run-ops READ REPLICA only — never the legacy primary
       controlPlaneReplica?: PrismaClientOrTransaction; // control-plane DB (for project)
       splitEnabled?: boolean; // resolved boot constant
     }
@@ -74,20 +75,25 @@ export class BatchListPresenter extends BasePresenter {
   async #scanBatchTaskRun(
     pageSize: number,
     direction: Direction,
-    scan: (client: PrismaClientOrTransaction) => Promise<BatchRow[]>
+    scan: (client: RunOpsPrismaClient) => Promise<BatchRow[]>
   ): Promise<BatchRow[]> {
+    // Single-DB / passthrough: `_replica` IS the run-ops database (same physical DB), so it is the
+    // run-ops read handle. Carry the run-ops brand — identical wiring, correct residency — and it
+    // also backstops a split deployment that omitted a routed handle (never the legacy primary).
+    const passthrough = this._replica as unknown as RunOpsPrismaClient;
+
     if (!this.readRoute?.splitEnabled) {
-      return scan(this._replica);
+      return scan(passthrough);
     }
 
-    const newRows = await scan(this.readRoute.runOpsNew ?? this._replica);
+    const newRows = await scan(this.readRoute.runOpsNew ?? passthrough);
 
     // New DB filled the page — skip the legacy read entirely; older rows fall on a later page.
     if (newRows.length >= pageSize + 1) {
       return newRows;
     }
 
-    const legacyRows = await scan(this.readRoute.runOpsLegacyReplica ?? this._replica);
+    const legacyRows = await scan(this.readRoute.runOpsLegacyReplica ?? passthrough);
 
     // De-dupe by id (new wins), re-sort under the page's keyset order, re-apply the over-fetch
     // LIMIT — reproduces the pageSize+1 window a single union scan would return.
@@ -111,16 +117,20 @@ export class BatchListPresenter extends BasePresenter {
   // Empty-state probe. Split on: probe the new run-ops DB first, then the legacy READ REPLICA only
   // (never the legacy primary). Split off (single-DB / self-host): one plain `_replica` probe.
   async #probeAnyBatch(environmentId: string): Promise<boolean> {
-    // Passthrough: probe the SAME client the scan uses (_replica), or the empty-state hint can
-    // disagree with the page when a run-ops DB is configured but read-split is off.
+    // Single-DB / passthrough: `_replica` IS the run-ops database, and it is the SAME client the
+    // scan uses, so the empty-state hint can't disagree with the page. Carry the run-ops brand
+    // (identical wiring, correct residency) and backstop a split deployment that omitted a routed
+    // handle (never the legacy primary).
+    const passthrough = this._replica as unknown as RunOpsPrismaClient;
+
     if (!this.readRoute?.splitEnabled) {
-      const onReplica = await this._replica.batchTaskRun.findFirst({
+      const onReplica = await passthrough.batchTaskRun.findFirst({
         where: { runtimeEnvironmentId: environmentId },
       });
       return Boolean(onReplica);
     }
 
-    const onNew = await (this.readRoute.runOpsNew ?? this._replica).batchTaskRun.findFirst({
+    const onNew = await (this.readRoute.runOpsNew ?? passthrough).batchTaskRun.findFirst({
       where: { runtimeEnvironmentId: environmentId },
     });
     if (onNew) {
@@ -128,7 +138,7 @@ export class BatchListPresenter extends BasePresenter {
     }
 
     const onLegacy = await (
-      this.readRoute.runOpsLegacyReplica ?? this._replica
+      this.readRoute.runOpsLegacyReplica ?? passthrough
     ).batchTaskRun.findFirst({
       where: { runtimeEnvironmentId: environmentId },
     });

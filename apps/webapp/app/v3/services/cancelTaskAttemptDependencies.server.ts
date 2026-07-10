@@ -5,25 +5,28 @@ import { CancelTaskRunService } from "./cancelTaskRun.server";
 
 export class CancelTaskAttemptDependenciesService extends BaseService {
   public async call(attemptId: string) {
-    const taskAttempt = await this._prisma.taskRunAttempt.findFirst({
-      where: { id: attemptId },
-      include: {
-        dependencies: {
-          select: {
-            taskRunId: true,
+    const taskAttempt = await this.runStore.findTaskRunAttempt(
+      {
+        where: { id: attemptId },
+        include: {
+          dependencies: {
+            select: {
+              taskRunId: true,
+            },
           },
-        },
-        batchDependencies: {
-          include: {
-            runDependencies: {
-              select: {
-                taskRunId: true,
+          batchDependencies: {
+            include: {
+              runDependencies: {
+                select: {
+                  taskRunId: true,
+                },
               },
             },
           },
         },
       },
-    });
+      this._prisma
+    );
 
     if (!taskAttempt) {
       return;

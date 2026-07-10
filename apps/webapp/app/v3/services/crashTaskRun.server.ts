@@ -2,6 +2,7 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import type { TaskRunInternalError } from "@trigger.dev/core/v3";
 import { sanitizeError, TaskRunErrorCodes } from "@trigger.dev/core/v3";
 import type { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { runOpsLegacyPrisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
@@ -179,7 +180,10 @@ export class CrashTaskRunService extends BaseService {
         span.setAttribute("taskRunId", run.id);
         span.setAttribute("attemptId", attempt.id);
 
-        await this._prisma.taskRunAttempt.update({
+        // TaskRunAttempt is a V1-residual run-graph model — it only exists for legacy
+        // (cuid) runs, so this write is always a legacy write and must target the legacy
+        // run-ops client directly (no store write method exists for this model).
+        await runOpsLegacyPrisma.taskRunAttempt.update({
           where: {
             id: attempt.id,
           },

@@ -1,6 +1,7 @@
 import type { CoordinatorToPlatformMessages, ManualCheckpointMetadata } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Checkpoint, CheckpointRestoreEvent } from "@trigger.dev/database";
+import { runOpsLegacyPrisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { isFreezableAttemptStatus, isFreezableRunStatus } from "../taskStatus";
@@ -30,24 +31,20 @@ export class CreateCheckpointService extends BaseService {
   > {
     logger.debug(`Creating checkpoint`, params);
 
-    const attempt = await this._prisma.taskRunAttempt.findFirst({
-      where: {
-        friendlyId: params.attemptFriendlyId,
-      },
-      include: {
-        taskRun: true,
-        backgroundWorker: {
-          select: {
-            id: true,
-            deployment: {
-              select: {
-                imageReference: true,
-              },
-            },
-          },
+    // The attempt + its run live on the run-graph DB (routed by the store); the attempt's
+    // backgroundWorker/deployment are control-plane rows, so they are resolved separately below
+    // rather than joined across the seam. Read the primary for read-your-writes.
+    const attempt = await this.runStore.findTaskRunAttempt(
+      {
+        where: {
+          friendlyId: params.attemptFriendlyId,
+        },
+        include: {
+          taskRun: true,
         },
       },
-    });
+      this._prisma
+    );
 
     if (!attempt) {
       logger.error("Attempt not found", params);
@@ -79,12 +76,27 @@ export class CreateCheckpointService extends BaseService {
       };
     }
 
-    const imageRef = attempt.backgroundWorker.deployment?.imageReference;
+    // backgroundWorker + deployment are control-plane rows; resolve them off the seam.
+    const backgroundWorker = await this._prisma.backgroundWorker.findFirst({
+      where: {
+        id: attempt.backgroundWorkerId,
+      },
+      select: {
+        id: true,
+        deployment: {
+          select: {
+            imageReference: true,
+          },
+        },
+      },
+    });
+
+    const imageRef = backgroundWorker?.deployment?.imageReference;
 
     if (!imageRef) {
       logger.error("Missing deployment or image ref", {
         attemptId: attempt.id,
-        workerId: attempt.backgroundWorker.id,
+        workerId: backgroundWorker?.id,
         params,
       });
 
@@ -106,18 +118,23 @@ export class CreateCheckpointService extends BaseService {
         break;
       }
       case "WAIT_FOR_TASK": {
-        const childRun = await this._prisma.taskRun.findFirst({
-          where: {
+        // Routed by friendlyId; read the primary for read-your-writes so a just-resumed
+        // dependency isn't seen as still pending due to replica lag.
+        const childRun = await this.runStore.findRun(
+          {
             friendlyId: reason.friendlyId,
           },
-          select: {
-            dependency: {
-              select: {
-                resumedAt: true,
+          {
+            select: {
+              dependency: {
+                select: {
+                  resumedAt: true,
+                },
               },
             },
           },
-        });
+          this._prisma
+        );
 
         if (!childRun) {
           logger.error("CreateCheckpointService: Pre-check - WAIT_FOR_TASK child run not found", {
@@ -209,7 +226,9 @@ export class CreateCheckpointService extends BaseService {
       metadata = JSON.stringify(params.reason);
     }
 
-    const checkpoint = await this._prisma.checkpoint.create({
+    // Checkpoint is a V1-only run-graph model (never minted for run-ops/NEW runs), so the
+    // owning run is always a cuid/legacy run — write it directly on the legacy client.
+    const checkpoint = await runOpsLegacyPrisma.checkpoint.create({
       data: {
         ...CheckpointId.generate(),
         runtimeEnvironmentId: attempt.taskRun.runtimeEnvironmentId,
@@ -227,7 +246,9 @@ export class CreateCheckpointService extends BaseService {
 
     const eventService = new CreateCheckpointRestoreEventService(this._prisma);
 
-    await this._prisma.taskRunAttempt.update({
+    // TaskRunAttempt is V1-only; the attempt and its nested run are co-resident cuid/legacy
+    // rows, so this write (and the nested taskRun update) land together on the legacy client.
+    await runOpsLegacyPrisma.taskRunAttempt.update({
       where: {
         id: attempt.id,
       },
@@ -298,11 +319,13 @@ export class CreateCheckpointService extends BaseService {
           });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
-          const childRun = await this._prisma.taskRun.findFirst({
-            where: {
+          // Routed by friendlyId; read the primary for read-your-writes.
+          const childRun = await this.runStore.findRun(
+            {
               friendlyId: reason.friendlyId,
             },
-          });
+            this._prisma
+          );
 
           if (!childRun) {
             logger.error("CreateCheckpointService: WAIT_FOR_TASK child run not found", {

@@ -5,6 +5,7 @@ import type {
   PrismaClientOrTransaction,
   TaskRun,
   TaskRunStatus,
+  WaitpointTag,
 } from "@trigger.dev/database";
 import { ownerEngine, type Residency } from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
@@ -17,6 +18,7 @@ import type {
   CreateFailedRunInput,
   CreateRunInput,
   ExpireSnapshotInput,
+  FinalizeRunData,
   ForWaitpointCompletionContext,
   LockRunData,
   ReadClient,
@@ -493,6 +495,37 @@ export class RoutingRunStore implements RunStore {
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     return (await this.#routeForWrite(runId)).failRunPermanently(runId, data, args);
+  }
+
+  finalizeRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  finalizeRun<I extends Prisma.TaskRunInclude>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { include: I },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  finalizeRun(
+    runId: string,
+    data: FinalizeRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
+  async finalizeRun(
+    runId: string,
+    data: FinalizeRunData,
+    argsOrTx?: { select?: unknown; include?: unknown } | PrismaClientOrTransaction,
+    _tx?: PrismaClientOrTransaction
+  ): Promise<unknown> {
+    // A finalize targets an existing run — route by its id. NEVER forward the caller's control-plane
+    // tx into the routed write (§0.2); the finalize + its co-resident follow-ups need no cross-DB tx.
+    // Only the select/include projection is forwarded; any passed tx is dropped.
+    const args = selectOrIncludeArgs(argsOrTx);
+    const store = await this.#routeForWrite(runId);
+    return (store.finalizeRun as (...rest: unknown[]) => Promise<unknown>)(runId, data, args);
   }
 
   async expireRun<S extends Prisma.TaskRunSelect>(
@@ -1537,6 +1570,83 @@ export class RoutingRunStore implements RunStore {
       this.#legacy.updateManyBatchTaskRunItems(args),
     ]);
     return { count: fromNew.count + fromLegacy.count };
+  }
+
+  // An item co-resides with its batch AND its child run on one DB (both FKs local), so route by
+  // batchTaskRunId (residency-encoding) first, else by taskRunId — both classify to the same store.
+  // Never forward the caller's client verbatim; its presence resolves to the owning store's OWN primary.
+  findManyBatchTaskRunItems<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { taskRunId?: string; batchTaskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]> {
+    const store = this.#routeOrNew(where.batchTaskRunId ?? where.taskRunId);
+    return store.findManyBatchTaskRunItems(where, args, RoutingRunStore.#ownPrimary(store, client));
+  }
+
+  // Route by batchTaskRunId (the item co-resides with its batch). Never forward the caller's client
+  // verbatim; its presence resolves to the owning store's OWN primary.
+  findBatchTaskRunItem<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { batchTaskRunId: string; taskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null> {
+    const store = this.#routeOrNew(where.batchTaskRunId);
+    return store.findBatchTaskRunItem(where, args, RoutingRunStore.#ownPrimary(store, client));
+  }
+
+  // ---------------------------------------------------------------------------
+  // WaitpointTag — a standalone entity (no run/waitpoint FK) keyed by (environmentId, name).
+  // ---------------------------------------------------------------------------
+
+  // Route the WRITE by the tag's minted id-shape — which encodes the env's mint-kind — exactly like a
+  // standalone waitpoint token (#routeWaitpointWrite); a missing minted id falls to LEGACY (the safe
+  // default). The control-plane tx forwards only to LEGACY (same physical DB), never into a NEW write.
+  upsertWaitpointTag(
+    data: { environmentId: string; name: string; projectId: string; id?: string },
+    tx?: PrismaClientOrTransaction
+  ): Promise<WaitpointTag> {
+    const { store, tx: routedTx } = this.#routeWaitpointWrite(data.id, tx);
+    return store.upsertWaitpointTag(data, routedTx);
+  }
+
+  // A tag keyed by (environmentId, name) can exist on BOTH DBs for one env (dual-resident, no
+  // id-shape signal), so fan out NEW→LEGACY and de-dupe by id (NEW wins, matching the router's
+  // NEW-wins invariant). take/skip are widened per-leg then re-imposed globally after the merge,
+  // mirroring the run-list open-predicate fan-out (#findRunsOpen + finalizeRows).
+  async findManyWaitpointTags(
+    args: {
+      where: Prisma.WaitpointTagWhereInput;
+      orderBy?:
+        | Prisma.WaitpointTagOrderByWithRelationInput
+        | Prisma.WaitpointTagOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+    },
+    client?: ReadClient
+  ): Promise<WaitpointTag[]> {
+    const skip = args.skip ?? 0;
+    // Each leg must return enough rows for the post-merge slice: drop skip per-leg (re-imposed
+    // globally below) and, when bounded, widen take to skip+take.
+    const perLeg = {
+      ...args,
+      skip: 0,
+      ...(args.take != null ? { take: skip + args.take } : {}),
+    };
+    const [fromNew, fromLegacy] = await Promise.all([
+      this.#new.findManyWaitpointTags(perLeg, RoutingRunStore.#ownPrimary(this.#new, client)),
+      this.#legacy.findManyWaitpointTags(perLeg, RoutingRunStore.#ownPrimary(this.#legacy, client)),
+    ]);
+    const byId = new Map<string, WaitpointTag>();
+    for (const tag of fromLegacy) byId.set(tag.id, tag);
+    for (const tag of fromNew) byId.set(tag.id, tag);
+    const merged = args.orderBy
+      ? (sortByOrderBy(
+          [...byId.values()] as unknown as Array<Record<string, unknown>>,
+          args.orderBy as unknown as NonNullable<FindRunsArgs["orderBy"]>
+        ) as unknown as WaitpointTag[])
+      : [...byId.values()];
+    return merged.slice(skip, args.take != null ? skip + args.take : undefined);
   }
 
   // Extract a scalar string `id` from a `{ id }` / `{ id: { equals } }` where; undefined otherwise.

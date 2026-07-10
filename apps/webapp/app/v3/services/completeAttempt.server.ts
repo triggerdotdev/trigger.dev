@@ -18,8 +18,10 @@ import {
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import type { TaskRun } from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import type { PrismaClientOrTransaction } from "~/db.server";
+import { runOpsLegacyPrisma } from "~/db.server";
 import { env } from "~/env.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -66,7 +68,7 @@ export class CompleteAttemptService extends BaseService {
     env?: AuthenticatedEnvironment;
     checkpoint?: CheckpointData;
   }): Promise<"COMPLETED" | "RETRIED"> {
-    const taskRunAttempt = await findAttempt(this._prisma, execution.attempt.id);
+    const taskRunAttempt = await findAttempt(this.runStore, this._prisma, execution.attempt.id);
 
     if (!taskRunAttempt) {
       logger.error("[CompleteAttemptService] Task run attempt not found", {
@@ -143,7 +145,10 @@ export class CompleteAttemptService extends BaseService {
     taskRunAttempt: NonNullable<FoundAttempt>,
     env?: AuthenticatedEnvironment
   ): Promise<"COMPLETED"> {
-    await this._prisma.taskRunAttempt.update({
+    // TaskRunAttempt is a V1-residual run-graph model — it (and its co-resident run) only
+    // exist for legacy (cuid) runs, so this write always targets the legacy run-ops client
+    // directly (no store write method exists for this model).
+    await runOpsLegacyPrisma.taskRunAttempt.update({
       where: { id: taskRunAttempt.id },
       data: {
         status: "COMPLETED",
@@ -226,7 +231,9 @@ export class CompleteAttemptService extends BaseService {
     const failedAt = new Date();
     const sanitizedError = sanitizeError(completion.error);
 
-    await this._prisma.taskRunAttempt.update({
+    // TaskRunAttempt is a V1-residual run-graph model, only ever legacy-resident (cuid) — write
+    // it on the legacy run-ops client directly.
+    await runOpsLegacyPrisma.taskRunAttempt.update({
       where: { id: taskRunAttempt.id },
       data: {
         status: "FAILED",
@@ -290,7 +297,10 @@ export class CompleteAttemptService extends BaseService {
         });
 
         //update the machine on the run
-        await this._prisma.taskRun.update({
+        // This run owns a TaskRunAttempt (V1-residual), so it is provably legacy-resident
+        // (cuid); write it on the legacy run-ops client directly.
+        await runOpsLegacyPrisma.taskRun.update({
+          // runops-legacy-ok: OOM machine bump on attempt-owning V1/cuid run
           where: {
             id: taskRunAttempt.taskRunId,
           },
@@ -345,7 +355,10 @@ export class CompleteAttemptService extends BaseService {
       });
     }
 
-    await this._prisma.taskRun.update({
+    // Legacy-resident (cuid) run owning a V1-residual TaskRunAttempt — write it on the legacy
+    // run-ops client directly.
+    await runOpsLegacyPrisma.taskRun.update({
+      // runops-legacy-ok: error on attempt-owning V1/cuid run
       where: {
         id: taskRunAttempt.taskRunId,
       },
@@ -586,7 +599,10 @@ export class CompleteAttemptService extends BaseService {
       retry: executionRetry,
     });
 
-    await this._prisma.taskRun.update({
+    // Legacy-resident (cuid) run owning a V1-residual TaskRunAttempt — write it on the legacy
+    // run-ops client directly.
+    await runOpsLegacyPrisma.taskRun.update({
+      // runops-legacy-ok: RETRYING status on attempt-owning V1/cuid run
       where: {
         id: taskRunAttempt.taskRunId,
       },
@@ -703,21 +719,57 @@ export class CompleteAttemptService extends BaseService {
   }
 }
 
-async function findAttempt(prismaClient: PrismaClientOrTransaction, friendlyId: string) {
-  return prismaClient.taskRunAttempt.findFirst({
-    where: { friendlyId },
-    include: {
-      taskRun: true,
-      backgroundWorkerTask: true,
-      backgroundWorker: {
-        select: {
-          id: true,
-          supportsLazyAttempts: true,
-          sdkVersion: true,
-        },
+async function findAttempt(
+  store: RunStore,
+  cpClient: PrismaClientOrTransaction,
+  friendlyId: string
+) {
+  // TaskRunAttempt is a V1-residual run-graph model. Read the attempt (and its co-resident
+  // run) through the run store, which routes to the owning DB.
+  const attempt = await store.findTaskRunAttempt(
+    {
+      where: { friendlyId },
+      include: {
+        taskRun: true,
       },
     },
-  });
+    cpClient
+  );
+
+  if (!attempt) {
+    return null;
+  }
+
+  // backgroundWorker(Task) are control-plane models — resolve them off the control-plane
+  // client rather than joining across the run-graph/control-plane seam.
+  const [backgroundWorkerTask, backgroundWorker] = await Promise.all([
+    cpClient.backgroundWorkerTask.findFirst({
+      where: { id: attempt.backgroundWorkerTaskId },
+    }),
+    cpClient.backgroundWorker.findFirst({
+      where: { id: attempt.backgroundWorkerId },
+      select: {
+        id: true,
+        supportsLazyAttempts: true,
+        sdkVersion: true,
+      },
+    }),
+  ]);
+
+  if (!backgroundWorkerTask || !backgroundWorker) {
+    logger.error("[CompleteAttemptService] Attempt worker rows not found", {
+      attemptId: attempt.id,
+      backgroundWorkerTaskId: attempt.backgroundWorkerTaskId,
+      backgroundWorkerId: attempt.backgroundWorkerId,
+    });
+    return null;
+  }
+
+  return {
+    ...attempt,
+    backgroundWorkerTask,
+    backgroundWorker,
+  };
 }
 
 function exitRun(runId: string) {

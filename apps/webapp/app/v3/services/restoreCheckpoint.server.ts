@@ -1,4 +1,5 @@
 import { type Checkpoint } from "@trigger.dev/database";
+import { runOpsLegacyPrisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { socketIo } from "../handleSocketIo.server";
 import { machinePresetFromConfig, machinePresetFromRun } from "../machinePresets.server";
@@ -13,7 +14,11 @@ export class RestoreCheckpointService extends BaseService {
   }): Promise<Checkpoint | undefined> {
     logger.debug(`Restoring checkpoint`, params);
 
-    const checkpointEvent = await this._prisma.checkpointRestoreEvent.findFirst({
+    // Checkpoint / CheckpointRestoreEvent are V1-only run-graph models (ids default to cuid and
+    // are only ever written for legacy runs), so they always live on the legacy run store. Read
+    // them via the legacy handle, and resolve the cross-store control-plane relations
+    // (RuntimeEnvironment, BackgroundWorkerTask) separately off the control-plane client below.
+    const checkpointEvent = await runOpsLegacyPrisma.checkpointRestoreEvent.findFirst({
       where: {
         id: params.eventId,
         type: "CHECKPOINT",
@@ -30,14 +35,9 @@ export class RestoreCheckpointService extends BaseService {
             attempt: {
               select: {
                 status: true,
-                backgroundWorkerTask: {
-                  select: {
-                    machineConfig: true,
-                  },
-                },
+                backgroundWorkerTaskId: true,
               },
             },
-            runtimeEnvironment: true,
           },
         },
       },
@@ -70,11 +70,18 @@ export class RestoreCheckpointService extends BaseService {
       return;
     }
 
+    // BackgroundWorkerTask lives on the control plane — resolve its machine config there rather
+    // than joining across the run store seam.
+    const backgroundWorkerTask = await this._prisma.backgroundWorkerTask.findFirst({
+      where: { id: checkpoint.attempt.backgroundWorkerTaskId },
+      select: { machineConfig: true },
+    });
+
     const machine =
       machinePresetFromRun(checkpoint.run) ??
-      machinePresetFromConfig(checkpoint.attempt.backgroundWorkerTask.machineConfig ?? {});
+      machinePresetFromConfig(backgroundWorkerTask?.machineConfig ?? {});
 
-    const restoreEvent = await this._prisma.checkpointRestoreEvent.findFirst({
+    const restoreEvent = await runOpsLegacyPrisma.checkpointRestoreEvent.findFirst({
       where: {
         checkpointId: checkpoint.id,
         type: "RESTORE",
@@ -92,6 +99,22 @@ export class RestoreCheckpointService extends BaseService {
       return;
     }
 
+    // RuntimeEnvironment lives on the control plane — resolve it there instead of joining across
+    // the run store seam.
+    const runtimeEnvironment = await this._prisma.runtimeEnvironment.findFirst({
+      where: { id: checkpoint.runtimeEnvironmentId },
+    });
+
+    if (!runtimeEnvironment) {
+      logger.error("Runtime environment not found for checkpoint", {
+        eventId: params.eventId,
+        runId: checkpoint.runId,
+        checkpointId: checkpoint.id,
+        runtimeEnvironmentId: checkpoint.runtimeEnvironmentId,
+      });
+      return;
+    }
+
     const eventService = new CreateCheckpointRestoreEventService(this._prisma);
     await eventService.restore({ checkpointId: checkpoint.id });
 
@@ -105,10 +128,10 @@ export class RestoreCheckpointService extends BaseService {
       attemptNumber: checkpoint.attemptNumber ?? undefined,
       // identifiers
       checkpointId: checkpoint.id,
-      envId: checkpoint.runtimeEnvironment.id,
-      envType: checkpoint.runtimeEnvironment.type,
-      orgId: checkpoint.runtimeEnvironment.organizationId,
-      projectId: checkpoint.runtimeEnvironment.projectId,
+      envId: runtimeEnvironment.id,
+      envType: runtimeEnvironment.type,
+      orgId: runtimeEnvironment.organizationId,
+      projectId: runtimeEnvironment.projectId,
       runId: checkpoint.runId,
     });
 
@@ -116,7 +139,7 @@ export class RestoreCheckpointService extends BaseService {
   }
 
   async getLastCheckpointEventIfUnrestored(runId: string) {
-    const event = await this._prisma.checkpointRestoreEvent.findFirst({
+    const event = await runOpsLegacyPrisma.checkpointRestoreEvent.findFirst({
       where: {
         runId,
       },

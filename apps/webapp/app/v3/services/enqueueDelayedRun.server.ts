@@ -92,15 +92,7 @@ export class EnqueueDelayedRunService extends BaseService {
       return;
     }
 
-    await this._prisma.taskRun.update({
-      where: {
-        id: run.id,
-      },
-      data: {
-        status: "PENDING",
-        queuedAt: new Date(),
-      },
-    });
+    await this.runStore.enqueueDelayedRun(run.id, { queuedAt: new Date() });
 
     if (run.ttl) {
       const expireAt = parseNaturalLanguageDuration(run.ttl);

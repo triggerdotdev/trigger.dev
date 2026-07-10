@@ -102,6 +102,7 @@ export class CancelDevSessionRunsService extends BaseService {
       environmentId,
       readNew: (client) =>
         client.taskRun.findFirst({
+          // runops-routed-ok: readThroughRun new leg
           where,
           select: {
             id: true,
@@ -115,6 +116,7 @@ export class CancelDevSessionRunsService extends BaseService {
         }),
       readLegacy: (replica) =>
         replica.taskRun.findFirst({
+          // runops-routed-ok: readThroughRun legacy leg
           where,
           select: {
             id: true,

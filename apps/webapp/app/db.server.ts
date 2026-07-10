@@ -283,6 +283,13 @@ export const runOpsNewReplica: PrismaReplicaClient = runOpsTopology.newRunOps
   .replica as unknown as PrismaReplicaClient;
 export const runOpsLegacyPrisma: PrismaClient = runOpsTopology.legacyRunOps.writer;
 export const runOpsLegacyReplica: PrismaReplicaClient = runOpsTopology.legacyRunOps.replica;
+// Branded legacy handles typed as RunOpsPrismaClient for the run-store boundary — same underlying
+// Aurora legacy writer/replica as runOpsLegacyPrisma/runOpsLegacyReplica above (cutover-safe), but
+// carrying the run-ops brand so the guard classifies provably-legacy access as `runops`, not `cp`.
+export const runOpsLegacyPrismaClient: RunOpsPrismaClient = runOpsTopology.legacyRunOps
+  .writer as unknown as RunOpsPrismaClient;
+export const runOpsLegacyReplicaClient: RunOpsPrismaClient = runOpsTopology.legacyRunOps
+  .replica as unknown as RunOpsPrismaClient;
 
 export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
   newReplica: runOpsNewReplicaClient,

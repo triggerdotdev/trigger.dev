@@ -1,8 +1,8 @@
 import { type BatchTaskRunStatus, type Prisma } from "@trigger.dev/database";
-import { type PrismaClientOrTransaction, type PrismaReplicaClient } from "~/db.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { engine } from "~/v3/runEngine.server";
-import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 
 type BatchPresenterOptions = {
@@ -11,22 +11,7 @@ type BatchPresenterOptions = {
   userId?: string;
 };
 
-// Shared by the read-through closures and the passthrough so every store path returns
-// a byte-identical row shape.
-const BATCH_SELECT = {
-  id: true,
-  friendlyId: true,
-  status: true,
-  runCount: true,
-  batchVersion: true,
-  createdAt: true,
-  updatedAt: true,
-  completedAt: true,
-  processingStartedAt: true,
-  processingCompletedAt: true,
-  successfulRunCount: true,
-  failedRunCount: true,
-  idempotencyKey: true,
+const BATCH_INCLUDE = {
   errors: {
     select: {
       id: true,
@@ -40,16 +25,9 @@ const BATCH_SELECT = {
       index: "asc",
     },
   },
-} satisfies Prisma.BatchTaskRunSelect;
-
-type BatchRow = Prisma.BatchTaskRunGetPayload<{ select: typeof BATCH_SELECT }>;
+} satisfies Prisma.BatchTaskRunInclude;
 
 type BatchPresenterDeps = {
-  /** Resolved boot constant; never awaited per-request when supplied. */
-  splitEnabled?: boolean;
-  newClient?: PrismaReplicaClient;
-  legacyReplica?: PrismaReplicaClient;
-  readThrough?: typeof readThroughRun;
   resolveDisplayableEnvironment?: typeof findDisplayableEnvironment;
 };
 
@@ -59,43 +37,22 @@ export class BatchPresenter extends BasePresenter {
   constructor(
     _prisma?: PrismaClientOrTransaction,
     _replica?: PrismaClientOrTransaction,
-    private readonly deps: BatchPresenterDeps = {}
+    private readonly deps: BatchPresenterDeps = {},
+    private readonly runStore = defaultRunStore
   ) {
     super(_prisma, _replica);
   }
 
   public async call({ environmentId, batchId, userId }: BatchPresenterOptions) {
-    // Reads the BatchTaskRun (run-ops) via the read-through layer: split on -> new run-ops
-    // first, then the LEGACY RUN-OPS READ REPLICA only for not-yet-migrated batches (never the
-    // legacy primary); split off (single-DB / self-host) -> one plain batchTaskRun.findFirst
-    // (passthrough). The runtimeEnvironment (control-plane) is resolved separately because its
-    // FK is physically dropped on cloud, so a batch row on the new run-ops DB cannot single-SQL
-    // join to control-plane RuntimeEnvironment.
-    const where = { runtimeEnvironmentId: environmentId, friendlyId: batchId } as const;
-    const readBatch = (client: PrismaReplicaClient): Promise<BatchRow | null> =>
-      client.batchTaskRun.findFirst({ select: BATCH_SELECT, where });
-
-    const readThrough = this.deps.readThrough ?? readThroughRun;
-    const batchResult = await readThrough<BatchRow>({
-      // The read-through key; here it is the batch friendlyId. A cuid-shaped batch friendlyId
-      // classifies as LEGACY and the read-through probes both stores (new first, then legacy
-      // replica); a run-ops-shaped one (cut-over orgs) classifies as NEW and reads only the new
-      // store — either way the row is found on the DB that owns it.
-      runId: batchId,
+    // The BatchTaskRun (run-ops) is read through the run store, which routes by residency. The
+    // runtimeEnvironment (control-plane) is resolved separately because the cross-seam FK is
+    // dropped, so the batch row cannot single-SQL join to control-plane RuntimeEnvironment.
+    const batch = await this.runStore.findBatchTaskRunByFriendlyId(
+      batchId,
       environmentId,
-      readNew: readBatch,
-      readLegacy: readBatch,
-      deps: {
-        splitEnabled: this.deps.splitEnabled,
-        newClient: this.deps.newClient,
-        legacyReplica: this.deps.legacyReplica,
-      },
-    });
-
-    const batch =
-      batchResult.source === "new" || batchResult.source === "legacy-replica"
-        ? batchResult.value
-        : null; // not-found / past-retention => normal not-found surface
+      { include: BATCH_INCLUDE },
+      this._replica
+    );
 
     if (!batch) {
       throw new Error("Batch not found");
@@ -117,7 +74,6 @@ export class BatchPresenter extends BasePresenter {
       }
     }
 
-    // Control-plane env resolved separately from the run-ops batch row (cross-seam FK dropped).
     const resolveEnv = this.deps.resolveDisplayableEnvironment ?? findDisplayableEnvironment;
 
     return {

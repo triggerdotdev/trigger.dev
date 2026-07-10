@@ -5,6 +5,7 @@ import type {
 } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import type { Prisma, TaskRunAttempt } from "@trigger.dev/database";
+import { runOpsLegacyPrisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { socketIo } from "../handleSocketIo.server";
@@ -32,44 +33,47 @@ export class ResumeAttemptService extends BaseService {
       },
     } satisfies Prisma.TaskRunInclude["attempts"];
 
-    const attempt = await this._prisma.taskRunAttempt.findFirst({
-      where: {
-        friendlyId: params.attemptFriendlyId,
-      },
-      include: {
-        taskRun: true,
-        dependencies: {
-          select: {
-            taskRun: {
-              select: {
-                attempts: latestAttemptSelect,
+    const attempt = await this.runStore.findTaskRunAttempt(
+      {
+        where: {
+          friendlyId: params.attemptFriendlyId,
+        },
+        include: {
+          taskRun: true,
+          dependencies: {
+            select: {
+              taskRun: {
+                select: {
+                  attempts: latestAttemptSelect,
+                },
               },
             },
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 1,
           },
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 1,
-        },
-        batchDependencies: {
-          select: {
-            items: {
-              select: {
-                taskRun: {
-                  select: {
-                    attempts: latestAttemptSelect,
+          batchDependencies: {
+            select: {
+              items: {
+                select: {
+                  taskRun: {
+                    select: {
+                      attempts: latestAttemptSelect,
+                    },
                   },
                 },
               },
             },
+            orderBy: {
+              createdAt: "desc",
+            },
+            take: 1,
           },
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 1,
         },
       },
-    });
+      this._prisma
+    );
 
     if (!attempt) {
       this._logger.error("Could not find attempt", params);
@@ -180,19 +184,22 @@ export class ResumeAttemptService extends BaseService {
     const executions: TaskRunExecution[] = [];
 
     for (const completedAttemptId of completedAttemptIds) {
-      const completedAttempt = await this._prisma.taskRunAttempt.findFirst({
-        where: {
-          id: completedAttemptId,
-          taskRun: {
-            lockedAt: {
-              not: null,
-            },
-            lockedById: {
-              not: null,
+      const completedAttempt = await this.runStore.findTaskRunAttempt(
+        {
+          where: {
+            id: completedAttemptId,
+            taskRun: {
+              lockedAt: {
+                not: null,
+              },
+              lockedById: {
+                not: null,
+              },
             },
           },
         },
-      });
+        this._prisma
+      );
 
       if (!completedAttempt) {
         this._logger.error("Completed attempt not found", { completedAttemptId });
@@ -238,7 +245,10 @@ export class ResumeAttemptService extends BaseService {
 
   async #setPostResumeStatuses(attempt: TaskRunAttempt) {
     try {
-      const updatedAttempt = await this._prisma.taskRunAttempt.update({
+      // TaskRunAttempt is a V1-residual run-graph model — it only exists for legacy (cuid)
+      // runs, so this write (and its nested taskRun update) always lands on the legacy run-ops
+      // client directly; no store write method exists for this model.
+      const updatedAttempt = await runOpsLegacyPrisma.taskRunAttempt.update({
         where: {
           id: attempt.id,
         },

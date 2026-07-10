@@ -1,9 +1,10 @@
 import type { V3TaskRunExecution } from "@trigger.dev/core/v3";
 import { parsePacket } from "@trigger.dev/core/v3";
+import { ownerEngine } from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRun, TaskRunAttempt } from "@trigger.dev/database";
 import { MAX_TASK_RUN_ATTEMPTS } from "~/consts";
 import type { PrismaClientOrTransaction } from "~/db.server";
-import { $transaction, prisma } from "~/db.server";
+import { $transaction, prisma, runOpsLegacyPrisma } from "~/db.server";
 import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -87,6 +88,21 @@ export class CreateTaskRunAttemptService extends BaseService {
       span.setAttribute("taskRunFriendlyId", taskRun.friendlyId);
       span.setAttribute("taskRunStatus", taskRun.status);
 
+      // Belt-and-suspenders (run-ops split): TaskRunAttempt is a V1-residual run-graph model,
+      // created only for legacy (cuid) runs, and the attempt + run bump below execute on the
+      // legacy run-ops client. A NEW-resident (run-ops id) run reaching this V1-only path is a
+      // misroute — fail loudly here rather than emitting a confusing FK/P2025 against the NEW store.
+      if (ownerEngine(taskRun.id) === "NEW") {
+        logger.error(
+          "CreateTaskRunAttempt reached a run-ops (NEW-resident) run; refusing legacy attempt-create",
+          { runId: taskRun.id, friendlyId: taskRun.friendlyId }
+        );
+        throw new ServiceValidationError(
+          "Cannot create a legacy task run attempt for a run-engine v2 run",
+          500
+        );
+      }
+
       if (taskRun.status === "CANCELED") {
         throw new ServiceValidationError("Task run is cancelled", 400);
       }
@@ -128,38 +144,46 @@ export class CreateTaskRunAttemptService extends BaseService {
         throw new ServiceValidationError("Max attempts reached", 400);
       }
 
-      const taskRunAttempt = await $transaction(this._prisma, "create attempt", async (tx) => {
-        const taskRunAttempt = await tx.taskRunAttempt.create({
-          data: {
-            number: nextAttemptNumber,
-            friendlyId: generateFriendlyId("attempt"),
-            taskRunId: taskRun.id,
-            startedAt: new Date(),
-            backgroundWorkerId: lockedBy.worker.id,
-            backgroundWorkerTaskId: lockedBy.id,
-            status: setToExecuting ? "EXECUTING" : "PENDING",
-            queueId: queue.id,
-            runtimeEnvironmentId: environment.id,
-          },
-        });
+      // TaskRunAttempt is a V1-residual run-graph model, only ever created for legacy (cuid)
+      // runs, so this attempt and its run bump are legacy run-graph writes that must run
+      // atomically on the legacy run-ops client (no store write method exists for this model).
+      const taskRunAttempt = await $transaction(
+        runOpsLegacyPrisma,
+        "create attempt",
+        async (tx) => {
+          const taskRunAttempt = await tx.taskRunAttempt.create({
+            data: {
+              number: nextAttemptNumber,
+              friendlyId: generateFriendlyId("attempt"),
+              taskRunId: taskRun.id,
+              startedAt: new Date(),
+              backgroundWorkerId: lockedBy.worker.id,
+              backgroundWorkerTaskId: lockedBy.id,
+              status: setToExecuting ? "EXECUTING" : "PENDING",
+              queueId: queue.id,
+              runtimeEnvironmentId: environment.id,
+            },
+          });
 
-        await tx.taskRun.update({
-          where: {
-            id: taskRun.id,
-          },
-          data: {
-            status: setToExecuting ? "EXECUTING" : undefined,
-            executedAt: taskRun.executedAt ?? new Date(),
-            attemptNumber: nextAttemptNumber,
-          },
-        });
+          await tx.taskRun // runops-legacy-ok: run-bump inside legacy attempt-create tx (V1-only path)
+            .update({
+              where: {
+                id: taskRun.id,
+              },
+              data: {
+                status: setToExecuting ? "EXECUTING" : undefined,
+                executedAt: taskRun.executedAt ?? new Date(),
+                attemptNumber: nextAttemptNumber,
+              },
+            });
 
-        if (taskRun.ttl) {
-          await ExpireEnqueuedRunService.ack(taskRun.id, tx);
+          if (taskRun.ttl) {
+            await ExpireEnqueuedRunService.ack(taskRun.id, tx);
+          }
+
+          return taskRunAttempt;
         }
-
-        return taskRunAttempt;
-      });
+      );
 
       if (!taskRunAttempt) {
         logger.error("Failed to create task run attempt", { runId: taskRun.id, nextAttemptNumber });

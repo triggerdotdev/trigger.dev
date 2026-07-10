@@ -1,4 +1,5 @@
 import { ownerEngine } from "@trigger.dev/core/v3/isomorphic";
+import { runOpsLegacyPrisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
@@ -85,7 +86,11 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
     }
     const legacyRuns = runsWaitingForDeploy.filter((run) => !newResidentRuns.includes(run));
 
-    const pendingRuns = await this._prisma.taskRun.updateMany({
+    // legacyRuns are provably cuid (NEW-resident runs were filtered out above), and
+    // WAITING_FOR_DEPLOY → PENDING is a legacy-only V1 status transition, so this write
+    // must land on the legacy run-ops client specifically — never the control-plane writer.
+    const pendingRuns = await runOpsLegacyPrisma.taskRun.updateMany({
+      // runops-legacy-ok: post ownerEngine()!=="NEW" filter
       where: {
         id: {
           in: legacyRuns.map((run) => run.id),

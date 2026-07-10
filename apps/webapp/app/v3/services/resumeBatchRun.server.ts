@@ -171,7 +171,7 @@ export class ResumeBatchRunService extends BaseService {
     dependentTaskAttemptId: string,
     environment: AuthenticatedEnvironment
   ) {
-    const dependentTaskAttempt = await this._prisma.taskRunAttempt.findFirst({
+    const dependentTaskAttempt = await this.runStore.findTaskRunAttempt({
       where: {
         id: dependentTaskAttemptId,
       },

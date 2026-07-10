@@ -1,25 +1,38 @@
 import type { TaskRunDependency } from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
+import { runOpsLegacyPrisma, type PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
+import type { ControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { controlPlaneResolver as defaultControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";
 import { isV3Disabled } from "../engineDeprecation.server";
 
 export class ResumeTaskDependencyService extends BaseService {
+  #controlPlaneResolver: ControlPlaneResolver;
+
+  constructor(
+    opts: {
+      prisma?: PrismaClientOrTransaction;
+      replica?: PrismaClientOrTransaction;
+      runStore?: RunStore;
+      controlPlaneResolver?: ControlPlaneResolver;
+    } = {}
+  ) {
+    super(opts.prisma, opts.replica, opts.runStore);
+    this.#controlPlaneResolver = opts.controlPlaneResolver ?? defaultControlPlaneResolver;
+  }
+
   public async call(dependencyId: string, sourceTaskAttemptId: string) {
-    const dependency = await this._prisma.taskRunDependency.findFirst({
+    // TaskRunDependency is V1-only (rows created solely by triggerTaskV1), so the dependency and its
+    // taskRun/dependentAttempt subgraph are always cuid/legacy-resident: route via the legacy client.
+    // The child run's runtimeEnvironment lives in the control-plane DB, so it is NOT joined here
+    // (that would cross the run-graph <-> control-plane seam) — it is resolved out-of-band below.
+    const dependency = await runOpsLegacyPrisma.taskRunDependency.findFirst({
       where: { id: dependencyId },
       include: {
-        taskRun: {
-          include: {
-            runtimeEnvironment: {
-              include: {
-                project: true,
-                organization: true,
-              },
-            },
-          },
-        },
+        taskRun: true,
         dependentAttempt: {
           include: {
             taskRun: true,
@@ -41,7 +54,19 @@ export class ResumeTaskDependencyService extends BaseService {
       return;
     }
 
-    if (dependency.taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
+    // Resolve the child run's environment (with its project/organization) from the control-plane
+    // DB rather than cross-seam joining it off the legacy TaskRunDependency read above.
+    const runtimeEnvironment = await this.#controlPlaneResolver.resolveAuthenticatedEnv(
+      dependency.taskRun.runtimeEnvironmentId
+    );
+
+    if (!runtimeEnvironment) {
+      throw new Error(
+        `Could not resolve environment ${dependency.taskRun.runtimeEnvironmentId} for task dependency ${dependencyId}`
+      );
+    }
+
+    if (runtimeEnvironment.type === "DEVELOPMENT") {
       return;
     }
 
@@ -74,7 +99,7 @@ export class ResumeTaskDependencyService extends BaseService {
 
       // TODO: use the new priority queue thingie
       await marqs?.enqueueMessage(
-        dependency.taskRun.runtimeEnvironment,
+        runtimeEnvironment,
         dependentRun.queue,
         dependentRun.id,
         {
@@ -83,9 +108,9 @@ export class ResumeTaskDependencyService extends BaseService {
           resumableAttemptId: dependency.dependentAttempt.id,
           checkpointEventId: dependency.checkpointEventId,
           taskIdentifier: dependency.taskRun.taskIdentifier,
-          projectId: dependency.taskRun.runtimeEnvironment.projectId,
-          environmentId: dependency.taskRun.runtimeEnvironment.id,
-          environmentType: dependency.taskRun.runtimeEnvironment.type,
+          projectId: runtimeEnvironment.projectId,
+          environmentId: runtimeEnvironment.id,
+          environmentType: runtimeEnvironment.type,
         },
         dependentRun.concurrencyKey ?? undefined,
         dependentRun.queueTimestamp ?? dependentRun.createdAt,
@@ -132,9 +157,9 @@ export class ResumeTaskDependencyService extends BaseService {
           resumableAttemptId: dependency.dependentAttempt.id,
           checkpointEventId: dependency.checkpointEventId ?? undefined,
           taskIdentifier: dependency.taskRun.taskIdentifier,
-          projectId: dependency.taskRun.runtimeEnvironment.projectId,
-          environmentId: dependency.taskRun.runtimeEnvironment.id,
-          environmentType: dependency.taskRun.runtimeEnvironment.type,
+          projectId: runtimeEnvironment.projectId,
+          environmentId: runtimeEnvironment.id,
+          environmentType: runtimeEnvironment.type,
         },
         (dependentRun.queueTimestamp ?? dependentRun.createdAt).getTime(),
         "resume"
@@ -143,7 +168,8 @@ export class ResumeTaskDependencyService extends BaseService {
   }
 
   async #setDependencyToResumedOnce(dependency: TaskRunDependency) {
-    const result = await this._prisma.taskRunDependency.updateMany({
+    // Legacy-resident write (TaskRunDependency is V1-only/cuid): land it on the legacy writer.
+    const result = await runOpsLegacyPrisma.taskRunDependency.updateMany({
       where: {
         id: dependency.id,
         resumedAt: null,

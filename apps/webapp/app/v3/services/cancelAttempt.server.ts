@@ -1,6 +1,8 @@
-import { $transaction, type PrismaClientOrTransaction, prisma } from "~/db.server";
+import { runOpsLegacyPrisma, type PrismaClientOrTransaction } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { runStore } from "~/v3/runStore.server";
 import { isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
@@ -27,7 +29,7 @@ export class CancelAttemptService extends BaseService {
       span.setAttribute("taskRunId", taskRunId);
       span.setAttribute("attemptId", attemptId);
 
-      const taskRunAttempt = await this._prisma.taskRunAttempt.findFirst({
+      const taskRunAttempt = await this.runStore.findTaskRunAttempt({
         where: {
           friendlyId: attemptId,
         },
@@ -48,27 +50,29 @@ export class CancelAttemptService extends BaseService {
         return;
       }
 
-      await $transaction(this._prisma, "cancel attempt", async (tx) => {
-        await tx.taskRunAttempt.update({
-          where: {
-            friendlyId: attemptId,
-          },
-          data: {
-            status: "CANCELED",
-            completedAt: cancelledAt,
-          },
-        });
+      // De-forwarded from a control-plane $transaction: the attempt update lands on the
+      // legacy run-ops handle (TaskRunAttempt is LEGACY_ONLY), and FinalizeTaskRunService is
+      // constructed without a tx so it routes itself by residency. These are now two
+      // independent writes; the loss of cross-statement atomicity is an accepted semantic.
+      await runOpsLegacyPrisma.taskRunAttempt.update({
+        where: {
+          friendlyId: attemptId,
+        },
+        data: {
+          status: "CANCELED",
+          completedAt: cancelledAt,
+        },
+      });
 
-        const isCancellable = isCancellableRunStatus(taskRunAttempt.taskRun.status);
+      const isCancellable = isCancellableRunStatus(taskRunAttempt.taskRun.status);
 
-        const finalizeService = new FinalizeTaskRunService(tx);
-        await finalizeService.call({
-          id: taskRunId,
-          status: isCancellable ? "INTERRUPTED" : undefined,
-          completedAt: isCancellable ? cancelledAt : undefined,
-          attemptStatus: isCancellable ? "CANCELED" : undefined,
-          error: isCancellable ? { type: "STRING_ERROR", raw: reason } : undefined,
-        });
+      const finalizeService = new FinalizeTaskRunService();
+      await finalizeService.call({
+        id: taskRunId,
+        status: isCancellable ? "INTERRUPTED" : undefined,
+        completedAt: isCancellable ? cancelledAt : undefined,
+        attemptStatus: isCancellable ? "CANCELED" : undefined,
+        error: isCancellable ? { type: "STRING_ERROR", raw: reason } : undefined,
       });
     });
   }
@@ -78,23 +82,27 @@ async function getAuthenticatedEnvironmentFromAttempt(
   friendlyId: string,
   prismaClient?: PrismaClientOrTransaction
 ) {
-  const taskRunAttempt = await (prismaClient ?? prisma).taskRunAttempt.findFirst({
-    where: {
-      friendlyId,
-    },
-    include: {
-      runtimeEnvironment: {
-        include: {
-          organization: true,
-          project: true,
-        },
+  // Query split (pattern B): read the run-graph attempt scalar via the residency-aware store,
+  // then resolve the control-plane environment (org/project) via the control-plane resolver
+  // instead of joining `runtimeEnvironment` across the run-graph/control-plane seam.
+  const taskRunAttempt = await runStore.findTaskRunAttempt(
+    {
+      where: {
+        friendlyId,
+      },
+      select: {
+        runtimeEnvironmentId: true,
       },
     },
-  });
+    prismaClient
+  );
 
   if (!taskRunAttempt) {
     return;
   }
 
-  return taskRunAttempt?.runtimeEnvironment;
+  return (
+    (await controlPlaneResolver.resolveAuthenticatedEnv(taskRunAttempt.runtimeEnvironmentId)) ??
+    undefined
+  );
 }

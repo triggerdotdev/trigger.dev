@@ -6,6 +6,7 @@ import type {
   PrismaClientOrTransaction,
   TaskRun,
   TaskRunStatus,
+  WaitpointTag,
 } from "@trigger.dev/database";
 import type {
   ClearIdempotencyKeyInput,
@@ -16,6 +17,7 @@ import type {
   CreateFailedRunInput,
   CreateRunInput,
   ExpireSnapshotInput,
+  FinalizeRunData,
   ForWaitpointCompletionContext,
   LockRunData,
   ReadClient,
@@ -65,7 +67,9 @@ export interface RunOpsCapableClient {
   // optional so the legacy client stays assignable. Touched only on the dedicated branch.
   waitpointRunConnection?: RunOpsDelegate<"createMany" | "findMany">;
   batchTaskRun: RunOpsDelegate<"create" | "findFirst" | "update" | "updateMany">;
-  batchTaskRunItem: RunOpsDelegate<"create" | "count" | "updateMany">;
+  batchTaskRunItem: RunOpsDelegate<"create" | "count" | "updateMany" | "findFirst" | "findMany">;
+  // Standalone entity keyed by (environmentId, name); present on both schemas.
+  waitpointTag: RunOpsDelegate<"upsert" | "findMany">;
   $queryRaw: PrismaClient["$queryRaw"];
   $executeRaw: PrismaClient["$executeRaw"];
 }
@@ -405,6 +409,7 @@ const RUN_OPS_DELEGATE_KEYS: ReadonlySet<string> = new Set([
   "waitpointRunConnection",
   "batchTaskRun",
   "batchTaskRunItem",
+  "waitpointTag",
 ]);
 
 // Every method call on a delegate rewrites ONLY its rejection reason; success is untouched.
@@ -866,6 +871,61 @@ export class PostgresRunStore implements RunStore {
       },
       { select: args.select }
     ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  }
+
+  finalizeRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  finalizeRun<I extends Prisma.TaskRunInclude>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { include: I },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  finalizeRun(
+    runId: string,
+    data: FinalizeRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
+  async finalizeRun(
+    runId: string,
+    data: FinalizeRunData,
+    argsOrTx?:
+      | { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
+      | PrismaClientOrTransaction,
+    tx?: PrismaClientOrTransaction
+  ): Promise<unknown> {
+    // Disambiguate the 3rd positional: a `{ select | include }` projection vs. a tx client (a client
+    // never carries a select/include own-key), mirroring #resolveReadArgs on the read path.
+    const isProjection =
+      typeof argsOrTx === "object" &&
+      argsOrTx !== null &&
+      ("select" in argsOrTx || "include" in argsOrTx);
+    const args = isProjection
+      ? (argsOrTx as { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude })
+      : {};
+    const prisma =
+      (isProjection ? tx : (argsOrTx as PrismaClientOrTransaction | undefined)) ?? this.prisma;
+
+    // status + error land in the SAME update (a separate later error write races realtime, which
+    // shuts the stream on the final status before the error lands). undefined fields are skipped.
+    return this.#updateTaskRunWithSelect(
+      prisma,
+      { id: runId },
+      {
+        ...(data.status !== undefined && { status: data.status }),
+        ...(data.expiredAt !== undefined && { expiredAt: data.expiredAt }),
+        ...(data.completedAt !== undefined && { completedAt: data.completedAt }),
+        ...(data.error !== undefined && { error: data.error as Prisma.InputJsonValue }),
+        ...(data.bulkActionId !== undefined && {
+          bulkActionGroupIds: { push: data.bulkActionId },
+        }),
+      },
+      args
+    );
   }
 
   async expireRun<S extends Prisma.TaskRunSelect>(
@@ -2207,6 +2267,70 @@ export class PostgresRunStore implements RunStore {
     const prisma = tx ?? this.prisma;
 
     return prisma.batchTaskRunItem.updateMany(args);
+  }
+
+  // The item's `batchTaskRun`/`taskRun` relations stay real FKs on BOTH schemas (co-resident), so a
+  // caller `include` passes straight through — no dedicated-subset stripping is needed.
+  async findManyBatchTaskRunItems<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { taskRunId?: string; batchTaskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.batchTaskRunItem.findMany({
+      where,
+      ...(args?.include ? { include: args.include } : {}),
+    }) as Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]>;
+  }
+
+  async findBatchTaskRunItem<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { batchTaskRunId: string; taskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.batchTaskRunItem.findFirst({
+      where,
+      ...(args?.include ? { include: args.include } : {}),
+    }) as Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null>;
+  }
+
+  // --- WaitpointTag (run-ops) ---
+
+  async upsertWaitpointTag(
+    data: { environmentId: string; name: string; projectId: string; id?: string },
+    tx?: PrismaClientOrTransaction
+  ): Promise<WaitpointTag> {
+    const prisma = tx ?? this.prisma;
+
+    return prisma.waitpointTag.upsert({
+      where: { environmentId_name: { environmentId: data.environmentId, name: data.name } },
+      create: {
+        ...(data.id !== undefined && { id: data.id }),
+        name: data.name,
+        environmentId: data.environmentId,
+        projectId: data.projectId,
+      },
+      update: {},
+    }) as Promise<WaitpointTag>;
+  }
+
+  async findManyWaitpointTags(
+    args: {
+      where: Prisma.WaitpointTagWhereInput;
+      orderBy?:
+        | Prisma.WaitpointTagOrderByWithRelationInput
+        | Prisma.WaitpointTagOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+    },
+    client?: ReadClient
+  ): Promise<WaitpointTag[]> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.waitpointTag.findMany(args) as Promise<WaitpointTag[]>;
   }
 
   /**

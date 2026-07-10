@@ -1,5 +1,6 @@
 import { type FlushedRunMetadata, type TaskRunError, sanitizeError } from "@trigger.dev/core/v3";
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
+import { runOpsLegacyPrisma } from "~/db.server";
 import { findQueueInEnvironment } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -97,21 +98,21 @@ export class FinalizeTaskRunService extends BaseService {
     // which shuts the stream down on the final status before the error lands, losing it.
     const taskRunError = error ? sanitizeError(error) : undefined;
 
-    const run = await this._prisma.taskRun.update({
-      where: { id },
-      data: {
-        status,
-        expiredAt,
-        completedAt,
-        error: taskRunError,
-        bulkActionGroupIds: bulkActionId
-          ? {
-              push: bulkActionId,
-            }
-          : undefined,
-      },
-      ...(include ? { include } : {}),
-    });
+    // Dual-residency finalize: the store routes to the run's owning DB and writes status + error in
+    // the same update (see FinalizeRunData). bulkActionId is pushed onto bulkActionGroupIds internally.
+    const finalizeData = {
+      status,
+      expiredAt,
+      completedAt,
+      error: taskRunError,
+      bulkActionId,
+    };
+
+    const run = include
+      ? await this.runStore.finalizeRun(id, finalizeData, {
+          include: include as Prisma.TaskRunInclude,
+        })
+      : await this.runStore.finalizeRun(id, finalizeData);
 
     if (run.ttl) {
       await ExpireEnqueuedRunService.ack(run.id);
@@ -208,20 +209,20 @@ export class FinalizeTaskRunService extends BaseService {
       return;
     }
 
-    const batchItems = await this._prisma.batchTaskRunItem.findMany({
-      where: {
-        taskRunId: run.id,
-      },
-      include: {
-        batchTaskRun: {
-          select: {
-            id: true,
-            dependentTaskAttemptId: true,
-            batchVersion: true,
+    const batchItems = await this.runStore.findManyBatchTaskRunItems(
+      { taskRunId: run.id },
+      {
+        include: {
+          batchTaskRun: {
+            select: {
+              id: true,
+              dependentTaskAttemptId: true,
+              batchVersion: true,
+            },
           },
         },
-      },
-    });
+      }
+    );
 
     if (batchItems.length === 0) {
       return;
@@ -247,9 +248,12 @@ export class FinalizeTaskRunService extends BaseService {
         await completeBatchTaskRunItemV3(item.id, item.batchTaskRunId, this._prisma);
       } else {
         // THIS IS DEPRECATED and only happens with batchVersion != v3
-        await this._prisma.batchTaskRunItem.update({
+        // Route by batchTaskRunId (residency-encoding) so a NEW batch's items land on the
+        // right store — the item id is always a cuid and would misroute to legacy on its own.
+        await this.runStore.updateManyBatchTaskRunItems({
           where: {
             id: item.id,
+            batchTaskRunId: item.batchTaskRunId,
           },
           data: {
             status: "COMPLETED",
@@ -277,11 +281,14 @@ export class FinalizeTaskRunService extends BaseService {
       return;
     }
 
-    const latestAttempt = await this._prisma.taskRunAttempt.findFirst({
-      where: { taskRunId: run.id },
-      orderBy: { id: "desc" },
-      take: 1,
-    });
+    const latestAttempt = await this.runStore.findTaskRunAttempt(
+      {
+        where: { taskRunId: run.id },
+        orderBy: { id: "desc" },
+        take: 1,
+      },
+      this._prisma
+    );
 
     if (latestAttempt) {
       logger.debug("Finalizing run attempt", {
@@ -290,7 +297,8 @@ export class FinalizeTaskRunService extends BaseService {
         error,
       });
 
-      await this._prisma.taskRunAttempt.update({
+      // TaskRunAttempt is legacy-only (V1); the attempt-owning run is a V1/cuid run.
+      await runOpsLegacyPrisma.taskRunAttempt.update({
         where: { id: latestAttempt.id },
         data: { status: attemptStatus, error: error ? sanitizeError(error) : undefined },
       });
@@ -344,7 +352,8 @@ export class FinalizeTaskRunService extends BaseService {
       return;
     }
 
-    await this._prisma.taskRunAttempt.create({
+    // TaskRunAttempt is legacy-only (V1); the attempt-owning run is a V1/cuid run.
+    await runOpsLegacyPrisma.taskRunAttempt.create({
       data: {
         number: 1,
         friendlyId: generateFriendlyId("attempt"),

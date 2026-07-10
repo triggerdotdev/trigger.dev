@@ -193,7 +193,7 @@ export class BatchTriggerV3Service extends BaseService {
           span.setAttribute("batchId", batchId);
 
           const dependentAttempt = body?.dependentAttempt
-            ? await this._prisma.taskRunAttempt.findFirst({
+            ? await this.runStore.findTaskRunAttempt({
                 // Scope to the caller's environment (see dependentAttemptWhere).
                 where: dependentAttemptWhere(body.dependentAttempt, environment.id),
                 include: {

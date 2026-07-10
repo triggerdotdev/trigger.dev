@@ -9,9 +9,12 @@ export class PerformBulkActionService extends BaseService {
   public async performBulkActionItem(bulkActionItemId: string) {
     const item = await this._prisma.bulkActionItem.findFirst({
       where: { id: bulkActionItemId },
-      include: {
-        sourceRun: true,
-        destinationRun: true,
+      select: {
+        id: true,
+        groupId: true,
+        type: true,
+        status: true,
+        sourceRunId: true,
       },
     });
 
@@ -23,10 +26,13 @@ export class PerformBulkActionService extends BaseService {
       return;
     }
 
+    // Fetch the source run through the store (it may reside in a different DB than the item).
+    const sourceRun = await this.runStore.findRunOrThrow({ id: item.sourceRunId }, this._prisma);
+
     switch (item.type) {
       case "REPLAY": {
         const service = new ReplayTaskRunService(this._prisma);
-        const result = await service.call(item.sourceRun, { triggerSource: "dashboard" });
+        const result = await service.call(sourceRun, { triggerSource: "dashboard" });
 
         await this._prisma.bulkActionItem.update({
           where: { id: item.id },
@@ -42,12 +48,12 @@ export class PerformBulkActionService extends BaseService {
       case "CANCEL": {
         const service = new CancelTaskRunService(this._prisma);
 
-        const result = await service.call(item.sourceRun);
+        const result = await service.call(sourceRun);
 
         await this._prisma.bulkActionItem.update({
           where: { id: item.id },
           data: {
-            destinationRunId: item.sourceRun.id,
+            destinationRunId: sourceRun.id,
             status: result ? "COMPLETED" : "FAILED",
             error: result ? undefined : "Task wasn't cancelable",
           },

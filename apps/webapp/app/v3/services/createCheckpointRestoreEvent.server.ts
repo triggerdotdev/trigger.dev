@@ -4,6 +4,7 @@ import type {
   CheckpointRestoreEvent,
   CheckpointRestoreEventType,
 } from "@trigger.dev/database";
+import { runOpsLegacyPrisma } from "~/db.server";
 import { isTaskRunAttemptStatus, isTaskRunStatus } from "~/database-types";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
@@ -35,7 +36,8 @@ export class CreateCheckpointRestoreEventService extends BaseService {
       return;
     }
 
-    const checkpoint = await this._prisma.checkpoint.findFirst({
+    // Checkpoint is a V1-only run-graph model (never written by RE2), so it is always legacy-resident.
+    const checkpoint = await runOpsLegacyPrisma.checkpoint.findFirst({
       where: {
         id: params.checkpointId,
       },
@@ -83,7 +85,8 @@ export class CreateCheckpointRestoreEventService extends BaseService {
       }
     }
 
-    const checkpointEvent = await this._prisma.checkpointRestoreEvent.create({
+    // CheckpointRestoreEvent is a V1-only run-graph model, always legacy-resident.
+    const checkpointEvent = await runOpsLegacyPrisma.checkpointRestoreEvent.create({
       data: {
         checkpointId: checkpoint.id,
         runtimeEnvironmentId: checkpoint.runtimeEnvironmentId,
@@ -141,7 +144,8 @@ export class CreateCheckpointRestoreEventService extends BaseService {
     }
 
     try {
-      const updatedAttempt = await this._prisma.taskRunAttempt.update({
+      // TaskRunAttempt + its nested taskRun are V1-only, co-resident in legacy.
+      const updatedAttempt = await runOpsLegacyPrisma.taskRunAttempt.update({
         where: {
           id: attemptId,
         },

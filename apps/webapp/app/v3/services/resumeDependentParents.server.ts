@@ -1,10 +1,10 @@
 import type { Prisma } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./resumeTaskDependency.server";
-import { $transaction } from "~/db.server";
 import { completeBatchTaskRunItemV3 } from "./batchTriggerV3.server";
 
 type Output =
@@ -22,55 +22,54 @@ type Output =
       error: string;
     };
 
-const taskRunDependencySelect = {
-  select: {
-    id: true,
-    taskRunId: true,
-    taskRun: {
-      select: {
-        id: true,
-        status: true,
-        friendlyId: true,
-        runtimeEnvironment: {
-          select: {
-            type: true,
-          },
+// Run scalars + the co-resident dependency subgraph. The RuntimeEnvironment relation crosses the
+// run-ops/control-plane seam, so the env is resolved separately from `runtimeEnvironmentId`.
+const runWithDependencySelect = {
+  id: true,
+  status: true,
+  friendlyId: true,
+  runtimeEnvironmentId: true,
+  dependency: {
+    select: {
+      id: true,
+      taskRunId: true,
+      dependentAttempt: {
+        select: {
+          id: true,
+        },
+      },
+      dependentBatchRun: {
+        select: {
+          id: true,
+          batchVersion: true,
         },
       },
     },
-    dependentAttempt: {
-      select: {
-        id: true,
-      },
-    },
-    dependentBatchRun: {
-      select: {
-        id: true,
-        batchVersion: true,
-      },
-    },
   },
-} as const;
+} satisfies Prisma.TaskRunSelect;
 
-type Dependency = Prisma.TaskRunDependencyGetPayload<typeof taskRunDependencySelect>;
+type RunWithDependency = Prisma.TaskRunGetPayload<{ select: typeof runWithDependencySelect }>;
+type Dependency = NonNullable<RunWithDependency["dependency"]>;
 
 /** This will resume a dependent (parent) run if there is one and it makes sense. */
 export class ResumeDependentParentsService extends BaseService {
   public async call({ id }: { id: string }): Promise<Output> {
     try {
-      const dependency = await this._prisma.taskRunDependency.findFirst({
-        ...taskRunDependencySelect,
-        where: {
-          taskRunId: id,
-        },
-      });
+      const run = await this.runStore.findRun(
+        { id },
+        {
+          select: runWithDependencySelect,
+        }
+      );
+
+      const dependency = run?.dependency ?? null;
 
       logger.log("ResumeDependentParentsService: tried to find dependency", {
         runId: id,
         dependency: dependency,
       });
 
-      if (!dependency) {
+      if (!run || !dependency) {
         logger.log("ResumeDependentParentsService: dependency not found", {
           runId: id,
         });
@@ -82,14 +81,16 @@ export class ResumeDependentParentsService extends BaseService {
         };
       }
 
-      if (dependency.taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
+      const environment = await findEnvironmentById(run.runtimeEnvironmentId);
+
+      if (environment?.type === "DEVELOPMENT") {
         return {
           success: true,
           action: "dev",
         };
       }
 
-      if (!isFinalRunStatus(dependency.taskRun.status)) {
+      if (!isFinalRunStatus(run.status)) {
         logger.debug(
           "ResumeDependentParentsService: run not finished yet, can't resume parent yet",
           {
@@ -136,7 +137,7 @@ export class ResumeDependentParentsService extends BaseService {
       }
     );
 
-    const lastAttempt = await this._prisma.taskRunAttempt.findFirst({
+    const lastAttempt = await this.runStore.findTaskRunAttempt({
       select: {
         id: true,
         status: true,
@@ -209,7 +210,7 @@ export class ResumeDependentParentsService extends BaseService {
       };
     }
 
-    const lastAttempt = await this._prisma.taskRunAttempt.findFirst({
+    const lastAttempt = await this.runStore.findTaskRunAttempt({
       select: {
         id: true,
         status: true,
@@ -245,11 +246,9 @@ export class ResumeDependentParentsService extends BaseService {
     );
 
     if (dependency.dependentBatchRun!.batchVersion === "v3") {
-      const batchTaskRunItem = await this._prisma.batchTaskRunItem.findFirst({
-        where: {
-          batchTaskRunId: dependency.dependentBatchRun!.id,
-          taskRunId: dependency.taskRunId,
-        },
+      const batchTaskRunItem = await this.runStore.findBatchTaskRunItem({
+        batchTaskRunId: dependency.dependentBatchRun!.id,
+        taskRunId: dependency.taskRunId,
       });
 
       if (batchTaskRunItem) {
@@ -270,22 +269,21 @@ export class ResumeDependentParentsService extends BaseService {
         );
       }
     } else {
-      await $transaction(this._prisma, async (tx) => {
-        await tx.batchTaskRunItem.update({
-          where: {
-            batchTaskRunId_taskRunId: {
-              batchTaskRunId: dependency.dependentBatchRun!.id,
-              taskRunId: dependency.taskRunId,
-            },
-          },
-          data: {
-            status: "COMPLETED",
-            taskRunAttemptId: lastAttempt.id,
-          },
-        });
-
-        await ResumeBatchRunService.enqueue(dependency.dependentBatchRun!.id, false, tx);
+      // DEPRECATED: only reached for batchVersion != "v3". De-forwarded from a control-plane
+      // $transaction — the item update routes by batchTaskRunId (residency-encoding), and the
+      // ResumeBatchRunService enqueue runs separately (no shared control-plane tx).
+      await this.runStore.updateManyBatchTaskRunItems({
+        where: {
+          batchTaskRunId: dependency.dependentBatchRun!.id,
+          taskRunId: dependency.taskRunId,
+        },
+        data: {
+          status: "COMPLETED",
+          taskRunAttemptId: lastAttempt.id,
+        },
       });
+
+      await ResumeBatchRunService.enqueue(dependency.dependentBatchRun!.id, false);
     }
 
     return {
