@@ -150,21 +150,22 @@ describe("RoutingRunStore.upsertWaitpointTag", () => {
     expect(newStore.calls).toHaveLength(0);
   });
 
-  it("forwards a control-plane tx only to legacy, never to the NEW write", async () => {
+  it("never threads a control-plane tx into either leg", async () => {
     const { router, newStore, legacyStore } = buildRouter();
     const tx = { $fake: "cp-tx" };
     await router.upsertWaitpointTag(
       { environmentId: "env", name: "t", projectId: "p", id: "legacy_tag" },
       tx as never
     );
-    expect(legacyStore.calls[0]?.args[1]).toBe(tx);
+    // The routed write runs on the owning store's own client, so the tx is dropped on the LEGACY leg too.
+    expect(legacyStore.calls[0]?.args[1]).toBeUndefined();
 
     const tx2 = { $fake: "cp-tx-2" };
     await router.upsertWaitpointTag(
       { environmentId: "env", name: "t", projectId: "p", id: "new_tag" },
       tx2 as never
     );
-    // NEW leg must not receive the control-plane tx.
+    // NEW leg likewise never receives the control-plane tx.
     expect(newStore.calls[0]?.args[1]).toBeUndefined();
   });
 });

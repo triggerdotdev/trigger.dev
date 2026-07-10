@@ -159,6 +159,13 @@ const EnvironmentSchema = z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is invalid")
       .optional(),
+    // Direct DSN for applying the full @trigger.dev/database migrations to the LEGACY run-ops DB, keeping
+    // its schema current after the control plane moves off it. Direct, not pooled — migrations never run
+    // over a pooler. Optional; unset -> the entrypoint's legacy migrate step is skipped.
+    RUN_OPS_LEGACY_DIRECT_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DIRECT_URL is invalid")
+      .optional(),
     // Advisory control-plane co-residency sentinel enforcement (Track 2, T2.3). Default OFF; the advisory
     // arm always emits its metric, this only turns a still-co-resident pair into a hard boot failure.
     RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT: BoolEnv.default(false),
@@ -1740,6 +1747,14 @@ const EnvironmentSchema = z
     RUN_REPLICATION_DISABLE_PAYLOAD_INSERT: z.string().default("0"),
     RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING: z.string().default("0"),
 
+    // Connection URL for the LEGACY runs-replication source (the runs-CDC slot on the legacy runs DB, plus
+    // the admin recovery route). Direct, not pooled: replication can't run over a pooler. Optional; unset ->
+    // falls back to DATABASE_URL, so nothing changes today.
+    RUN_REPLICATION_LEGACY_DATABASE_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "RUN_REPLICATION_LEGACY_DATABASE_URL is invalid")
+      .optional(),
+
     // --- Run-ops DB split — second replication source (the NEW dedicated run-ops DB). ---
     // Cloud-only; only consulted when isSplitEnabled() is true. Self-host never sets these.
     // Connection URL for the run-ops DB used by the runs-replication source. Required when the split is
@@ -1776,6 +1791,12 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_PUBLICATION_NAME: z
       .string()
       .default("sessions_to_clickhouse_v1_publication"),
+    // Connection URL for the sessions-replication slot. Direct, not pooled: replication can't run over a
+    // pooler. Optional; unset -> falls back to DATABASE_URL, so nothing changes today.
+    SESSION_REPLICATION_DATABASE_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "SESSION_REPLICATION_DATABASE_URL is invalid")
+      .optional(),
     SESSION_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(1),
     SESSION_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     SESSION_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),

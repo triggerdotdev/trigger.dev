@@ -90,6 +90,9 @@ function initializeRunsReplicationInstance() {
   const { DATABASE_URL } = process.env;
   invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
 
+  // Legacy runs-replication source DSN; falls back to DATABASE_URL when its dedicated var is unset.
+  const legacyDatabaseUrl = env.RUN_REPLICATION_LEGACY_DATABASE_URL ?? DATABASE_URL;
+
   if (!env.RUN_REPLICATION_CLICKHOUSE_URL) {
     console.log("🗃️  Runs replication service not enabled");
     return;
@@ -135,7 +138,7 @@ function initializeRunsReplicationInstance() {
   // yet at module-init time, and singleton(...) memoizes this synchronous return value).
   let service = new RunsReplicationService({
     ...baseReplicationOptions,
-    pgConnectionUrl: DATABASE_URL,
+    pgConnectionUrl: legacyDatabaseUrl,
     slotName: env.RUN_REPLICATION_SLOT_NAME,
     publicationName: env.RUN_REPLICATION_PUBLICATION_NAME,
     // Explicit legacy source so the leader-lock key matches the id the status
@@ -143,7 +146,7 @@ function initializeRunsReplicationInstance() {
     sources: [
       {
         id: "legacy",
-        pgConnectionUrl: DATABASE_URL,
+        pgConnectionUrl: legacyDatabaseUrl,
         slotName: env.RUN_REPLICATION_SLOT_NAME,
         publicationName: env.RUN_REPLICATION_PUBLICATION_NAME,
         originGeneration: env.RUN_REPLICATION_LEGACY_ORIGIN_GENERATION,
@@ -171,7 +174,7 @@ function initializeRunsReplicationInstance() {
       .then(async (splitEnabled) => {
         const sources = buildReplicationSources({
           splitEnabled,
-          legacyUrl: DATABASE_URL,
+          legacyUrl: legacyDatabaseUrl,
           newUrl: env.RUN_REPLICATION_RUN_OPS_DATABASE_URL,
           newSourceOverride: env.RUN_REPLICATION_NEW_ENABLED === "disabled" ? false : undefined,
           legacySlotName: env.RUN_REPLICATION_SLOT_NAME,
@@ -194,7 +197,7 @@ function initializeRunsReplicationInstance() {
           // service normalizes off sources. Pass the legacy scalars to satisfy the type.
           service = new RunsReplicationService({
             ...baseReplicationOptions,
-            pgConnectionUrl: DATABASE_URL,
+            pgConnectionUrl: legacyDatabaseUrl,
             slotName: env.RUN_REPLICATION_SLOT_NAME,
             publicationName: env.RUN_REPLICATION_PUBLICATION_NAME,
             sources,

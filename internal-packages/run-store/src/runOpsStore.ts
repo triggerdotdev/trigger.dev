@@ -138,15 +138,16 @@ export class RoutingRunStore implements RunStore {
 
   // A waitpoint WRITE co-locates with its run by id-shape (cuid → LEGACY, run-ops id → NEW,
   // unclassifiable → LEGACY), mirroring how `blockRunWithWaitpointEdges` routes the edge by
-  // run id. `tx` is forwarded only to LEGACY (same physical DB as the control-plane tx);
-  // for NEW it's dropped so the row lands on NEW's own client.
+  // run id. The caller's `tx` is never forwarded: a routed write must run on the OWNING store's
+  // OWN client so the row lands in that store's database (same-store atomicity comes from the
+  // owning store opening its own transaction, never from a caller-supplied one).
   #routeWaitpointWrite(
     id: string | undefined,
-    tx?: PrismaClientOrTransaction
+    _tx?: PrismaClientOrTransaction
   ): { store: RunStore; tx?: PrismaClientOrTransaction } {
     const store =
       typeof id === "string" && this.#classifySafe(id) === "NEW" ? this.#new : this.#legacy;
-    return { store, tx: store === this.#legacy ? tx : undefined };
+    return { store, tx: undefined };
   }
 
   // Resolve which store ACTUALLY holds a waitpoint id: drain-on-read can relocate a cuid
@@ -400,10 +401,11 @@ export class RoutingRunStore implements RunStore {
     params: ClearIdempotencyKeyInput,
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
-    // `byId` has a single classifiable run id — route on it.
+    // `byId` has a single classifiable run id — route on it. The caller's `tx` is never
+    // forwarded (a routed write runs on the owning store's own client).
     if ("byId" in params && params.byId) {
       const store = this.#route(params.byId.runId);
-      return store.clearIdempotencyKey(params, store === this.#legacy ? tx : undefined);
+      return store.clearIdempotencyKey(params, undefined);
     }
     // `byFriendlyIds` / `byPredicate` can span mixed residency — fan out and sum.
     return Promise.all([
@@ -862,10 +864,11 @@ export class RoutingRunStore implements RunStore {
     input: CreateExecutionSnapshotInput,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>> {
-    // Forward the caller's control-plane tx only to the #legacy store; a #new (cross-DB) write can't
-    // join it, so it's dropped there (the atomic #new path uses runInTransaction instead).
+    // The caller's `tx` is never forwarded: the write runs on the owning store's own client,
+    // which opens its own transaction to keep the snapshot and its links atomic. Same-store
+    // atomicity with a sibling write (e.g. startAttempt) is achieved via runInTransaction.
     const store = await this.#routeOrNewForWrite(input.run.id);
-    return store.createExecutionSnapshot(input, store === this.#legacy ? tx : undefined);
+    return store.createExecutionSnapshot(input, undefined);
   }
 
   // Snapshot ids are cuids (they always classify LEGACY), and a snapshot's CompletedWaitpoint join
@@ -954,7 +957,10 @@ export class RoutingRunStore implements RunStore {
     batchIndex?: number;
     tx?: PrismaClientOrTransaction;
   }): Promise<void> {
-    return (await this.#routeOrNewForWrite(params.runId)).blockRunWithWaitpointEdges(params);
+    // Route by run id; a caller-supplied `tx` is stripped so the edge write runs on the owning
+    // store's own client rather than a caller-supplied (control-plane) connection.
+    const { tx: _tx, ...edges } = params;
+    return (await this.#routeOrNewForWrite(params.runId)).blockRunWithWaitpointEdges(edges);
   }
 
   // A run's waitpoints can be scattered across both stores (drain in flight), so count on
@@ -1211,7 +1217,7 @@ export class RoutingRunStore implements RunStore {
         : opts?.coLocateWithRunId !== undefined
           ? this.#routeOrNew(opts.coLocateWithRunId)
           : await this.#resolveWaitpointStore(undefined);
-    return store.updateWaitpoint(args, store === this.#legacy ? tx : undefined);
+    return store.updateWaitpoint(args, undefined);
   }
 
   async updateManyWaitpoints(
@@ -1221,7 +1227,7 @@ export class RoutingRunStore implements RunStore {
     const id = RoutingRunStore.#waitpointId(args.where);
     if (id !== undefined) {
       const store = await this.#resolveWaitpointStore(id);
-      return store.updateManyWaitpoints(args, store === this.#legacy ? tx : undefined);
+      return store.updateManyWaitpoints(args, undefined);
     }
     // No single routable id (batch where): apply to both stores and sum.
     const [fromNew, fromLegacy] = await Promise.all([
@@ -1360,14 +1366,14 @@ export class RoutingRunStore implements RunStore {
     const waitpointId = typeof where?.waitpointId === "string" ? where.waitpointId : undefined;
     if (waitpointId !== undefined) {
       const store = await this.#resolveWaitpointStore(waitpointId);
-      return store.deleteManyTaskRunWaitpoints(args, store === this.#legacy ? tx : undefined);
+      return store.deleteManyTaskRunWaitpoints(args, undefined);
     }
     // Keyed by taskRunId (or other): a run's edges may straddle DBs mid-drain, so delete from both.
-    // One tx can't span two DBs, so the #new leg is auto-commit; the caller's tx is control-plane, so
-    // the #legacy leg keeps it (atomic with the caller's op, matching the waitpointId-keyed path).
+    // The caller's `tx` is never forwarded — each leg deletes on its own store's client, so neither
+    // leg is tied to a caller-supplied transaction.
     const [fromNew, fromLegacy] = await Promise.all([
       this.#new.deleteManyTaskRunWaitpoints(args),
-      this.#legacy.deleteManyTaskRunWaitpoints(args, tx),
+      this.#legacy.deleteManyTaskRunWaitpoints(args),
     ]);
     return { count: fromNew.count + fromLegacy.count };
   }
@@ -1403,14 +1409,15 @@ export class RoutingRunStore implements RunStore {
   }
 
   // Co-locate the checkpoint with its OWNING run so the run-routed snapshot's `checkpointId` FK
-  // resolves on the same DB. Route by `ownerRunId`; tx forwards only to LEGACY.
+  // resolves on the same DB. Route by `ownerRunId`; the caller's `tx` is never forwarded (the
+  // write runs on the owning store's own client).
   async createTaskRunCheckpoint<T extends Prisma.TaskRunCheckpointCreateArgs>(
     args: Prisma.SelectSubset<T, Prisma.TaskRunCheckpointCreateArgs>,
     ownerRunId?: string,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunCheckpointGetPayload<T>> {
     const store = this.#routeOrNew(ownerRunId);
-    return store.createTaskRunCheckpoint(args, ownerRunId, store === this.#legacy ? tx : undefined);
+    return store.createTaskRunCheckpoint(args, ownerRunId, undefined);
   }
 
   // ---------------------------------------------------------------------------
@@ -1421,12 +1428,12 @@ export class RoutingRunStore implements RunStore {
     data: CreateBatchTaskRunData,
     tx?: PrismaClientOrTransaction
   ): Promise<BatchTaskRun> {
-    // Route by the batch's classifiable internal id: run-ops id→NEW, cuid→LEGACY.
-    // Never forward a control-plane tx to NEW (the create would land in the wrong DB, stranding the
-    // run-ops batch + its co-resident child runs/items); forward tx only to LEGACY (same physical DB
-    // as the tx). Mirrors #routeWaitpointWrite / updateBatchTaskRun.
+    // Route by the batch's classifiable internal id: run-ops id→NEW, cuid→LEGACY. The caller's
+    // `tx` is never forwarded — the create runs on the owning store's own client so the batch and
+    // its co-resident child runs/items land on the same DB. Mirrors #routeWaitpointWrite /
+    // updateBatchTaskRun.
     const store = await this.#routeOrNewForWrite(data.id);
-    return store.createBatchTaskRun(data, store === this.#legacy ? tx : undefined);
+    return store.createBatchTaskRun(data, undefined);
   }
 
   updateBatchTaskRun<S extends Prisma.BatchTaskRunSelect>(
@@ -1439,10 +1446,10 @@ export class RoutingRunStore implements RunStore {
   ): Promise<Prisma.BatchTaskRunGetPayload<{ select: S }>> {
     const id =
       typeof args.where.id === "string" ? args.where.id : (args.where.friendlyId ?? undefined);
-    // Never forward a control-plane tx to NEW (it would update the wrong DB and the row would
-    // not be found); forward tx only to LEGACY (same physical DB as the tx). Mirrors #routeWaitpointWrite.
+    // The caller's `tx` is never forwarded — the update runs on the owning store's own client so
+    // it targets the DB the batch actually lives on. Mirrors #routeWaitpointWrite.
     const store = this.#routeOrNew(id);
-    return store.updateBatchTaskRun(args, store === this.#legacy ? tx : undefined);
+    return store.updateBatchTaskRun(args, undefined);
   }
 
   // Batches can be written to either DB by different create paths (runEngine routes by id;
@@ -1530,7 +1537,7 @@ export class RoutingRunStore implements RunStore {
     const id = RoutingRunStore.#scalarId(args.where);
     if (id !== undefined) {
       const store = this.#routeOrNew(id);
-      return store.updateManyBatchTaskRun(args, store === this.#legacy ? tx : undefined);
+      return store.updateManyBatchTaskRun(args, undefined);
     }
     const [fromNew, fromLegacy] = await Promise.all([
       this.#new.updateManyBatchTaskRun(args),
@@ -1563,7 +1570,7 @@ export class RoutingRunStore implements RunStore {
       RoutingRunStore.#scalarId(args.where);
     if (id !== undefined) {
       const store = this.#routeOrNew(id);
-      return store.updateManyBatchTaskRunItems(args, store === this.#legacy ? tx : undefined);
+      return store.updateManyBatchTaskRunItems(args, undefined);
     }
     const [fromNew, fromLegacy] = await Promise.all([
       this.#new.updateManyBatchTaskRunItems(args),
