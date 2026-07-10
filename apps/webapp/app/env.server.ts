@@ -138,8 +138,10 @@ const EnvironmentSchema = z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_URL is invalid")
       .optional(),
-    // The LEGACY run-ops DB (the control-plane DB during the transition). When unset, legacy
-    // run-ops reuses the existing DATABASE_URL (legacy run-ops == control-plane DB initially).
+    // The LEGACY run-ops DB. Now a CONNECTED DSN (Track 2): when split is on and this is set it builds
+    // an INDEPENDENT legacy Prisma client, no longer an alias of the control-plane client (nor merely
+    // the sentinel's probe target). Unset -> legacy reuses the control-plane client / DATABASE_URL, so
+    // single-DB and self-host installs boot byte-identical.
     RUN_OPS_LEGACY_DATABASE_URL: z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_URL is invalid")
@@ -151,6 +153,15 @@ const EnvironmentSchema = z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_READ_REPLICA_URL is invalid")
       .optional(),
+    // The LEGACY run-ops DB read replica (Track 2). Unset -> the legacy replica handle falls back to the
+    // legacy WRITER (as $replica does with no CP replica). Set in production so legacy reads hit the reader.
+    RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is invalid")
+      .optional(),
+    // Advisory control-plane co-residency sentinel enforcement (Track 2, T2.3). Default OFF; the advisory
+    // arm always emits its metric, this only turns a still-co-resident pair into a hard boot failure.
+    RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT: BoolEnv.default(false),
     // --- Control-plane datasource repoint. Additive-only. ---
     // Optional control-plane DB. Unset (self-host/single-DB) -> getClient()/getReplicaClient() fall back to
     // DATABASE_URL/DATABASE_READ_REPLICA_URL, so boot is byte-identical. When set, these point at the

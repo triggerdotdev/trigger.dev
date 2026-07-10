@@ -25,6 +25,7 @@ import {
   assertSplitRealtimeInterlock,
 } from "./v3/runOpsMigration/splitMode.server";
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
+import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
@@ -188,6 +189,7 @@ export type RunOpsTopology = {
 export type SelectRunOpsTopologyConfig = {
   splitEnabled: boolean;
   legacyUrl?: string;
+  legacyReplicaUrl?: string;
   newUrl?: string;
   newReplicaUrl?: string;
 };
@@ -195,6 +197,10 @@ export type RunOpsClientBuilders = {
   controlPlane: RunOpsClients;
   buildNewWriter: (url: string, clientType: string) => RunOpsPrismaClient;
   buildNewReplica: (url: string, clientType: string) => RunOpsPrismaClient;
+  // Legacy builders return the same PrismaClient/PrismaReplicaClient types as the control plane (no
+  // RunOpsPrismaClient double-cast needed): the legacy DB carries the full control-plane schema.
+  buildLegacyWriter: (url: string, clientType: string) => PrismaClient;
+  buildLegacyReplica: (url: string, clientType: string) => PrismaReplicaClient;
 };
 
 // Pure run-ops client selector. No env, no isSplitEnabled() — those
@@ -220,7 +226,15 @@ export function selectRunOpsTopology(
     return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane };
   }
 
-  const legacyRunOps = controlPlane;
+  // Track 2: build an INDEPENDENT legacy client from its own DSN instead of aliasing the control
+  // plane. legacyUrl is guaranteed present (the missing-URL branch above aliases and returns).
+  const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "run-ops-legacy-writer");
+  // Mirror the NEW replica + control-plane $replica fallback: brand a real replica (in the builder),
+  // otherwise reuse the legacy WRITER so replica reads fall back to the legacy primary — unbranded.
+  const legacyReplica: PrismaReplicaClient = config.legacyReplicaUrl
+    ? builders.buildLegacyReplica(config.legacyReplicaUrl, "run-ops-legacy-reader")
+    : legacyWriter;
+  const legacyRunOps: RunOpsClients = { writer: legacyWriter, replica: legacyReplica };
 
   const newWriter = builders.buildNewWriter(config.newUrl, "run-ops-new-writer");
   const newReplica: RunOpsPrismaClient = config.newReplicaUrl
@@ -250,6 +264,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
     {
       splitEnabled,
       legacyUrl: env.RUN_OPS_LEGACY_DATABASE_URL,
+      legacyReplicaUrl: env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL,
       newUrl,
       newReplicaUrl: env.RUN_OPS_DATABASE_READ_REPLICA_URL,
     },
@@ -268,6 +283,18 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
             tagDatasourceRunOps("replica", buildRunOpsReplicaClient({ url, clientType }))
           )
         ),
+      // Legacy client shares the exact control-plane wrapper stack (the legacy DB carries the full
+      // control-plane schema); markReadReplicaClient only on a real replica URL, as with the NEW replica.
+      buildLegacyWriter: (url, clientType) =>
+        captureInfrastructureErrors(
+          tagDatasource("writer", buildWriterClient({ url, clientType }))
+        ),
+      buildLegacyReplica: (url, clientType) =>
+        markReadReplicaClient(
+          captureInfrastructureErrors(
+            tagDatasource("replica", buildReplicaClient({ url, clientType }))
+          )
+        ),
     }
   );
 });
@@ -281,11 +308,13 @@ export const runOpsNewPrisma: PrismaClient = runOpsTopology.newRunOps
   .writer as unknown as PrismaClient;
 export const runOpsNewReplica: PrismaReplicaClient = runOpsTopology.newRunOps
   .replica as unknown as PrismaReplicaClient;
+// Track 2: under split-on these point at the INDEPENDENT legacy client (its own DSN); under split-off
+// or missing URLs they still alias the control-plane client, so single-DB installs are unchanged.
 export const runOpsLegacyPrisma: PrismaClient = runOpsTopology.legacyRunOps.writer;
 export const runOpsLegacyReplica: PrismaReplicaClient = runOpsTopology.legacyRunOps.replica;
 // Branded legacy handles typed as RunOpsPrismaClient for the run-store boundary — same underlying
-// Aurora legacy writer/replica as runOpsLegacyPrisma/runOpsLegacyReplica above (cutover-safe), but
-// carrying the run-ops brand so the guard classifies provably-legacy access as `runops`, not `cp`.
+// legacy writer/replica as runOpsLegacyPrisma/runOpsLegacyReplica above, but carrying the run-ops
+// brand so the guard classifies provably-legacy access as `runops`, not `cp`.
 export const runOpsLegacyPrismaClient: RunOpsPrismaClient = runOpsTopology.legacyRunOps
   .writer as unknown as RunOpsPrismaClient;
 export const runOpsLegacyReplicaClient: RunOpsPrismaClient = runOpsTopology.legacyRunOps
@@ -319,6 +348,9 @@ export async function assertRunOpsSplitSentinel(): Promise<void> {
       "RUN_OPS_SPLIT_ENABLED is on but the distinct-DB sentinel did not confirm two physically-distinct run-ops DBs; refusing to enable split (data-loss interlock)."
     );
   }
+  // Advisory-only (T2.3): observe legacy vs control-plane co-residency. Emits a metric + log and only
+  // throws when RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT is on AND co-residency is positively confirmed.
+  await assertControlPlaneCoresidencyAdvisory();
 }
 
 function getClient() {
