@@ -4707,7 +4707,7 @@ components:
           nullable: true
     BulkActionFilter:
       type: object
-      description: Selects runs using the same filter shape as `runs.list()`, excluding pagination fields. Provide at least one property.
+      description: Selects runs using SDK-style run-list filter fields, excluding pagination fields. In HTTP requests these fields are sent as JSON body properties, so time fields are top-level (`from`, `to`, `period`) instead of nested under `createdAt`. Provide at least one property.
       minProperties: 1
       properties:
         status:
@@ -4840,6 +4840,7 @@ components:
             runIds:
               type: array
               minItems: 1
+              maxItems: 500
               items:
                 type: string
             name:
@@ -4863,6 +4864,7 @@ components:
             runIds:
               type: array
               minItems: 1
+              maxItems: 500
               items:
                 type: string
             name:

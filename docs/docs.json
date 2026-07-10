@@ -77,7 +77,8 @@
               "run-usage",
               "context",
               "runs/priority",
-              "hidden-tasks"
+              "hidden-tasks",
+              "runs/bulk-actions"
             ]
           },
           {
@@ -761,11 +762,7 @@
     },
     {
       "source": "/management/runs/bulk-actions",
-      "destination": "/bulk-actions"
-    },
-    {
-      "source": "/runs/bulk-actions",
-      "destination": "/bulk-actions"
+      "destination": "/runs/bulk-actions"
     },
     {
       "source": "/tasks-overview",
