@@ -10,9 +10,10 @@ export type MintFlagResolution = {
 
 const DEFAULT_MINT_KIND: RunIdMintKind = "cuid";
 
-// Deterministic wall-clock cutover: during [flippedAt, flippedAt + graceMs) every
-// process — stale (hasn't re-read the flag) or fresh (has the new stamp) — resolves to
-// the OLD kind. At/after the cutover, every process resolves to the NEW kind.
+// Cutover boundary. `nowMs` is the reader's wall clock but `flippedAtMs` (in `r`) is DB-clock
+// (admin routes) — so this assumes NTP-synced hosts with skew << graceMs, letting every process
+// cross [flippedAtMs, flippedAtMs + graceMs) together (OLD then NEW). Accepted residual: a badly
+// mis-synced host can cross early/late and briefly reopen a skew-wide cross-DB duplicate window.
 export function effectiveMintKind(
   r: MintFlagResolution,
   nowMs: number,
