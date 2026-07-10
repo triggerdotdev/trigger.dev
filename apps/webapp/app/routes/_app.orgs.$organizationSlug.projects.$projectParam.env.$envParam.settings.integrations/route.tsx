@@ -5,6 +5,7 @@ import { json } from "@remix-run/server-runtime";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { InlineCode } from "~/components/code/InlineCode";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -383,8 +384,9 @@ export default function IntegrationsSettingsPage() {
               <div>
                 <Header2 spacing>Build settings</Header2>
                 <Hint className="mb-2">
-                  These settings apply to GitHub-triggered deployments and deployments built with
-                  the native build server.
+                  These settings apply to deployments triggered from GitHub and to CLI deployments
+                  run with the <InlineCode variant="extra-small">--native-build-server</InlineCode>{" "}
+                  flag.
                 </Hint>
                 <div className="w-full rounded-sm border border-grid-dimmed p-4">
                   <BuildSettingsForm buildSettings={buildSettings ?? {}} />
