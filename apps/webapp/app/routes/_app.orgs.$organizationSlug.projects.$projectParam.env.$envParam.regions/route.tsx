@@ -16,7 +16,6 @@ import { CloudProviderIcon } from "~/assets/icons/CloudProviderIcon";
 import { FlagIcon } from "~/assets/icons/RegionIcons";
 import { cloudProviderTitle } from "~/components/CloudProvider";
 import { Feedback } from "~/components/Feedback";
-import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -47,6 +46,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
@@ -138,7 +138,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Regions</V4Title>} />
+        <PageTitle title="Regions" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -168,7 +168,15 @@ export default function Page() {
                     <TableRow>
                       <TableHeaderCell>Region</TableHeaderCell>
                       <TableHeaderCell>Cloud Provider</TableHeaderCell>
-                      <TableHeaderCell>Location</TableHeaderCell>
+                      <TableHeaderCell>
+                        <span className="flex items-center gap-1">
+                          Location
+                          <InfoIconTooltip
+                            content="Region location is where your runs execute, not where your data is stored."
+                            contentClassName="normal-case tracking-normal"
+                          />
+                        </span>
+                      </TableHeaderCell>
                       <TableHeaderCell>Static IPs</TableHeaderCell>
                       {isAdmin && <TableHeaderCell>Admin</TableHeaderCell>}
                       <TableHeaderCell
@@ -309,8 +317,12 @@ export default function Page() {
                     variant="minimal"
                     panelClassName="max-w-full gap-1"
                   >
-                    <Paragraph variant="extra-small" className="flex items-baseline gap-x-0.5">
-                      Trigger.dev is fully GDPR compliant. Learn more in our{" "}
+                    <Paragraph variant="extra-small">
+                      Trigger.dev is fully{" "}
+                      <TextLink to="https://security.trigger.dev/gdpr?tab=securityControls&frameworks=gdpr_v1">
+                        GDPR compliant
+                      </TextLink>
+                      . Learn more in our{" "}
                       <TextLink to="https://security.trigger.dev">security portal</TextLink> or{" "}
                       <Feedback
                         button={
@@ -318,7 +330,7 @@ export default function Page() {
                             get in touch
                           </span>
                         }
-                        defaultValue="help"
+                        defaultValue="feedback"
                       />
                       .
                     </Paragraph>
@@ -341,6 +353,7 @@ function SetDefaultDialog({
   newDefaultRegion: Region;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { isManagedCloud } = useFeatures();
   const currentDefaultRegion = regions.find((r) => r.isDefault);
 
   return (
@@ -444,6 +457,27 @@ function SetDefaultDialog({
               Runs triggered from now on will execute in "{newDefaultRegion.name}", unless you{" "}
               <TextLink to={docsPath("triggering#region")}>override when triggering</TextLink>.
             </Paragraph>
+
+            <InfoPanel
+              icon={InformationCircleIcon}
+              iconClassName="size-4"
+              variant="minimal"
+              panelClassName="mt-4 max-w-full gap-1 border-t border-grid-dimmed pt-4 pb-0 pl-0"
+            >
+              <Paragraph variant="extra-small">
+                Region is where your runs execute, not where your data is stored.
+                {isManagedCloud ? (
+                  <>
+                    {" "}
+                    Trigger.dev is fully{" "}
+                    <TextLink to="https://security.trigger.dev/gdpr?tab=securityControls&frameworks=gdpr_v1">
+                      GDPR compliant
+                    </TextLink>
+                    .
+                  </>
+                ) : null}
+              </Paragraph>
+            </InfoPanel>
           </div>
         </DialogDescription>
         <DialogFooter>
