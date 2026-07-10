@@ -260,6 +260,14 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
   // Gate on the opt-in flag too: the distinct-DB sentinel only runs when the flag is on.
   const splitEnabled = env.RUN_OPS_SPLIT_ENABLED && !!newUrl && !!env.RUN_OPS_LEGACY_DATABASE_URL;
 
+  // Without a dedicated legacy replica URL, legacy reads fall back to the legacy WRITER (primary).
+  // Surface that so a prod misdeploy is observable instead of a silent load shift onto the primary.
+  if (splitEnabled && !env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL) {
+    logger.warn(
+      "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is unset while split is enabled; legacy reads will hit the legacy primary"
+    );
+  }
+
   return selectRunOpsTopology(
     {
       splitEnabled,
@@ -331,8 +339,8 @@ export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
 
 // Boot-time interlock: if the flag is on but the distinct-DB sentinel does not
 // confirm two physically-distinct run-ops DBs, refuse to enable split (data-loss
-// interlock). Async, so it cannot live in the synchronous singleton factory —
-// call it from the eager-boot path before any run-ops routing is wired.
+// interlock). Async, so it cannot live in the synchronous singleton factory — called
+// fire-and-forget from the eager-boot path (routing is wired synchronously at module load).
 export async function assertRunOpsSplitSentinel(): Promise<void> {
   if (!env.RUN_OPS_SPLIT_ENABLED) return;
   // Realtime interlock (synchronous): Electric replicates only from the control-plane

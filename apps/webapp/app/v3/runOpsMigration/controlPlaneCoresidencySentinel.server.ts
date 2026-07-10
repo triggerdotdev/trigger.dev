@@ -8,6 +8,7 @@
  * positively-confirmed co-residency ("true") become a boot failure. "unknown" (denied probe) never
  * enforces.
  */
+import type { Counter } from "@opentelemetry/api";
 import { getMeter } from "@internal/tracing";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
@@ -17,14 +18,19 @@ import {
   type CoresidencyVerdict,
 } from "./distinctDbSentinel.server";
 
-const meter = getMeter("run-ops-migration");
-
-// Labeled counter run_ops_legacy_control_plane_coresident{result="true|false|unknown"}. This arm runs
-// once per boot, so a single labeled tick is enough to observe/alert on the fleet-wide state.
-const coresidentCounter = meter.createCounter("run_ops_legacy_control_plane_coresident", {
-  description:
-    "Advisory: is the legacy run-ops DB co-resident with the control-plane DB at boot (true=same DB, false=split, unknown=probe denied)",
-});
+// Created lazily on first emit, NOT at module load: this module is imported by db.server before
+// tracer.server registers the global meter provider, so a module-load counter would bind to the
+// no-op provider permanently. The advisory runs from the entry-server boot path, after registration.
+let coresidentCounter: Counter | undefined;
+function getCoresidentCounter(): Counter {
+  return (coresidentCounter ??= getMeter("run-ops-migration").createCounter(
+    "run_ops_legacy_control_plane_coresident",
+    {
+      description:
+        "Advisory: is the legacy run-ops DB co-resident with the control-plane DB at boot (true=same DB, false=split, unknown=probe denied)",
+    }
+  ));
+}
 
 export type CoresidencyEnforcement = { throw: false } | { throw: true; message: string };
 
@@ -66,7 +72,8 @@ export async function assertControlPlaneCoresidencyAdvisory(deps?: {
 
   const probe = deps?.probe ?? probeControlPlaneCoresidency;
   const emit =
-    deps?.emit ?? ((verdict: CoresidencyVerdict) => coresidentCounter.add(1, { result: verdict }));
+    deps?.emit ??
+    ((verdict: CoresidencyVerdict) => getCoresidentCounter().add(1, { result: verdict }));
   const expectSplit = deps?.expectSplit ?? env.RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT;
 
   let result: CoresidencyProbeResult;
