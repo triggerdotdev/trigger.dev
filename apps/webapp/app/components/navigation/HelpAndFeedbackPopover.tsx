@@ -85,17 +85,16 @@ export function HelpAndFeedback({
                       Help & Feedback
                     </span>
                   </span>
-                  {/* Up/down chevron revealed on hover, matching the Project menu button. */}
-                  <span
-                    className={cn(
-                      "overflow-hidden transition-[max-width] duration-200",
-                      isCollapsed
-                        ? "max-w-0 opacity-0"
-                        : "max-w-[16px] opacity-0 group-hover:opacity-100"
-                    )}
-                  >
-                    <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
-                  </span>
+                  {/*
+                    Up/down chevron revealed on hover, matching the Project menu button. Only
+                    rendered when expanded so it can never occupy space or paint over the
+                    collapsed icon (it is a hover affordance that has no meaning collapsed).
+                  */}
+                  {!isCollapsed && (
+                    <span className="overflow-hidden transition-[max-width] duration-200 max-w-[16px] opacity-0 group-hover:opacity-100">
+                      <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
+                    </span>
+                  )}
                 </PopoverTrigger>
               }
               content={
