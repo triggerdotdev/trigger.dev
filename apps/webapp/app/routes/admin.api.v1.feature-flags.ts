@@ -3,13 +3,8 @@ import { json } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
-import { makeSetMultipleFlags } from "~/v3/featureFlags.server";
-import {
-  FEATURE_FLAG,
-  type FeatureFlagCatalog,
-  validatePartialFeatureFlags,
-} from "~/v3/featureFlags";
-import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
+import { applyGlobalMintKindFlip, makeSetMultipleFlags } from "~/v3/featureFlags.server";
+import { validatePartialFeatureFlags } from "~/v3/featureFlags";
 
 export async function action({ request }: ActionFunctionArgs) {
   await requireAdminApiRequest(request);
@@ -37,44 +32,12 @@ export async function action({ request }: ActionFunctionArgs) {
       ...requestedFlags
     } = validationResult.data;
 
-    let flagsToWrite: Partial<FeatureFlagCatalog> = requestedFlags;
-
-    if (requestedFlags.runOpsMintKind !== undefined) {
-      // Read the current GLOBAL mint flags so the stamp is computed against the authoritative
-      // stored state, mirroring the per-org route. stampMintKindFlip writes prev/flippedAt only
-      // on a genuine global flip, and carries an in-flight stamp forward on a same-target save.
-      const existingRows = await prisma.featureFlag.findMany({
-        where: {
-          key: {
-            in: [
-              FEATURE_FLAG.runOpsMintKind,
-              FEATURE_FLAG.runOpsMintKindPrev,
-              FEATURE_FLAG.runOpsMintKindFlippedAt,
-            ],
-          },
-        },
-        select: { key: true, value: true },
-      });
-      const existingGlobal: Record<string, unknown> = {};
-      for (const row of existingRows) {
-        existingGlobal[row.key] = row.value;
-      }
-
-      // Anchor the cutover to the control-plane DB clock, not this process's wall clock.
-      const [{ now: controlPlaneNow }] = await prisma.$queryRaw<
-        { now: Date }[]
-      >`SELECT now() AS now`;
-
-      flagsToWrite = stampMintKindFlip(
-        existingGlobal,
-        { ...requestedFlags },
-        controlPlaneNow.getTime(),
-        env.RUN_OPS_MINT_FLIP_GRACE_MS
-      ) as Partial<FeatureFlagCatalog>;
-    }
-
-    const setMultipleFlags = makeSetMultipleFlags(prisma);
-    const updatedFlags = await setMultipleFlags(flagsToWrite);
+    // A global mint-kind flip stamps its grace window under a lock (applyGlobalMintKindFlip);
+    // any other flag save writes directly.
+    const updatedFlags =
+      requestedFlags.runOpsMintKind !== undefined
+        ? await applyGlobalMintKindFlip(prisma, requestedFlags, env.RUN_OPS_MINT_FLIP_GRACE_MS)
+        : await makeSetMultipleFlags(prisma)(requestedFlags);
 
     return json({
       success: true,
