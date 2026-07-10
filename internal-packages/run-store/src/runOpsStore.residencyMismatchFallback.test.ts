@@ -40,13 +40,20 @@ function makeDedicatedStore(prisma17: RunOpsPrismaClient) {
 }
 
 function makeLegacyStore(prisma14: PrismaClient) {
-  return new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14, schemaVariant: "legacy" });
+  return new PostgresRunStore({
+    prisma: prisma14,
+    readOnlyPrisma: prisma14,
+    schemaVariant: "legacy",
+  });
 }
 
 // Wrap a real store so findRun/findRunOnPrimary calls are COUNTED while every method still delegates
 // to the REAL PostgresRunStore (this is instrumentation, not a behavior mock — the underlying reads,
 // writes, getters all run for real). Lets us assert the FAST PATH does not touch the other store.
-function countingReads(inner: RunStore, counts: { findRun: number; findRunOnPrimary: number }): RunStore {
+function countingReads(
+  inner: RunStore,
+  counts: { findRun: number; findRunOnPrimary: number }
+): RunStore {
   return new Proxy(inner, {
     get(target, prop) {
       // Read via target[prop] so getters (e.g. primaryReadClient) run with `this` = the real store.
@@ -139,7 +146,13 @@ function buildCreateRunInput(params: {
 // residency/classification MISMATCH: the row is physically on #new while `classify` calls its id LEGACY.
 async function insertRunOnNewStore(
   prisma17: RunOpsPrismaClient,
-  params: { runId: string; friendlyId: string; environmentId: string; organizationId: string; projectId: string }
+  params: {
+    runId: string;
+    friendlyId: string;
+    environmentId: string;
+    organizationId: string;
+    projectId: string;
+  }
 ) {
   await prisma17.taskRun.create({
     data: {
@@ -258,10 +271,10 @@ describe("RoutingRunStore.findRun — on-miss fan-out for a classifiable id (res
       newCounts.findRun = 0;
       legacyCounts.findRun = 0;
 
-      const hitLegacy = (await router.findRun({ id: legacyId }, { select: { id: true } })) as Record<
-        string,
-        unknown
-      > | null;
+      const hitLegacy = (await router.findRun(
+        { id: legacyId },
+        { select: { id: true } }
+      )) as Record<string, unknown> | null;
       expect(hitLegacy?.id).toBe(legacyId);
       expect(legacyCounts.findRun).toBe(1);
       expect(newCounts.findRun).toBe(0);
@@ -269,10 +282,15 @@ describe("RoutingRunStore.findRun — on-miss fan-out for a classifiable id (res
   );
 
   // ── A genuine miss on BOTH stores still returns null (fan-out exhausted) ──
-  heteroRunOpsPostgresTest("returns null when the run is on neither store", async ({ prisma14, prisma17 }) => {
-    const newStore = makeDedicatedStore(prisma17);
-    const legacyStore = makeLegacyStore(prisma14);
-    const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
-    expect(await router.findRun({ id: cuidLegacy("ghost") }, { select: { id: true } })).toBeNull();
-  });
+  heteroRunOpsPostgresTest(
+    "returns null when the run is on neither store",
+    async ({ prisma14, prisma17 }) => {
+      const newStore = makeDedicatedStore(prisma17);
+      const legacyStore = makeLegacyStore(prisma14);
+      const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
+      expect(
+        await router.findRun({ id: cuidLegacy("ghost") }, { select: { id: true } })
+      ).toBeNull();
+    }
+  );
 });

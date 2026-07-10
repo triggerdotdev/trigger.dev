@@ -4,7 +4,11 @@ import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { makeSetMultipleFlags } from "~/v3/featureFlags.server";
-import { FEATURE_FLAG, type FeatureFlagCatalog, validatePartialFeatureFlags } from "~/v3/featureFlags";
+import {
+  FEATURE_FLAG,
+  type FeatureFlagCatalog,
+  validatePartialFeatureFlags,
+} from "~/v3/featureFlags";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -57,8 +61,9 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       // Anchor the cutover to the control-plane DB clock, not this process's wall clock.
-      const [{ now: controlPlaneNow }] =
-        await prisma.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+      const [{ now: controlPlaneNow }] = await prisma.$queryRaw<
+        { now: Date }[]
+      >`SELECT now() AS now`;
 
       flagsToWrite = stampMintKindFlip(
         existingGlobal,

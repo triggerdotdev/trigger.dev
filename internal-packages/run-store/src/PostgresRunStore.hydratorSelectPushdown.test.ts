@@ -79,7 +79,13 @@ function withCapturedTaskRunFindManyArgs(real: RunOpsPrismaClient) {
   const extended = (real as unknown as { $extends: (config: unknown) => unknown }).$extends({
     query: {
       taskRun: {
-        findMany({ args, query }: { args: Record<string, unknown>; query: (args: unknown) => Promise<unknown> }) {
+        findMany({
+          args,
+          query,
+        }: {
+          args: Record<string, unknown>;
+          query: (args: unknown) => Promise<unknown>;
+        }) {
           capturedArgs.push(args);
           return query(args);
         },
