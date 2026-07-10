@@ -289,8 +289,10 @@ class ManagedSupervisor {
       });
     }
 
+    const workerToken = getWorkerToken();
+
     this.workerSession = new SupervisorSession({
-      workerToken: getWorkerToken(),
+      workerToken,
       apiUrl: env.TRIGGER_API_URL,
       instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
       managedWorkerSecret: env.MANAGED_WORKER_SECRET,
@@ -568,6 +570,7 @@ class ManagedSupervisor {
       checkpointClient: this.checkpointClient,
       computeManager: this.computeManager,
       tracing: this.tracing,
+      snapshotCallbackSecret: workerToken,
       wideEventOpts: this.wideEventOpts,
       wideEventsNoisyRoutes: this.wideEventsNoisyRoutes,
     });

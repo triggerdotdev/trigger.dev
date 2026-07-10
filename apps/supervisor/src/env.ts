@@ -14,7 +14,7 @@ export const Env = z
 
     // Required settings
     TRIGGER_API_URL: z.string().url(),
-    TRIGGER_WORKER_TOKEN: z.string(), // accepts file:// path to read from a file
+    TRIGGER_WORKER_TOKEN: z.string().min(1), // accepts file:// path to read from a file
     MANAGED_WORKER_SECRET: z.string(),
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(), // set on the runners
 

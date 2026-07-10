@@ -86,6 +86,7 @@ type WorkloadServerOptions = {
   checkpointClient?: CheckpointClient;
   computeManager?: ComputeWorkloadManager;
   tracing?: OtlpTraceService;
+  snapshotCallbackSecret: string;
   wideEventOpts: WideEventOptions;
   /** When true, high-frequency HTTP routes also emit wide events. */
   wideEventsNoisyRoutes: boolean;
@@ -136,6 +137,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         workerClient: opts.workerClient,
         tracing: opts.tracing,
         wideEventOpts: this.wideEventOpts,
+        snapshotCallbackSecret: opts.snapshotCallbackSecret,
       });
     }
 
