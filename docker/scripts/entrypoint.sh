@@ -33,7 +33,8 @@ fi
 if [ -n "$RUN_OPS_LEGACY_DIRECT_URL" ]; then
   if [ "$SKIP_RUN_OPS_LEGACY_MIGRATIONS" != "1" ]; then
     echo "Running legacy run-ops migrations"
-    DATABASE_URL="$RUN_OPS_LEGACY_DIRECT_URL" DIRECT_URL="$RUN_OPS_LEGACY_DIRECT_URL" pnpm --filter @trigger.dev/database db:migrate:deploy
+    # Subshell with tracing off so `set -x` does not print the DSN (with credentials) to the logs.
+    (set +x; DATABASE_URL="$RUN_OPS_LEGACY_DIRECT_URL" DIRECT_URL="$RUN_OPS_LEGACY_DIRECT_URL" pnpm --filter @trigger.dev/database db:migrate:deploy)
     echo "Legacy run-ops migrations done"
   else
     echo "SKIP_RUN_OPS_LEGACY_MIGRATIONS=1, skipping legacy run-ops migrations."
