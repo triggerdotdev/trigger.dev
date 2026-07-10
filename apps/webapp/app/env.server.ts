@@ -2072,9 +2072,22 @@ const EnvironmentSchema = z
     // Force RBAC to not use the plugin
     RBAC_FORCE_FALLBACK: BoolEnv.default(false),
 
+    // Per-process pool sizes for an RBAC plugin that owns its own database
+    // client (the fallback queries through Prisma and ignores these). Writes
+    // are rare role mutations; reads run on the per-request auth hot path.
+    RBAC_DATABASE_WRITER_CONNECTION_LIMIT: z.coerce.number().int().default(2),
+    RBAC_DATABASE_READER_CONNECTION_LIMIT: z.coerce.number().int().default(5),
+
     // Force SSO to not use the plugin (contributors without the cloud
     // plugin installed can opt in to a clean OSS-only experience).
     SSO_FORCE_FALLBACK: BoolEnv.default(false),
+
+    // Per-process pool sizes for an SSO plugin that owns its own database
+    // client (the fallback queries through Prisma and ignores these). Writes
+    // are rare config mutations and webhook processing; reads run on the
+    // login path.
+    SSO_DATABASE_WRITER_CONNECTION_LIMIT: z.coerce.number().int().default(2),
+    SSO_DATABASE_READER_CONNECTION_LIMIT: z.coerce.number().int().default(5),
     // Emit a console.log when the SSO fallback is selected because no
     // plugin is installed. Default off so OSS deployments stay quiet.
     SSO_LOG_FALLBACK: BoolEnv.default(false),
