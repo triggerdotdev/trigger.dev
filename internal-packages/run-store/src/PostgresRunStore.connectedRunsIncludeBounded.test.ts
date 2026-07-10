@@ -89,7 +89,10 @@ describe("PostgresRunStore.findWaitpoint — connectedRuns relation is bounded",
       }
 
       // More REAL connected runs than the limit.
-      const realRunIds = Array.from({ length: CONNECTED_RUNS_LIMIT + 3 }, (_, i) => `run_cr_real_${i}`);
+      const realRunIds = Array.from(
+        { length: CONNECTED_RUNS_LIMIT + 3 },
+        (_, i) => `run_cr_real_${i}`
+      );
       for (const [i, id] of realRunIds.entries()) {
         await prisma17.taskRun.create({
           data: taskRunData({
