@@ -25,6 +25,26 @@ const ASYNC_REDIRECT_HELPERS = new Set([
   "redirectWithImpersonation",
 ]);
 
+const FUNCTION_TYPES = new Set([
+  "ArrowFunctionExpression",
+  "FunctionDeclaration",
+  "FunctionExpression",
+]);
+
+function isInsideAsyncFunction(node, sourceCode) {
+  const ancestors = sourceCode.getAncestors(node);
+
+  for (let index = ancestors.length - 1; index >= 0; index--) {
+    const ancestor = ancestors[index];
+
+    if (FUNCTION_TYPES.has(ancestor.type)) {
+      return ancestor.async;
+    }
+  }
+
+  return false;
+}
+
 /** @type {import("eslint").Rule.RuleModule} */
 const noThrownUnawaitedRedirect = {
   meta: {
@@ -60,13 +80,13 @@ const noThrownUnawaitedRedirect = {
           return;
         }
 
+        const canAutofix = isInsideAsyncFunction(node, context.sourceCode);
+
         context.report({
           node: argument,
           messageId: "unawaited",
           data: { name: callee.name },
-          fix(fixer) {
-            return fixer.insertTextBefore(argument, "await ");
-          },
+          fix: canAutofix ? (fixer) => fixer.insertTextBefore(argument, "await ") : undefined,
         });
       },
     };

@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "import", "react"],
-  "jsPlugins": ["./oxlint-plugins/no-thrown-unawaited-redirect.js"],
+  "jsPlugins": ["./oxlint-plugins/no-thrown-unawaited-redirect.mjs"],
   "ignorePatterns": [
     "**/dist/**",
     "**/build/**",
