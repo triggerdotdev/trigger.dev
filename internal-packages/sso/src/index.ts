@@ -2,6 +2,7 @@ import type {
   DirectorySyncEffect,
   DirectorySyncStatus,
   OrgSsoStatus,
+  PluginDatabaseConfig,
   SsoBeginError,
   SsoCompleteError,
   SsoController,
@@ -32,6 +33,11 @@ export type SsoCreateOptions = {
   // module or a synthetic ERR_MODULE_NOT_FOUND failure without touching
   // the real plugin install on disk.
   importer?: (moduleName: string) => Promise<{ default: SsoPlugin }>;
+  // Writer/reader connection URLs + pool sizes for a plugin that owns its
+  // own database client, resolved by the host from its env so the plugin
+  // follows the host's writer/replica topology. The fallback ignores this —
+  // it queries through the Prisma clients passed as `SsoPrismaInput`.
+  database?: PluginDatabaseConfig;
 };
 
 // Loads the cloud plugin lazily; falls back to the OSS no-op
@@ -55,7 +61,7 @@ export class LazyController implements SsoController {
       const module = await importer(moduleName);
       const plugin: SsoPlugin = module.default;
       console.log("SSO: using plugin implementation");
-      return plugin.create();
+      return plugin.create({ database: options?.database });
     } catch (err) {
       // Distinguish the two failure modes the dynamic import can hit:
       //
