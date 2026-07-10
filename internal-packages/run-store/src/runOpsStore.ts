@@ -239,15 +239,39 @@ export class RoutingRunStore implements RunStore {
     const onPrimary = readYourWrites(argsOrClient, _client);
     const id = idFromWhere(where);
     if (id !== undefined) {
-      // Residency-classifiable (id/friendlyId): route to the owning store.
-      const store = this.#routeOrNew(id);
-      const method = onPrimary ? "findRunOnPrimary" : "findRun";
-      return (store[method] as (...rest: unknown[]) => Promise<unknown>)(where, args);
+      // Residency-classifiable (id/friendlyId): route to the owning store, then fall back to the
+      // OTHER store on a miss.
+      return this.#findRunRouted(id, where, args, onPrimary);
     }
     // Unclassifiable where (e.g. spanId, idempotencyKey): the run may live on either DB,
     // so fan out NEW-first then LEGACY rather than defaulting to NEW — defaulting silently
     // misses legacy-resident runs (span detail, idempotency-dedup probe, etc.).
     return this.#findRunUnrouted(where, args, onPrimary);
+  }
+
+  // A classifiable id names its OWNING store by id-shape, but physical residency can diverge from
+  // classification (a pre-#4154 base62 run lives on #new yet classifies LEGACY). Read the owning
+  // store first — a hit is a SINGLE read (the fast path) — then, ONLY on a miss, probe the OTHER
+  // store before returning null, so a run whose residency ≠ its id-shape is found rather than 404'd.
+  // Both legs run the SAME index-covered TaskRun lookup; the fan-out cost is paid only on the (rare)
+  // miss. Mirrors #findRunUnrouted's shape but keyed on the classified owner.
+  async #findRunRouted(
+    id: string,
+    where: Prisma.TaskRunWhereInput,
+    args: unknown,
+    onPrimary: boolean
+  ): Promise<unknown> {
+    const method = onPrimary ? "findRunOnPrimary" : "findRun";
+    const owning = this.#routeOrNew(id);
+    const fromOwning = await (owning[method] as (...rest: unknown[]) => Promise<unknown>)(
+      where,
+      args
+    );
+    if (fromOwning != null) {
+      return fromOwning;
+    }
+    const other = owning === this.#new ? this.#legacy : this.#new;
+    return (other[method] as (...rest: unknown[]) => Promise<unknown>)(where, args);
   }
 
   async #findRunUnrouted(
