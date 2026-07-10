@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { effectiveMintKind, stampMintKindFlip, type MintFlagResolution } from "./mintFlipGrace";
+import {
+  effectiveMintKind,
+  resolveMintFlag,
+  stampMintKindFlip,
+  type MintFlagResolution,
+} from "./mintFlipGrace";
 
 // GRACE-LINGER: during [flippedAt, flippedAt + GRACE) every process — stale or fresh —
 // must resolve to the SAME (old) kind; at/after the cutover every process resolves to
@@ -155,5 +160,69 @@ describe("stampMintKindFlip", () => {
     expect(
       effectiveMintKind({ kind: "runOpsId", prev: "cuid", flippedAtMs: NaN }, T, GRACE_MS)
     ).toBe("runOpsId");
+  });
+});
+
+// SOURCE-CONSISTENCY: the kind and its grace stamp must come from the SAME source. A per-org
+// runOpsMintKind override wins both the kind and the stamp; with no per-org override, BOTH the
+// kind and the stamp come from the global FeatureFlag rows. Never mix (e.g. a per-org kind with
+// the global stamp), which would date a grace window against the wrong flip.
+describe("resolveMintFlag", () => {
+  it("a per-org override wins the kind AND owns the stamp, ignoring the global stamp entirely", () => {
+    const perOrg = {
+      runOpsMintKind: "runOpsId",
+      runOpsMintKindPrev: "cuid",
+      runOpsMintKindFlippedAt: new Date(T).toISOString(),
+    };
+    const global = {
+      runOpsMintKind: "cuid",
+      runOpsMintKindPrev: "runOpsId",
+      runOpsMintKindFlippedAt: new Date(T + 500_000).toISOString(),
+    };
+    expect(resolveMintFlag(perOrg, global)).toEqual({
+      kind: "runOpsId",
+      prev: "cuid",
+      flippedAtMs: T,
+    });
+  });
+
+  it("with NO per-org override, the kind AND the stamp come from the global rows (global flip is graced)", () => {
+    const global = {
+      runOpsMintKind: "runOpsId",
+      runOpsMintKindPrev: "cuid",
+      runOpsMintKindFlippedAt: new Date(T).toISOString(),
+    };
+    const resolution = resolveMintFlag({}, global);
+    expect(resolution).toEqual({ kind: "runOpsId", prev: "cuid", flippedAtMs: T });
+    // Mid-grace: a global flip resolves to the OLD kind for the whole window.
+    expect(effectiveMintKind(resolution, T + GRACE_MS - 1, GRACE_MS)).toBe("cuid");
+    expect(effectiveMintKind(resolution, T + GRACE_MS, GRACE_MS)).toBe("runOpsId");
+  });
+
+  it("a per-org override with NO per-org stamp does NOT borrow the global stamp (kind stays ungraced)", () => {
+    const perOrg = { runOpsMintKind: "runOpsId" };
+    const global = {
+      runOpsMintKind: "cuid",
+      runOpsMintKindPrev: "cuid",
+      runOpsMintKindFlippedAt: new Date(T).toISOString(),
+    };
+    expect(resolveMintFlag(perOrg, global)).toEqual({
+      kind: "runOpsId",
+      prev: undefined,
+      flippedAtMs: undefined,
+    });
+  });
+
+  it("defaults to cuid with no stamp when neither source has a kind", () => {
+    expect(resolveMintFlag({}, {})).toEqual({
+      kind: "cuid",
+      prev: undefined,
+      flippedAtMs: undefined,
+    });
+    expect(resolveMintFlag(null, null)).toEqual({
+      kind: "cuid",
+      prev: undefined,
+      flippedAtMs: undefined,
+    });
   });
 });

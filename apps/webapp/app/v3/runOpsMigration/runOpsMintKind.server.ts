@@ -3,10 +3,9 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { BoundedTtlCache } from "~/services/realtime/boundedTtlCache";
 import { singleton } from "~/utils/singleton";
-import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
-import { makeFlag } from "~/v3/featureFlags.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { DEFAULT_CP_CACHE_TTL_MS } from "./controlPlaneCache.server";
-import { effectiveMintKind, type MintFlagResolution } from "./mintFlipGrace";
+import { effectiveMintKind, resolveMintFlag, type MintFlagResolution } from "./mintFlipGrace";
 import { isSplitEnabled } from "./splitMode.server";
 
 export type RunIdMintKind = "cuid" | "runOpsId";
@@ -36,7 +35,6 @@ export async function computeRunIdMintKind(
 }
 
 // ENV-BOUND wrapper — the only place env/$replica/isSplitEnabled are read.
-const flagFn = singleton("runOpsMintFlag", () => makeFlag($replica));
 const mintCache = singleton(
   "runOpsMintCache",
   () =>
@@ -62,14 +60,6 @@ if (env.RUN_OPS_MINT_FLIP_GRACE_MS <= env.RUN_OPS_MINT_FLAG_CACHE_TTL_MS + contr
       controlPlaneCacheTtlMs,
     }
   );
-}
-
-function readValidatedFlag<T extends "runOpsMintKindPrev" | "runOpsMintKindFlippedAt">(
-  overrides: Record<string, unknown>,
-  key: T
-): string | undefined {
-  const parsed = FeatureFlagCatalog[FEATURE_FLAG[key]].safeParse(overrides[FEATURE_FLAG[key]]);
-  return parsed.success ? parsed.data : undefined;
 }
 
 export async function resolveRunIdMintKind(environment: {
@@ -106,22 +96,30 @@ export async function resolveRunIdMintKind(environment: {
 
       const overridesRecord = (overrides as Record<string, unknown>) ?? {};
 
-      const kind = await flagFn({
-        key: FEATURE_FLAG.runOpsMintKind,
-        defaultValue: "cuid",
-        overrides: overridesRecord,
+      // One global read over the three mint-flag keys (kind + grace stamp), folded into the
+      // single cache-miss round-trip. This replaces the former single-key flag read, so a
+      // GLOBAL flip is now grace-stamped WITHOUT adding any new per-mint/per-resolve query.
+      // (The cache-hit branch above never touches the DB.)
+      const globalRows = await $replica.featureFlag.findMany({
+        where: {
+          key: {
+            in: [
+              FEATURE_FLAG.runOpsMintKind,
+              FEATURE_FLAG.runOpsMintKindPrev,
+              FEATURE_FLAG.runOpsMintKindFlippedAt,
+            ],
+          },
+        },
+        select: { key: true, value: true },
       });
+      const globalFlags: Record<string, unknown> = {};
+      for (const row of globalRows) {
+        globalFlags[row.key] = row.value;
+      }
 
-      // Read the grace-linger stamp DIRECTLY from the already-in-memory org overrides — no
-      // extra DB read, and no forcing these optional fields through flagFn's defaultValue path.
-      const prev = readValidatedFlag(overridesRecord, "runOpsMintKindPrev") as
-        | RunIdMintKind
-        | undefined;
-      const flippedAtRaw = readValidatedFlag(overridesRecord, "runOpsMintKindFlippedAt");
-      const parsedFlippedAt = flippedAtRaw !== undefined ? Date.parse(flippedAtRaw) : NaN;
-      const flippedAtMs = Number.isNaN(parsedFlippedAt) ? undefined : parsedFlippedAt;
-
-      const resolution: MintFlagResolution = { kind, prev, flippedAtMs };
+      // Source-consistent: a per-org override wins the kind AND its stamp; otherwise the
+      // global row wins the kind AND its stamp.
+      const resolution: MintFlagResolution = resolveMintFlag(overridesRecord, globalFlags);
       mintCache.set(orgId, resolution);
       return effectiveMintKind(resolution, Date.now(), env.RUN_OPS_MINT_FLIP_GRACE_MS);
     },

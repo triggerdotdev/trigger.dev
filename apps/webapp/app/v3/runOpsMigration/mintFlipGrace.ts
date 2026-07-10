@@ -30,19 +30,40 @@ function readMintKind(flags: Record<string, unknown>, key: string): RunIdMintKin
   return value === "cuid" || value === "runOpsId" ? value : undefined;
 }
 
-function resolveEffectiveFromFlags(
-  flags: Record<string, unknown> | null | undefined,
-  nowMs: number,
-  graceMs: number
-): RunIdMintKind {
+// Reads the { kind, prev, flippedAtMs } trio out of one flag record — either an org's
+// featureFlags override blob or the global FeatureFlag rows projected into a record. Pure.
+export function readMintResolution(
+  flags: Record<string, unknown> | null | undefined
+): MintFlagResolution {
   const source = flags ?? {};
   const kind = readMintKind(source, "runOpsMintKind") ?? DEFAULT_MINT_KIND;
   const prev = readMintKind(source, "runOpsMintKindPrev");
   const flippedAtRaw = source.runOpsMintKindFlippedAt;
   const parsed = typeof flippedAtRaw === "string" ? Date.parse(flippedAtRaw) : NaN;
   const flippedAtMs = Number.isNaN(parsed) ? undefined : parsed;
+  return { kind, prev, flippedAtMs };
+}
 
-  return effectiveMintKind({ kind, prev, flippedAtMs }, nowMs, graceMs);
+// SOURCE-CONSISTENT resolution: a per-org runOpsMintKind override wins the kind AND owns the
+// grace stamp; with no per-org override, the kind AND the stamp both come from the global rows.
+// The stamp is never read from a different source than the kind, which would date a grace
+// window against the wrong flip.
+export function resolveMintFlag(
+  perOrgOverrides: Record<string, unknown> | null | undefined,
+  globalFlags: Record<string, unknown> | null | undefined
+): MintFlagResolution {
+  if (readMintKind(perOrgOverrides ?? {}, "runOpsMintKind") !== undefined) {
+    return readMintResolution(perOrgOverrides);
+  }
+  return readMintResolution(globalFlags);
+}
+
+function resolveEffectiveFromFlags(
+  flags: Record<string, unknown> | null | undefined,
+  nowMs: number,
+  graceMs: number
+): RunIdMintKind {
+  return effectiveMintKind(readMintResolution(flags), nowMs, graceMs);
 }
 
 // Stamps a grace window only when the outgoing TARGET kind differs from the stored one (a
