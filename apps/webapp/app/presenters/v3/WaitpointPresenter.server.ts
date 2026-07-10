@@ -1,5 +1,9 @@
 import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v3";
-import { type PrismaClientOrTransaction, type PrismaReplicaClient } from "~/db.server";
+import {
+  DATABASE_SCHEMA,
+  type PrismaClientOrTransaction,
+  type PrismaReplicaClient,
+} from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
@@ -119,30 +123,38 @@ export class WaitpointPresenter extends BasePresenter {
   // deleted), the control-plane full schema the implicit `_WaitpointRunConnections` M2M
   // (A = TaskRun.id, B = Waitpoint.id). Both branches existence-filter AT THE QUERY via a JOIN to
   // TaskRun, so a dangling connection row can never occupy a LIMIT slot ahead of a real one.
-  // CONNECTED_RUNS_DISPLAY_LIMIT is a compile-time constant int, not an interpolated value.
+  // Tables are schema-qualified with DATABASE_SCHEMA (trusted boot constant) so a non-`public`
+  // schema= deployment resolves the right tables instead of leaning on search_path. $queryRawUnsafe,
+  // not a `sqlDatabaseSchema` Prisma.Sql fragment: `client` may be the dedicated run-ops client (a
+  // different Prisma runtime) which would bind a foreign runtime's Sql fragment as a param instead
+  // of inlining it. waitpointId and the constant limit stay bound params ($1/$2).
   async #connectedRunIdsOn(client: PrismaReplicaClient, waitpointId: string): Promise<string[]> {
     const isDedicated = Boolean(
       (client as unknown as { waitpointRunConnection?: unknown }).waitpointRunConnection
     );
 
     if (isDedicated) {
-      const rows = await client.$queryRaw<{ taskRunId: string }[]>`
-        SELECT c."taskRunId" AS "taskRunId"
-        FROM "WaitpointRunConnection" c
-        JOIN "TaskRun" t ON t."id" = c."taskRunId"
-        WHERE c."waitpointId" = ${waitpointId}
-        LIMIT ${CONNECTED_RUNS_DISPLAY_LIMIT}
-      `;
+      const rows = await client.$queryRawUnsafe<{ taskRunId: string }[]>(
+        `SELECT c."taskRunId" AS "taskRunId"
+        FROM ${DATABASE_SCHEMA}."WaitpointRunConnection" c
+        JOIN ${DATABASE_SCHEMA}."TaskRun" t ON t."id" = c."taskRunId"
+        WHERE c."waitpointId" = $1
+        LIMIT $2`,
+        waitpointId,
+        CONNECTED_RUNS_DISPLAY_LIMIT
+      );
       return rows.map((row) => row.taskRunId);
     }
 
-    const rows = await client.$queryRaw<{ A: string }[]>`
-      SELECT c."A" AS "A"
-      FROM "_WaitpointRunConnections" c
-      JOIN "TaskRun" t ON t."id" = c."A"
-      WHERE c."B" = ${waitpointId}
-      LIMIT ${CONNECTED_RUNS_DISPLAY_LIMIT}
-    `;
+    const rows = await client.$queryRawUnsafe<{ A: string }[]>(
+      `SELECT c."A" AS "A"
+      FROM ${DATABASE_SCHEMA}."_WaitpointRunConnections" c
+      JOIN ${DATABASE_SCHEMA}."TaskRun" t ON t."id" = c."A"
+      WHERE c."B" = $1
+      LIMIT $2`,
+      waitpointId,
+      CONNECTED_RUNS_DISPLAY_LIMIT
+    );
     return rows.map((row) => row.A);
   }
 
