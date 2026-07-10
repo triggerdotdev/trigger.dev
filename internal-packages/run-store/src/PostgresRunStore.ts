@@ -193,6 +193,24 @@ function stripDedicatedRelations(
 
 // --- per-model dedicated-schema relation hydrators (batched across the WHOLE parent array) ---
 
+// Narrows a hydrator's target `findMany` to the caller's `select` (avoids fetching the wide
+// TOASTed columns just to strip them in `applyProjection`); a bare/`include` projection stays a
+// full-row fetch. `keepKeys` are the column(s) the hydrator's Map is keyed on.
+function targetFindManyArgs(
+  where: unknown,
+  projection: { select?: any; include?: any } | undefined,
+  keepKeys: string[]
+): { where: unknown; select?: Record<string, unknown> } {
+  if (projection?.select) {
+    const select: Record<string, unknown> = { ...projection.select };
+    for (const key of keepKeys) {
+      select[key] = true;
+    }
+    return { where, select };
+  }
+  return { where };
+}
+
 // Generic to-many relation reached via an explicit join model: one grouped query for the join rows
 // spanning every parent id, then one grouped query for the distinct target rows, then an in-memory
 // (DB-free) assembly per parent. `joinParentField`/`joinTargetField` name the join row's two FK
@@ -217,9 +235,9 @@ async function batchHydrateJoinRelation(
     return byParent;
   }
   const targetIds = [...new Set(links.map((l) => l[joinTargetField]))];
-  const rows = (await targetDelegate.findMany({
-    where: { id: { in: targetIds } },
-  })) as Record<string, unknown>[];
+  const rows = (await targetDelegate.findMany(
+    targetFindManyArgs({ id: { in: targetIds } }, projection, ["id"])
+  )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const link of links) {
     const target = byTargetId.get(link[joinTargetField]);
@@ -242,9 +260,11 @@ const hydrateAssociatedWaitpoint: DedicatedRelationHydrator = async (
   if (parentIds.length === 0) {
     return byParent;
   }
-  const rows = (await client.waitpoint.findMany({
-    where: { completedByTaskRunId: { in: parentIds } },
-  })) as Record<string, unknown>[];
+  const rows = (await client.waitpoint.findMany(
+    targetFindManyArgs({ completedByTaskRunId: { in: parentIds } }, projection, [
+      "completedByTaskRunId",
+    ])
+  )) as Record<string, unknown>[];
   for (const row of rows) {
     const runId = row.completedByTaskRunId as string | undefined;
     if (runId && byParent.has(runId)) {
@@ -293,7 +313,11 @@ const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parent
   if (nestedTaskRun) {
     const runIds = [...new Set(edges.map((e) => e.taskRunId as string))];
     const runs = (
-      runIds.length > 0 ? await client.taskRun.findMany({ where: { id: { in: runIds } } }) : []
+      runIds.length > 0
+        ? await client.taskRun.findMany(
+            targetFindManyArgs({ id: { in: runIds } }, runProjection, ["id"])
+          )
+        : []
     ) as Record<string, unknown>[];
     byRunId = new Map(runs.map((r) => [r.id as string, r]));
   }
@@ -365,9 +389,9 @@ async function batchHydrateEdgeTarget(
   if (targetIds.length === 0) {
     return byParent;
   }
-  const rows = (await targetDelegate.findMany({
-    where: { id: { in: [...new Set(targetIds)] } },
-  })) as Record<string, unknown>[];
+  const rows = (await targetDelegate.findMany(
+    targetFindManyArgs({ id: { in: [...new Set(targetIds)] } }, projection, ["id"])
+  )) as Record<string, unknown>[];
   const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
   for (const p of parents) {
     const fk = p[fkField] as string | undefined;
