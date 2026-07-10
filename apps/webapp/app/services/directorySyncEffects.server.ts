@@ -95,7 +95,19 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
           roleId: effect.roleId,
         });
         if (!result.ok) {
-          throw retryableEffectError(`directorySync provision setUserRole failed: ${result.error}`);
+          // The org must keep one Owner: skip the role overwrite for the last
+          // Owner (they keep Owner) instead of failing the whole batch. Applies
+          // to a directory burst and to a dashboard group remap alike.
+          if (result.code === "last_owner") {
+            logger.info("directorySync: kept last Owner, skipped provision role overwrite", {
+              userId,
+              organizationId: effect.organizationId,
+            });
+          } else {
+            throw retryableEffectError(
+              `directorySync provision setUserRole failed: ${result.error}`
+            );
+          }
         }
       }
       return;
@@ -107,6 +119,15 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
         roleId: effect.roleId,
       });
       if (!result.ok) {
+        // Keeping the org's last Owner is expected, not a failure — skip this
+        // one member and let the rest of the remap apply (no server error).
+        if (result.code === "last_owner") {
+          logger.info("directorySync: kept last Owner, skipped set_role", {
+            userId: effect.userId,
+            organizationId: effect.organizationId,
+          });
+          return;
+        }
         throw retryableEffectError(`directorySync set_role failed: ${result.error}`);
       }
       return;
