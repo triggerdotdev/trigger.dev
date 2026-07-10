@@ -264,13 +264,18 @@ async function _workerBuildCommand(dir: string, options: WorkersBuildCommandOpti
   const secretChildVars = buildManifest.deploy.sync?.secretEnv ?? {};
   const secretParentVars = buildManifest.deploy.sync?.secretParentEnv ?? {};
 
-  const numberOfEnvVars =
-    Object.keys(childVars).length +
-    Object.keys(parentVars).length +
-    Object.keys(secretChildVars).length +
-    Object.keys(secretParentVars).length;
+  const hasVarsToSync =
+    Object.keys(childVars).length > 0 ||
+    Object.keys(secretChildVars).length > 0 ||
+    // Only sync parent variables if this is a branch environment
+    (branch && (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
 
-  if (buildManifest.deploy.sync && numberOfEnvVars > 0) {
+  if (hasVarsToSync) {
+    const numberOfEnvVars =
+      Object.keys(childVars).length +
+      Object.keys(parentVars).length +
+      Object.keys(secretChildVars).length +
+      Object.keys(secretParentVars).length;
     const vars = numberOfEnvVars === 1 ? "var" : "vars";
 
     if (!options.skipSyncEnvVars) {
