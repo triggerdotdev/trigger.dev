@@ -7,7 +7,6 @@ import {
   personalAccessTokensPath,
   rootPath,
 } from "~/utils/pathBuilder";
-import { AskAI } from "../AskAI";
 import { LinkButton } from "../primitives/Buttons";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
@@ -61,7 +60,6 @@ export function AccountSideMenu({ user }: { user: User }) {
       </div>
       <div className="flex w-full items-center justify-between border-t border-grid-bright p-1">
         <HelpAndFeedback />
-        <AskAI />
       </div>
     </div>
   );

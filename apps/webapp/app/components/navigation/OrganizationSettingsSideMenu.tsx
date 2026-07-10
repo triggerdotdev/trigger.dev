@@ -35,7 +35,6 @@ import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
 import { useHasAdminAccess } from "~/hooks/useUser";
-import { AskAI } from "../AskAI";
 
 export type BuildInfo = {
   appVersion: string | undefined;
@@ -242,7 +241,6 @@ export function OrganizationSettingsSideMenu({
       </div>
       <div className="flex w-full items-center justify-between border-t border-grid-bright p-1">
         <HelpAndFeedback organizationId={organization.id} />
-        <AskAI />
       </div>
     </div>
   );
