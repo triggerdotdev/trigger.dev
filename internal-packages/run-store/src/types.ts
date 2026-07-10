@@ -804,10 +804,10 @@ export interface RunStore {
   ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null>;
 
   // --- WaitpointTag (run-ops) ---
-  // A WaitpointTag has no run/waitpoint FK — it is a standalone entity keyed by (environmentId,
-  // name). The WRITE routes by the tag's minted id-shape (which encodes the env's mint-kind),
-  // mirroring how a standalone waitpoint token routes by its own minted id; the READ fans out
-  // NEW→LEGACY and de-dupes (a tag keyed by env+name can exist on both DBs for one env).
+  // A WaitpointTag has no run/waitpoint FK — a standalone entity keyed by (environmentId, name).
+  // Callers never mint a tag id (defaults to cuid), so the WRITE is always LEGACY-resident today
+  // (single-homed), like standalone waitpoint tokens; the READ still fans out NEW→LEGACY and
+  // de-dupes by id in case tag ids ever become residency-aware.
   upsertWaitpointTag(
     data: { environmentId: string; name: string; projectId: string; id?: string },
     tx?: PrismaClientOrTransaction

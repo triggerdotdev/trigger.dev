@@ -29,14 +29,17 @@ export class CancelAttemptService extends BaseService {
       span.setAttribute("taskRunId", taskRunId);
       span.setAttribute("attemptId", attemptId);
 
-      const taskRunAttempt = await this.runStore.findTaskRunAttempt({
-        where: {
-          friendlyId: attemptId,
+      const taskRunAttempt = await this.runStore.findTaskRunAttempt(
+        {
+          where: {
+            friendlyId: attemptId,
+          },
+          include: {
+            taskRun: true,
+          },
         },
-        include: {
-          taskRun: true,
-        },
-      });
+        this._prisma
+      );
 
       if (!taskRunAttempt) {
         return;

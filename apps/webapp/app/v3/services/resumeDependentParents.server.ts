@@ -272,7 +272,7 @@ export class ResumeDependentParentsService extends BaseService {
       // DEPRECATED: only reached for batchVersion != "v3". De-forwarded from a control-plane
       // $transaction — the item update routes by batchTaskRunId (residency-encoding), and the
       // ResumeBatchRunService enqueue runs separately (no shared control-plane tx).
-      await this.runStore.updateManyBatchTaskRunItems({
+      const updated = await this.runStore.updateManyBatchTaskRunItems({
         where: {
           batchTaskRunId: dependency.dependentBatchRun!.id,
           taskRunId: dependency.taskRunId,
@@ -282,6 +282,13 @@ export class ResumeDependentParentsService extends BaseService {
           taskRunAttemptId: lastAttempt.id,
         },
       });
+
+      if (updated.count === 0) {
+        logger.debug("ResumeDependentParents: no batch item updated", {
+          batchTaskRunId: dependency.dependentBatchRun!.id,
+          taskRunId: dependency.taskRunId,
+        });
+      }
 
       await ResumeBatchRunService.enqueue(dependency.dependentBatchRun!.id, false);
     }

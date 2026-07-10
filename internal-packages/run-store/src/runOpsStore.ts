@@ -1580,6 +1580,9 @@ export class RoutingRunStore implements RunStore {
     args?: { include?: I },
     client?: ReadClient
   ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]> {
+    if (where.batchTaskRunId === undefined && where.taskRunId === undefined) {
+      throw new Error("findManyBatchTaskRunItems requires batchTaskRunId or taskRunId to route");
+    }
     const store = this.#routeOrNew(where.batchTaskRunId ?? where.taskRunId);
     return store.findManyBatchTaskRunItems(where, args, RoutingRunStore.#ownPrimary(store, client));
   }
@@ -1599,9 +1602,9 @@ export class RoutingRunStore implements RunStore {
   // WaitpointTag — a standalone entity (no run/waitpoint FK) keyed by (environmentId, name).
   // ---------------------------------------------------------------------------
 
-  // Route the WRITE by the tag's minted id-shape — which encodes the env's mint-kind — exactly like a
-  // standalone waitpoint token (#routeWaitpointWrite); a missing minted id falls to LEGACY (the safe
-  // default). The control-plane tx forwards only to LEGACY (same physical DB), never into a NEW write.
+  // Callers never mint a tag id (defaults to cuid), so #routeWaitpointWrite always resolves LEGACY
+  // today — deliberately single-homed, like standalone waitpoint tokens. If tag-id minting is ever made
+  // residency-aware, findManyWaitpointTags must de-dupe by (environmentId, name) or names will duplicate.
   upsertWaitpointTag(
     data: { environmentId: string; name: string; projectId: string; id?: string },
     tx?: PrismaClientOrTransaction
