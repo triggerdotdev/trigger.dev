@@ -113,8 +113,11 @@ export async function inviteMembers({
       }) satisfies Prisma.OrgMemberInviteCreateManyInput
   );
 
+  // Skip already-invited emails (unique org+email) so re-inviting one address
+  // doesn't P2002 the whole batch.
   await prisma.orgMemberInvite.createMany({
     data: invites,
+    skipDuplicates: true,
   });
 
   return await prisma.orgMemberInvite.findMany({

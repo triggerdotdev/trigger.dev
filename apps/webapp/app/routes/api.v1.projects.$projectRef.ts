@@ -66,7 +66,7 @@ export const loader = createLoaderPATApiRoute(
 );
 
 const RenameProjectRequestBody = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1).max(255),
 });
 
 // Multi-method (PATCH rename / DELETE): declare both so other verbs 405, and

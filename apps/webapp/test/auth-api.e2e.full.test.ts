@@ -3008,12 +3008,10 @@ describe("API", () => {
         { Authorization: `Bearer ${pat.token}` },
         { region: "definitely-not-a-region" }
       );
-      // No worker groups seeded → the presenter yields no regions → the handler
-      // returns 400 "region not found". The point: the builder let the request
-      // through to the handler (auth + method + body all passed).
-      expect(res.status).not.toBe(401);
-      expect(res.status).not.toBe(403);
-      expect(res.status).not.toBe(405);
+      // No worker groups seeded → the presenter throws → the route returns 400.
+      // The point: the builder let the request through to the handler (auth +
+      // method + body all passed).
+      expect(res.status).toBe(400);
     });
   });
 
@@ -3050,6 +3048,46 @@ describe("API", () => {
         body: JSON.stringify({ title: "New name" }),
       });
       expect(res.status).toBe(405);
+    });
+  });
+
+  // Invites are idempotent per email: createMany uses skipDuplicates, so
+  // re-inviting an already-invited address returns success rather than a
+  // P2002-driven 500.
+  describe("Member invites — re-invite is idempotent", () => {
+    it("inviting the same email twice does not 500", async () => {
+      const server = getTestServer();
+      const { organization, pat } = await seedTestUserProject(server.prisma);
+      const path = `/api/v1/orgs/${organization.id}/invites`;
+      const invite = () =>
+        server.webapp.fetch(path, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ emails: ["dup-invite@example.com"] }),
+        });
+
+      const first = await invite();
+      expect(first.status).toBe(201);
+
+      const second = await invite();
+      expect(second.status).toBe(201);
+      expect(second.status).not.toBe(500);
+    });
+  });
+
+  // Org creation via the management API is gated behind
+  // ORG_CREATION_API_ENABLED (default "0"). Without it, a valid PAT gets a 404
+  // so the endpoint stays invisible.
+  describe("Org creation — disabled by default", () => {
+    it("POST /api/v1/orgs with a valid PAT returns 404 when the flag is unset", async () => {
+      const server = getTestServer();
+      const { pat } = await seedTestUserProject(server.prisma);
+      const res = await server.webapp.fetch("/api/v1/orgs", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "New org from API" }),
+      });
+      expect(res.status).toBe(404);
     });
   });
 });

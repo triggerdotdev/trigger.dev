@@ -158,6 +158,8 @@ export const action = dashboardAction(
     },
   },
   async ({ ability, request, params }) => {
+    // clearCurrentProject (delete branch) needs the full UserFromSession
+    // (dashboardPreferences), which the builder's SessionUser doesn't carry.
     const user = await requireUser(request);
     const { organizationSlug } = params;
 
@@ -177,7 +179,7 @@ export const action = dashboardAction(
       switch (submission.value.action) {
         case "rename": {
           if (!ability.can("manage", { type: "organization" })) {
-            throw redirectWithErrorMessage(
+            throw await redirectWithErrorMessage(
               organizationSettingsPath({ slug: organizationSlug }),
               request,
               "You don't have permission to rename this organization"
@@ -205,7 +207,7 @@ export const action = dashboardAction(
         }
         case "delete": {
           if (!ability.can("manage", { type: "organization" })) {
-            throw redirectWithErrorMessage(
+            throw await redirectWithErrorMessage(
               organizationSettingsPath({ slug: organizationSlug }),
               request,
               "You don't have permission to delete this organization"

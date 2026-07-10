@@ -4,6 +4,7 @@ import { prisma } from "~/db.server";
 import { removeTeamMember } from "~/models/member.server";
 import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
 import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { ssoController } from "~/services/sso.server";
 
 const ParamsSchema = z.object({
   orgParam: z.string(),
@@ -36,6 +37,13 @@ export const action = createActionPATApiRoute(
       return json({ error: "Organization not found" }, { status: 404 });
     }
 
+    // Directory-managed membership: manual removal is disabled (mirrors the
+    // dashboard Team page). Fail-open on a plugin error.
+    const policy = await ssoController.getMembershipPolicy(organization.id);
+    if (policy.isOk() && !policy.value.manualMembershipAllowed) {
+      return json({ error: "Membership is managed by Directory Sync" }, { status: 403 });
+    }
+
     // removeTeamMember enforces the last-member guard and throws
     // ServiceValidationError (member-not-found / last-member), which the
     // builder maps to its status.
@@ -44,6 +52,16 @@ export const action = createActionPATApiRoute(
       slug: organization.slug,
       memberId: params.memberId,
     });
+
+    // Sticky removal: record a tombstone so passive SSO-JIT won't re-add them
+    // (best-effort; no-op without the SSO plugin).
+    await ssoController
+      .recordMembershipRemoval({
+        organizationId: organization.id,
+        userId: removed.userId,
+        reason: "manual_removal",
+      })
+      .unwrapOr(undefined);
 
     return json({
       id: removed.id,

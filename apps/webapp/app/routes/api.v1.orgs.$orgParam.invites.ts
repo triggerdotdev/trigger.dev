@@ -7,6 +7,7 @@ import { logger } from "~/services/logger.server";
 import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
 import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
+import { ssoController } from "~/services/sso.server";
 import { acceptInvitePath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
@@ -42,6 +43,13 @@ export const action = createActionPATApiRoute(
 
     if (!organization) {
       return json({ error: "Organization not found" }, { status: 404 });
+    }
+
+    // Directory-managed membership: inviting is disabled (mirrors the dashboard
+    // invite action). Fail-open on a plugin error.
+    const policy = await ssoController.getMembershipPolicy(organization.id);
+    if (policy.isOk() && !policy.value.manualMembershipAllowed) {
+      return json({ error: "Membership is managed by Directory Sync" }, { status: 403 });
     }
 
     const invites = await inviteMembers({

@@ -106,7 +106,7 @@ export const action = dashboardAction(
     switch (submission.value.action) {
       case "rename": {
         if (!ability.can("manage", { type: "project" })) {
-          throw redirectWithErrorMessage(
+          throw await redirectWithErrorMessage(
             v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
             request,
             "You don't have permission to rename this project"
@@ -139,7 +139,7 @@ export const action = dashboardAction(
       }
       case "delete": {
         if (!ability.can("manage", { type: "project" })) {
-          throw redirectWithErrorMessage(
+          throw await redirectWithErrorMessage(
             v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }),
             request,
             "You don't have permission to delete this project"

@@ -10,7 +10,7 @@ const ParamsSchema = z.object({
 });
 
 const RenameOrgRequestBody = z.object({
-  title: z.string().min(1),
+  title: z.string().trim().min(3).max(50),
 });
 
 // Multi-method (PATCH rename / DELETE): declare both so other verbs 405, and
