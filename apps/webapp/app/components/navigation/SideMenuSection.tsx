@@ -41,18 +41,18 @@ export function SideMenuSection({
         {/*
           Header - fades out as the side menu narrows. Opacity is driven by the resizable
           SideMenu's `--sm-label-opacity` variable (falls back to 1 when unset) so it scrubs in
-          real time while dragging. `transition-colors` keeps the hover background animated without
-          CSS-lagging the var-driven opacity.
+          real time while dragging. The hover background and text color snap (no transition), to
+          match the nav items.
         */}
         <div
-          className="group/section flex cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 transition-colors hover:bg-charcoal-750"
+          className="group/section flex cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 hover:bg-charcoal-750"
           onClick={isSideMenuCollapsed ? undefined : handleToggle}
           style={{
             opacity: "var(--sm-label-opacity, 1)",
             cursor: isSideMenuCollapsed ? "default" : "pointer",
           }}
         >
-          <div className="flex items-center gap-1 text-text-dimmed transition group-hover/section:text-text-bright">
+          <div className="flex items-center gap-1 text-text-dimmed group-hover/section:text-text-bright">
             <h2 className="whitespace-nowrap text-xs">{title}</h2>
             <motion.div
               initial={isCollapsed}

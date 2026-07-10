@@ -4,6 +4,7 @@ import { Fragment, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { BookIcon } from "~/assets/icons/BookIcon";
 import { BulbIcon } from "~/assets/icons/BulbIcon";
+import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { EnvelopeIcon } from "~/assets/icons/EnvelopeIcon";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { RadarPulseIcon } from "~/assets/icons/RadarPulseIcon";
@@ -62,7 +63,7 @@ export function HelpAndFeedback({
               button={
                 <PopoverTrigger
                   className={cn(
-                    "group flex h-8 items-center gap-1.5 rounded pl-[0.4375rem] pr-2 transition-colors hover:bg-charcoal-750 focus-custom",
+                    "group flex h-8 items-center gap-1.5 rounded pl-[0.4375rem] pr-2 hover:bg-charcoal-750 focus-custom",
                     isCollapsed ? "w-full" : "w-full justify-between"
                   )}
                 >
@@ -71,18 +72,29 @@ export function HelpAndFeedback({
                     {/*
                   Fades via the resizable side menu's `--sm-label-opacity` variable (falls back to
                   fully visible when unset) and truncates as the menu narrows, matching the nav
-                  items. Only max-width and color transition via CSS so the per-frame
-                  variable-driven opacity is not lagged.
+                  items. Only max-width transitions via CSS: the hover color snaps like the nav
+                  items, and transitioning opacity would lag the per-frame variable writes.
                 */}
                     <span
                       className={cn(
-                        "min-w-0 truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed transition-[max-width,color] duration-150 group-hover:text-text-bright",
+                        "min-w-0 truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed transition-[max-width] duration-150 group-hover:text-text-bright",
                         isCollapsed ? "max-w-0" : "max-w-[150px]"
                       )}
                       style={{ opacity: "var(--sm-label-opacity, 1)" }}
                     >
                       Help & Feedback
                     </span>
+                  </span>
+                  {/* Up/down chevron revealed on hover, matching the Project menu button. */}
+                  <span
+                    className={cn(
+                      "overflow-hidden transition-[max-width] duration-200",
+                      isCollapsed
+                        ? "max-w-0 opacity-0"
+                        : "max-w-[16px] opacity-0 group-hover:opacity-100"
+                    )}
+                  >
+                    <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
                   </span>
                 </PopoverTrigger>
               }

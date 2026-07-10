@@ -70,7 +70,7 @@ export function EnvironmentSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded pl-[0.4375rem] hover:bg-charcoal-750",
               isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
               className
             )}
@@ -99,11 +99,11 @@ export function EnvironmentSelector({
             </span>
             <span
               className={cn(
-                "overflow-hidden transition-all duration-200",
+                "overflow-hidden transition-[max-width] duration-200",
                 isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-0 group-hover:opacity-100"
               )}
             >
-              <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
+              <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
             </span>
           </PopoverTrigger>
         }

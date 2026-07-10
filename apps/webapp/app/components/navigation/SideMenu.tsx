@@ -1156,7 +1156,7 @@ function OrgSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded pl-[0.4375rem] hover:bg-charcoal-750",
               isCollapsed ? "justify-center pr-0.5" : "w-full justify-between pr-1"
             )}
           >
@@ -1178,11 +1178,11 @@ function OrgSelector({
             </span>
             <span
               className={cn(
-                "overflow-hidden transition-all duration-200",
+                "overflow-hidden transition-[max-width] duration-200",
                 isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-0 group-hover:opacity-100"
               )}
             >
-              <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
+              <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
             </span>
           </PopoverTrigger>
         }
@@ -1325,7 +1325,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
     <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen}>
       <SimpleTooltip
         button={
-          <PopoverTrigger className="group flex size-8 items-center justify-center rounded transition-colors hover:bg-charcoal-750 focus-custom">
+          <PopoverTrigger className="group flex size-8 items-center justify-center rounded hover:bg-charcoal-750 focus-custom">
             <UserProfilePhoto className="size-5" />
           </PopoverTrigger>
         }
@@ -1443,7 +1443,7 @@ function ProjectSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded border pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded border pl-[0.4375rem] transition-[border-color] duration-150 hover:bg-charcoal-750",
               isCollapsed
                 ? "justify-center border-transparent pr-0.5"
                 : "justify-between border-charcoal-700 pr-1",
@@ -1468,11 +1468,11 @@ function ProjectSelector({
             </span>
             <span
               className={cn(
-                "overflow-hidden transition-all duration-200",
+                "overflow-hidden transition-[max-width] duration-200",
                 isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-0 group-hover:opacity-100"
               )}
             >
-              <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
+              <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
             </span>
           </PopoverTrigger>
         }
