@@ -1,12 +1,11 @@
-// RED->GREEN guard: WaitpointPresenter#connectedRunIdsOn must BOUND the fetch of a waitpoint's
+// RED->GREEN guard: WaitpointPresenter connected-run gather must BOUND the fetch of a waitpoint's
 // connected-run ids, not just the number displayed. A "displayed count <= 5" assertion would
-// false-green on today's buggy code (the existing take:5 already bounds the DISPLAY). Instead
-// this captures the real `taskRun.findMany` call args via a Proxy over a REAL testcontainer
-// Postgres client (no mocks) and asserts the IN-list itself is bounded.
+// false-green (the take:5 on the run resolve already bounds the DISPLAY). Instead this captures the
+// real `taskRun.findMany` call args via a Proxy over a REAL testcontainer Postgres client (no mocks)
+// and asserts the IN-list is capped at the scan limit (danglers over-read), never unbounded.
 //
-// Exercises the dedicated-schema (Prisma `waitpointRunConnection`) branch of #connectedRunIdsOn:
-// waitpoint + 8 connected runs seeded on the NEW dedicated run-ops client (RunOpsPrismaClient,
-// prisma17), which uses the delegate directly (no raw SQL fallback).
+// Exercises the dedicated-schema (Prisma `waitpointRunConnection`) branch: waitpoint + more than the
+// scan-limit connected runs seeded on the NEW dedicated run-ops client (RunOpsPrismaClient, prisma17).
 import { describe, expect, vi } from "vitest";
 
 const legacyReplicaHolder = vi.hoisted(() => ({ client: undefined as any }));
@@ -66,7 +65,7 @@ import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
-  CONNECTED_RUNS_DISPLAY_LIMIT,
+  CONNECTED_RUNS_CONNECTION_SCAN_LIMIT,
   WaitpointPresenter,
 } from "~/presenters/v3/WaitpointPresenter.server";
 
@@ -184,11 +183,13 @@ function capturingTaskRunFindMany(real: RunOpsPrismaClient): {
   return { client, calls };
 }
 
-const CONNECTED_RUN_COUNT = 8; // > CONNECTED_RUNS_DISPLAY_LIMIT (5), proves the fetch isn't bounded
+// Seed MORE than the scan limit so the assertion bites: an unbounded gather IN-lists all of them,
+// a correctly bounded one caps at CONNECTED_RUNS_CONNECTION_SCAN_LIMIT.
+const CONNECTED_RUN_COUNT = CONNECTED_RUNS_CONNECTION_SCAN_LIMIT + 5;
 
-describe("WaitpointPresenter#connectedRunIdsOn bounds the connected-run-id FETCH", () => {
+describe("WaitpointPresenter bounds the connected-run-id FETCH", () => {
   heteroRunOpsPostgresTest(
-    "reading a waitpoint with 8 connected runs never IN-lists more than the display limit",
+    "a waitpoint with more connections than the scan limit caps the IN-list at the scan limit",
     async ({ prisma14, prisma17 }) => {
       const ctx = await seedParents(prisma14, "bounded");
       const waitpoint = await seedWaitpoint(prisma17, ctx, "waitpoint_bounded");
@@ -220,13 +221,15 @@ describe("WaitpointPresenter#connectedRunIdsOn bounds the connected-run-id FETCH
       });
 
       // The guard: assert the FETCH (the IN-list built from the connected-run-id gather) is
-      // bounded, not just the eventual displayed count. On today's buggy code, the Prisma
-      // `waitpointRunConnection.findMany` branch of #connectedRunIdsOn returns all 8 connected
-      // run ids with no take/LIMIT, so this IN-list is 8. After the fix it must be
-      // <= CONNECTED_RUNS_DISPLAY_LIMIT.
+      // bounded, not just the eventual displayed count. An unbounded gather would IN-list every
+      // connection row; the dedicated branch over-reads up to CONNECTED_RUNS_CONNECTION_SCAN_LIMIT
+      // (25) so a display slot is never lost to a dangler, so the IN-list must be capped at the
+      // scan limit -- above the display limit (5), but never unbounded.
       expect(calls.length).toBeGreaterThan(0);
       for (const call of calls) {
-        expect(call.where?.id?.in?.length ?? 0).toBeLessThanOrEqual(CONNECTED_RUNS_DISPLAY_LIMIT);
+        expect(call.where?.id?.in?.length ?? 0).toBeLessThanOrEqual(
+          CONNECTED_RUNS_CONNECTION_SCAN_LIMIT
+        );
       }
     }
   );

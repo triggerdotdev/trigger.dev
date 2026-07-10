@@ -1,9 +1,5 @@
 import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v3";
-import {
-  DATABASE_SCHEMA,
-  type PrismaClientOrTransaction,
-  type PrismaReplicaClient,
-} from "~/db.server";
+import { type PrismaClientOrTransaction, type PrismaReplicaClient } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
@@ -15,9 +11,11 @@ import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
 
-// Single-sourced bound for connected run friendlyIds: applied at the FETCH in #connectedRunIdsOn,
-// not just at display time.
+// Single-sourced display bound for a waitpoint's connected run friendlyIds.
 export const CONNECTED_RUNS_DISPLAY_LIMIT = 5;
+
+// Over-read connection rows on the FK-free dedicated join so danglers don't cost a display slot.
+export const CONNECTED_RUNS_CONNECTION_SCAN_LIMIT = CONNECTED_RUNS_DISPLAY_LIMIT * 5;
 
 export class WaitpointPresenter extends BasePresenter {
   constructor(
@@ -84,8 +82,7 @@ export class WaitpointPresenter extends BasePresenter {
 
   // Connected-run friendlyIds gathered across BOTH stores. The run<->waitpoint join co-locates with
   // the RUN (written on the run's DB), so the waitpoint's own store misses a cross-DB connection; we
-  // read the join on each client and resolve the run's friendlyId on that same client, then union.
-  // We never relation-select `connectedRuns`: it is not a field on the dedicated subset `Waitpoint`.
+  // read the join on each client, resolve the run's friendlyId on that same client, and union.
   async #connectedRunFriendlyIds(waitpointId: string): Promise<string[]> {
     const replica = this._replica as unknown as PrismaReplicaClient;
     const rawClients: PrismaReplicaClient[] =
@@ -99,17 +96,8 @@ export class WaitpointPresenter extends BasePresenter {
 
     const friendlyIds = new Set<string>();
     for (const client of clients) {
-      const runIds = await this.#connectedRunIdsOn(client, waitpointId);
-      if (runIds.length === 0) {
-        continue;
-      }
-      const runs = await client.taskRun.findMany({
-        where: { id: { in: runIds } },
-        select: { friendlyId: true },
-        take: CONNECTED_RUNS_DISPLAY_LIMIT,
-      });
-      for (const run of runs) {
-        friendlyIds.add(run.friendlyId);
+      for (const friendlyId of await this.#connectedRunFriendlyIdsOn(client, waitpointId)) {
+        friendlyIds.add(friendlyId);
       }
       if (friendlyIds.size >= CONNECTED_RUNS_DISPLAY_LIMIT) {
         break;
@@ -118,44 +106,56 @@ export class WaitpointPresenter extends BasePresenter {
     return Array.from(friendlyIds).slice(0, CONNECTED_RUNS_DISPLAY_LIMIT);
   }
 
-  // Schema-aware read of the run ids linked to a waitpoint: the dedicated subset uses the explicit
-  // `WaitpointRunConnection` model (scalar `taskRunId`, no FK -- a row can dangle after its run is
-  // deleted), the control-plane full schema the implicit `_WaitpointRunConnections` M2M
-  // (A = TaskRun.id, B = Waitpoint.id). Both branches existence-filter AT THE QUERY via a JOIN to
-  // TaskRun, so a dangling connection row can never occupy a LIMIT slot ahead of a real one.
-  // Tables are schema-qualified with DATABASE_SCHEMA (trusted boot constant) so a non-`public`
-  // schema= deployment resolves the right tables instead of leaning on search_path. $queryRawUnsafe,
-  // not a `sqlDatabaseSchema` Prisma.Sql fragment: `client` may be the dedicated run-ops client (a
-  // different Prisma runtime) which would bind a foreign runtime's Sql fragment as a param instead
-  // of inlining it. waitpointId and the constant limit stay bound params ($1/$2).
-  async #connectedRunIdsOn(client: PrismaReplicaClient, waitpointId: string): Promise<string[]> {
-    const isDedicated = Boolean(
-      (client as unknown as { waitpointRunConnection?: unknown }).waitpointRunConnection
-    );
+  // Connected-run friendlyIds for one store, via the ORM. Two indexed reads joined in memory instead
+  // of a SQL JOIN onto the (very large) TaskRun table: `id IN (...)` can only plan as a PK lookup, so
+  // the planner can never scan TaskRun.
+  //
+  // Dedicated subset: the explicit `WaitpointRunConnection` is scalar (`taskRunId`, no FK), so a
+  // connection can outlive a deleted run. We over-read connection ids, resolve runs by id (a missing
+  // id just drops out -- danglers cost no display slot), and cap at the display limit.
+  //
+  // Control-plane full schema: no queryable join delegate (implicit M2M), so we traverse the
+  // `connectedRuns` relation; it cascade-deletes with the run, so no dangler can exist.
+  async #connectedRunFriendlyIdsOn(
+    client: PrismaReplicaClient,
+    waitpointId: string
+  ): Promise<string[]> {
+    const dedicated = (
+      client as unknown as {
+        waitpointRunConnection?: {
+          findMany: (args: unknown) => Promise<{ taskRunId: string }[]>;
+        };
+      }
+    ).waitpointRunConnection;
 
-    if (isDedicated) {
-      const rows = await client.$queryRawUnsafe<{ taskRunId: string }[]>(
-        `SELECT c."taskRunId" AS "taskRunId"
-        FROM ${DATABASE_SCHEMA}."WaitpointRunConnection" c
-        JOIN ${DATABASE_SCHEMA}."TaskRun" t ON t."id" = c."taskRunId"
-        WHERE c."waitpointId" = $1
-        LIMIT $2`,
-        waitpointId,
-        CONNECTED_RUNS_DISPLAY_LIMIT
-      );
-      return rows.map((row) => row.taskRunId);
+    if (dedicated) {
+      const connections = await dedicated.findMany({
+        where: { waitpointId },
+        select: { taskRunId: true },
+        take: CONNECTED_RUNS_CONNECTION_SCAN_LIMIT,
+      });
+      if (connections.length === 0) {
+        return [];
+      }
+      const runs = await client.taskRun.findMany({
+        where: { id: { in: connections.map((connection) => connection.taskRunId) } },
+        select: { friendlyId: true },
+        take: CONNECTED_RUNS_DISPLAY_LIMIT,
+      });
+      return runs.map((run) => run.friendlyId);
     }
 
-    const rows = await client.$queryRawUnsafe<{ A: string }[]>(
-      `SELECT c."A" AS "A"
-      FROM ${DATABASE_SCHEMA}."_WaitpointRunConnections" c
-      JOIN ${DATABASE_SCHEMA}."TaskRun" t ON t."id" = c."A"
-      WHERE c."B" = $1
-      LIMIT $2`,
-      waitpointId,
-      CONNECTED_RUNS_DISPLAY_LIMIT
-    );
-    return rows.map((row) => row.A);
+    const waitpoint = (await (
+      client.waitpoint.findFirst as (
+        args: unknown
+      ) => Promise<{ connectedRuns: { friendlyId: string }[] } | null>
+    )({
+      where: { id: waitpointId },
+      select: {
+        connectedRuns: { select: { friendlyId: true }, take: CONNECTED_RUNS_DISPLAY_LIMIT },
+      },
+    })) as { connectedRuns: { friendlyId: string }[] } | null;
+    return (waitpoint?.connectedRuns ?? []).map((run) => run.friendlyId);
   }
 
   public async call({

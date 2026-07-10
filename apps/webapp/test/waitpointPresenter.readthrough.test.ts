@@ -68,11 +68,17 @@ import { setupClickhouseReplication } from "./utils/replicationUtils";
 
 vi.setConfig({ testTimeout: 90_000 });
 
-// A read client whose waitpoint.findFirst is recorded; throws if used after being marked
-// forbidden, so we can prove a store was NEVER read. Every other access forwards to the real
-// client (so the inlined `environment` join + connectedRuns relation still resolve).
+// A read client whose waitpoint.findFirst calls are recorded, split by kind. The presenter issues
+// two shapes of waitpoint.findFirst: a HYDRATE (loads the waitpoint scalar row -- no `connectedRuns`
+// in its select) and a connectedRuns-RELATION read (control-plane branch of the connected-runs
+// gather -- select is exactly `{ connectedRuns }`). The `forbidden` guard throws ONLY on a HYDRATE,
+// so a store can be proven to never be HYDRATED while still allowing the connectedRuns cross-DB
+// union to legitimately read it (that union always touched both stores; it was invisible when the
+// old code did it via raw SQL). Every other access forwards to the real client.
 function recording(client: PrismaClient, opts: { forbidden?: boolean } = {}) {
   const calls: unknown[] = [];
+  const hydrateCalls: unknown[] = [];
+  const connectedRunsCalls: unknown[] = [];
   return {
     handle: new Proxy(client, {
       get(target, prop) {
@@ -82,8 +88,16 @@ function recording(client: PrismaClient, opts: { forbidden?: boolean } = {}) {
               if (wpProp === "findFirst") {
                 return (args: unknown) => {
                   calls.push(args);
-                  if (opts.forbidden) {
-                    throw new Error("this store must never be read");
+                  const select = (args as { select?: Record<string, unknown> })?.select ?? {};
+                  const keys = Object.keys(select);
+                  const isConnectedRunsRead = keys.length === 1 && keys[0] === "connectedRuns";
+                  if (isConnectedRunsRead) {
+                    connectedRunsCalls.push(args);
+                  } else {
+                    hydrateCalls.push(args);
+                    if (opts.forbidden) {
+                      throw new Error("this store must never be hydrated");
+                    }
                   }
                   return (wpTarget as any).findFirst(args);
                 };
@@ -96,6 +110,8 @@ function recording(client: PrismaClient, opts: { forbidden?: boolean } = {}) {
       },
     }) as unknown as PrismaReplicaClient,
     calls,
+    hydrateCalls,
+    connectedRunsCalls,
   };
 }
 
@@ -255,9 +271,12 @@ describe("WaitpointPresenter dual-DB read-through (hetero PG14 + PG17, no connec
       const result = await presenter.call(callArgs(ctx, seeded.friendlyId));
 
       expect(result?.id).toBe(seeded.friendlyId);
-      // New-first short-circuit: legacy never probed (the throwing handle proves it).
-      expect(newClient.calls.length).toBe(1);
-      expect(legacy.calls.length).toBe(0);
+      // New-first short-circuit: the HYDRATE answered from new and never fell through to a legacy
+      // hydrate (the throwing handle proves it). The connectedRuns cross-DB union still reads legacy
+      // legitimately -- that read is allowed and must NOT count as a hydrate.
+      expect(newClient.hydrateCalls.length).toBe(1);
+      expect(legacy.hydrateCalls.length).toBe(0);
+      expect(legacy.connectedRunsCalls.length).toBeGreaterThan(0);
     }
   );
 
@@ -286,8 +305,11 @@ describe("WaitpointPresenter dual-DB read-through (hetero PG14 + PG17, no connec
 
       expect(result?.id).toBe(seeded.friendlyId);
       expect(result?.tags).toEqual(["one"]);
-      // Exactly one read on the single client; the second handle is never touched.
-      expect(single.calls.length).toBe(1);
+      // Two reads on the single client, both on the one handle: the first findFirst hydrates the
+      // waitpoint, the second loads the `connectedRuns` relation (the implicit M2M has no queryable
+      // join delegate, so the ORM must traverse the relation with a second findFirst). The second
+      // handle is never touched -- passthrough is structural, the split branch never fires.
+      expect(single.calls.length).toBe(2);
       expect(second.calls.length).toBe(0);
     }
   );
