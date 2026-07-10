@@ -23,7 +23,13 @@
  * ```
  */
 
-import type { ChatTransport, UIMessage, UIMessageChunk, ChatRequestOptions } from "ai";
+import type {
+  ChatTransport,
+  ModelMessage,
+  UIMessage,
+  UIMessageChunk,
+  ChatRequestOptions,
+} from "ai";
 import {
   controlSubtype,
   headerValue,
@@ -37,10 +43,123 @@ function byteLength(body: string): number {
   return new TextEncoder().encode(body).byteLength;
 }
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
-import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { slimSubmitMessageForWire } from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
+
+/**
+ * The wire payload shape sent by `TriggerChatTransport`.
+ * Uses `metadata` to match the AI SDK's `ChatRequestOptions` field name.
+ *
+ * Slim wire: at most ONE message per record. The agent runtime
+ * reconstructs prior history at run boot from a durable S3 snapshot +
+ * `session.out` replay (or `hydrateMessages` if registered).
+ *
+ * Declared here (rather than the internal shared module) so `declaration:
+ * true` consumers can name inferred agent types via this public subpath.
+ */
+export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
+  /**
+   * The single message being delivered on this trigger. Set for:
+   *   - `submit-message`: the new user message OR a tool-approval-responded
+   *     assistant message (with `state: "approval-responded"` tool parts).
+   *   - `regenerate-message`: omitted (the agent slices its own history).
+   *   - `preload` / `close` / `action`: omitted.
+   *   - `handover-prepare`: omitted (use `headStartMessages` instead).
+   */
+  message?: TMessage;
+  /**
+   * Bespoke escape hatch for `chat.headStart`. The customer's HTTP route
+   * handler ships full `UIMessage[]` history at the very first turn — before
+   * any snapshot exists. The route handler isn't subject to the
+   * `MAX_APPEND_BODY_BYTES` cap on `/in/append` because it goes through the
+   * customer's own HTTP endpoint. Used ONLY by `trigger: "handover-prepare"`.
+   * Ignored on every other trigger.
+   */
+  headStartMessages?: TMessage[];
+  chatId: string;
+  trigger:
+    | "submit-message"
+    | "regenerate-message"
+    | "preload"
+    | "close"
+    | "action"
+    /**
+     * The customer's `chat.handover` route handler kicked us off in
+     * parallel with the first-turn `streamText` running in the warm
+     * Next.js process. The run sits idle on `session.in` waiting for
+     * a `kind: "handover"` (continue from tool execution) or
+     * `kind: "handover-skip"` (handler finished pure-text, exit
+     * cleanly). See `chat.handover` in `@trigger.dev/sdk/chat-server`.
+     */
+    | "handover-prepare";
+  messageId?: string;
+  metadata?: TMetadata;
+  /** Custom action payload when `trigger` is `"action"`. Validated against `actionSchema` on the backend. */
+  action?: unknown;
+  /** Whether this run is continuing an existing chat whose previous run ended. */
+  continuation?: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
+  /** Override idle timeout for this run (seconds). Set by transport.preload(). */
+  idleTimeoutInSeconds?: number;
+  /**
+   * The friendlyId of the Session primitive backing this chat. The
+   * transport opens (or lazy-creates) the session with
+   * `externalId = chatId` on first message, then sends this friendlyId
+   * through to the run so the agent can attach to `.in` / `.out`
+   * without needing to round-trip through the control plane again.
+   * Optional for backward-compat while the migration is in flight;
+   * required once the legacy run-scoped stream path is removed.
+   */
+  sessionId?: string;
+};
+
+/**
+ * One chunk on the chat input stream. `kind` discriminates the variants —
+ * a single ordered stream carries all the signals (`message`, `stop`,
+ * `handover`, `handover-skip`).
+ */
+export type ChatInputChunk<TMessage extends UIMessage = UIMessage, TMetadata = unknown> =
+  | {
+      kind: "message";
+      /** Full wire payload for a new user message or regeneration. */
+      payload: ChatTaskWirePayload<TMessage, TMetadata>;
+    }
+  | {
+      kind: "stop";
+      /** Optional human-readable reason. */
+      message?: string;
+    }
+  | {
+      /**
+       * Sent by `chat.headStart` when the customer's first-turn
+       * `streamText` finishes. The agent run (parked in
+       * `handover-prepare`) wakes, seeds its accumulators with
+       * `partialAssistantMessage`, and runs the normal turn loop.
+       * `isFinal: false` means step 1 ended in tool-calls (the agent
+       * executes them and continues); `isFinal: true` means step 1 was
+       * the complete response (the agent skips the LLM call).
+       */
+      kind: "handover";
+      /** Customer's step-1 response messages (ModelMessage form). */
+      partialAssistantMessage: ModelMessage[];
+      /**
+       * The UI messageId the customer's handler used for its step-1
+       * assistant message, reused so post-handover chunks merge into
+       * the SAME assistant message on the browser side.
+       */
+      messageId?: string;
+      isFinal: boolean;
+    }
+  | {
+      /**
+       * Sent by `chat.headStart` only when the customer's handler
+       * ABORTS before producing a finishReason. The agent run exits
+       * cleanly without firing turn hooks.
+       */
+      kind: "handover-skip";
+    };
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
 
 /**
