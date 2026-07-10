@@ -141,7 +141,9 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (!result.success) {
     const session = await getUserSession(request);
-    session.set("auth:error", {
+    // flash, not set: a set() key survives every later read/commit, so the
+    // error would reappear on each /login visit long after the failed attempt.
+    session.flash("auth:error", {
       message: "Please enter a valid email address.",
     });
 
@@ -191,7 +193,8 @@ export async function action({ request }: ActionFunctionArgs) {
               : "Failed sending magic link. Please try again shortly.";
 
           const session = await getUserSession(request);
-          session.set("auth:error", {
+          // flash, not set — same one-shot semantics as the validation error above.
+          session.flash("auth:error", {
             message: errorMessage,
           });
 
