@@ -19,6 +19,7 @@
     "i:dev": "infisical run -- turbo run dev",
     "generate": "turbo run generate",
     "format": "oxfmt .",
+    "format:prisma": "pnpm --filter @trigger.dev/database run format:prisma && pnpm --filter @internal/run-ops-database run format:prisma",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "docker": "node scripts/docker.mjs -f docker/docker-compose.yml up -d --build --remove-orphans",
