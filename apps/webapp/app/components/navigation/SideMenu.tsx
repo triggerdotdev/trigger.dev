@@ -196,17 +196,25 @@ const COLLAPSE_ANIM_MS = 200;
  */
 const LABEL_FADE_FRACTION = 0.6;
 /**
- * Where a release in the sub-default zone snaps. Measured from the default width: releasing within
- * the first `COLLAPSE_SNAP_THRESHOLD` of the (default → collapsed) range springs back to the
- * default width; releasing anywhere past it collapses. At 0.25 the first quarter re-opens and the
- * remaining three quarters collapse. Tweak to taste.
+ * Where a release in the sub-default zone snaps, measured as collapse progress (0 = default
+ * width, 1 = collapsed): release at progress <= threshold and the menu springs open, past it and
+ * it collapses. Each drag direction has its own threshold so letting go early usually continues
+ * the gesture: dragging closed only collapses once past the first quarter of the range, while
+ * dragging open re-opens once pulled just a tenth of the way out. Tweak to taste.
  */
 const COLLAPSE_SNAP_THRESHOLD = 0.25;
+const EXPAND_SNAP_THRESHOLD = 0.9;
 /** Pointer travel (px) below which a press on the handle counts as a click (toggle), not a drag. */
 const DRAG_CLICK_THRESHOLD = 4;
 
 /** Left/right padding of the pinned top section + scroll body, interpolated 10px → 4px by --sm-collapse. */
 const SIDE_MENU_PAD_X = `calc(0.625rem - 0.375rem * var(--sm-collapse, 0))`;
+/**
+ * Right padding of the scroll body, interpolated 0 → 4px by --sm-collapse: expanded, the reserved
+ * scrollbar gutter provides the right-side space; collapsed there is no gutter, so this keeps the
+ * rail buttons inset symmetrically (matching the left padding) instead of touching the edge.
+ */
+const SIDE_MENU_SCROLL_PAD_RIGHT = `calc(0.25rem * var(--sm-collapse, 0))`;
 /** Applied to every fading label so it tracks --sm-label-opacity (falls back to fully visible). */
 const SIDE_MENU_LABEL_STYLE = { opacity: "var(--sm-label-opacity, 1)" } as const;
 
@@ -492,6 +500,7 @@ export function SideMenu({
       const drag = {
         startX: e.clientX,
         startWidth: rootRef.current?.getBoundingClientRect().width ?? widthRef.current,
+        startedCollapsed: isCollapsedRef.current,
         didDrag: false,
       };
 
@@ -530,6 +539,11 @@ export function SideMenu({
         }
 
         const width = widthRef.current;
+        // A drag that started collapsed is an opening gesture, so its snap zone is flipped:
+        // releasing early continues opening rather than falling back to collapsed.
+        const snapThreshold = drag.startedCollapsed
+          ? EXPAND_SNAP_THRESHOLD
+          : COLLAPSE_SNAP_THRESHOLD;
         if (width >= DEFAULT_WIDTH) {
           // Rest at the dragged width.
           const rounded = Math.round(width);
@@ -538,7 +552,7 @@ export function SideMenu({
           setIsCollapsed(false);
           persistSideMenuPreferences({ isCollapsed: false, width: rounded });
           writeVisual(rounded, 0);
-        } else if (widthToProgress(width) <= COLLAPSE_SNAP_THRESHOLD) {
+        } else if (widthToProgress(width) <= snapThreshold) {
           // Released near the default width — spring back open.
           expandedWidthRef.current = DEFAULT_WIDTH;
           isCollapsedRef.current = false;
@@ -691,8 +705,8 @@ export function SideMenu({
           )}
         >
           <div
-            className="mb-6 flex w-full flex-col gap-4 overflow-hidden pr-0"
-            style={{ paddingLeft: SIDE_MENU_PAD_X }}
+            className="mb-6 flex w-full flex-col gap-4 overflow-hidden"
+            style={{ paddingLeft: SIDE_MENU_PAD_X, paddingRight: SIDE_MENU_SCROLL_PAD_RIGHT }}
           >
             <div className="w-full space-y-0">
               <SideMenuItem
@@ -963,15 +977,6 @@ export function SideMenu({
                 inactiveIconColor="text-text-dimmed"
                 to={v3ProjectSettingsIntegrationsPath(organization, project, environment)}
                 data-action="project-settings-integrations"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Project settings"
-                icon={SlidersIcon}
-                activeIconColor="text-text-bright"
-                inactiveIconColor="text-text-dimmed"
-                to={v3ProjectSettingsGeneralPath(organization, project, environment)}
-                data-action="project-settings-general"
                 isCollapsed={isCollapsed}
               />
             </SideMenuSection>
@@ -1887,8 +1892,7 @@ function ResizeHandle({
           >
             <div
               className={cn(
-                "pointer-events-none absolute inset-y-0 left-1/2 w-0.75 -translate-x-1/2 opacity-0 transition-opacity",
-                "bg-[linear-gradient(to_bottom,transparent,theme(colors.indigo.500)_10%,theme(colors.indigo.500)_90%,transparent)]",
+                "pointer-events-none absolute inset-y-0 left-1/2 w-0.75 -translate-x-1/2 bg-indigo-500 opacity-0 transition-opacity duration-300",
                 isDragging ? "opacity-100" : "group-hover/resize:opacity-100"
               )}
             />
