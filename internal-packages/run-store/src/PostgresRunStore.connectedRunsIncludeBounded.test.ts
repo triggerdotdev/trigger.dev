@@ -118,8 +118,8 @@ describe("PostgresRunStore.findWaitpoint — connectedRuns relation is bounded",
       expect(waitpoint).not.toBeNull();
       const connectedRuns = waitpoint!.connectedRuns;
 
-      // Bounded.
-      expect(connectedRuns.length).toBeLessThanOrEqual(CONNECTED_RUNS_LIMIT);
+      // Bounded to exactly the cap (fixture connects more real runs than the limit).
+      expect(connectedRuns).toHaveLength(CONNECTED_RUNS_LIMIT);
       // Never a dangling id — every returned run must be a REAL run.
       for (const run of connectedRuns) {
         expect(realRunIds).toContain(run.id);
