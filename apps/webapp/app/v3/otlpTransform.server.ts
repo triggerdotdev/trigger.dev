@@ -18,6 +18,48 @@ import type {
   CreateEventInput,
 } from "./eventRepository/eventRepository.types";
 
+// Filters mirror OTLPExporter's #filterResource* methods, minus the debug logging, so a
+// worker can run them without the server logger.
+export function filterResourceSpans(resourceSpans: ResourceSpans[]): ResourceSpans[] {
+  return resourceSpans.filter((resourceSpan) => {
+    const triggerAttribute = resourceSpan.resource?.attributes.find(
+      (attribute) => attribute.key === SemanticInternalAttributes.TRIGGER
+    );
+    const executionEnvironmentAttribute = resourceSpan.resource?.attributes.find(
+      (attribute) => attribute.key === SemanticInternalAttributes.EXECUTION_ENVIRONMENT
+    );
+
+    if (!triggerAttribute && !executionEnvironmentAttribute) return true;
+
+    const executionEnvironment = isStringValue(executionEnvironmentAttribute?.value)
+      ? executionEnvironmentAttribute.value.stringValue
+      : undefined;
+    if (executionEnvironment === "trigger") return true;
+
+    return isBoolValue(triggerAttribute?.value) ? triggerAttribute.value.boolValue : false;
+  });
+}
+
+export function filterResourceLogs(resourceLogs: ResourceLogs[]): ResourceLogs[] {
+  return resourceLogs.filter((resourceLog) => {
+    const attribute = resourceLog.resource?.attributes.find(
+      (attribute) => attribute.key === SemanticInternalAttributes.TRIGGER
+    );
+    if (!attribute) return false;
+    return isBoolValue(attribute.value) ? attribute.value.boolValue : false;
+  });
+}
+
+export function filterResourceMetrics(resourceMetrics: ResourceMetrics[]): ResourceMetrics[] {
+  return resourceMetrics.filter((rm) => {
+    const triggerAttribute = rm.resource?.attributes.find(
+      (attribute) => attribute.key === SemanticInternalAttributes.TRIGGER
+    );
+    if (!triggerAttribute) return false;
+    return isBoolValue(triggerAttribute.value) ? triggerAttribute.value.boolValue : false;
+  });
+}
+
 export function convertLogsToCreateableEvents(
   resourceLog: ResourceLogs,
   spanAttributeValueLengthLimit: number,

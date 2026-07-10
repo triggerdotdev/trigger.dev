@@ -30,6 +30,18 @@ import {
   isBoolValue,
   isStringValue,
 } from "./otlpTransform.server";
+import os from "node:os";
+import { getOtlpWorkerPool } from "./otlpWorkerPool.server";
+import { llmPricingRegistry } from "./llmPricingRegistry.server";
+
+// When enabled, decode+convert+enrich run in a worker pool; the main thread keeps the single
+// consolidated insert path (batching/part-count unchanged). Off = today's single-thread path.
+export const otlpTransformWorkerPoolEnabled =
+  process.env.OTEL_TRANSFORM_WORKER_POOL_ENABLED === "1";
+
+const OTEL_TRANSFORM_WORKER_POOL_SIZE = process.env.OTEL_TRANSFORM_WORKER_POOL_SIZE
+  ? parseInt(process.env.OTEL_TRANSFORM_WORKER_POOL_SIZE, 10)
+  : Math.max(1, (os.cpus()?.length ?? 2) - 2);
 
 type OTLPExporterConfig = {
   clickhouseFactory: ClickhouseFactory;
@@ -110,10 +122,55 @@ class OTLPExporter {
     });
   }
 
-  async #exportEvents(
-    eventsWithStores: { events: Array<CreateEventInput>; taskEventStore: string }[]
-  ) {
+  async exportTracesRaw(payload: Uint8Array): Promise<void> {
+    await this.#exportRawEvents("traces", payload);
+  }
+
+  async exportLogsRaw(payload: Uint8Array): Promise<void> {
+    await this.#exportRawEvents("logs", payload);
+  }
+
+  async exportMetricsRaw(payload: Uint8Array): Promise<void> {
+    await startSpan(this._tracer, "exportMetricsRaw", async (span) => {
+      const pool = await this.#pool();
+      const { rows } = await pool.runTransform("metrics", payload, this.#transformConfig());
+      span.setAttribute("metric_row_count", rows.length);
+      if (rows.length > 0) {
+        await this.#exportMetricRows(rows);
+      }
+    });
+  }
+
+  async #exportRawEvents(kind: "traces" | "logs", payload: Uint8Array): Promise<void> {
+    await startSpan(this._tracer, kind === "traces" ? "exportTracesRaw" : "exportLogsRaw", async (span) => {
+      const pool = await this.#pool();
+      const { eventsWithStores } = await pool.runTransform(kind, payload, this.#transformConfig());
+      const eventCount = await this.#exportEvents(eventsWithStores, true);
+      span.setAttribute("event_count", eventCount);
+    });
+  }
+
+  #transformConfig() {
+    return {
+      spanAttributeValueLengthLimit: this._spanAttributeValueLengthLimit,
+      defaultEventStore: env.EVENT_REPOSITORY_DEFAULT_STORE,
+    };
+  }
+
+  async #pool() {
     await waitForLlmPricingReady();
+    const models =
+      llmPricingRegistry && llmPricingRegistry.isLoaded ? llmPricingRegistry.toSerializable() : [];
+    return getOtlpWorkerPool(OTEL_TRANSFORM_WORKER_POOL_SIZE, models);
+  }
+
+  async #exportEvents(
+    eventsWithStores: { events: Array<CreateEventInput>; taskEventStore: string }[],
+    alreadyEnriched = false
+  ) {
+    if (!alreadyEnriched) {
+      await waitForLlmPricingReady();
+    }
 
     // Group by unique event repositories
     const routeCache = new Map<string, { key: string; repository: IEventRepository }>();
@@ -150,7 +207,7 @@ class OTLPExporter {
     let eventCount = 0;
 
     for (const [repoKey, { repository, events }] of groups) {
-      const enrichedEvents = enrichCreatableEvents(events);
+      const enrichedEvents = alreadyEnriched ? events : enrichCreatableEvents(events);
 
       this.#logEventsVerbose(enrichedEvents, `exportEvents ${repoKey}`);
 
