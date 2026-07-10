@@ -151,7 +151,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
         organizationId: params.data.organizationId,
         userId,
       });
-      throw await redirectWithErrorMessage("/", request, "Organization not found. Please try again.");
+      throw await redirectWithErrorMessage(
+        "/",
+        request,
+        "Organization not found. Please try again."
+      );
     }
 
     return typedjson({
