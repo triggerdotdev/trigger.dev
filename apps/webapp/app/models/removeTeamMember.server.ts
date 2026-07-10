@@ -45,10 +45,7 @@ export async function removeTeamMember(
 
       const memberCount = await tx.orgMember.count({ where: { organizationId: org.id } });
       if (memberCount <= 1) {
-        throw new ServiceValidationError(
-          "Cannot remove the last member of an organization",
-          400
-        );
+        throw new ServiceValidationError("Cannot remove the last member of an organization", 400);
       }
 
       await tx.orgMember.delete({ where: { id: target.id } });

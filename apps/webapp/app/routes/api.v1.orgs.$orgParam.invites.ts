@@ -86,9 +86,7 @@ export const action = createActionPATApiRoute(
     // re-invite. 201 when something was created, 200 when everything already
     // existed.
     const createdEmails = new Set(created.map((invite) => invite.email));
-    const alreadyInvited = [...new Set(body.emails)].filter(
-      (email) => !createdEmails.has(email)
-    );
+    const alreadyInvited = [...new Set(body.emails)].filter((email) => !createdEmails.has(email));
 
     return json(
       {

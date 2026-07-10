@@ -184,5 +184,4 @@ describe("removeTeamMember", () => {
       expect(stillThere).not.toBeNull();
     }
   );
-
 });
