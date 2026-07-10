@@ -19,11 +19,12 @@ type CallCounts = { findMany: number; findFirst: number };
 function countingClient(
   real: RunOpsPrismaClient,
   delegateNames: string[]
-): { client: RunOpsPrismaClient; counts: Record<string, CallCounts> } {
+): { client: RunOpsPrismaClient; counts: Record<string, CallCounts>; queryRaw: { count: number } } {
   const counts: Record<string, CallCounts> = {};
   for (const name of delegateNames) {
     counts[name] = { findMany: 0, findFirst: 0 };
   }
+  const queryRaw = { count: 0 };
   const wrapped = new Map(
     delegateNames.map((name) => [
       name,
@@ -42,10 +43,17 @@ function countingClient(
       if (typeof prop === "string" && wrapped.has(prop)) {
         return wrapped.get(prop);
       }
+      // Tally the grouped raw query the bounded connectedRuns hydrator issues, delegating unchanged.
+      if (prop === "$queryRaw") {
+        return (...args: unknown[]) => {
+          queryRaw.count++;
+          return (target as any).$queryRaw(...args);
+        };
+      }
       return (target as any)[prop];
     },
   }) as RunOpsPrismaClient;
-  return { client, counts };
+  return { client, counts, queryRaw };
 }
 
 function seedEnvironmentDedicated(suffix: string) {
@@ -219,8 +227,11 @@ describe("PostgresRunStore dedicated relation hydrators — grouped batch reads"
         expect(connected[0].id).toBe(runIds[i]);
       }
 
-      // GROUPED: one join query + one target query for the WHOLE batch, never one pair per parent.
-      expect(counting.counts.waitpointRunConnection.findMany).toBe(1);
+      // GROUPED: one bounded join query (raw, ROW_NUMBER-per-parent) + one target query for the
+      // WHOLE batch, never one pair per parent. The bounded hydrator replaces the delegate
+      // `waitpointRunConnection.findMany` with a single `$queryRaw`.
+      expect(counting.queryRaw.count).toBe(1);
+      expect(counting.counts.waitpointRunConnection.findMany).toBe(0);
       expect(counting.counts.taskRun.findMany).toBe(1);
       expect(counting.counts.taskRun.findFirst).toBe(0);
     }

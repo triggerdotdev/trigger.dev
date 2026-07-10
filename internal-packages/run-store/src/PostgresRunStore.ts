@@ -336,16 +336,47 @@ const hydrateBlockingTaskRuns: DedicatedRelationHydrator = async (client, parent
   return byParent;
 };
 
-// Display connections for a waitpoint: WaitpointRunConnection → TaskRun rows.
-const hydrateConnectedRuns: DedicatedRelationHydrator = async (client, parents, projection) =>
-  batchHydrateJoinRelation(
-    client.waitpointRunConnection,
-    client.taskRun,
-    parents.map((p) => p.id as string),
-    "waitpointId",
-    "taskRunId",
-    projection
-  );
+// Display connections for a waitpoint: WaitpointRunConnection → TaskRun rows. Bounded per parent to
+// CONNECTED_RUNS_LIMIT via a window function + existence-JOIN to TaskRun, mirroring the id-list
+// helper findWaitpointConnectedRunIds: a dangling (run-less) connection row never occupies a LIMIT
+// slot, and a heavily-fanned-in waitpoint never hydrates an unbounded connectedRuns list. This is
+// the DISPLAY relation only — functional blocking reads (hydrateBlockingTaskRuns) stay uncapped.
+const hydrateConnectedRuns: DedicatedRelationHydrator = async (client, parents, projection) => {
+  const parentIds = parents.map((p) => p.id as string);
+  const byParent = new Map<string, unknown[]>(parentIds.map((id) => [id, []]));
+  if (parentIds.length === 0) {
+    return byParent;
+  }
+  // One grouped query for the bounded edges across every parent: ROW_NUMBER partitioned per
+  // waitpoint keeps at most CONNECTED_RUNS_LIMIT rows per parent (uses @@index([waitpointId])).
+  const links = (await client.$queryRaw`
+    SELECT ranked."waitpointId" AS "waitpointId", ranked."taskRunId" AS "taskRunId"
+    FROM (
+      SELECT c."waitpointId", c."taskRunId",
+        ROW_NUMBER() OVER (PARTITION BY c."waitpointId" ORDER BY c."id") AS rn
+      FROM "WaitpointRunConnection" c
+      JOIN "TaskRun" t ON t."id" = c."taskRunId"
+      WHERE c."waitpointId" = ANY(${parentIds}::text[])
+    ) ranked
+    WHERE ranked.rn <= ${CONNECTED_RUNS_LIMIT}
+  `) as { waitpointId: string; taskRunId: string }[];
+  if (links.length === 0) {
+    return byParent;
+  }
+  const targetIds = [...new Set(links.map((l) => l.taskRunId))];
+  const rows = (await client.taskRun.findMany(
+    targetFindManyArgs({ id: { in: targetIds } }, projection, ["id"])
+  )) as Record<string, unknown>[];
+  const byTargetId = new Map(rows.map((r) => [r.id as string, r]));
+  for (const link of links) {
+    const target = byTargetId.get(link.taskRunId);
+    const bucket = byParent.get(link.waitpointId);
+    if (target && bucket) {
+      bucket.push(applyProjection(target, projection));
+    }
+  }
+  return byParent;
+};
 
 // Snapshots that completed a waitpoint: CompletedWaitpoint join → TaskRunExecutionSnapshot rows.
 const hydrateCompletedExecutionSnapshots: DedicatedRelationHydrator = async (
