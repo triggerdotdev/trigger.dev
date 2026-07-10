@@ -58,6 +58,21 @@ export function resolveMintFlag(
   return readMintResolution(globalFlags);
 }
 
+// Picks the flag record that currently determines an org's effective mint kind: the per-org
+// override blob when it sets runOpsMintKind, otherwise the global FeatureFlag rows. Same source
+// resolveMintFlag() reads, but returned as a record so it can seed stampMintKindFlip's baseline
+// (storedKind for flip-detection, prev on a genuine flip, and stamp carry-forward). This makes an
+// org's first per-org override stamp against the effective GLOBAL kind, not the default "cuid".
+export function selectMintBaselineSource(
+  perOrgOverrides: Record<string, unknown> | null | undefined,
+  globalFlags: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
+  if (readMintKind(perOrgOverrides ?? {}, "runOpsMintKind") !== undefined) {
+    return perOrgOverrides ?? {};
+  }
+  return globalFlags ?? {};
+}
+
 function resolveEffectiveFromFlags(
   flags: Record<string, unknown> | null | undefined,
   nowMs: number,

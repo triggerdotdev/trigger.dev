@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   effectiveMintKind,
+  readMintResolution,
   resolveMintFlag,
+  selectMintBaselineSource,
   stampMintKindFlip,
   type MintFlagResolution,
 } from "./mintFlipGrace";
@@ -227,5 +229,94 @@ describe("resolveMintFlag", () => {
       prev: undefined,
       flippedAtMs: undefined,
     });
+  });
+});
+
+// #3b: an org's FIRST per-org runOpsMintKind override must be stamped against the currently
+// EFFECTIVE kind — the global FeatureFlag resolution when the org has no override yet — not the
+// hardcoded default "cuid". selectMintBaselineSource picks that same source (per-org blob if it
+// sets runOpsMintKind, else the global rows) so stampMintKindFlip's baseline (storedKind +
+// prev + carry-forward) is correct.
+describe("selectMintBaselineSource", () => {
+  it("returns the per-org blob when it sets runOpsMintKind (override owns the baseline)", () => {
+    const perOrg = { runOpsMintKind: "cuid" };
+    const global = { runOpsMintKind: "runOpsId" };
+    expect(selectMintBaselineSource(perOrg, global)).toBe(perOrg);
+  });
+
+  it("falls back to the global rows when the org has no runOpsMintKind override", () => {
+    const perOrg = { someOtherFlag: true };
+    const global = { runOpsMintKind: "runOpsId" };
+    expect(selectMintBaselineSource(perOrg, global)).toBe(global);
+  });
+
+  it("returns an empty record when neither source sets a kind", () => {
+    expect(selectMintBaselineSource(null, null)).toEqual({});
+    expect(selectMintBaselineSource({ someOtherFlag: true }, null)).toEqual({});
+  });
+});
+
+describe("first per-org override stamps prev against the effective GLOBAL kind (#3b)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("global=runOpsId, org's FIRST override -> cuid: genuine flip, prev=runOpsId, graced", () => {
+    const globalFlags = { runOpsMintKind: "runOpsId" };
+    const orgExisting = {}; // no per-org override yet
+    const outgoing = { runOpsMintKind: "cuid" };
+    const result = stampMintKindFlip(
+      selectMintBaselineSource(orgExisting, globalFlags),
+      outgoing,
+      T,
+      GRACE_MS
+    );
+
+    expect(result.runOpsMintKind).toBe("cuid");
+    // Previously stamped prev="cuid" (the hardcoded default) OR skipped the flip entirely; must
+    // now be "runOpsId" (the effective global kind) so the org serves it through the grace window.
+    expect(result.runOpsMintKindPrev).toBe("runOpsId");
+    expect(result.runOpsMintKindFlippedAt).toBe(new Date(T).toISOString());
+
+    const resolution = readMintResolution(result);
+    expect(effectiveMintKind(resolution, T + GRACE_MS - 1, GRACE_MS)).toBe("runOpsId");
+    expect(effectiveMintKind(resolution, T + GRACE_MS, GRACE_MS)).toBe("cuid");
+  });
+
+  it("global=runOpsId, org's FIRST override -> runOpsId (redundant): NOT a spurious flip, no phantom regression to cuid", () => {
+    const globalFlags = { runOpsMintKind: "runOpsId" };
+    const orgExisting = {};
+    const outgoing = { runOpsMintKind: "runOpsId" };
+    const result = stampMintKindFlip(
+      selectMintBaselineSource(orgExisting, globalFlags),
+      outgoing,
+      T,
+      GRACE_MS
+    );
+
+    expect(result.runOpsMintKind).toBe("runOpsId");
+    // Previously: storedKind defaulted to "cuid", so this looked like a genuine flip and stamped
+    // prev="cuid" — making the org serve cuid during a phantom grace window (a regression).
+    expect(result.runOpsMintKindPrev).toBeUndefined();
+    expect(result.runOpsMintKindFlippedAt).toBeUndefined();
+  });
+
+  it("mid-grace global flip carried into a redundant org override keeps the global stamp", () => {
+    const globalFlags = {
+      runOpsMintKind: "runOpsId",
+      runOpsMintKindPrev: "cuid",
+      runOpsMintKindFlippedAt: new Date(T).toISOString(),
+    };
+    const orgExisting = {};
+    const outgoing = { runOpsMintKind: "runOpsId" };
+    const result = stampMintKindFlip(
+      selectMintBaselineSource(orgExisting, globalFlags),
+      outgoing,
+      T + 10_000,
+      GRACE_MS
+    );
+
+    expect(result.runOpsMintKind).toBe("runOpsId");
+    expect(result.runOpsMintKindPrev).toBe("cuid");
+    expect(result.runOpsMintKindFlippedAt).toBe(new Date(T).toISOString());
   });
 });
