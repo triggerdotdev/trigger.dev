@@ -30,6 +30,11 @@ Refresh the side menu and account UI:
 - Restyle the "Shortcuts" and "Contact us…" entries in the Help & Feedback
   popover to match the other menu items (icon size/alignment, dimmed text, text
   size).
+- Make the main side menu resizable: drag its right edge to set a custom width
+  (remembered per user), with the labels, headers, and padding transitioning in
+  real time and a snap to open or collapsed when released below the default
+  width. Clicking the edge toggles the menu and a tooltip explains both
+  gestures.
 
 The org loader now exposes whether the RBAC and SSO plugins are installed so the
 side menu can gate the Roles and SSO items the same way the settings side menu

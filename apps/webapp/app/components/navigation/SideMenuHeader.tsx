@@ -40,15 +40,9 @@ export function SideMenuHeader({
       <h2 className="text-xs whitespace-nowrap">
         {visiblePart}
         {fadingPart && (
-          <motion.span
-            initial={false}
-            animate={{
-              opacity: isCollapsed ? 0 : 1,
-            }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
-          >
-            {fadingPart}
-          </motion.span>
+          // Driven by the resizable SideMenu's `--sm-label-opacity` variable so "Project" morphs to
+          // "Proj" in real time as the menu is dragged narrower. Unset elsewhere → falls back to 1.
+          <span style={{ opacity: "var(--sm-label-opacity, 1)" }}>{fadingPart}</span>
         )}
       </h2>
       {children !== undefined ? (

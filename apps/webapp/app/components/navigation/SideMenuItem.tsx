@@ -82,37 +82,40 @@ export function SideMenuItem({
         )}
       />
       <motion.div
-        className="flex min-w-0 flex-1 items-center justify-between overflow-hidden"
+        className="min-w-0 flex-1 overflow-hidden"
         initial={false}
         animate={{
           width: isCollapsed ? 0 : "auto",
-          opacity: isCollapsed ? 0 : 1,
         }}
         transition={{ duration: 0.2, ease: "easeOut" }}
       >
-        <span
-          className={cn(
-            "select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]",
-            nameClassName
-          )}
+        {/*
+          Label opacity is driven by the side menu's `--sm-label-opacity` variable so it can
+          fade in real time as the menu is dragged narrower. The variable is only set inside the
+          resizable SideMenu; elsewhere it is unset and falls back to 1 (fully visible).
+        */}
+        <div
+          className="flex w-full min-w-0 items-center justify-between"
+          style={{ opacity: "var(--sm-label-opacity, 1)" }}
         >
-          {name}
-        </span>
-        {badge && !isCollapsed && (
-          <motion.div
-            className="ml-1 flex shrink-0 items-center gap-1"
-            initial={false}
-            animate={{
-              opacity: 1,
-            }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+          <span
+            className={cn(
+              "select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]",
+              nameClassName
+            )}
           >
-            {badge}
-          </motion.div>
-        )}
-        {trailingIcon && !isCollapsed && (
-          <Icon icon={trailingIcon} className={cn("ml-1 size-4 shrink-0", trailingIconClassName)} />
-        )}
+            {name}
+          </span>
+          {badge && !isCollapsed && (
+            <div className="ml-1 flex shrink-0 items-center gap-1">{badge}</div>
+          )}
+          {trailingIcon && !isCollapsed && (
+            <Icon
+              icon={trailingIcon}
+              className={cn("ml-1 size-4 shrink-0", trailingIconClassName)}
+            />
+          )}
+        </div>
       </motion.div>
     </Link>
   );
@@ -140,11 +143,14 @@ export function SideMenuItem({
           disableHoverableContent
         />
         {!isCollapsed && (
+          // Fades with the labels via the resizable SideMenu's `--sm-label-opacity` variable
+          // (falls back to fully visible when the variable is unset).
           <div
             className={cn(
               "absolute bottom-1 right-1 top-1 flex aspect-square items-center justify-center rounded",
               isActive ? "group-hover/menuitem:bg-tertiary" : "group-hover/menuitem:bg-charcoal-750"
             )}
+            style={{ opacity: "var(--sm-label-opacity, 1)" }}
           >
             {action}
           </div>

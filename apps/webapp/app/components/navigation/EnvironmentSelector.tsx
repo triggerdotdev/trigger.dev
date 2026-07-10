@@ -83,11 +83,18 @@ export function EnvironmentSelector({
                   isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
                 )}
               >
-                <EnvironmentLabel
-                  environment={environment}
-                  className="text-[0.90625rem] font-medium tracking-[-0.01em]"
-                  disableTooltip
-                />
+                {/*
+                  Inner opacity is driven by the resizable SideMenu's `--sm-label-opacity`
+                  variable so the label fades as the menu is dragged narrower. Unset in the other
+                  places this selector is used (blank-state panels, Limits page) → falls back to 1.
+                */}
+                <span className="flex min-w-0" style={{ opacity: "var(--sm-label-opacity, 1)" }}>
+                  <EnvironmentLabel
+                    environment={environment}
+                    className="text-[0.90625rem] font-medium tracking-[-0.01em]"
+                    disableTooltip
+                  />
+                </span>
               </span>
             </span>
             <span
