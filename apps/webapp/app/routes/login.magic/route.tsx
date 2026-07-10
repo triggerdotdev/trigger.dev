@@ -34,6 +34,7 @@ import { ssoRedirectForEmail } from "~/services/ssoAutoDiscovery.server";
 import { logger, tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
+import { magicLinkEmailCookie } from "./magicLinkEmailCookie.server";
 
 export const meta: MetaFunction = ({ matches }) => {
   const parentMeta = matches
@@ -73,14 +74,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // confirmation renders the flashed error as magicLinkError below.
   const url = new URL(request.url);
   const sanitized = sanitizeRedirectPath(url.searchParams.get("redirectTo"));
-  // The email-link strategy stores the submitted address in the session
-  // (`auth:email`) alongside the magic-link key, so read it from there to name
-  // the confirmation — no address in the URL, and no separate cookie to leak
-  // into the client bundle. Validate before echoing it back.
-  const emailValue = session.get("auth:email");
+  // The submitted address is carried in a short-lived cookie (not the URL) so
+  // the confirmation can name it. Validate before echoing it back.
+  const emailCookie = await magicLinkEmailCookie.parse(request.headers.get("Cookie"));
   const email =
-    typeof emailValue === "string" && z.string().email().safeParse(emailValue).success
-      ? emailValue
+    typeof emailCookie === "string" && z.string().email().safeParse(emailCookie).success
+      ? emailCookie
       : null;
   if (!session.has("triggerdotdev:magiclink")) {
     // Throw (not return) so the redirect doesn't widen the loader's return
@@ -216,13 +215,20 @@ export async function action({ request }: ActionFunctionArgs) {
         return redirect(ssoRedirect);
       }
 
-      // The email-link strategy stores the address in the session (`auth:email`)
-      // and throws its own redirect Response (with the committed session cookie),
-      // so return it directly — the confirmation reads the email from the session.
-      return await authenticator.authenticate("email-link", request, {
-        successRedirect: "/login/magic",
-        failureRedirect: "/login",
-      });
+      // authenticator.authenticate throws its redirect Response; attach the
+      // sent-to email as a short-lived cookie so the confirmation can name it
+      // without putting the address in the URL.
+      try {
+        return await authenticator.authenticate("email-link", request, {
+          successRedirect: "/login/magic",
+          failureRedirect: "/login",
+        });
+      } catch (thrown) {
+        if (thrown instanceof Response) {
+          thrown.headers.append("Set-Cookie", await magicLinkEmailCookie.serialize(email));
+        }
+        throw thrown;
+      }
     }
     case "reset":
     default: {
@@ -254,7 +260,7 @@ export default function LoginMagicLinkPage() {
           </Header1>
           <Fieldset className="flex w-full flex-col items-center gap-y-2">
             <InboxArrowDownIcon className="mb-4 h-12 w-12 text-indigo-500" />
-            <Paragraph className="mb-6 text-center">
+            <Paragraph className="mb-6 text-center [text-wrap:balance]">
               {email ? (
                 <>
                   We emailed a magic link to <span className="text-text-bright">{email}</span> to
