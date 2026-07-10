@@ -263,7 +263,7 @@ export default function LoginMagicLinkPage() {
           </Header1>
           <Fieldset className="flex w-full flex-col items-center gap-y-2">
             <InboxArrowDownIcon className="mb-4 h-12 w-12 text-indigo-500" />
-            <Paragraph className="mb-6 text-center [text-wrap:balance]">
+            <Paragraph className="mb-6 text-center">
               {email ? (
                 <>
                   We emailed a magic link to <span className="text-text-bright">{email}</span> to
