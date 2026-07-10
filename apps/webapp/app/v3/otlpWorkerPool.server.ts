@@ -133,6 +133,10 @@ export class OtlpWorkerPool {
     for (const worker of this.workers) {
       worker.postMessage({ type: "pricing", models });
     }
+    logger.info("OtlpWorkerPool broadcast pricing", {
+      models: models.length,
+      workers: this.workers.length,
+    });
   }
 
   get queueDepth() {

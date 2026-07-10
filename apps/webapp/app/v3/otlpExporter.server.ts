@@ -32,7 +32,7 @@ import {
 } from "./otlpTransform.server";
 import os from "node:os";
 import { getOtlpWorkerPool } from "./otlpWorkerPool.server";
-import { llmPricingRegistry } from "./llmPricingRegistry.server";
+import { llmPricingRegistry, subscribeToPricingReload } from "./llmPricingRegistry.server";
 
 // When enabled, decode+convert+enrich run in a worker pool; the main thread keeps the single
 // consolidated insert path (batching/part-count unchanged). Off = today's single-thread path.
@@ -54,6 +54,7 @@ class OTLPExporter {
   private readonly _clickhouseFactory: ClickhouseFactory;
   private readonly _verbose: boolean;
   private readonly _spanAttributeValueLengthLimit: number;
+  #pricingSubscribed = false;
 
   constructor(config: OTLPExporterConfig) {
     this._tracer = trace.getTracer("otlp-exporter");
@@ -161,7 +162,13 @@ class OTLPExporter {
     await waitForLlmPricingReady();
     const models =
       llmPricingRegistry && llmPricingRegistry.isLoaded ? llmPricingRegistry.toSerializable() : [];
-    return getOtlpWorkerPool(OTEL_TRANSFORM_WORKER_POOL_SIZE, models);
+    const pool = getOtlpWorkerPool(OTEL_TRANSFORM_WORKER_POOL_SIZE, models);
+    if (!this.#pricingSubscribed) {
+      this.#pricingSubscribed = true;
+      // Re-broadcast pricing to workers on every registry reload so their cost math stays fresh.
+      subscribeToPricingReload((updated) => pool.broadcastPricing(updated));
+    }
+    return pool;
   }
 
   async #exportEvents(
