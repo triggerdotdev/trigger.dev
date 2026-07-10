@@ -430,6 +430,23 @@ export type RbacPluginConfig = {
   // Platform secret the host signs user-actor tokens with; the plugin uses
   // it to verify them in `authenticateUserActor`. Omitted → UAT auth 401s.
   userActorSecret?: string;
+  // Database connections for a plugin that owns its own client. The host
+  // resolves the URLs from its env so the plugin follows the same
+  // writer/replica topology the host uses. Omitted → the plugin falls back
+  // to its own defaults.
+  database?: RbacDatabaseConfig;
+};
+
+export type RbacDatabaseConfig = {
+  // Primary (writer) connection URL. Mutations and read-your-writes
+  // management reads run here.
+  writerUrl: string;
+  // Read-replica URL for the per-request auth reads. Omitted → those reads
+  // share the writer connection.
+  readerUrl?: string;
+  // Per-process pool sizes. Omitted → plugin defaults (writer 2, reader 5).
+  writerConnectionLimit?: number;
+  readerConnectionLimit?: number;
 };
 
 export interface RoleBasedAccessControlPlugin {

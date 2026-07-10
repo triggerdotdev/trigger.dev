@@ -16,6 +16,7 @@ export type {
   UserActorAuthResult,
   UserActorClaims,
   RbacPluginConfig,
+  RbacDatabaseConfig,
   SystemRole,
   AuthenticatedEnvironment,
 } from "./rbac.js";
