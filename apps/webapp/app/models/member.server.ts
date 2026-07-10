@@ -1,12 +1,11 @@
 import type { Organization, OrgMember, Project } from "@trigger.dev/database";
-import { Prisma as PrismaNamespace, type Prisma, prisma, $transaction } from "~/db.server";
+import { Prisma as PrismaNamespace, type Prisma, prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { logger } from "~/services/logger.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
-import { ServiceValidationError } from "~/v3/services/common.server";
 
 export const INVITE_NOT_FOUND = "Invite not found";
 export const INVITE_BLOCKED_DIRECTORY_MANAGED =

@@ -1,7 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { removeTeamMember } from "~/models/member.server";
+import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { resolveOrganizationForApiUser } from "~/services/organizationApiAccess.server";
 import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ssoController } from "~/services/sso.server";
@@ -44,14 +44,17 @@ export const action = createActionPATApiRoute(
       return json({ error: "Membership is managed by Directory Sync" }, { status: 403 });
     }
 
-    // removeTeamMember enforces the last-member guard and throws
-    // ServiceValidationError (member-not-found / last-member), which the
-    // builder maps to its status.
-    const removed = await removeTeamMember({
-      userId: authentication.userId,
-      slug: organization.slug,
-      memberId: params.memberId,
-    });
+    // Org-scoped, TOCTOU-safe delete shared with the dashboard Team page. The
+    // model throws ServiceValidationError (member-not-found 404, last-member
+    // guard 400), which the builder maps to the response status.
+    const removed = await removeTeamMember(
+      {
+        userId: authentication.userId,
+        slug: organization.slug,
+        memberId: params.memberId,
+      },
+      prisma
+    );
 
     // Sticky removal: record a tombstone so passive SSO-JIT won't re-add them
     // (best-effort; no-op without the SSO plugin).
