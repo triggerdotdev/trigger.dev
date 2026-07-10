@@ -374,6 +374,8 @@ const EnvironmentSchema = z
 
     // Master switch for the native realtime backend; off = Electric serves everything, publishes no-op.
     REALTIME_BACKEND_NATIVE_ENABLED: z.string().default("0"),
+    // Default backend when an org has no `realtimeBackend` override and no global flag row is set.
+    REALTIME_BACKEND_DEFAULT: z.enum(["electric", "native", "shadow"]).default("electric"),
     // Live long-poll backstop hold (ms); matches Electric's ~20s cadence.
     REALTIME_BACKEND_NATIVE_LIVE_POLL_TIMEOUT_MS: z.coerce.number().int().default(20_000),
     // Jitter ratio on the live-poll hold (0.15 = ±15%) to avoid synchronized refetch herds.
