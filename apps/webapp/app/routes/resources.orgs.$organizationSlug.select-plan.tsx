@@ -156,21 +156,22 @@ export const action = dashboardAction(
 
     const result = await setPlan(organization, request, form.callerPath, payload, {
       invalidateBillingCache: engine.invalidateBillingCache.bind(engine),
-    });
-
-    // Redeem a promo code carried from the /promo landing page now that selecting
-    // a plan has provisioned the org's usage entitlement (the grant target).
-    // Best-effort: it must never change the plan-selection outcome.
-    if (form.type === "free") {
-      const promoCode = await getPromoCodeFromCookie(request);
-      if (promoCode) {
+      // Redeem a promo code carried from the /promo landing page. This runs only
+      // once the Free plan has actually been provisioned (the grant target), so a
+      // failed plan change never burns the one-time code. Best-effort: it must
+      // never change the plan-selection outcome.
+      onFreePlanProvisioned: async (response) => {
+        const promoCode = await getPromoCodeFromCookie(request);
+        if (!promoCode) {
+          return;
+        }
         const applied = await applyPromoCode(organization.id, user.id, promoCode);
         if (applied?.applied) {
           bustPromoCreditsCache(organization.id);
-          result.headers.append("Set-Cookie", await clearPromoCodeCookie());
+          response.headers.append("Set-Cookie", await clearPromoCodeCookie());
         }
-      }
-    }
+      },
+    });
 
     return result;
   }

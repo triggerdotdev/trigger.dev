@@ -500,7 +500,15 @@ export async function setPlan(
   request: Request,
   callerPath: string,
   plan: SetPlanBody,
-  opts?: { invalidateBillingCache?: (orgId: string) => void }
+  opts?: {
+    invalidateBillingCache?: (orgId: string) => void;
+    // Runs only after the Free plan has actually been provisioned, with the
+    // redirect it will return — the single success path where side effects that
+    // depend on a working free-plan entitlement (e.g. redeeming a promo code)
+    // are safe. It never fires on an error path, so callers can't act on a
+    // plan change that didn't happen.
+    onFreePlanProvisioned?: (response: Response) => void | Promise<void>;
+  }
 ) {
   if (!client) {
     return redirectWithErrorMessage(callerPath, request, "Error setting plan", {
@@ -530,7 +538,9 @@ export async function setPlan(
       // Selecting Free provisions the plan directly, so any free result is a success.
       opts?.invalidateBillingCache?.(organization.id);
       platformCache.entitlement.remove(organization.id).catch(() => {});
-      return redirect(newProjectPath(organization, "You're on the Free plan."));
+      const response = redirect(newProjectPath(organization, "You're on the Free plan."));
+      await opts?.onFreePlanProvisioned?.(response);
+      return response;
     }
     case "create_subscription_flow_start": {
       return redirect(result.checkoutUrl);
