@@ -119,10 +119,14 @@ export async function inviteMembers({
     skipDuplicates: true,
   });
 
+  // Return the invite for each submitted email scoped to the org, NOT to the
+  // current inviter: with skipDuplicates an email already invited by someone
+  // else is skipped, and filtering by inviterId here would drop it from the
+  // result — leaving the caller with a misleading empty list for an email that
+  // is in fact invited.
   return await prisma.orgMemberInvite.findMany({
     where: {
       organizationId: org.id,
-      inviterId: userId,
       email: {
         in: emails,
       },

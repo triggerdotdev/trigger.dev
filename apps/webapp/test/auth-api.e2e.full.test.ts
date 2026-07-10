@@ -3073,6 +3073,40 @@ describe("API", () => {
       expect(second.status).toBe(201);
       expect(second.status).not.toBe(500);
     });
+
+    it("re-inviting an email another org member already invited still returns it", async () => {
+      const server = getTestServer();
+      const { organization, pat } = await seedTestUserProject(server.prisma);
+
+      // A different user invited this email first; skipDuplicates will skip the
+      // re-insert, so the response must still surface the existing invite rather
+      // than an empty list scoped to the current caller.
+      const otherUser = await server.prisma.user.create({
+        data: {
+          email: `other_${organization.id}@example.com`,
+          authenticationMethod: "MAGIC_LINK",
+        },
+      });
+      const sharedEmail = `shared_${organization.id}@example.com`;
+      await server.prisma.orgMemberInvite.create({
+        data: {
+          email: sharedEmail,
+          token: `tok_${Math.random().toString(36).slice(2)}`,
+          organizationId: organization.id,
+          inviterId: otherUser.id,
+          role: "MEMBER",
+        },
+      });
+
+      const res = await server.webapp.fetch(`/api/v1/orgs/${organization.id}/invites`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: [sharedEmail] }),
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { invites: { email: string }[] };
+      expect(body.invites.map((i) => i.email)).toContain(sharedEmail);
+    });
   });
 
   // Org creation via the management API is gated behind
