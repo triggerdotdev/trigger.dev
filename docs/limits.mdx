@@ -104,7 +104,11 @@ Additional bundles are available for $10/month per 100 concurrent connections. C
 | Batch trigger payload  | Each item can be up to 3MB (SDK 4.3.1+). Prior: 1MB total combined |
 | Task outputs           | Must not exceed 10MB                                               |
 
-Payloads and outputs that exceed 512KB will be offloaded to object storage and a presigned URL will be provided to download the data when calling `runs.retrieve`. You don't need to do anything to handle this in your tasks however, as we will transparently upload/download these during operation.
+Large payloads and outputs are offloaded to object storage automatically. You don't need to do anything to handle this in your tasks, as we upload and download the data transparently during operation.
+
+On the way in, the SDK uploads any trigger or batch-item payload over 128KB to object storage before sending, so large triggers and batches don't exceed the request body limit. `trigger` and `triggerAndWait` have done this since SDK 4.5.0, and `batchTrigger` and `batchTriggerAndWait` (including the by-id and by-task variants) do too from SDK 4.5.2.
+
+Payloads and outputs over 512KB are kept in object storage rather than inline. Calling `runs.retrieve` returns that offloaded data as a presigned download URL (`payloadPresignedUrl` / `outputPresignedUrl`).
 
 ## Batch size
 
