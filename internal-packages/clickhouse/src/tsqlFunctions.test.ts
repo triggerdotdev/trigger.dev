@@ -72,7 +72,7 @@ const defaultTaskRun = {
   started_at: Date.now() - 5000,
   completed_at: Date.now(),
   tags: ["tag-a", "tag-b"],
-  output: { data: { count: 42, label: "ok", ratio: 1.5, enabled: true } },
+  output: { data: { count: 42, label: "ok", ratio: 1.5, enabled: true, items: [1, 2, 3] } },
   error: null,
   usage_duration_ms: 4500,
   cost_in_cents: 1.5,
@@ -595,6 +595,17 @@ describe("TSQL Function Smoke Tests", () => {
       ],
       ["JSONExtractRaw(output)", "SELECT JSONExtractRaw(output, 'count') AS r FROM task_runs"],
       ["JSONExtractKeys(output)", "SELECT JSONExtractKeys(output) AS r FROM task_runs"],
+      // The JSON field can be wrapped in a passthrough like assumeNotNull; the swap
+      // still has to reach the native column underneath.
+      [
+        "JSONExtractArrayRaw(assumeNotNull(output))",
+        "SELECT JSONExtractArrayRaw(assumeNotNull(output), 'items') AS r FROM task_runs",
+      ],
+      // toJSONString(output) is already a String, so it stays on the native column.
+      [
+        "JSONExtractString(toJSONString(output))",
+        "SELECT JSONExtractString(toJSONString(output), 'data', 'label') AS r FROM task_runs",
+      ],
     ]);
   });
 

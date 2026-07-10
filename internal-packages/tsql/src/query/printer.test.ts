@@ -880,6 +880,32 @@ describe("ClickHousePrinter", () => {
         expect(sql).toContain("JSONExtractInt(runs.output_text,");
       });
 
+      it("should reach through assumeNotNull() to swap the JSON field for its text column", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery(
+          "SELECT JSONExtractArrayRaw(assumeNotNull(output), 'losers') AS r FROM runs",
+          ctx
+        );
+
+        // The JSON field is wrapped in a value-preserving passthrough, so the swap
+        // has to descend into it: assumeNotNull(output) -> assumeNotNull(output_text).
+        expect(sql).toContain("JSONExtractArrayRaw(assumeNotNull(output_text),");
+        expect(sql).not.toContain("assumeNotNull(output)");
+      });
+
+      it("should NOT rewrite a JSON field consumed by toJSONString inside JSONExtract*", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery(
+          "SELECT JSONExtractString(toJSONString(output), 'x') AS r FROM runs",
+          ctx
+        );
+
+        // toJSONString(output) is already a String and changes the value, so it must
+        // stay on the native column.
+        expect(sql).toContain("toJSONString(output)");
+        expect(sql).not.toContain("output_text");
+      });
+
       it("should use text column for table-qualified JSON columns in SELECT", () => {
         const ctx = createTextColumnContext();
         const { sql } = printQuery("SELECT runs.output FROM runs", ctx);

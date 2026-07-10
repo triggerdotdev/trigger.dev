@@ -2530,6 +2530,31 @@ export class ClickHousePrinter {
   }
 
   /**
+   * Print a JSON-string function argument, swapping a bare JSON field for its textColumn.
+   * Descends through value-preserving passthrough wrappers (e.g. assumeNotNull(output))
+   * so the swap still applies inside them. Returns null if no textColumn swap applies.
+   */
+  private substituteJsonTextArg(expr: Expression): string | null {
+    const direct = this.printTextColumnReference(expr);
+    if (direct) return direct;
+
+    const call = expr as Call;
+    if (
+      call.expression_type === "call" &&
+      ClickHousePrinter.JSON_PASSTHROUGH_WRAPPERS.has(call.name.toLowerCase()) &&
+      call.args.length > 0
+    ) {
+      const inner = this.substituteJsonTextArg(call.args[0]);
+      if (inner) {
+        const clickhouseName = findTSQLFunction(call.name)?.clickhouseName ?? call.name;
+        const rest = call.args.slice(1).map((arg) => this.visit(arg));
+        return `${clickhouseName}(${[inner, ...rest].join(", ")})`;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Get the dataPrefix for a field chain if the root column has one defined.
    * Returns null if the column doesn't have a dataPrefix or if this isn't a subfield access.
    */
@@ -3003,6 +3028,14 @@ export class ClickHousePrinter {
   ]);
 
   /**
+   * Value-preserving wrappers a user may put between a JSON column and a JSON function,
+   * e.g. `JSONExtractString(assumeNotNull(output), 'x')`. The text-column swap descends
+   * through these. Functions that transform the value (e.g. toJSONString) are excluded so
+   * their argument keeps reading the native column.
+   */
+  private static readonly JSON_PASSTHROUGH_WRAPPERS = new Set(["assumenotnull"]);
+
+  /**
    * Visit function call arguments, handling date functions that require an interval unit
    * keyword as their first argument. For these functions, the first arg is output as a
    * bare keyword instead of being parameterized or resolved as a column reference.
@@ -3020,7 +3053,7 @@ export class ClickHousePrinter {
     }
 
     if (ClickHousePrinter.JSON_TEXT_ARG_FUNCTIONS.has(lowerName) && args.length > 0) {
-      const textColumn = this.printTextColumnReference(args[0]);
+      const textColumn = this.substituteJsonTextArg(args[0]);
       if (textColumn) {
         return [textColumn, ...args.slice(1).map((arg) => this.visit(arg))];
       }
