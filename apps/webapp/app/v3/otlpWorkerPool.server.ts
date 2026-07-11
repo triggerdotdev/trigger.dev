@@ -9,6 +9,7 @@ import {
 } from "@internal/tracing";
 import { logger } from "~/services/logger.server";
 import { signalsEmitter } from "~/services/signals.server";
+import { singleton } from "~/utils/singleton";
 
 export type TransformKind = "traces" | "logs" | "metrics";
 
@@ -328,25 +329,21 @@ export class OtlpWorkerPool {
   }
 }
 
-let pool: OtlpWorkerPool | undefined;
-
 export function getOtlpWorkerPool(
   size: number,
   pricingModels: unknown[],
   workerPath?: string,
   meter?: Meter
 ): OtlpWorkerPool {
-  if (!pool) {
+  // singleton() stores on globalThis so the pool (and its worker threads) survive Remix HMR in dev
+  // rather than leaking an orphaned pool + workers on every reload.
+  return singleton("otlpWorkerPool", () => {
     const resolvedPath = workerPath ?? path.join(process.cwd(), "build", "otlpTransformWorker.cjs");
-    pool = new OtlpWorkerPool(size, resolvedPath, pricingModels, meter);
+    const created = new OtlpWorkerPool(size, resolvedPath, pricingModels, meter);
     // Drain + terminate workers on shutdown so they aren't force-killed mid-task (which would
     // churn respawns). The main thread stays the only DB writer, so inserts are unaffected.
-    signalsEmitter.on("SIGTERM", () => void pool!.shutdown());
-    signalsEmitter.on("SIGINT", () => void pool!.shutdown());
-  }
-  return pool;
-}
-
-export function broadcastPricingToPool(models: unknown[]) {
-  pool?.broadcastPricing(models);
+    signalsEmitter.on("SIGTERM", () => void created.shutdown());
+    signalsEmitter.on("SIGINT", () => void created.shutdown());
+    return created;
+  });
 }
