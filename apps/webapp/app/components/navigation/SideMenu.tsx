@@ -181,7 +181,7 @@ const IMPERSONATION_ACCENT = {
 // Keeping these on the root (rather than in React state) means a drag only writes two properties
 // to one element per frame — no React re-render — so it stays smooth.
 
-/** Collapsed rail width in px (matches the previous `w-[2.75rem]`). */
+/** Collapsed rail width in px (matches the previous `w-11`). */
 const COLLAPSED_WIDTH = 44;
 /** The default/again-expanded width in px (matches the previous `w-56`). */
 const DEFAULT_WIDTH = 224;
@@ -701,7 +701,7 @@ export function SideMenu({
             "min-h-0 overflow-y-auto pt-2.5",
             isCollapsed
               ? "scrollbar-none"
-              : "scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+              : "scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           )}
         >
           <div
@@ -1156,7 +1156,7 @@ function OrgSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] hover:bg-charcoal-750 focus-custom",
+              "group flex h-8 items-center rounded pl-1.75 hover:bg-background-hover focus-custom",
               isCollapsed ? "justify-center pr-0.5" : "w-full justify-between pr-1"
             )}
           >
@@ -1196,7 +1196,7 @@ function OrgSelector({
         disableHoverableContent
       />
       <PopoverContent
-        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         side={isCollapsed ? "right" : "bottom"}
         sideOffset={isCollapsed ? 8 : 4}
         align="start"
@@ -1278,7 +1278,7 @@ function OrgSelector({
           )}
           <Integrations organization={organization} />
         </div>
-        <div className="border-t border-charcoal-700 p-1">
+        <div className="border-t border-grid-bright p-1">
           {organizations.length > 1 ? (
             <SwitchOrganizations organizations={organizations} organization={organization} />
           ) : (
@@ -1326,7 +1326,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
     <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen}>
       <SimpleTooltip
         button={
-          <PopoverTrigger className="group flex size-8 items-center justify-center rounded hover:bg-charcoal-750 focus-custom">
+          <PopoverTrigger className="group flex size-8 items-center justify-center rounded hover:bg-background-hover focus-custom">
             <UserProfilePhoto className="size-5" />
           </PopoverTrigger>
         }
@@ -1338,14 +1338,14 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
         disableHoverableContent
       />
       <PopoverContent
-        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         side="bottom"
         sideOffset={4}
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
         {isAdmin && (
-          <div className="flex flex-col gap-1 border-b border-charcoal-700 p-1">
+          <div className="flex flex-col gap-1 border-b border-grid-bright p-1">
             {isImpersonating ? (
               <PopoverMenuItem
                 title={
@@ -1404,7 +1404,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
             className={SIDE_MENU_POPOVER_ITEM_LABEL}
           />
         </div>
-        <div className="border-t border-charcoal-700 p-1">
+        <div className="border-t border-grid-bright p-1">
           <PopoverMenuItem
             to={logoutPath()}
             title="Logout"
@@ -1445,10 +1445,10 @@ function ProjectSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded border pl-[0.4375rem] transition-[border-color] duration-150 hover:bg-charcoal-750 focus-custom",
+              "group flex h-8 items-center rounded border pl-1.75 transition-[border-color] duration-150 hover:bg-background-hover focus-custom",
               isCollapsed
                 ? "justify-center border-transparent pr-0.5"
-                : "justify-between border-charcoal-700 pr-1",
+                : "justify-between border-grid-bright pr-1",
               className
             )}
           >
@@ -1488,7 +1488,7 @@ function ProjectSelector({
         disableHoverableContent
       />
       <PopoverContent
-        className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-56 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         side={isCollapsed ? "right" : "bottom"}
         sideOffset={isCollapsed ? 8 : 4}
         align="start"
@@ -1510,7 +1510,7 @@ function ProjectSelector({
             className={SIDE_MENU_POPOVER_ITEM_LABEL}
           />
         </div>
-        <div className="flex flex-col gap-1 border-t border-charcoal-700 p-1">
+        <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
           {organization.projects.map((p) => {
             const isSelected = p.id === project.id;
             return (
@@ -1579,7 +1579,7 @@ function SwitchOrganizations({
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
-            className={cn("hover:bg-charcoal-750", SIDE_MENU_POPOVER_ITEM_LABEL)}
+            className={cn("hover:bg-background-hover", SIDE_MENU_POPOVER_ITEM_LABEL)}
             LeadingIcon={ArrowLeftRightIcon}
             leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
             TrailingIcon={ChevronRightIcon}
@@ -1591,7 +1591,7 @@ function SwitchOrganizations({
           </ButtonContent>
         </PopoverTrigger>
         <PopoverContent
-          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           align="start"
           style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
           side="right"
@@ -1613,7 +1613,7 @@ function SwitchOrganizations({
               />
             ))}
           </div>
-          <div className="border-t border-charcoal-700 p-1">
+          <div className="border-t border-grid-bright p-1">
             <PopoverMenuItem
               to={newOrganizationPath()}
               title="New organization"
@@ -1666,7 +1666,7 @@ function Integrations({ organization }: { organization: MatchedOrganization }) {
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
-            className={cn("hover:bg-charcoal-750", SIDE_MENU_POPOVER_ITEM_LABEL)}
+            className={cn("hover:bg-background-hover", SIDE_MENU_POPOVER_ITEM_LABEL)}
             LeadingIcon={IntegrationsIcon}
             leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
             TrailingIcon={ChevronRightIcon}
@@ -1678,7 +1678,7 @@ function Integrations({ organization }: { organization: MatchedOrganization }) {
           </ButtonContent>
         </PopoverTrigger>
         <PopoverContent
-          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           align="start"
           style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
           side="right"

@@ -191,7 +191,7 @@ export const SideMenuItemButton = forwardRef<
       ref={ref}
       type={type ?? "button"}
       className={cn(
-        "group/menuitem flex h-8 w-full items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2 text-left text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright focus-custom",
+        "group/menuitem flex h-8 w-full items-center gap-2 overflow-hidden rounded pl-1.75 pr-2 text-left text-text-dimmed hover:bg-background-hover hover:text-text-bright focus-custom",
         className
       )}
       {...props}
