@@ -5,6 +5,7 @@ import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";
 import { enqueueRun } from "./enqueueRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { isV3Disabled } from "../engineDeprecation.server";
 
 export class EnqueueDelayedRunService extends BaseService {
@@ -39,12 +40,6 @@ export class EnqueueDelayedRunService extends BaseService {
       },
       {
         include: {
-          runtimeEnvironment: {
-            include: {
-              organization: true,
-              project: true,
-            },
-          },
           dependency: {
             include: {
               dependentBatchRun: {
@@ -82,6 +77,13 @@ export class EnqueueDelayedRunService extends BaseService {
       return;
     }
 
+    const env = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+    if (!env) {
+      logger.debug("EnqueueDelayedRunService: environment not found", { runId });
+      return;
+    }
+
     if (run.status !== "DELAYED") {
       logger.debug("Delayed run cannot be enqueued because it's not in DELAYED status", {
         run,
@@ -109,7 +111,7 @@ export class EnqueueDelayedRunService extends BaseService {
     }
 
     await enqueueRun({
-      env: run.runtimeEnvironment,
+      env,
       run: run,
       dependentRun:
         run.dependency?.dependentAttempt?.taskRun ??

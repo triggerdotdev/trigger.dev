@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   manage:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: warp-ubuntu-latest-x64-2x
     if: >-
       contains(github.event.comment.body, 'vouch') ||
       contains(github.event.comment.body, 'denounce') ||

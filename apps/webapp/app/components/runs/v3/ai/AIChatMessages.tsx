@@ -63,7 +63,7 @@ function SectionHeader({ label, right }: { label: string; right?: React.ReactNod
 
 export function ChatBubble({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-md border border-grid-bright bg-charcoal-750/50 px-3.5 py-2">
+    <div className="rounded-md border border-grid-bright bg-background-hover/50 px-3.5 py-2">
       {children}
     </div>
   );
@@ -231,7 +231,7 @@ export function AssistantResponse({
       />
       {mode === "rendered" ? (
         <ChatBubble>
-          <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed [overflow-wrap:anywhere]">
+          <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed wrap-anywhere">
             <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
               <StreamdownRenderer>{text}</StreamdownRenderer>
             </Suspense>
@@ -299,7 +299,7 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
 
   return (
     <div
-      className={`rounded-sm border bg-charcoal-800/40 ${
+      className={`rounded-sm border bg-background-bright/40 ${
         hasSubAgent ? "border-indigo-500/30" : "border-grid-bright"
       }`}
     >
@@ -348,7 +348,7 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
                 onClick={() => handleTabClick(tab)}
                 className={`px-2.5 py-1 text-[11px] capitalize transition-colors ${
                   activeTab === tab
-                    ? "bg-charcoal-750 text-text-bright"
+                    ? "bg-background-hover text-text-bright"
                     : "text-text-dimmed hover:text-text-bright"
                 }`}
               >
@@ -447,9 +447,9 @@ function SubAgentContent({ parts }: { parts: any[] }) {
         if (partType === "step-start") {
           return (
             <div key={j} className="flex items-center gap-2 py-0.5">
-              <div className="flex-1 border-t border-dashed border-charcoal-650" />
-              <span className="text-[10px] text-charcoal-500">step</span>
-              <div className="flex-1 border-t border-dashed border-charcoal-650" />
+              <div className="flex-1 border-t border-dashed border-border-bright" />
+              <span className="text-[10px] text-text-faint">step</span>
+              <div className="flex-1 border-t border-dashed border-border-bright" />
             </div>
           );
         }

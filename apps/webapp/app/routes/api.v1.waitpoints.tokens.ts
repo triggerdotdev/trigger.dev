@@ -9,6 +9,12 @@ import {
   ApiWaitpointListPresenter,
   ApiWaitpointListSearchParams,
 } from "~/presenters/v3/ApiWaitpointListPresenter.server";
+import {
+  runOpsNewReplicaClient,
+  runOpsLegacyReplica,
+  runOpsSplitReadEnabled,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
@@ -27,7 +33,11 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },
   async ({ searchParams, authentication }) => {
-    const presenter = new ApiWaitpointListPresenter();
+    const presenter = new ApiWaitpointListPresenter(undefined, undefined, {
+      runOpsNew: runOpsNewReplicaClient as unknown as PrismaClientOrTransaction,
+      runOpsLegacyReplica: runOpsLegacyReplica as unknown as PrismaClientOrTransaction,
+      splitEnabled: runOpsSplitReadEnabled,
+    });
     const result = await presenter.call(authentication.environment, searchParams);
 
     return json(result);

@@ -119,7 +119,7 @@ export function InputNumberStepper({
       input: "text-base px-3.5",
       button: "size-8",
       icon: "size-5",
-      gap: "gap-[0.3125rem] pr-[0.3125rem]",
+      gap: "gap-1.25 pr-1.25",
     },
   } as const;
 
@@ -128,9 +128,9 @@ export function InputNumberStepper({
   return (
     <div
       className={cn(
-        "flex items-center rounded border border-charcoal-600 bg-tertiary transition hover:border-charcoal-550/80 hover:bg-charcoal-600/80",
+        "flex items-center rounded border border-border-bright bg-tertiary transition hover:border-border-brighter/80 hover:bg-surface-control/80",
         size.container,
-        "has-[:focus-visible]:outline has-[:focus-visible]:outline-1 has-[:focus-visible]:outline-offset-0 has-[:focus-visible]:outline-text-link",
+        "has-focus-visible:outline-solid has-focus-visible:outline-1 has-focus-visible:outline-offset-0 has-focus-visible:outline-text-link",
         disabled && "cursor-not-allowed opacity-50",
         className
       )}
@@ -172,10 +172,10 @@ export function InputNumberStepper({
         disabled={disabled}
         readOnly={readOnly}
         className={cn(
-          "placeholder:text-muted-foreground h-full grow border-0 bg-transparent text-left text-text-bright outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 disabled:cursor-not-allowed",
+          "placeholder:text-muted-foreground h-full grow border-0 bg-transparent text-left text-text-bright outline-hidden ring-0 focus:border-0 focus:outline-hidden focus:ring-0 disabled:cursor-not-allowed",
           size.input,
           // Hide number input arrows
-          "[type=number]:border-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          "[&[type=number]]:border-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         )}
         {...props}
       />
@@ -192,7 +192,7 @@ export function InputNumberStepper({
             size.button,
             "hover:border-error/50 hover:bg-error/30",
             "disabled:cursor-not-allowed disabled:opacity-40",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text-link"
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-text-link"
           )}
         >
           <MinusIcon className={cn("text-error", size.icon)} />
@@ -209,7 +209,7 @@ export function InputNumberStepper({
             size.button,
             "hover:border-success/40 hover:bg-success/20",
             "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text-link"
+            "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-text-link"
           )}
         >
           <PlusIcon className={cn("text-success", size.icon)} />

@@ -3,6 +3,7 @@ import { GoogleStrategy } from "remix-auth-google";
 import { env } from "~/env.server";
 import { findOrCreateUser } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
+import { isGoogleEmailVerified } from "./googleEmailVerification";
 import { logger } from "./logger.server";
 import { postAuthentication } from "./postAuth.server";
 import { SsoRequiredError, ssoRedirectForEmail } from "./ssoAutoDiscovery.server";
@@ -26,6 +27,14 @@ export function addGoogleStrategy(
       }
 
       const email = emails[0].value;
+
+      // Only trust the email if Google asserts it's verified, since account
+      // linking keys off it. See isGoogleEmailVerified.
+      if (!isGoogleEmailVerified(profile)) {
+        throw new Error(
+          "Google login refused: the Google account's email is not verified. Sign in with an account whose email Google has verified, or use magic-link / GitHub."
+        );
+      }
 
       // SSO auto-discovery gate — BEFORE findOrCreateUser, so an
       // SSO-enforced domain never gets this Google identity linked onto

@@ -13,14 +13,58 @@ import {
 import parseDuration from "parse-duration";
 import { decodeRunsCursor, encodeRunsCursor } from "./runsCursor.server";
 import { runStore } from "~/v3/runStore.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
 
 type RunCursorRow = { runId: string; createdAt: number };
+
+/**
+ * Hydrates a set of rows for a ClickHouse-derived run-id set against the given
+ * read client. The closure MUST select `id` so `#hydrateRunsByIds` can key
+ * set-membership and re-impose ordering; the call site projects `id` away if its
+ * result type excludes it.
+ */
+type HydrateFn<T extends { id: string }> = (
+  client: PrismaClientOrTransaction,
+  ids: string[]
+) => Promise<T[]>;
 
 export class ClickHouseRunsRepository implements IRunsRepository {
   constructor(private readonly options: RunsRepositoryOptions) {}
 
   get name() {
     return "clickhouse";
+  }
+
+  async runExistsInEnvironment(options: {
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    createdAtLowerBoundMs?: number;
+  }): Promise<boolean> {
+    const queryBuilder = this.options.clickhouse.taskRuns.existsQueryBuilder();
+
+    queryBuilder
+      .where("organization_id = {organizationId: String}", {
+        organizationId: options.organizationId,
+      })
+      .where("project_id = {projectId: String}", { projectId: options.projectId })
+      .where("environment_id = {environmentId: String}", { environmentId: options.environmentId });
+
+    if (typeof options.createdAtLowerBoundMs === "number") {
+      queryBuilder.where("created_at >= fromUnixTimestamp64Milli({createdAtLowerBound: Int64})", {
+        createdAtLowerBound: options.createdAtLowerBoundMs,
+      });
+    }
+
+    queryBuilder.limit(1);
+
+    const [queryError, result] = await queryBuilder.execute();
+
+    if (queryError) {
+      throw queryError;
+    }
+
+    return (result?.length ?? 0) > 0;
   }
 
   /**
@@ -38,7 +82,11 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const queryBuilder = this.options.clickhouse.taskRuns.queryBuilder();
     applyRunFiltersToQueryBuilder(
       queryBuilder,
-      await convertRunListInputOptionsToFilterRunsOptions(options, this.options.prisma)
+      await convertRunListInputOptionsToFilterRunsOptions(
+        options,
+        this.options.prisma,
+        this.options.runStore ?? runStore
+      )
     );
 
     const forward = options.page.direction === "forward" || !options.page.direction;
@@ -140,6 +188,51 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     return { runIds, pagination: { nextCursor, previousCursor } };
   }
 
+  /**
+   * Hydrates a ClickHouse-derived run-id set from the run-ops store.
+   * Split ON: new run-ops client first, then the LEGACY RUN-OPS READ REPLICA ONLY
+   * for ids not known-migrated — never the legacy primary. The mixed-residency
+   * fan-out lives here because `RoutingRunStore.findRuns` punts it.
+   * Split OFF (single-DB / self-host): one plain `store.findRuns(args, prisma)`
+   * (passthrough) — no legacy read, no known-migrated probe, no second connection.
+   */
+  async #hydrateRunsByIds<T extends { id: string }>(
+    runIds: string[],
+    hydrate: HydrateFn<T>
+  ): Promise<T[]> {
+    if (runIds.length === 0) {
+      return [];
+    }
+
+    const splitEnabled = this.options.readThrough?.splitEnabled ?? false;
+
+    let rows: T[];
+    if (!splitEnabled) {
+      rows = await hydrate(this.options.prisma, runIds);
+    } else {
+      const newClient = this.options.readThrough?.newClient ?? this.options.prisma;
+      const legacyReplica = this.options.readThrough?.legacyReplica ?? this.options.prisma;
+
+      const newRows = await hydrate(newClient, runIds);
+      const foundIds = new Set(newRows.map((r) => r.id));
+      const missing = runIds.filter((id) => !foundIds.has(id));
+
+      // Any id not hydrated from the new store is probed on the legacy replica.
+      const toProbeLegacy = missing;
+
+      const legacyRows = toProbeLegacy.length ? await hydrate(legacyReplica, toProbeLegacy) : [];
+      rows = [...newRows, ...legacyRows];
+    }
+
+    // Preserve the ClickHouse keyset order (created_at desc, run_id desc) by re-ordering the
+    // hydrated rows to match the input `runIds`. Sorting by raw `id` was only ~chronological
+    // when every id was a time-prefixed cuid; a mixed cuid/run-ops id page sorts the two id-spaces
+    // into separate blocks, burying recent runs. Rows whose PG row is gone (e.g. past
+    // retention) drop out, exactly as before.
+    const byId = new Map(rows.map((r) => [r.id, r] as const));
+    return runIds.map((id) => byId.get(id)).filter((r): r is T => r !== undefined);
+  }
+
   async listFriendlyRunIds(options: ListRunsOptions) {
     // First get internal IDs from ClickHouse
     const { runIds } = await this.listRunIds(options);
@@ -148,19 +241,18 @@ export class ClickHouseRunsRepository implements IRunsRepository {
       return [];
     }
 
-    // Then get friendly IDs from Prisma
-    const runs = await runStore.findRuns(
-      {
-        where: {
-          id: {
-            in: runIds,
-          },
+    const store = this.options.runStore ?? runStore;
+
+    // Then get friendly IDs from the run-ops store (id added for set-membership;
+    // projected away below so the returned shape stays `string[]`).
+    const runs = await this.#hydrateRunsByIds(runIds, (client, ids) =>
+      store.findRuns(
+        {
+          where: { id: { in: ids } },
+          select: { id: true, friendlyId: true },
         },
-        select: {
-          friendlyId: true,
-        },
-      },
-      this.options.prisma
+        client
+      )
     );
 
     return runs.map((run) => run.friendlyId);
@@ -169,51 +261,55 @@ export class ClickHouseRunsRepository implements IRunsRepository {
   async listRuns(options: ListRunsOptions) {
     const { runIds, pagination } = await this.listRunIds(options);
 
-    let runs = await runStore.findRuns(
-      {
-        where: {
-          id: {
-            in: runIds,
+    const store = this.options.runStore ?? runStore;
+
+    let runs = await this.#hydrateRunsByIds(runIds, (client, ids) =>
+      store.findRuns(
+        {
+          where: {
+            id: {
+              in: ids,
+            },
+          },
+          orderBy: {
+            id: "desc",
+          },
+          select: {
+            id: true,
+            friendlyId: true,
+            taskIdentifier: true,
+            taskVersion: true,
+            runtimeEnvironmentId: true,
+            status: true,
+            createdAt: true,
+            startedAt: true,
+            lockedAt: true,
+            delayUntil: true,
+            updatedAt: true,
+            completedAt: true,
+            isTest: true,
+            spanId: true,
+            idempotencyKey: true,
+            ttl: true,
+            expiredAt: true,
+            costInCents: true,
+            baseCostInCents: true,
+            usageDurationMs: true,
+            runTags: true,
+            depth: true,
+            rootTaskRunId: true,
+            batchId: true,
+            metadata: true,
+            metadataType: true,
+            machinePreset: true,
+            queue: true,
+            workerQueue: true,
+            region: true,
+            annotations: true,
           },
         },
-        orderBy: {
-          id: "desc",
-        },
-        select: {
-          id: true,
-          friendlyId: true,
-          taskIdentifier: true,
-          taskVersion: true,
-          runtimeEnvironmentId: true,
-          status: true,
-          createdAt: true,
-          startedAt: true,
-          lockedAt: true,
-          delayUntil: true,
-          updatedAt: true,
-          completedAt: true,
-          isTest: true,
-          spanId: true,
-          idempotencyKey: true,
-          ttl: true,
-          expiredAt: true,
-          costInCents: true,
-          baseCostInCents: true,
-          usageDurationMs: true,
-          runTags: true,
-          depth: true,
-          rootTaskRunId: true,
-          batchId: true,
-          metadata: true,
-          metadataType: true,
-          machinePreset: true,
-          queue: true,
-          workerQueue: true,
-          region: true,
-          annotations: true,
-        },
-      },
-      this.options.prisma
+        client
+      )
     );
 
     // ClickHouse is slightly delayed, so we're going to do in-memory status filtering too
@@ -231,7 +327,11 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     const queryBuilder = this.options.clickhouse.taskRuns.countQueryBuilder();
     applyRunFiltersToQueryBuilder(
       queryBuilder,
-      await convertRunListInputOptionsToFilterRunsOptions(options, this.options.prisma)
+      await convertRunListInputOptionsToFilterRunsOptions(
+        options,
+        this.options.prisma,
+        this.options.runStore ?? runStore
+      )
     );
 
     const [queryError, result] = await queryBuilder.execute();

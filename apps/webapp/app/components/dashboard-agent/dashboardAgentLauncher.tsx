@@ -33,8 +33,8 @@ export function DashboardAgentLauncher() {
       className={cn(
         "flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-text-bright transition",
         open
-          ? "border-charcoal-550 bg-charcoal-750"
-          : "border-charcoal-650 bg-background-bright hover:border-charcoal-550"
+          ? "border-border-brighter bg-background-hover"
+          : "border-border-bright bg-background-bright hover:border-border-brighter"
       )}
     >
       {open ? (

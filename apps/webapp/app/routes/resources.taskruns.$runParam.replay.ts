@@ -1,6 +1,7 @@
 import { parseWithZod } from "@conform-to/zod";
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { type EnvironmentType, prettyPrintPacket } from "@trigger.dev/core/v3";
+import { type Prisma } from "@trigger.dev/database";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
@@ -25,6 +26,7 @@ import { queueTypeFromType } from "~/presenters/v3/QueueRetrievePresenter.server
 import { ReplayRunData } from "~/v3/replayTask";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 const ParamSchema = z.object({
   runParam: z.string(),
@@ -42,8 +44,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     Object.fromEntries(new URL(request.url).searchParams)
   );
 
+  // Run-ops read keyed by friendlyId only; project-scope + membership auth is
+  // resolved on the control plane below, keyed off the resolved run's projectId.
   let run = await runStore.findRun(
-    { friendlyId: runParam, project: { organization: { members: { some: { userId } } } } },
+    { friendlyId: runParam },
     {
       select: {
         payload: true,
@@ -51,6 +55,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         seedMetadata: true,
         seedMetadataType: true,
         runtimeEnvironmentId: true,
+        projectId: true,
         concurrencyKey: true,
         maxAttempts: true,
         maxDurationInSeconds: true,
@@ -62,45 +67,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         runTags: true,
         queue: true,
         taskIdentifier: true,
-        project: {
-          select: {
-            slug: true,
-            environments: {
-              select: {
-                id: true,
-                type: true,
-                slug: true,
-                branchName: true,
-                parentEnvironmentId: true,
-                orgMember: {
-                  select: {
-                    user: true,
-                  },
-                },
-              },
-              where: {
-                archivedAt: null,
-                OR: [
-                  {
-                    type: {
-                      in: ["PREVIEW", "STAGING", "PRODUCTION"],
-                    },
-                  },
-                  {
-                    type: "DEVELOPMENT",
-                    orgMember: {
-                      userId,
-                    },
-                  },
-                ],
-              },
-            },
-          },
-        },
       },
-    },
-    $replica
+    }
   );
+
+  // project.environments is a project-rooted list read (not a single-env thread),
+  // so it stays a control-plane query keyed off the resolved run's projectId.
+  type ProjectWithEnvironments = NonNullable<Awaited<ReturnType<typeof loadProjectEnvironments>>>;
+  let projectEnvironments: ProjectWithEnvironments["environments"];
+  let projectSlug: string;
 
   let _synthetic:
     | (Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>> & { __synth: true })
@@ -125,40 +100,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     });
     if (!buffered) throw new Response("Not Found", { status: 404 });
     _synthetic = Object.assign(buffered, { __synth: true as const });
-    // Scope the project lookup to the buffer entry's org as well as the
-    // env id. The prior `orgMember.findFirst` above confirms the user
-    // belongs to `entry.orgId`; pinning `organizationId` here means a
-    // malformed entry whose envId resolves to a different org can't leak
-    // that project's data through this loader. Mirrors the PG path's
-    // `project.organization.members.some.userId` scoping (lines 42-95)
-    // — the env filter and select shape are kept identical so the Replay
-    // dialog renders the same dropdown either way.
-    const orgProject = await $replica.project.findFirst({
-      where: {
-        organizationId: entry.orgId,
-        environments: { some: { id: entry.envId } },
-      },
-      select: {
-        slug: true,
-        environments: {
-          select: {
-            id: true,
-            type: true,
-            slug: true,
-            branchName: true,
-            parentEnvironmentId: true,
-            orgMember: { select: { user: true } },
-          },
-          where: {
-            archivedAt: null,
-            OR: [
-              { type: { in: ["PREVIEW", "STAGING", "PRODUCTION"] } },
-              { type: "DEVELOPMENT", orgMember: { userId } },
-            ],
-          },
-        },
-      },
-    });
+    // Pin the project lookup to the buffer entry's org (not just the env id) so a
+    // malformed entry whose envId resolves to a different org can't leak that
+    // project's data. Mirrors the PG path's org-membership scoping.
+    const orgProject = await loadProjectEnvironments(
+      { organizationId: entry.orgId, environments: { some: { id: entry.envId } } },
+      userId
+    );
     if (!orgProject) throw new Response("Not Found", { status: 404 });
     run = {
       payload: buffered.payload,
@@ -166,6 +114,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       seedMetadata: buffered.seedMetadata ?? null,
       seedMetadataType: buffered.seedMetadataType ?? null,
       runtimeEnvironmentId: entry.envId,
+      projectId: "",
       concurrencyKey: buffered.concurrencyKey ?? null,
       maxAttempts: buffered.maxAttempts ?? null,
       maxDurationInSeconds: buffered.maxDurationInSeconds ?? null,
@@ -177,20 +126,30 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       runTags: buffered.runTags,
       queue: buffered.queue ?? "task/",
       taskIdentifier: buffered.taskIdentifier ?? "",
-      project: orgProject,
     } as unknown as typeof run;
+    projectEnvironments = orgProject.environments;
+    projectSlug = orgProject.slug;
+  } else {
+    // PG path: the run resolved from the run-ops store; fetch the env list from
+    // the control plane via projectId, re-applying the org-membership gate that
+    // used to live on the run-store join so a miss stays a 404.
+    const project = await loadProjectEnvironments(
+      { id: run.projectId, organization: { members: { some: { userId } } } },
+      userId
+    );
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
+    projectEnvironments = project.environments;
+    projectSlug = project.slug;
   }
 
   if (!run) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const runEnvironment = run.project.environments.find(
-    (env) => env.id === run.runtimeEnvironmentId
-  );
-  const environmentOverride = run.project.environments.find(
-    (env) => env.id === environmentIdOverride
-  );
+  const runEnvironment = projectEnvironments.find((env) => env.id === run.runtimeEnvironmentId);
+  const environmentOverride = projectEnvironments.find((env) => env.id === environmentIdOverride);
   const environment = environmentOverride ?? runEnvironment;
   if (!environment) {
     throw new Response("Environment not found", { status: 404 });
@@ -209,7 +168,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     prettyPrintPacket(run.payload, run.payloadType),
     new RegionsPresenter().call({
       userId,
-      projectSlug: run.project.slug,
+      projectSlug,
       isAdmin: user.admin || user.isImpersonating,
     }),
   ]);
@@ -249,7 +208,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       branchName: environment.branchName ?? undefined,
     },
     environments: sortEnvironments(
-      run.project.environments
+      projectEnvironments
         .filter((env) => env.type !== "PREVIEW" || env.parentEnvironmentId !== null)
         .map((env) => ({
           ...displayableEnvironment(env, userId),
@@ -259,17 +218,62 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 }
 
+// Project-rooted control-plane list read of the replay env dropdown.
+function loadProjectEnvironments(where: Prisma.ProjectWhereInput, userId: string) {
+  return $replica.project.findFirst({
+    where,
+    select: {
+      slug: true,
+      environments: {
+        select: {
+          id: true,
+          type: true,
+          slug: true,
+          branchName: true,
+          parentEnvironmentId: true,
+          orgMember: {
+            select: {
+              user: true,
+            },
+          },
+        },
+        where: {
+          archivedAt: null,
+          OR: [
+            {
+              type: {
+                in: ["PREVIEW", "STAGING", "PRODUCTION"],
+              },
+            },
+            {
+              type: "DEVELOPMENT",
+              orgMember: {
+                userId,
+              },
+            },
+          ],
+        },
+      },
+    },
+  });
+}
+
 // Resolve the run's organization so the RBAC auth scope can resolve the
 // user's role in it. The run may not be in Postgres yet (buffered during a
 // burst), so fall back to the buffer entry's org.
 async function resolveRunOrganizationId(runParam: string): Promise<string | null> {
+  // Run-ops read keyed by friendlyId only; the store routes to the owning DB by
+  // residency off its own replica. Forwarding a control-plane client here would
+  // override that routing and miss any run that lives in the run-ops DB.
   const run = await runStore.findRun(
     { friendlyId: runParam },
-    { select: { project: { select: { organizationId: true } } } },
-    $replica
+    { select: { runtimeEnvironmentId: true } }
   );
   if (run) {
-    return run.project.organizationId;
+    const env = await controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+    if (env?.organizationId) {
+      return env.organizationId;
+    }
   }
 
   const buffer = getMollifierBuffer();
@@ -278,16 +282,20 @@ async function resolveRunOrganizationId(runParam: string): Promise<string | null
     return entry.orgId;
   }
 
-  // Replica lag with the buffer entry already drained: the run can exist in
-  // the primary while both lookups above miss. Fall back to the primary so the
-  // RBAC scope is never resolved without an org (which would let the role check
-  // run unscoped under the RBAC plugin).
+  // Replica lag with the buffer entry already drained: the run can exist in the
+  // primary while both lookups above miss. Fall back to the primary so the RBAC
+  // scope is never resolved without an org (which would let the role check run
+  // unscoped under the RBAC plugin). Keyed by friendlyId so routing still applies.
   const primaryRun = await runStore.findRun(
     { friendlyId: runParam },
-    { select: { project: { select: { organizationId: true } } } },
+    { select: { runtimeEnvironmentId: true } },
     prisma
   );
-  return primaryRun?.project.organizationId ?? null;
+  if (!primaryRun) {
+    return null;
+  }
+  const primaryEnv = await controlPlaneResolver.resolveEnv(primaryRun.runtimeEnvironmentId);
+  return primaryEnv?.organizationId ?? null;
 }
 
 export const action = dashboardAction(
@@ -313,42 +321,35 @@ export const action = dashboardAction(
     }
 
     try {
-      const pgRun = await runStore.findRun(
-        {
-          friendlyId: runParam,
-          project: {
-            organization: {
-              members: {
-                some: {
-                  userId: user.id,
-                },
-              },
-            },
-          },
-        },
-        {
-          include: {
-            runtimeEnvironment: {
-              select: {
-                slug: true,
-              },
-            },
-            project: {
-              include: {
-                organization: true,
-              },
-            },
-          },
-        },
-        prisma
-      );
+      // Run-ops read keyed by friendlyId only; membership auth is re-checked on the
+      // control plane below, keyed off the resolved run's projectId.
+      const pgRun = await runStore.findRun({ friendlyId: runParam });
 
-      // Mollifier read-fallback: if the original isn't in PG yet,
-      // synthesise a TaskRun from the buffered snapshot. The B4-extended
-      // SyntheticRun carries every field ReplayTaskRunService reads. We
-      // also need projectSlug + orgSlug + envSlug for the redirect path,
-      // so look those up via the snapshot's runtimeEnvironmentId.
-      let taskRun: SyntheticReplayTaskRun | null = pgRun ?? null;
+      // Mollifier read-fallback: if the original isn't in PG yet, synthesise a
+      // TaskRun from the buffered snapshot. Needs project/org/env slugs for the
+      // redirect path, looked up via the snapshot's runtimeEnvironmentId.
+      let taskRun: SyntheticReplayTaskRun | null = null;
+      if (pgRun) {
+        // Cross-org replay guard the where-clause join used to enforce; a miss falls
+        // through to the buffered/not-found path below.
+        const authorizedProject = await prisma.project.findFirst({
+          where: { id: pgRun.projectId, organization: { members: { some: { userId: user.id } } } },
+          select: { id: true },
+        });
+        const pgEnv = authorizedProject
+          ? await controlPlaneResolver.resolveAuthenticatedEnv(pgRun.runtimeEnvironmentId)
+          : null;
+        if (pgEnv) {
+          taskRun = {
+            ...pgRun,
+            project: {
+              slug: pgEnv.project.slug,
+              organization: { slug: pgEnv.organization.slug },
+            },
+            runtimeEnvironment: { slug: pgEnv.slug },
+          };
+        }
+      }
       if (!taskRun) {
         const buffer = getMollifierBuffer();
         const entry = buffer ? await buffer.getEntry(runParam) : null;

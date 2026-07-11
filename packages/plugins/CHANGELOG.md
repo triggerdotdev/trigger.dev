@@ -1,5 +1,20 @@
 # @trigger.dev/plugins
 
+## 4.5.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.2`
+
+## 4.5.1
+
+### Patch Changes
+
+- Extend the SSO plugin contract with WorkOS Directory Sync (SCIM) support. ([#4148](https://github.com/triggerdotdev/trigger.dev/pull/4148))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.1`
+
 ## 4.5.0
 
 ### Patch Changes

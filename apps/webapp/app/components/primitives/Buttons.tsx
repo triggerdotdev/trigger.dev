@@ -60,7 +60,7 @@ const theme = {
   secondary: {
     textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-secondary group-hover/button:bg-charcoal-600 group-hover/button:border-charcoal-550 border border-charcoal-600 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+      "bg-secondary group-hover/button:bg-surface-control group-hover/button:border-border-brighter border border-border-bright group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-text-bright",
@@ -68,7 +68,7 @@ const theme = {
   tertiary: {
     textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-tertiary group-hover/button:bg-charcoal-600 group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+      "bg-tertiary group-hover/button:bg-surface-control group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-text-bright",
@@ -86,13 +86,13 @@ const theme = {
       "text-text-bright group-hover/button:text-white transition group-disabled/button:text-text-bright/80",
     button:
       "bg-error group-hover/button:bg-rose-500 disabled:opacity-50 group-disabled/button:bg-error group-disabled/button:pointer-events-none",
-    shortcut: "border-text-bright text-text-bright group-hover/button:border-bright/60",
+    shortcut: "border-text-bright text-text-bright group-hover/button:border-text-bright/60",
     icon: "text-text-bright",
   },
   docs: {
     textColor: "text-blue-200/70 transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-charcoal-700 border border-charcoal-600/50 shadow group-hover/button:bg-charcoal-650 group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+      "bg-background-raised border border-border-bright/50 shadow-sm group-hover/button:bg-secondary group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-blue-500",
@@ -140,7 +140,7 @@ const variant = {
   "menu-item": {
     textColor: "text-text-bright px-1",
     button:
-      "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover/button:bg-charcoal-750",
+      "h-9 px-[0.475rem] text-sm rounded-sm bg-transparent group-hover/button:bg-background-hover",
     icon: "h-5",
     iconSpacing: "gap-x-0.5",
     shortcutVariant: undefined,
@@ -149,7 +149,7 @@ const variant = {
   "small-menu-item": {
     textColor: "text-text-bright",
     button:
-      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover/button:bg-charcoal-750",
+      "h-[1.8rem] px-[0.4rem] text-2sm rounded-sm text-text-dimmed bg-transparent group-hover/button:bg-background-hover",
     icon: "h-[1.125rem]",
     iconSpacing: "gap-x-1.5",
     shortcutVariant: undefined,
@@ -158,7 +158,7 @@ const variant = {
   "small-menu-sub-item": {
     textColor: "text-text-dimmed",
     button:
-      "h-[1.8rem] px-[0.5rem] ml-5 text-2sm rounded-sm text-text-dimmed bg-transparent group-hover/button:bg-charcoal-750 focus-custom",
+      "h-[1.8rem] px-2 ml-5 text-2sm rounded-sm text-text-dimmed bg-transparent group-hover/button:bg-background-hover focus-custom",
     icon: undefined,
     iconSpacing: undefined,
     shortcutVariant: undefined,
@@ -167,7 +167,7 @@ const variant = {
 };
 
 const allVariants = {
-  $all: "font-normal text-center font-sans justify-center items-center shrink-0 transition duration-150 rounded-[3px] select-none group-focus/button:outline-none group-disabled/button:opacity-75 group-disabled/button:pointer-events-none focus-custom",
+  $all: "font-normal text-center font-sans justify-center items-center shrink-0 transition duration-150 rounded-[3px] select-none group-focus/button:outline-hidden group-disabled/button:opacity-75 group-disabled/button:pointer-events-none focus-custom",
   variant: variant,
 };
 
@@ -343,7 +343,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
 
     const buttonElement = (
       <button
-        className={cn("group/button outline-none focus-custom", props.fullWidth ? "w-full" : "")}
+        className={cn("group/button outline-hidden focus-custom", props.fullWidth ? "w-full" : "")}
         type={type}
         disabled={isDisabled}
         onClick={onClick}
@@ -415,7 +415,7 @@ export const LinkButton = ({
     return (
       <div
         className={cn(
-          "group/button pointer-events-none cursor-default opacity-40 outline-none",
+          "group/button pointer-events-none cursor-default opacity-40 outline-hidden",
           props.fullWidth ? "w-full" : ""
         )}
       >
@@ -466,7 +466,7 @@ export const NavLinkButton = ({ to, className, target, ...props }: NavLinkPropsT
   return (
     <NavLink
       to={to}
-      className={cn("group/button outline-none block", props.fullWidth ? "w-full" : "")}
+      className={cn("group/button outline-hidden block", props.fullWidth ? "w-full" : "")}
       target={target}
     >
       {({ isActive, isPending }) => (

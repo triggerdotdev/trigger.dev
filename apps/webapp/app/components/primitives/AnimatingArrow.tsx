@@ -3,13 +3,13 @@ import { cn } from "~/utils/cn";
 
 const variants = {
   small: {
-    size: "size-[1rem]",
+    size: "size-4",
     arrowHeadRight: "group-hover:translate-x-[3px]",
     arrowLineRight: "h-[1.5px] w-[7px] translate-x-1 top-[calc(50%-0.5px)]",
     arrowHeadLeft: "group-hover:translate-x-[3px]",
     arrowLineLeft: "h-[1.5px] w-[7px] translate-x-1 top-[calc(50%-0.5px)]",
     arrowHeadTopRight:
-      "-translate-x-0 transition group-hover:translate-x-[3px] group-hover:translate-y-[-3px]",
+      "translate-x-0 transition group-hover:translate-x-[3px] group-hover:translate-y-[-3px]",
   },
   medium: {
     size: "size-[1.1rem]",
@@ -18,7 +18,7 @@ const variants = {
     arrowHeadLeft: "group-hover:translate-x-[-3px]",
     arrowLineLeft: "h-[1.5px] w-[9px] translate-x-1 top-[calc(50%-1px)]",
     arrowHeadTopRight:
-      "-translate-x-0 transition group-hover:translate-x-[3px] group-hover:translate-y-[-3px]",
+      "translate-x-0 transition group-hover:translate-x-[3px] group-hover:translate-y-[-3px]",
   },
   large: {
     size: "size-6",
@@ -27,7 +27,7 @@ const variants = {
     arrowHeadLeft: "group-hover:translate-x-1",
     arrowLineLeft: "h-[2.3px] w-[12px] translate-x-[6px] top-[calc(50%-1px)]",
     arrowHeadTopRight:
-      "-translate-x-0 transition group-hover:translate-x-[3px] group-hover:translate-y-[-3px]",
+      "translate-x-0 transition group-hover:translate-x-[3px] group-hover:translate-y-[-3px]",
   },
   "extra-large": {
     size: "size-8",
@@ -36,7 +36,7 @@ const variants = {
     arrowHeadLeft: "group-hover:translate-x-1",
     arrowLineLeft: "h-[3px] w-[16px] translate-x-[8px] top-[calc(50%-1.5px)]",
     arrowHeadTopRight:
-      "-translate-x-0 transition group-hover:translate-x-[3px] group-hover:translate-y-[-3px]",
+      "translate-x-0 transition group-hover:translate-x-[3px] group-hover:translate-y-[-3px]",
   },
 };
 

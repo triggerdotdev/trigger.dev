@@ -204,7 +204,7 @@ export function TaskRunsTable({
                     <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
                       <TaskRunStatusCombo status={status} />
                     </div>
-                    <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                    <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
                       {descriptionForTaskRunStatus(status)}
                     </Paragraph>
                   </div>
@@ -225,7 +225,7 @@ export function TaskRunsTable({
                     <RectangleStackIcon className="size-4 text-text-dimmed" />
                     <Header3>Queued duration</Header3>
                   </div>
-                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                  <Paragraph variant="small" className="text-wrap! text-text-dimmed">
                     The amount of time from when the run was created to it starting to run.
                   </Paragraph>
                 </div>
@@ -233,7 +233,7 @@ export function TaskRunsTable({
                   <div className="mb-0.5 flex items-center gap-1.5">
                     <ClockIcon className="size-4 text-blue-500" /> <Header3>Run duration</Header3>
                   </div>
-                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                  <Paragraph variant="small" className="text-wrap! text-text-dimmed">
                     The total amount of time from the run starting to it finishing. This includes
                     all time spent waiting.
                   </Paragraph>
@@ -243,7 +243,7 @@ export function TaskRunsTable({
                     <CpuChipIcon className="size-4 text-success" />
                     <Header3>Compute duration</Header3>
                   </div>
-                  <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                  <Paragraph variant="small" className="text-wrap! text-text-dimmed">
                     The amount of compute time used in the run. This does not include time spent
                     waiting.
                   </Paragraph>
@@ -268,11 +268,11 @@ export function TaskRunsTable({
           <TableHeaderCell
             tooltip={
               <div className="max-w-xs p-1">
-                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
                   When you want to trigger a task now, but have it run at a later time, you can use
                   the delay option.
                 </Paragraph>
-                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
                   Runs that are delayed and have not been enqueued yet will display in the dashboard
                   with a “Delayed” status.
                 </Paragraph>
@@ -292,11 +292,11 @@ export function TaskRunsTable({
           <TableHeaderCell
             tooltip={
               <div className="max-w-xs p-1">
-                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
                   You can set a TTL (time to live) when triggering a task, which will automatically
                   expire the run if it hasn’t started within the specified time.
                 </Paragraph>
-                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
                   All runs in development have a default ttl of 10 minutes. You can disable this by
                   setting the ttl option.
                 </Paragraph>
@@ -316,10 +316,10 @@ export function TaskRunsTable({
           <TableHeaderCell
             tooltip={
               <div className="max-w-xs p-1">
-                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
                   You can add tags to a run and then filter runs using them.
                 </Paragraph>
-                <Paragraph variant="small" className="!text-wrap text-text-dimmed" spacing>
+                <Paragraph variant="small" className="text-wrap! text-text-dimmed" spacing>
                   You can add tags when triggering a run or inside the run function.
                 </Paragraph>
                 <LinkButton
@@ -505,7 +505,7 @@ export function TaskRunsTable({
                 )}
                 <TableCell to={path}>
                   {run.isTest ? (
-                    <CheckIcon className="size-4 text-charcoal-400 group-hover/table-row:text-text-bright" />
+                    <CheckIcon className="size-4 text-text-dimmed group-hover/table-row:text-text-bright" />
                   ) : (
                     "–"
                   )}
@@ -576,7 +576,7 @@ function RunActionsCell({
               <Dialog>
                 <DialogTrigger
                   asChild
-                  className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                  className="size-6 rounded-sm p-1 text-text-dimmed transition hover:bg-background-raised hover:text-text-bright"
                 >
                   <Button
                     variant="small-menu-item"
@@ -613,7 +613,7 @@ function RunActionsCell({
               <Dialog>
                 <DialogTrigger
                   asChild
-                  className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-charcoal-700 hover:text-text-bright"
+                  className="h-6 w-6 rounded-sm p-1 text-text-dimmed transition hover:bg-background-raised hover:text-text-bright"
                 >
                   <Button
                     variant="small-menu-item"
@@ -655,7 +655,7 @@ function RunActionsCell({
                 <Dialog>
                   <DialogTrigger
                     asChild
-                    className="size-6 rounded-sm p-1 text-text-bright transition hover:bg-charcoal-700"
+                    className="size-6 rounded-sm p-1 text-text-bright transition hover:bg-background-raised"
                   >
                     <NoSymbolIcon className="size-3" />
                   </DialogTrigger>
@@ -679,7 +679,7 @@ function RunActionsCell({
                 <Dialog>
                   <DialogTrigger
                     asChild
-                    className="h-6 w-6 rounded-sm p-1 text-text-bright transition hover:bg-charcoal-700"
+                    className="h-6 w-6 rounded-sm p-1 text-text-bright transition hover:bg-background-raised"
                   >
                     <ArrowPathIcon className="size-3" />
                   </DialogTrigger>

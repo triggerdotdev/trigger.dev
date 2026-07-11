@@ -200,7 +200,7 @@ export default function Page() {
                       <TypedAwait resolve={runList} errorElement={<TableLoading />}>
                         {(list) =>
                           list ? (
-                            <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                            <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                               <TaskRunsTable
                                 total={list.runs.length}
                                 hasFilters={list.hasFilters}
@@ -247,7 +247,7 @@ function TaskDetailSidebar({
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
+      <div className="flex min-w-0 items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
         <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
           <TaskIcon className="size-4.5 shrink-0 text-tasks" />
           <span className="truncate">{task.slug}</span>
@@ -263,7 +263,7 @@ function TaskDetailSidebar({
           Test task
         </LinkButton>
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <Property.Table>
           <Property.Item>
             <Property.Label>Identifier</Property.Label>
@@ -417,7 +417,7 @@ function ActivityChartSkeleton() {
   return (
     <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
       {Array.from({ length: 42 }).map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-charcoal-850" />
+        <div key={i} className="h-full flex-1 bg-background-dimmed" />
       ))}
     </div>
   );

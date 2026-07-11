@@ -49,7 +49,7 @@ export function SideMenuSection({
           // A real button so it's keyboard-operable (Enter/Space toggle natively) and shows the
           // focus-custom ring. Removed from the tab order when the side menu is collapsed, since
           // the header is hidden (the divider takes its place) and can't be toggled then.
-          className="group/section flex w-full cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 hover:bg-charcoal-750 focus-custom"
+          className="group/section flex w-full cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 hover:bg-background-hover focus-custom"
           onClick={isSideMenuCollapsed ? undefined : handleToggle}
           tabIndex={isSideMenuCollapsed ? -1 : undefined}
           aria-expanded={!isCollapsed}
@@ -75,7 +75,7 @@ export function SideMenuSection({
           `--sm-collapse` progress variable, 0 → 1). Only shown while this section is expanded.
         */}
         <div
-          className="absolute left-2 right-2 top-1 h-px bg-charcoal-600"
+          className="absolute left-2 right-2 top-1 h-px bg-surface-control"
           style={{ opacity: isCollapsed ? 0 : "var(--sm-collapse, 0)" }}
         />
       </div>

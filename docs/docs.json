@@ -77,7 +77,8 @@
               "run-usage",
               "context",
               "runs/priority",
-              "hidden-tasks"
+              "hidden-tasks",
+              "runs/bulk-actions"
             ]
           },
           {
@@ -255,7 +256,13 @@
           },
           {
             "group": "Using the Dashboard",
-            "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
+            "pages": [
+              "run-tests",
+              "troubleshooting-alerts",
+              "billing-limits",
+              "replaying",
+              "bulk-actions"
+            ]
           },
           {
             "group": "Troubleshooting",
@@ -276,11 +283,11 @@
               "self-hosting/overview",
               "self-hosting/docker",
               "self-hosting/kubernetes",
+              "self-hosting/security",
               {
                 "group": "Environment variables",
                 "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
-              },
-              "open-source-self-hosting"
+              }
             ]
           },
           {
@@ -339,6 +346,15 @@
               "management/runs/retrieve-events",
               "management/runs/retrieve-trace",
               "management/runs/retrieve-result"
+            ]
+          },
+          {
+            "group": "Bulk actions API",
+            "pages": [
+              "management/bulk-actions/create",
+              "management/bulk-actions/list",
+              "management/bulk-actions/retrieve",
+              "management/bulk-actions/abort"
             ]
           },
           {
@@ -518,6 +534,7 @@
               "guides/example-projects/claude-changelog-generator",
               "guides/example-projects/claude-github-wiki",
               "guides/example-projects/claude-thinking-chatbot",
+              "guides/example-projects/clickhouse-chat-agent",
               "guides/example-projects/cursor-background-agent",
               "guides/example-projects/human-in-the-loop-workflow",
               "guides/example-projects/mastra-agents-with-memory",
@@ -728,8 +745,12 @@
       "destination": "/guides/use-cases/upgrading-from-v2"
     },
     {
+      "source": "/open-source-self-hosting",
+      "destination": "/self-hosting/overview"
+    },
+    {
       "source": "/v3/open-source-self-hosting",
-      "destination": "/open-source-self-hosting"
+      "destination": "/self-hosting/overview"
     },
     {
       "source": "/v3/:slug*",
@@ -738,6 +759,10 @@
     {
       "source": "/reattempting-replaying",
       "destination": "/replaying"
+    },
+    {
+      "source": "/management/runs/bulk-actions",
+      "destination": "/runs/bulk-actions"
     },
     {
       "source": "/tasks-overview",

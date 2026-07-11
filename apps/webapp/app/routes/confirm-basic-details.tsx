@@ -239,11 +239,11 @@ export default function Page() {
   const shouldShowConfirm = user.email !== enteredEmail || user.email === "";
 
   return (
-    <AppContainer className="bg-charcoal-900">
+    <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
         <MainCenteredContainer
           variant="onboarding"
-          className="max-w-[29rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+          className="max-w-116 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
         >
           <Form method="post" {...getFormProps(form)}>
             <FormTitle
@@ -320,7 +320,7 @@ export default function Page() {
 
               {isManagedCloud && (
                 <>
-                  <div className="border-t border-charcoal-700" />
+                  <div className="border-t border-grid-bright" />
                   <InputGroup>
                     <Label className="mb-0.5" id="referral-label">
                       How did you hear about us?
@@ -384,7 +384,7 @@ export default function Page() {
                       dropdownIcon
                       icon={<UserGroupIcon className="mr-1 size-4.5 text-text-dimmed" />}
                       items={shuffledRoles}
-                      className="h-8 min-w-0 border-0 bg-charcoal-750 pl-2 text-sm text-text-dimmed ring-charcoal-600 transition hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
+                      className="h-8 min-w-0 border-0 bg-background-hover pl-2 text-sm text-text-dimmed ring-border-bright transition hover:bg-secondary hover:text-text-dimmed hover:ring-1"
                       text={(v) => (v ? <span className="text-text-bright">{v}</span> : undefined)}
                     >
                       {(items) =>

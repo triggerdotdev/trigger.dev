@@ -2,7 +2,7 @@ import { ChevronRightIcon, Cog8ToothIcon } from "@heroicons/react/20/solid";
 import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
 import { isBranchableEnvironment } from "~/utils/branchableEnvironment";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
-import { useNavigation } from "@remix-run/react";
+import { useNavigation, useRevalidator } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -58,10 +58,19 @@ export function EnvironmentSelector({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigation = useNavigation();
   const { urlForEnvironment } = useEnvironmentSwitcher();
+  const revalidator = useRevalidator();
 
   useEffect(() => {
     setIsMenuOpen(false);
   }, [navigation.location?.pathname]);
+
+  // Fetch immediately on open so the list is fresh right away
+  useEffect(() => {
+    if (isMenuOpen && revalidator.state !== "loading") {
+      revalidator.revalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMenuOpen]);
 
   const hasStaging = project.environments.some((env) => env.type === "STAGING");
   return (
@@ -70,7 +79,7 @@ export function EnvironmentSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] hover:bg-charcoal-750 focus-custom",
+              "group flex h-8 items-center rounded pl-1.75 hover:bg-background-hover focus-custom",
               isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
               className
             )}
@@ -111,13 +120,13 @@ export function EnvironmentSelector({
         side="right"
         sideOffset={8}
         delayDuration={isCollapsed ? 0 : 500}
-        buttonClassName="!h-8"
+        buttonClassName="h-8!"
         asChild
         tabbable
         disableHoverableContent
       />
       <PopoverContent
-        className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-56 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         side={isCollapsed ? "right" : "bottom"}
         sideOffset={isCollapsed ? 8 : 4}
         align="start"
@@ -255,7 +264,7 @@ function Branches({
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
-            className="hover:bg-charcoal-750"
+            className="hover:bg-background-hover"
             TrailingIcon={ChevronRightIcon}
             trailingIconClassName="text-text-dimmed"
             textAlignLeft
@@ -269,7 +278,7 @@ function Branches({
           </ButtonContent>
         </PopoverTrigger>
         <PopoverContent
-          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           align="start"
           style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
           side="right"
@@ -391,7 +400,7 @@ export function BranchesPopoverContent({
           </div>
         )}
       </div>
-      <div className="border-t border-charcoal-700 p-1">
+      <div className="border-t border-grid-bright p-1">
         {parentEnvironment.type === "DEVELOPMENT" ? (
           <PopoverMenuItem
             to={branchesDevPath(organization, project, environment)}

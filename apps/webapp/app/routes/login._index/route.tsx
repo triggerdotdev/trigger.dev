@@ -1,9 +1,12 @@
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { EnvelopeIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
-import { Form } from "@remix-run/react";
+import { Form, useNavigation } from "@remix-run/react";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import { motion, useReducedMotion } from "framer-motion";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { GoogleLogo } from "~/assets/logos/GoogleLogo";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -11,18 +14,34 @@ import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
 import { Header1 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
 import { isGithubAuthSupported, isGoogleAuthSupported } from "~/services/auth.server";
 import { getLastAuthMethod } from "~/services/lastAuthMethod.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
-import { getUserSession } from "~/services/sessionStorage.server";
+import {
+  commitSession as commitUserSession,
+  getUserSession,
+} from "~/services/sessionStorage.server";
 import { ssoController } from "~/services/sso.server";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { SSO_SESSION_EXPIRED_REASON } from "~/utils/ssoSession";
 import { cn } from "~/utils/cn";
+
+// Client-side email validation for the inline magic-link form. Mirrors
+// /login/sso: the form posts cross-route to /login/magic, so conform runs
+// format validation in the browser and renders the styled inline error.
+// Server-side errors still surface via the session-backed authError below.
+const emailSchema = z.object({
+  email: z
+    .string({ required_error: "Enter your email address" })
+    .email("Enter a valid email address"),
+});
 
 function LastUsedBadge({ className }: { className?: string }) {
   const shouldReduceMotion = useReducedMotion();
@@ -30,18 +49,18 @@ function LastUsedBadge({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "absolute -right-5 top-1 z-10 -translate-y-1/2 shadow-md md:-right-[4.6rem] md:top-1/2",
+        "absolute -right-5 top-1 z-10 -translate-y-1/2 shadow-md md:right-[-4.6rem] md:top-1/2",
         className
       )}
     >
       <motion.div
-        className="relative rounded border border-charcoal-700 bg-charcoal-800 px-2 py-1 text-center text-xxs font-medium uppercase text-blue-500"
+        className="relative rounded border border-grid-bright bg-background-bright px-2 py-1 text-center text-xxs font-medium uppercase text-blue-500"
         initial={shouldReduceMotion ? undefined : { opacity: 0, x: 4 }}
         animate={shouldReduceMotion ? undefined : { opacity: 1, x: 0 }}
         transition={shouldReduceMotion ? undefined : { duration: 0.8, ease: "easeOut" }}
       >
         <span className="pointer-events-none absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <span className="hidden h-2 w-2 rotate-45 border-b border-l border-charcoal-700 bg-charcoal-800 md:block" />
+          <span className="hidden h-2 w-2 rotate-45 border-b border-l border-grid-bright bg-background-bright md:block" />
         </span>
         Last used
       </motion.div>
@@ -95,8 +114,36 @@ export async function loader({ request }: LoaderFunctionArgs) {
     showSsoAuth = (globalFlags as Record<string, unknown>).hasSso === true;
   }
 
+  // Read the flashed auth error and, when one exists, commit the session so
+  // the flash is consumed. Reading without committing leaves the flash in the
+  // cookie, so a stale error (e.g. a once-rejected email address) would
+  // resurface on every future /login visit and make later, successful login
+  // attempts look like they failed.
+  const userSession = await getUserSession(request);
+  const error = userSession.get("auth:error");
+  // get() only auto-clears flash-stored values. Sessions written before this
+  // fix stored the error with set(), which survives get() + commit — unset it
+  // explicitly so those sessions heal too instead of showing the stale error
+  // until the cookie's one-year maxAge runs out.
+  userSession.unset("auth:error");
+
+  let authError: string | undefined;
+  if (error) {
+    if ("message" in error) {
+      authError = error.message;
+    } else {
+      authError = JSON.stringify(error, null, 2);
+    }
+  }
+
+  const headers = new Headers();
+  if (error) {
+    headers.append("Set-Cookie", await commitUserSession(userSession));
+  }
+
   if (redirectTo) {
     const session = await setRedirectTo(request, redirectTo);
+    headers.append("Set-Cookie", await commitSession(session));
 
     return typedjson(
       {
@@ -105,44 +152,47 @@ export async function loader({ request }: LoaderFunctionArgs) {
         showGoogleAuth: isGoogleAuthSupported,
         showSsoAuth,
         lastAuthMethod,
-        authError: null,
+        authError,
         notice,
         isVercelMarketplace: redirectTo.startsWith("/vercel/callback"),
       },
-      {
-        headers: {
-          "Set-Cookie": await commitSession(session),
-        },
-      }
+      { headers }
     );
   } else {
-    const session = await getUserSession(request);
-    const error = session.get("auth:error");
-
-    let authError: string | undefined;
-    if (error) {
-      if ("message" in error) {
-        authError = error.message;
-      } else {
-        authError = JSON.stringify(error, null, 2);
-      }
-    }
-
-    return typedjson({
-      redirectTo: null,
-      showGithubAuth: isGithubAuthSupported,
-      showGoogleAuth: isGoogleAuthSupported,
-      showSsoAuth,
-      lastAuthMethod,
-      authError,
-      notice,
-      isVercelMarketplace: false,
-    });
+    return typedjson(
+      {
+        redirectTo: null,
+        showGithubAuth: isGithubAuthSupported,
+        showGoogleAuth: isGoogleAuthSupported,
+        showSsoAuth,
+        lastAuthMethod,
+        authError,
+        notice,
+        isVercelMarketplace: false,
+      },
+      { headers }
+    );
   }
 }
 
 export default function LoginPage() {
   const data = useTypedLoaderData<typeof loader>();
+  const navigation = useNavigation();
+  // The inline email form posts to the /login/magic action, so reflect its
+  // in-flight state here to show the sending spinner.
+  const isEmailLoading =
+    (navigation.state === "submitting" || navigation.state === "loading") &&
+    navigation.formAction === "/login/magic" &&
+    navigation.formData?.get("action") === "send";
+
+  const [emailForm, emailFields] = useForm({
+    id: "login-email",
+    onValidate({ formData }) {
+      return parseWithZod(formData, { schema: emailSchema });
+    },
+    shouldValidate: "onSubmit",
+    shouldRevalidate: "onInput",
+  });
 
   return (
     <LoginPageLayout>
@@ -200,44 +250,80 @@ export default function LoginPage() {
                 </Form>
               </div>
             )}
-            {!data.isVercelMarketplace && (
+            {data.showSsoAuth && !data.isVercelMarketplace && (
               <div className="relative w-full">
-                {data.lastAuthMethod === "email" && <LastUsedBadge />}
+                {data.lastAuthMethod === "sso" && <LastUsedBadge />}
                 <LinkButton
                   to={
                     data.redirectTo
-                      ? `/login/magic?redirectTo=${encodeURIComponent(data.redirectTo)}`
-                      : "/login/magic"
+                      ? `/login/sso?redirectTo=${encodeURIComponent(data.redirectTo)}`
+                      : "/login/sso"
                   }
                   variant="secondary/extra-large"
                   fullWidth
-                  data-action="continue with email"
+                  data-action="continue with sso"
                   className="text-text-bright"
                 >
-                  <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
-                  Continue with Email
+                  <LockClosedIcon className="mr-2 size-5 text-text-bright" />
+                  Continue with SSO
                 </LinkButton>
               </div>
             )}
-            {data.showSsoAuth && !data.isVercelMarketplace && (
-              <div className="flex w-full flex-col items-center gap-y-2 pt-2">
-                <div className="h-px w-full bg-charcoal-700" />
-                <div className="relative inline-flex items-center">
-                  {data.lastAuthMethod === "sso" && <LastUsedBadge className="translate-x-2" />}
-                  <TextLink
-                    to={
-                      data.redirectTo
-                        ? `/login/sso?redirectTo=${encodeURIComponent(data.redirectTo)}`
-                        : "/login/sso"
-                    }
-                    className="inline-flex items-center text-sm"
-                    data-action="continue with sso"
+            {!data.isVercelMarketplace && (
+              <>
+                {(data.showGithubAuth || data.showGoogleAuth || data.showSsoAuth) && (
+                  <div className="flex w-full items-center gap-3 py-1">
+                    <div className="h-px flex-1 bg-background-raised" />
+                    <span className="text-xs uppercase text-text-dimmed">or</span>
+                    <div className="h-px flex-1 bg-background-raised" />
+                  </div>
+                )}
+                <div className="w-full">
+                  {/* Posts to the /login/magic action so all magic-link logic
+                      (rate limiting, SSO auto-discovery, send) stays in one place. */}
+                  <Form
+                    action="/login/magic"
+                    method="post"
+                    className="w-full"
+                    {...getFormProps(emailForm)}
                   >
-                    <LockClosedIcon className="mr-1.5 size-4" />
-                    Sign in with SSO
-                  </TextLink>
+                    <input type="hidden" name="action" value="send" />
+                    <div className="flex w-full flex-col items-center gap-y-2">
+                      <InputGroup fullWidth>
+                        <Input
+                          {...getInputProps(emailFields.email, { type: "email" })}
+                          spellCheck={false}
+                          placeholder="Email Address"
+                          variant="large"
+                          data-action="email address"
+                        />
+                        <FormError id={emailFields.email.errorId}>
+                          {emailFields.email.errors}
+                        </FormError>
+                      </InputGroup>
+                      <div className="relative w-full">
+                        {data.lastAuthMethod === "email" && <LastUsedBadge />}
+                        <Button
+                          type="submit"
+                          variant="primary/large"
+                          disabled={isEmailLoading}
+                          fullWidth
+                          data-action="continue with email"
+                        >
+                          {isEmailLoading ? (
+                            <Spinner className="mr-2 size-5" color="white" />
+                          ) : (
+                            <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
+                          )}
+                          <span className="text-text-bright">
+                            {isEmailLoading ? "Sending…" : "Continue with Email"}
+                          </span>
+                        </Button>
+                      </div>
+                    </div>
+                  </Form>
                 </div>
-              </div>
+              </>
             )}
             {data.authError && <FormError>{data.authError}</FormError>}
           </div>

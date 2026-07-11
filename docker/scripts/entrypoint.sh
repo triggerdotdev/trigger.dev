@@ -13,6 +13,20 @@ else
   echo "SKIP_POSTGRES_MIGRATIONS=1, skipping Postgres migrations."
 fi
 
+# Run-ops split: migrate the dedicated NEW run-ops database only when it is configured. Single-DB
+# installs never set the URL, so this is a no-op there.
+if [ -n "$RUN_OPS_DATABASE_URL" ]; then
+  if [ "$SKIP_RUN_OPS_MIGRATIONS" != "1" ]; then
+    echo "Running run-ops migrations"
+    pnpm --filter @internal/run-ops-database db:migrate:deploy
+    echo "Run-ops migrations done"
+  else
+    echo "SKIP_RUN_OPS_MIGRATIONS=1, skipping run-ops migrations."
+  fi
+else
+  echo "RUN_OPS_DATABASE_URL not set, skipping run-ops migrations."
+fi
+
 if [ "$SKIP_DASHBOARD_AGENT_MIGRATIONS" != "1" ]; then
   echo "Running dashboard agent migrations"
   pnpm --filter @internal/dashboard-agent-db db:migrate:deploy

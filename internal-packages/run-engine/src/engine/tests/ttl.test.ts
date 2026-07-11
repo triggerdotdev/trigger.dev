@@ -5,13 +5,16 @@ import { Decimal } from "@trigger.dev/database";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 import type { EventBusEventArgs } from "../eventBus.js";
+import {
+  PassthroughControlPlaneResolver,
+  type ControlPlaneResolver,
+} from "../controlPlaneResolver.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("RunEngine ttl", () => {
   containerTest("Run expiring (ttl)", async ({ prisma, redisOptions }) => {
-    //create environment
     const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
@@ -68,7 +71,6 @@ describe("RunEngine ttl", () => {
         maximumConcurrencyLimit: 0,
       });
 
-      //trigger the run
       const run = await engine.trigger(
         {
           number: 1,
@@ -99,7 +101,6 @@ describe("RunEngine ttl", () => {
         expiredEventData = result;
       });
 
-      //wait for 1 seconds
       await setTimeout(1_500);
 
       assertNonNullable(expiredEventData);
@@ -1604,6 +1605,126 @@ describe("RunEngine ttl", () => {
         expect(parentExecutionDataAfter.completedWaitpoints?.length).toBe(1);
         expect(parentExecutionDataAfter.completedWaitpoints![0].id).toBe(runWaitpoint.waitpointId);
         expect(parentExecutionDataAfter.completedWaitpoints![0].outputIsError).toBe(true);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "expireRun completes the run even when env resolution is unavailable (resolveEnv null)",
+    async ({ prisma, redisOptions }) => {
+      // Contract: env resolution is NOT on the expire path — identity comes from
+      // the run's latest execution snapshot. So with resolveEnv returning null the
+      // run is still fully expired (message acked, waitpoint completed to unblock a
+      // parent, runExpired emitted), instead of silently dropped.
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const passthrough = new PassthroughControlPlaneResolver({
+        prisma,
+      });
+      const resolver: ControlPlaneResolver = {
+        resolveAuthenticatedEnv: passthrough.resolveAuthenticatedEnv.bind(passthrough),
+        resolveWorkerVersion: passthrough.resolveWorkerVersion.bind(passthrough),
+        assertEnvExists: passthrough.assertEnvExists.bind(passthrough),
+        async resolveEnv() {
+          return null;
+        },
+      };
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
+          // Disable the batch TTL path so it can't race the manual expireRun call.
+          ttlSystem: {
+            disabled: true,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+        controlPlaneResolver: resolver,
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const expiredEvents: EventBusEventArgs<"runExpired">[0][] = [];
+        engine.eventBus.on("runExpired", (result) => {
+          expiredEvents.push(result);
+        });
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_nullenv1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_nullenv",
+            spanId: "s_nullenv",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            ttl: "1s",
+          },
+          prisma
+        );
+
+        // Run is queued waiting; the message is in the queue.
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData);
+        expect(executionData.snapshot.executionStatus).toBe("QUEUED");
+
+        // (a) no throw, (b) runExpired IS emitted from snapshot identity,
+        // (c) message IS acked off the queue, (d) run reaches EXPIRED.
+        await expect(engine.ttlSystem.expireRun({ runId: run.id })).resolves.toBeUndefined();
+
+        expect(expiredEvents.length).toBe(1);
+        expect(expiredEvents[0]!.run.id).toBe(run.id);
+        expect(expiredEvents[0]!.run.status).toBe("EXPIRED");
+        expect(expiredEvents[0]!.organization.id).toBe(authenticatedEnvironment.organization.id);
+        expect(expiredEvents[0]!.project.id).toBe(authenticatedEnvironment.project.id);
+        expect(expiredEvents[0]!.environment.id).toBe(authenticatedEnvironment.id);
+
+        const messageExists = await engine.runQueue.messageExists(
+          authenticatedEnvironment.organization.id,
+          run.id
+        );
+        expect(messageExists).toBe(0);
+
+        const expiredRun = await prisma.taskRun.findUnique({
+          where: { id: run.id },
+          select: { status: true },
+        });
+        expect(expiredRun?.status).toBe("EXPIRED");
       } finally {
         await engine.quit();
       }

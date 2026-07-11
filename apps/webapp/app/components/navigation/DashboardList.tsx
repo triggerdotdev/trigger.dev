@@ -173,7 +173,7 @@ function DashboardChildMenuItem({
         ? "text-text-bright"
         : undefined;
 
-  const inactiveIconColor = isCollapsed ? "text-text-dimmed" : "text-charcoal-700";
+  const inactiveIconColor = isCollapsed ? "text-text-dimmed" : "text-tertiary";
 
   return (
     <SideMenuItem

@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { getRunsReplicationGlobal } from "~/services/runsReplicationGlobal.server";
 import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
 import { FINAL_RUN_STATUSES } from "~/v3/taskStatus";
 
@@ -40,11 +41,12 @@ export async function action({ request }: ActionFunctionArgs) {
       runs.push(...batchRuns);
     }
 
-    if (!runsReplicationInstance) {
+    const service = getRunsReplicationGlobal() ?? runsReplicationInstance;
+    if (!service) {
       throw new Error("Runs replication instance not found");
     }
 
-    await runsReplicationInstance.backfill(
+    await service.backfill(
       runs.map((run) => ({
         ...run,
         masterQueue: run.workerQueue,

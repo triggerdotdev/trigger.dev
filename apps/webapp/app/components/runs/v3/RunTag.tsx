@@ -26,8 +26,8 @@ export function RunTag({
     if (typeof tagResult === "string") {
       return (
         <>
-          <img src={tagLeftPath} alt="" className="block h-full w-[0.5625rem]" />
-          <span className="flex items-center rounded-r-sm border-y border-r border-charcoal-700 bg-charcoal-800 pr-1.5 text-text-dimmed group-hover:rounded-r-none group-has-[[href]]:group-hover:border-charcoal-650 group-has-[[href]]:group-hover:text-charcoal-300">
+          <img src={tagLeftPath} alt="" className="block h-full w-2.25" />
+          <span className="flex items-center rounded-r-sm border-y border-r border-grid-bright bg-background-bright pr-1.5 text-text-dimmed group-hover:rounded-r-none group-hover:group-has-[[href]]:border-border-bright group-hover:group-has-[[href]]:text-charcoal-300">
             {tag}
           </span>
         </>
@@ -35,11 +35,11 @@ export function RunTag({
     } else {
       return (
         <>
-          <img src={tagLeftPath} alt="" className="block h-full w-[0.5625rem]" />
-          <span className="flex items-center border-y border-r border-charcoal-700 bg-charcoal-800 pr-1.5 text-text-dimmed group-has-[[href]]:group-hover:border-charcoal-650 group-has-[[href]]:group-hover:text-charcoal-300">
+          <img src={tagLeftPath} alt="" className="block h-full w-2.25" />
+          <span className="flex items-center border-y border-r border-grid-bright bg-background-bright pr-1.5 text-text-dimmed group-hover:group-has-[[href]]:border-border-bright group-hover:group-has-[[href]]:text-charcoal-300">
             {tagResult.key}
           </span>
-          <span className="flex items-center whitespace-nowrap rounded-r-sm border-y border-r border-charcoal-700 bg-charcoal-750 px-1.5 text-text-dimmed group-hover:rounded-r-none group-has-[[href]]:group-hover:border-charcoal-650 group-has-[[href]]:group-hover:bg-charcoal-700 group-has-[[href]]:group-hover:text-charcoal-300">
+          <span className="flex items-center whitespace-nowrap rounded-r-sm border-y border-r border-grid-bright bg-background-hover px-1.5 text-text-dimmed group-hover:rounded-r-none group-hover:group-has-[[href]]:border-border-bright group-hover:group-has-[[href]]:bg-background-raised group-hover:group-has-[[href]]:text-charcoal-300">
             {tagResult.value}
           </span>
         </>
@@ -99,11 +99,11 @@ function CopyButton({ textToCopy, isHovered }: { textToCopy: string; isHovered: 
           onClick={copy}
           onMouseDown={(e) => e.stopPropagation()}
           className={cn(
-            "absolute -right-6 top-0 z-10 size-6 items-center justify-center rounded-r-sm border-y border-r border-charcoal-650 bg-charcoal-750",
+            "absolute -right-6 top-0 z-10 size-6 items-center justify-center rounded-r-sm border-y border-r border-border-bright bg-background-hover",
             isHovered ? "flex" : "hidden",
             copied
               ? "text-green-500"
-              : "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-text-bright"
+              : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
           )}
         >
           {copied ? (
@@ -144,9 +144,9 @@ function DeleteButton({
           onClick={handleDelete}
           onMouseDown={(e) => e.stopPropagation()}
           className={cn(
-            "absolute -right-6 top-0 z-10 size-6 items-center justify-center rounded-r-sm border-y border-r border-charcoal-650 bg-charcoal-750",
+            "absolute -right-6 top-0 z-10 size-6 items-center justify-center rounded-r-sm border-y border-r border-border-bright bg-background-hover",
             isHovered ? "flex" : "hidden",
-            "text-text-dimmed hover:border-charcoal-600 hover:bg-charcoal-700 hover:text-rose-400"
+            "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-rose-400"
           )}
         >
           <XIcon className="size-3.5" />

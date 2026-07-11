@@ -1,6 +1,5 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
-import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
@@ -115,9 +114,6 @@ describe("RunsReplicationService (part 5/7)", () => {
         return [run1, run2];
       });
 
-      // Wait for replication
-      await setTimeout(1000);
-
       // Query ClickHouse for both runs using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-multi-event-tx",
@@ -126,9 +122,16 @@ describe("RunsReplicationService (part 5/7)", () => {
         params: z.object({ run_id_1: z.string(), run_id_2: z.string() }),
       });
 
-      const [queryError, result] = await queryRuns({ run_id_1: run1.id, run_id_2: run2.id });
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(2);
+      const result = await vi.waitFor(
+        async () => {
+          const [queryError, rows] = await queryRuns({ run_id_1: run1.id, run_id_2: run2.id });
+          expect(queryError).toBeNull();
+          expect(rows?.length).toBe(2);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       const run1Result = result?.find((r: any) => r.run_id === run1.id);
       const run2Result = result?.find((r: any) => r.run_id === run2.id);
       expect(run1Result).toBeDefined();

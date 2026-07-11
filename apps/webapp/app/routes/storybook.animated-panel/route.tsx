@@ -123,7 +123,7 @@ function DetailPanel({ item, onClose }: { item: DemoItem; onClose: () => void })
           className="pl-1"
         />
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <Property.Table>
           <Property.Item>
             <Property.Label>Run ID</Property.Label>

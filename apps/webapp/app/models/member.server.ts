@@ -5,15 +5,20 @@ import { customAlphabet } from "nanoid";
 import { logger } from "~/services/logger.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
+import { ssoController } from "~/services/sso.server";
 
 export const INVITE_NOT_FOUND = "Invite not found";
+export const INVITE_BLOCKED_DIRECTORY_MANAGED =
+  "Membership for this organization is managed by Directory Sync, so invites can't be accepted.";
 export const ENV_SETUP_INCOMPLETE =
   "You joined the organization, but we couldn't finish setting up your development environments. Please try accepting the invite again, or contact support if this persists.";
 
 export function isAcceptInviteFormError(error: unknown): error is Error {
   return (
     error instanceof Error &&
-    (error.message === INVITE_NOT_FOUND || error.message === ENV_SETUP_INCOMPLETE)
+    (error.message === INVITE_NOT_FOUND ||
+      error.message === ENV_SETUP_INCOMPLETE ||
+      error.message === INVITE_BLOCKED_DIRECTORY_MANAGED)
   );
 }
 
@@ -67,43 +72,6 @@ export async function getTeamMembersAndInvites({
   }
 
   return { members: org.members, invites: org.invites };
-}
-
-export async function removeTeamMember({
-  userId,
-  slug,
-  memberId,
-}: {
-  userId: string;
-  slug: string;
-  memberId: string;
-}) {
-  const org = await prisma.organization.findFirst({
-    where: { slug, members: { some: { userId } } },
-  });
-
-  if (!org) {
-    throw new Error("User does not have access to this organization");
-  }
-
-  // Scope the target to this org. A member id is a globally unique key, so
-  // deleting by id alone would remove members of other orgs; bind it to the
-  // resolved org and reject a foreign id.
-  const member = await prisma.orgMember.findFirst({
-    where: { id: memberId, organizationId: org.id },
-    include: {
-      organization: true,
-      user: true,
-    },
-  });
-
-  if (!member) {
-    throw new Error("Member not found in this organization");
-  }
-
-  await prisma.orgMember.delete({ where: { id: member.id } });
-
-  return member;
 }
 
 export async function inviteMembers({
@@ -417,6 +385,14 @@ export async function acceptInvite({
     throw new Error(INVITE_NOT_FOUND);
   }
 
+  // Directory-managed membership: accepting an invite would add a member
+  // outside the directory. Block it (the invite can still be revoked by an
+  // admin). Fail-open on a plugin error so a hiccup doesn't strand joiners.
+  const membershipPolicy = await ssoController.getMembershipPolicy(invite.organizationId);
+  if (membershipPolicy.isOk() && !membershipPolicy.value.manualMembershipAllowed) {
+    throw new Error(INVITE_BLOCKED_DIRECTORY_MANAGED);
+  }
+
   const maximumConcurrencyLimit = await getDefaultEnvironmentConcurrencyLimit(
     invite.organizationId,
     "DEVELOPMENT"
@@ -501,6 +477,12 @@ export async function acceptInvite({
     });
   }
 
+  // Deliberate re-admission clears any sticky-removal tombstone so this
+  // membership isn't shadowed by a prior removal (best-effort; no-op in OSS).
+  await ssoController
+    .clearMembershipRemoval({ organizationId: invite.organization.id, userId: user.id })
+    .unwrapOr(undefined);
+
   return { remainingInvites, organization: invite.organization };
 }
 
@@ -513,7 +495,7 @@ export async function declineInvite({
 }) {
   return await prisma.$transaction(async (tx) => {
     //1. delete invite
-    const declinedInvite = await prisma.orgMemberInvite.delete({
+    const declinedInvite = await tx.orgMemberInvite.delete({
       where: {
         id: inviteId,
         email: user.email,
@@ -524,7 +506,7 @@ export async function declineInvite({
     });
 
     //2. check for other invites
-    const remainingInvites = await prisma.orgMemberInvite.findMany({
+    const remainingInvites = await tx.orgMemberInvite.findMany({
       where: {
         email: user.email,
       },

@@ -88,7 +88,7 @@ function MultiSelectField({
       dropdownIcon
       icon={icon}
       items={items}
-      className="h-8 min-w-0 border-0 bg-charcoal-750 pl-2 text-sm text-text-dimmed ring-charcoal-600 transition hover:bg-charcoal-650 hover:text-text-dimmed hover:ring-1"
+      className="h-8 min-w-0 border-0 bg-background-hover pl-2 text-sm text-text-dimmed ring-border-bright transition hover:bg-secondary hover:text-text-dimmed hover:ring-1"
       text={(v) =>
         v.length === 0 ? undefined : (
           <span className="flex min-w-0 items-center text-text-bright">
@@ -118,7 +118,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     select: {
       id: true,
       title: true,
-      v3Enabled: true,
+      isActivated: true,
       v2Enabled: true,
       hasRequestedV3: true,
       _count: {
@@ -138,7 +138,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const { isManagedCloud } = featuresForRequest(request);
-  if (isManagedCloud && !organization.v3Enabled) {
+  if (isManagedCloud && !organization.isActivated) {
     return redirect(selectPlanPath({ slug: organizationSlug }));
   }
 
@@ -151,7 +151,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       title: organization.title,
       slug: organizationSlug,
       projectsCount: organization._count.projects,
-      v3Enabled: organization.v3Enabled,
+      isActivated: organization.isActivated,
       v2Enabled: organization.v2Enabled,
       hasRequestedV3: organization.hasRequestedV3,
     },
@@ -324,7 +324,7 @@ export default function Page() {
   const { organization, message } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
 
-  const canCreateV3Projects = organization.v3Enabled;
+  const canCreateV3Projects = organization.isActivated;
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
@@ -359,11 +359,11 @@ export default function Page() {
   const showGoalsOther = selectedGoals.includes(GOALS_OTHER);
 
   return (
-    <AppContainer className="bg-charcoal-900">
+    <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
         <MainCenteredContainer
           variant="onboarding"
-          className="max-w-[29rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+          className="max-w-116 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
         >
           <div>
             <FormTitle
@@ -402,7 +402,7 @@ export default function Page() {
                   />
                 )}
 
-                <div className="border-t border-charcoal-700" />
+                <div className="border-t border-grid-bright" />
                 <InputGroup>
                   <Label>What are you working on?</Label>
                   <input type="hidden" name="workingOn" value={JSON.stringify(selectedWorkingOn)} />

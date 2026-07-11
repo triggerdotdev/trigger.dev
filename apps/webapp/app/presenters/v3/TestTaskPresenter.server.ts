@@ -1,6 +1,7 @@
 import type { ClickHouse } from "@internal/clickhouse";
 import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
 import {
+  type Prisma,
   type PrismaClientOrTransaction,
   type RuntimeEnvironmentType,
   type TaskRunStatus,
@@ -8,12 +9,47 @@ import {
 } from "@trigger.dev/database";
 import { inferSchema } from "@jsonhero/schema-infer";
 import parse from "parse-duration";
+import { type RunStore } from "@internal/run-store";
 import { type PrismaClient } from "~/db.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
-import { runStore } from "~/v3/runStore.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { queueTypeFromType } from "./QueueRetrievePresenter.server";
+
+// Optional run-ops read-through wiring for the recent-payloads hydrate. Omitted
+// => passthrough on `this.replica` (single-DB / self-host). `legacyReplica` is a
+// READ REPLICA handle only — there is no legacy-primary field.
+type TestTaskReadThroughDeps = {
+  newClient?: PrismaClientOrTransaction;
+  legacyReplica?: PrismaClientOrTransaction;
+  // Resolved boot constant; when false the split branch is never entered.
+  splitEnabled?: boolean;
+};
+
+// The byte-identical select the recent-payloads hydrate has always used; `id` is
+// included so the split merge can key set-membership.
+const RECENT_RUNS_SELECT = {
+  id: true,
+  queue: true,
+  friendlyId: true,
+  taskIdentifier: true,
+  createdAt: true,
+  status: true,
+  payload: true,
+  payloadType: true,
+  seedMetadata: true,
+  seedMetadataType: true,
+  runtimeEnvironmentId: true,
+  concurrencyKey: true,
+  maxAttempts: true,
+  maxDurationInSeconds: true,
+  machinePreset: true,
+  ttl: true,
+  runTags: true,
+} as const;
+
+type RecentRunRow = Prisma.TaskRunGetPayload<{ select: typeof RECENT_RUNS_SELECT }>;
 
 export type RunTemplate = TaskRunTemplate & {
   scheduledTaskPayload?: ScheduledRun["payload"];
@@ -122,7 +158,9 @@ export type ScheduledRun = Omit<RawRun, "payload" | "ttl"> & {
 export class TestTaskPresenter {
   constructor(
     private readonly replica: PrismaClientOrTransaction,
-    private readonly clickhouse: ClickHouse
+    private readonly clickhouse: ClickHouse,
+    private readonly readThrough?: TestTaskReadThroughDeps,
+    private readonly runStore: RunStore = defaultRunStore
   ) {}
 
   public async call({
@@ -215,41 +253,7 @@ export class TestTaskPresenter {
       },
     });
 
-    const latestRuns = await runStore.findRuns(
-      {
-        where: {
-          id: {
-            in: runIds,
-          },
-          payloadType: {
-            in: ["application/json", "application/super+json"],
-          },
-        },
-        select: {
-          id: true,
-          queue: true,
-          friendlyId: true,
-          taskIdentifier: true,
-          createdAt: true,
-          status: true,
-          payload: true,
-          payloadType: true,
-          seedMetadata: true,
-          seedMetadataType: true,
-          runtimeEnvironmentId: true,
-          concurrencyKey: true,
-          maxAttempts: true,
-          maxDurationInSeconds: true,
-          machinePreset: true,
-          ttl: true,
-          runTags: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      },
-      this.replica
-    );
+    const latestRuns = await this.hydrateRecentRuns(runIds);
 
     // Infer schema from existing run payloads when no explicit schema is defined
     let inferredPayloadSchema: unknown | undefined;
@@ -385,6 +389,58 @@ export class TestTaskPresenter {
         return task.triggerSource satisfies never;
       }
     }
+  }
+
+  // Runs the recent-payloads find on one client, preserving the byte-identical
+  // select, the payloadType IN filter, and the createdAt-desc order on every
+  // store this hydrate touches.
+  private hydrateOnClient(
+    client: PrismaClientOrTransaction,
+    ids: string[]
+  ): Promise<RecentRunRow[]> {
+    return this.runStore.findRuns(
+      {
+        where: {
+          id: { in: ids },
+          payloadType: { in: ["application/json", "application/super+json"] },
+        },
+        select: RECENT_RUNS_SELECT,
+        orderBy: { createdAt: "desc" },
+      },
+      client
+    );
+  }
+
+  // Hydrates the recent-payloads run-id set from the run-ops store. Split on: new
+  // client first, then the LEGACY READ REPLICA ONLY for ids that miss on new —
+  // never the legacy primary. Split off: one plain findRuns on `this.replica`.
+  private async hydrateRecentRuns(runIds: string[]): Promise<RecentRunRow[]> {
+    if (runIds.length === 0) {
+      return [];
+    }
+
+    if (!this.readThrough?.splitEnabled) {
+      return this.hydrateOnClient(this.readThrough?.newClient ?? this.replica, runIds);
+    }
+
+    const newClient = this.readThrough.newClient ?? this.replica;
+    const legacyReplica = this.readThrough.legacyReplica ?? this.replica;
+
+    const newRows = await this.hydrateOnClient(newClient, runIds);
+    const foundIds = new Set(newRows.map((r) => r.id));
+    // Probe every id that missed on new against the legacy read replica.
+    const toProbeLegacy = runIds.filter((id) => !foundIds.has(id));
+
+    const legacyRows = toProbeLegacy.length
+      ? await this.hydrateOnClient(legacyReplica, toProbeLegacy)
+      : [];
+
+    // Re-impose createdAt-desc across the two finds to match single-DB ordering,
+    // with an id-desc tie-break so identical timestamps stay deterministic.
+    return [...newRows, ...legacyRows].sort((a, b) => {
+      const byCreatedAt = b.createdAt.getTime() - a.createdAt.getTime();
+      return byCreatedAt !== 0 ? byCreatedAt : a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+    });
   }
 }
 

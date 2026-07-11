@@ -97,7 +97,7 @@ export function SaveToDashboardDialog({
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>Add to dashboard</DialogHeader>
-          <div className="!mt-1 space-y-4">
+          <div className="mt-1! space-y-4">
             <Paragraph variant="small" className="text-text-dimmed">
               You don't have any custom dashboards yet. Create one first from the sidebar menu.
             </Paragraph>
@@ -125,7 +125,7 @@ export function SaveToDashboardDialog({
           <input type="hidden" name="query" value={query} />
           <input type="hidden" name="config" value={JSON.stringify(config)} />
 
-          <div className="!mt-1 space-y-2">
+          <div className="mt-1! space-y-2">
             <Paragraph variant="small" className="text-text-dimmed">
               Select a dashboard to add this chart to:
             </Paragraph>
@@ -143,8 +143,8 @@ export function SaveToDashboardDialog({
                       isAtLimit
                         ? "cursor-not-allowed opacity-50"
                         : selectedDashboardId === dashboard.friendlyId
-                          ? "bg-charcoal-700 text-text-bright"
-                          : "text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
+                          ? "bg-background-raised text-text-bright"
+                          : "text-text-dimmed hover:bg-background-hover hover:text-text-bright"
                     )}
                   >
                     {selectedDashboardId === dashboard.friendlyId ? (

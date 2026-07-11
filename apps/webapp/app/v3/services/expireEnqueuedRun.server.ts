@@ -5,6 +5,7 @@ import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { getEventRepositoryForStore } from "../eventRepository/index.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { isV3Disabled } from "../engineDeprecation.server";
 
 export class ExpireEnqueuedRunService extends BaseService {
@@ -29,13 +30,24 @@ export class ExpireEnqueuedRunService extends BaseService {
         id: runId,
       },
       {
-        include: {
-          runtimeEnvironment: {
-            include: {
-              organization: true,
-              project: true,
-            },
-          },
+        select: {
+          id: true,
+          status: true,
+          engine: true,
+          lockedAt: true,
+          ttl: true,
+          taskEventStore: true,
+          runtimeEnvironmentId: true,
+          friendlyId: true,
+          traceId: true,
+          spanId: true,
+          parentSpanId: true,
+          createdAt: true,
+          completedAt: true,
+          taskIdentifier: true,
+          projectId: true,
+          organizationId: true,
+          isTest: true,
         },
       },
       this._prisma
@@ -52,6 +64,13 @@ export class ExpireEnqueuedRunService extends BaseService {
     // v3 (engine V1) shutdown: skip expiring abandoned V1 runs. v4 is unaffected.
     if (isV3Disabled() && run.engine === "V1") {
       logger.debug("[ExpireEnqueuedRunService] Skipping expiry for shut-down v3 run", { runId });
+      return;
+    }
+
+    const env = await controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+    if (!env) {
+      logger.debug("ExpireEnqueuedRunService: environment not found", { runId });
       return;
     }
 
@@ -90,7 +109,7 @@ export class ExpireEnqueuedRunService extends BaseService {
 
     const eventRepository = await getEventRepositoryForStore(
       run.taskEventStore,
-      run.runtimeEnvironment.organization.id
+      env.organizationId
     );
 
     if (run.ttl) {

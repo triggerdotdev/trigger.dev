@@ -1,9 +1,12 @@
+import { type RunStore } from "@internal/run-store";
 import { z } from "zod";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { findLatestSession } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { commonWorker } from "../commonWorker.server";
+import { type ReadThroughDeps, readThroughRun } from "../runOpsMigration/readThrough.server";
 import { BaseService } from "./baseService.server";
-import { CancelTaskRunService } from "./cancelTaskRun.server";
+import { type CancelableTaskRun, CancelTaskRunService } from "./cancelTaskRun.server";
 
 export const CancelDevSessionRunsServiceOptions = z.object({
   runIds: z.array(z.string()),
@@ -15,6 +18,23 @@ export const CancelDevSessionRunsServiceOptions = z.object({
 export type CancelDevSessionRunsServiceOptions = z.infer<typeof CancelDevSessionRunsServiceOptions>;
 
 export class CancelDevSessionRunsService extends BaseService {
+  // Injectable read-through deps for the run-ops TaskRun read. Undefined in production:
+  // readThroughRun then uses its ~/db.server singleton handles and the boot split flag,
+  // so single-DB is unchanged. Tests inject the hetero new/legacy handles + splitEnabled.
+  readonly #readThroughDeps?: ReadThroughDeps;
+
+  constructor(
+    opts: {
+      prisma?: PrismaClientOrTransaction;
+      replica?: PrismaClientOrTransaction;
+      runStore?: RunStore;
+      readThroughDeps?: ReadThroughDeps;
+    } = {}
+  ) {
+    super(opts.prisma, opts.replica, opts.runStore);
+    this.#readThroughDeps = opts.readThroughDeps;
+  }
+
   public async call(options: CancelDevSessionRunsServiceOptions) {
     const cancelledSession = options.cancelledSessionId
       ? await this._prisma.runtimeEnvironmentSession.findFirst({
@@ -23,7 +43,7 @@ export class CancelDevSessionRunsService extends BaseService {
       : undefined;
 
     if (cancelledSession) {
-      const latestSession = await findLatestSession(cancelledSession.environmentId);
+      const latestSession = await findLatestSession(cancelledSession.environmentId, this._replica);
 
       if (
         latestSession &&
@@ -49,12 +69,17 @@ export class CancelDevSessionRunsService extends BaseService {
 
     const cancelTaskRunService = new CancelTaskRunService();
 
+    // readThroughRun resolves residency from the run id alone; an env scope is only
+    // available when a cancelled session was resolved.
+    const environmentId = cancelledSession?.environmentId ?? "";
+
     for (const runId of options.runIds) {
       await this.#cancelInProgressRun(
         runId,
         cancelTaskRunService,
         options.cancelledAt,
-        options.reason
+        options.reason,
+        environmentId
       );
     }
   }
@@ -63,17 +88,52 @@ export class CancelDevSessionRunsService extends BaseService {
     runId: string,
     service: CancelTaskRunService,
     cancelledAt: Date,
-    reason: string
+    reason: string,
+    environmentId: string
   ) {
     logger.debug("Cancelling in progress run", { runId });
 
-    const taskRun = runId.startsWith("run_")
-      ? await this.runStore.findRun({ friendlyId: runId }, this._prisma)
-      : await this.runStore.findRun({ id: runId }, this._prisma);
+    // Read-through: new store first, legacy read replica for an old
+    // in-retention run; single plain read in single-DB passthrough.
+    const where = runId.startsWith("run_") ? { friendlyId: runId } : { id: runId };
 
-    if (!taskRun) {
+    const result = await readThroughRun<CancelableTaskRun>({
+      runId,
+      environmentId,
+      readNew: (client) =>
+        client.taskRun.findFirst({
+          where,
+          select: {
+            id: true,
+            engine: true,
+            status: true,
+            friendlyId: true,
+            taskEventStore: true,
+            createdAt: true,
+            completedAt: true,
+          },
+        }),
+      readLegacy: (replica) =>
+        replica.taskRun.findFirst({
+          where,
+          select: {
+            id: true,
+            engine: true,
+            status: true,
+            friendlyId: true,
+            taskEventStore: true,
+            createdAt: true,
+            completedAt: true,
+          },
+        }),
+      deps: this.#readThroughDeps,
+    });
+
+    if (result.source === "not-found" || result.source === "past-retention") {
       return;
     }
+
+    const taskRun = result.value;
 
     try {
       await service.call(taskRun, { reason, cancelAttempts: true, cancelledAt });

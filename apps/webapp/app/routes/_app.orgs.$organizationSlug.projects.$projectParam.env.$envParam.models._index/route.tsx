@@ -269,7 +269,7 @@ function ProviderFilter({ providers }: { providers: string[] }) {
             onRemove={() => del("providers")}
           />
         </Ariakit.TooltipAnchor>
-        <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
+        <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
           <div className="flex items-center gap-3">
             <span>Filter by provider</span>
             <ShortcutKey className="size-4 flex-none" shortcut={providerShortcut} variant="small" />
@@ -326,7 +326,7 @@ function FeaturesFilter({ features }: { features: string[] }) {
             onRemove={() => del("features")}
           />
         </Ariakit.TooltipAnchor>
-        <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
+        <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
           <div className="flex items-center gap-3">
             <span>Filter by features</span>
             <ShortcutKey className="size-4 flex-none" shortcut={featuresShortcut} variant="small" />
@@ -451,7 +451,7 @@ function FiltersBar({
               shortcut={detailsShortcut}
             />
           </Ariakit.TooltipAnchor>
-          <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
+          <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
             <div className="flex items-center gap-3">
               <span>Toggle all details</span>
               <ShortcutKey
@@ -773,12 +773,12 @@ function CompareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-fit gap-[0.4375rem] !px-0 !pb-0 !pt-0 sm:!max-w-[90vw]">
+      <DialogContent className="gap-1.75 px-0! pb-0! pt-0! sm:w-fit! sm:max-w-[90vw]!">
         <DialogHeader className="h-11 justify-center px-4">
           <DialogTitle>Compare models</DialogTitle>
         </DialogHeader>
         {rows.length > 0 ? (
-          <div className="-mt-[0.375rem] max-h-[70vh] overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [&_tbody_tr:last-child]:after:hidden">
+          <div className="-mt-1.5 max-h-[70vh] overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control [&_tbody_tr:last-child]:after:hidden">
             <Table stickyHeader showTopBorder={false}>
               <TableHeader>
                 <TableRow>
@@ -900,7 +900,7 @@ function ModelDetailPanel({
           className="pl-1"
         />
       </div>
-      <div className="h-fit overflow-x-auto whitespace-nowrap px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="h-fit overflow-x-auto whitespace-nowrap px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <TabContainer>
           <TabButton
             isActive={tab === "overview"}
@@ -920,7 +920,7 @@ function ModelDetailPanel({
           </TabButton>
         </TabContainer>
       </div>
-      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {tab === "overview" && <DetailOverviewTab model={model} />}
         {tab === "usage" && (
           <DetailYourUsageTab
@@ -1252,7 +1252,7 @@ function YourModelsTab({
   };
 
   return (
-    <div className="overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div className="grid grid-cols-1 gap-3 px-3 lg:grid-cols-3">
         <div className="h-[312px]">
           <MetricWidget

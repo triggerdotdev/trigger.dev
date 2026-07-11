@@ -4,6 +4,7 @@ import type {
   TaskRun,
   TaskRunExecutionStatus,
 } from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
@@ -37,6 +38,7 @@ export class EnqueueSystem {
     skipRunLock,
     includeTtl = false,
     enableFastPath = false,
+    store,
   }: {
     run: TaskRun;
     env: MinimalAuthenticatedEnvironment;
@@ -60,28 +62,38 @@ export class EnqueueSystem {
     includeTtl?: boolean;
     /** When true, allow the queue to push directly to worker queue if concurrency is available. */
     enableFastPath?: boolean;
+    /**
+     * When set (inside `runStore.runInTransaction`), the snapshot write goes through this tx-bound
+     * store so the promote+snapshot pair is atomic on the run's owning DB. The Redis enqueue
+     * below is not part of that transaction.
+     */
+    store?: RunStore;
   }) {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lockIf(!skipRunLock, "enqueueRun", [run.id], async () => {
-      const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-        run: run,
-        snapshot: {
-          executionStatus: snapshot?.status ?? "QUEUED",
-          description: snapshot?.description ?? "Run was QUEUED",
-          metadata: snapshot?.metadata ?? undefined,
+      const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
+        prisma,
+        {
+          run: run,
+          snapshot: {
+            executionStatus: snapshot?.status ?? "QUEUED",
+            description: snapshot?.description ?? "Run was QUEUED",
+            metadata: snapshot?.metadata ?? undefined,
+          },
+          previousSnapshotId,
+          batchId,
+          environmentId: env.id,
+          environmentType: env.type,
+          projectId: env.project.id,
+          organizationId: env.organization.id,
+          checkpointId,
+          completedWaitpoints,
+          workerId,
+          runnerId,
         },
-        previousSnapshotId,
-        batchId,
-        environmentId: env.id,
-        environmentType: env.type,
-        projectId: env.project.id,
-        organizationId: env.organization.id,
-        checkpointId,
-        completedWaitpoints,
-        workerId,
-        runnerId,
-      });
+        store
+      );
 
       // Force development runs to use the environment id as the worker queue.
       const workerQueue = env.type === "DEVELOPMENT" ? env.id : run.workerQueue;

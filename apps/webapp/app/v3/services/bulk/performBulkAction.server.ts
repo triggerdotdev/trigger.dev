@@ -10,7 +10,6 @@ export class PerformBulkActionService extends BaseService {
     const item = await this._prisma.bulkActionItem.findFirst({
       where: { id: bulkActionItemId },
       include: {
-        group: true,
         sourceRun: true,
         destinationRun: true,
       },
@@ -24,7 +23,7 @@ export class PerformBulkActionService extends BaseService {
       return;
     }
 
-    switch (item.group.type) {
+    switch (item.type) {
       case "REPLAY": {
         const service = new ReplayTaskRunService(this._prisma);
         const result = await service.call(item.sourceRun, { triggerSource: "dashboard" });
@@ -57,7 +56,7 @@ export class PerformBulkActionService extends BaseService {
         break;
       }
       default: {
-        assertNever(item.group.type);
+        assertNever(item.type);
       }
     }
 
@@ -94,17 +93,20 @@ export class PerformBulkActionService extends BaseService {
 
   public async call(bulkActionGroupId: string) {
     const actionGroup = await this._prisma.bulkActionGroup.findFirst({
-      include: {
-        items: true,
-      },
       where: { id: bulkActionGroupId },
+      select: { id: true },
     });
 
     if (!actionGroup) {
       return;
     }
 
-    for (const item of actionGroup.items) {
+    const items = await this._prisma.bulkActionItem.findMany({
+      where: { groupId: bulkActionGroupId },
+      select: { id: true },
+    });
+
+    for (const item of items) {
       await this.enqueueBulkActionItem(item.id, bulkActionGroupId);
     }
   }

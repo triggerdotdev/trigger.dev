@@ -19,6 +19,7 @@
     "ioredis": "~5.6.0"
   },
   "devDependencies": {
+    "@internal/run-ops-database": "workspace:*",
     "@testcontainers/postgresql": "^11.14.0",
     "@testcontainers/redis": "^11.14.0",
     "@trigger.dev/core": "workspace:*",

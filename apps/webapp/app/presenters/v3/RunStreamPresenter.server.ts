@@ -38,26 +38,34 @@ export class RunStreamPresenter {
         // Scope the lookup to organizations the requesting user is a member
         // of, matching RunPresenter's run lookup. Unauthorized and missing
         // runs are indistinguishable (both 404).
+        // Run-ops read by friendlyId only (routes to the owning DB); the project/org
+        // membership auth is a control-plane concern resolved separately below — joining
+        // it here is a cross-DB join that returns nothing once the run lives in run-ops.
         const run = await runStore.findRun(
           {
             friendlyId: runFriendlyId,
-            project: {
-              organization: {
-                members: {
-                  some: {
-                    userId,
-                  },
-                },
-              },
-            },
           },
           {
             select: {
               traceId: true,
+              projectId: true,
             },
-          },
-          prismaClient
+          }
         );
+
+        // Authorize on the control-plane DB, keyed by the run's project. A non-member
+        // (or unresolvable project) is treated as no-access: traceId stays null.
+        let authorized = false;
+        if (run) {
+          const authorizedProject = await prismaClient.project.findFirst({
+            where: {
+              id: run.projectId,
+              organization: { members: { some: { userId } } },
+            },
+            select: { id: true },
+          });
+          authorized = authorizedProject !== null;
+        }
 
         // Fall back to the mollifier buffer when the run isn't in PG yet.
         // The buffered run has no execution events to stream, but we still
@@ -65,7 +73,7 @@ export class RunStreamPresenter {
         // so that the moment the drainer materialises the row and execution
         // begins, those events flow to this open SSE connection. Closing
         // with 404 would force the dashboard to keep retrying.
-        let traceId: string | null = run?.traceId ?? null;
+        let traceId: string | null = run && authorized ? run.traceId : null;
         if (!traceId) {
           const buffer = getMollifierBuffer();
           if (buffer) {
@@ -107,7 +115,6 @@ export class RunStreamPresenter {
           traceId: resolvedRun.traceId,
         });
 
-        // Subscribe to trace updates
         const { unsubscribe, eventEmitter } = await tracePubSub.subscribeToTrace(
           resolvedRun.traceId
         );
@@ -142,10 +149,8 @@ export class RunStreamPresenter {
 
         return {
           initStream: ({ send }) => {
-            // Create throttled send function
             throttledSend({ send, event: "message", data: new Date().toISOString() });
 
-            // Set up message listener for pub/sub events
             messageListener = (event: string) => {
               throttledSend({ send, event: "message", data: event });
             };
@@ -155,7 +160,6 @@ export class RunStreamPresenter {
           },
 
           iterator: ({ send }) => {
-            // Send ping to keep connection alive
             try {
               // Send an actual message so the client refreshes
               throttledSend({ send, event: "message", data: new Date().toISOString() });
@@ -171,13 +175,11 @@ export class RunStreamPresenter {
               traceId: resolvedRun.traceId,
             });
 
-            // Remove message listener
             if (messageListener) {
               eventEmitter.removeListener("message", messageListener);
             }
             eventEmitter.removeAllListeners();
 
-            // Unsubscribe from Redis pub/sub
             unsubscribe()
               .then(() => {
                 logger.info("RunStreamPresenter.cleanup.unsubscribe succeeded", {
@@ -203,7 +205,6 @@ export class RunStreamPresenter {
   }
 }
 
-// Export a singleton loader for the route to use
 export const runStreamLoader = singleton("runStreamLoader", () => {
   const presenter = new RunStreamPresenter();
   return presenter.createLoader();

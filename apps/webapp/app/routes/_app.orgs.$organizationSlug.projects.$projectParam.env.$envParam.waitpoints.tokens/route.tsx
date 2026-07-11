@@ -42,6 +42,12 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { WaitpointListPresenter } from "~/presenters/v3/WaitpointListPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import {
+  runOpsNewReplicaClient,
+  runOpsLegacyReplica,
+  runOpsSplitReadEnabled,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
 import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
@@ -88,7 +94,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const presenter = new WaitpointListPresenter();
+    const presenter = new WaitpointListPresenter(undefined, undefined, {
+      runOpsNew: runOpsNewReplicaClient as unknown as PrismaClientOrTransaction,
+      runOpsLegacyReplica: runOpsLegacyReplica as unknown as PrismaClientOrTransaction,
+      splitEnabled: runOpsSplitReadEnabled,
+    });
     const result = await presenter.call({
       environment,
       ...searchParams,

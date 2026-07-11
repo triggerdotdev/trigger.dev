@@ -2,7 +2,7 @@ import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 
 export type SyncEnvVarsBody =
   | Record<string, string>
-  | Array<{ name: string; value: string; isParentEnv?: boolean }>;
+  | Array<{ name: string; value: string; isParentEnv?: boolean; isSecret?: boolean }>;
 
 export type SyncEnvVarsResult =
   | SyncEnvVarsBody
@@ -100,9 +100,16 @@ export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOption
 
       const env = stripUnsyncableEnvVars(result.env);
       const parentEnv = result.parentEnv ? stripUnsyncableEnvVars(result.parentEnv) : undefined;
+      const secretEnv = result.secretEnv ? stripUnsyncableEnvVars(result.secretEnv) : undefined;
+      const secretParentEnv = result.secretParentEnv
+        ? stripUnsyncableEnvVars(result.secretParentEnv)
+        : undefined;
 
       const numberOfEnvVars =
-        Object.keys(env).length + (parentEnv ? Object.keys(parentEnv).length : 0);
+        Object.keys(env).length +
+        (parentEnv ? Object.keys(parentEnv).length : 0) +
+        (secretEnv ? Object.keys(secretEnv).length : 0) +
+        (secretParentEnv ? Object.keys(secretParentEnv).length : 0);
 
       if (numberOfEnvVars === 0) {
         $spinner.stop("No env vars detected");
@@ -119,6 +126,8 @@ export function syncEnvVars(fn: SyncEnvVarsFunction, options?: SyncEnvVarsOption
         deploy: {
           env,
           parentEnv,
+          secretEnv,
+          secretParentEnv,
           override: options?.override ?? true,
         },
       });
@@ -151,9 +160,22 @@ async function callSyncEnvVarsFn(
   environment: string,
   branch: string | undefined,
   context: BuildContext
-): Promise<{ env: Record<string, string>; parentEnv?: Record<string, string> } | undefined> {
+): Promise<
+  | {
+      env: Record<string, string>;
+      parentEnv?: Record<string, string>;
+      secretEnv?: Record<string, string>;
+      secretParentEnv?: Record<string, string>;
+    }
+  | undefined
+> {
   if (syncEnvVarsFn && typeof syncEnvVarsFn === "function") {
-    let resolvedEnvVars: { env: Record<string, string>; parentEnv?: Record<string, string> } = {
+    let resolvedEnvVars: {
+      env: Record<string, string>;
+      parentEnv?: Record<string, string>;
+      secretEnv?: Record<string, string>;
+      secretParentEnv?: Record<string, string>;
+    } = {
       env: {},
     };
     let result;
@@ -184,10 +206,16 @@ async function callSyncEnvVarsFn(
           typeof item.value === "string"
         ) {
           if (item.isParentEnv) {
-            if (!resolvedEnvVars.parentEnv) {
-              resolvedEnvVars.parentEnv = {};
+            if (item.isSecret) {
+              resolvedEnvVars.secretParentEnv ??= {};
+              resolvedEnvVars.secretParentEnv[item.name] = item.value;
+            } else {
+              resolvedEnvVars.parentEnv ??= {};
+              resolvedEnvVars.parentEnv[item.name] = item.value;
             }
-            resolvedEnvVars.parentEnv[item.name] = item.value;
+          } else if (item.isSecret) {
+            resolvedEnvVars.secretEnv ??= {};
+            resolvedEnvVars.secretEnv[item.name] = item.value;
           } else {
             resolvedEnvVars.env[item.name] = item.value;
           }

@@ -118,7 +118,7 @@ const STATUS_COLORS: Record<PrivateLinkConnectionStatus, string> = {
   PROVISIONING: "bg-blue-500/20 text-blue-400",
   ACTIVE: "bg-emerald-500/20 text-emerald-400",
   ERROR: "bg-rose-500/20 text-rose-400",
-  DELETING: "bg-charcoal-500/20 text-charcoal-400",
+  DELETING: "bg-surface-control-active/20 text-text-dimmed",
 };
 
 function StatusBadge({ status }: { status: PrivateLinkConnectionStatus }) {

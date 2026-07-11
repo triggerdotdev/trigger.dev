@@ -13,21 +13,13 @@ export function TaskTriggerSourceIcon({
 }) {
   switch (source) {
     case "STANDARD": {
-      return (
-        <TaskIconSmall className={cn("size-[1.125rem] min-w-[1.125rem] text-tasks", className)} />
-      );
+      return <TaskIconSmall className={cn("size-4.5 min-w-4.5 text-tasks", className)} />;
     }
     case "SCHEDULED": {
-      return (
-        <ClockIcon className={cn("size-[1.125rem] min-w-[1.125rem] text-schedules", className)} />
-      );
+      return <ClockIcon className={cn("size-4.5 min-w-4.5 text-schedules", className)} />;
     }
     case "AGENT": {
-      return (
-        <CubeSparkleIcon
-          className={cn("size-[1.125rem] min-w-[1.125rem] text-agents", className)}
-        />
-      );
+      return <CubeSparkleIcon className={cn("size-4.5 min-w-4.5 text-agents", className)} />;
     }
   }
 }

@@ -89,17 +89,17 @@ export default function Story() {
               </ClientTabsList>
             </div>
             <ClientTabsContent value={"tab-1"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+              <div className="flex items-center justify-center rounded bg-background-raised/50 py-8">
                 <h1 className="text-5xl">1</h1>
               </div>
             </ClientTabsContent>
             <ClientTabsContent value={"tab-2"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+              <div className="flex items-center justify-center rounded bg-background-raised/50 py-8">
                 <h1 className="text-5xl">2</h1>
               </div>
             </ClientTabsContent>
             <ClientTabsContent value={"tab-3"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+              <div className="flex items-center justify-center rounded bg-background-raised/50 py-8">
                 <h1 className="text-5xl">3</h1>
               </div>
             </ClientTabsContent>
@@ -123,17 +123,17 @@ export default function Story() {
               </ClientTabsList>
             </div>
             <ClientTabsContent value={"tab-1"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+              <div className="flex items-center justify-center rounded bg-background-raised/50 py-8">
                 <h1 className="text-5xl">1</h1>
               </div>
             </ClientTabsContent>
             <ClientTabsContent value={"tab-2"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+              <div className="flex items-center justify-center rounded bg-background-raised/50 py-8">
                 <h1 className="text-5xl">2</h1>
               </div>
             </ClientTabsContent>
             <ClientTabsContent value={"tab-3"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+              <div className="flex items-center justify-center rounded bg-background-raised/50 py-8">
                 <h1 className="text-5xl">3</h1>
               </div>
             </ClientTabsContent>
@@ -166,17 +166,17 @@ export default function Story() {
               </ClientTabsTrigger>
             </ClientTabsList>
             <ClientTabsContent value={"tab-1"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+              <div className="flex items-center justify-center rounded bg-background-raised/50 py-8">
                 <h1 className="text-5xl">1</h1>
               </div>
             </ClientTabsContent>
             <ClientTabsContent value={"tab-2"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+              <div className="flex items-center justify-center rounded bg-background-raised/50 py-8">
                 <h1 className="text-5xl">2</h1>
               </div>
             </ClientTabsContent>
             <ClientTabsContent value={"tab-3"}>
-              <div className="flex items-center justify-center rounded bg-charcoal-700/50 py-8">
+              <div className="flex items-center justify-center rounded bg-background-raised/50 py-8">
                 <h1 className="text-5xl">3</h1>
               </div>
             </ClientTabsContent>

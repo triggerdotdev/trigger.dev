@@ -19,6 +19,7 @@ import { completeBatchTaskRunItemV3 } from "./batchTriggerV3.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { ResumeDependentParentsService } from "./resumeDependentParents.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 type BaseInput = {
   id: string;
@@ -92,10 +93,8 @@ export class FinalizeTaskRunService extends BaseService {
       }
     }
 
-    // I moved the error update here for two reasons:
-    // - A single update is more efficient than two
-    // - If the status updates to a final status, realtime will receive that status and then shut down the stream
-    //   before the error is updated, which would cause the error to be lost
+    // Error is written in the same update as the status: a separate later write races realtime,
+    // which shuts the stream down on the final status before the error lands, losing it.
     const taskRunError = error ? sanitizeError(error) : undefined;
 
     const run = await this._prisma.taskRun.update({
@@ -131,7 +130,6 @@ export class FinalizeTaskRunService extends BaseService {
       });
     }
 
-    //resume any dependencies
     const resumeService = new ResumeDependentParentsService(this._prisma);
     const result = await resumeService.call({ id: run.id });
 
@@ -144,7 +142,6 @@ export class FinalizeTaskRunService extends BaseService {
       });
     }
 
-    //enqueue alert
     if (isFailedRunStatus(run.status)) {
       await PerformTaskRunAlertsService.enqueue(run.id);
     }
@@ -157,22 +154,23 @@ export class FinalizeTaskRunService extends BaseService {
         {
           select: {
             id: true,
-            lockedToVersion: {
-              select: {
-                supportsLazyAttempts: true,
-              },
-            },
-            runtimeEnvironment: {
-              select: {
-                type: true,
-              },
-            },
+            runtimeEnvironmentId: true,
+            lockedToVersionId: true,
           },
         },
         this._prisma
       );
 
-      if (extendedRun && extendedRun.runtimeEnvironment.type !== "DEVELOPMENT") {
+      const extendedEnv = extendedRun
+        ? await controlPlaneResolver.resolveEnv(extendedRun.runtimeEnvironmentId)
+        : null;
+      const extendedLockedWorker = extendedRun
+        ? await controlPlaneResolver.resolveRunLockedWorker({
+            lockedToVersionId: extendedRun.lockedToVersionId,
+          })
+        : null;
+
+      if (extendedRun && extendedEnv && extendedEnv.type !== "DEVELOPMENT") {
         logger.warn("FinalizeTaskRunService: Fatal status, requesting worker exit", {
           runId: run.id,
           status: run.status,
@@ -183,7 +181,9 @@ export class FinalizeTaskRunService extends BaseService {
           version: "v1",
           runId: run.id,
           // Give the run a few seconds to exit to complete any flushing etc
-          delayInMs: extendedRun.lockedToVersion?.supportsLazyAttempts ? 5_000 : undefined,
+          delayInMs: extendedLockedWorker?.lockedToVersion?.supportsLazyAttempts
+            ? 5_000
+            : undefined,
         });
       }
     }
@@ -247,7 +247,6 @@ export class FinalizeTaskRunService extends BaseService {
         await completeBatchTaskRunItemV3(item.id, item.batchTaskRunId, this._prisma);
       } else {
         // THIS IS DEPRECATED and only happens with batchVersion != v3
-        // Update the item to complete
         await this._prisma.batchTaskRunItem.update({
           where: {
             id: item.id,

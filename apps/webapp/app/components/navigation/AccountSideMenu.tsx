@@ -33,7 +33,7 @@ export function AccountSideMenu({ user }: { user: User }) {
           <span className="text-text-bright">Back to app</span>
         </LinkButton>
       </div>
-      <div className="mb-6 flex grow flex-col overflow-y-auto pl-2.5 pr-0 pt-2 scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="mb-6 flex grow flex-col overflow-y-auto pl-2.5 pr-0 pt-2 scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <SideMenuHeader title="Account" />
         <SideMenuItem
           name="Profile"

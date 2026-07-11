@@ -1,17 +1,18 @@
-/** Shared status → color map for the task/agent activity charts. */
+/** Shared status → color map for the task/agent activity charts.
+ * Values are CSS variables so they follow the theme; CSS contexts only. */
 export const STATUS_COLOR: Record<string, string> = {
   // Run-status groups
-  COMPLETED: "#28BF5C",
-  RUNNING: "#3B82F6",
-  FAILED: "#E11D48",
-  CANCELED: "#878C99",
+  COMPLETED: "var(--color-success)",
+  RUNNING: "var(--color-pending)",
+  FAILED: "var(--color-error)",
+  CANCELED: "var(--color-text-dimmed)",
   // Agent session statuses
-  ACTIVE: "#3B82F6",
-  CLOSED: "#28BF5C",
-  EXPIRED: "#878C99",
+  ACTIVE: "var(--color-pending)",
+  CLOSED: "var(--color-success)",
+  EXPIRED: "var(--color-text-dimmed)",
 };
 
-export const STATUS_COLOR_FALLBACK = "#9CA3AF";
+export const STATUS_COLOR_FALLBACK = "var(--color-text-dimmed)";
 
 export function statusColor(status: string): string {
   return STATUS_COLOR[status] ?? STATUS_COLOR_FALLBACK;

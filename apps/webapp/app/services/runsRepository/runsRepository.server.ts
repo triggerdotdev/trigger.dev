@@ -1,4 +1,5 @@
 import { type ClickHouse } from "@internal/clickhouse";
+import { type RunStore } from "@internal/run-store";
 import { type Tracer } from "@internal/tracing";
 import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
 import { MachinePresetName } from "@trigger.dev/core/v3";
@@ -8,6 +9,7 @@ import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import { type PrismaClientOrTransaction } from "~/db.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
 
@@ -17,6 +19,20 @@ export type RunsRepositoryOptions = {
   logger?: Logger;
   logLevel?: LogLevel;
   tracer?: Tracer;
+
+  // Injectable run-ops store; defaults to the `~/v3/runStore.server` singleton
+  // (passthrough). The list-hydrate fan-out below does not depend on the store
+  // routing mixed-residency id sets — it applies the read-through fan-out itself.
+  runStore?: RunStore;
+
+  // Run-ops read-through wiring for the list hydrate. Omitted => passthrough.
+  readThrough?: {
+    // `legacyReplica` is a READ REPLICA handle only — there is no legacy-primary field.
+    newClient?: PrismaClientOrTransaction;
+    legacyReplica?: PrismaClientOrTransaction;
+    // Resolved boot constant; when false the split branch is never entered.
+    splitEnabled?: boolean;
+  };
 };
 
 const RunStatus = z.enum(Object.values(TaskRunStatus) as [TaskRunStatus, ...TaskRunStatus[]]);
@@ -160,6 +176,12 @@ export interface IRunsRepository {
   }>;
   countRuns(options: RunListInputOptions): Promise<number>;
   listTags(options: TagListOptions): Promise<TagList>;
+  runExistsInEnvironment(options: {
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    createdAtLowerBoundMs?: number;
+  }): Promise<boolean>;
 }
 
 export class RunsRepository implements IRunsRepository {
@@ -171,6 +193,26 @@ export class RunsRepository implements IRunsRepository {
 
   get name() {
     return "runsRepository";
+  }
+
+  async runExistsInEnvironment(options: {
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    createdAtLowerBoundMs?: number;
+  }): Promise<boolean> {
+    return startActiveSpan(
+      "runsRepository.runExistsInEnvironment",
+      async () => this.clickHouseRunsRepository.runExistsInEnvironment(options),
+      {
+        attributes: {
+          "repository.name": "clickhouse",
+          organizationId: options.organizationId,
+          projectId: options.projectId,
+          environmentId: options.environmentId,
+        },
+      }
+    );
   }
 
   async listRunIds(options: ListRunsOptions): Promise<RunIdsPage> {
@@ -195,6 +237,7 @@ export class RunsRepository implements IRunsRepository {
       {
         attributes: {
           "repository.name": "clickhouse",
+          "readThrough.split": Boolean(this.options.readThrough?.splitEnabled),
           organizationId: options.organizationId,
           projectId: options.projectId,
           environmentId: options.environmentId,
@@ -216,6 +259,7 @@ export class RunsRepository implements IRunsRepository {
       {
         attributes: {
           "repository.name": "clickhouse",
+          "readThrough.split": Boolean(this.options.readThrough?.splitEnabled),
           organizationId: options.organizationId,
           projectId: options.projectId,
           environmentId: options.environmentId,
@@ -261,7 +305,8 @@ export function parseRunListInputOptions(data: any): RunListInputOptions {
 
 export async function convertRunListInputOptionsToFilterRunsOptions(
   options: RunListInputOptions,
-  prisma: RunsRepositoryOptions["prisma"]
+  prisma: RunsRepositoryOptions["prisma"],
+  store: RunStore = defaultRunStore
 ): Promise<FilterRunsOptions> {
   const convertedOptions: FilterRunsOptions = {
     ...options,
@@ -276,24 +321,20 @@ export async function convertRunListInputOptionsToFilterRunsOptions(
   });
   convertedOptions.period = time.period ? (parseDuration(time.period) ?? undefined) : undefined;
 
-  // Batch friendlyId to id
+  // Cross-DB resolution: BatchTaskRun is a RUN-OPS table. A run-ops batch resident on the
+  // dedicated run-ops DB must resolve via the store's NEW->LEGACY probe — a single control-plane
+  // client would miss it and leave the friendlyId in the ClickHouse `batch_id` filter, matching
+  // nothing. Split off / self-host: the store is a passthrough over the one client.
   if (options.batchId && options.batchId.startsWith("batch_")) {
-    const batch = await prisma.batchTaskRun.findFirst({
-      select: {
-        id: true,
-      },
-      where: {
-        friendlyId: options.batchId,
-        runtimeEnvironmentId: options.environmentId,
-      },
-    });
+    const batch = await store.findBatchTaskRunByFriendlyId(options.batchId, options.environmentId);
 
     if (batch) {
       convertedOptions.batchId = batch.id;
     }
   }
 
-  // ScheduleId can be a friendlyId
+  // ScheduleId can be a friendlyId. TaskSchedule is a CONTROL-PLANE table, so this stays on
+  // the passed `prisma` (the control-plane client) in both single-DB and split modes.
   if (options.scheduleId && options.scheduleId.startsWith("sched_")) {
     const schedule = await prisma.taskSchedule.findFirst({
       select: {

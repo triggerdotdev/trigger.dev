@@ -1078,7 +1078,7 @@ function V3DeprecationPanel({
         >
           <SimpleTooltip
             button={
-              <PopoverTrigger className="flex !h-8 w-full items-center justify-center rounded border border-amber-500/30 bg-amber-500/15 transition-colors hover:border-amber-500/50 hover:bg-amber-500/25">
+              <PopoverTrigger className="flex h-8! w-full items-center justify-center rounded border border-amber-500/30 bg-amber-500/15 transition-colors hover:border-amber-500/50 hover:bg-amber-500/25">
                 <ExclamationTriangleIcon className="size-5 text-amber-400" />
               </PopoverTrigger>
             }
@@ -1090,7 +1090,7 @@ function V3DeprecationPanel({
           />
         </motion.div>
       </div>
-      <PopoverContent side="right" sideOffset={8} align="start" className="w-52 !min-w-0 p-0">
+      <PopoverContent side="right" sideOffset={8} align="start" className="w-52 min-w-0! p-0">
         <V3DeprecationContent />
       </PopoverContent>
     </Popover>
@@ -1117,7 +1117,7 @@ function V3DeprecationContent() {
         fullWidth
         TrailingIcon={ArrowTopRightOnSquareIcon}
         trailingIconClassName="text-amber-300"
-        className="border-amber-500/30 bg-amber-500/15 hover:!border-amber-500/50 hover:!bg-amber-500/25"
+        className="border-amber-500/30 bg-amber-500/15 hover:border-amber-500/50! hover:bg-amber-500/25!"
       >
         <span className="text-amber-300">View migration guide</span>
       </LinkButton>
@@ -1190,7 +1190,7 @@ function OrgSelector({
         side="right"
         sideOffset={8}
         hidden={!isCollapsed}
-        buttonClassName="!h-8"
+        buttonClassName="h-8!"
         asChild
         tabbable
         disableHoverableContent
@@ -1482,7 +1482,7 @@ function ProjectSelector({
         side="right"
         sideOffset={8}
         hidden={!isCollapsed}
-        buttonClassName="!h-8"
+        buttonClassName="h-8!"
         asChild
         tabbable
         disableHoverableContent

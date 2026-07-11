@@ -319,7 +319,7 @@ function SpanBody({
       {isAiInspector ? (
         <SpanEntity span={span} />
       ) : (
-        <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <SpanEntity span={span} />
         </div>
       )}
@@ -417,7 +417,7 @@ function RunBody({
           />
         )}
       </div>
-      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <TabContainer>
           <TabButton
             isActive={!tab || tab === "overview"}
@@ -462,7 +462,7 @@ function RunBody({
           </TabButton>
         </TabContainer>
       </div>
-      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div>
           {tab === "detail" ? (
             <div className="flex flex-col gap-4 py-3">
@@ -681,7 +681,7 @@ function RunBody({
                                   <KeyIcon className="size-4 text-text-dimmed" />
                                   <Header3>Idempotency keys</Header3>
                                 </div>
-                                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                                <Paragraph variant="small" className="text-wrap! text-text-dimmed">
                                   Prevent duplicate task runs. If you trigger a task with the same
                                   key twice, the second request returns the original run.
                                 </Paragraph>
@@ -1314,7 +1314,7 @@ function SpanEntity({ span }: { span: Span }) {
               <span>Message</span>
               <CopyTextLink value={span.message} />
             </Property.Label>
-            <Property.Value className="whitespace-pre-wrap [overflow-wrap:break-word]">
+            <Property.Value className="whitespace-pre-wrap wrap-break-word">
               {span.message}
             </Property.Value>
           </Property.Item>
@@ -1345,7 +1345,7 @@ function SpanEntity({ span }: { span: Span }) {
         {span.triggeredRuns.length > 0 && (
           <div className="flex flex-col gap-1.5">
             <Header3>Runs</Header3>
-            <Table containerClassName="max-h-[12.5rem]">
+            <Table containerClassName="max-h-50">
               <TableHeader className="bg-background-bright">
                 <TableRow>
                   <TableHeaderCell>ID</TableHeaderCell>
@@ -1438,7 +1438,7 @@ function SpanEntity({ span }: { span: Span }) {
     case "waitpoint": {
       return (
         <div className="grid h-full grid-rows-[1fr_auto]">
-          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <div>
               <Header2>Waitpoint</Header2>
               <Paragraph variant="small">
@@ -1486,7 +1486,7 @@ function SpanEntity({ span }: { span: Span }) {
     }
     case "ai-tool-call": {
       return (
-        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="px-3">
             <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
           </div>
@@ -1496,7 +1496,7 @@ function SpanEntity({ span }: { span: Span }) {
     }
     case "ai-embed": {
       return (
-        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="px-3">
             <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
           </div>

@@ -1699,6 +1699,182 @@ paths:
               console.log(`Run ID: ${run.id}, Status: ${run.status}`);
             }
 
+
+  "/api/v1/bulk-actions":
+    get:
+      operationId: list_bulk_actions_v1
+      summary: List bulk actions
+      description: List bulk actions in the current environment. Bulk actions are returned newest first and can be paginated with cursor pagination.
+      parameters:
+        - $ref: "#/components/parameters/bulkActionsCursorPagination"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBulkActionsResult"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+      tags:
+        - bulk-actions
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: List bulk actions
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            let page = await runs.bulk.list({ limit: 20 });
+
+            for (const action of page.data) {
+              console.log(action.id, action.type, action.status);
+            }
+
+    post:
+      operationId: create_bulk_action_v1
+      summary: Create bulk action
+      description: Create an asynchronous bulk action to cancel or replay runs selected by run IDs or filters.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBulkActionRequestBody"
+      responses:
+        "202":
+          description: Bulk action accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateBulkActionResponse"
+        "400":
+          description: Invalid request parameters or body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+        "422":
+          description: Unprocessable entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many concurrent bulk replays
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      tags:
+        - bulk-actions
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: Replay matching runs
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            const action = await runs.bulk.replay({
+              filter: {
+                status: "FAILED",
+                taskIdentifier: "sync-customer",
+                period: "24h",
+              },
+              name: "Replay failed customer syncs",
+            });
+
+            console.log(action.id);
+        - lang: typescript
+          label: Cancel selected runs
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            const action = await runs.bulk.cancel({
+              runIds: ["run_1234", "run_5678"],
+              name: "Cancel selected runs",
+            });
+
+            console.log(action.id);
+
+  "/api/v1/bulk-actions/{bulkActionId}":
+    get:
+      operationId: retrieve_bulk_action_v1
+      summary: Retrieve bulk action
+      description: Retrieve the status and aggregate processing counts for a bulk action.
+      parameters:
+        - $ref: "#/components/parameters/bulkActionId"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkActionObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Resource not found
+      tags:
+        - bulk-actions
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            const action = await runs.bulk.retrieve("bulk_1234");
+
+            console.log(action.status, action.counts);
+
+  "/api/v1/bulk-actions/{bulkActionId}/abort":
+    post:
+      operationId: abort_bulk_action_v1
+      summary: Abort bulk action
+      description: Abort a pending bulk action so it stops processing additional runs. Runs already processed by the action are not undone.
+      parameters:
+        - $ref: "#/components/parameters/bulkActionId"
+      responses:
+        "200":
+          description: Bulk action aborted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AbortBulkActionResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Resource not found
+      tags:
+        - bulk-actions
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          source: |-
+            import { runs } from "@trigger.dev/sdk";
+
+            const aborted = await runs.bulk.abort("bulk_1234");
+
+            console.log(aborted.id);
+
   "/api/v1/projects/{projectRef}/runs":
     parameters:
       - $ref: "#/components/parameters/projectRef"
@@ -3787,6 +3963,36 @@ components:
           before:
             type: string
             description: The ID of the session to start the page before. Sets the pagination direction to backward.
+    bulkActionId:
+      in: path
+      name: bulkActionId
+      required: true
+      schema:
+        type: string
+      description: The ID of a bulk action, starts with `bulk_`.
+      example: bulk_1234
+    bulkActionsCursorPagination:
+      in: query
+      name: page
+      style: deepObject
+      explode: true
+      description: |
+        Use this parameter to paginate bulk actions. Pass `page[after]` or `page[before]` using the cursor returned in the previous response.
+      schema:
+        type: object
+        properties:
+          size:
+            type: integer
+            maximum: 100
+            minimum: 1
+            default: 25
+            description: Number of bulk actions per page. Maximum is 100.
+          after:
+            type: string
+            description: The cursor to start the page after.
+          before:
+            type: string
+            description: The cursor to start the page before.
     errorId:
       in: path
       name: errorId
@@ -4499,6 +4705,263 @@ components:
         ignoredUntilTotalOccurrences:
           type: integer
           nullable: true
+    BulkActionFilter:
+      type: object
+      description: Selects runs using SDK-style run-list filter fields, excluding pagination fields. In HTTP requests these fields are sent as JSON body properties, so time fields are top-level (`from`, `to`, `period`) instead of nested under `createdAt`. Provide at least one property.
+      minProperties: 1
+      properties:
+        status:
+          oneOf:
+            - type: string
+              enum:
+                - PENDING_VERSION
+                - QUEUED
+                - EXECUTING
+                - REATTEMPTING
+                - FROZEN
+                - COMPLETED
+                - CANCELED
+                - FAILED
+                - CRASHED
+                - INTERRUPTED
+                - SYSTEM_FAILURE
+            - type: array
+              items:
+                type: string
+                enum:
+                  - PENDING_VERSION
+                  - QUEUED
+                  - EXECUTING
+                  - REATTEMPTING
+                  - FROZEN
+                  - COMPLETED
+                  - CANCELED
+                  - FAILED
+                  - CRASHED
+                  - INTERRUPTED
+                  - SYSTEM_FAILURE
+        taskIdentifier:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: The identifier of the task that was run.
+        version:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: The worker version that executed the run.
+        from:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: number
+          description: Start of the time range as an ISO date string or Unix timestamp in milliseconds.
+        to:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: number
+          description: End of the time range as an ISO date string or Unix timestamp in milliseconds.
+        period:
+          type: string
+          description: Relative time period to select, such as `24h` or `30d`.
+          example: 24h
+        bulkAction:
+          type: string
+          description: Select runs that were processed by another bulk action.
+          example: bulk_1234
+        tag:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Select runs with one or more tags.
+        schedule:
+          type: string
+          description: Select runs created by a schedule.
+          example: sched_1234
+        isTest:
+          type: boolean
+          description: Select test or non-test runs.
+        batch:
+          type: string
+          description: Select runs in a batch.
+          example: batch_1234
+        queue:
+          oneOf:
+            - $ref: "#/components/schemas/QueueTypeName"
+            - type: array
+              items:
+                $ref: "#/components/schemas/QueueTypeName"
+        machine:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Select runs by machine preset.
+        region:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+          description: Select runs by region.
+    QueueTypeName:
+      type: object
+      required:
+        - type
+        - name
+      properties:
+        type:
+          type: string
+          enum:
+            - task
+            - custom
+        name:
+          type: string
+    CreateBulkActionRequestBody:
+      oneOf:
+        - type: object
+          required:
+            - action
+          properties:
+            action:
+              type: string
+              enum:
+                - cancel
+            filter:
+              $ref: "#/components/schemas/BulkActionFilter"
+            runIds:
+              type: array
+              minItems: 1
+              maxItems: 500
+              items:
+                type: string
+            name:
+              type: string
+              maxLength: 255
+          oneOf:
+            - required:
+                - filter
+            - required:
+                - runIds
+        - type: object
+          required:
+            - action
+          properties:
+            action:
+              type: string
+              enum:
+                - replay
+            filter:
+              $ref: "#/components/schemas/BulkActionFilter"
+            runIds:
+              type: array
+              minItems: 1
+              maxItems: 500
+              items:
+                type: string
+            name:
+              type: string
+              maxLength: 255
+            targetRegion:
+              type: string
+              description: Region identifier to replay runs in. When omitted, each replay keeps the original run's region.
+          oneOf:
+            - required:
+                - filter
+            - required:
+                - runIds
+    BulkActionObject:
+      type: object
+      required:
+        - id
+        - type
+        - status
+        - counts
+        - createdAt
+      properties:
+        id:
+          type: string
+          description: The bulk action ID, prefixed with `bulk_`.
+          example: bulk_1234
+        name:
+          type: string
+          description: The name provided when the bulk action was created.
+        type:
+          type: string
+          enum:
+            - CANCEL
+            - REPLAY
+        status:
+          type: string
+          enum:
+            - PENDING
+            - COMPLETED
+            - ABORTED
+        counts:
+          type: object
+          required:
+            - total
+            - success
+            - failure
+          properties:
+            total:
+              type: integer
+              description: The number of runs selected when the bulk action was created.
+            success:
+              type: integer
+              description: The number of runs processed successfully.
+            failure:
+              type: integer
+              description: The number of runs that could not be processed.
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+    CreateBulkActionResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          example: bulk_1234
+    AbortBulkActionResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          example: bulk_1234
+    ListBulkActionsResult:
+      type: object
+      required:
+        - data
+        - pagination
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkActionObject"
+        pagination:
+          type: object
+          properties:
+            next:
+              type: string
+              description: Pass this cursor as `page[after]` to retrieve the next page.
+            previous:
+              type: string
+              description: Pass this cursor as `page[before]` to retrieve the previous page.
     ListRunsResult:
       type: object
       properties:

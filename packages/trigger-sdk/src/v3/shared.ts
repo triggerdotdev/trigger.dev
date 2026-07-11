@@ -23,6 +23,7 @@ import {
   getSchemaParseFn,
   lifecycleHooks,
   makeIdempotencyKey,
+  packetRequiresOffloading,
   parsePacket,
   RateLimitError,
   resourceCatalog,
@@ -1655,6 +1656,21 @@ async function executeBatchTwoPhase(
   },
   requestOptions?: TriggerApiRequestOptions
 ): Promise<{ id: string; runCount: number; publicAccessToken: string; taskIdentifiers: string[] }> {
+  // Offload any oversized per-item payloads to object storage before streaming, so a batch
+  // of large items keeps the request body small — the same treatment single triggers get.
+  // Both the array and streaming batch paths funnel through here, so this is the one place
+  // batch offloading needs to happen. Wrap failures so a presign/upload error carries the
+  // same batch context (phase, itemCount, rate-limit info) as the create/stream phases.
+  try {
+    items = await offloadBatchItemPayloads(items, apiClient);
+  } catch (error) {
+    throw new BatchTriggerError(`Failed to offload payloads for batch with ${items.length} items`, {
+      cause: error,
+      phase: "offload",
+      itemCount: items.length,
+    });
+  }
+
   let batch: Awaited<ReturnType<typeof apiClient.createBatch>> | undefined;
 
   try {
@@ -1702,6 +1718,81 @@ async function executeBatchTwoPhase(
 }
 
 /**
+ * Offload any oversized per-item payloads in a batch to object storage, mirroring the
+ * single-trigger offload path. Small payloads pass through untouched. Every returned item
+ * carries `options.payloadSize` (the pre-offload serialized byte size) so the pipeline can
+ * reason about payload size without downloading an "application/store" reference.
+ *
+ * Uploads run with bounded concurrency so a batch of large items doesn't fire an unbounded
+ * number of simultaneous presigned PUTs.
+ *
+ * @internal Exported for testing.
+ */
+export async function offloadBatchItemPayloads(
+  items: BatchItemNDJSON[],
+  apiClient: ApiClient,
+  concurrency = 10
+): Promise<BatchItemNDJSON[]> {
+  if (items.length === 0) {
+    return items;
+  }
+
+  const results = new Array<BatchItemNDJSON>(items.length);
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await offloadBatchItemPayload(items[index]!, apiClient);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
+
+  return results;
+}
+
+async function offloadBatchItemPayload(
+  item: BatchItemNDJSON,
+  apiClient: ApiClient
+): Promise<BatchItemNDJSON> {
+  // The batch builders serialize each payload to a string via stringifyIO before we get
+  // here; anything else has no inline body to offload or measure.
+  if (typeof item.payload !== "string" || item.payload.length === 0) {
+    return item;
+  }
+
+  const dataType = item.options?.payloadType ?? "application/json";
+
+  // Already an object-store reference — the caller pre-offloaded it, nothing to do.
+  if (dataType === "application/store") {
+    return item;
+  }
+
+  const packet: IOPacket = { data: item.payload, dataType };
+  // Measure before offload so the size reflects the real payload, not the small reference
+  // we may replace it with.
+  const { size: payloadSize } = packetRequiresOffloading(packet);
+
+  const exported = await conditionallyExportPacket(
+    packet,
+    createTriggerPayloadPathPrefix(item.task),
+    undefined,
+    apiClient
+  );
+
+  return {
+    ...item,
+    payload: exported.data,
+    options: {
+      ...item.options,
+      payloadType: exported.dataType,
+      payloadSize,
+    },
+  };
+}
+
+/**
  * Error thrown when batch trigger operations fail.
  * Includes context about which phase failed and the batch details.
  *
@@ -1710,7 +1801,7 @@ async function executeBatchTwoPhase(
  * - `retryAfterMs`: milliseconds until the rate limit resets
  */
 export class BatchTriggerError extends Error {
-  readonly phase: "create" | "stream";
+  readonly phase: "offload" | "create" | "stream";
   readonly batchId?: string;
   readonly itemCount: number;
 
@@ -1730,7 +1821,7 @@ export class BatchTriggerError extends Error {
     message: string,
     options: {
       cause?: unknown;
-      phase: "create" | "stream";
+      phase: "offload" | "create" | "stream";
       batchId?: string;
       itemCount: number;
     }
@@ -2205,7 +2296,11 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
-  const triggerPayloadPacket = await prepareTriggerPayload(parsedPayload, apiClient, id);
+  const { packet: triggerPayloadPacket, payloadSize } = await prepareTriggerPayload(
+    parsedPayload,
+    apiClient,
+    id
+  );
 
   // Process idempotency key and extract options for storage
   const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
@@ -2222,6 +2317,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: triggerPayloadPacket.dataType,
+        payloadSize,
         idempotencyKey: processedIdempotencyKey?.toString(),
         idempotencyKeyTTL: options?.idempotencyKeyTTL,
         idempotencyKeyOptions,
@@ -2460,7 +2556,11 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
-  const triggerPayloadPacket = await prepareTriggerPayload(parsedPayload, apiClient, id);
+  const { packet: triggerPayloadPacket, payloadSize } = await prepareTriggerPayload(
+    parsedPayload,
+    apiClient,
+    id
+  );
 
   // Process idempotency key and extract options for storage
   const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
@@ -2481,6 +2581,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: triggerPayloadPacket.dataType,
+            payloadSize,
             delay: options?.delay,
             ttl: options?.ttl,
             tags: options?.tags,
@@ -2546,7 +2647,11 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
-  const triggerPayloadPacket = await prepareTriggerPayload(parsedPayload, apiClient, id);
+  const { packet: triggerPayloadPacket, payloadSize } = await prepareTriggerPayload(
+    parsedPayload,
+    apiClient,
+    id
+  );
 
   const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
   const idempotencyKeyOptions = processedIdempotencyKey
@@ -2566,6 +2671,7 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: triggerPayloadPacket.dataType,
+            payloadSize,
             delay: options?.delay,
             ttl: options?.ttl,
             tags: options?.tags,
@@ -3070,14 +3176,18 @@ async function prepareTriggerPayload(
   payload: unknown,
   apiClient: ApiClient,
   taskId: string
-): Promise<IOPacket> {
+): Promise<{ packet: IOPacket; payloadSize: number }> {
   const payloadPacket = await stringifyIO(payload);
-  return await conditionallyExportPacket(
+  // Measure the serialized size before any offload, so it reflects the real payload
+  // size rather than the small "application/store" reference we may send instead.
+  const { size: payloadSize } = packetRequiresOffloading(payloadPacket);
+  const packet = await conditionallyExportPacket(
     payloadPacket,
     createTriggerPayloadPathPrefix(taskId),
     undefined,
     apiClient
   );
+  return { packet, payloadSize };
 }
 
 function createTriggerPayloadPathPrefix(taskId: string): string {

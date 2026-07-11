@@ -1,6 +1,6 @@
 import type { RunEngine } from "@internal/run-engine";
 import { TaskRunErrorCodes, type TaskRunError } from "@trigger.dev/core/v3";
-import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import { RunId, generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
@@ -8,8 +8,12 @@ import type {
 } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
+import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
-import { runStore } from "~/v3/runStore.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
+import type { RunStore } from "@internal/run-store";
+import type { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
 import type { TriggerTaskRequest } from "../types";
@@ -39,6 +43,9 @@ export type TriggerFailedTaskRequest = {
   spanParentAsLink?: boolean;
 
   errorCode?: TaskRunErrorCodes;
+
+  /** Pre-minted friendlyId; when set it wins over the mint. Batch callers pass a batch-anchored id. */
+  runFriendlyId?: string;
 };
 
 /**
@@ -58,35 +65,90 @@ export class TriggerFailedTaskService {
   private readonly prisma: PrismaClientOrTransaction;
   private readonly replicaPrisma: PrismaClientOrTransaction;
   private readonly engine: RunEngine;
+  // Resolves the parent run for depth/root/parent linkage. Defaults to the shared
+  // singleton (in production the same store the engine writes through). Injected in
+  // tests so the read resolves on the same store the engine wrote to.
+  private readonly runStore: RunStore;
+  // Defaults to getEventRepository's org-flag resolution, which reads through the
+  // global prisma client; tests inject a repository bound to their testcontainer DB.
+  private readonly eventRepository?: { repository: IEventRepository; store: string };
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
     engine: RunEngine;
     replicaPrisma?: PrismaClientOrTransaction;
+    runStore?: RunStore;
+    eventRepository?: { repository: IEventRepository; store: string };
   }) {
     this.prisma = opts.prisma;
     this.replicaPrisma = opts.replicaPrisma ?? opts.prisma;
     this.engine = opts.engine;
+    this.runStore = opts.runStore ?? defaultRunStore;
+    this.eventRepository = opts.eventRepository;
+  }
+
+  // Mint a failed run's friendlyId. The id-kind decides which store the run is
+  // born in (cuid → legacy store, run-ops id → new store); the whole subgraph of a
+  // run must agree. A caller-supplied runFriendlyId (batch-anchored id) wins verbatim;
+  // otherwise root failed runs mint by the environment's setting and child failed runs
+  // inherit the parent's current store so they never split.
+  private async mintFailedRunFriendlyId(args: {
+    organizationId: string;
+    environmentId: string;
+    orgFeatureFlags?: unknown;
+    parentRunFriendlyId?: string;
+    runFriendlyId?: string;
+  }): Promise<string> {
+    if (args.runFriendlyId) {
+      return args.runFriendlyId;
+    }
+
+    const mintKind = args.parentRunFriendlyId
+      ? resolveInheritedMintKind(args.parentRunFriendlyId)
+      : await resolveRunIdMintKind({
+          organizationId: args.organizationId,
+          id: args.environmentId,
+          orgFeatureFlags: args.orgFeatureFlags,
+        });
+
+    return mintKind === "runOpsId"
+      ? RunId.toFriendlyId(generateRunOpsId())
+      : RunId.generate().friendlyId;
   }
 
   async call(request: TriggerFailedTaskRequest): Promise<string | null> {
-    const failedRunFriendlyId = RunId.generate().friendlyId;
     const taskRunError: TaskRunError = {
       type: "INTERNAL_ERROR" as const,
       code: request.errorCode ?? TaskRunErrorCodes.UNSPECIFIED_ERROR,
       message: request.errorMessage,
     };
 
+    // Held for the catch's log line; the in-try `const` is what consumers use.
+    let mintedFriendlyId: string | undefined;
+
     try {
-      const { repository, store } = await getEventRepository(
-        request.environment.organization.id,
-        request.environment.organization.featureFlags as Record<string, unknown>,
-        undefined
-      );
+      // Mint inside the try: classifying a user-supplied parentRunId throws on
+      // an unclassifiable id, so keep it within the catch's null-return contract.
+      const failedRunFriendlyId = await this.mintFailedRunFriendlyId({
+        organizationId: request.environment.organizationId,
+        environmentId: request.environment.id,
+        orgFeatureFlags: request.environment.organization.featureFlags,
+        parentRunFriendlyId: request.parentRunId,
+        runFriendlyId: request.runFriendlyId,
+      });
+      mintedFriendlyId = failedRunFriendlyId;
+
+      const { repository, store } =
+        this.eventRepository ??
+        (await getEventRepository(
+          request.environment.organization.id,
+          request.environment.organization.featureFlags as Record<string, unknown>,
+          undefined
+        ));
 
       // Resolve parent run for rootTaskRunId and depth (same as triggerTask.server.ts)
       const parentRun = request.parentRunId
-        ? await runStore.findRun(
+        ? await this.runStore.findRun(
             {
               id: RunId.fromFriendlyId(request.parentRunId),
               runtimeEnvironmentId: request.environment.id,
@@ -243,7 +305,7 @@ export class TriggerFailedTaskService {
         createError instanceof Error ? createError.message : String(createError);
       logger.error("TriggerFailedTaskService: failed to create pre-failed TaskRun", {
         taskId: request.taskId,
-        friendlyId: failedRunFriendlyId,
+        friendlyId: mintedFriendlyId,
         originalError: request.errorMessage,
         createError: createErrorMsg,
       });
@@ -269,17 +331,33 @@ export class TriggerFailedTaskService {
     resumeParentOnCompletion?: boolean;
     batch?: { id: string; index: number };
     errorCode?: TaskRunErrorCodes;
+    /** Pre-minted friendlyId; when set it wins over the mint. Batch callers pass a batch-anchored id. */
+    runFriendlyId?: string;
   }): Promise<string | null> {
-    const failedRunFriendlyId = RunId.generate().friendlyId;
+    // Held for the catch's log line; the in-try `const` is what consumers use.
+    let mintedFriendlyId: string | undefined;
 
     try {
+      // Mint inside the try: classifying a user-supplied parentRunId throws on
+      // an unclassifiable id, so keep it within the catch's null-return contract.
+      const failedRunFriendlyId = await this.mintFailedRunFriendlyId({
+        organizationId: opts.organizationId,
+        environmentId: opts.environmentId,
+        // No loaded org flags in this path; resolveRunIdMintKind falls back to a
+        // single replica lookup by organizationId only when there is no parent.
+        orgFeatureFlags: undefined,
+        parentRunFriendlyId: opts.parentRunId,
+        runFriendlyId: opts.runFriendlyId,
+      });
+      mintedFriendlyId = failedRunFriendlyId;
+
       // Best-effort parent run lookup for rootTaskRunId/depth
       let parentTaskRunId: string | undefined;
       let rootTaskRunId: string | undefined;
       let depth = 0;
 
       if (opts.parentRunId) {
-        const parentRun = await runStore.findRun(
+        const parentRun = await this.runStore.findRun(
           {
             id: RunId.fromFriendlyId(opts.parentRunId),
             runtimeEnvironmentId: opts.environmentId,
@@ -347,7 +425,7 @@ export class TriggerFailedTaskService {
     } catch (createError) {
       logger.error("TriggerFailedTaskService: failed to create pre-failed TaskRun (no trace)", {
         taskId: opts.taskId,
-        friendlyId: failedRunFriendlyId,
+        friendlyId: mintedFriendlyId,
         originalError: opts.errorMessage,
         createError: createError instanceof Error ? createError.message : String(createError),
       });

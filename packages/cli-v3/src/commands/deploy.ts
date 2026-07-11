@@ -454,16 +454,23 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
+  const childVars = buildManifest.deploy.sync?.env ?? {};
+  const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
+  const secretChildVars = buildManifest.deploy.sync?.secretEnv ?? {};
+  const secretParentVars = buildManifest.deploy.sync?.secretParentEnv ?? {};
+
   const hasVarsToSync =
-    Object.keys(buildManifest.deploy.sync?.env || {}).length > 0 ||
+    Object.keys(childVars).length > 0 ||
+    Object.keys(secretChildVars).length > 0 ||
     // Only sync parent variables if this is a branch environment
-    (branch && Object.keys(buildManifest.deploy.sync?.parentEnv || {}).length > 0);
+    (branch && (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
 
   if (hasVarsToSync) {
-    const childVars = buildManifest.deploy.sync?.env ?? {};
-    const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
-
-    const numberOfEnvVars = Object.keys(childVars).length + Object.keys(parentVars).length;
+    const numberOfEnvVars =
+      Object.keys(childVars).length +
+      Object.keys(parentVars).length +
+      Object.keys(secretChildVars).length +
+      Object.keys(secretParentVars).length;
     const vars = numberOfEnvVars === 1 ? "var" : "vars";
 
     if (!options.skipSyncEnvVars) {
@@ -475,7 +482,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         resolvedConfig.project,
         options.env,
         childVars,
-        parentVars
+        parentVars,
+        secretChildVars,
+        secretParentVars
       );
 
       if (!uploadResult.success) {
@@ -768,13 +777,41 @@ export async function syncEnvVarsWithServer(
   projectRef: string,
   environmentSlug: string,
   envVars: Record<string, string>,
-  parentEnvVars?: Record<string, string>
+  parentEnvVars?: Record<string, string>,
+  secretEnvVars?: Record<string, string>,
+  secretParentEnvVars?: Record<string, string>
 ) {
-  return await apiClient.importEnvVars(projectRef, environmentSlug, {
-    variables: envVars,
-    parentVariables: parentEnvVars,
-    override: true,
-  });
+  const hasNonSecret =
+    Object.keys(envVars).length > 0 || Object.keys(parentEnvVars ?? {}).length > 0;
+  const hasSecret =
+    Object.keys(secretEnvVars ?? {}).length > 0 ||
+    Object.keys(secretParentEnvVars ?? {}).length > 0;
+
+  // The import API applies isSecret per call, so secret and non-secret vars go in separate calls.
+  // Default to success so an all-empty call (no vars to sync) is a no-op, not undefined.
+  let result: Awaited<ReturnType<typeof apiClient.importEnvVars>> = {
+    success: true,
+    data: { success: true },
+  };
+
+  if (hasNonSecret) {
+    result = await apiClient.importEnvVars(projectRef, environmentSlug, {
+      variables: envVars,
+      parentVariables: parentEnvVars,
+      override: true,
+    });
+  }
+
+  if (hasSecret && result.success) {
+    result = await apiClient.importEnvVars(projectRef, environmentSlug, {
+      variables: secretEnvVars ?? {},
+      parentVariables: secretParentEnvVars,
+      override: true,
+      isSecret: true,
+    });
+  }
+
+  return result;
 }
 
 async function failDeploy(

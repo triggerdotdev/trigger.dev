@@ -9,19 +9,19 @@ import { useOperatingSystem } from "./OperatingSystemProvider";
 import { KeyboardEnterIcon } from "~/assets/icons/KeyboardEnterIcon";
 
 const small =
-  "justify-center text-[0.6rem] font-mono font-medium min-w-[1rem] min-h-[1rem] rounded-[2px] tabular-nums px-1 ml-1 -mr-0.5 flex items-center gap-x-1 border transition uppercase";
+  "justify-center text-[0.6rem] font-mono font-medium min-w-4 min-h-4 rounded-[2px] tabular-nums px-1 ml-1 -mr-0.5 flex items-center gap-x-1 border transition uppercase";
 
 const medium =
-  "justify-center min-w-[1.25rem] min-h-[1.25rem] text-[0.65rem] font-mono font-medium rounded-[2px] tabular-nums px-1 ml-1 -mr-0.5 flex items-center gap-x-1.5 border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase";
+  "justify-center min-w-5 min-h-5 text-[0.65rem] font-mono font-medium rounded-[2px] tabular-nums px-1 ml-1 -mr-0.5 flex items-center gap-x-1.5 border border-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-dimmed/60 transition uppercase";
 
 export const variants = {
   small: cn(
     small,
     "border-text-dimmed/40 text-text-dimmed group-hover:text-text-bright/80 group-hover:border-text-dimmed/60"
   ),
-  "small/bright": cn(small, "bg-charcoal-750 text-text-bright border-charcoal-650"),
-  medium: cn(medium, "group-hover:border-charcoal-550"),
-  "medium/bright": cn(medium, "bg-charcoal-750 text-text-bright border-charcoal-650"),
+  "small/bright": cn(small, "bg-background-hover text-text-bright border-border-bright"),
+  medium: cn(medium, "group-hover:border-border-brighter"),
+  "medium/bright": cn(medium, "bg-background-hover text-text-bright border-border-bright"),
 };
 
 export type ShortcutKeyVariant = keyof typeof variants;

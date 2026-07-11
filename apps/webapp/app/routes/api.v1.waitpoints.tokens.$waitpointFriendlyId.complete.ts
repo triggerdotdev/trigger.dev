@@ -6,10 +6,16 @@ import {
 } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
-import { $replica } from "~/db.server";
+import {
+  $replica,
+  type PrismaReplicaClient,
+  runOpsNewReplica,
+  runOpsSplitReadEnabled,
+} from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
+import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 
@@ -33,10 +39,24 @@ const { action, loader } = createActionApiRoute(
 
     try {
       //check permissions
-      const waitpoint = await $replica.waitpoint.findFirst({
-        where: {
-          id: waitpointId,
-          environmentId: authentication.environment.id,
+      // Resolve wherever the waitpoint resides: a standalone token lives on the control-plane
+      // store, while a run-owned waitpoint co-locates with its run. Fan-out reads the run-ops
+      // replica first, then the control-plane replica so both residencies resolve, gated on the
+      // URL-presence read gate so the fan-out spans both DBs independent of the mint flag.
+      const waitpoint = await resolveWaitpointThroughReadThrough({
+        waitpointId,
+        environmentId: authentication.environment.id,
+        read: (client: PrismaReplicaClient) =>
+          client.waitpoint.findFirst({
+            where: {
+              id: waitpointId,
+              environmentId: authentication.environment.id,
+            },
+          }),
+        deps: {
+          newClient: runOpsNewReplica,
+          legacyReplica: $replica,
+          splitEnabled: runOpsSplitReadEnabled,
         },
       });
 

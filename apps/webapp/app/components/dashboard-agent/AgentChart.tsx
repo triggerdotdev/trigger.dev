@@ -103,9 +103,9 @@ export function AgentChart({ block }: { block: ChartBlock }) {
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-charcoal-600 bg-charcoal-850">
+    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
       {block.title ? (
-        <div className="border-b border-charcoal-700 bg-charcoal-800 px-3 py-2 text-xs font-medium text-text-dimmed">
+        <div className="border-b border-grid-bright bg-background-bright px-3 py-2 text-xs font-medium text-text-dimmed">
           {block.title}
         </div>
       ) : null}

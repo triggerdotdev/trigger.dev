@@ -42,7 +42,7 @@ export function UsageSparkline({
   data,
   bucketStartMs,
   bucketIntervalMs,
-  color = "#3B82F6",
+  color = "var(--color-pending)",
   unitLabel = { singular: "call", plural: "calls" },
   formatTotal,
   totalClassName = "text-blue-400",
@@ -66,7 +66,7 @@ export function UsageSparkline({
 
   return (
     <div className="flex items-start gap-2">
-      <div className="h-6 w-[7rem] rounded-sm">
+      <div className="h-6 w-28 rounded-sm">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
             <YAxis domain={[0, max || 1]} hide />
@@ -84,9 +84,14 @@ export function UsageSparkline({
               isAnimationActive={false}
               minPointSize={1}
             />
-            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+            <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
             {max > 0 && (
-              <ReferenceLine y={max} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+              <ReferenceLine
+                y={max}
+                stroke="var(--color-border-brighter)"
+                strokeDasharray="4 4"
+                strokeWidth={1}
+              />
             )}
           </BarChart>
         </ResponsiveContainer>
@@ -110,7 +115,7 @@ function UsageSparklineTooltip({
   return (
     <TooltipPortal active={active}>
       <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-        <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+        <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
         <div className="mt-2 text-xs text-text-bright">
           <span className="tabular-nums">{entry.count.toLocaleString()}</span>{" "}
           <span className="text-text-dimmed">

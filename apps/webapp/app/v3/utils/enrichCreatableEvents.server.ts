@@ -89,18 +89,15 @@ function enrichLlmMetrics(event: CreateEventInput): void {
     { text: formatTokenCount(totalTokens), icon: "tabler-hash" },
   ];
 
-  // Try cost enrichment if the registry is loaded.
-  // The registry handles prefix stripping (e.g. "mistral/mistral-large-3" → "mistral-large-3")
-  // for gateway/openrouter models automatically in its match() method.
-  let cost: ReturnType<NonNullable<typeof _registry>["calculateCost"]> | null = null;
-  if (_registry?.isLoaded) {
-    cost = _registry.calculateCost(responseModel, usageDetails);
-  }
+  // Provider-reported cost (gateway/openrouter) is the exact per-request bill and already
+  // reflects cache-read discounts and the real per-provider rate, so prefer it and only fall
+  // back to catalog pricing when it is absent. The registry handles prefix stripping (e.g.
+  // "mistral/mistral-large-3" → "mistral-large-3") for gateway/openrouter models in match().
+  const providerCost = extractProviderCost(props);
 
-  // Fallback: extract cost from provider metadata (gateway/openrouter report per-request cost)
-  let providerCost: { totalCost: number; source: string } | null = null;
-  if (!cost) {
-    providerCost = extractProviderCost(props);
+  let cost: ReturnType<NonNullable<typeof _registry>["calculateCost"]> | null = null;
+  if (!providerCost && _registry?.isLoaded) {
+    cost = _registry.calculateCost(responseModel, usageDetails);
   }
 
   if (cost) {
@@ -341,6 +338,11 @@ function extractProviderCost(
 ): { totalCost: number; source: string } | null {
   const rawMeta = props["ai.response.providerMetadata"];
   if (typeof rawMeta !== "string") return null;
+
+  // Cheap guard: providerMetadata can be large for reasoning models (it carries the full
+  // reasoning_details text), and this now runs on every AI span. Skip the JSON parse when
+  // there is no cost field to find.
+  if (!rawMeta.includes('"cost"')) return null;
 
   let meta: Record<string, unknown>;
   try {

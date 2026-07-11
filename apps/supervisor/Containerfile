@@ -34,6 +34,7 @@ COPY --from=dev-deps --chown=node:node /app/ .
 COPY --chown=node:node turbo.json turbo.json
 COPY --chown=node:node .configs/tsconfig.base.json .configs/tsconfig.base.json
 COPY --chown=node:node scripts/updateVersion.ts scripts/updateVersion.ts
+COPY --chown=node:node scripts/retry-prisma-generate.mjs scripts/retry-prisma-generate.mjs
 
 RUN pnpm run generate && \
   pnpm run --filter supervisor... build&& \

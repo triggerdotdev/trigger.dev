@@ -28,7 +28,7 @@ export function GitMetadataBranch({
           leadingIconClassName="group-hover/table-row:text-text-bright"
           iconSpacing="gap-x-1"
           to={git.branchUrl}
-          className="pl-1 duration-0 [&_span]:duration-0 [&_span]:group-hover/table-row:text-text-bright"
+          className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
           {git.branchName}
         </LinkButton>
@@ -52,7 +52,7 @@ export function GitMetadataCommit({
           LeadingIcon={<GitCommitIcon className="size-4" />}
           leadingIconClassName="group-hover/table-row:text-text-bright"
           iconSpacing="gap-x-1"
-          className="pl-1 duration-0 [&_span]:duration-0 [&_span]:group-hover/table-row:text-text-bright"
+          className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
           {`${git.shortSha} / ${git.commitMessage}`}
         </LinkButton>
@@ -78,7 +78,7 @@ export function GitMetadataPullRequest({
           LeadingIcon={<GitPullRequestIcon className="size-4" />}
           leadingIconClassName="group-hover/table-row:text-text-bright"
           iconSpacing="gap-x-1"
-          className="pl-1 duration-0 [&_span]:duration-0 [&_span]:group-hover/table-row:text-text-bright"
+          className="pl-1 duration-0 [&_span]:duration-0 group-hover/table-row:[&_span]:text-text-bright"
         >
           #{git.pullRequestNumber} {git.pullRequestTitle}
         </LinkButton>

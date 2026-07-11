@@ -131,7 +131,7 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
       slug: true,
       title: true,
       v2Enabled: true,
-      v3Enabled: true,
+      isActivated: true,
       deletedAt: true,
       members: {
         select: {

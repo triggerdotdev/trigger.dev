@@ -46,7 +46,7 @@ export function AnimationDivider({ isLoading }: LoadingBarDividerProps) {
       {isLoading && (
         <div
           ref={scope}
-          className="width-0 absolute left-0 top-0 h-full bg-gradient-to-r from-transparent from-5% via-blue-500 to-transparent to-95%"
+          className="width-0 absolute left-0 top-0 h-full bg-linear-to-r from-transparent from-5% via-blue-500 to-transparent to-95%"
         />
       )}
     </AnimatePresence>

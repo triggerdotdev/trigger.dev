@@ -63,11 +63,11 @@ export function SideMenuItem({
       target={target}
       data-action={dataAction}
       className={cn(
-        "group/menulink flex h-8 items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2 focus-custom",
+        "group/menulink flex h-8 items-center gap-2 overflow-hidden rounded pl-1.75 pr-2 focus-custom",
         isIndented ? "min-w-0 flex-1" : "w-full",
         isActive
           ? "bg-tertiary text-text-bright"
-          : "text-text-dimmed group-hover/menuitem:bg-charcoal-750 group-hover/menuitem:text-text-bright hover:bg-charcoal-750 hover:text-text-bright"
+          : "text-text-dimmed group-hover/menuitem:bg-background-hover group-hover/menuitem:text-text-bright hover:bg-background-hover hover:text-text-bright"
       )}
     >
       <Icon
@@ -137,7 +137,7 @@ export function SideMenuItem({
           content={name}
           side="right"
           sideOffset={8}
-          buttonClassName="!h-8 block w-full"
+          buttonClassName="h-8! block w-full"
           hidden={!isCollapsed}
           asChild
           tabbable
@@ -149,7 +149,9 @@ export function SideMenuItem({
           <div
             className={cn(
               "absolute bottom-1 right-1 top-1 flex aspect-square items-center justify-center rounded",
-              isActive ? "group-hover/menuitem:bg-tertiary" : "group-hover/menuitem:bg-charcoal-750"
+              isActive
+                ? "group-hover/menuitem:bg-tertiary"
+                : "group-hover/menuitem:bg-background-hover"
             )}
             style={{ opacity: "var(--sm-label-opacity, 1)" }}
           >
@@ -166,7 +168,7 @@ export function SideMenuItem({
       content={name}
       side="right"
       sideOffset={8}
-      buttonClassName="!h-8 block w-full"
+      buttonClassName="h-8! block w-full"
       hidden={!isCollapsed}
       asChild
       tabbable

@@ -39,7 +39,7 @@ export function extractAIToolCallData(
 export function AIToolCallSpanDetails({ data }: { data: AIToolCallData }) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="flex flex-col px-3">
           {/* Tool info */}
           <div className="flex flex-col gap-1 py-2.5">

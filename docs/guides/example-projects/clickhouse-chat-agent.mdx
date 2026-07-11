@@ -1,0 +1,141 @@
+---
+title: "ClickHouse chat agent"
+sidebarTitle: "ClickHouse chat agent"
+description: "Build a chat agent that answers questions about your data by writing and running SQL against ClickHouse Cloud, using chat.agent() and the ClickHouse Node.js client."
+---
+
+## Overview
+
+This example is a [chat agent](/ai-chat/overview) that answers natural-language questions about the data in a [ClickHouse Cloud](https://clickhouse.com/cloud) database. The agent discovers the schema, writes ClickHouse SQL, runs it through the official [ClickHouse Node.js client](https://clickhouse.com/docs/integrations/javascript), and streams back answers with markdown tables. Trigger.dev handles the chat session, turn loop, streaming, and resumability — the whole agent is one `chat.agent()` call and three tools.
+
+**Tech stack:**
+
+- **[Trigger.dev AI chat](/ai-chat/overview)** for the agent session, turn loop, and streaming
+- **[ClickHouse Node.js client](https://clickhouse.com/docs/integrations/javascript)** (`@clickhouse/client`) for queries over HTTPS
+- **[AI SDK](https://ai-sdk.dev/)** with Anthropic Claude for the model and tool calling
+
+**Features:**
+
+- **Schema discovery tools**: `listTables` reads table names, engines, and row counts from `system.tables`; `describeTable` returns column names and types using a bound `Identifier` query param, so table names are never interpolated into SQL strings
+- **Read-only query tool**: `runQuery` accepts SELECT-style statements only, enforced in code and backed by ClickHouse settings — `readonly=2`, a 1,000-row result cap, and a 30 second execution timeout
+- **Self-correcting SQL**: query errors are returned to the model as tool output, so the agent reads the ClickHouse error, fixes its SQL, and retries
+- **Single environment variable**: the ClickHouse connection is one `CLICKHOUSE_URL` with the credentials embedded, set in the Trigger.dev dashboard
+
+## GitHub repo
+
+<Card
+  title="View the ClickHouse chat agent repo"
+  icon="GitHub"
+  href="https://github.com/triggerdotdev/examples/tree/main/clickhouse-chat-agent"
+>
+  Click here to view the full code for this project in our examples repository on GitHub. You can
+  fork it and use it as a starting point for your own project.
+</Card>
+
+## How it works
+
+### The agent
+
+The agent is defined with [`chat.agent()`](/ai-chat/overview). Tools are declared on the config so tool results survive history re-conversion across turns, and the `run` function returns a `streamText()` call:
+
+```ts trigger/clickhouse-agent.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { stepCountIs, streamText } from "ai";
+
+export const clickhouseAgent = chat.agent({
+  id: "clickhouse-agent",
+  idleTimeoutInSeconds: 300,
+  tools: { listTables, describeTable, runQuery },
+  run: async ({ messages, tools, signal }) => {
+    return streamText({
+      // Spread chat.toStreamTextOptions() FIRST — it wires up
+      // prepareStep (compaction, steering, background injection),
+      // the system prompt set via chat.prompt(), and telemetry.
+      ...chat.toStreamTextOptions(),
+      model: anthropic("claude-opus-4-8"),
+      system: SYSTEM_PROMPT,
+      messages,
+      tools,
+      stopWhen: stepCountIs(15),
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+The system prompt tells the agent to explore the schema before querying, write ClickHouse SQL (not Postgres dialect), prefer aggregations, and present results as markdown tables.
+
+### The query tool
+
+`runQuery` guards against writes twice: a statement allowlist in code, and ClickHouse settings on the request itself. Errors are returned to the model instead of thrown, which is what makes the agent self-correct:
+
+```ts trigger/clickhouse-agent.ts
+const READ_ONLY_STATEMENTS = /^\s*(select|with|show|describe|desc|explain|exists)\b/i;
+
+const runQuery = tool({
+  description:
+    "Run a read-only SQL query against ClickHouse and get the results as JSON rows.",
+  inputSchema: z.object({
+    query: z.string().describe("The ClickHouse SQL query to run"),
+  }),
+  execute: async ({ query }) => {
+    if (!READ_ONLY_STATEMENTS.test(query)) {
+      return { error: "Only read-only statements are allowed." };
+    }
+    try {
+      const result = await getClickHouse().query({
+        query,
+        format: "JSONEachRow",
+        clickhouse_settings: {
+          // readonly=2: reads only (no writes/DDL), but per-query settings
+          // like the limits below are still allowed.
+          readonly: "2",
+          max_result_rows: "1000",
+          result_overflow_mode: "break",
+          max_execution_time: 30,
+        },
+      });
+      const rows = await result.json();
+      return { rowCount: rows.length, rows };
+    } catch (error) {
+      // Return ClickHouse errors to the model so it can fix the query and retry.
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  },
+});
+```
+
+### Connecting to ClickHouse
+
+The client reads a single `CLICKHOUSE_URL` environment variable — the HTTPS endpoint with credentials embedded — set in the Trigger.dev dashboard on the [Environment Variables page](/deploy-environment-variables):
+
+```bash
+CLICKHOUSE_URL=https://default:YOUR_PASSWORD@YOUR_SERVICE.clickhouse.cloud:8443
+```
+
+```ts trigger/clickhouse-agent.ts
+import { createClient } from "@clickhouse/client";
+
+const clickhouse = createClient({ url: process.env.CLICKHOUSE_URL });
+```
+
+### Chatting with the agent
+
+Run `npx trigger.dev@latest dev`, then open the **AI agents** page in the dashboard and chat with `clickhouse-agent` in the playground. With a dataset like [NYC Taxi](https://clickhouse.com/docs/getting-started/example-datasets/nyc-taxi) loaded, asking "What were the top 5 busiest pickup days?" produces a `listTables` call, a `describeTable` call, a SQL aggregation, and a streamed markdown table of results.
+
+## Relevant code
+
+- **Agent + tools**: [trigger/clickhouse-agent.ts](https://github.com/triggerdotdev/examples/blob/main/clickhouse-chat-agent/trigger/clickhouse-agent.ts): the `chat.agent()` definition, the three tools, the read-only guards, and the ClickHouse client
+- **Trigger config**: [trigger.config.ts](https://github.com/triggerdotdev/examples/blob/main/clickhouse-chat-agent/trigger.config.ts): project config pointing at the `trigger/` directory
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="AI chat overview" icon="message-bot" href="/ai-chat/overview">
+    How chat agents, sessions, and the turn loop work.
+  </Card>
+  <Card title="Tools" icon="wrench" href="/ai-chat/tools">
+    Declaring tools on your agent and how they persist across turns.
+  </Card>
+</CardGroup>

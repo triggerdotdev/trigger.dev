@@ -7,6 +7,7 @@ import {
 } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import {
   BILLABLE_ENVIRONMENT_TYPES,
   BILLING_LIMIT_CONVERGE_BATCH_SIZE,
@@ -177,6 +178,9 @@ async function pauseEnvironmentForBillingLimit(
       data: { paused: false, pauseSource: null },
     });
     throw error;
+  } finally {
+    // The env's paused state changed (or was rolled back); drop any cached copy either way.
+    controlPlaneResolver.invalidateEnvironment(environment.id);
   }
 }
 
@@ -208,5 +212,8 @@ async function resumeEnvironmentFromBillingLimit(
       },
     });
     throw error;
+  } finally {
+    // The env's paused state changed (or was rolled back); drop any cached copy either way.
+    controlPlaneResolver.invalidateEnvironment(environment.id);
   }
 }

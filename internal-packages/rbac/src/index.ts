@@ -1,6 +1,7 @@
 import type {
   Permission,
   RbacAbility,
+  RbacDatabaseConfig,
   Role,
   RbacResource,
   RoleAssignmentResult,
@@ -33,6 +34,11 @@ export type RbacCreateOptions = {
   // Platform secret used to verify delegated user-actor tokens (tr_uat_).
   // Threaded through to the plugin / fallback's authenticateUserActor.
   userActorSecret?: string;
+  // Writer/reader connection URLs + pool sizes for a plugin that owns its
+  // own database client, resolved by the host from its env so the plugin
+  // follows the host's writer/replica topology. The fallback ignores this —
+  // it queries through the Prisma clients passed as `RbacPrismaInput`.
+  database?: RbacDatabaseConfig;
 };
 
 // Route actions that historically authorised via the legacy checkAuthorization's
@@ -88,7 +94,10 @@ class LazyController implements RoleBaseAccessController {
       const module = await import(moduleName);
       const plugin: RoleBasedAccessControlPlugin = module.default;
       console.log("RBAC: using plugin implementation");
-      return plugin.create({ userActorSecret: options?.userActorSecret });
+      return plugin.create({
+        userActorSecret: options?.userActorSecret,
+        database: options?.database,
+      });
     } catch (err) {
       // The dynamic import either succeeded or failed for one of two
       // distinct reasons. Distinguishing them is critical for debugging

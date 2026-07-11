@@ -15,33 +15,28 @@ export const action: ActionFunction = async ({ request, params }) => {
     const taskRun = await runStore.findRun(
       {
         friendlyId: runParam,
-        project: {
-          slug: projectParam,
-          organization: {
-            slug: organizationSlug,
-            members: {
-              some: {
-                userId,
-              },
-            },
-          },
-        },
-        runtimeEnvironment: {
-          slug: envParam,
-        },
       },
       {
         select: {
           id: true,
           idempotencyKey: true,
           taskIdentifier: true,
+          projectId: true,
           runtimeEnvironmentId: true,
         },
-      },
-      prisma
+      }
     );
 
     if (!taskRun) {
+      return jsonWithErrorMessage({}, request, "Run not found");
+    }
+
+    const authorizedProject = await prisma.project.findFirst({
+      where: { id: taskRun.projectId, organization: { members: { some: { userId } } } },
+      select: { id: true },
+    });
+
+    if (!authorizedProject) {
       return jsonWithErrorMessage({}, request, "Run not found");
     }
 
@@ -49,7 +44,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       return jsonWithErrorMessage({}, request, "This run does not have an idempotency key");
     }
 
-    const environment = await prisma.runtimeEnvironment.findUnique({
+    const environment = await prisma.runtimeEnvironment.findFirst({
       where: {
         id: taskRun.runtimeEnvironmentId,
       },
@@ -64,6 +59,14 @@ export const action: ActionFunction = async ({ request, params }) => {
 
     if (!environment) {
       return jsonWithErrorMessage({}, request, "Environment not found");
+    }
+
+    if (
+      environment.slug !== envParam ||
+      environment.project.slug !== projectParam ||
+      environment.project.organization.slug !== organizationSlug
+    ) {
+      return jsonWithErrorMessage({}, request, "Run not found");
     }
 
     const service = new ResetIdempotencyKeyService();

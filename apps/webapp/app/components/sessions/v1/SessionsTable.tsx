@@ -75,7 +75,7 @@ export function SessionsTable({
                     <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
                       <SessionStatusCombo status={status} />
                     </div>
-                    <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
+                    <Paragraph variant="extra-small" className="text-wrap! text-text-dimmed">
                       {descriptionForSessionStatus(status)}
                     </Paragraph>
                   </div>
@@ -151,7 +151,7 @@ export function SessionsTable({
                   {session.isTest ? (
                     <CheckIcon
                       aria-hidden
-                      className="size-4 text-charcoal-400 group-hover/table-row:text-text-bright"
+                      className="size-4 text-text-dimmed group-hover/table-row:text-text-bright"
                     />
                   ) : (
                     <span aria-hidden className="text-text-dimmed">
@@ -184,7 +184,7 @@ export function SessionsTable({
         {isLoading && (
           <TableBlankRow
             colSpan={9}
-            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
+            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-background-deep/90"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
           </TableBlankRow>

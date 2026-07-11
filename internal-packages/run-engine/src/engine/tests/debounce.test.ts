@@ -1995,11 +1995,11 @@ describe("RunEngine debounce", () => {
         // Construct the Redis key (same format as DebounceSystem.getDebounceRedisKey)
         const redisKey = `${environmentId}:${taskIdentifier}:${debounceKey}`;
 
-        // Step 1: Server A claims the key with claimId-A
+        // Server A claims the key with claimId-A
         const claimIdA = "claim-server-A";
         await simulatedServerRedis.set(redisKey, `pending:${claimIdA}`, "PX", 60_000);
 
-        // Step 2 & 3: Simulate Server B claiming and registering (after A's claim "expires")
+        // Simulate Server B claiming and registering (after A's claim "expires")
         // In reality, this simulates the race where B's claim overwrites A's pending claim
         const runIdB = "run_server_B";
         await simulatedServerRedis.set(redisKey, runIdB, "PX", 60_000);
@@ -2008,7 +2008,7 @@ describe("RunEngine debounce", () => {
         const valueAfterB = await simulatedServerRedis.get(redisKey);
         expect(valueAfterB).toBe(runIdB);
 
-        // Step 4: Server A attempts to register with its stale claimId-A
+        // Server A attempts to register with its stale claimId-A
         // This should FAIL because the key no longer contains "pending:claim-server-A"
         const runIdA = "run_server_A";
         const registered = await engine.debounceSystem.registerDebouncedRun({
@@ -2020,10 +2020,10 @@ describe("RunEngine debounce", () => {
           claimId: claimIdA, // Stale claim ID
         });
 
-        // Step 5: Verify Server A's registration failed
+        // Verify Server A's registration failed
         expect(registered).toBe(false);
 
-        // Step 6: Verify Redis still contains runId-B (not overwritten by Server A)
+        // Verify Redis still contains runId-B (not overwritten by Server A)
         const finalValue = await simulatedServerRedis.get(redisKey);
         expect(finalValue).toBe(runIdB);
       } finally {
@@ -2097,14 +2097,14 @@ describe("RunEngine debounce", () => {
         // Construct the Redis key (same format as DebounceSystem.getDebounceRedisKey)
         const redisKey = `${environmentId}:${taskIdentifier}:${debounceKey}`;
 
-        // Step 1: Server A claims the key with a pending claim
+        // Server A claims the key with a pending claim
         const claimIdA = "claim-server-A";
         await simulatedServerRedis.set(redisKey, `pending:${claimIdA}`, "PX", 60_000);
 
-        // Step 2: Delete the key to simulate Server A's claim expiring
+        // Delete the key to simulate Server A's claim expiring
         await simulatedServerRedis.del(redisKey);
 
-        // Step 3: Server B calls handleDebounce - since key is gone, it should atomically claim
+        // Server B calls handleDebounce - since key is gone, it should atomically claim
         const debounceResult = await engine.debounceSystem.handleDebounce({
           environmentId,
           taskIdentifier,
@@ -2114,18 +2114,18 @@ describe("RunEngine debounce", () => {
           },
         });
 
-        // Step 4: Verify result is { status: "new" } WITH a claimId
+        // Verify result is { status: "new" } WITH a claimId
         expect(debounceResult.status).toBe("new");
         if (debounceResult.status === "new") {
           expect(debounceResult.claimId).toBeDefined();
           expect(typeof debounceResult.claimId).toBe("string");
           expect(debounceResult.claimId!.length).toBeGreaterThan(0);
 
-          // Step 5: Verify the key now contains Server B's pending claim
+          // Verify the key now contains Server B's pending claim
           const valueAfterB = await simulatedServerRedis.get(redisKey);
           expect(valueAfterB).toBe(`pending:${debounceResult.claimId}`);
 
-          // Step 6: Server C tries to claim the same key - should fail
+          // Server C tries to claim the same key - should fail
           const claimIdC = "claim-server-C";
           const claimResultC = await simulatedServerRedis.set(
             redisKey,
@@ -2136,7 +2136,7 @@ describe("RunEngine debounce", () => {
           );
           expect(claimResultC).toBeNull(); // NX fails because key exists
 
-          // Step 7: Server B registers its run using its claimId
+          // Server B registers its run using its claimId
           const runIdB = "run_server_B";
           const delayUntil = new Date(Date.now() + 60_000);
           const registered = await engine.debounceSystem.registerDebouncedRun({
@@ -2148,10 +2148,10 @@ describe("RunEngine debounce", () => {
             claimId: debounceResult.claimId,
           });
 
-          // Step 8: Verify Server B's registration succeeded
+          // Verify Server B's registration succeeded
           expect(registered).toBe(true);
 
-          // Step 9: Verify Redis contains Server B's run ID
+          // Verify Redis contains Server B's run ID
           const finalValue = await simulatedServerRedis.get(redisKey);
           expect(finalValue).toBe(runIdB);
         }

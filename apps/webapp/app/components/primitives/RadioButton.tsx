@@ -7,14 +7,14 @@ import { Paragraph } from "./Paragraph";
 
 const variants = {
   "simple/small": {
-    button: "w-fit pr-4 data-[disabled]:opacity-70",
+    button: "w-fit pr-4 data-disabled:opacity-70",
     label: "text-sm text-text-bright mt-0.5 select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-1",
     icon: "w-8 h-8 mb-2",
   },
   simple: {
-    button: "w-fit pr-4 data-[disabled]:opacity-70",
+    button: "w-fit pr-4 data-disabled:opacity-70",
     label: "text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-1",
@@ -22,7 +22,7 @@ const variants = {
   },
   "button/small": {
     button:
-      "flex items-center w-fit h-8 pl-2 pr-3 rounded-md border hover:data-[state=checked]:border-charcoal-600 border-charcoal-650 hover:border-charcoal-600 transition data-[disabled]:opacity-70 data-[disabled]:hover:bg-transparent hover:data-[state=checked]:bg-white/[4%] data-[state=checked]:bg-white/[4%]",
+      "flex items-center w-fit h-8 pl-2 pr-3 rounded-md border hover:data-[state=checked]:border-border-bright border-border-bright hover:border-border-bright transition data-disabled:opacity-70 data-disabled:hover:bg-transparent hover:data-[state=checked]:bg-white/4 data-[state=checked]:bg-white/4",
     label: "text-sm text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-0",
@@ -30,7 +30,7 @@ const variants = {
   },
   button: {
     button:
-      "w-fit py-2 pl-3 pr-4 rounded border border-charcoal-600 hover:bg-charcoal-850 hover:border-charcoal-500 transition data-[state=checked]:bg-charcoal-850 data-[disabled]:opacity-70",
+      "w-fit py-2 pl-3 pr-4 rounded border border-border-bright hover:bg-background-dimmed hover:border-border-brightest transition data-[state=checked]:bg-background-dimmed data-disabled:opacity-70",
     label: "text-text-bright select-none",
     description: "text-text-dimmed",
     inputPosition: "mt-1",
@@ -38,17 +38,17 @@ const variants = {
   },
   description: {
     button:
-      "w-full p-2.5 hover:data-[state=checked]:bg-white/[4%] data-[state=checked]:bg-white/[4%] transition data-[disabled]:opacity-70 hover:border-charcoal-600 border-charcoal-650 hover:data-[state=checked]:border-charcoal-600 border rounded-md",
+      "w-full p-2.5 hover:data-[state=checked]:bg-white/4 data-[state=checked]:bg-white/4 transition data-disabled:opacity-70 hover:border-border-bright border-border-bright hover:data-[state=checked]:border-border-bright border rounded-md",
     label: "text-text-bright font-semibold -mt-0.5 text-left text-sm",
-    description: "text-text-dimmed -mt-0 text-left",
+    description: "text-text-dimmed mt-0 text-left",
     inputPosition: "mt-0",
     icon: "w-8 h-8 mb-2",
   },
   icon: {
     button:
-      "w-full p-2.5 pb-4 hover:bg-charcoal-850 transition data-[disabled]:opacity-70 data-[state=checked]:bg-charcoal-850 border-charcoal-600 border rounded-sm",
+      "w-full p-2.5 pb-4 hover:bg-background-dimmed transition data-disabled:opacity-70 data-[state=checked]:bg-background-dimmed border-border-bright border rounded-sm",
     label: "text-text-bright font-semibold -mt-1 text-left",
-    description: "text-text-dimmed -mt-0 text-left",
+    description: "text-text-dimmed mt-0 text-left",
     inputPosition: "mt-0",
     icon: "mb-3",
   },
@@ -70,7 +70,7 @@ export function RadioButtonCircle({
   return (
     <div
       className={cn(
-        "ring-offset-background aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-charcoal-600 bg-charcoal-700 focus-custom disabled:cursor-not-allowed disabled:opacity-50",
+        "ring-offset-background aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-border-bright bg-background-raised focus-custom disabled:cursor-not-allowed disabled:opacity-50",
         boxClassName
       )}
     >
@@ -131,7 +131,7 @@ export const RadioGroupItem = React.forwardRef<
       >
         <div
           className={cn(
-            "ring-offset-background focus-visible:ring-ring aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-charcoal-600 focus-custom group-data-[state=checked]:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50",
+            "ring-offset-background focus-visible:ring-ring aspect-square h-4 w-4 shrink-0 overflow-hidden rounded-full border border-border-bright focus-custom group-data-[state=checked]:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50",
             variation.inputPosition
           )}
         >

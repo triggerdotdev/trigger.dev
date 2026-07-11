@@ -55,7 +55,7 @@ export class CheckpointSystem {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lock("createCheckpoint", [runId], async () => {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
       const isValidSnapshot =
         // Case 1: The provided snapshotId matches the current snapshot
@@ -118,18 +118,12 @@ export class CheckpointSystem {
         };
       }
 
-      // Get the run and update the status
+      // Get the run (run-ops scalars only) and update the status; the control-plane env is
+      // resolved separately so the run-ops DB can split without a cross-provider join.
       const run = await this.$.runStore.suspendForCheckpoint(
         runId,
         {
-          include: {
-            runtimeEnvironment: {
-              include: {
-                project: true,
-                organization: true,
-              },
-            },
-          },
+          include: {},
         },
         this.$.prisma
       );
@@ -137,6 +131,17 @@ export class CheckpointSystem {
       if (!run) {
         this.$.logger.error("Run not found for createCheckpoint", {
           snapshot,
+        });
+
+        throw new ServiceValidationError("Run not found", 404);
+      }
+
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+      if (!env) {
+        this.$.logger.error("Environment not found for createCheckpoint", {
+          snapshot,
+          runtimeEnvironmentId: run.runtimeEnvironmentId,
         });
 
         throw new ServiceValidationError("Run not found", 404);
@@ -153,34 +158,40 @@ export class CheckpointSystem {
           batchId: run.batchId,
         },
         organization: {
-          id: run.runtimeEnvironment.organizationId,
+          id: env.organizationId,
         },
         project: {
-          id: run.runtimeEnvironment.projectId,
+          id: env.projectId,
         },
         environment: {
-          id: run.runtimeEnvironment.id,
+          id: env.id,
         },
       });
 
-      // Create the checkpoint
-      const taskRunCheckpoint = await prisma.taskRunCheckpoint.create({
-        data: {
-          ...CheckpointId.generate(),
-          type: checkpoint.type,
-          location: checkpoint.location,
-          imageRef: checkpoint.imageRef,
-          reason: checkpoint.reason,
-          runtimeEnvironmentId: run.runtimeEnvironment.id,
-          projectId: run.runtimeEnvironment.projectId,
+      // Create the checkpoint through the run-ops store (routed by owning run id). When a caller
+      // supplied a tx distinct from the base client, pass it through so the write stays atomic with
+      // that transaction; otherwise the store resolves it on its own client (passthrough in single-DB).
+      const taskRunCheckpoint = await this.$.runStore.createTaskRunCheckpoint(
+        {
+          data: {
+            ...CheckpointId.generate(),
+            type: checkpoint.type,
+            location: checkpoint.location,
+            imageRef: checkpoint.imageRef,
+            reason: checkpoint.reason,
+            runtimeEnvironmentId: env.id,
+            projectId: env.projectId,
+          },
         },
-      });
+        run.id,
+        tx ? prisma : undefined
+      );
 
       if (snapshot.executionStatus === "QUEUED_EXECUTING") {
         // Enqueue the run again
         const newSnapshot = await this.enqueueSystem.enqueueRun({
           run,
-          env: run.runtimeEnvironment,
+          env,
           snapshot: {
             status: "QUEUED",
             description:
@@ -271,7 +282,7 @@ export class CheckpointSystem {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lock("continueRunExecution", [runId], async () => {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
       if (snapshot.id !== snapshotId) {
         throw new ServiceValidationError(

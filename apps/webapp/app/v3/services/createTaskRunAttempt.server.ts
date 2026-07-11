@@ -15,6 +15,7 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CrashTaskRunService } from "./crashTaskRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
 import { runStore } from "../runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call({
@@ -62,19 +63,6 @@ export class CreateTaskRunAttemptService extends BaseService {
                 number: "desc",
               },
             },
-            lockedBy: {
-              include: {
-                worker: {
-                  select: {
-                    id: true,
-                    version: true,
-                    sdkVersion: true,
-                    cliVersion: true,
-                    supportsLazyAttempts: true,
-                  },
-                },
-              },
-            },
             batchItems: {
               include: {
                 batchTaskRun: {
@@ -108,18 +96,16 @@ export class CreateTaskRunAttemptService extends BaseService {
         throw new ServiceValidationError("Task run is already finished", 400);
       }
 
-      const lockedBy = taskRun.lockedBy;
+      const lockedWorker = await controlPlaneResolver.resolveRunLockedWorker({
+        lockedById: taskRun.lockedById,
+      });
+      const lockedBy = lockedWorker?.lockedBy;
 
       if (!lockedBy) {
         throw new ServiceValidationError("Task run is not locked", 400);
       }
 
-      const queue = await findQueueInEnvironment(
-        taskRun.queue,
-        environment.id,
-        lockedBy.id,
-        lockedBy
-      );
+      const queue = await findQueueInEnvironment(taskRun.queue, environment.id, lockedBy.id);
 
       if (!queue) {
         throw new ServiceValidationError("Queue not found", 404);
@@ -275,13 +261,8 @@ async function getAuthenticatedEnvironmentFromRun(
       friendlyId: isFriendlyId ? friendlyId : undefined,
     },
     {
-      include: {
-        runtimeEnvironment: {
-          include: {
-            organization: true,
-            project: true,
-          },
-        },
+      select: {
+        runtimeEnvironmentId: true,
       },
     },
     prismaClient ?? prisma
@@ -291,5 +272,7 @@ async function getAuthenticatedEnvironmentFromRun(
     return;
   }
 
-  return taskRun?.runtimeEnvironment;
+  return (
+    (await controlPlaneResolver.resolveAuthenticatedEnv(taskRun.runtimeEnvironmentId)) ?? undefined
+  );
 }

@@ -94,7 +94,7 @@ export function RateLimitSection({
   };
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-charcoal-700 bg-charcoal-800 p-4">
+    <section className="flex flex-col gap-3 rounded-md border border-grid-bright bg-background-bright p-4">
       <div className="flex items-center justify-between">
         <Header2>{title}</Header2>
         {!isEditing && (

@@ -65,6 +65,7 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
+import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 import { Button } from "../../primitives/Buttons";
 import { AIFilterInput } from "./AIFilterInput";
 import { BulkActionTypeCombo } from "./BulkAction";
@@ -672,7 +673,7 @@ function PermanentStatusFilter() {
                     className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  <div className="flex h-6 items-center gap-1 rounded border border-border-bright bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-border-brighter group-hover:bg-surface-control">
                     <div className="grid size-4 place-items-center">
                       <div className="size-[75%] rounded-full border-2 border-text-bright" />
                     </div>
@@ -680,7 +681,7 @@ function PermanentStatusFilter() {
                   </div>
                 )}
               </Ariakit.TooltipAnchor>
-              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span>Filter by status</span>
                   <ShortcutKey
@@ -851,13 +852,13 @@ function PermanentTasksFilter({ possibleTasks }: Pick<RunFiltersProps, "possible
                     className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-border-bright bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-border-brighter group-hover:bg-surface-control">
                     {filterIcon("tasks")}
                     <span>Tasks</span>
                   </div>
                 )}
               </Ariakit.TooltipAnchor>
-              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span>Filter by task</span>
                   <ShortcutKey
@@ -1703,7 +1704,7 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
           }}
         />
       </Ariakit.TooltipAnchor>
-      <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+      <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
         <div className="flex items-center gap-2">
           <span>Toggle root only</span>
           <ShortcutKey className="size-4 flex-none" shortcut={rootOnlyShortcut} variant="small" />
@@ -1713,10 +1714,7 @@ function RootOnlyToggle({ defaultValue }: { defaultValue: boolean }) {
   );
 }
 
-function validateRunId(value: string): string | undefined {
-  if (!value.startsWith("run_")) return "Run IDs start with 'run_'";
-  if (value.length !== 25 && value.length !== 29) return "Run IDs are 25 or 29 characters long";
-}
+const validateRunId = makeFriendlyIdValidator("run", "Run");
 
 function RunIdDropdown(
   props: Omit<
@@ -1768,10 +1766,7 @@ function AppliedRunIdFilter() {
   );
 }
 
-function validateBatchId(value: string): string | undefined {
-  if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
-  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27 or 31 characters long";
-}
+const validateBatchId = makeFriendlyIdValidator("batch", "Batch");
 
 function BatchIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
@@ -1819,10 +1814,7 @@ function AppliedBatchIdFilter() {
   );
 }
 
-function validateScheduleId(value: string): string | undefined {
-  if (!value.startsWith("sched_")) return "Schedule IDs start with 'sched_'";
-  if (value.length !== 27) return "Schedule IDs are 27 characters long";
-}
+const validateScheduleId = makeFriendlyIdValidator("sched", "Schedule");
 
 function ScheduleIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
@@ -1870,6 +1862,8 @@ function AppliedScheduleIdFilter() {
   );
 }
 
+// Error ids are `error_<16-char sha256 fingerprint>`, not a fixed-length generated
+// id, so they intentionally skip makeFriendlyIdValidator (its length check would reject them).
 function validateErrorId(value: string): string | undefined {
   if (!value.startsWith("error_")) return "Error IDs start with 'error_'";
 }

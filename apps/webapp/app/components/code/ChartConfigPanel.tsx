@@ -381,7 +381,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
                         }
                         updateConfig(updates);
                       }}
-                      className="rounded p-1 text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                      className="rounded p-1 text-text-dimmed hover:bg-background-raised hover:text-text-bright"
                       title="Remove series"
                     >
                       <XIcon className="h-3.5 w-3.5" />
@@ -406,7 +406,7 @@ export function ChartConfigPanel({ columns, config, onChange, className }: Chart
                         });
                       }
                     }}
-                    className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+                    className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-text-dimmed hover:bg-background-raised hover:text-text-bright"
                   >
                     <Plus className="h-3 w-3" />
                     Add series
@@ -568,7 +568,7 @@ function SeriesColorPicker({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex-shrink-0 rounded p-0.5 hover:bg-charcoal-700"
+          className="shrink-0 rounded p-0.5 hover:bg-background-raised"
           title="Change series color"
         >
           <span
@@ -616,7 +616,7 @@ function TypeBadge({ type }: { type: string }) {
   }
 
   return (
-    <span className="rounded bg-charcoal-750 px-1 py-0.5 font-mono text-xxs text-text-dimmed">
+    <span className="rounded bg-background-hover px-1 py-0.5 font-mono text-xxs text-text-dimmed">
       {displayType}
     </span>
   );

@@ -242,6 +242,10 @@ If runs are staying in the `QUEUED` state for extended periods, check your concu
 - **Review queue concurrency limits** - Check if individual queues have restrictive `concurrencyLimit` settings
 - **Check for stuck runs** - See if stalled runs are blocking new executions
 
+### Runs queued because a billing limit was reached
+
+If your organization reaches a billing limit, billable environments (`production`, `staging`, and `preview`) pause: new runs still queue, but they won't start executing until you raise or remove the limit and choose whether to resume or cancel the queued runs. See [Billing limits and alerts](/billing-limits) for the full flow.
+
 ### `Crypto is not defined`
 
 This can happen in different situations, for example when using plain strings as idempotency keys. Support for `Crypto` without a special flag was added in Node `v19.0.0`. You will have to upgrade Node - we recommend even-numbered major releases, e.g. `v20` or `v22`. Alternatively, you can switch from plain strings to the `idempotencyKeys.create` SDK function. [Read the guide](/idempotency).

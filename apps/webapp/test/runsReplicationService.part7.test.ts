@@ -96,9 +96,6 @@ describe("RunsReplicationService (part 7/7)", () => {
       // Stop the interval
       clearInterval(interval);
 
-      // Wait for replication
-      await setTimeout(1000);
-
       // Query ClickHouse for all runs using FINAL
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-long-tx",
@@ -106,10 +103,15 @@ describe("RunsReplicationService (part 7/7)", () => {
         schema: z.any(),
       });
 
-      const [queryError, result] = await queryRuns({});
-      expect(queryError).toBeNull();
+      await vi.waitFor(
+        async () => {
+          const [queryError, result] = await queryRuns({});
+          expect(queryError).toBeNull();
 
-      expect(result?.length).toBeGreaterThanOrEqual(50);
+          expect(result?.length).toBeGreaterThanOrEqual(50);
+        },
+        { timeout: 30_000, interval: 250 }
+      );
 
       await runsReplicationService.stop();
     }

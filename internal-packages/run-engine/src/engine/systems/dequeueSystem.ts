@@ -2,18 +2,14 @@ import { startSpan } from "@internal/tracing";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core";
 import type { DequeuedMessage } from "@trigger.dev/core/v3";
 import { RetryOptions, RunAnnotations } from "@trigger.dev/core/v3";
-import {
-  CURRENT_DEPLOYMENT_LABEL,
-  generateInternalId,
-  getMaxDuration,
-  SnapshotId,
-} from "@trigger.dev/core/v3/isomorphic";
+import { generateInternalId, getMaxDuration, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
 import { placementTag } from "@trigger.dev/core/v3/serverOnly";
 import type {
   BackgroundWorker,
   BackgroundWorkerTask,
   Prisma,
   PrismaClientOrTransaction,
+  RuntimeEnvironmentType,
   TaskQueue,
   WorkerDeployment,
 } from "@trigger.dev/database";
@@ -36,16 +32,26 @@ export type DequeueSystemOptions = {
   billingCache: BillingCache;
 };
 
-type RunWithMininimalEnvironment = Prisma.TaskRunGetPayload<{
-  include: {
-    runtimeEnvironment: {
-      select: {
-        id: true;
-        type: true;
-      };
-    };
-  };
-}>;
+// Run-ops scalars the dequeue path reads off the run row. The environment half (type,
+// archivedAt) is resolved separately via the controlPlaneResolver so the run-ops DB can
+// split without a cross-provider join.
+const dequeueRunSelect = {
+  id: true,
+  taskIdentifier: true,
+  lockedToVersionId: true,
+  lockedQueueId: true,
+  queue: true,
+  projectId: true,
+  runtimeEnvironmentId: true,
+  maxAttempts: true,
+  startedAt: true,
+  maxDurationInSeconds: true,
+  lockedRetryConfig: true,
+  attemptNumber: true,
+  machinePreset: true,
+} satisfies Prisma.TaskRunSelect;
+
+type RunWithDequeueScalars = Prisma.TaskRunGetPayload<{ select: typeof dequeueRunSelect }>;
 
 type RunWithBackgroundWorkerTasksResult =
   | {
@@ -63,7 +69,8 @@ type RunWithBackgroundWorkerTasksResult =
         | "QUEUE_NOT_FOUND"
         | "RUN_ENVIRONMENT_ARCHIVED";
       message: string;
-      run: RunWithMininimalEnvironment;
+      run: RunWithDequeueScalars;
+      environmentType: RuntimeEnvironmentType;
     }
   | {
       success: false;
@@ -73,11 +80,13 @@ type RunWithBackgroundWorkerTasksResult =
         expected: string;
         received: string;
       };
-      run: RunWithMininimalEnvironment;
+      run: RunWithDequeueScalars;
+      environmentType: RuntimeEnvironmentType;
     }
   | {
       success: true;
-      run: RunWithMininimalEnvironment;
+      run: RunWithDequeueScalars;
+      environmentType: RuntimeEnvironmentType;
       worker: BackgroundWorker;
       task: BackgroundWorkerTask;
       queue: TaskQueue;
@@ -133,7 +142,6 @@ export class DequeueSystem {
       this.$.tracer,
       "dequeueFromWorkerQueue",
       async (span) => {
-        //gets multiple runs from the queue
         const message = await this.$.runQueue.dequeueMessageFromWorkerQueue(
           consumerId,
           workerQueue,
@@ -173,7 +181,7 @@ export class DequeueSystem {
             "dequeueFromWorkerQueue",
             [runId],
             async () => {
-              const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+              const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
               if (!isDequeueableExecutionStatus(snapshot.executionStatus)) {
                 // If it's pending executing it will be picked up by the stalled system if there's an issue
@@ -356,7 +364,7 @@ export class DequeueSystem {
               }
 
               //check for a valid deployment if it's not a development environment
-              if (result.run.runtimeEnvironment.type !== "DEVELOPMENT") {
+              if (result.environmentType !== "DEVELOPMENT") {
                 if (!result.deployment || !result.deployment.imageReference) {
                   this.$.logger.warn("RunEngine.dequeueFromWorkerQueue(): No deployment found", {
                     runId,
@@ -610,8 +618,8 @@ export class DequeueSystem {
                   annotations: RunAnnotations.safeParse(lockedTaskRun.annotations).data,
                 },
                 environment: {
-                  id: lockedTaskRun.runtimeEnvironment.id,
-                  type: lockedTaskRun.runtimeEnvironment.type,
+                  id: lockedTaskRun.runtimeEnvironmentId,
+                  type: result.environmentType,
                 },
                 organization: {
                   id: orgId,
@@ -650,16 +658,22 @@ export class DequeueSystem {
             this.$.runStore.findRun(
               { id: runId },
               {
-                include: {
-                  runtimeEnvironment: true,
+                select: {
+                  id: true,
+                  runtimeEnvironmentId: true,
+                  projectId: true,
                 },
               },
               prisma
             )
           );
 
-          // If DB is unavailable or run not found, just nack directly via Redis
-          if (findError || !run) {
+          const env = run
+            ? await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId)
+            : null;
+
+          // If DB is unavailable, run not found, or env not resolved, just nack directly via Redis
+          if (findError || !run || !env) {
             this.$.logger.error(
               "RunEngine.dequeueFromWorkerQueue(): Failed to find run, nacking directly via Redis",
               {
@@ -676,9 +690,9 @@ export class DequeueSystem {
           //this is an unknown error, we'll reattempt (with auto-backoff and eventually DLQ)
           const gotRequeued = await this.runAttemptSystem.tryNackAndRequeue({
             run,
-            environment: run.runtimeEnvironment,
+            environment: { id: env.id, type: env.type },
             orgId,
-            projectId: run.runtimeEnvironment.projectId,
+            projectId: run.projectId,
             error: {
               type: "INTERNAL_ERROR",
               code: "TASK_RUN_DEQUEUED_MAX_RETRIES",
@@ -744,24 +758,25 @@ export class DequeueSystem {
         {
           select: {
             id: true,
+            runtimeEnvironmentId: true,
             status: true,
             attemptNumber: true,
             updatedAt: true,
             createdAt: true,
             runTags: true,
             batchId: true,
-            runtimeEnvironment: {
-              select: {
-                id: true,
-                type: true,
-                projectId: true,
-                project: { select: { id: true, organizationId: true } },
-              },
-            },
           },
         },
         prisma
       );
+
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+      if (!env) {
+        this.$.logger.error("RunEngine.#pendingVersion(): environment not found", { runId });
+        await this.$.runQueue.acknowledgeMessage(orgId, runId);
+        return;
+      }
 
       this.$.logger.debug("RunEngine.dequeueFromWorkerQueue(): Pending version", {
         runId,
@@ -775,10 +790,10 @@ export class DequeueSystem {
           description:
             reason ?? "The run doesn't have a background worker, so we're going to ack it for now.",
         },
-        environmentId: run.runtimeEnvironment.id,
-        environmentType: run.runtimeEnvironment.type,
-        projectId: run.runtimeEnvironment.projectId,
-        organizationId: run.runtimeEnvironment.project.organizationId,
+        environmentId: env.id,
+        environmentType: env.type,
+        projectId: env.projectId,
+        organizationId: env.organizationId,
         workerId,
         runnerId,
       });
@@ -797,13 +812,13 @@ export class DequeueSystem {
           batchId: run.batchId,
         },
         organization: {
-          id: run.runtimeEnvironment.project.organizationId,
+          id: env.organizationId,
         },
         project: {
-          id: run.runtimeEnvironment.projectId,
+          id: env.projectId,
         },
         environment: {
-          id: run.runtimeEnvironment.id,
+          id: env.id,
         },
       });
     });
@@ -817,26 +832,14 @@ export class DequeueSystem {
     return startSpan(this.$.tracer, "getRunWithBackgroundWorkerTasks", async (span) => {
       span.setAttribute("run_id", runId);
 
+      // Read the run-ops scalars only; the control-plane env + worker version are resolved
+      // separately so the run-ops DB can split without a cross-provider join.
       const run = await this.$.runStore.findRun(
         {
           id: runId,
         },
         {
-          include: {
-            runtimeEnvironment: {
-              select: {
-                id: true,
-                type: true,
-                archivedAt: true,
-              },
-            },
-            lockedToVersion: {
-              include: {
-                deployment: true,
-                tasks: true,
-              },
-            },
-          },
+          select: dequeueRunSelect,
         },
         prisma
       );
@@ -850,35 +853,39 @@ export class DequeueSystem {
         };
       }
 
-      span.setAttribute("environment_type", run.runtimeEnvironment.type);
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
 
-      if (run.runtimeEnvironment.archivedAt) {
+      if (!env) {
+        span.setAttribute("result", "NO_RUN");
+        return {
+          success: false as const,
+          code: "NO_RUN",
+          message: `No environment found for run: ${runId}`,
+        };
+      }
+
+      span.setAttribute("environment_type", env.type);
+
+      if (env.archivedAt) {
         span.setAttribute("result", "RUN_ENVIRONMENT_ARCHIVED");
         return {
           success: false as const,
           code: "RUN_ENVIRONMENT_ARCHIVED",
           message: `Run is on an archived environment: ${run.id}`,
           run,
+          environmentType: env.type,
         };
       }
 
       const workerId = run.lockedToVersionId ?? backgroundWorkerId;
 
       //get the relevant BackgroundWorker with tasks and deployment (if not DEV)
-      let workerWithTasks: WorkerDeploymentWithWorkerTasks | null = null;
-
-      if (run.runtimeEnvironment.type === "DEVELOPMENT") {
-        workerWithTasks = workerId
-          ? await this.#getWorkerById(prisma, workerId)
-          : await this.#getMostRecentWorker(prisma, run.runtimeEnvironmentId);
-      } else {
-        workerWithTasks = workerId
-          ? await this.#getWorkerDeploymentFromWorker(prisma, workerId)
-          : await this.#getManagedWorkerFromCurrentlyPromotedDeployment(
-              prisma,
-              run.runtimeEnvironmentId
-            );
-      }
+      const workerWithTasks: WorkerDeploymentWithWorkerTasks | null =
+        await this.$.controlPlaneResolver.resolveWorkerVersion({
+          environmentId: run.runtimeEnvironmentId,
+          type: env.type,
+          workerId: workerId ?? undefined,
+        });
 
       if (!workerWithTasks) {
         span.setAttribute("result", "NO_WORKER");
@@ -887,6 +894,7 @@ export class DequeueSystem {
           code: "NO_WORKER",
           message: `No worker found for run: ${run.id}`,
           run,
+          environmentType: env.type,
         };
       }
 
@@ -902,6 +910,7 @@ export class DequeueSystem {
               received: workerWithTasks.worker.id,
             },
             run,
+            environmentType: env.type,
           };
         }
       }
@@ -909,6 +918,8 @@ export class DequeueSystem {
       const backgroundTask = workerWithTasks.tasks.find((task) => task.slug === run.taskIdentifier);
 
       if (!backgroundTask) {
+        // Diagnostic-only disambiguation (off the hot path); left on `prisma` as the resolver
+        // interface exposes only env + worker-version resolution.
         const nonCurrentTask = await prisma.backgroundWorkerTask.findFirst({
           where: {
             slug: run.taskIdentifier,
@@ -930,6 +941,7 @@ export class DequeueSystem {
             code: "TASK_NOT_IN_LATEST",
             message: `Task not found in latest version: ${run.taskIdentifier}. Found in ${nonCurrentTask.worker.version}`,
             run,
+            environmentType: env.type,
           };
         } else {
           span.setAttribute("result", "TASK_NEVER_REGISTERED");
@@ -938,6 +950,7 @@ export class DequeueSystem {
             code: "TASK_NEVER_REGISTERED",
             message: `Task has never been registered (in dev or deployed): ${run.taskIdentifier}`,
             run,
+            environmentType: env.type,
           };
         }
       }
@@ -953,6 +966,7 @@ export class DequeueSystem {
           code: "QUEUE_NOT_FOUND",
           message: `Queue not found for run: ${run.id}`,
           run,
+          environmentType: env.type,
         };
       }
 
@@ -961,187 +975,12 @@ export class DequeueSystem {
       return {
         success: true as const,
         run,
+        environmentType: env.type,
         worker: workerWithTasks.worker,
         task: backgroundTask,
         queue,
         deployment: workerWithTasks.deployment,
       };
     });
-  }
-
-  async #getWorkerDeploymentFromWorker(
-    prisma: PrismaClientOrTransaction,
-    workerId: string
-  ): Promise<WorkerDeploymentWithWorkerTasks | null> {
-    return startSpan(this.$.tracer, "getWorkerDeploymentFromWorker", async (span) => {
-      const worker = await prisma.backgroundWorker.findFirst({
-        where: {
-          id: workerId,
-        },
-        include: {
-          deployment: true,
-          tasks: true,
-          queues: true,
-        },
-      });
-
-      if (!worker) {
-        span.setAttribute("result", "NOT_FOUND");
-        return null;
-      }
-
-      span.setAttribute("result", "SUCCESS");
-
-      return {
-        worker,
-        tasks: worker.tasks,
-        queues: worker.queues,
-        deployment: worker.deployment,
-      };
-    });
-  }
-
-  async #getMostRecentWorker(
-    prisma: PrismaClientOrTransaction,
-    environmentId: string
-  ): Promise<WorkerDeploymentWithWorkerTasks | null> {
-    return startSpan(this.$.tracer, "getMostRecentWorker", async (span) => {
-      const worker = await prisma.backgroundWorker.findFirst({
-        where: {
-          runtimeEnvironmentId: environmentId,
-        },
-        include: {
-          tasks: true,
-          queues: true,
-        },
-        orderBy: {
-          id: "desc",
-        },
-      });
-
-      if (!worker) {
-        span.setAttribute("result", "NOT_FOUND");
-        return null;
-      }
-
-      span.setAttribute("result", "SUCCESS");
-
-      return { worker, tasks: worker.tasks, queues: worker.queues, deployment: null };
-    });
-  }
-
-  async #getWorkerById(
-    prisma: PrismaClientOrTransaction,
-    workerId: string
-  ): Promise<WorkerDeploymentWithWorkerTasks | null> {
-    return startSpan(this.$.tracer, "getWorkerById", async (span) => {
-      const worker = await prisma.backgroundWorker.findFirst({
-        where: {
-          id: workerId,
-        },
-        include: {
-          deployment: true,
-          tasks: true,
-          queues: true,
-        },
-        orderBy: {
-          id: "desc",
-        },
-      });
-
-      if (!worker) {
-        span.setAttribute("result", "NOT_FOUND");
-        return null;
-      }
-
-      span.setAttribute("result", "SUCCESS");
-
-      return {
-        worker,
-        tasks: worker.tasks,
-        queues: worker.queues,
-        deployment: worker.deployment,
-      };
-    });
-  }
-
-  async #getManagedWorkerFromCurrentlyPromotedDeployment(
-    prisma: PrismaClientOrTransaction,
-    environmentId: string
-  ): Promise<WorkerDeploymentWithWorkerTasks | null> {
-    return startSpan(
-      this.$.tracer,
-      "getManagedWorkerFromCurrentlyPromotedDeployment",
-      async (span) => {
-        const promotion = await prisma.workerDeploymentPromotion.findFirst({
-          where: {
-            environmentId,
-            label: CURRENT_DEPLOYMENT_LABEL,
-          },
-          include: {
-            deployment: {
-              include: {
-                worker: {
-                  include: {
-                    tasks: true,
-                    queues: true,
-                  },
-                },
-              },
-            },
-          },
-        });
-
-        if (!promotion || !promotion.deployment.worker) {
-          span.setAttribute("result", "NO_PROMOTION_OR_WORKER");
-          return null;
-        }
-
-        if (promotion.deployment.type === "MANAGED") {
-          // This is a run engine v2 deployment, so return it
-          span.setAttribute("result", "SUCCESS_CURRENT_MANAGED");
-
-          return {
-            worker: promotion.deployment.worker,
-            tasks: promotion.deployment.worker.tasks,
-            queues: promotion.deployment.worker.queues,
-            deployment: promotion.deployment,
-          };
-        }
-
-        // We need to get the latest run engine v2 deployment
-        const latestV2Deployment = await prisma.workerDeployment.findFirst({
-          where: {
-            environmentId,
-            type: "MANAGED",
-          },
-          orderBy: {
-            id: "desc",
-          },
-          include: {
-            worker: {
-              include: {
-                tasks: true,
-                queues: true,
-              },
-            },
-          },
-        });
-
-        if (!latestV2Deployment?.worker) {
-          span.setAttribute("result", "NO_V2_DEPLOYMENT");
-          return null;
-        }
-
-        span.setAttribute("result", "SUCCESS_LATEST_V2");
-
-        return {
-          worker: latestV2Deployment.worker,
-          tasks: latestV2Deployment.worker.tasks,
-          queues: latestV2Deployment.worker.queues,
-          deployment: latestV2Deployment,
-        };
-      }
-    );
   }
 }

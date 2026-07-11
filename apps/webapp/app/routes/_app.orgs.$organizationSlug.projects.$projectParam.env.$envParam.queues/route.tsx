@@ -469,7 +469,7 @@ export default function Page() {
                             <Header3>Environment</Header3>
                             <Paragraph
                               variant="small"
-                              className="!text-wrap text-text-dimmed"
+                              className="text-wrap! text-text-dimmed"
                               spacing
                             >
                               This queue is limited by your environment's concurrency limit of{" "}
@@ -480,7 +480,7 @@ export default function Page() {
                             <Header3>User</Header3>
                             <Paragraph
                               variant="small"
-                              className="!text-wrap text-text-dimmed"
+                              className="text-wrap! text-text-dimmed"
                               spacing
                             >
                               This queue is limited by a concurrency limit set in your code.
@@ -490,7 +490,7 @@ export default function Page() {
                             <Header3>Override</Header3>
                             <Paragraph
                               variant="small"
-                              className="!text-wrap text-text-dimmed"
+                              className="text-wrap! text-text-dimmed"
                               spacing
                             >
                               This queue's concurrency limit has been manually overridden from the

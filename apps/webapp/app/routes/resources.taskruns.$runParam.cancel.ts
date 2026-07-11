@@ -1,13 +1,14 @@
 import { parseWithZod } from "@conform-to/zod";
 import { json } from "@remix-run/node";
 import { z } from "zod";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 export const cancelSchema = z.object({
   redirectUrl: z.string(),
@@ -21,13 +22,16 @@ const ParamSchema = z.object({
 // user's role in it. The run may not be in Postgres yet (buffered during a
 // burst), so fall back to the buffer entry's org.
 async function resolveRunOrganizationId(runParam: string): Promise<string | null> {
+  // Keyed by friendlyId only so the store routes to the owning run-ops DB.
   const run = await runStore.findRun(
     { friendlyId: runParam },
-    { select: { project: { select: { organizationId: true } } } },
-    $replica
+    { select: { runtimeEnvironmentId: true } }
   );
   if (run) {
-    return run.project.organizationId;
+    const env = await controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+    if (env?.organizationId) {
+      return env.organizationId;
+    }
   }
 
   const buffer = getMollifierBuffer();
@@ -36,16 +40,20 @@ async function resolveRunOrganizationId(runParam: string): Promise<string | null
     return entry.orgId;
   }
 
-  // Replica lag with the buffer entry already drained: the run can exist in
-  // the primary while both lookups above miss. Fall back to the primary so the
-  // RBAC scope is never resolved without an org (which would let the role check
-  // run unscoped under the RBAC plugin).
+  // Replica lag with the buffer entry already drained: the run can exist in the
+  // primary while both lookups above miss. Fall back to the primary so the RBAC
+  // scope is never resolved without an org (which would let the role check run
+  // unscoped under the RBAC plugin). Keyed by friendlyId so routing still applies.
   const primaryRun = await runStore.findRun(
     { friendlyId: runParam },
-    { select: { project: { select: { organizationId: true } } } },
+    { select: { runtimeEnvironmentId: true } },
     prisma
   );
-  return primaryRun?.project.organizationId ?? null;
+  if (!primaryRun) {
+    return null;
+  }
+  const primaryEnv = await controlPlaneResolver.resolveEnv(primaryRun.runtimeEnvironmentId);
+  return primaryEnv?.organizationId ?? null;
 }
 
 export const action = dashboardAction(
@@ -68,33 +76,47 @@ export const action = dashboardAction(
     }
 
     try {
+      // Keyed by friendlyId only so the store routes to the owning run-ops DB.
+      // The project-scope + membership auth is a control-plane concern resolved
+      // separately below; joining project/organization here is a cross-DB join
+      // that returns nothing once the run lives in the run-ops DB.
       const taskRun = await runStore.findRun(
+        { friendlyId: runParam },
         {
-          friendlyId: runParam,
-          project: {
-            organization: {
-              members: {
-                some: {
-                  userId: user.id,
-                },
-              },
-            },
+          select: {
+            id: true,
+            engine: true,
+            status: true,
+            friendlyId: true,
+            taskEventStore: true,
+            createdAt: true,
+            completedAt: true,
+            projectId: true,
           },
-        },
-        prisma
+        }
       );
 
-      if (taskRun) {
+      // Project-scope + membership auth is control-plane only — keyed by the
+      // run's projectId. A miss is treated as not-found (mirrors the old where).
+      const authorized = taskRun
+        ? await prisma.project.findFirst({
+            where: {
+              id: taskRun.projectId,
+              organization: { members: { some: { userId: user.id } } },
+            },
+            select: { id: true },
+          })
+        : null;
+
+      if (taskRun && authorized) {
         const cancelRunService = new CancelTaskRunService();
         await cancelRunService.call(taskRun);
         return redirectWithSuccessMessage(submission.value.redirectUrl, request, `Canceled run`);
       }
 
-      // PG miss — try the mollifier buffer. The customer can hit cancel
-      // on a buffered run from the dashboard during the burst window.
-      // Snapshot a `mark_cancelled` patch; the drainer's
-      // bifurcation routes the run to `engine.createCancelledRun` on
-      // next pop.
+      // PG miss — try the mollifier buffer (customer cancelled a buffered run
+      // during the burst window). Snapshot a `mark_cancelled` patch; the drainer
+      // routes the run to `engine.createCancelledRun` on next pop.
       const buffer = getMollifierBuffer();
       const entry = buffer ? await buffer.getEntry(runParam) : null;
       if (!entry) {

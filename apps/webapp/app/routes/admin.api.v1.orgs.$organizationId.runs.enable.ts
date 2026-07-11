@@ -3,6 +3,7 @@ import { EnvironmentPauseSource } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 
 const ParamsSchema = z.object({
@@ -42,6 +43,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   if (!organization) {
     return json({ error: "Organization not found" }, { status: 404 });
   }
+
+  // `runsEnabled` is embedded in every env of the org; drop all its cached env rows. The
+  // per-env pause writes below invalidate their own envs via PauseEnvironmentService.
+  controlPlaneResolver.invalidateOrganization(organizationId);
 
   const environments = await prisma.runtimeEnvironment.findMany({
     where: {

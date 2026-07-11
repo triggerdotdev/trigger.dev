@@ -778,7 +778,7 @@ describe("PostgresRunStore", () => {
   );
 
   postgresTest(
-    "lockRunToWorker sets status to DEQUEUED with lock columns, includes runtimeEnvironment, and creates one PENDING_EXECUTING snapshot",
+    "lockRunToWorker sets status to DEQUEUED with lock columns and creates one PENDING_EXECUTING snapshot (no runtimeEnvironment relation)",
     async ({ prisma }) => {
       const { organization, project, environment } = await seedEnvironment(prisma);
 
@@ -877,13 +877,132 @@ describe("PostgresRunStore", () => {
       expect(locked.lockedById).toBe(workerTask.id);
       expect(locked.lockedToVersionId).toBe(backgroundWorker.id);
       expect(locked.lockedQueueId).toBe(queue.id);
-      expect(locked.runtimeEnvironment).toBeDefined();
-      expect(locked.runtimeEnvironment.id).toBe(environment.id);
+      // The result is base-TaskRun scalars only — no control-plane relation.
+      expect(locked.runtimeEnvironmentId).toBe(environment.id);
+      expect((locked as Record<string, unknown>).runtimeEnvironment).toBeUndefined();
 
       const snap = await prisma.taskRunExecutionSnapshot.findUnique({ where: { id: snapshotId } });
       expect(snap).not.toBeNull();
       expect(snap?.executionStatus).toBe("PENDING_EXECUTING");
       expect(snap?.runStatus).toBe("PENDING");
+    }
+  );
+
+  // lockRunToWorker creates a PENDING_EXECUTING snapshot (which can inherit completed waitpoints) and
+  // then connects the _completedWaitpoints join as a separate statement. These must commit together, or
+  // a replica-served /snapshots/since read can return the snapshot waitpoint-less and drop the resume.
+  postgresTest(
+    "lockRunToWorker writes the snapshot and its completed-waitpoint links atomically",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_lock_atomic";
+
+      await store.createRun(
+        buildCreateRunInput({
+          runId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        })
+      );
+
+      const backgroundWorker = await prisma.backgroundWorker.create({
+        data: {
+          friendlyId: "worker_atomic",
+          version: "20260601.1",
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+          contentHash: "abc",
+          sdkVersion: "3.0.0",
+          cliVersion: "3.0.0",
+          metadata: {},
+        },
+      });
+      const workerTask = await prisma.backgroundWorkerTask.create({
+        data: {
+          friendlyId: "task_atomic",
+          slug: "my-task",
+          filePath: "src/my-task.ts",
+          exportName: "myTask",
+          workerId: backgroundWorker.id,
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+      const queue = await prisma.taskQueue.create({
+        data: {
+          friendlyId: "queue_atomic",
+          name: "task/my-task",
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+      const priorSnapshot = await prisma.taskRunExecutionSnapshot.create({
+        data: {
+          engine: "V2",
+          executionStatus: "RUN_CREATED",
+          description: "prior",
+          runStatus: "PENDING",
+          environmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          runId,
+        },
+      });
+      const waitpoint = await prisma.waitpoint.create({
+        data: {
+          friendlyId: "wp_lock_atomic",
+          type: "MANUAL",
+          status: "COMPLETED",
+          idempotencyKey: "idem-lock-atomic",
+          userProvidedIdempotencyKey: false,
+          projectId: project.id,
+          environmentId: environment.id,
+        },
+      });
+
+      // Force the completed-waitpoint join insert to fail mid-write.
+      await prisma.$executeRawUnsafe('DROP TABLE "_completedWaitpoints"');
+
+      const snapshotId = "snap_lock_atomic";
+      await expect(
+        // Base client as `tx` = how the dequeue path calls it; the store must still open its own tx.
+        store.lockRunToWorker(
+          runId,
+          {
+            lockedAt: new Date(),
+            lockedById: workerTask.id,
+            lockedToVersionId: backgroundWorker.id,
+            lockedQueueId: queue.id,
+            startedAt: new Date(),
+            baseCostInCents: 5,
+            machinePreset: "small-1x",
+            taskVersion: "20260601.1",
+            sdkVersion: "3.0.0",
+            cliVersion: "3.0.0",
+            maxDurationInSeconds: null,
+            snapshot: {
+              id: snapshotId,
+              previousSnapshotId: priorSnapshot.id,
+              environmentId: environment.id,
+              environmentType: "DEVELOPMENT",
+              projectId: project.id,
+              organizationId: organization.id,
+              completedWaitpointIds: [waitpoint.id],
+              completedWaitpointOrder: [waitpoint.id],
+            },
+          },
+          prisma
+        )
+      ).rejects.toThrow();
+
+      // Atomic: neither the snapshot nor the run lock persists without the links.
+      const snap = await prisma.taskRunExecutionSnapshot.findUnique({ where: { id: snapshotId } });
+      expect(snap).toBeNull();
+      const run = await prisma.taskRun.findUniqueOrThrow({ where: { id: runId } });
+      expect(run.status).not.toBe("DEQUEUED");
     }
   );
 
@@ -1740,8 +1859,8 @@ describe("PostgresRunStore — read", () => {
     async ({ prisma }) => {
       const { organization, project, environment } = await seedEnvironment(prisma);
 
-      // Use a NoopRunStore-style read replica that must NOT be hit: pass the writer
-      // (prisma) explicitly so reads go through it for read-after-write consistency.
+      // The read replica must NOT be hit here: pass the writer (prisma) explicitly
+      // so reads go through it for read-after-write consistency.
       const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const runId = "run_find_read_after_write_1";
 

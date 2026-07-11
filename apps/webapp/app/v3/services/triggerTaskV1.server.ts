@@ -31,6 +31,7 @@ import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { clampMaxDuration } from "../utils/maxDuration";
 import { BaseService, ServiceValidationError } from "./baseService.server";
+import { attemptInEnvironmentWhere, batchRunInEnvironmentWhere } from "./triggerV1Scoping";
 import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
 import { enqueueRun } from "./enqueueRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
@@ -165,7 +166,7 @@ export class TriggerTaskServiceV1 extends BaseService {
 
       const dependentAttempt = body.options?.dependentAttempt
         ? await this._prisma.taskRunAttempt.findFirst({
-            where: { friendlyId: body.options.dependentAttempt },
+            where: attemptInEnvironmentWhere(body.options.dependentAttempt, environment.id),
             include: {
               taskRun: {
                 select: {
@@ -205,7 +206,7 @@ export class TriggerTaskServiceV1 extends BaseService {
 
       const parentAttempt = body.options?.parentAttempt
         ? await this._prisma.taskRunAttempt.findFirst({
-            where: { friendlyId: body.options.parentAttempt },
+            where: attemptInEnvironmentWhere(body.options.parentAttempt, environment.id),
             include: {
               taskRun: {
                 select: {
@@ -223,7 +224,7 @@ export class TriggerTaskServiceV1 extends BaseService {
 
       const dependentBatchRun = body.options?.dependentBatch
         ? await this._prisma.batchTaskRun.findFirst({
-            where: { friendlyId: body.options.dependentBatch },
+            where: batchRunInEnvironmentWhere(body.options.dependentBatch, environment.id),
             include: {
               dependentTaskAttempt: {
                 include: {
@@ -270,7 +271,7 @@ export class TriggerTaskServiceV1 extends BaseService {
 
       const parentBatchRun = body.options?.parentBatch
         ? await this._prisma.batchTaskRun.findFirst({
-            where: { friendlyId: body.options.parentBatch },
+            where: batchRunInEnvironmentWhere(body.options.parentBatch, environment.id),
             include: {
               dependentTaskAttempt: {
                 include: {

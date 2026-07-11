@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { $replica, runOpsNewReplica, runOpsSplitReadEnabled } from "~/db.server";
 import { ApiBatchResultsPresenter } from "~/presenters/v3/ApiBatchResultsPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -28,7 +29,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     const { batchParam } = parsed.data;
 
     try {
-      const presenter = new ApiBatchResultsPresenter();
+      const presenter = new ApiBatchResultsPresenter(undefined, undefined, {
+        newClient: runOpsNewReplica,
+        legacyReplica: $replica,
+        splitEnabled: runOpsSplitReadEnabled,
+      });
       const result = await presenter.call(batchParam, authenticationResult.environment);
 
       if (!result) {

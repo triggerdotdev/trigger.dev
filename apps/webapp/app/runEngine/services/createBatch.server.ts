@@ -1,11 +1,13 @@
 import type { InitializeBatchOptions } from "@internal/run-engine";
 import { type CreateBatchRequestBody, type CreateBatchResponse } from "@trigger.dev/core/v3";
-import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
 import { Evt } from "evt";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { BatchRateLimitExceededError, getBatchLimits } from "../concerns/batchLimits.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
@@ -58,12 +60,18 @@ export class CreateBatchService extends WithRunEngine {
         "createBatch()",
         environment,
         async (span) => {
-          const { id, friendlyId } = BatchId.generate();
+          const { id, friendlyId } = await mintBatchFriendlyId({
+            environment: {
+              organizationId: environment.organizationId,
+              id: environment.id,
+              orgFeatureFlags: environment.organization.featureFlags,
+            },
+            parentRunFriendlyId: body.parentRunId,
+          });
 
           span.setAttribute("batchId", friendlyId);
           span.setAttribute("runCount", body.runCount);
 
-          // Validate entitlement
           const entitlementValidation = await this.validator.validateEntitlement({
             environment,
           });
@@ -72,14 +80,11 @@ export class CreateBatchService extends WithRunEngine {
             throw entitlementValidation.error;
           }
 
-          // Extract plan type from entitlement validation for billing tracking
           const planType = entitlementValidation.plan?.type;
 
-          // Get batch limits for this organization
           const { config, rateLimiter } = await getBatchLimits(environment.organization);
 
-          // Check rate limit BEFORE creating the batch
-          // This prevents burst creation of batches that exceed the rate limit
+          // Rate-limit before creating the batch, to stop bursts exceeding the limit.
           const rateResult = await rateLimiter.limit(environment.id, body.runCount);
 
           if (!rateResult.success) {
@@ -94,23 +99,23 @@ export class CreateBatchService extends WithRunEngine {
           // Note: Queue size limits are validated per-queue when batch items are processed,
           // since we don't know which queues items will go to until they're streamed.
 
-          // Create BatchTaskRun in Postgres with PENDING status
-          // The batch will be sealed (status -> PROCESSING) when items are streamed
-          const batch = await this._prisma.batchTaskRun.create({
-            data: {
-              id,
-              friendlyId,
-              runtimeEnvironmentId: environment.id,
-              status: "PENDING",
-              runCount: body.runCount,
-              expectedCount: body.runCount,
-              runIds: [],
-              batchVersion: "runengine:v2", // 2-phase streaming batch API
-              oneTimeUseToken: options.oneTimeUseToken,
-              idempotencyKey: body.idempotencyKey,
-              // Not sealed yet - will be sealed when items stream completes
-              sealed: false,
-            },
+          // BatchTaskRun.runtimeEnvironmentId no longer has an FK into RuntimeEnvironment;
+          // validate env existence app-side (passthrough when split is off).
+          await controlPlaneResolver.assertEnvExists(environment.id);
+
+          // Created PENDING; sealed (status -> PROCESSING) once items are streamed.
+          const batch = await this._engine.runStore.createBatchTaskRun({
+            id,
+            friendlyId,
+            runtimeEnvironmentId: environment.id,
+            status: "PENDING",
+            runCount: body.runCount,
+            expectedCount: body.runCount,
+            runIds: [],
+            batchVersion: "runengine:v2", // 2-phase streaming batch API
+            oneTimeUseToken: options.oneTimeUseToken,
+            idempotencyKey: body.idempotencyKey,
+            sealed: false,
           });
 
           this.onBatchTaskRunCreated.post(batch);
