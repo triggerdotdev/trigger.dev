@@ -337,6 +337,25 @@ export function BranchesPopoverContent({
   return (
     <>
       <div className="flex flex-col gap-1 p-1">
+        {parentEnvironment.type === "DEVELOPMENT" ? (
+          <PopoverMenuItem
+            to={branchesDevPath(organization, project, environment)}
+            title="Manage dev branches"
+            icon={<Cog8ToothIcon className={cn(ENV_POPOVER_ITEM_ICON, "text-text-dimmed")} />}
+            leadingIconClassName="text-text-dimmed"
+            className={ENV_POPOVER_ITEM_LABEL}
+          />
+        ) : (
+          <PopoverMenuItem
+            to={branchesPath(organization, project, environment)}
+            title="Manage preview branches"
+            icon={<Cog8ToothIcon className={cn(ENV_POPOVER_ITEM_ICON, "text-text-dimmed")} />}
+            leadingIconClassName="text-text-dimmed"
+            className={ENV_POPOVER_ITEM_LABEL}
+          />
+        )}
+      </div>
+      <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
         {currentBranchIsArchived && (
           <PopoverMenuItem
             key={environment.id}
@@ -398,25 +417,6 @@ export function BranchesPopoverContent({
           <div className="flex max-w-sm flex-col gap-1 p-2">
             <Paragraph variant="extra-small">All branches are archived.</Paragraph>
           </div>
-        )}
-      </div>
-      <div className="border-t border-grid-bright p-1">
-        {parentEnvironment.type === "DEVELOPMENT" ? (
-          <PopoverMenuItem
-            to={branchesDevPath(organization, project, environment)}
-            title="Manage dev branches"
-            icon={<Cog8ToothIcon className={cn(ENV_POPOVER_ITEM_ICON, "text-text-dimmed")} />}
-            leadingIconClassName="text-text-dimmed"
-            className={ENV_POPOVER_ITEM_LABEL}
-          />
-        ) : (
-          <PopoverMenuItem
-            to={branchesPath(organization, project, environment)}
-            title="Manage preview branches"
-            icon={<Cog8ToothIcon className={cn(ENV_POPOVER_ITEM_ICON, "text-text-dimmed")} />}
-            leadingIconClassName="text-text-dimmed"
-            className={ENV_POPOVER_ITEM_LABEL}
-          />
         )}
       </div>
     </>
