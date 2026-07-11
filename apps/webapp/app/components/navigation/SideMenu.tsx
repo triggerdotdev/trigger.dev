@@ -1156,7 +1156,7 @@ function OrgSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded pl-[0.4375rem] hover:bg-charcoal-750 focus-custom",
               isCollapsed ? "justify-center pr-0.5" : "w-full justify-between pr-1"
             )}
           >
@@ -1192,6 +1192,7 @@ function OrgSelector({
         hidden={!isCollapsed}
         buttonClassName="!h-8"
         asChild
+        tabbable
         disableHoverableContent
       />
       <PopoverContent
@@ -1333,6 +1334,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
         side="bottom"
         sideOffset={8}
         asChild
+        tabbable
         disableHoverableContent
       />
       <PopoverContent
@@ -1443,7 +1445,7 @@ function ProjectSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded border pl-[0.4375rem] transition-[border-color] duration-150 hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded border pl-[0.4375rem] transition-[border-color] duration-150 hover:bg-charcoal-750 focus-custom",
               isCollapsed
                 ? "justify-center border-transparent pr-0.5"
                 : "justify-between border-charcoal-700 pr-1",
@@ -1482,6 +1484,7 @@ function ProjectSelector({
         hidden={!isCollapsed}
         buttonClassName="!h-8"
         asChild
+        tabbable
         disableHoverableContent
       />
       <PopoverContent

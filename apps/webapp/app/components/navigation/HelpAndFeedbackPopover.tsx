@@ -108,6 +108,7 @@ export function HelpAndFeedback({
               delayDuration={isCollapsed ? 0 : 500}
               buttonClassName="!h-8 w-full"
               asChild
+              tabbable
               disableHoverableContent
             />
             <PopoverContent

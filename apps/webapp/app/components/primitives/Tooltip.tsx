@@ -63,6 +63,7 @@ function SimpleTooltip({
   buttonClassName,
   buttonStyle,
   asChild = false,
+  tabbable = false,
   sideOffset,
   open,
   onOpenChange,
@@ -78,6 +79,12 @@ function SimpleTooltip({
   buttonClassName?: string;
   buttonStyle?: React.CSSProperties;
   asChild?: boolean;
+  /**
+   * By default the trigger is removed from the tab order (`tabIndex={-1}`) so decorative tooltips
+   * don't add tab stops. Set this when the trigger wraps a genuinely interactive element (a link
+   * or button) that should stay keyboard-focusable.
+   */
+  tabbable?: boolean;
   sideOffset?: number;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -88,7 +95,7 @@ function SimpleTooltip({
       <Tooltip open={open} onOpenChange={onOpenChange} delayDuration={delayDuration}>
         <TooltipTrigger
           type={asChild ? undefined : "button"}
-          tabIndex={-1}
+          tabIndex={tabbable ? undefined : -1}
           className={cn(!asChild && "h-fit", buttonClassName)}
           style={buttonStyle}
           asChild={asChild}

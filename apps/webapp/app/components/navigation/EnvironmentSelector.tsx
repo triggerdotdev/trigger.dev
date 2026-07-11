@@ -70,7 +70,7 @@ export function EnvironmentSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded pl-[0.4375rem] hover:bg-charcoal-750 focus-custom",
               isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
               className
             )}
@@ -113,6 +113,7 @@ export function EnvironmentSelector({
         delayDuration={isCollapsed ? 0 : 500}
         buttonClassName="!h-8"
         asChild
+        tabbable
         disableHoverableContent
       />
       <PopoverContent
