@@ -90,8 +90,12 @@ parentPort.on("message", (message: TransformTask | PricingUpdate) => {
 
   const task = message as TransformTask;
   try {
+    // The worker has no MeterProvider, so it can't emit metrics itself. It measures its own
+    // compute time (decode + convert + enrich) and hands it back for the main thread to record.
+    const startedAt = performance.now();
     const result = runTask(task);
-    parentPort!.postMessage({ id: task.id, ok: true, result });
+    const computeMs = performance.now() - startedAt;
+    parentPort!.postMessage({ id: task.id, ok: true, result, computeMs });
   } catch (error) {
     parentPort!.postMessage({
       id: task.id,

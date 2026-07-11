@@ -1,5 +1,6 @@
 import { Logger } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { getMeter, type Counter, type Histogram, type Meter } from "@internal/tracing";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { signalsEmitter } from "~/services/signals.server";
@@ -16,6 +17,11 @@ export type DynamicFlushSchedulerConfig<T> = {
   loadSheddingThreshold?: number; // Number of items that triggers load shedding
   loadSheddingEnabled?: boolean;
   isDroppableEvent?: (item: T) => boolean; // Function to determine if an event can be dropped
+  // Self-observability. `name` is the low-cardinality `scheduler` label that separates the
+  // task_events / llm_metrics / otlp_metrics instances in the same process. `meter` defaults to
+  // the global provider; inject one in tests. Instruments are no-op unless metrics are enabled.
+  meter?: Meter;
+  name?: string;
 };
 
 export class DynamicFlushScheduler<T> {
@@ -54,7 +60,21 @@ export class DynamicFlushScheduler<T> {
 
   private readonly logger: Logger = new Logger("EventRepo.DynamicFlushScheduler", "info");
 
+  // Pre-allocated attribute objects (closed label sets) so the hot flush path never allocates.
+  private readonly _metricAttrs: { scheduler: string };
+  private readonly _batchOkAttrs: { scheduler: string; outcome: string };
+  private readonly _batchFailedAttrs: { scheduler: string; outcome: string };
+  private _batchesCounter?: Counter;
+  private _itemsCounter?: Counter;
+  private _flushDurationHistogram?: Histogram;
+  private _batchSizeHistogram?: Histogram;
+  private _droppedEventsCounter?: Counter;
+
   constructor(config: DynamicFlushSchedulerConfig<T>) {
+    const schedulerName = config.name ?? "unknown";
+    this._metricAttrs = { scheduler: schedulerName };
+    this._batchOkAttrs = { scheduler: schedulerName, outcome: "ok" };
+    this._batchFailedAttrs = { scheduler: schedulerName, outcome: "failed" };
     this.batchQueue = [];
     this.currentBatch = [];
     this.BATCH_SIZE = config.batchSize;
@@ -80,6 +100,54 @@ export class DynamicFlushScheduler<T> {
     this.startFlushTimer();
     this.startMetricsReporter();
     this.setupShutdownHandlers();
+    this.#setupOtelMetrics(config.meter, schedulerName);
+  }
+
+  #setupOtelMetrics(meterOverride: Meter | undefined, name: string): void {
+    const meter = meterOverride ?? getMeter("ingest-flush");
+
+    this._batchesCounter = meter.createCounter("ingest.flush.batches", {
+      description: "Batches flushed to the sink, by outcome",
+      unit: "batches",
+    });
+    this._itemsCounter = meter.createCounter("ingest.flush.items", {
+      description: "Items successfully flushed to the sink",
+      unit: "items",
+    });
+    this._flushDurationHistogram = meter.createHistogram("ingest.flush.duration", {
+      description: "Wall-clock duration of a single batch flush",
+      unit: "ms",
+    });
+    this._batchSizeHistogram = meter.createHistogram("ingest.flush.batch_size", {
+      description: "Number of items in a flushed batch",
+      unit: "items",
+    });
+    this._droppedEventsCounter = meter.createCounter("ingest.flush.dropped_events", {
+      description: "Events dropped by load shedding before they reached the sink",
+      unit: "events",
+    });
+
+    // Pull-based gauges: read at export time only, so they add zero hot-path cost.
+    const queueDepthGauge = meter.createObservableGauge("ingest.flush.queue_depth", {
+      description: "Items queued and awaiting flush",
+      unit: "items",
+    });
+    const concurrencyGauge = meter.createObservableGauge("ingest.flush.concurrency", {
+      description: "Current concurrent-flush limit",
+      unit: "flushes",
+    });
+    const loadSheddingGauge = meter.createObservableGauge("ingest.flush.load_shedding", {
+      description: "1 while actively shedding load, otherwise 0",
+    });
+
+    meter.addBatchObservableCallback(
+      (result) => {
+        result.observe(queueDepthGauge, this.totalQueuedItems, this._metricAttrs);
+        result.observe(concurrencyGauge, this.limiter.concurrency, this._metricAttrs);
+        result.observe(loadSheddingGauge, this.isLoadShedding ? 1 : 0, this._metricAttrs);
+      },
+      [queueDepthGauge, concurrencyGauge, loadSheddingGauge]
+    );
   }
 
   addToBatch(items: T[]): void {
@@ -92,6 +160,7 @@ export class DynamicFlushScheduler<T> {
 
       if (dropped.length > 0) {
         this.metrics.droppedEvents += dropped.length;
+        this._droppedEventsCounter?.add(dropped.length, this._metricAttrs);
 
         // Track dropped events by kind if possible
         dropped.forEach((item) => {
@@ -213,6 +282,11 @@ export class DynamicFlushScheduler<T> {
             self.metrics.flushedBatches++;
             self.metrics.totalItemsFlushed += itemCount;
 
+            self._flushDurationHistogram?.record(duration, self._metricAttrs);
+            self._batchSizeHistogram?.record(itemCount, self._metricAttrs);
+            self._itemsCounter?.add(itemCount, self._metricAttrs);
+            self._batchesCounter?.add(1, self._batchOkAttrs);
+
             self.logger.debug("Batch flushed successfully", {
               flushId,
               itemCount,
@@ -253,6 +327,7 @@ export class DynamicFlushScheduler<T> {
           this.logger.error("Error flushing batch", {
             error: flushError,
           });
+          this._batchesCounter?.add(1, this._batchFailedAttrs);
         }
       })
     );

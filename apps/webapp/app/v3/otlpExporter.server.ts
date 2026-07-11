@@ -13,6 +13,7 @@ import {
   ExportTraceServiceResponse,
 } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
+import { getMeter, type Counter, type Histogram, type Meter } from "@internal/tracing";
 import { logger } from "~/services/logger.server";
 import type { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
@@ -52,6 +53,8 @@ type OTLPExporterConfig = {
   clickhouseFactory: ClickhouseFactory;
   verbose: boolean;
   spanAttributeValueLengthLimit: number;
+  // Inject in tests; defaults to the global provider. Instruments are no-op when metrics are off.
+  meter?: Meter;
 };
 
 class OTLPExporter {
@@ -61,70 +64,132 @@ class OTLPExporter {
   private readonly _spanAttributeValueLengthLimit: number;
   #pricingSubscribed = false;
 
+  private readonly _meter: Meter;
+  private readonly _ingestRequests: Counter;
+  private readonly _ingestBytes: Counter;
+  private readonly _ingestDuration: Histogram;
+  private readonly _eventsProduced: Counter;
+  private readonly _metricRowsProduced: Counter;
+
   constructor(config: OTLPExporterConfig) {
     this._tracer = trace.getTracer("otlp-exporter");
     this._clickhouseFactory = config.clickhouseFactory;
     this._verbose = config.verbose;
     this._spanAttributeValueLengthLimit = config.spanAttributeValueLengthLimit;
+
+    this._meter = config.meter ?? getMeter("ingest");
+    this._ingestRequests = this._meter.createCounter("ingest.requests", {
+      description: "OTLP export calls received, by signal / path / outcome",
+      unit: "requests",
+    });
+    this._ingestBytes = this._meter.createCounter("ingest.bytes", {
+      description: "Compressed protobuf payload bytes received",
+      unit: "By",
+    });
+    this._ingestDuration = this._meter.createHistogram("ingest.duration", {
+      description: "End-to-end time to handle an OTLP export call",
+      unit: "ms",
+    });
+    this._eventsProduced = this._meter.createCounter("ingest.events.produced", {
+      description: "Task events produced from spans/logs after filter + convert",
+      unit: "events",
+    });
+    this._metricRowsProduced = this._meter.createCounter("ingest.metric_rows.produced", {
+      description: "ClickHouse metric rows produced from OTLP metrics",
+      unit: "rows",
+    });
+  }
+
+  // One helper for both the worker (mode="worker") and inline (mode="inline") paths. Called once
+  // per export call, so building the small attribute objects here is not a hot-path allocation.
+  #recordIngest(kind: string, mode: string, outcome: string, startedAt: number): void {
+    this._ingestRequests.add(1, { kind, mode, outcome });
+    this._ingestDuration.record(Date.now() - startedAt, { kind, mode });
   }
 
   async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
     return await startSpan(this._tracer, "exportTraces", async (span) => {
-      this.#logExportTracesVerbose(request);
+      const startedAt = Date.now();
+      try {
+        this.#logExportTracesVerbose(request);
 
-      const eventsWithStores = this.#filterResourceSpans(request.resourceSpans).flatMap(
-        (resourceSpan) => {
-          return convertSpansToCreateableEvents(
-            resourceSpan,
-            this._spanAttributeValueLengthLimit,
-            env.EVENT_REPOSITORY_DEFAULT_STORE
-          );
-        }
-      );
+        const eventsWithStores = this.#filterResourceSpans(request.resourceSpans).flatMap(
+          (resourceSpan) => {
+            return convertSpansToCreateableEvents(
+              resourceSpan,
+              this._spanAttributeValueLengthLimit,
+              env.EVENT_REPOSITORY_DEFAULT_STORE
+            );
+          }
+        );
 
-      const eventCount = await this.#exportEvents(eventsWithStores);
+        const eventCount = await this.#exportEvents(eventsWithStores);
 
-      span.setAttribute("event_count", eventCount);
+        span.setAttribute("event_count", eventCount);
+        this._eventsProduced.add(eventCount, { kind: "traces" });
+        this.#recordIngest("traces", "inline", "ok", startedAt);
 
-      return ExportTraceServiceResponse.create();
+        return ExportTraceServiceResponse.create();
+      } catch (error) {
+        this.#recordIngest("traces", "inline", "error", startedAt);
+        throw error;
+      }
     });
   }
 
   async exportMetrics(request: ExportMetricsServiceRequest): Promise<ExportMetricsServiceResponse> {
     return await startSpan(this._tracer, "exportMetrics", async (span) => {
-      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap((resourceMetrics) =>
-        convertMetricsToClickhouseRows(resourceMetrics, this._spanAttributeValueLengthLimit)
-      );
+      const startedAt = Date.now();
+      try {
+        const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap(
+          (resourceMetrics) =>
+            convertMetricsToClickhouseRows(resourceMetrics, this._spanAttributeValueLengthLimit)
+        );
 
-      span.setAttribute("metric_row_count", rows.length);
+        span.setAttribute("metric_row_count", rows.length);
 
-      if (rows.length > 0) {
-        await this.#exportMetricRows(rows);
+        if (rows.length > 0) {
+          await this.#exportMetricRows(rows);
+        }
+
+        this._metricRowsProduced.add(rows.length, { kind: "metrics" });
+        this.#recordIngest("metrics", "inline", "ok", startedAt);
+
+        return ExportMetricsServiceResponse.create();
+      } catch (error) {
+        this.#recordIngest("metrics", "inline", "error", startedAt);
+        throw error;
       }
-
-      return ExportMetricsServiceResponse.create();
     });
   }
 
   async exportLogs(request: ExportLogsServiceRequest): Promise<ExportLogsServiceResponse> {
     return await startSpan(this._tracer, "exportLogs", async (span) => {
-      this.#logExportLogsVerbose(request);
+      const startedAt = Date.now();
+      try {
+        this.#logExportLogsVerbose(request);
 
-      const eventsWithStores = this.#filterResourceLogs(request.resourceLogs).flatMap(
-        (resourceLog) => {
-          return convertLogsToCreateableEvents(
-            resourceLog,
-            this._spanAttributeValueLengthLimit,
-            env.EVENT_REPOSITORY_DEFAULT_STORE
-          );
-        }
-      );
+        const eventsWithStores = this.#filterResourceLogs(request.resourceLogs).flatMap(
+          (resourceLog) => {
+            return convertLogsToCreateableEvents(
+              resourceLog,
+              this._spanAttributeValueLengthLimit,
+              env.EVENT_REPOSITORY_DEFAULT_STORE
+            );
+          }
+        );
 
-      const eventCount = await this.#exportEvents(eventsWithStores);
+        const eventCount = await this.#exportEvents(eventsWithStores);
 
-      span.setAttribute("event_count", eventCount);
+        span.setAttribute("event_count", eventCount);
+        this._eventsProduced.add(eventCount, { kind: "logs" });
+        this.#recordIngest("logs", "inline", "ok", startedAt);
 
-      return ExportLogsServiceResponse.create();
+        return ExportLogsServiceResponse.create();
+      } catch (error) {
+        this.#recordIngest("logs", "inline", "error", startedAt);
+        throw error;
+      }
     });
   }
 
@@ -138,11 +203,20 @@ class OTLPExporter {
 
   async exportMetricsRaw(payload: Uint8Array): Promise<void> {
     await startSpan(this._tracer, "exportMetricsRaw", async (span) => {
-      const pool = await this.#pool();
-      const { rows } = await pool.runTransform("metrics", payload, this.#transformConfig());
-      span.setAttribute("metric_row_count", rows.length);
-      if (rows.length > 0) {
-        await this.#exportMetricRows(rows);
+      const startedAt = Date.now();
+      this._ingestBytes.add(payload.byteLength, { kind: "metrics" });
+      try {
+        const pool = await this.#pool();
+        const { rows } = await pool.runTransform("metrics", payload, this.#transformConfig());
+        span.setAttribute("metric_row_count", rows.length);
+        if (rows.length > 0) {
+          await this.#exportMetricRows(rows);
+        }
+        this._metricRowsProduced.add(rows.length, { kind: "metrics" });
+        this.#recordIngest("metrics", "worker", "ok", startedAt);
+      } catch (error) {
+        this.#recordIngest("metrics", "worker", "error", startedAt);
+        throw error;
       }
     });
   }
@@ -152,14 +226,23 @@ class OTLPExporter {
       this._tracer,
       kind === "traces" ? "exportTracesRaw" : "exportLogsRaw",
       async (span) => {
-        const pool = await this.#pool();
-        const { eventsWithStores } = await pool.runTransform(
-          kind,
-          payload,
-          this.#transformConfig()
-        );
-        const eventCount = await this.#exportEvents(eventsWithStores, true);
-        span.setAttribute("event_count", eventCount);
+        const startedAt = Date.now();
+        this._ingestBytes.add(payload.byteLength, { kind });
+        try {
+          const pool = await this.#pool();
+          const { eventsWithStores } = await pool.runTransform(
+            kind,
+            payload,
+            this.#transformConfig()
+          );
+          const eventCount = await this.#exportEvents(eventsWithStores, true);
+          span.setAttribute("event_count", eventCount);
+          this._eventsProduced.add(eventCount, { kind });
+          this.#recordIngest(kind, "worker", "ok", startedAt);
+        } catch (error) {
+          this.#recordIngest(kind, "worker", "error", startedAt);
+          throw error;
+        }
       }
     );
   }
@@ -178,7 +261,8 @@ class OTLPExporter {
     const pool = getOtlpWorkerPool(
       OTEL_TRANSFORM_WORKER_POOL_SIZE,
       models,
-      env.OTEL_TRANSFORM_WORKER_PATH
+      env.OTEL_TRANSFORM_WORKER_PATH,
+      this._meter
     );
     if (!this.#pricingSubscribed) {
       this.#pricingSubscribed = true;

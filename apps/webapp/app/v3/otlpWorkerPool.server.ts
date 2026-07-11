@@ -1,5 +1,12 @@
 import { Worker } from "node:worker_threads";
 import path from "node:path";
+import {
+  getMeter,
+  type Counter,
+  type Histogram,
+  type Meter,
+  type ObservableGauge,
+} from "@internal/tracing";
 import { logger } from "~/services/logger.server";
 
 export type TransformKind = "traces" | "logs" | "metrics";
@@ -19,7 +26,12 @@ type Task = {
   reject: (e: Error) => void;
   timer: NodeJS.Timeout;
   worker?: Worker;
+  // Wall-clock stamp at enqueue; the task-duration histogram measures enqueue -> terminal state
+  // (queue wait + worker compute), so the gap from the worker-reported compute time is queue wait.
+  enqueuedAt: number;
 };
+
+type ReapReason = "error" | "exit" | "timeout";
 
 const TASK_TIMEOUT_MS = 30_000;
 const MAX_QUEUE_DEPTH = 2_000;
@@ -38,14 +50,81 @@ export class OtlpWorkerPool {
   private consecutiveFailures = 0;
   private latestPricingModels: unknown[];
 
+  // Pre-allocated per-kind {kind} attribute objects so the per-task record path never allocates.
+  private readonly _kindAttrs: Record<TransformKind, { kind: TransformKind }> = {
+    traces: { kind: "traces" },
+    logs: { kind: "logs" },
+    metrics: { kind: "metrics" },
+  };
+  private _taskDurationHistogram?: Histogram;
+  private _computeDurationHistogram?: Histogram;
+  private _tasksCounter?: Counter;
+  private _respawnsCounter?: Counter;
+
   constructor(
     private readonly size: number,
     private readonly workerPath: string,
-    pricingModels: unknown[]
+    pricingModels: unknown[],
+    meter?: Meter
   ) {
     this.latestPricingModels = pricingModels;
+    this.#setupOtelMetrics(meter);
     for (let i = 0; i < size; i++) this.spawn();
     logger.info("OtlpWorkerPool started", { size, workerPath });
+  }
+
+  #setupOtelMetrics(meterOverride: Meter | undefined): void {
+    const meter = meterOverride ?? getMeter("ingest");
+
+    this._taskDurationHistogram = meter.createHistogram("ingest.worker_pool.task.duration", {
+      description: "Enqueue-to-completion time for a transform task (queue wait + worker compute)",
+      unit: "ms",
+    });
+    this._computeDurationHistogram = meter.createHistogram("ingest.worker_pool.compute.duration", {
+      description: "Worker-reported compute time (decode + convert + enrich)",
+      unit: "ms",
+    });
+    this._tasksCounter = meter.createCounter("ingest.worker_pool.tasks", {
+      description: "Transform tasks by terminal outcome",
+      unit: "tasks",
+    });
+    this._respawnsCounter = meter.createCounter("ingest.worker_pool.respawns", {
+      description: "Worker respawns by reason",
+      unit: "respawns",
+    });
+
+    // Pull-based gauges: read at export time only, zero hot-path cost.
+    const queueDepthGauge: ObservableGauge = meter.createObservableGauge(
+      "ingest.worker_pool.queue_depth",
+      { description: "Tasks queued and awaiting a free worker", unit: "tasks" }
+    );
+    const workersGauge: ObservableGauge = meter.createObservableGauge(
+      "ingest.worker_pool.workers",
+      {
+        description: "Pool workers by state (alive workers, idle workers)",
+        unit: "workers",
+      }
+    );
+
+    meter.addBatchObservableCallback(
+      (result) => {
+        result.observe(queueDepthGauge, this.queue.length);
+        result.observe(workersGauge, this.workers.length, { state: "alive" });
+        result.observe(workersGauge, this.idle.length, { state: "idle" });
+      },
+      [queueDepthGauge, workersGauge]
+    );
+  }
+
+  #recordTaskEnd(task: Task, outcome: string, computeMs?: number): void {
+    this._taskDurationHistogram?.record(
+      Date.now() - task.enqueuedAt,
+      this._kindAttrs[task.message.kind]
+    );
+    this._tasksCounter?.add(1, { kind: task.message.kind, outcome });
+    if (computeMs !== undefined) {
+      this._computeDurationHistogram?.record(computeMs, this._kindAttrs[task.message.kind]);
+    }
   }
 
   private spawn() {
@@ -53,29 +132,37 @@ export class OtlpWorkerPool {
       workerData: { pricingModels: this.latestPricingModels },
     });
 
-    worker.on("message", (msg: { id: number; ok: boolean; result?: any; error?: string }) => {
-      if (this.workers.indexOf(worker) === -1) return; // late message from an already-reaped worker
-      this.consecutiveFailures = 0;
-      this.busyByWorker.delete(worker);
-      const task = this.tasks.get(msg.id);
-      if (task) {
-        clearTimeout(task.timer);
-        this.tasks.delete(msg.id);
-        if (msg.ok) task.resolve(msg.result);
-        else task.reject(new Error(msg.error ?? "otlp worker error"));
+    worker.on(
+      "message",
+      (msg: { id: number; ok: boolean; result?: any; error?: string; computeMs?: number }) => {
+        if (this.workers.indexOf(worker) === -1) return; // late message from an already-reaped worker
+        this.consecutiveFailures = 0;
+        this.busyByWorker.delete(worker);
+        const task = this.tasks.get(msg.id);
+        if (task) {
+          clearTimeout(task.timer);
+          this.tasks.delete(msg.id);
+          if (msg.ok) {
+            this.#recordTaskEnd(task, "ok", msg.computeMs);
+            task.resolve(msg.result);
+          } else {
+            this.#recordTaskEnd(task, "error", msg.computeMs);
+            task.reject(new Error(msg.error ?? "otlp worker error"));
+          }
+        }
+        this.release(worker);
       }
-      this.release(worker);
-    });
+    );
 
     worker.on("error", (error) => {
       logger.error("OtlpWorkerPool worker error", { error: error.message });
-      this.reap(worker, error);
+      this.reap(worker, error, "error");
     });
 
     worker.on("exit", (code) => {
       // Any exit means this worker is gone, including a clean exit while it held a task; reap()
       // no-ops if the worker was already removed (e.g. error fired first).
-      this.reap(worker, new Error(`otlp worker exited with code ${code}`));
+      this.reap(worker, new Error(`otlp worker exited with code ${code}`), "exit");
     });
 
     this.workers.push(worker);
@@ -84,7 +171,7 @@ export class OtlpWorkerPool {
 
   // On crash/timeout: fail the worker's in-flight task (if still pending), drop the worker, and
   // respawn with exponential backoff so a persistently failing worker can't tight-loop.
-  private reap(worker: Worker, error: Error) {
+  private reap(worker: Worker, error: Error, reason: ReapReason) {
     const wi = this.workers.indexOf(worker);
     if (wi === -1) return; // already reaped (error + exit can both fire for one crash)
     this.workers.splice(wi, 1);
@@ -99,10 +186,14 @@ export class OtlpWorkerPool {
       if (task) {
         clearTimeout(task.timer);
         this.tasks.delete(inFlightId);
+        // A timed-out task already recorded its own end + was removed from the map, so this only
+        // fires for a crash that killed a task mid-flight.
+        this.#recordTaskEnd(task, "crash");
         task.reject(error);
       }
     }
 
+    this._respawnsCounter?.add(1, { reason });
     void worker.terminate().catch(() => {});
     this.scheduleRespawn();
   }
@@ -138,11 +229,12 @@ export class OtlpWorkerPool {
     const task = this.tasks.get(id);
     if (!task) return;
     this.tasks.delete(id);
+    this.#recordTaskEnd(task, "timeout");
     const err = new Error(`otlp worker task timed out after ${TASK_TIMEOUT_MS}ms`);
     if (task.worker) {
       // Dispatched to a stuck worker: reap it. The task is already removed, so reap won't
       // double-reject.
-      this.reap(task.worker, err);
+      this.reap(task.worker, err, "timeout");
     } else {
       const qi = this.queue.indexOf(id);
       if (qi !== -1) this.queue.splice(qi, 1);
@@ -156,6 +248,7 @@ export class OtlpWorkerPool {
     config: { spanAttributeValueLengthLimit: number; defaultEventStore: string }
   ): Promise<any> {
     if (this.queue.length >= MAX_QUEUE_DEPTH) {
+      this._tasksCounter?.add(1, { kind, outcome: "rejected" });
       return Promise.reject(new Error("otlp worker pool queue is full"));
     }
     const id = this.nextId++;
@@ -174,6 +267,7 @@ export class OtlpWorkerPool {
         resolve,
         reject,
         timer,
+        enqueuedAt: Date.now(),
       });
       this.queue.push(id);
       this.drain();
@@ -194,6 +288,21 @@ export class OtlpWorkerPool {
   get queueDepth() {
     return this.queue.length;
   }
+
+  // Terminate all workers and reject anything in flight. Terminated workers fire "exit", but reap()
+  // no-ops on an already-removed worker, so no respawn is scheduled.
+  async shutdown(): Promise<void> {
+    const workers = this.workers.splice(0);
+    this.idle.length = 0;
+    this.queue.length = 0;
+    this.busyByWorker.clear();
+    for (const [, task] of this.tasks) {
+      clearTimeout(task.timer);
+      task.reject(new Error("otlp worker pool shutting down"));
+    }
+    this.tasks.clear();
+    await Promise.all(workers.map((worker) => worker.terminate().catch(() => {})));
+  }
 }
 
 let pool: OtlpWorkerPool | undefined;
@@ -201,11 +310,12 @@ let pool: OtlpWorkerPool | undefined;
 export function getOtlpWorkerPool(
   size: number,
   pricingModels: unknown[],
-  workerPath?: string
+  workerPath?: string,
+  meter?: Meter
 ): OtlpWorkerPool {
   if (!pool) {
     const resolvedPath = workerPath ?? path.join(process.cwd(), "build", "otlpTransformWorker.cjs");
-    pool = new OtlpWorkerPool(size, resolvedPath, pricingModels);
+    pool = new OtlpWorkerPool(size, resolvedPath, pricingModels, meter);
   }
   return pool;
 }

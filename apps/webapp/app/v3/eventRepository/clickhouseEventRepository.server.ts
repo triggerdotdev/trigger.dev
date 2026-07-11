@@ -8,8 +8,8 @@ import type {
   TaskEventV1Input,
   TaskEventV2Input,
 } from "@internal/clickhouse";
-import type { Attributes, Tracer } from "@internal/tracing";
-import { startSpan, trace } from "@internal/tracing";
+import type { Attributes, Counter, Meter, Tracer } from "@internal/tracing";
+import { getMeter, startSpan, trace } from "@internal/tracing";
 
 import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
@@ -104,6 +104,8 @@ export type ClickhouseEventRepositoryConfig = {
   otlpMetricsBatchSize?: number;
   otlpMetricsFlushInterval?: number;
   otlpMetricsMaxConcurrency?: number;
+  /** Inject a meter for self-observability; defaults to the global provider. */
+  meter?: Meter;
 };
 
 /**
@@ -125,6 +127,7 @@ export class ClickhouseEventRepository implements IEventRepository {
    * track the drop count for observability.
    */
   private _permanentlyDroppedBatches = 0;
+  private readonly _droppedBatchesCounter: Counter;
 
   constructor(config: ClickhouseEventRepositoryConfig) {
     this._clickhouse = config.clickhouse;
@@ -132,7 +135,14 @@ export class ClickhouseEventRepository implements IEventRepository {
     this._tracer = config.tracer ?? trace.getTracer("clickhouseEventRepo", "0.0.1");
     this._version = config.version ?? "v1";
 
+    const meter = config.meter ?? getMeter("ingest-flush");
+    this._droppedBatchesCounter = meter.createCounter("ingest.flush.batches_dropped", {
+      description: "Batches permanently dropped after an unrecoverable ClickHouse JSON parse error",
+      unit: "batches",
+    });
+
     this._flushScheduler = new DynamicFlushScheduler({
+      name: `task_events_${this._version}`,
       batchSize: config.batchSize ?? 1000,
       flushInterval: config.flushInterval ?? 1000,
       callback: this.#flushBatch.bind(this),
@@ -149,6 +159,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
 
     this._llmMetricsFlushScheduler = new DynamicFlushScheduler({
+      name: "llm_metrics",
       batchSize: config.llmMetricsBatchSize ?? 5000,
       flushInterval: config.llmMetricsFlushInterval ?? 2000,
       callback: this.#flushLlmMetricsBatch.bind(this),
@@ -160,6 +171,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
 
     this._otlpMetricsFlushScheduler = new DynamicFlushScheduler({
+      name: "otlp_metrics",
       batchSize: config.otlpMetricsBatchSize ?? 10000,
       flushInterval: config.otlpMetricsFlushInterval ?? 1000,
       callback: this.#flushOtelMetricsBatch.bind(this),
@@ -359,6 +371,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       // exactly the retry storm this wrapper is designed to avoid.
       if (fieldsSanitized === 0) {
         this._permanentlyDroppedBatches += 1;
+        this._droppedBatchesCounter.add(1, { table: contextLabel });
         logger.error(
           "Dropped batch — ClickHouse JSON parse error but sanitizer found nothing to fix",
           {
@@ -390,6 +403,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         if (!isClickHouseJsonParseError(retryError)) throw retryError;
 
         this._permanentlyDroppedBatches += 1;
+        this._droppedBatchesCounter.add(1, { table: contextLabel });
         const retryMessage =
           typeof retryError === "object" && retryError !== null && "message" in retryError
             ? String((retryError as { message?: unknown }).message ?? "")
