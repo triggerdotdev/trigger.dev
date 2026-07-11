@@ -201,6 +201,20 @@ const LEGACY_ONLY_DELEGATES = new Set([
 ]);
 const LEGACY_HANDLE_NAMES = new Set(["runOpsLegacyPrisma", "runOpsLegacyReplica"]);
 
+// Detector (iii): read-through config slots that MUST carry a run-ops client. Assigning a
+// control-plane client here (e.g. `legacyReplica: $replica`) is invisible to the type-aware
+// detectors — the field is typed RunOpsPrismaClient but the value is coerced in — yet it makes
+// legacy-resident reads hit the control-plane DB (a 404 once legacy is a separate database).
+// `controlPlaneReplica` is deliberately NOT listed: it is meant to be a control-plane client.
+const RUN_OPS_READTHROUGH_SLOTS = new Set([
+  "newClient",
+  "newReplica",
+  "runOpsNew",
+  "legacyReplica",
+  "runOpsLegacyReplica",
+]);
+const CONTROL_PLANE_CLIENT_IDENTIFIERS = new Set(["$replica", "prisma"]);
+
 // MECH-1/MECH-2 site-level annotations (track1-completion-plan.md, PLAN §T1.1). `runops-legacy-ok`
 // suppresses a detector-(i) write only on a legacy handle; `runops-routed-ok` suppresses a read only
 // inside a read-through router.
@@ -475,9 +489,29 @@ type Violation = {
   model: string;
   delegate: string;
   callKind: CallKind;
-  detector: "i" | "ii";
+  detector: "i" | "ii" | "iii";
   snippet: string;
 };
+
+/** True if `expr` is syntactically a control-plane client: the `$replica`/`prisma` exports, or a
+ *  `this._replica`/`this._prisma` BaseService field. Used by detector (iii) — deliberately name-based
+ *  (not type-based) because the control-plane and run-ops client TYPES are identical after erasure. */
+function valueIsControlPlaneClient(node: ts.Expression): boolean {
+  let e: ts.Expression = node;
+  while (
+    ts.isParenthesizedExpression(e) ||
+    ts.isAsExpression(e) ||
+    ts.isSatisfiesExpression(e) ||
+    ts.isNonNullExpression(e)
+  ) {
+    e = e.expression;
+  }
+  if (ts.isIdentifier(e)) return CONTROL_PLANE_CLIENT_IDENTIFIERS.has(e.text);
+  if (ts.isPropertyAccessExpression(e) && e.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    return e.name.text === "_replica" || e.name.text === "_prisma";
+  }
+  return false;
+}
 
 function violationKey(v: Violation): string {
   return [v.file, v.line, v.detector, v.model, v.delegate, v.callKind].join("::");
@@ -704,6 +738,28 @@ function scanProgram(
           }
         }
       }
+
+      // Detector (iii): a run-ops read-through slot assigned a control-plane client.
+      if (ts.isPropertyAssignment(node)) {
+        const key = propName(node);
+        if (
+          key &&
+          RUN_OPS_READTHROUGH_SLOTS.has(key) &&
+          valueIsControlPlaneClient(node.initializer)
+        ) {
+          const line = lineOf(sf, node.name);
+          add({
+            file,
+            line,
+            model: capFirst(key),
+            delegate: key,
+            callKind: "read",
+            detector: "iii",
+            snippet: lineText(sf, line),
+          });
+        }
+      }
+
       ts.forEachChild(node, visit);
     };
 
@@ -756,6 +812,7 @@ type Baseline = {
     violations: number;
     detectorI: number;
     detectorII: number;
+    detectorIII: number;
     write: number;
     read: number;
     files: number;
@@ -783,6 +840,7 @@ function buildBaseline(result: ScanResult): Baseline {
       violations: violations.length,
       detectorI: violations.filter((v) => v.detector === "i").length,
       detectorII: violations.filter((v) => v.detector === "ii").length,
+      detectorIII: violations.filter((v) => v.detector === "iii").length,
       write: violations.filter((v) => v.callKind === "write").length,
       read: violations.filter((v) => v.callKind === "read").length,
       files: new Set(violations.map((v) => v.file)).size,
@@ -955,6 +1013,23 @@ function f() {
 }`,
     expect: { violations: 0, honored: 0, errors: 0 },
   },
+  {
+    // Detector (iii): a control-plane client ($replica) in a run-ops read-through slot is flagged;
+    // newClient with a run-ops client and controlPlaneReplica with $replica are both fine.
+    name: "readThroughSlotControlPlaneMisroute",
+    code: `declare const $replica: any;
+declare const runOpsNewReplica: any;
+const cfg = { newClient: runOpsNewReplica, legacyReplica: $replica, controlPlaneReplica: $replica };`,
+    expect: { violations: 1, honored: 0, errors: 0 },
+  },
+  {
+    // Detector (iii) negative: correct run-ops clients in the slots — no violation.
+    name: "readThroughSlotCorrect",
+    code: `declare const runOpsNewReplica: any;
+declare const runOpsLegacyReplica: any;
+const cfg = { newClient: runOpsNewReplica, legacyReplica: runOpsLegacyReplica };`,
+    expect: { violations: 0, honored: 0, errors: 0 },
+  },
 ];
 
 function buildVirtualProgram(files: Record<string, string>): ts.Program {
@@ -1072,7 +1147,7 @@ function main(): void {
 
   console.error(
     `[runops-guard] found ${violations.length} violations ` +
-      `(detector-i: ${baseline.totals.detectorI}, detector-ii: ${baseline.totals.detectorII}; ` +
+      `(detector-i: ${baseline.totals.detectorI}, detector-ii: ${baseline.totals.detectorII}, detector-iii: ${baseline.totals.detectorIII}; ` +
       `write: ${baseline.totals.write}, read: ${baseline.totals.read}; files: ${baseline.totals.files}); ` +
       `honored runops-legacy-ok: ${legacyAnnotations.length}`
   );
