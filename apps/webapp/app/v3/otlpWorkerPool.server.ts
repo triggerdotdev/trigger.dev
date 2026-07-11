@@ -73,9 +73,9 @@ export class OtlpWorkerPool {
     });
 
     worker.on("exit", (code) => {
-      if (code !== 0) {
-        this.reap(worker, new Error(`otlp worker exited with code ${code}`));
-      }
+      // Any exit means this worker is gone, including a clean exit while it held a task; reap()
+      // no-ops if the worker was already removed (e.g. error fired first).
+      this.reap(worker, new Error(`otlp worker exited with code ${code}`));
     });
 
     this.workers.push(worker);
