@@ -72,4 +72,16 @@ describe("OtlpWorkerPool self-observability", () => {
       { timeout: 5000, interval: 50 }
     );
   });
+
+  it("rejects new work once shutdown has started", async () => {
+    const pool = new OtlpWorkerPool(2, echoWorker, []);
+    // A task before shutdown resolves normally.
+    await expect(pool.runTransform("traces", payload(), config)).resolves.toBeDefined();
+
+    await pool.shutdown();
+
+    await expect(pool.runTransform("traces", payload(), config)).rejects.toThrow(/shutting down/);
+    // Shutting down twice is a no-op.
+    await expect(pool.shutdown()).resolves.toBeUndefined();
+  });
 });

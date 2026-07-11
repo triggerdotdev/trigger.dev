@@ -8,6 +8,7 @@ import {
   type ObservableGauge,
 } from "@internal/tracing";
 import { logger } from "~/services/logger.server";
+import { signalsEmitter } from "~/services/signals.server";
 
 export type TransformKind = "traces" | "logs" | "metrics";
 
@@ -37,6 +38,7 @@ const TASK_TIMEOUT_MS = 30_000;
 const MAX_QUEUE_DEPTH = 2_000;
 const RESPAWN_BASE_MS = 500;
 const RESPAWN_MAX_MS = 30_000;
+const SHUTDOWN_DRAIN_MS = 5_000;
 
 // Hand-rolled worker_threads pool: one in-flight task per worker so CPU-bound transforms run
 // fully in parallel. The main thread stays the only DB reader and broadcasts pricing to workers.
@@ -48,6 +50,7 @@ export class OtlpWorkerPool {
   private readonly busyByWorker = new Map<Worker, number>();
   private nextId = 1;
   private consecutiveFailures = 0;
+  private isShuttingDown = false;
   private latestPricingModels: unknown[];
 
   // Pre-allocated per-kind {kind} attribute objects so the per-task record path never allocates.
@@ -199,10 +202,12 @@ export class OtlpWorkerPool {
   }
 
   private scheduleRespawn() {
+    if (this.isShuttingDown) return;
     if (this.workers.length >= this.size) return;
     const delay = Math.min(RESPAWN_BASE_MS * 2 ** this.consecutiveFailures, RESPAWN_MAX_MS);
     this.consecutiveFailures++;
     setTimeout(() => {
+      if (this.isShuttingDown) return;
       if (this.workers.length < this.size) this.spawn();
       this.drain();
     }, delay);
@@ -247,6 +252,9 @@ export class OtlpWorkerPool {
     payload: Uint8Array,
     config: { spanAttributeValueLengthLimit: number; defaultEventStore: string }
   ): Promise<any> {
+    if (this.isShuttingDown) {
+      return Promise.reject(new Error("otlp worker pool is shutting down"));
+    }
     if (this.queue.length >= MAX_QUEUE_DEPTH) {
       this._tasksCounter?.add(1, { kind, outcome: "rejected" });
       return Promise.reject(new Error("otlp worker pool queue is full"));
@@ -289,13 +297,28 @@ export class OtlpWorkerPool {
     return this.queue.length;
   }
 
-  // Terminate all workers and reject anything in flight. Terminated workers fire "exit", but reap()
-  // no-ops on an already-removed worker, so no respawn is scheduled.
+  // Stop taking new work, let in-flight tasks finish (bounded), then terminate every worker.
+  // Terminated workers fire "exit", but reap() no-ops on an already-removed worker, and the
+  // isShuttingDown guard stops any pending respawn, so shutdown is quiet.
   async shutdown(): Promise<void> {
+    if (this.isShuttingDown) return;
+    this.isShuttingDown = true;
+
+    logger.info("OtlpWorkerPool shutting down", {
+      workers: this.workers.length,
+      inFlight: this.tasks.size,
+    });
+
+    const deadline = Date.now() + SHUTDOWN_DRAIN_MS;
+    while (this.tasks.size > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
     const workers = this.workers.splice(0);
     this.idle.length = 0;
     this.queue.length = 0;
     this.busyByWorker.clear();
+    // Reject anything that didn't drain within the deadline.
     for (const [, task] of this.tasks) {
       clearTimeout(task.timer);
       task.reject(new Error("otlp worker pool shutting down"));
@@ -316,6 +339,10 @@ export function getOtlpWorkerPool(
   if (!pool) {
     const resolvedPath = workerPath ?? path.join(process.cwd(), "build", "otlpTransformWorker.cjs");
     pool = new OtlpWorkerPool(size, resolvedPath, pricingModels, meter);
+    // Drain + terminate workers on shutdown so they aren't force-killed mid-task (which would
+    // churn respawns). The main thread stays the only DB writer, so inserts are unaffected.
+    signalsEmitter.on("SIGTERM", () => void pool!.shutdown());
+    signalsEmitter.on("SIGINT", () => void pool!.shutdown());
   }
   return pool;
 }
