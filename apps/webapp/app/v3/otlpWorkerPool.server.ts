@@ -54,6 +54,7 @@ export class OtlpWorkerPool {
     });
 
     worker.on("message", (msg: { id: number; ok: boolean; result?: any; error?: string }) => {
+      if (this.workers.indexOf(worker) === -1) return; // late message from an already-reaped worker
       this.consecutiveFailures = 0;
       this.busyByWorker.delete(worker);
       const task = this.tasks.get(msg.id);
@@ -84,6 +85,13 @@ export class OtlpWorkerPool {
   // On crash/timeout: fail the worker's in-flight task (if still pending), drop the worker, and
   // respawn with exponential backoff so a persistently failing worker can't tight-loop.
   private reap(worker: Worker, error: Error) {
+    const wi = this.workers.indexOf(worker);
+    if (wi === -1) return; // already reaped (error + exit can both fire for one crash)
+    this.workers.splice(wi, 1);
+
+    const ii = this.idle.indexOf(worker);
+    if (ii !== -1) this.idle.splice(ii, 1);
+
     const inFlightId = this.busyByWorker.get(worker);
     this.busyByWorker.delete(worker);
     if (inFlightId !== undefined) {
@@ -94,10 +102,7 @@ export class OtlpWorkerPool {
         task.reject(error);
       }
     }
-    const wi = this.workers.indexOf(worker);
-    if (wi !== -1) this.workers.splice(wi, 1);
-    const ii = this.idle.indexOf(worker);
-    if (ii !== -1) this.idle.splice(ii, 1);
+
     void worker.terminate().catch(() => {});
     this.scheduleRespawn();
   }
