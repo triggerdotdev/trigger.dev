@@ -10,7 +10,7 @@ import {
 } from "@trigger.dev/core/v3";
 
 import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import { $replica, runOpsNewReplica, runOpsSplitReadEnabled } from "~/db.server";
+import { runOpsLegacyReplica, runOpsNewReplica, runOpsSplitReadEnabled } from "~/db.server";
 import {
   extractIdempotencyKeyScope,
   getUserProvidedIdempotencyKey,
@@ -725,7 +725,7 @@ export class SpanPresenter extends BasePresenter {
 
         const presenter = new WaitpointPresenter(undefined, undefined, {
           newClient: runOpsNewReplica,
-          legacyReplica: $replica,
+          legacyReplica: runOpsLegacyReplica,
           splitEnabled: runOpsSplitReadEnabled,
         });
         const waitpoint = await presenter.call({
