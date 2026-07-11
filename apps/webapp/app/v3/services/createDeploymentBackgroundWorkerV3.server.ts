@@ -15,7 +15,6 @@ import {
   stripBackgroundWorkerMetadataForStorage,
   syncDeclarativeSchedules,
 } from "./createBackgroundWorker.server";
-import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { projectPubSub } from "./projectPubSub.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { CURRENT_DEPLOYMENT_LABEL, BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
@@ -209,7 +208,6 @@ export class CreateDeploymentBackgroundWorkerServiceV3 extends BaseService {
         });
       }
 
-      await ExecuteTasksWaitingForDeployService.enqueue(backgroundWorker.id);
       await PerformDeploymentAlertsService.enqueue(deployment.id);
       await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
 
