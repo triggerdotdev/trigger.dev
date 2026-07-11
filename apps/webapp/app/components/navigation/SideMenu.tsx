@@ -1601,6 +1601,15 @@ function SwitchOrganizations({
           onMouseLeave={handleMouseLeave}
         >
           <div className="flex flex-col gap-1 p-1">
+            <PopoverMenuItem
+              to={newOrganizationPath()}
+              title="New organization"
+              icon={PlusIcon}
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
+            />
+          </div>
+          <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
             {organizations.map((org) => (
               <PopoverMenuItem
                 key={org.id}
@@ -1612,15 +1621,6 @@ function SwitchOrganizations({
                 isSelected={org.id === organization.id}
               />
             ))}
-          </div>
-          <div className="border-t border-grid-bright p-1">
-            <PopoverMenuItem
-              to={newOrganizationPath()}
-              title="New organization"
-              icon={PlusIcon}
-              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-              className={SIDE_MENU_POPOVER_ITEM_LABEL}
-            />
           </div>
         </PopoverContent>
       </div>
