@@ -20,7 +20,6 @@ import { eventRepository } from "./eventRepository/eventRepository.server";
 import type { CreateEventInput, IEventRepository } from "./eventRepository/eventRepository.types";
 import { startSpan } from "./tracing.server";
 import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
-import { waitForLlmPricingReady } from "./llmPricingRegistry.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import {
@@ -32,16 +31,22 @@ import {
 } from "./otlpTransform.server";
 import os from "node:os";
 import { getOtlpWorkerPool } from "./otlpWorkerPool.server";
-import { llmPricingRegistry, subscribeToPricingReload } from "./llmPricingRegistry.server";
+import {
+  llmPricingRegistry,
+  subscribeToPricingReload,
+  waitForLlmPricingReady,
+} from "./llmPricingRegistry.server";
 
 // When enabled, decode+convert+enrich run in a worker pool; the main thread keeps the single
 // consolidated insert path (batching/part-count unchanged). Off = today's single-thread path.
-export const otlpTransformWorkerPoolEnabled =
-  process.env.OTEL_TRANSFORM_WORKER_POOL_ENABLED === "1";
+export const otlpTransformWorkerPoolEnabled = env.OTEL_TRANSFORM_WORKER_POOL_ENABLED;
 
-const OTEL_TRANSFORM_WORKER_POOL_SIZE = process.env.OTEL_TRANSFORM_WORKER_POOL_SIZE
-  ? parseInt(process.env.OTEL_TRANSFORM_WORKER_POOL_SIZE, 10)
-  : Math.max(1, (os.cpus()?.length ?? 2) - 2);
+// Always at least 1 worker: a 0/negative override must not silently disable the pool while the
+// flag is on (that would hang every raw-export request on an empty pool).
+const OTEL_TRANSFORM_WORKER_POOL_SIZE = Math.max(
+  1,
+  env.OTEL_TRANSFORM_WORKER_POOL_SIZE ?? (os.cpus()?.length ?? 2) - 2
+);
 
 type OTLPExporterConfig = {
   clickhouseFactory: ClickhouseFactory;
@@ -143,12 +148,20 @@ class OTLPExporter {
   }
 
   async #exportRawEvents(kind: "traces" | "logs", payload: Uint8Array): Promise<void> {
-    await startSpan(this._tracer, kind === "traces" ? "exportTracesRaw" : "exportLogsRaw", async (span) => {
-      const pool = await this.#pool();
-      const { eventsWithStores } = await pool.runTransform(kind, payload, this.#transformConfig());
-      const eventCount = await this.#exportEvents(eventsWithStores, true);
-      span.setAttribute("event_count", eventCount);
-    });
+    await startSpan(
+      this._tracer,
+      kind === "traces" ? "exportTracesRaw" : "exportLogsRaw",
+      async (span) => {
+        const pool = await this.#pool();
+        const { eventsWithStores } = await pool.runTransform(
+          kind,
+          payload,
+          this.#transformConfig()
+        );
+        const eventCount = await this.#exportEvents(eventsWithStores, true);
+        span.setAttribute("event_count", eventCount);
+      }
+    );
   }
 
   #transformConfig() {
@@ -162,7 +175,11 @@ class OTLPExporter {
     await waitForLlmPricingReady();
     const models =
       llmPricingRegistry && llmPricingRegistry.isLoaded ? llmPricingRegistry.toSerializable() : [];
-    const pool = getOtlpWorkerPool(OTEL_TRANSFORM_WORKER_POOL_SIZE, models);
+    const pool = getOtlpWorkerPool(
+      OTEL_TRANSFORM_WORKER_POOL_SIZE,
+      models,
+      env.OTEL_TRANSFORM_WORKER_PATH
+    );
     if (!this.#pricingSubscribed) {
       this.#pricingSubscribed = true;
       // Re-broadcast pricing to workers on every registry reload so their cost math stays fresh.

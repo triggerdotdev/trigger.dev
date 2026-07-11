@@ -32,7 +32,13 @@ function emitPricingReload() {
 export function subscribeToPricingReload(listener: PricingReloadListener): () => void {
   pricingReloadListeners.add(listener);
   if (llmPricingRegistry?.isLoaded) {
-    listener(llmPricingRegistry.toSerializable());
+    try {
+      listener(llmPricingRegistry.toSerializable());
+    } catch (err) {
+      logger.warn("LLM pricing reload listener failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
   return () => {
     pricingReloadListeners.delete(listener);

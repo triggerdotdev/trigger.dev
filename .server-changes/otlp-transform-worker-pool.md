@@ -3,4 +3,4 @@ area: webapp
 type: improvement
 ---
 
-Optionally offload OTLP ingest processing (decode, transform, and LLM-cost enrichment) to a worker pool, freeing the main event loop under high telemetry volume. Off by default; opt in with the OTEL_TRANSFORM_WORKER_POOL_ENABLED environment variable.
+Optionally process high-volume telemetry ingestion in parallel for higher throughput under heavy load by setting `OTEL_TRANSFORM_WORKER_POOL_ENABLED=1`. Off by default.

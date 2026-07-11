@@ -1937,6 +1937,13 @@ const EnvironmentSchema = z
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
 
+    // OTLP ingest transform worker pool (opt-in). When enabled, decode/convert/enrich run in a
+    // worker_threads pool instead of the request event loop; the single consolidated insert path
+    // is unchanged.
+    OTEL_TRANSFORM_WORKER_POOL_ENABLED: BoolEnv.default(false),
+    OTEL_TRANSFORM_WORKER_POOL_SIZE: z.coerce.number().int().optional(),
+    OTEL_TRANSFORM_WORKER_PATH: z.string().optional(),
+
     // Organization data stores registry
     ORGANIZATION_DATA_STORES_RELOAD_INTERVAL_MS: z.coerce
       .number()
