@@ -868,7 +868,7 @@ function DeleteEnvironmentVariableButton({
 
   const isLoading =
     navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
+    navigation.formMethod === "POST" &&
     navigation.formData?.get("action") === "delete";
 
   const [form] = useForm({

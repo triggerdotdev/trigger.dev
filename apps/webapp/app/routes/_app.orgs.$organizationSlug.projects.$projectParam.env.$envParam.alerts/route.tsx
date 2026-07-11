@@ -383,7 +383,7 @@ function DeleteAlertChannelButton(props: { id: string }) {
 
   const isLoading =
     navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
+    navigation.formMethod === "POST" &&
     navigation.formData?.get("action") === "delete";
 
   const [form] = useForm({
@@ -422,7 +422,7 @@ function DisableAlertChannelButton(props: { id: string }) {
 
   const isLoading =
     navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
+    navigation.formMethod === "POST" &&
     navigation.formData?.get("action") === "delete";
 
   const [form] = useForm({
@@ -462,7 +462,7 @@ function EnableAlertChannelButton(props: { id: string }) {
 
   const isLoading =
     navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
+    navigation.formMethod === "POST" &&
     navigation.formData?.get("action") === "delete";
 
   const [form] = useForm({

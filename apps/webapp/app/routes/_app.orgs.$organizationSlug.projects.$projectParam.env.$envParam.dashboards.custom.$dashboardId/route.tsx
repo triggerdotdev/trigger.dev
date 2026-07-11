@@ -652,7 +652,7 @@ function RenameDashboardDialog({ title }: { title: string }) {
 
   const isRenaming =
     navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
+    navigation.formMethod === "POST" &&
     navigation.formData?.get("action") === "rename";
 
   // Close dialog when navigation completes
@@ -724,7 +724,7 @@ function DeleteDashboardDialog({ title }: { title: string }) {
 
   const isDeleting =
     navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
+    navigation.formMethod === "POST" &&
     navigation.formData?.get("action") === "delete";
 
   // Close dialog when navigation completes

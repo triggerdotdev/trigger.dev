@@ -243,7 +243,7 @@ export default function Page() {
 
   const isLoading =
     navigation.state !== "idle" &&
-    navigation.formMethod === "post" &&
+    navigation.formMethod === "POST" &&
     navigation.formData?.get("action") === "create";
 
   const [

@@ -230,7 +230,7 @@ export default function Page() {
   const selectedEnvironments = environments.filter((env) => selectedEnvironmentIds.has(env.id));
   const previewIsSelected = selectedEnvironments.some((env) => env.type === "PREVIEW");
 
-  const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
+  const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
 
   const [form, fields] = useForm<z.infer<typeof schema>>({
     id: "create-environment-variables",
