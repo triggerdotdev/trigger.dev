@@ -289,7 +289,10 @@ module.exports = {
       },
       focusStyles: {
         outline: "1px solid",
-        outlineOffset: "0px",
+        // Inset the ring so it is painted inside the element's box. At offset 0 the outline sits
+        // just outside the border edge and gets clipped by any ancestor with overflow hidden/auto
+        // (scroll areas, the side menu grid) or covered by an adjacent element's background.
+        outlineOffset: "-1px",
         outlineColor: textLink,
         borderRadius: "3px",
       },
