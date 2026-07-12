@@ -28,3 +28,8 @@ export function AvatarCircleIcon({ className }: { className?: string }) {
 export function AvatarCircleIconThin({ className }: { className?: string }) {
   return <AvatarCircle className={className} strokeWidth={1.5} />;
 }
+
+/** Thinnest 1.25px-stroke variant of {@link AvatarCircleIcon}. */
+export function AvatarCircleIconExtraThin({ className }: { className?: string }) {
+  return <AvatarCircle className={className} strokeWidth={1.25} />;
+}

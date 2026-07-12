@@ -1,18 +1,35 @@
-import { AvatarCircleIcon, AvatarCircleIconThin } from "~/assets/icons/AvatarCircleIcon";
+import {
+  AvatarCircleIcon,
+  AvatarCircleIconExtraThin,
+  AvatarCircleIconThin,
+} from "~/assets/icons/AvatarCircleIcon";
 import { useOptionalUser } from "~/hooks/useUser";
 import { cn } from "~/utils/cn";
 
+/** Stroke width (px) of the placeholder avatar icon shown when there is no photo. */
+type AvatarStrokeWidth = 1.25 | 1.5 | 2;
+
+const PLACEHOLDER_BY_STROKE_WIDTH = {
+  1.25: AvatarCircleIconExtraThin,
+  1.5: AvatarCircleIconThin,
+  2: AvatarCircleIcon,
+} as const;
+
 export function UserProfilePhoto({
   className,
-  thin = false,
+  strokeWidth = 2,
 }: {
   className?: string;
-  /** Use the thinner 1.5px-stroke placeholder icon (defaults to the 2px variant). */
-  thin?: boolean;
+  strokeWidth?: AvatarStrokeWidth;
 }) {
   const user = useOptionalUser();
   return (
-    <UserAvatar avatarUrl={user?.avatarUrl} name={user?.name} className={className} thin={thin} />
+    <UserAvatar
+      avatarUrl={user?.avatarUrl}
+      name={user?.name}
+      className={className}
+      strokeWidth={strokeWidth}
+    />
   );
 }
 
@@ -20,13 +37,12 @@ export function UserAvatar({
   avatarUrl,
   name,
   className,
-  thin = false,
+  strokeWidth = 2,
 }: {
   avatarUrl?: string | null;
   name?: string | null;
   className?: string;
-  /** Use the thinner 1.5px-stroke placeholder icon (defaults to the 2px variant). */
-  thin?: boolean;
+  strokeWidth?: AvatarStrokeWidth;
 }) {
   if (avatarUrl) {
     return (
@@ -41,6 +57,6 @@ export function UserAvatar({
     );
   }
 
-  const PlaceholderIcon = thin ? AvatarCircleIconThin : AvatarCircleIcon;
+  const PlaceholderIcon = PLACEHOLDER_BY_STROKE_WIDTH[strokeWidth];
   return <PlaceholderIcon className={cn("aspect-square text-text-dimmed", className)} />;
 }
