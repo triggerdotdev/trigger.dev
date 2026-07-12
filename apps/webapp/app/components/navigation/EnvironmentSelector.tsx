@@ -128,7 +128,11 @@ export function EnvironmentSelector({
         content={`${environmentFullTitle(environment)} environment`}
         side="right"
         sideOffset={8}
-        delayDuration={isCollapsed ? 0 : 500}
+        // Only surface the tooltip on the collapsed rail (instant), matching the Org and Project
+        // selectors: when expanded the label is already visible, and this selector is also reused
+        // outside the side menu (blank-state panels, Limits page) where a hover tooltip is unwanted.
+        hidden={!isCollapsed}
+        delayDuration={0}
         buttonClassName="h-8!"
         asChild
         tabbable

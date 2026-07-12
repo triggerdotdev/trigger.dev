@@ -406,39 +406,46 @@ export function SideMenu({
     [user.isImpersonating, preferencesFetcher]
   );
 
-  // Flush pending preferences on unmount to avoid losing the last toggle
-  useEffect(() => {
-    return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current);
-      }
-      if (user.isImpersonating) return;
-      const pending = pendingPreferencesRef.current;
-      const hasPendingChanges =
-        pending.isCollapsed !== undefined ||
-        pending.width !== undefined ||
-        (pending.sectionId !== undefined && pending.sectionCollapsed !== undefined);
+  // Always-current flush routine, held in a ref so the unmount effect below can depend on nothing
+  // and run its cleanup only on a real unmount. `useFetcher` returns a fresh object every render, so
+  // listing it as an effect dependency would fire the cleanup on every re-render — and a drag
+  // re-renders constantly — prematurely flushing the debounce each time instead of on unmount.
+  const flushPendingPreferencesRef = useRef<() => void>();
+  flushPendingPreferencesRef.current = () => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+    if (user.isImpersonating) return;
+    const pending = pendingPreferencesRef.current;
+    const hasPendingChanges =
+      pending.isCollapsed !== undefined ||
+      pending.width !== undefined ||
+      (pending.sectionId !== undefined && pending.sectionCollapsed !== undefined);
+    if (!hasPendingChanges) return;
 
-      if (hasPendingChanges) {
-        const formData = new FormData();
-        if (pending.isCollapsed !== undefined) {
-          formData.append("isCollapsed", String(pending.isCollapsed));
-        }
-        if (pending.width !== undefined) {
-          formData.append("width", String(pending.width));
-        }
-        if (pending.sectionId !== undefined && pending.sectionCollapsed !== undefined) {
-          formData.append("sectionId", pending.sectionId);
-          formData.append("sectionCollapsed", String(pending.sectionCollapsed));
-        }
-        preferencesFetcher.submit(formData, {
-          method: "POST",
-          action: "/resources/preferences/sidemenu",
-        });
-        pendingPreferencesRef.current = {};
-      }
-    };
-  }, [preferencesFetcher, user.isImpersonating]);
+    const formData = new FormData();
+    if (pending.isCollapsed !== undefined) {
+      formData.append("isCollapsed", String(pending.isCollapsed));
+    }
+    if (pending.width !== undefined) {
+      formData.append("width", String(pending.width));
+    }
+    if (pending.sectionId !== undefined && pending.sectionCollapsed !== undefined) {
+      formData.append("sectionId", pending.sectionId);
+      formData.append("sectionCollapsed", String(pending.sectionCollapsed));
+    }
+    preferencesFetcher.submit(formData, {
+      method: "POST",
+      action: "/resources/preferences/sidemenu",
+    });
+    pendingPreferencesRef.current = {};
+  };
+
+  // Flush pending preferences on unmount to avoid losing the last toggle. Empty deps: cleanup must
+  // run only on a real unmount, not on every re-render (see flushPendingPreferencesRef above).
+  useEffect(() => {
+    return () => flushPendingPreferencesRef.current?.();
+  }, []);
 
   // Write the width + collapse variables straight to the DOM (no React re-render) so a drag stays
   // smooth. Everything width-driven (labels, headers, padding, dividers) reads these variables.
@@ -695,6 +702,13 @@ export function SideMenu({
                                 <Button
                                   variant="minimal/small"
                                   className="aspect-square h-7 p-1"
+                                  aria-label={
+                                    isConnected === undefined
+                                      ? "Dev server connection status"
+                                      : isConnected
+                                        ? "Dev server connected"
+                                        : "Dev server not connected"
+                                  }
                                   LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
                                 />
                               </DialogTrigger>
