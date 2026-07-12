@@ -30,7 +30,6 @@ import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFrien
 import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
 import { batchTriggerWorker } from "../batchTriggerWorker.server";
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
-import { marqs } from "../marqs/index.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../objectStore.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
@@ -260,7 +259,7 @@ export class BatchTriggerV3Service extends BaseService {
             };
           }
 
-          const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs, newRunCount);
+          const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, newRunCount);
 
           logger.debug("Queue size guard result", {
             newRunCount,

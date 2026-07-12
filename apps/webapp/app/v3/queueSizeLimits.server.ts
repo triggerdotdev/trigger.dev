@@ -1,6 +1,6 @@
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { env } from "~/env.server";
-import type { MarQS } from "./marqs/index.server";
+import { engine } from "./runEngine.server";
 
 export type QueueSizeGuardResult = {
   isWithinLimits: boolean;
@@ -10,7 +10,6 @@ export type QueueSizeGuardResult = {
 
 export async function guardQueueSizeLimitsForEnv(
   environment: AuthenticatedEnvironment,
-  marqs?: MarQS,
   itemsToAdd: number = 1
 ): Promise<QueueSizeGuardResult> {
   const maximumSize = getMaximumSizeForEnvironment(environment);
@@ -19,11 +18,7 @@ export async function guardQueueSizeLimitsForEnv(
     return { isWithinLimits: true };
   }
 
-  if (!marqs) {
-    return { isWithinLimits: true, maximumSize };
-  }
-
-  const queueSize = await marqs.lengthOfEnvQueue(environment);
+  const queueSize = await engine.lengthOfEnvQueue(environment);
   const projectedSize = queueSize + itemsToAdd;
 
   return {
