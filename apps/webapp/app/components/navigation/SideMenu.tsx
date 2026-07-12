@@ -217,6 +217,15 @@ const SIDE_MENU_PAD_X = `calc(0.625rem - 0.375rem * var(--sm-collapse, 0))`;
 const SIDE_MENU_SCROLL_PAD_RIGHT = `calc(0.25rem * var(--sm-collapse, 0))`;
 /** Applied to every fading label so it tracks --sm-label-opacity (falls back to fully visible). */
 const SIDE_MENU_LABEL_STYLE = { opacity: "var(--sm-label-opacity, 1)" } as const;
+/**
+ * The selector rows' hover chevron: its 16px of layout width follows --sm-label-opacity so an
+ * invisible chevron can never hold width mid-drag and push the row's overflow clip edge into the
+ * icon on the left (it would read as the icon being "masked"). Opacity stays class-driven — the
+ * chevron is a hover-only affordance.
+ */
+const SIDE_MENU_CHEVRON_STYLE = {
+  maxWidth: "calc(var(--sm-label-opacity, 1) * 16px)",
+} as const;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -637,7 +646,7 @@ export function SideMenu({
               isCollapsed={isCollapsed}
             />
           </div>
-          <CollapsibleElement isCollapsed={isCollapsed} isDragging={isDragging}>
+          <CollapsibleElement isDragging={isDragging}>
             <AccountMenu isAdmin={isAdmin} isImpersonating={user.isImpersonating} />
           </CollapsibleElement>
         </div>
@@ -664,11 +673,7 @@ export function SideMenu({
                   className="min-w-0 flex-1"
                 />
                 {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-                  <CollapsibleElement
-                    isCollapsed={isCollapsed}
-                    isDragging={isDragging}
-                    className="shrink-0"
-                  >
+                  <CollapsibleElement isDragging={isDragging} className="shrink-0">
                     <Dialog>
                       <TooltipProvider disableHoverableContent={true}>
                         <Tooltip>
@@ -1182,10 +1187,8 @@ function OrgSelector({
               </span>
             </span>
             <span
-              className={cn(
-                "overflow-hidden transition-[max-width] duration-200",
-                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-0 group-hover:opacity-100"
-              )}
+              className="overflow-hidden opacity-0 group-hover:opacity-100"
+              style={SIDE_MENU_CHEVRON_STYLE}
             >
               <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
             </span>
@@ -1474,10 +1477,8 @@ function ProjectSelector({
               </span>
             </span>
             <span
-              className={cn(
-                "overflow-hidden transition-[max-width] duration-200",
-                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-0 group-hover:opacity-100"
-              )}
+              className="overflow-hidden opacity-0 group-hover:opacity-100"
+              style={SIDE_MENU_CHEVRON_STYLE}
             >
               <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
             </span>
@@ -1720,31 +1721,29 @@ function Integrations({ organization }: { organization: MatchedOrganization }) {
  * transitions via CSS — transitioning the opacity too would lag the per-frame variable writes).
  */
 function CollapsibleElement({
-  isCollapsed,
   isDragging = false,
   children,
   className,
 }: {
-  isCollapsed: boolean;
-  /**
-   * Keep the element non-interactive while the menu is being drag-resized. Its opacity already
-   * tracks the drag frame-by-frame through the imperative `--sm-label-opacity` variable (below), so
-   * it fades out in lockstep with the labels with no transition lag; this only stops the fading
-   * button from swallowing clicks.
-   */
+  /** Only stops the fading button from swallowing clicks mid-drag; the hiding itself is width+opacity below. */
   isDragging?: boolean;
   children: ReactNode;
   className?: string;
 }) {
+  // Width AND opacity follow the imperative `--sm-label-opacity` variable frame-by-frame. Opacity
+  // alone is not enough: an invisible button that still holds its 32px of row width pushes the
+  // primary item's overflow-hidden clip edge into its icon as the row narrows (the icon appears
+  // "masked" mid-drag). Shrinking the width in the same curve hands that space back to the primary
+  // item, keeping its icon fully visible at every width. The variable also animates during the
+  // click-toggle (rAF-driven), so no CSS transition is needed — one would only lag the per-frame
+  // writes. `isCollapsed` needs no explicit handling: the variable is 0 at rest-collapsed.
   return (
     <div
-      className={cn(
-        "overflow-hidden transition-[max-width] duration-200",
-        isCollapsed ? "max-w-0" : "max-w-[100px]",
-        isDragging && "pointer-events-none",
-        className
-      )}
-      style={{ opacity: "var(--sm-label-opacity, 1)" }}
+      className={cn("overflow-hidden", isDragging && "pointer-events-none", className)}
+      style={{
+        maxWidth: "calc(var(--sm-label-opacity, 1) * 32px)",
+        opacity: "var(--sm-label-opacity, 1)",
+      }}
     >
       {children}
     </div>
@@ -1823,11 +1822,22 @@ function CollapseMenuButton({
   const [isHovering, setIsHovering] = useState(false);
 
   return (
-    // Hidden instantly (no opacity transition) while dragging so it never lags behind the row as it
-    // narrows and overlaps the Help & Feedback button. It can't fade with `--sm-label-opacity` like
-    // the other secondary buttons because it stays visible in the resting collapsed state (where it
-    // becomes the expand button).
-    <div className={cn(isDragging && "pointer-events-none opacity-0")}>
+    // While dragging, width and opacity shrink with the `--sm-label-opacity` variable exactly like
+    // CollapsibleElement, handing the freed row width to the Help & Feedback item so its icon is
+    // never pushed into the row's clip edge. Unlike the other secondary buttons this only applies
+    // mid-drag: at rest the button keeps its natural size in both states (when collapsed it is the
+    // expand affordance), so the style is dropped on release, where the row relayout hides the snap.
+    <div
+      className={cn(isDragging && "pointer-events-none overflow-hidden")}
+      style={
+        isDragging
+          ? {
+              maxWidth: "calc(var(--sm-label-opacity, 1) * 32px)",
+              opacity: "var(--sm-label-opacity, 1)",
+            }
+          : undefined
+      }
+    >
       <TooltipProvider disableHoverableContent>
         <Tooltip delayDuration={isCollapsed ? 0 : 500}>
           <TooltipTrigger asChild>

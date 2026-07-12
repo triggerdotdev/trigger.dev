@@ -88,11 +88,16 @@ export function HelpAndFeedback({
                   </span>
                   {/*
                     Up/down chevron revealed on hover, matching the Project menu button. Only
-                    rendered when expanded so it can never occupy space or paint over the
-                    collapsed icon (it is a hover affordance that has no meaning collapsed).
+                    rendered when expanded (it is a hover affordance that has no meaning
+                    collapsed), and its 16px of width follows the SideMenu drag variable so an
+                    invisible chevron can never hold width mid-drag and push the row's clip edge
+                    into the help icon.
                   */}
                   {!isCollapsed && (
-                    <span className="overflow-hidden transition-[max-width] duration-200 max-w-[16px] opacity-0 group-hover:opacity-100">
+                    <span
+                      className="overflow-hidden opacity-0 group-hover:opacity-100"
+                      style={{ maxWidth: "calc(var(--sm-label-opacity, 1) * 16px)" }}
+                    >
                       <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
                     </span>
                   )}

@@ -106,11 +106,14 @@ export function EnvironmentSelector({
                 </span>
               </span>
             </span>
+            {/*
+              The chevron's 16px of width follows the SideMenu drag variable (falls back to full
+              width elsewhere): an invisible span that holds its width mid-drag pushes the row's
+              clip edge into the environment icon.
+            */}
             <span
-              className={cn(
-                "overflow-hidden transition-[max-width] duration-200",
-                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-0 group-hover:opacity-100"
-              )}
+              className="overflow-hidden opacity-0 group-hover:opacity-100"
+              style={{ maxWidth: "calc(var(--sm-label-opacity, 1) * 16px)" }}
             >
               <DropdownIcon className="size-4 min-w-4 text-text-dimmed group-hover:text-text-bright" />
             </span>
