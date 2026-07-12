@@ -87,7 +87,7 @@ function createSchema(
 
 export async function loader({ request }: LoaderFunctionArgs) {
   await requireUserId(request);
-  const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: false });
+  const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: true });
   return json({ showThemeSwitcher });
 }
 
@@ -97,7 +97,7 @@ export const action: ActionFunction = async ({ request }) => {
   const formData = await request.formData();
 
   if (formData.get("action") === "update-theme") {
-    const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: false });
+    const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: true });
     if (!showThemeSwitcher) {
       return json({ error: "Not available" }, { status: 404 });
     }

@@ -67,7 +67,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Theme switching is feature-flagged; while off, everyone stays on dark
   // even if a preference was saved earlier.
   const showThemeSwitcher = user
-    ? await flag({ key: "hasThemeSwitcher", defaultValue: false })
+    ? await flag({ key: "hasThemeSwitcher", defaultValue: true })
     : false;
 
   const headers = new Headers();
