@@ -272,6 +272,8 @@ async function startServer() {
           console.log("Express server closed gracefully.");
         }
       });
+      // Dev-only: release Vite's file watchers and HMR websocket
+      viteDevServer?.close();
     }
 
     process.on("SIGTERM", closeServer);
