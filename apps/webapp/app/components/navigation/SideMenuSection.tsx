@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ToggleArrowIcon } from "~/assets/icons/ToggleArrowIcon";
 
 type Props = {
@@ -27,12 +27,24 @@ export function SideMenuSection({
   headerAction,
 }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const handleToggle = useCallback(() => {
     const newIsCollapsed = !isCollapsed;
     setIsCollapsed(newIsCollapsed);
     onCollapseToggle?.(newIsCollapsed);
   }, [isCollapsed, onCollapseToggle]);
+
+  // When the section is collapsed its items are visually hidden (height 0) but stay in the DOM for
+  // the animation, so remove them from the tab order and the accessibility tree with `inert` —
+  // otherwise keyboard/screen-reader users can focus invisible items. `inert` doesn't affect
+  // layout, so the height animation is unchanged. Set the DOM property directly since React 18's
+  // handling of the `inert` prop is unreliable.
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.inert = isCollapsed;
+    }
+  }, [isCollapsed]);
 
   return (
     <div className="w-full overflow-hidden">
@@ -81,6 +93,7 @@ export function SideMenuSection({
       </div>
       <AnimatePresence initial={false}>
         <motion.div
+          ref={contentRef}
           className="w-full"
           initial={isCollapsed ? "collapsed" : "expanded"}
           animate={isCollapsed ? "collapsed" : "expanded"}
