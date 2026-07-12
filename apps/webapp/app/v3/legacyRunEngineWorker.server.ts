@@ -4,10 +4,8 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { TaskRunHeartbeatFailedService } from "./taskRunHeartbeatFailed.server";
 import { completeBatchTaskRunItemV3, tryCompleteBatchV3 } from "./services/batchTriggerV3.server";
 import { prisma } from "~/db.server";
-import { marqs } from "./marqs/index.server";
 
 function initializeWorker() {
   const redisOptions = {
@@ -28,15 +26,6 @@ function initializeWorker() {
     name: "legacy-run-engine-worker",
     redisOptions,
     catalog: {
-      runHeartbeat: {
-        schema: z.object({
-          runId: z.string(),
-        }),
-        visibilityTimeoutMs: 60_000,
-        retry: {
-          maxAttempts: 3,
-        },
-      },
       completeBatchTaskRunItem: {
         schema: z.object({
           itemId: z.string(),
@@ -60,15 +49,6 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
-      scheduleRequeueMessage: {
-        schema: z.object({
-          messageId: z.string(),
-        }),
-        visibilityTimeoutMs: 60_000,
-        retry: {
-          maxAttempts: 5,
-        },
-      },
     },
     concurrency: {
       workers: env.LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS,
@@ -80,11 +60,6 @@ function initializeWorker() {
     shutdownTimeoutMs: env.LEGACY_RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS,
     logger: new Logger("LegacyRunEngineWorker", env.LEGACY_RUN_ENGINE_WORKER_LOG_LEVEL),
     jobs: {
-      runHeartbeat: async ({ payload }) => {
-        const service = new TaskRunHeartbeatFailedService();
-
-        await service.call(payload.runId);
-      },
       completeBatchTaskRunItem: async ({ payload, attempt }) => {
         await completeBatchTaskRunItemV3(
           payload.itemId,
@@ -97,9 +72,6 @@ function initializeWorker() {
       },
       tryCompleteBatchV3: async ({ payload }) => {
         await tryCompleteBatchV3(payload.batchId, prisma, payload.scheduleResumeOnComplete);
-      },
-      scheduleRequeueMessage: async ({ payload }) => {
-        await marqs.requeueMessageById(payload.messageId);
       },
     },
   });

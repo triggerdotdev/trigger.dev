@@ -224,9 +224,6 @@ const EnvironmentSchema = z
     PLAIN_CUSTOMER_CARDS_SECRET: z.string().optional(),
     PLAIN_CUSTOMER_CARDS_KEY: z.string().optional(),
     PLAIN_CUSTOMER_CARDS_HEADERS: z.string().optional(),
-    WORKER_SCHEMA: z.string().default("graphile_worker"),
-    WORKER_CONCURRENCY: z.coerce.number().int().default(10),
-    WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
     // How often each replica reloads the global flags snapshot from the DB.
     // Sets kill/ramp propagation latency.
     GLOBAL_FLAGS_RELOAD_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
@@ -528,9 +525,6 @@ const EnvironmentSchema = z
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
-    //v3
-    PROVIDER_SECRET: z.string().default("provider-secret"),
-    COORDINATOR_SECRET: z.string().default("coordinator-secret"),
     DEPOT_TOKEN: z.string().optional(),
     DEPOT_ORG_ID: z.string().optional(),
     DEPOT_REGION: z.string().default("us-east-1"),
@@ -618,15 +612,6 @@ const EnvironmentSchema = z
     // log-only mode before enforcement.
     DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
 
-    // Master switch for the v3 engine (RunEngineVersion.V1) shutdown. When
-    // enabled it: rejects triggers that resolve to V1 (single, batch, schedule,
-    // replay, triggerAndWait) with a graceful error pointing at the v4 migration
-    // guide; closes the legacy `trigger dev` websocket used by v3 CLIs; and turns
-    // the V1 run-lifecycle background jobs (heartbeat timeout, TTL expiry, retry,
-    // resume, scheduled fires) into no-ops so abandoned V1 runs stop generating
-    // database load. v4 (V2) is never affected (every gate also checks the run is
-    // V1). Defaults to off so self-hosted instances still on V1 keep working.
-    DEPRECATE_V3_ENABLED: z.string().default("0"),
 
     // Verify the deploy image exists before promoting. Disable for out-of-band/air-gapped push. ECR only.
     DEPLOY_IMAGE_VERIFICATION_ENABLED: BoolEnv.default(true),
@@ -815,7 +800,6 @@ const EnvironmentSchema = z
 
     PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
-    VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
     V2_MARQS_ENABLED: z.string().default("0"),
     V2_MARQS_CONSUMER_POOL_ENABLED: z.string().default("0"),
     V2_MARQS_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),

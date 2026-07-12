@@ -1,7 +1,6 @@
 import { parseWithZod } from "@conform-to/zod";
 import type { ActionFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { assertExhaustive } from "@trigger.dev/core/utils";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -10,7 +9,7 @@ import { requireUserId } from "~/services/session.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { runStore } from "~/v3/runStore.server";
 import { findBatchRunIdForUser } from "~/v3/services/batchRunAccess.server";
-import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
+import { tryCompleteBatchV3 } from "~/v3/services/batchTriggerV3.server";
 
 export const checkCompletionSchema = z.object({
   redirectUrl: z.string(),
@@ -44,35 +43,10 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   try {
-    const resumeBatchRunService = new ResumeBatchRunService();
-    // Resume by the resolved internal id: the service looks up strictly by
-    // `{ id }`, so passing a friendlyId param would resolve to nothing.
-    const resumeResult = await resumeBatchRunService.call(ownedBatchRunId);
+    // v3 (engine V1) is retired; finalize the batch through the v2 completion path (no-op if not ready).
+    await tryCompleteBatchV3(ownedBatchRunId, prisma, true);
 
-    let message: string | undefined;
-
-    switch (resumeResult) {
-      case "ERROR": {
-        throw "Unknown error during batch completion check";
-      }
-      case "ALREADY_COMPLETED": {
-        message = "Batch already completed.";
-        break;
-      }
-      case "COMPLETED": {
-        message = "Batch completed and parent tasks resumed.";
-        break;
-      }
-      case "PENDING": {
-        message = "Child runs still in progress. Please try again later.";
-        break;
-      }
-      default: {
-        assertExhaustive(resumeResult);
-      }
-    }
-
-    return redirectWithSuccessMessage(safeRedirectUrl, request, message);
+    return redirectWithSuccessMessage(safeRedirectUrl, request, "Batch completion checked.");
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Failed to check batch completion", {

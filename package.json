@@ -81,7 +81,6 @@
     "patchedDependencies": {
       "@changesets/assemble-release-plan@5.2.4": "patches/@changesets__assemble-release-plan@5.2.4.patch",
       "engine.io-parser@5.2.2": "patches/engine.io-parser@5.2.2.patch",
-      "graphile-worker@0.16.6": "patches/graphile-worker@0.16.6.patch",
       "redlock@5.0.0-beta.2": "patches/redlock@5.0.0-beta.2.patch",
       "@kubernetes/client-node@1.0.0": "patches/@kubernetes__client-node@1.0.0.patch",
       "@sentry/remix@9.46.0": "patches/@sentry__remix@9.46.0.patch",

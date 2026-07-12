@@ -104,7 +104,7 @@ function DebugRunDataEngineV2({
   envConcurrencyLimit,
   envCurrentConcurrency,
   keys,
-}: UseDataFunctionReturn<typeof loader>) {
+}: Extract<UseDataFunctionReturn<typeof loader>, { engine: "V2" }>) {
   return (
     <Property.Table>
       <Property.Item>

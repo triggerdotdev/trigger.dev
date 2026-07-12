@@ -35,7 +35,6 @@ import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../obj
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 
 const PROCESSING_BATCH_SIZE = 50;
@@ -1049,9 +1048,7 @@ export async function tryCompleteBatchV3(
 
   logger.debug("tryCompleteBatchV3: Batch completed", { batchId, completedCount });
 
-  if (scheduleResumeOnComplete && batch.dependentTaskAttemptId) {
-    await ResumeBatchRunService.enqueue(batchId, true, tx);
-  }
+  // Dependent-attempt batches (batchTriggerAndWait) only exist on the retired V1 engine, so there is no parent to resume here.
 }
 
 export async function completeBatchTaskRunItemV3(

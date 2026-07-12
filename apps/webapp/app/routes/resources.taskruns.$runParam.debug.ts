@@ -118,7 +118,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     ];
 
     return typedjson({
-      engine: "V2",
+      engine: "V2" as const,
       run,
       environment,
       queueConcurrencyLimit,
