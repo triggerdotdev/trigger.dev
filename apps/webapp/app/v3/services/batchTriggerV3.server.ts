@@ -86,9 +86,8 @@ type RunItemData = {
  * we increment the BatchTaskRun's completed count. Once the completed count is equal to the expected count, and the
  * batch is sealed, we can consider the batch completed.
  *
- * So now when the v3 batch is considered completed, we will enqueue the ResumeBatchRunService to resume the dependent
- * task attempt if there is one. This is in contrast to v2 batches where every time a task was completed, we would schedule
- * the ResumeBatchRunService to check if the batch was completed and set it to completed if it was.
+ * When the v3 batch is considered completed it is marked COMPLETED. (Dependent-attempt
+ * batches from batchTriggerAndWait only existed on the retired V1 engine.)
  *
  * We've also introduced a new column "resumedAt" that will be set when the batch is resumed. Previously in v2 batches, the status == "COMPLETED" was overloaded
  * to mean that the batch was completed and resumed. Now we have a separate column to track when the batch was resumed (and to make sure it's only resumed once).
