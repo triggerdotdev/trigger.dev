@@ -483,7 +483,7 @@ function SubAgentContent({ parts }: { parts: any[] }) {
         if (partType === "reasoning" && part.text) {
           return (
             <div key={j} className="border-l-2 border-amber-500/40 pl-2">
-              <div className="whitespace-pre-wrap text-xs italic text-amber-600/70 dark:text-amber-200/70">
+              <div className="whitespace-pre-wrap text-xs italic text-amber-700 dark:text-amber-200/70">
                 {part.text}
               </div>
             </div>

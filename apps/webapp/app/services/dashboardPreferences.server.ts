@@ -117,15 +117,17 @@ export async function updateThemePreference({
     return;
   }
 
-  const updatedPreferences: DashboardPreferences = {
-    ...user.dashboardPreferences,
-    theme,
-  };
-
-  return prisma.user.update({
-    where: { id: user.id },
-    data: { dashboardPreferences: updatedPreferences },
-  });
+  // Narrow jsonb_set write: a full-blob update from the session snapshot can
+  // race with other preference writes and drop unrelated fields.
+  return prisma.$executeRaw`
+    UPDATE "User"
+    SET "dashboardPreferences" = jsonb_set(
+      COALESCE("dashboardPreferences", '{}'::jsonb),
+      '{theme}',
+      to_jsonb(${theme}::text)
+    )
+    WHERE id = ${user.id}
+  `;
 }
 
 export async function clearCurrentProject({ user }: { user: UserFromSession }) {
