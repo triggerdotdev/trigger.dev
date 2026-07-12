@@ -215,8 +215,6 @@ const SIDE_MENU_PAD_X = `calc(0.625rem - 0.375rem * var(--sm-collapse, 0))`;
  * rail buttons inset symmetrically (matching the left padding) instead of touching the edge.
  */
 const SIDE_MENU_SCROLL_PAD_RIGHT = `calc(0.25rem * var(--sm-collapse, 0))`;
-/** Applied to every fading label so it tracks --sm-label-opacity (falls back to fully visible). */
-const SIDE_MENU_LABEL_STYLE = { opacity: "var(--sm-label-opacity, 1)" } as const;
 /**
  * The selector rows' hover chevron: its 16px of layout width follows --sm-label-opacity so an
  * invisible chevron can never hold width mid-drag and push the row's overflow clip edge into the
@@ -225,6 +223,17 @@ const SIDE_MENU_LABEL_STYLE = { opacity: "var(--sm-label-opacity, 1)" } as const
  */
 const SIDE_MENU_CHEVRON_STYLE = {
   maxWidth: "calc(var(--sm-label-opacity, 1) * 16px)",
+} as const;
+/**
+ * The selector rows' label container (org/project/environment): width and opacity both follow
+ * --sm-label-opacity so the label tracks a drag frame-by-frame in BOTH directions. Gating these on
+ * `isCollapsed` (which only flips on release) made the labels pop in after a drag-open instead of
+ * fading in like the nav items. The variable also animates during the click-toggle, and is 0/1 at
+ * the collapsed/expanded resting states, so no isCollapsed classes or CSS transitions are needed.
+ */
+const SIDE_MENU_SELECTOR_LABEL_STYLE = {
+  maxWidth: "calc(var(--sm-label-opacity, 1) * 200px)",
+  opacity: "var(--sm-label-opacity, 1)",
 } as const;
 
 function clamp(value: number, min: number, max: number) {
@@ -639,11 +648,12 @@ export function SideMenu({
       />
       <div className="absolute inset-0 grid grid-cols-[100%] grid-rows-[2.5rem_auto_1fr_auto] overflow-hidden">
         <div className="flex min-w-0 items-center overflow-hidden border-b border-transparent px-1 py-1">
-          <div className={cn("min-w-0", !isCollapsed && "flex-1")}>
+          <div className={cn("min-w-0", (isDragging || !isCollapsed) && "flex-1")}>
             <OrgSelector
               organizations={organizations}
               organization={organization}
               isCollapsed={isCollapsed}
+              isDragging={isDragging}
             />
           </div>
           <CollapsibleElement isDragging={isDragging}>
@@ -662,6 +672,7 @@ export function SideMenu({
                 project={project}
                 environment={environment}
                 isCollapsed={isCollapsed}
+                isDragging={isDragging}
                 className="w-full"
               />
               <div className="flex items-center">
@@ -670,6 +681,7 @@ export function SideMenu({
                   project={project}
                   environment={environment}
                   isCollapsed={isCollapsed}
+                  isDragging={isDragging}
                   className="min-w-0 flex-1"
                 />
                 {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
@@ -1139,10 +1151,13 @@ function OrgSelector({
   organization,
   organizations,
   isCollapsed = false,
+  isDragging = false,
 }: {
   organization: MatchedOrganization;
   organizations: MatchedOrganization[];
   isCollapsed?: boolean;
+  /** True while the menu is being drag-resized; keeps the row in its expanded arrangement. */
+  isDragging?: boolean;
 }) {
   const currentPlan = useCurrentPlan();
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
@@ -1167,21 +1182,18 @@ function OrgSelector({
           <PopoverTrigger
             className={cn(
               "group flex h-8 items-center rounded pl-1.75 hover:bg-background-hover focus-custom",
-              isCollapsed ? "justify-center pr-0.5" : "w-full justify-between pr-1"
+              // The expanded row arrangement applies while dragging too — the resting classes only
+              // flip on release, and the label reveal mid-drag needs the expanded layout.
+              isDragging || !isCollapsed ? "w-full justify-between pr-1" : "justify-center pr-0.5"
             )}
           >
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <Avatar avatar={organization.avatar} size={1.25} orgName={organization.title} />
               <span
-                className={cn(
-                  "flex min-w-0 items-center gap-1.5 overflow-hidden transition-all duration-200",
-                  isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
-                )}
+                className="flex min-w-0 items-center gap-1.5 overflow-hidden"
+                style={SIDE_MENU_SELECTOR_LABEL_STYLE}
               >
-                <span
-                  className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright"
-                  style={SIDE_MENU_LABEL_STYLE}
-                >
+                <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
                   {organization.title}
                 </span>
               </span>
@@ -1432,12 +1444,15 @@ function ProjectSelector({
   organization,
   environment,
   isCollapsed = false,
+  isDragging = false,
   className,
 }: {
   project: SideMenuProject;
   organization: MatchedOrganization;
   environment: SideMenuEnvironment;
   isCollapsed?: boolean;
+  /** True while the menu is being drag-resized; keeps the row in its expanded arrangement. */
+  isDragging?: boolean;
   className?: string;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -1454,24 +1469,21 @@ function ProjectSelector({
           <PopoverTrigger
             className={cn(
               "group flex h-8 items-center rounded border pl-1.75 transition-[border-color] duration-150 hover:bg-background-hover focus-custom",
-              isCollapsed
-                ? "justify-center border-transparent pr-0.5"
-                : "justify-between border-grid-bright pr-1",
+              // The expanded row arrangement applies while dragging too — the resting classes only
+              // flip on release, and the label reveal mid-drag needs the expanded layout.
+              isDragging || !isCollapsed
+                ? "justify-between border-grid-bright pr-1"
+                : "justify-center border-transparent pr-0.5",
               className
             )}
           >
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <FolderOpenIcon className="size-5 shrink-0 text-text-bright" />
               <span
-                className={cn(
-                  "flex min-w-0 items-center overflow-hidden transition-all duration-200",
-                  isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
-                )}
+                className="flex min-w-0 items-center overflow-hidden"
+                style={SIDE_MENU_SELECTOR_LABEL_STYLE}
               >
-                <span
-                  className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright"
-                  style={SIDE_MENU_LABEL_STYLE}
-                >
+                <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
                   {project.name ?? "Select a project"}
                 </span>
               </span>

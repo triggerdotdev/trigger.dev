@@ -47,12 +47,15 @@ export function EnvironmentSelector({
   environment,
   className,
   isCollapsed = false,
+  isDragging = false,
 }: {
   organization: MatchedOrganization;
   project: SideMenuProject;
   environment: SideMenuEnvironment;
   className?: string;
   isCollapsed?: boolean;
+  /** True while the side menu is being drag-resized; keeps the row in its expanded arrangement. */
+  isDragging?: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -80,30 +83,33 @@ export function EnvironmentSelector({
           <PopoverTrigger
             className={cn(
               "group flex h-8 items-center rounded pl-1.75 hover:bg-background-hover focus-custom",
-              isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
+              // The expanded row arrangement applies while dragging too — the resting classes only
+              // flip on release, and the label reveal mid-drag needs the expanded layout.
+              isDragging || !isCollapsed ? "justify-between pr-1" : "justify-center pr-0.5",
               className
             )}
           >
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
+              {/*
+                Width and opacity are driven by the resizable SideMenu's `--sm-label-opacity`
+                variable so the label tracks a drag frame-by-frame in both directions (gating on
+                isCollapsed, which only flips on release, made the label pop in after a drag-open).
+                Unset in the other places this selector is used (blank-state panels, Limits page)
+                → falls back to fully visible.
+              */}
               <span
-                className={cn(
-                  "flex min-w-0 items-center overflow-hidden transition-all duration-200",
-                  isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
-                )}
+                className="flex min-w-0 items-center overflow-hidden"
+                style={{
+                  maxWidth: "calc(var(--sm-label-opacity, 1) * 200px)",
+                  opacity: "var(--sm-label-opacity, 1)",
+                }}
               >
-                {/*
-                  Inner opacity is driven by the resizable SideMenu's `--sm-label-opacity`
-                  variable so the label fades as the menu is dragged narrower. Unset in the other
-                  places this selector is used (blank-state panels, Limits page) → falls back to 1.
-                */}
-                <span className="flex min-w-0" style={{ opacity: "var(--sm-label-opacity, 1)" }}>
-                  <EnvironmentLabel
-                    environment={environment}
-                    className="text-[0.90625rem] font-medium tracking-[-0.01em]"
-                    disableTooltip
-                  />
-                </span>
+                <EnvironmentLabel
+                  environment={environment}
+                  className="text-[0.90625rem] font-medium tracking-[-0.01em]"
+                  disableTooltip
+                />
               </span>
             </span>
             {/*

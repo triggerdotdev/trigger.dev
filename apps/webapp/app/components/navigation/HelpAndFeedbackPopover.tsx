@@ -71,17 +71,18 @@ export function HelpAndFeedback({
                   <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                     <QuestionMarkIcon className="size-5 min-w-5 shrink-0 text-success" />
                     {/*
-                  Fades via the resizable side menu's `--sm-label-opacity` variable (falls back to
-                  fully visible when unset) and truncates as the menu narrows, matching the nav
-                  items. Only max-width transitions via CSS: the hover color snaps like the nav
-                  items, and transitioning opacity would lag the per-frame variable writes.
+                  Width and opacity follow the resizable side menu's `--sm-label-opacity` variable
+                  (falls back to fully visible when unset) so the label tracks a drag frame-by-frame
+                  in both directions, matching the nav items — gating the width on isCollapsed,
+                  which only flips on release, made the label pop in after a drag-open. No CSS
+                  transitions: they would lag the per-frame variable writes.
                 */}
                     <span
-                      className={cn(
-                        "min-w-0 truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed transition-[max-width] duration-150 group-hover:text-text-bright",
-                        isCollapsed ? "max-w-0" : "max-w-[150px]"
-                      )}
-                      style={{ opacity: "var(--sm-label-opacity, 1)" }}
+                      className="min-w-0 truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed group-hover:text-text-bright"
+                      style={{
+                        maxWidth: "calc(var(--sm-label-opacity, 1) * 150px)",
+                        opacity: "var(--sm-label-opacity, 1)",
+                      }}
                     >
                       Help & Feedback
                     </span>
