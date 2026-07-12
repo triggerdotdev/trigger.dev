@@ -497,6 +497,7 @@ export default function Page() {
                         avatarUrl={member.user.avatarUrl}
                         name={member.user.name}
                         className="size-10"
+                        thin
                       />
                       <div className="flex flex-col gap-0.5">
                         <Header3>

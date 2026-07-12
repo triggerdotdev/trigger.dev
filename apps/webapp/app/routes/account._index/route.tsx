@@ -150,7 +150,7 @@ export default function Page() {
                   <Label>Profile picture</Label>
                 </InputGroup>
                 <div className="flex flex-none items-center">
-                  <UserProfilePhoto className="size-8" />
+                  <UserProfilePhoto className="size-8" thin />
                 </div>
               </div>
             </div>
