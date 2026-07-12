@@ -637,7 +637,7 @@ export function SideMenu({
               isCollapsed={isCollapsed}
             />
           </div>
-          <CollapsibleElement isCollapsed={isCollapsed}>
+          <CollapsibleElement isCollapsed={isCollapsed} isDragging={isDragging}>
             <AccountMenu isAdmin={isAdmin} isImpersonating={user.isImpersonating} />
           </CollapsibleElement>
         </div>
@@ -664,7 +664,11 @@ export function SideMenu({
                   className="min-w-0 flex-1"
                 />
                 {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-                  <CollapsibleElement isCollapsed={isCollapsed} className="shrink-0">
+                  <CollapsibleElement
+                    isCollapsed={isCollapsed}
+                    isDragging={isDragging}
+                    className="shrink-0"
+                  >
                     <Dialog>
                       <TooltipProvider disableHoverableContent={true}>
                         <Tooltip>
@@ -1012,6 +1016,7 @@ export function SideMenu({
           >
             <HelpAndAI
               isCollapsed={isCollapsed}
+              isDragging={isDragging}
               organizationId={organization.id}
               projectId={project.id}
               onToggleCollapsed={handleToggleCollapsed}
@@ -1716,21 +1721,28 @@ function Integrations({ organization }: { organization: MatchedOrganization }) {
  */
 function CollapsibleElement({
   isCollapsed,
+  isDragging = false,
   children,
   className,
 }: {
   isCollapsed: boolean;
+  /**
+   * Fade the element out while the menu is being drag-resized. These are the secondary right-hand
+   * buttons (account, dev connection); hiding them during a drag stops them from overlapping the
+   * primary item on the left as the row narrows.
+   */
+  isDragging?: boolean;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <div
       className={cn(
-        "overflow-hidden transition-[max-width] duration-200",
-        isCollapsed ? "max-w-0" : "max-w-[100px]",
+        "overflow-hidden transition-[max-width,opacity] duration-200",
+        isCollapsed ? "max-w-0 opacity-0" : "max-w-[100px] opacity-100",
+        isDragging && "pointer-events-none opacity-0",
         className
       )}
-      style={{ opacity: "var(--sm-label-opacity, 1)" }}
     >
       {children}
     </div>
@@ -1762,11 +1774,13 @@ function CollapsibleHeight({
 
 function HelpAndAI({
   isCollapsed,
+  isDragging,
   organizationId,
   projectId,
   onToggleCollapsed,
 }: {
   isCollapsed: boolean;
+  isDragging: boolean;
   organizationId: string;
   projectId: string;
   onToggleCollapsed: () => void;
@@ -1785,7 +1799,11 @@ function HelpAndAI({
           organizationId={organizationId}
           projectId={projectId}
         />
-        <CollapseMenuButton isCollapsed={isCollapsed} onToggle={onToggleCollapsed} />
+        <CollapseMenuButton
+          isCollapsed={isCollapsed}
+          isDragging={isDragging}
+          onToggle={onToggleCollapsed}
+        />
       </div>
     </LayoutGroup>
   );
@@ -1793,15 +1811,22 @@ function HelpAndAI({
 
 function CollapseMenuButton({
   isCollapsed,
+  isDragging = false,
   onToggle,
 }: {
   isCollapsed: boolean;
+  isDragging?: boolean;
   onToggle: () => void;
 }) {
   const [isHovering, setIsHovering] = useState(false);
 
   return (
-    <div>
+    <div
+      className={cn(
+        "transition-opacity duration-200",
+        isDragging && "pointer-events-none opacity-0"
+      )}
+    >
       <TooltipProvider disableHoverableContent>
         <Tooltip delayDuration={isCollapsed ? 0 : 500}>
           <TooltipTrigger asChild>
