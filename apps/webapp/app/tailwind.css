@@ -346,7 +346,7 @@
        outside the border edge and gets clipped by any ancestor with overflow hidden/auto (scroll
        areas, the side menu grid) or covered by an adjacent element's background. */
     outline-offset: -1px;
-    border-radius: 3px;
+    border-radius: 5px;
   }
 }
 
