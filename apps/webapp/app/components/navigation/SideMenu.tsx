@@ -1727,9 +1727,10 @@ function CollapsibleElement({
 }: {
   isCollapsed: boolean;
   /**
-   * Fade the element out while the menu is being drag-resized. These are the secondary right-hand
-   * buttons (account, dev connection); hiding them during a drag stops them from overlapping the
-   * primary item on the left as the row narrows.
+   * Keep the element non-interactive while the menu is being drag-resized. Its opacity already
+   * tracks the drag frame-by-frame through the imperative `--sm-label-opacity` variable (below), so
+   * it fades out in lockstep with the labels with no transition lag; this only stops the fading
+   * button from swallowing clicks.
    */
   isDragging?: boolean;
   children: ReactNode;
@@ -1738,11 +1739,12 @@ function CollapsibleElement({
   return (
     <div
       className={cn(
-        "overflow-hidden transition-[max-width,opacity] duration-200",
-        isCollapsed ? "max-w-0 opacity-0" : "max-w-[100px] opacity-100",
-        isDragging && "pointer-events-none opacity-0",
+        "overflow-hidden transition-[max-width] duration-200",
+        isCollapsed ? "max-w-0" : "max-w-[100px]",
+        isDragging && "pointer-events-none",
         className
       )}
+      style={{ opacity: "var(--sm-label-opacity, 1)" }}
     >
       {children}
     </div>
@@ -1821,12 +1823,11 @@ function CollapseMenuButton({
   const [isHovering, setIsHovering] = useState(false);
 
   return (
-    <div
-      className={cn(
-        "transition-opacity duration-200",
-        isDragging && "pointer-events-none opacity-0"
-      )}
-    >
+    // Hidden instantly (no opacity transition) while dragging so it never lags behind the row as it
+    // narrows and overlaps the Help & Feedback button. It can't fade with `--sm-label-opacity` like
+    // the other secondary buttons because it stays visible in the resting collapsed state (where it
+    // becomes the expand button).
+    <div className={cn(isDragging && "pointer-events-none opacity-0")}>
       <TooltipProvider disableHoverableContent>
         <Tooltip delayDuration={isCollapsed ? 0 : 500}>
           <TooltipTrigger asChild>
