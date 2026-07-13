@@ -5,9 +5,10 @@
  * inject per-container stores/replicas, so these helpers never import db.server.
  */
 import type { CompleteBatchResult } from "@internal/run-engine";
+import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { RunStore } from "@internal/run-store";
 import type { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
-import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
+import type { PrismaReplicaClient } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
 
@@ -78,11 +79,11 @@ export async function readRunForEventOrThrow<S extends Prisma.TaskRunSelect>(
 export async function resolveBatchRunOpsWriter(
   batchId: string,
   deps: {
-    newReplica: PrismaReplicaClient;
-    newWriter: PrismaClient;
-    legacyWriter: PrismaClient;
+    newReplica: RunOpsPrismaClient;
+    newWriter: RunOpsPrismaClient;
+    legacyWriter: RunOpsPrismaClient;
   }
-): Promise<PrismaClient> {
+): Promise<RunOpsPrismaClient> {
   const onNew = await deps.newReplica.batchTaskRun.findFirst({
     where: { id: batchId },
     select: { id: true },
@@ -101,9 +102,9 @@ export const QUEUE_SIZE_LIMIT_EXCEEDED_ERROR_CODE = "QUEUE_SIZE_LIMIT_EXCEEDED";
 
 export type BatchCompletionDeps = {
   splitEnabled: boolean;
-  newReplica: PrismaReplicaClient;
-  newWriter: PrismaClient;
-  legacyWriter: PrismaClient;
+  newReplica: RunOpsPrismaClient;
+  newWriter: RunOpsPrismaClient;
+  legacyWriter: RunOpsPrismaClient;
   tryCompleteBatch: (batchId: string) => Promise<unknown>;
 };
 

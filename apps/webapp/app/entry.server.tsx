@@ -7,7 +7,6 @@ import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 import { PassThrough } from "stream";
-import * as Worker from "~/services/worker.server";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
 import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
@@ -227,10 +226,6 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
   }
 });
 
-Worker.init().catch((error) => {
-  logError(error);
-});
-
 initMollifierDrainerWorker();
 initMollifierStaleSweepWorker();
 initBillingLimitWorker();
@@ -241,10 +236,6 @@ bootstrap().catch((error) => {
 
 function logError(error: unknown, request?: Request) {
   console.error(error);
-
-  if (error instanceof Error && error.message.startsWith("There are locked jobs present")) {
-    console.log("⚠️  graphile-worker migration issue detected!");
-  }
 }
 
 process.on("uncaughtException", (error, origin) => {

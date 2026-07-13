@@ -461,6 +461,23 @@ export function getTaskRunsCountQueryBuilder(ch: ClickhouseReader, settings?: Cl
   });
 }
 
+export const TaskRunExistsQueryResult = z.object({
+  run_exists: z.number().int(),
+});
+
+export type TaskRunExistsQueryResult = z.infer<typeof TaskRunExistsQueryResult>;
+
+// Empty-state existence probe. No FINAL (a stale/dup row still answers "a run exists").
+// Callers must filter organization_id + project_id + environment_id (the sort-key prefix).
+export function getTaskRunExistsQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.queryBuilder({
+    name: "getTaskRunExists",
+    baseQuery: "SELECT 1 AS run_exists FROM trigger_dev.task_runs_v2",
+    schema: TaskRunExistsQueryResult,
+    settings,
+  });
+}
+
 export const TaskRunTagsQueryResult = z.object({
   tag: z.string(),
 });

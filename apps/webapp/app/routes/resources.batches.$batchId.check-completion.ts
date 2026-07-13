@@ -1,11 +1,15 @@
 import { parseWithZod } from "@conform-to/zod";
 import type { ActionFunction } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { assertExhaustive } from "@trigger.dev/core/utils";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
-import { ResumeBatchRunService } from "~/v3/services/resumeBatchRun.server";
+import { requireUserId } from "~/services/session.server";
+import { sanitizeRedirectPath } from "~/utils";
+import { runStore } from "~/v3/runStore.server";
+import { findBatchRunIdForUser } from "~/v3/services/batchRunAccess.server";
+import { tryCompleteBatchV3 } from "~/v3/services/batchTriggerV3.server";
 
 export const checkCompletionSchema = z.object({
   redirectUrl: z.string(),
@@ -16,6 +20,8 @@ const ParamSchema = z.object({
 });
 
 export const action: ActionFunction = async ({ request, params }) => {
+  // Require a logged-in user; org membership is checked below before resuming.
+  const userId = await requireUserId(request);
   const { batchId } = ParamSchema.parse(params);
 
   const formData = await request.formData();
@@ -25,34 +31,22 @@ export const action: ActionFunction = async ({ request, params }) => {
     return json(submission.reply());
   }
 
+  // Keep the post-action redirect same-origin.
+  const safeRedirectUrl = sanitizeRedirectPath(submission.value.redirectUrl);
+
+  // Only act on a batch in an org the caller belongs to. Accepts either the
+  // friendlyId or the internal id; both forms stay org-scoped.
+  const ownedBatchRunId = await findBatchRunIdForUser(prisma, runStore, batchId, userId);
+
+  if (!ownedBatchRunId) {
+    return redirectWithErrorMessage(safeRedirectUrl, request, "Batch not found");
+  }
+
   try {
-    const resumeBatchRunService = new ResumeBatchRunService();
-    const resumeResult = await resumeBatchRunService.call(batchId);
+    // v3 (engine V1) is retired; finalize the batch through the v2 completion path (no-op if not ready).
+    await tryCompleteBatchV3(ownedBatchRunId, prisma, true);
 
-    let message: string | undefined;
-
-    switch (resumeResult) {
-      case "ERROR": {
-        throw "Unknown error during batch completion check";
-      }
-      case "ALREADY_COMPLETED": {
-        message = "Batch already completed.";
-        break;
-      }
-      case "COMPLETED": {
-        message = "Batch completed and parent tasks resumed.";
-        break;
-      }
-      case "PENDING": {
-        message = "Child runs still in progress. Please try again later.";
-        break;
-      }
-      default: {
-        assertExhaustive(resumeResult);
-      }
-    }
-
-    return redirectWithSuccessMessage(submission.value.redirectUrl, request, message);
+    return redirectWithSuccessMessage(safeRedirectUrl, request, "Batch completion checked.");
   } catch (error) {
     if (error instanceof Error) {
       logger.error("Failed to check batch completion", {
@@ -62,10 +56,10 @@ export const action: ActionFunction = async ({ request, params }) => {
           stack: error.stack,
         },
       });
-      return redirectWithErrorMessage(submission.value.redirectUrl, request, error.message);
+      return redirectWithErrorMessage(safeRedirectUrl, request, error.message);
     } else {
       logger.error("Failed to check batch completion", { error });
-      return redirectWithErrorMessage(submission.value.redirectUrl, request, "Unknown error");
+      return redirectWithErrorMessage(safeRedirectUrl, request, "Unknown error");
     }
   }
 };

@@ -14,13 +14,18 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests: Webapp"
-    runs-on: warp-ubuntu-latest-x64-8x
+    # 10 shards on 16x machines: webapp test throughput is limited per-machine (one
+    # docker daemon + disk absorbing all the per-file Postgres/ClickHouse container
+    # spin-up), so many machines beats few big ones - fewer/bigger (3x32) measured
+    # SLOWER than 10x8. The 16x (vs 8x) gives the fork pool the CPU headroom the 8x
+    # runners lacked. Setup overhead per machine is ~1 min on warm runners.
+    runs-on: warp-ubuntu-latest-x64-16x
     strategy:
       # one flaky shard shouldn't cancel its siblings - lets us re-run only the failed shard
       fail-fast: false
       matrix:
-        shardIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        shardTotal: [10]
+        shardIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        shardTotal: [12]
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       SHARD_INDEX: ${{ matrix.shardIndex }}

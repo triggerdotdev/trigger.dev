@@ -248,6 +248,22 @@ export class IdempotencyKeyConcern {
 
       //We're using `andWait` so we need to block the parent run with a waitpoint
       if (resumeParentOnCompletion && parentRunId) {
+        // `parentRunId` comes from the request body and isn't re-validated
+        // here, so confirm the parent run is in the caller's environment
+        // before wiring a waitpoint against it.
+        const parentRunInternalId = RunId.fromFriendlyId(parentRunId);
+        const parentRunInCallerEnv = await runStore.findRun(
+          {
+            id: parentRunInternalId,
+            runtimeEnvironmentId: request.environment.id,
+          },
+          { select: { id: true } },
+          this.prisma
+        );
+        if (!parentRunInCallerEnv) {
+          throw new ServiceValidationError("Parent run not found in the calling environment", 404);
+        }
+
         // Get or create waitpoint lazily (existing run may not have one if it was standalone)
         let associatedWaitpoint = existingRun.associatedWaitpoint;
         if (!associatedWaitpoint) {
@@ -276,7 +292,7 @@ export class IdempotencyKeyConcern {
                   : event.spanId;
 
             await this.engine.blockRunWithWaitpoint({
-              runId: RunId.fromFriendlyId(parentRunId),
+              runId: parentRunInternalId,
               waitpoints: associatedWaitpoint!.id,
               spanIdToComplete: spanId,
               batch: request.options?.batchId

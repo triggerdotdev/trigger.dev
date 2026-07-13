@@ -1,6 +1,7 @@
 import type { WorkerInstanceGroup, WorkloadType } from "@trigger.dev/database";
 import { WorkerInstanceGroupType } from "@trigger.dev/database";
 import { WithRunEngine } from "../baseService.server";
+import { isWorkerGroupAllowedForProject } from "./workerGroupAccess";
 import { WorkerGroupTokenService } from "./workerGroupTokenService.server";
 import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
@@ -250,6 +251,13 @@ export class WorkerGroupService extends WithRunEngine {
 
       if (!workerGroup) {
         throw new Error(`The region you specified doesn't exist ("${regionOverride}").`);
+      }
+
+      // The masterQueue-only lookup above can resolve another project's
+      // UNMANAGED group, so reject groups not usable by this project
+      // (see isWorkerGroupAllowedForProject).
+      if (!isWorkerGroupAllowedForProject(workerGroup, project.id)) {
+        throw new Error(`The region you specified isn't available to you ("${regionOverride}").`);
       }
 
       // If they're restricted, check they have access

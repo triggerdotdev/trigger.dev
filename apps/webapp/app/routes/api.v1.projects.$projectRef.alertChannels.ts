@@ -67,6 +67,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
           return json({ error: "webhook url is required" }, { status: 422 });
         }
 
+        // The webhook URL is validated in CreateAlertChannelService.call();
+        // an unsafe URL surfaces as a ServiceValidationError -> 422 below.
         const alertChannel = await service.call(projectRef, authenticationResult.userId, {
           name: body.data.name,
           alertTypes: body.data.alertTypes.map((type) =>

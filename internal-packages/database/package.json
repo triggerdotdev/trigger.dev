@@ -16,7 +16,8 @@
   "scripts": {
     "clean": "rimraf dist",
     "generate": "node ../../scripts/retry-prisma-generate.mjs",
-    "db:migrate:dev:create": "prisma migrate dev --create-only",
+    "db:migrate:dev:create": "pnpm run format:prisma && prisma migrate dev --create-only",
+    "format:prisma": "prisma format",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",

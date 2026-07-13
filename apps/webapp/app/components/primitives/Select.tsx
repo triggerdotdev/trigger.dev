@@ -110,6 +110,8 @@ export interface SelectProps<TValue extends string | string[], TItem> extends Om
   allowItemShortcuts?: boolean;
   clearSearchOnSelection?: boolean;
   dropdownIcon?: boolean | React.ReactNode;
+  popoverClassName?: string;
+  placement?: Ariakit.SelectProviderProps<TValue>["placement"];
 }
 
 export function Select<TValue extends string | string[], TItem>({
@@ -135,6 +137,8 @@ export function Select<TValue extends string | string[], TItem>({
   disabled,
   clearSearchOnSelection = true,
   dropdownIcon,
+  popoverClassName,
+  placement,
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
@@ -191,6 +195,7 @@ export function Select<TValue extends string | string[], TItem>({
       open={open}
       setOpen={setOpen}
       virtualFocus={searchable}
+      placement={placement}
       value={value}
       setValue={(v) => {
         if (clearSearchOnSelection) {
@@ -215,7 +220,7 @@ export function Select<TValue extends string | string[], TItem>({
         dropdownIcon={dropdownIcon}
         {...props}
       />
-      <SelectPopover>
+      <SelectPopover className={popoverClassName}>
         {!searchable && showHeading && heading && <SelectHeading render={<>{heading}</>} />}
         {searchable && <ComboBox placeholder={heading} shortcut={shortcut} value={searchValue} />}
 
@@ -437,7 +442,7 @@ export function SelectList(props: SelectListProps) {
     <Component
       {...props}
       className={cn(
-        "overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control focus-custom",
+        "overflow-y-auto overflow-x-hidden overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control focus-custom",
         props.className
       )}
     />
@@ -449,6 +454,9 @@ export interface SelectItemProps extends Ariakit.SelectItemProps {
   checkIcon?: React.ReactNode;
   checkPosition?: "left" | "right";
   shortcut?: ShortcutDefinition;
+  // Allow the item to grow to multiple lines and wrap its content instead of
+  // being locked to a single truncated line. Use for options with a subtitle.
+  wrap?: boolean;
 }
 
 const selectItemClasses =
@@ -461,6 +469,7 @@ export function SelectItem({
   checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-text-bright" />,
   checkPosition = "right",
   shortcut,
+  wrap = false,
   ...props
 }: SelectItemProps) {
   const combobox = Ariakit.useComboboxContext();
@@ -508,13 +517,16 @@ export function SelectItem({
     >
       <div
         className={cn(
-          "flex h-8 w-full items-center rounded-sm px-2 group-data-[active-item=true]:bg-tertiary hover:bg-tertiary",
+          "flex w-full items-center rounded-sm px-2 group-data-[active-item=true]:bg-tertiary hover:bg-tertiary",
+          wrap ? "min-h-8" : "h-8",
           checkPosition === "left" ? "gap-2" : "gap-1"
         )}
       >
         {checkPosition === "left" && <CheckboxIndicator checked={isChecked} />}
         {icon}
-        <div className="grow truncate">{props.children || props.value}</div>
+        <div className={cn("grow", wrap ? "min-w-0 break-words py-1.5" : "truncate")}>
+          {props.children || props.value}
+        </div>
         {checkPosition === "right" && checkIcon}
         {shortcut && (
           <ShortcutKey

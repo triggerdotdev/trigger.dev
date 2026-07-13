@@ -101,6 +101,7 @@ export class EventRepository implements IEventRepository {
     private readonly _config: EventRepoConfig
   ) {
     this._flushScheduler = new DynamicFlushScheduler({
+      name: "postgres_events",
       batchSize: _config.batchSize,
       flushInterval: _config.batchInterval,
       callback: this.#flushBatch.bind(this),

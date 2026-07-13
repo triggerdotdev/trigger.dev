@@ -101,6 +101,10 @@ export async function createProject(
       },
       externalRef: `proj_${externalRefGenerator()}`,
       version: version === "v3" ? "V3" : "V2",
+      // New projects run on the v2 engine. The Prisma column still defaults to V1
+      // for historical rows; the V1->V2 upgrade guards on worker-register / deploy
+      // stay in place to migrate existing legacy projects.
+      engine: "V2",
       onboardingData,
     },
     include: {

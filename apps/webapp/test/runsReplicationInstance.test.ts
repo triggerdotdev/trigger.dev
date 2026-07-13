@@ -388,8 +388,6 @@ describe("RunsReplication multi-source wiring (integration)", () => {
 
         await service.start();
 
-        await setTimeout(3000);
-
         probe = new Redis(redisOptions);
 
         // Leader lock is keyed on the slot, so each source holds a distinct
@@ -398,6 +396,33 @@ describe("RunsReplication multi-source wiring (integration)", () => {
           "runs-replication:logical-replication-client:logical-replication-client:tr_legacy_wiring";
         const newKey =
           "runs-replication:logical-replication-client:logical-replication-client:tr_new_wiring";
+
+        // Poll until BOTH sources have elected a leader instead of a flaky flat sleep.
+        const readinessTimeoutMs = 15_000;
+        const readinessPollIntervalMs = 100;
+        const readinessDeadline = Date.now() + readinessTimeoutMs;
+
+        let legacyLocked = 0;
+        let newLocked = 0;
+
+        while (Date.now() < readinessDeadline) {
+          [legacyLocked, newLocked] = await Promise.all([
+            probe.exists(legacyKey),
+            probe.exists(newKey),
+          ]);
+
+          if (legacyLocked === 1 && newLocked === 1) {
+            break;
+          }
+
+          await setTimeout(readinessPollIntervalMs);
+        }
+
+        expect(
+          legacyLocked === 1 && newLocked === 1,
+          `Both leader locks should be acquired within ${readinessTimeoutMs}ms ` +
+            `(legacy=${legacyLocked}, new=${newLocked})`
+        ).toBe(true);
 
         expect(await probe.exists(legacyKey)).toBe(1);
         expect(await probe.exists(newKey)).toBe(1);

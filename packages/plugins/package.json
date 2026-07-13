@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/plugins",
-  "version": "4.5.1",
+  "version": "4.5.2",
   "description": "Plugin contracts and interfaces for Trigger.dev",
   "license": "MIT",
   "private": true,

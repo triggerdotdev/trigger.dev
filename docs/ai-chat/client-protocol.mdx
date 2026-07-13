@@ -583,7 +583,7 @@ Signals that the agent's turn is finished — stop reading and wait for user inp
 headers:
   ["trigger-control", "turn-complete"]
   ["public-access-token", "eyJ..."]   // optional, refreshed JWT
-  ["session-in-event-id", "42"]       // optional, agent-internal resume cursor
+  ["session-in-event-id", "42"]       // optional, send-correlation + resume cursor
 body: ""
 ```
 
@@ -591,12 +591,16 @@ body: ""
 | --- | --- |
 | `trigger-control: turn-complete` | Always present on this record. |
 | `public-access-token: <jwt>` (optional) | A refreshed JWT with the same session + run scopes. If present, replace your stored token. |
-| `session-in-event-id: <seq>` (optional) | Internal cursor used by the agent to resume `.in` across worker boots without replaying already-processed user messages. Custom transports should ignore this header — it carries no client-side meaning. |
+| `session-in-event-id: <seq>` (optional) | The agent's committed `.in` cursor for this turn: the seq of the last user record it had consumed when the turn finished. Compare it to the `seq` from your `.in/append` to tell whether this turn-complete is *yours* (see the warning below). Also used internally to resume `.in` across worker boots without replaying processed messages. |
 
 When you receive this record:
 1. Update `publicAccessToken` if one is included on the headers.
 2. Close the stream reader (unless you want to keep it open across turns — see [Resuming a stream](#resuming-a-stream)).
 3. Wait for the next user message before sending on `.in`.
+
+<Warning>
+  **Correlate turn-completes to your send.** A `turn-complete` on `.out` can belong to an *earlier* turn than the message you just sent, for example a concurrent action (an undo) whose completion lands on the stream first. Only treat a `turn-complete` as terminal for your send if its `session-in-event-id` is greater than or equal to the `seq` returned by that send's `.in/append`; skip any lower one and keep reading. Closing on the wrong turn drops your response until the next reload. The built-in `TriggerChatTransport` does this correlation for you.
+</Warning>
 
 ### `upgrade-required` control record
 
@@ -681,7 +685,7 @@ Content-Type: application/json
 
 `{sessionId}` accepts the same friendly-or-external forms as `.out`. The `publicAccessToken` from session-create authorizes both.
 
-The body is a JSON-serialized [`ChatInputChunk`](#chatinputchunk) — a tagged union covering messages, stops, and actions. Send them as raw JSON strings (not wrapped in a `data` field). On success the response is `200 OK` with body `{ "ok": true }`; on failure it's `4xx`/`5xx` with `{ "ok": false, "error": "<message>" }`. Common failures:
+The body is a JSON-serialized [`ChatInputChunk`](#chatinputchunk), a tagged union covering messages, stops, and actions. Send them as raw JSON strings (not wrapped in a `data` field). On success the response is `200 OK` with body `{ "ok": true, "seq": <number> }`, where `seq` is the appended record's `.in` sequence number. Use it to correlate this send to the turn that consumes it (see [`turn-complete` control record](#turn-complete-control-record)). On failure it's `4xx`/`5xx` with `{ "ok": false, "error": "<message>" }`. Common failures:
 
 | Status | When |
 | --- | --- |

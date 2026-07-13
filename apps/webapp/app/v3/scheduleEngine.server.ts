@@ -8,9 +8,7 @@ import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { OutOfEntitlementError, TriggerTaskService } from "./services/triggerTask.server";
 import { meter, tracer } from "./tracer.server";
-import { workerQueue } from "~/services/worker.server";
 import { ServiceValidationError } from "./services/common.server";
-import { isV3Disabled } from "./engineDeprecation.server";
 
 export const scheduleEngine = singleton("ScheduleEngine", createScheduleEngine);
 
@@ -85,11 +83,8 @@ function createScheduleEngine() {
       exactScheduleTime,
     }) => {
       try {
-        // v3 (engine V1) shutdown: skip firing schedules for V1 projects so the
-        // cron doesn't keep doing trigger work just to be rejected. Return success
-        // so the schedule engine treats it as handled and doesn't retry. v4 is
-        // unaffected.
-        if (isV3Disabled() && environment.project.engine === "V1") {
+        // v3 (engine V1) is retired: skip firing V1 schedules instead of triggering into a guaranteed rejection every tick.
+        if (environment.project.engine === "V1") {
           logger.debug("[ScheduleEngine] Skipping scheduled fire for shut-down v3 project", {
             taskIdentifier,
             scheduleId,
@@ -151,24 +146,7 @@ function createScheduleEngine() {
       }
     },
     isDevEnvironmentConnectedHandler: isDevEnvironmentConnectedHandler,
-    onRegisterScheduleInstance: removeDeprecatedWorkerQueueItem,
   });
 
   return engine;
-}
-
-async function removeDeprecatedWorkerQueueItem(instanceId: string) {
-  // We need to dequeue the instance from the existing workerQueue
-  try {
-    await workerQueue.dequeue(`scheduled-task-instance:${instanceId}`);
-
-    logger.debug("Removed deprecated worker queue item", {
-      instanceId,
-    });
-  } catch (error) {
-    logger.error("Error dequeuing scheduled task instance from deprecated queue", {
-      instanceId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
 }

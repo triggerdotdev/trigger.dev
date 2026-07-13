@@ -5,11 +5,11 @@ import { BasePresenter } from "./basePresenter.server";
 import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import type { PrismaClientOrTransaction, PrismaReplicaClient } from "~/db.server";
-import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
-// When omitted, clients default to the inherited _replica handle => passthrough reads the
-// replica exactly as today. isPastRetention is injectable for tests. Typed PrismaReplicaClient
-// to match readThroughRun's readNew/readLegacy + deps.
+// Retained only to preserve the public constructor signature the route passes. Run-ops routing
+// (NEW vs LEGACY residency, replica reads) is now handled inside the injected `runStore`, so
+// these deps are no longer consulted for the read.
 type ApiWaitpointPresenterReadThroughDeps = {
   newClient?: PrismaReplicaClient;
   legacyReplica?: PrismaReplicaClient;
@@ -21,7 +21,8 @@ export class ApiWaitpointPresenter extends BasePresenter {
   constructor(
     prismaClient?: PrismaClientOrTransaction,
     replicaClient?: PrismaClientOrTransaction,
-    private readonly readThroughDeps?: ApiWaitpointPresenterReadThroughDeps
+    private readonly readThroughDeps?: ApiWaitpointPresenterReadThroughDeps,
+    private readonly runStore = defaultRunStore
   ) {
     super(prismaClient, replicaClient);
   }
@@ -39,55 +40,31 @@ export class ApiWaitpointPresenter extends BasePresenter {
     waitpointId: string
   ) {
     return this.trace("call", async (span) => {
-      // Public waitpoint retrieve. Split on: new run-ops client first, then the LEGACY
-      // RUN-OPS READ REPLICA ONLY on a new-probe miss — never the legacy primary.
-      // Split off (single-DB / self-host): one plain waitpoint.findFirst against the replica
-      // (passthrough). The waitpointId is the residency-classifiable run-ops id (the route
-      // pre-decodes the friendlyId via WaitpointId.toId).
-      const hydrate = (client: PrismaReplicaClient) =>
-        client.waitpoint.findFirst({
-          where: {
-            id: waitpointId,
-            environmentId: environment.id,
-          },
-          select: {
-            id: true,
-            friendlyId: true,
-            type: true,
-            status: true,
-            idempotencyKey: true,
-            userProvidedIdempotencyKey: true,
-            idempotencyKeyExpiresAt: true,
-            inactiveIdempotencyKey: true,
-            output: true,
-            outputType: true,
-            outputIsError: true,
-            completedAfter: true,
-            completedAt: true,
-            createdAt: true,
-            tags: true,
-          },
-        });
-
-      const result = await readThroughRun({
-        runId: waitpointId,
-        environmentId: environment.id,
-        readNew: (client) => hydrate(client),
-        readLegacy: (replica) => hydrate(replica),
-        deps: {
-          splitEnabled: this.readThroughDeps?.splitEnabled,
-          // Default both clients to the inherited _replica handle (declared
-          // PrismaClientOrTransaction but $replica at runtime) so passthrough reads the replica
-          // as today; split mode injects a distinct newClient.
-          newClient: this.readThroughDeps?.newClient ?? (this._replica as PrismaReplicaClient),
-          legacyReplica:
-            this.readThroughDeps?.legacyReplica ?? (this._replica as PrismaReplicaClient),
-          isPastRetention: this.readThroughDeps?.isPastRetention,
+      // The store routes by the waitpointId's residency (id shape) and reads the owning
+      // store's replica. waitpointId is pre-decoded from the friendlyId via WaitpointId.toId.
+      const waitpoint = await this.runStore.findWaitpoint({
+        where: {
+          id: waitpointId,
+          environmentId: environment.id,
+        },
+        select: {
+          id: true,
+          friendlyId: true,
+          type: true,
+          status: true,
+          idempotencyKey: true,
+          userProvidedIdempotencyKey: true,
+          idempotencyKeyExpiresAt: true,
+          inactiveIdempotencyKey: true,
+          output: true,
+          outputType: true,
+          outputIsError: true,
+          completedAfter: true,
+          completedAt: true,
+          createdAt: true,
+          tags: true,
         },
       });
-
-      const waitpoint =
-        result.source === "new" || result.source === "legacy-replica" ? result.value : null;
 
       if (!waitpoint) {
         logger.error(`WaitpointPresenter: Waitpoint not found`, {

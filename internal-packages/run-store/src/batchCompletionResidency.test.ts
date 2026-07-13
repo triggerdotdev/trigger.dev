@@ -152,10 +152,10 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
     }
   );
 
-  // Control: a cuid batch on #legacy still updates through the router when the same (legacy) client
-  // is passed as tx — the tx IS forwarded for LEGACY (same physical DB), so atomicity is preserved.
+  // Control: a cuid batch on #legacy still updates through the router when a client is passed as tx.
+  // The caller's tx is dropped and the routed write runs on the legacy store's own client.
   heteroRunOpsPostgresTest(
-    "updateBatchTaskRun control: a cuid batch on #legacy still updates with the control-plane tx forwarded",
+    "updateBatchTaskRun control: a cuid batch on #legacy updates with the caller's tx dropped",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma14, "legacy", "updbatch_leg");
@@ -214,9 +214,10 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
     }
   );
 
-  // Control: a cuid batch is created on #legacy with the same control-plane tx forwarded (same DB).
+  // Control: a cuid batch is created on #legacy with the caller's tx dropped — the routed create
+  // runs on the legacy store's own client.
   heteroRunOpsPostgresTest(
-    "createBatchTaskRun control: a cuid batch lands on #legacy with the control-plane tx forwarded",
+    "createBatchTaskRun control: a cuid batch lands on #legacy with the caller's tx dropped",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedEnvironment(prisma14, "legacy", "crbatch_leg");

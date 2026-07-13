@@ -101,7 +101,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const part = await request.text();
   const partId = request.headers.get("X-Part-Id") ?? nanoid(7);
 
-  const [appendError] = await tryCatch(
+  const [appendError, appendSeq] = await tryCatch(
     realtimeStream.appendPartToSessionStream(part, partId, addressingKey, io)
   );
 
@@ -148,5 +148,5 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  return json({ ok: true }, { status: 200 });
+  return json({ ok: true, seq: appendSeq ?? undefined }, { status: 200 });
 }

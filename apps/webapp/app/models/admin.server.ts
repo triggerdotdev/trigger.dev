@@ -130,7 +130,6 @@ export async function adminGetOrganizations(userId: string, { page, search }: Se
       id: true,
       slug: true,
       title: true,
-      v2Enabled: true,
       isActivated: true,
       deletedAt: true,
       members: {

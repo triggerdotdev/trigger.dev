@@ -23,7 +23,13 @@
  * ```
  */
 
-import type { ChatTransport, UIMessage, UIMessageChunk, ChatRequestOptions } from "ai";
+import type {
+  ChatTransport,
+  ModelMessage,
+  UIMessage,
+  UIMessageChunk,
+  ChatRequestOptions,
+} from "ai";
 import {
   controlSubtype,
   headerValue,
@@ -37,10 +43,123 @@ function byteLength(body: string): number {
   return new TextEncoder().encode(body).byteLength;
 }
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
-import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { slimSubmitMessageForWire } from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
+
+/**
+ * The wire payload shape sent by `TriggerChatTransport`.
+ * Uses `metadata` to match the AI SDK's `ChatRequestOptions` field name.
+ *
+ * Slim wire: at most ONE message per record. The agent runtime
+ * reconstructs prior history at run boot from a durable S3 snapshot +
+ * `session.out` replay (or `hydrateMessages` if registered).
+ *
+ * Declared here (rather than the internal shared module) so `declaration:
+ * true` consumers can name inferred agent types via this public subpath.
+ */
+export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
+  /**
+   * The single message being delivered on this trigger. Set for:
+   *   - `submit-message`: the new user message OR a tool-approval-responded
+   *     assistant message (with `state: "approval-responded"` tool parts).
+   *   - `regenerate-message`: omitted (the agent slices its own history).
+   *   - `preload` / `close` / `action`: omitted.
+   *   - `handover-prepare`: omitted (use `headStartMessages` instead).
+   */
+  message?: TMessage;
+  /**
+   * Bespoke escape hatch for `chat.headStart`. The customer's HTTP route
+   * handler ships full `UIMessage[]` history at the very first turn — before
+   * any snapshot exists. The route handler isn't subject to the
+   * `MAX_APPEND_BODY_BYTES` cap on `/in/append` because it goes through the
+   * customer's own HTTP endpoint. Used ONLY by `trigger: "handover-prepare"`.
+   * Ignored on every other trigger.
+   */
+  headStartMessages?: TMessage[];
+  chatId: string;
+  trigger:
+    | "submit-message"
+    | "regenerate-message"
+    | "preload"
+    | "close"
+    | "action"
+    /**
+     * The customer's `chat.handover` route handler kicked us off in
+     * parallel with the first-turn `streamText` running in the warm
+     * Next.js process. The run sits idle on `session.in` waiting for
+     * a `kind: "handover"` (continue from tool execution) or
+     * `kind: "handover-skip"` (handler finished pure-text, exit
+     * cleanly). See `chat.handover` in `@trigger.dev/sdk/chat-server`.
+     */
+    | "handover-prepare";
+  messageId?: string;
+  metadata?: TMetadata;
+  /** Custom action payload when `trigger` is `"action"`. Validated against `actionSchema` on the backend. */
+  action?: unknown;
+  /** Whether this run is continuing an existing chat whose previous run ended. */
+  continuation?: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
+  /** Override idle timeout for this run (seconds). Set by transport.preload(). */
+  idleTimeoutInSeconds?: number;
+  /**
+   * The friendlyId of the Session primitive backing this chat. The
+   * transport opens (or lazy-creates) the session with
+   * `externalId = chatId` on first message, then sends this friendlyId
+   * through to the run so the agent can attach to `.in` / `.out`
+   * without needing to round-trip through the control plane again.
+   * Optional for backward-compat while the migration is in flight;
+   * required once the legacy run-scoped stream path is removed.
+   */
+  sessionId?: string;
+};
+
+/**
+ * One chunk on the chat input stream. `kind` discriminates the variants —
+ * a single ordered stream carries all the signals (`message`, `stop`,
+ * `handover`, `handover-skip`).
+ */
+export type ChatInputChunk<TMessage extends UIMessage = UIMessage, TMetadata = unknown> =
+  | {
+      kind: "message";
+      /** Full wire payload for a new user message or regeneration. */
+      payload: ChatTaskWirePayload<TMessage, TMetadata>;
+    }
+  | {
+      kind: "stop";
+      /** Optional human-readable reason. */
+      message?: string;
+    }
+  | {
+      /**
+       * Sent by `chat.headStart` when the customer's first-turn
+       * `streamText` finishes. The agent run (parked in
+       * `handover-prepare`) wakes, seeds its accumulators with
+       * `partialAssistantMessage`, and runs the normal turn loop.
+       * `isFinal: false` means step 1 ended in tool-calls (the agent
+       * executes them and continues); `isFinal: true` means step 1 was
+       * the complete response (the agent skips the LLM call).
+       */
+      kind: "handover";
+      /** Customer's step-1 response messages (ModelMessage form). */
+      partialAssistantMessage: ModelMessage[];
+      /**
+       * The UI messageId the customer's handler used for its step-1
+       * assistant message, reused so post-handover chunks merge into
+       * the SAME assistant message on the browser side.
+       */
+      messageId?: string;
+      isFinal: boolean;
+    }
+  | {
+      /**
+       * Sent by `chat.headStart` only when the customer's handler
+       * ABORTS before producing a finishReason. The agent run exits
+       * cleanly without firing turn hooks.
+       */
+      kind: "handover-skip";
+    };
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
 
 /**
@@ -730,11 +849,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // and the server-side dedupe sees one logical append.
     const partId = crypto.randomUUID();
     const serializedBody = this.serializeInputChunk({ kind: "message", payload: wirePayload });
-    const sendChatMessage = async (token: string) => {
-      await this.appendInputChunk(chatId, token, serializedBody, partId);
-    };
+    const sendChatMessage = (token: string) =>
+      this.appendInputChunk(chatId, token, serializedBody, partId);
 
-    await this.sendWithEvents(
+    const inSeq = await this.sendWithEvents(
       chatId,
       trigger,
       {
@@ -755,7 +873,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
 
-    return this.subscribeToSessionStream(state, abortSignal, chatId);
+    return this.subscribeToSessionStream(state, abortSignal, chatId, { sinceInSeq: inSeq });
   };
 
   /**
@@ -1124,12 +1242,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const body = this.serializeInputChunk({ kind: "message", payload: wirePayload });
     const partId = crypto.randomUUID();
-    const send = async (token: string) => {
-      await this.appendInputChunk(chatId, token, body, partId);
-    };
+    const send = (token: string) => this.appendInputChunk(chatId, token, body, partId);
 
-    await this.sendWithEvents(chatId, "action", { partId, bodyBytes: byteLength(body) }, () =>
-      this.callWithAuthRetry(chatId, state, send)
+    const inSeq = await this.sendWithEvents(
+      chatId,
+      "action",
+      { partId, bodyBytes: byteLength(body) },
+      () => this.callWithAuthRetry(chatId, state, send)
     );
 
     // Supersede any in-flight reader before subscribing — same as
@@ -1147,7 +1266,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
 
-    return this.subscribeToSessionStream(state, undefined, chatId);
+    return this.subscribeToSessionStream(state, undefined, chatId, { sinceInSeq: inSeq });
   };
 
   // -------------------------------------------------------------------------
@@ -1191,15 +1310,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   }
 
   /** Run a send op, emitting the terminal message-sent / message-send-failed event. */
-  private async sendWithEvents(
+  private async sendWithEvents<T>(
     chatId: string,
     source: ChatTransportSendSource,
     extras: { messageId?: string; partId?: string; bodyBytes?: number },
-    op: () => Promise<void>
-  ): Promise<void> {
+    op: () => Promise<T>
+  ): Promise<T> {
     const startedAt = Date.now();
     try {
-      await op();
+      const result = await op();
       const turnProducing =
         source === "submit-message" || source === "regenerate-message" || source === "head-start";
       if (turnProducing) {
@@ -1213,6 +1332,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         durationMs: Date.now() - startedAt,
         ...extras,
       });
+      return result;
     } catch (error) {
       const status = (error as { status?: unknown }).status;
       this.emitEvent({
@@ -1384,7 +1504,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     token: string,
     body: string,
     partId?: string
-  ): Promise<void> {
+  ): Promise<number | undefined> {
     const ctx: ChatTransportEndpointContext = { endpoint: "in", chatId };
     const url = `${this.resolveBaseURL(ctx)}/realtime/v1/sessions/${encodeURIComponent(chatId)}/in/append`;
     // extraHeaders first so the fixed headers below win — a transport-wide
@@ -1407,24 +1527,26 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       err.status = response.status;
       throw err;
     }
+    // The appended record's `.in` seq, for correlating the response stream to
+    // this send. Omitted by older webapps / a lost idempotency claim.
+    const data = (await response.json().catch(() => undefined)) as { seq?: unknown } | undefined;
+    return typeof data?.seq === "number" ? data.seq : undefined;
   }
 
-  private async callWithAuthRetry(
+  private async callWithAuthRetry<T>(
     chatId: string,
     state: ChatSessionState,
-    op: (token: string) => Promise<void>
-  ): Promise<void> {
+    op: (token: string) => Promise<T>
+  ): Promise<T> {
     // 1) Try with the current PAT.
     try {
-      await op(state.publicAccessToken);
-      return;
+      return await op(state.publicAccessToken);
     } catch (err) {
       if (isSessionNotFoundError(err)) {
         // The cached PAT authenticated but the session doesn't exist here —
         // recreate it and retry.
         await this.recreateSession(chatId, state);
-        await op(state.publicAccessToken);
-        return;
+        return await op(state.publicAccessToken);
       }
       if (!isAuthError(err)) throw err;
     }
@@ -1435,8 +1557,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.publicAccessToken = fresh;
     this.notifySessionChange(chatId, state);
     try {
-      await op(fresh);
-      return;
+      return await op(fresh);
     } catch (err) {
       if (!isSessionNotFoundError(err)) throw err;
     }
@@ -1445,7 +1566,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     //    state is stale (created in a different environment, or before the
     //    sessions upgrade). Recreate the session and retry once.
     await this.recreateSession(chatId, state);
-    await op(state.publicAccessToken);
+    return await op(state.publicAccessToken);
   }
 
   /**
@@ -1493,6 +1614,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       sendStopOnAbort?: boolean;
       peekSettled?: boolean;
       resumed?: boolean;
+      /** `.in` seq of the send that opened this stream; skip turn-completes below it (earlier turns). */
+      sinceInSeq?: number;
     }
   ): ReadableStream<UIMessageChunk> {
     const internalAbort = new AbortController();
@@ -1750,6 +1873,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
 
             if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+              // Skip a turn-complete from an earlier turn (committed `.in` cursor
+              // below this send's seq), e.g. an undo action that raced this send.
+              if (options?.sinceInSeq !== undefined) {
+                const cursorRaw = headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER);
+                const cursor = cursorRaw !== undefined ? Number.parseInt(cursorRaw, 10) : NaN;
+                if (!Number.isNaN(cursor) && cursor < options.sinceInSeq) {
+                  continue;
+                }
+              }
               const refreshedToken =
                 headerValue(value.headers, PUBLIC_ACCESS_TOKEN_HEADER) ??
                 legacyChunk?.publicAccessToken;

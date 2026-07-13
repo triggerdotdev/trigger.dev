@@ -25,7 +25,7 @@ import {
   redirectWithErrorMessage,
 } from "~/models/message.server";
 import { authenticator } from "~/services/auth.server";
-import { checkMfaRateLimit, MfaRateLimitError } from "~/services/mfa/mfaRateLimiter.server";
+import { checkMfaRateLimit, MfaRateLimitError } from "~/services/mfa/mfaRateLimiterGlobal.server";
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
 import { trackAndClearReferralSource } from "~/services/referralSource.server";
 import { commitAuthenticatedSession } from "~/services/sessionDuration.server";

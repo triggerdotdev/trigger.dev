@@ -10,9 +10,8 @@ import { DefaultTriggerTaskValidator } from "~/runEngine/validators/triggerTaskV
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "../engineVersion.server";
 import { tracer } from "../tracer.server";
-import { isV3Disabled, V3_TRIGGER_DEPRECATION_MESSAGE } from "../engineDeprecation.server";
+import { V3_TRIGGER_DEPRECATION_MESSAGE } from "../engineDeprecation.server";
 import { ServiceValidationError, WithRunEngine } from "./baseService.server";
-import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
 
 export type TriggerTaskServiceOptions = {
   idempotencyKey?: string;
@@ -74,31 +73,16 @@ export class TriggerTaskService extends WithRunEngine {
 
       switch (v) {
         case "V1": {
-          // v3 (engine V1) is being sunset. When the shutdown is on, reject the
-          // trigger with a graceful, actionable error instead of creating a V1
-          // run. Covers single, batch, schedule, replay, and triggerAndWait,
-          // which all route through here.
-          if (isV3Disabled()) {
-            throw new ServiceValidationError(V3_TRIGGER_DEPRECATION_MESSAGE);
-          }
-
-          return await this.callV1(taskId, environment, body, options);
+          // v3 (engine V1) is retired. Reject the trigger with a graceful,
+          // actionable error instead of executing. Covers single, batch,
+          // schedule, replay, and triggerAndWait, which all route through here.
+          throw new ServiceValidationError(V3_TRIGGER_DEPRECATION_MESSAGE);
         }
         case "V2": {
           return await this.callV2(taskId, environment, body, options);
         }
       }
     });
-  }
-
-  private async callV1(
-    taskId: string,
-    environment: AuthenticatedEnvironment,
-    body: TriggerTaskRequestBody,
-    options: TriggerTaskServiceOptions = {}
-  ): Promise<TriggerTaskServiceResult | undefined> {
-    const service = new TriggerTaskServiceV1(this._prisma);
-    return await service.call(taskId, environment, body, options);
   }
 
   private async callV2(

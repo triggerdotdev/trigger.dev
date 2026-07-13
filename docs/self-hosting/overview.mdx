@@ -10,6 +10,13 @@ You are responsible for provisioning resources, handling updates, and managing a
 
 We provide version-tagged releases for self-hosted deployments. It's highly advised to use these tags exclusively and keep them locked with your CLI version.
 
+<Warning>
+  **v3 is end of life.** Trigger.dev 4.5.0 is the last version we officially support for running
+  v3 (SDK v3) tasks. If you still have v3 tasks, stay on 4.5.0 or [migrate to
+  v4](/migrating-from-v3). 4.5.1 and later reject v3 triggers, batch triggers, and deploys with an
+  upgrade message; v4 workloads are unaffected.
+</Warning>
+
 ## Should you self-host?
 
 Trigger.dev Cloud is fully managed, scalable, and comes with dedicated support. For most users, it offers the best experience. However, if you have specific requirements around data residency, compliance, or infrastructure control, self-hosting may be the right choice for you.

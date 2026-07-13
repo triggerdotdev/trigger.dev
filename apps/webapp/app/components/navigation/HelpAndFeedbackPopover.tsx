@@ -8,6 +8,7 @@ import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { RadarPulseIcon } from "~/assets/icons/RadarPulseIcon";
 import { StarIcon } from "~/assets/icons/StarIcon";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { sanitizeHttpUrl } from "~/utils/sanitizeUrl";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { useRecentChangelogs } from "~/routes/resources.platform-changelogs";
 import { cn } from "~/utils/cn";
@@ -158,7 +159,7 @@ export function HelpAndFeedback({
                   trailingIconClassName="text-text-dimmed"
                   inactiveIconColor="text-text-dimmed"
                   activeIconColor="text-text-dimmed"
-                  to={entry.actionUrl ?? "https://trigger.dev/changelog"}
+                  to={sanitizeHttpUrl(entry.actionUrl) ?? "https://trigger.dev/changelog"}
                   target="_blank"
                 />
               ))}

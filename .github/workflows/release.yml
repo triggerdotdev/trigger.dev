@@ -32,7 +32,7 @@ concurrency:
 jobs:
   show-release-summary:
     name: 📋 Release Summary
-    runs-on: warp-ubuntu-latest-x64-2x
+    runs-on: ubuntu-latest
     permissions: {}
     if: |
       github.repository == 'triggerdotdev/trigger.dev' &&
@@ -48,7 +48,7 @@ jobs:
 
   release:
     name: 🚀 Release npm packages
-    runs-on: warp-ubuntu-latest-x64-8x
+    runs-on: ubuntu-latest # this cannot run on non-GH runner
     environment: npm-publish
     permissions:
       contents: write
@@ -143,6 +143,21 @@ jobs:
           STEPS_GET_VERSION_OUTPUTS_IS_PRERELEASE: ${{ steps.get_version.outputs.is_prerelease }}
         run: |
           VERSION="${STEPS_GET_VERSION_OUTPUTS_PACKAGE_VERSION}"
+
+          # On the pull_request merge event RELEASE_PR_BODY is the merged "Version Packages"
+          # PR body, which holds the changelog. On a workflow_dispatch re-run (the recovery
+          # path after a failed merge-triggered run) there is no pull_request context, so it's
+          # empty. Fall back to the body of the most recently merged changeset-release/main PR
+          # so the "What's changed" section is still populated.
+          if [ -z "${RELEASE_PR_BODY}" ]; then
+            echo "RELEASE_PR_BODY is empty (workflow_dispatch re-run); fetching merged changeset-release/main PR body"
+            RELEASE_PR_BODY="$(gh pr list --repo triggerdotdev/trigger.dev \
+              --head changeset-release/main --state merged \
+              --json body,mergedAt --limit 10 \
+              -q 'sort_by(.mergedAt) | reverse | .[0].body')"
+          fi
+          export RELEASE_PR_BODY
+
           node scripts/generate-github-release.mjs "$VERSION" > /tmp/release-body.md
           PRERELEASE_FLAG=""
           if [ "${STEPS_GET_VERSION_OUTPUTS_IS_PRERELEASE}" = "true" ]; then
@@ -266,7 +281,7 @@ jobs:
   # The prerelease job needs to be on the same workflow file due to a limitation related to how npm verifies OIDC claims.
   prerelease:
     name: 🧪 Prerelease
-    runs-on: warp-ubuntu-latest-x64-8x
+    runs-on: ubuntu-latest # this cannot run on non-GH runner
     environment: npm-publish
     permissions:
       contents: read

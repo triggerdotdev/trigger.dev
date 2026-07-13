@@ -11,9 +11,15 @@ import { createPlatformNotification } from "~/services/platformNotifications.ser
 
 const LAST_OWNER_NOTIFICATION_TITLE = "Directory Sync: last Owner protected";
 
-// Raise a user-scoped, deduped notification when the directory tried to
-// remove the org's last Owner. We keep the member and tell the Owner what to
-// do; a single undismissed notification is enough (don't spam on every retry).
+// Effects are idempotent and the worker retries, so a single failed attempt is
+// transient (usually a serializable-conflict retry), not an alert. `logLevel`
+// makes the worker log it at warn instead of paging.
+function retryableEffectError(message: string): Error {
+  return Object.assign(new Error(message), { logLevel: "warn" as const });
+}
+
+// Deduped notification when the directory tried to remove the org's last Owner:
+// we keep the member, and one undismissed notification is enough (no retry spam).
 async function notifyLastOwnerProtected(userId: string, organizationId: string): Promise<void> {
   const existing = await prisma.platformNotification.findFirst({
     where: {
@@ -60,9 +66,6 @@ async function notifyLastOwnerProtected(userId: string, organizationId: string):
   }
 }
 
-// Apply one directory-sync membership effect against public.* tables. The
-// plugin owns all enterprise.* state and never writes here; this is the only
-// path that mutates User / OrgMember / roles / tokens from a directory event.
 async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
   switch (effect.kind) {
     case "provision": {
@@ -83,8 +86,8 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
         source: "directory_sync",
       });
 
-      // Directory is authoritative for role: overwrite even for an existing
-      // member (ensureOrgMember only sets the role on first create).
+      // Directory owns the role: overwrite even an existing member
+      // (ensureOrgMember only sets it on create).
       if (effect.roleId) {
         const result = await rbac.setUserRole({
           userId,
@@ -92,7 +95,19 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
           roleId: effect.roleId,
         });
         if (!result.ok) {
-          throw new Error(`directorySync provision setUserRole failed: ${result.error}`);
+          // The org must keep one Owner: skip the role overwrite for the last
+          // Owner (they keep Owner) instead of failing the whole batch. Applies
+          // to a directory burst and to a dashboard group remap alike.
+          if (result.code === "last_owner") {
+            logger.info("directorySync: kept last Owner, skipped provision role overwrite", {
+              userId,
+              organizationId: effect.organizationId,
+            });
+          } else {
+            throw retryableEffectError(
+              `directorySync provision setUserRole failed: ${result.error}`
+            );
+          }
         }
       }
       return;
@@ -104,7 +119,16 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
         roleId: effect.roleId,
       });
       if (!result.ok) {
-        throw new Error(`directorySync set_role failed: ${result.error}`);
+        // Keeping the org's last Owner is expected, not a failure — skip this
+        // one member and let the rest of the remap apply (no server error).
+        if (result.code === "last_owner") {
+          logger.info("directorySync: kept last Owner, skipped set_role", {
+            userId: effect.userId,
+            organizationId: effect.organizationId,
+          });
+          return;
+        }
+        throw retryableEffectError(`directorySync set_role failed: ${result.error}`);
       }
       return;
     }
@@ -121,9 +145,6 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
   }
 }
 
-// Apply all effects from a processed directory-sync webhook. Effects are
-// idempotent, so a worker retry that re-applies them converges. A throw
-// propagates to the worker for retry.
 export async function applyDirectorySyncEffects(effects: DirectorySyncEffect[]): Promise<void> {
   for (const effect of effects) {
     await applyEffect(effect);

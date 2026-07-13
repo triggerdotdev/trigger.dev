@@ -9,6 +9,7 @@ import type {
   TaskRunExecutionStatus,
   RuntimeEnvironmentType,
   Waitpoint,
+  WaitpointTag,
 } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { Residency } from "@trigger.dev/core/v3/isomorphic";
@@ -233,6 +234,20 @@ export type RewriteDebouncedRunData = {
   runTags?: string[];
 };
 
+/**
+ * Input for {@link RunStore.finalizeRun}: the terminal `status` and its `error` are written in ONE
+ * update (a separate later error write races realtime, which shuts the stream on the final status
+ * before the error lands). `bulkActionId` is pushed onto `bulkActionGroupIds`. Every field is
+ * optional so a caller can finalize with any subset (e.g. status-only, or expire with expiredAt).
+ */
+export type FinalizeRunData = {
+  status?: TaskRunStatus;
+  expiredAt?: Date;
+  completedAt?: Date;
+  error?: TaskRunError;
+  bulkActionId?: string;
+};
+
 export type ClearIdempotencyKeyInput =
   | { byId: { runId: string; idempotencyKey: string }; byPredicate?: never; byFriendlyIds?: never }
   | {
@@ -393,6 +408,27 @@ export interface RunStore {
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+
+  // Generic dual-residency finalize: writes the terminal `status` and its `error` in ONE update,
+  // pushing `bulkActionId` onto `bulkActionGroupIds`. Overloads mirror findRun: select / include /
+  // bare full-row.
+  finalizeRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  finalizeRun<I extends Prisma.TaskRunInclude>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { include: I },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  finalizeRun(
+    runId: string,
+    data: FinalizeRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
 
   // Expiry
   expireRun<S extends Prisma.TaskRunSelect>(
@@ -572,6 +608,21 @@ export interface RunStore {
     },
     client?: ReadClient
   ): Promise<TaskRun[]>;
+
+  // Grouped replacement for `Promise.all(ids.map(id => findRun(id)))`: one round trip for the
+  // whole id batch instead of one per id. Returns an id-keyed Map; missing/duplicate ids are
+  // simply absent/collapsed.
+  findRunsByIds<S extends Prisma.TaskRunSelect>(
+    ids: string[],
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ select: S }>>>;
+  findRunsByIds<I extends Prisma.TaskRunInclude>(
+    ids: string[],
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ include: I }>>>;
+  findRunsByIds(ids: string[], client?: ReadClient): Promise<Map<string, TaskRun>>;
 
   // --- run-ops persistence ---
   // Snapshots, waitpoints, implicit M:N joins, dependents, attempts and checkpoints. The
@@ -753,4 +804,38 @@ export interface RunStore {
     args: Prisma.BatchTaskRunItemUpdateManyArgs,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.BatchPayload>;
+  // An item co-resides with both its batch (batchTaskRunId FK) and its child run (taskRunId FK) on
+  // ONE DB, so a read keyed by either scalar routes to that store; `include` resolves the co-resident
+  // relations locally.
+  findManyBatchTaskRunItems<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { taskRunId?: string; batchTaskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]>;
+  findBatchTaskRunItem<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { batchTaskRunId: string; taskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null>;
+
+  // --- WaitpointTag (run-ops) ---
+  // A WaitpointTag has no run/waitpoint FK — a standalone entity keyed by (environmentId, name).
+  // Callers never mint a tag id (defaults to cuid), so the WRITE is always LEGACY-resident today
+  // (single-homed), like standalone waitpoint tokens; the READ still fans out NEW→LEGACY and
+  // de-dupes by id in case tag ids ever become residency-aware.
+  upsertWaitpointTag(
+    data: { environmentId: string; name: string; projectId: string; id?: string },
+    tx?: PrismaClientOrTransaction
+  ): Promise<WaitpointTag>;
+  findManyWaitpointTags(
+    args: {
+      where: Prisma.WaitpointTagWhereInput;
+      orderBy?:
+        | Prisma.WaitpointTagOrderByWithRelationInput
+        | Prisma.WaitpointTagOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+    },
+    client?: ReadClient
+  ): Promise<WaitpointTag[]>;
 }

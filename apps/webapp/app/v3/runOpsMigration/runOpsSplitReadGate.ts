@@ -1,5 +1,7 @@
-// Pure run-ops split READ gate. The LEGACY handle is intentionally the control-plane client,
-// so only the NEW client's distinctness gates (see runOpsSplitReadGate.test.ts).
+// Pure run-ops split READ gate. Track 2: the legacy handle is now its OWN independent client (not the
+// control-plane client), so this gate keys purely on the NEW replica being a distinct dedicated client
+// from BOTH control-plane handles — else fan-out would just re-read the control-plane DB. Keeping
+// replica reads off primaries for all three roles is markReadReplicaClient's job, not this boolean's.
 export function computeRunOpsSplitReadEnabled(args: {
   newReplica: unknown;
   controlPlaneWriter: unknown;

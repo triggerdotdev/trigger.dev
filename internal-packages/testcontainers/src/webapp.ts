@@ -116,7 +116,6 @@ export async function startWebapp(
       RUN_ENGINE_WORKER_ENABLED: "0", // disables run engine workers (checked === "0", default "1")
       SCHEDULE_WORKER_ENABLED: "0", // disables schedule engine worker (checked === "0")
       BATCH_QUEUE_WORKER_ENABLED: "false", // disables batch queue consumers (BoolEnv)
-      LEGACY_RUN_ENGINE_WORKER_ENABLED: "0", // disables legacy run engine worker
       COMMON_WORKER_ENABLED: "0", // disables common worker
       RUN_ENGINE_TTL_SYSTEM_DISABLED: "true", // disables TTL expiry system (BoolEnv)
       RUN_ENGINE_TTL_CONSUMERS_DISABLED: "true", // disables TTL consumers (BoolEnv)

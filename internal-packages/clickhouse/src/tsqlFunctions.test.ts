@@ -28,6 +28,13 @@ const taskRunsSchema: TableSchema = {
     completed_at: { name: "completed_at", ...column("Nullable(DateTime64)") },
     is_test: { name: "is_test", ...column("UInt8") },
     tags: { name: "tags", ...column("Array(String)") },
+    output: {
+      name: "output",
+      ...column("JSON"),
+      nullValue: "'{}'",
+      textColumn: "output_text",
+      dataPrefix: "data",
+    },
     usage_duration_ms: { name: "usage_duration_ms", ...column("UInt32") },
     cost_in_cents: { name: "cost_in_cents", ...column("Float64") },
     attempt: { name: "attempt", ...column("UInt8") },
@@ -65,7 +72,7 @@ const defaultTaskRun = {
   started_at: Date.now() - 5000,
   completed_at: Date.now(),
   tags: ["tag-a", "tag-b"],
-  output: null,
+  output: { data: { count: 42, label: "ok", ratio: 1.5, enabled: true, items: [1, 2, 3] } },
   error: null,
   usage_duration_ms: 4500,
   cost_in_cents: 1.5,
@@ -572,6 +579,33 @@ describe("TSQL Function Smoke Tests", () => {
       ],
       ["JSONExtractKeys", `SELECT JSONExtractKeys('{"a": 1, "b": 2}') AS r FROM task_runs`],
       ["toJSONString", "SELECT toJSONString(map('a', 1)) AS r FROM task_runs"],
+      // The `output` column is a native JSON type, so JSON functions must read its
+      // String companion (output_text). Without the printer fix these fail with
+      // "should be a string containing JSON, illegal type: JSON".
+      ["JSONHas(output)", "SELECT JSONHas(output, 'count') AS r FROM task_runs"],
+      ["JSONLength(output)", "SELECT JSONLength(output) AS r FROM task_runs"],
+      ["JSONType(output)", "SELECT JSONType(output, 'count') AS r FROM task_runs"],
+      ["JSONExtractInt(output)", "SELECT JSONExtractInt(output, 'count') AS r FROM task_runs"],
+      ["JSONExtractUInt(output)", "SELECT JSONExtractUInt(output, 'count') AS r FROM task_runs"],
+      ["JSONExtractFloat(output)", "SELECT JSONExtractFloat(output, 'ratio') AS r FROM task_runs"],
+      ["JSONExtractBool(output)", "SELECT JSONExtractBool(output, 'enabled') AS r FROM task_runs"],
+      [
+        "JSONExtractString(output)",
+        "SELECT JSONExtractString(output, 'label') AS r FROM task_runs",
+      ],
+      ["JSONExtractRaw(output)", "SELECT JSONExtractRaw(output, 'count') AS r FROM task_runs"],
+      ["JSONExtractKeys(output)", "SELECT JSONExtractKeys(output) AS r FROM task_runs"],
+      // The JSON field can be wrapped in a passthrough like assumeNotNull; the swap
+      // still has to reach the native column underneath.
+      [
+        "JSONExtractArrayRaw(assumeNotNull(output))",
+        "SELECT JSONExtractArrayRaw(assumeNotNull(output), 'items') AS r FROM task_runs",
+      ],
+      // toJSONString(output) is already a String, so it stays on the native column.
+      [
+        "JSONExtractString(toJSONString(output))",
+        "SELECT JSONExtractString(toJSONString(output), 'data', 'label') AS r FROM task_runs",
+      ],
     ]);
   });
 

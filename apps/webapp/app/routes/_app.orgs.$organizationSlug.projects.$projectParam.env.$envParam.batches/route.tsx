@@ -51,7 +51,7 @@ import { requireUserId } from "~/services/session.server";
 import {
   $replica,
   runOpsNewReplicaClient,
-  runOpsLegacyReplica,
+  runOpsLegacyReplicaClient,
   runOpsSplitReadEnabled,
   type PrismaClientOrTransaction,
 } from "~/db.server";
@@ -98,8 +98,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const filters = BatchListFilters.parse(s);
 
   const presenter = new BatchListPresenter(undefined, undefined, {
-    runOpsNew: runOpsNewReplicaClient as unknown as PrismaClientOrTransaction,
-    runOpsLegacyReplica: runOpsLegacyReplica as unknown as PrismaClientOrTransaction,
+    runOpsNew: runOpsNewReplicaClient,
+    runOpsLegacyReplica: runOpsLegacyReplicaClient,
     controlPlaneReplica: $replica as unknown as PrismaClientOrTransaction,
     splitEnabled: runOpsSplitReadEnabled,
   });
