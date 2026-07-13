@@ -1,5 +1,12 @@
 # internal-platform
 
+## 4.5.4
+
+### Patch Changes
+
+- Removed the unused `ResourceMonitor` export from `@trigger.dev/core/v3/serverOnly`. It was a server-side logging helper with no remaining consumers. ([#4244](https://github.com/triggerdotdev/trigger.dev/pull/4244))
+- Removed the unused `@trigger.dev/core/v3/zodNamespace` export and the legacy v3 socket message schemas. These were only used by the now-retired v3 engine and have no v4 consumers. ([#4236](https://github.com/triggerdotdev/trigger.dev/pull/4236))
+
 ## 4.5.3
 
 ## 4.5.2
