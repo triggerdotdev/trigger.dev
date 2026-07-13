@@ -264,6 +264,70 @@ export async function provisionOrganizationSupportChannel({
   }
 }
 
+export async function linkSupportChannel({
+  organizationId,
+  prisma,
+  channel,
+  reassign = false,
+}: {
+  organizationId: string;
+  prisma: PrismaClientOrTransaction;
+  channel: { channelId: string; channelName: string };
+  reassign?: boolean;
+}): Promise<{ status: "linked" } | { status: "conflict"; reason: string }> {
+  const channelOwner = await prisma.organizationSupportChannel.findFirst({
+    where: { slackChannelId: channel.channelId },
+  });
+  if (channelOwner && channelOwner.organizationId !== organizationId) {
+    return {
+      status: "conflict",
+      reason: `Channel ${channel.channelId} is already linked to another organization`,
+    };
+  }
+
+  const existing = await prisma.organizationSupportChannel.findFirst({
+    where: { organizationId },
+  });
+
+  if (existing?.slackChannelId && existing.slackChannelId !== channel.channelId && !reassign) {
+    return {
+      status: "conflict",
+      reason: `Organization is already linked to a different channel (${existing.slackChannelId})`,
+    };
+  }
+
+  try {
+    await prisma.organizationSupportChannel.upsert({
+      where: { organizationId },
+      create: {
+        organizationId,
+        status: "LINKED",
+        slackChannelId: channel.channelId,
+        slackChannelName: channel.channelName,
+      },
+      update: {
+        status: "LINKED",
+        slackChannelId: channel.channelId,
+        slackChannelName: channel.channelName,
+      },
+    });
+    return { status: "linked" };
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "P2002"
+    ) {
+      return {
+        status: "conflict",
+        reason: `Channel ${channel.channelId} is already linked to another organization`,
+      };
+    }
+    throw error;
+  }
+}
+
 export type ChannelCandidate = {
   channelId: string;
   channelName: string;

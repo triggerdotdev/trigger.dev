@@ -3,6 +3,7 @@ import { postgresTest } from "@internal/testcontainers";
 import {
   isPaidPlan,
   isCustomerSupportChannel,
+  linkSupportChannel,
   pickExternalTeamId,
   proposeOrgMatches,
   provisionOrganizationSupportChannel,
@@ -68,12 +69,13 @@ class FakeSupportSlackClient implements SupportSlackClient {
 
 async function seedOrg(
   prisma: PrismaClientOrTransaction,
-  { withAdmin = true }: { withAdmin?: boolean } = {}
+  { withAdmin = true, slug = "acme" }: { withAdmin?: boolean; slug?: string } = {}
 ) {
+  const email = slug === "acme" ? "owner@acme.com" : `owner-${slug}@acme.com`;
   const user = await prisma.user.create({
-    data: { email: "owner@acme.com", name: "Owner", authenticationMethod: "MAGIC_LINK" },
+    data: { email, name: "Owner", authenticationMethod: "MAGIC_LINK" },
   });
-  const org = await prisma.organization.create({ data: { title: "Acme", slug: "acme" } });
+  const org = await prisma.organization.create({ data: { title: "Acme", slug } });
   if (withAdmin) {
     await prisma.orgMember.create({
       data: { organizationId: org.id, userId: user.id, role: "ADMIN" },
@@ -275,5 +277,137 @@ describe("proposeOrgMatches", () => {
       [org({ slug: "acme-9dfd", title: "Acme" })]
     );
     expect(result).toEqual([]);
+  });
+});
+
+describe("linkSupportChannel", () => {
+  postgresTest("fresh link creates a LINKED row", async ({ prisma }) => {
+    const { org } = await seedOrg(prisma);
+
+    const result = await linkSupportChannel({
+      organizationId: org.id,
+      prisma,
+      channel: { channelId: "C1", channelName: "cus-acme" },
+    });
+
+    expect(result).toEqual({ status: "linked" });
+    const row = await prisma.organizationSupportChannel.findFirst({
+      where: { organizationId: org.id },
+    });
+    expect(row?.status).toBe("LINKED");
+    expect(row?.slackChannelId).toBe("C1");
+    expect(row?.slackChannelName).toBe("cus-acme");
+  });
+
+  postgresTest("linking the same channel again is idempotent", async ({ prisma }) => {
+    const { org } = await seedOrg(prisma);
+    await prisma.organizationSupportChannel.create({
+      data: {
+        organizationId: org.id,
+        status: "LINKED",
+        slackChannelId: "C1",
+        slackChannelName: "cus-acme",
+      },
+    });
+
+    const result = await linkSupportChannel({
+      organizationId: org.id,
+      prisma,
+      channel: { channelId: "C1", channelName: "cus-acme" },
+    });
+
+    expect(result).toEqual({ status: "linked" });
+    const row = await prisma.organizationSupportChannel.findFirst({
+      where: { organizationId: org.id },
+    });
+    expect(row?.status).toBe("LINKED");
+    expect(row?.slackChannelId).toBe("C1");
+  });
+
+  postgresTest(
+    "org already linked to a different channel conflicts without reassign",
+    async ({ prisma }) => {
+      const { org } = await seedOrg(prisma);
+      await prisma.organizationSupportChannel.create({
+        data: {
+          organizationId: org.id,
+          status: "LINKED",
+          slackChannelId: "C1",
+          slackChannelName: "cus-acme",
+        },
+      });
+
+      const result = await linkSupportChannel({
+        organizationId: org.id,
+        prisma,
+        channel: { channelId: "C2", channelName: "cus-other" },
+      });
+
+      expect(result.status).toBe("conflict");
+      const row = await prisma.organizationSupportChannel.findFirst({
+        where: { organizationId: org.id },
+      });
+      expect(row?.slackChannelId).toBe("C1");
+    }
+  );
+
+  postgresTest(
+    "channel already linked to another org conflicts even with reassign",
+    async ({ prisma }) => {
+      const { org: orgA } = await seedOrg(prisma, { slug: "acme" });
+      const { org: orgB } = await seedOrg(prisma, { slug: "widget" });
+      await prisma.organizationSupportChannel.create({
+        data: {
+          organizationId: orgA.id,
+          status: "LINKED",
+          slackChannelId: "C1",
+          slackChannelName: "cus-acme",
+        },
+      });
+
+      const result = await linkSupportChannel({
+        organizationId: orgB.id,
+        prisma,
+        channel: { channelId: "C1", channelName: "cus-acme" },
+        reassign: true,
+      });
+
+      expect(result.status).toBe("conflict");
+      const rowA = await prisma.organizationSupportChannel.findFirst({
+        where: { organizationId: orgA.id },
+      });
+      expect(rowA?.slackChannelId).toBe("C1");
+      const rowB = await prisma.organizationSupportChannel.findFirst({
+        where: { organizationId: orgB.id },
+      });
+      expect(rowB?.slackChannelId ?? null).not.toBe("C1");
+    }
+  );
+
+  postgresTest("reassign overwrites the org's own row to a new channel", async ({ prisma }) => {
+    const { org } = await seedOrg(prisma);
+    await prisma.organizationSupportChannel.create({
+      data: {
+        organizationId: org.id,
+        status: "LINKED",
+        slackChannelId: "C1",
+        slackChannelName: "cus-acme",
+      },
+    });
+
+    const result = await linkSupportChannel({
+      organizationId: org.id,
+      prisma,
+      channel: { channelId: "C2", channelName: "cus-acme-new" },
+      reassign: true,
+    });
+
+    expect(result).toEqual({ status: "linked" });
+    const row = await prisma.organizationSupportChannel.findFirst({
+      where: { organizationId: org.id },
+    });
+    expect(row?.status).toBe("LINKED");
+    expect(row?.slackChannelId).toBe("C2");
+    expect(row?.slackChannelName).toBe("cus-acme-new");
   });
 });
