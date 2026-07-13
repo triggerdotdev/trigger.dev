@@ -1851,15 +1851,17 @@ function CollapseMenuButton({
   const [isHovering, setIsHovering] = useState(false);
 
   return (
-    // While dragging, width and opacity shrink with the `--sm-label-opacity` variable exactly like
-    // CollapsibleElement, handing the freed row width to the Help & Feedback item so its icon is
-    // never pushed into the row's clip edge. Unlike the other secondary buttons this only applies
-    // mid-drag: at rest the button keeps its natural size in both states (when collapsed it is the
-    // expand affordance), so the style is dropped on release, where the row relayout hides the snap.
+    // Only shrink-and-fade while dragging the menu CLOSED (`!isCollapsed`), where this button sits to
+    // the right of Help & Feedback in a row and would otherwise overlap it as the row narrows; width
+    // and opacity follow `--sm-label-opacity` so the freed space is handed back frame-by-frame.
+    // While dragging OPEN it must stay put: when collapsed this IS the expand affordance, and the
+    // same variable runs 0->1, which would start it at zero width/opacity and only scale it in near
+    // the end of the drag (the icon appearing to grow from nothing). At rest the style is dropped
+    // entirely, so the button keeps its natural size in both states.
     <div
-      className={cn(isDragging && "pointer-events-none overflow-hidden")}
+      className={cn(isDragging && !isCollapsed && "pointer-events-none overflow-hidden")}
       style={
-        isDragging
+        isDragging && !isCollapsed
           ? {
               maxWidth: "calc(var(--sm-label-opacity, 1) * 32px)",
               opacity: "var(--sm-label-opacity, 1)",
