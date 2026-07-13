@@ -1,4 +1,4 @@
-import { containerTest } from "@internal/testcontainers";
+import { postgresTest } from "@internal/testcontainers";
 import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import { beforeEach, describe, expect, vi } from "vitest";
@@ -172,7 +172,7 @@ beforeEach(() => {
 });
 
 describe("ApiRetrieveRunPresenter.findRun locked-worker version resolution", () => {
-  containerTest(
+  postgresTest(
     "resolves run+parent+root+children lockedToVersion with ONE grouped query, not one per id",
     async ({ prisma }) => {
       const proxied = createCallCountingProxy(prisma);
