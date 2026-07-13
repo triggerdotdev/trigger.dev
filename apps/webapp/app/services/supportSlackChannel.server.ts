@@ -18,6 +18,35 @@ export interface SupportSlackClient {
   ): Promise<{ inviteId: string; url?: string }>;
 }
 
+export interface SupportSlackDiscoveryClient {
+  ownTeamId(): Promise<string>;
+  listCustomerChannels(): Promise<
+    Array<{ channelId: string; channelName: string; connectedTeamIds: string[] }>
+  >;
+  getTeamDomains(teamId: string): Promise<{ domain?: string; emailDomain?: string }>;
+}
+
+// A channel is treated as a customer support channel only when it follows the
+// `cus-` naming convention AND is actually a Slack Connect (externally shared) channel.
+export function isCustomerSupportChannel({
+  name,
+  is_ext_shared,
+}: {
+  name?: string;
+  is_ext_shared?: boolean;
+}): boolean {
+  return name?.startsWith("cus-") === true && is_ext_shared === true;
+}
+
+// Slack Connect channels list the connected workspaces' team ids, including our own.
+// This picks the first id that isn't ours, i.e. the customer's workspace.
+export function pickExternalTeamId(
+  connectedTeamIds: string[] | undefined,
+  ownTeamId: string
+): string | undefined {
+  return connectedTeamIds?.find((teamId) => teamId !== ownTeamId);
+}
+
 export function isPaidPlan(
   plan: { v3Subscription?: { isPaying?: boolean } } | null | undefined
 ): boolean {
@@ -34,11 +63,69 @@ export function supportChannelName(orgSlug: string): string {
   return `cus-${cleaned}`.slice(0, 80);
 }
 
-export class SupportSlackClientLive implements SupportSlackClient {
+export class SupportSlackClientLive implements SupportSlackClient, SupportSlackDiscoveryClient {
   private readonly client: WebClient;
+  private cachedOwnTeamId: string | undefined;
 
   constructor(token: string) {
     this.client = new WebClient(token);
+  }
+
+  async ownTeamId(): Promise<string> {
+    if (this.cachedOwnTeamId) {
+      return this.cachedOwnTeamId;
+    }
+    const res = await this.client.auth.test();
+    const teamId = res.team_id;
+    if (!teamId) {
+      throw new Error("auth.test returned no team_id");
+    }
+    this.cachedOwnTeamId = teamId;
+    return teamId;
+  }
+
+  async listCustomerChannels(): Promise<
+    Array<{ channelId: string; channelName: string; connectedTeamIds: string[] }>
+  > {
+    const channels: Array<{ channelId: string; channelName: string; connectedTeamIds: string[] }> =
+      [];
+    let cursor: string | undefined;
+
+    do {
+      const res = await this.client.users.conversations({
+        types: "private_channel",
+        exclude_archived: true,
+        limit: 200,
+        cursor,
+      });
+
+      for (const c of res.channels ?? []) {
+        if (!isCustomerSupportChannel({ name: c.name, is_ext_shared: c.is_ext_shared })) {
+          continue;
+        }
+        if (!c.id || !c.name) {
+          continue;
+        }
+        channels.push({
+          channelId: c.id,
+          channelName: c.name,
+          connectedTeamIds: (c as { connected_team_ids?: string[] }).connected_team_ids ?? [],
+        });
+      }
+
+      cursor = res.response_metadata?.next_cursor || undefined;
+    } while (cursor);
+
+    return channels;
+  }
+
+  async getTeamDomains(teamId: string): Promise<{ domain?: string; emailDomain?: string }> {
+    try {
+      const res = await this.client.team.info({ team: teamId });
+      return { domain: res.team?.domain, emailDomain: res.team?.email_domain };
+    } catch {
+      return {};
+    }
   }
 
   async createPrivateChannel(name: string) {
@@ -72,6 +159,17 @@ export class SupportSlackClientLive implements SupportSlackClient {
  * packages that are only built in production).
  */
 export function createSupportSlackClient(token: string | undefined): SupportSlackClient | null {
+  if (!token) return null;
+  return new SupportSlackClientLive(token);
+}
+
+/**
+ * Creates a SupportSlackDiscoveryClient from an optional bot token.
+ * Pass `env.SLACK_BOT_TOKEN` from the call site (see createSupportSlackClient above).
+ */
+export function createSupportSlackDiscoveryClient(
+  token: string | undefined
+): SupportSlackDiscoveryClient | null {
   if (!token) return null;
   return new SupportSlackClientLive(token);
 }

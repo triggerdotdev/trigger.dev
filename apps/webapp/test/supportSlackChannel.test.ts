@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { postgresTest } from "@internal/testcontainers";
 import {
   isPaidPlan,
+  isCustomerSupportChannel,
+  pickExternalTeamId,
   provisionOrganizationSupportChannel,
   supportChannelName,
   type SupportSlackClient,
@@ -26,6 +28,23 @@ describe("supportChannelName", () => {
   });
   it("caps total length at 80 characters", () => {
     expect(supportChannelName("a".repeat(100)).length).toBe(80);
+  });
+});
+
+describe("isCustomerSupportChannel", () => {
+  it("identifies customer support channels", () => {
+    expect(isCustomerSupportChannel({ name: "cus-acme", is_ext_shared: true })).toBe(true);
+    expect(isCustomerSupportChannel({ name: "cus-acme", is_ext_shared: false })).toBe(false);
+    expect(isCustomerSupportChannel({ name: "general", is_ext_shared: true })).toBe(false);
+    expect(isCustomerSupportChannel({})).toBe(false);
+  });
+});
+
+describe("pickExternalTeamId", () => {
+  it("picks the external team id", () => {
+    expect(pickExternalTeamId(["T_OWN", "T_EXT"], "T_OWN")).toBe("T_EXT");
+    expect(pickExternalTeamId(["T_OWN"], "T_OWN")).toBeUndefined();
+    expect(pickExternalTeamId(undefined, "T_OWN")).toBeUndefined();
   });
 });
 
