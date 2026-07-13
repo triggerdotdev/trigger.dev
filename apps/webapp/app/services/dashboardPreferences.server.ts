@@ -122,7 +122,10 @@ export async function updateThemePreference({
   return prisma.$executeRaw`
     UPDATE "User"
     SET "dashboardPreferences" = jsonb_set(
-      COALESCE("dashboardPreferences", '{}'::jsonb),
+      COALESCE(
+        "dashboardPreferences",
+        '{"version":"1","projects":{}}'::jsonb
+      ),
       '{theme}',
       to_jsonb(${theme}::text)
     )

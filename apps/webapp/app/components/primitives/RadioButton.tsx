@@ -81,7 +81,12 @@ export function RadioButtonCircle({
             outerCircleClassName
           )}
         >
-          <Circle className={cn("size-2 fill-white text-white", innerCircleClassName)} />
+          <Circle
+            className={cn(
+              "size-2 fill-white text-white dark:fill-text-bright dark:text-text-bright",
+              innerCircleClassName
+            )}
+          />
         </div>
       )}
     </div>
@@ -134,7 +139,7 @@ export const RadioGroupItem = React.forwardRef<
           )}
         >
           <RadioGroupPrimitive.Indicator className="flex h-full w-full items-center justify-center rounded-full bg-indigo-600">
-            <Circle className="size-2 fill-white text-white" />
+            <Circle className="size-2 fill-white text-white dark:fill-text-bright dark:text-text-bright" />
           </RadioGroupPrimitive.Indicator>
         </div>
         <div className={cn(icon ? "flex h-full flex-col justify-end" : "")}>

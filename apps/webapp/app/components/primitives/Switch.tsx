@@ -96,7 +96,10 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
         )}
       >
         <SwitchPrimitives.Thumb
-          className={cn(thumb, "pointer-events-none block rounded-full bg-white transition")}
+          className={cn(
+            thumb,
+            "pointer-events-none block rounded-full bg-white transition dark:bg-charcoal-200 dark:group-data-[state=checked]:bg-text-bright"
+          )}
         />
       </div>
     );
