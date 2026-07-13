@@ -24,20 +24,7 @@ Configure billing limits and alerts in your dashboard to protect against unexpec
 - Catch unexpected cost increases early
 - Identify runaway tasks before they become expensive
 
-The **Billing limits** settings page has two sections:
-
-- **Billing limit**: Choose your plan limit, a custom amount, or no limit. When a limit is reached, billable environments (`production`, `staging`, and `preview`) enter a **grace period** — queues pause and new runs queue without starting. After grace expires, new triggers are rejected until you increase or remove the limit.
-- **Billing alerts**: Add email alerts at specific spend thresholds (% of your limit when a limit is set, or dollar amounts when no limit is configured). Alerts notify you only; they do **not** pause environments or reject triggers.
-
-**Limits vs alerts:** A billing limit enforces spend (grace → reject). Billing alerts are optional notifications at thresholds you choose.
-
-**Soft limits:** Billing limits are not instantaneous hard caps. Usage is evaluated on a short delay, so spend can briefly exceed your limit before enforcement applies. Queued runs during grace incur no compute cost until they start. See our [terms](https://trigger.dev/terms) for refund policy details.
-
-On the **Usage** page, when you have a custom billing limit (or a plan limit that differs from included usage), a **Billing limit** marker appears on the usage bar alongside your current spend and plan included usage.
-
-![Billing limits and alerts settings](./images/billing-alerts-ui.png)
-
-You can open the page from the **Organization** menu in the top left of the dashboard, then **Settings** → **Billing limits**.
+You can open the settings from the **Organization** menu in the top left of the dashboard, then **Settings** → **Billing limits**. [Read the full billing limits and alerts docs](/billing-limits) for how limits are enforced, the grace period, and resuming after hitting a limit.
 
 ## Reduce your machine sizes
 

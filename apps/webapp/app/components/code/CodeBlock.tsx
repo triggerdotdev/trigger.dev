@@ -79,68 +79,68 @@ const extraLinesWhenClipping = 0.35;
 
 const defaultTheme: PrismTheme = {
   plain: {
-    color: "#9C9AF2",
+    color: "var(--color-code-constant)",
     backgroundColor: "rgba(0, 0, 0, 0)",
   },
   styles: [
     {
       types: ["comment", "prolog", "doctype", "cdata"],
       style: {
-        color: "#5F6570",
+        color: "var(--color-code-muted)",
       },
     },
     {
       types: ["punctuation"],
       style: {
-        color: "#878C99",
+        color: "var(--color-code-foreground)",
       },
     },
     {
       types: ["property", "tag", "constant", "symbol", "deleted"],
       style: {
-        color: "#9B99FF",
+        color: "var(--color-code-language)",
       },
     },
     {
       types: ["boolean", "number"],
       style: {
-        color: "#E5C07B",
+        color: "var(--color-code-builtin)",
       },
     },
     {
       types: ["selector", "attr-name", "string", "char", "builtin", "inserted"],
       style: {
-        color: "#AFEC73",
+        color: "var(--color-code-string)",
       },
     },
     {
       types: ["operator", "entity", "url"],
       style: {
-        color: "#D4D4D4",
+        color: "var(--color-code-plain)",
       },
     },
     {
       types: ["variable"],
       style: {
-        color: "#CCCBFF",
+        color: "var(--color-code-variable)",
       },
     },
     {
       types: ["atrule", "attr-value", "keyword"],
       style: {
-        color: "#E888F8",
+        color: "var(--color-code-keyword)",
       },
     },
     {
       types: ["function", "class-name"],
       style: {
-        color: "#D9F07C",
+        color: "var(--color-code-function)",
       },
     },
     {
       types: ["regex"],
       style: {
-        color: "#d16969",
+        color: "var(--color-code-regexp)",
       },
     },
     {
@@ -164,31 +164,31 @@ const defaultTheme: PrismTheme = {
     {
       types: ["deleted"],
       style: {
-        color: "#F85149",
+        color: "var(--color-code-deleted)",
       },
     },
     {
       types: ["char"],
       style: {
-        color: "#b5cea8",
+        color: "var(--color-code-number)",
       },
     },
     {
       types: ["tag"],
       style: {
-        color: "#D7BA7D",
+        color: "var(--color-code-escape)",
       },
     },
     {
       types: ["keyword.operator"],
       style: {
-        color: "#8271ED",
+        color: "var(--color-code-storage)",
       },
     },
     {
       types: ["meta.template.expression"],
       style: {
-        color: "#d4d4d4",
+        color: "var(--color-code-plain)",
       },
     },
   ],
@@ -359,7 +359,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
             <div
               dir="ltr"
               className={cn(
-                "min-h-0 flex-1 px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                "min-h-0 flex-1 px-2 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
                 "overflow-auto"
               )}
               style={{
@@ -369,7 +369,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
               <pre
                 className={cn(
                   "relative mr-2 p-2 font-mono text-xs leading-relaxed",
-                  isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:break-words"
+                  isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:wrap-break-word"
                 )}
                 dir="ltr"
               >
@@ -412,7 +412,7 @@ export const CodeBlock = forwardRef<HTMLDivElement, CodeBlockProps>(
             ) : (
               <div
                 dir="ltr"
-                className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                className="overflow-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
               >
                 <pre className="relative mr-2 p-2 font-mono text-base leading-relaxed" dir="ltr">
                   {highlightSearchText(code, searchTerm)}
@@ -430,14 +430,14 @@ CodeBlock.displayName = "CodeBlock";
 
 function Chrome({ title }: { title?: string }) {
   return (
-    <div className="grid h-7 grid-cols-[100px_auto_100px] border-b border-charcoal-800 bg-charcoal-900">
+    <div className="grid h-7 grid-cols-[100px_auto_100px] border-b border-background-bright bg-background-deep">
       <div className="ml-2 flex items-center gap-2">
-        <div className="h-3 w-3 rounded-full bg-charcoal-700" />
-        <div className="h-3 w-3 rounded-full bg-charcoal-700" />
-        <div className="h-3 w-3 rounded-full bg-charcoal-700" />
+        <div className="h-3 w-3 rounded-full bg-background-raised" />
+        <div className="h-3 w-3 rounded-full bg-background-raised" />
+        <div className="h-3 w-3 rounded-full bg-background-raised" />
       </div>
       <div className="flex items-center justify-center">
-        <div className={cn("rounded-sm px-3 py-0.5 text-xs text-charcoal-500")}>{title}</div>
+        <div className={cn("rounded-sm px-3 py-0.5 text-xs text-text-faint")}>{title}</div>
       </div>
       <div></div>
     </div>
@@ -493,7 +493,7 @@ function HighlightCode({
   }, []);
 
   const containerClasses = cn(
-    "min-h-0 flex-1 px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+    "min-h-0 flex-1 px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
     !isWrapped && "overflow-auto",
     isWrapped && "overflow-auto",
     className
@@ -502,7 +502,7 @@ function HighlightCode({
   const preClasses = cn(
     "relative mr-2 font-mono leading-relaxed",
     preClassName,
-    isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:break-words"
+    isWrapped && "[&_span]:whitespace-pre-wrap [&_span]:wrap-break-word"
   );
 
   if (!isLoaded) {
@@ -531,7 +531,7 @@ function HighlightCode({
                 }
 
                 const lineNumber = index + 1;
-                const lineProps = getLineProps({ line, key: index });
+                const lineProps = getLineProps({ line });
 
                 let hasAnyHighlights = highlightLines ? highlightLines.length > 0 : false;
 
@@ -557,7 +557,7 @@ function HighlightCode({
                     {showLineNumbers && (
                       <div
                         className={cn(
-                          "mr-2 flex-none select-none text-right text-charcoal-500 transition-opacity duration-500",
+                          "mr-2 flex-none select-none text-right text-text-faint transition-opacity duration-500",
                           isWrapped && "sticky left-0"
                         )}
                         style={{
@@ -570,7 +570,7 @@ function HighlightCode({
 
                     <div className="flex-1">
                       {line.map((token, key) => {
-                        const tokenProps = getTokenProps({ token, key });
+                        const tokenProps = getTokenProps({ token });
 
                         // Highlight search term matches in token
                         const content = highlightSearchText(token.content, searchTerm);

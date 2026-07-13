@@ -22,7 +22,7 @@ const sizes = {
 const style = {
   tertiary: {
     button:
-      "bg-tertiary focus-custom border border-tertiary hover:text-text-bright hover:border-charcoal-600",
+      "bg-tertiary focus-custom border border-tertiary hover:text-text-bright hover:border-border-bright",
   },
   minimal: {
     button:
@@ -30,7 +30,7 @@ const style = {
   },
   secondary: {
     button:
-      "bg-secondary focus-custom border border-charcoal-600 hover:text-text-bright hover:border-charcoal-550 text-text-bright hover:bg-charcoal-600",
+      "bg-secondary focus-custom border border-border-bright hover:text-text-bright hover:border-border-brighter text-text-bright hover:bg-surface-control",
   },
 };
 
@@ -110,6 +110,8 @@ export interface SelectProps<TValue extends string | string[], TItem> extends Om
   allowItemShortcuts?: boolean;
   clearSearchOnSelection?: boolean;
   dropdownIcon?: boolean | React.ReactNode;
+  popoverClassName?: string;
+  placement?: Ariakit.SelectProviderProps<TValue>["placement"];
 }
 
 export function Select<TValue extends string | string[], TItem>({
@@ -135,6 +137,8 @@ export function Select<TValue extends string | string[], TItem>({
   disabled,
   clearSearchOnSelection = true,
   dropdownIcon,
+  popoverClassName,
+  placement,
   ...props
 }: SelectProps<TValue, TItem>) {
   const [searchValue, setSearchValue] = useState("");
@@ -191,6 +195,7 @@ export function Select<TValue extends string | string[], TItem>({
       open={open}
       setOpen={setOpen}
       virtualFocus={searchable}
+      placement={placement}
       value={value}
       setValue={(v) => {
         if (clearSearchOnSelection) {
@@ -215,7 +220,7 @@ export function Select<TValue extends string | string[], TItem>({
         dropdownIcon={dropdownIcon}
         {...props}
       />
-      <SelectPopover>
+      <SelectPopover className={popoverClassName}>
         {!searchable && showHeading && heading && <SelectHeading render={<>{heading}</>} />}
         {searchable && <ComboBox placeholder={heading} shortcut={shortcut} value={searchValue} />}
 
@@ -358,7 +363,7 @@ export function SelectTrigger({
       {showTooltip && (
         <Ariakit.Tooltip
           disabled={!tooltipTitle && !shortcut}
-          className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs"
+          className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs"
         >
           <div className="flex items-center gap-2">
             <span>{tooltipTitle ?? "Open menu"}</span>
@@ -437,7 +442,7 @@ export function SelectList(props: SelectListProps) {
     <Component
       {...props}
       className={cn(
-        "overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 focus-custom",
+        "overflow-y-auto overflow-x-hidden overscroll-contain scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control focus-custom",
         props.className
       )}
     />
@@ -449,6 +454,9 @@ export interface SelectItemProps extends Ariakit.SelectItemProps {
   checkIcon?: React.ReactNode;
   checkPosition?: "left" | "right";
   shortcut?: ShortcutDefinition;
+  // Allow the item to grow to multiple lines and wrap its content instead of
+  // being locked to a single truncated line. Use for options with a subtitle.
+  wrap?: boolean;
 }
 
 const selectItemClasses =
@@ -461,6 +469,7 @@ export function SelectItem({
   checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-text-bright" />,
   checkPosition = "right",
   shortcut,
+  wrap = false,
   ...props
 }: SelectItemProps) {
   const combobox = Ariakit.useComboboxContext();
@@ -508,17 +517,22 @@ export function SelectItem({
     >
       <div
         className={cn(
-          "flex h-8 w-full items-center rounded-sm px-2 group-data-[active-item=true]:bg-tertiary hover:bg-tertiary",
+          "flex w-full items-center rounded-sm px-2 group-data-[active-item=true]:bg-tertiary hover:bg-tertiary",
+          wrap ? "min-h-8" : "h-8",
           checkPosition === "left" ? "gap-2" : "gap-1"
         )}
       >
         {checkPosition === "left" && <CheckboxIndicator checked={isChecked} />}
         {icon}
-        <div className="grow truncate">{props.children || props.value}</div>
+        <div className={cn("grow", wrap ? "min-w-0 break-words py-1.5" : "truncate")}>
+          {props.children || props.value}
+        </div>
         {checkPosition === "right" && checkIcon}
         {shortcut && (
           <ShortcutKey
-            className={cn("size-4 flex-none transition duration-0 group-hover:border-charcoal-600")}
+            className={cn(
+              "size-4 flex-none transition duration-0 group-hover:border-border-bright"
+            )}
             shortcut={shortcut}
             variant={"small"}
           />
@@ -603,7 +617,7 @@ export function shortcutFromIndex(
 export interface SelectSeparatorProps extends React.ComponentProps<"div"> {}
 
 export function SelectSeparator(props: SelectSeparatorProps) {
-  return <div {...props} className={cn("h-px bg-charcoal-700", props.className)} />;
+  return <div {...props} className={cn("h-px bg-background-raised", props.className)} />;
 }
 
 export interface SelectGroupProps extends Ariakit.SelectGroupProps {}
@@ -619,7 +633,7 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
     <Ariakit.SelectGroupLabel
       {...props}
       className={cn(
-        "flex h-[1.375rem] items-center border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright",
+        "flex h-5.5 items-center border-b border-grid-bright bg-background-hover px-2.5 text-xxs uppercase text-text-bright",
         props.className
       )}
     />
@@ -629,7 +643,7 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
 export interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
 export function SelectHeading({ render, ...props }: SelectHeadingProps) {
   return (
-    <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
+    <div className="flex h-5.5 flex-none cursor-default items-center gap-2 border-b border-grid-bright bg-background-hover px-2.5 text-xxs uppercase text-text-bright">
       <Ariakit.SelectHeading render={render} />
     </div>
   );
@@ -649,11 +663,11 @@ export function SelectPopover({
       shift={shift}
       unmountOnHide={unmountOnHide}
       className={cn(
-        "z-50 flex flex-col overflow-clip rounded border border-charcoal-700 bg-background-bright shadow-md outline-none animate-in fade-in-40",
+        "z-50 flex flex-col overflow-clip rounded border border-grid-bright bg-background-bright shadow-md outline-hidden animate-in fade-in-40",
         "min-w-[max(180px,var(--popover-anchor-width))]",
         "max-w-[min(480px,var(--popover-available-width))]",
         "max-h-[min(600px,var(--popover-available-height))]",
-        "origin-[var(--popover-transform-origin)]",
+        "origin-(--popover-transform-origin)",
         className
       )}
       {...props}
@@ -678,11 +692,11 @@ export function ComboBox({
   ...props
 }: ComboBoxProps) {
   return (
-    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-none">
+    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-hidden">
       <Ariakit.Combobox
         autoSelect={autoSelect}
         render={<input placeholder={placeholder} />}
-        className="flex-1 bg-transparent text-xs text-text-dimmed outline-none"
+        className="flex-1 bg-transparent text-xs text-text-dimmed outline-hidden"
         {...props}
       />
       {shortcut && (

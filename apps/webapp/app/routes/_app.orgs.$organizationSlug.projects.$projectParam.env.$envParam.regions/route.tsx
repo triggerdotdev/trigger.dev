@@ -16,7 +16,6 @@ import { CloudProviderIcon } from "~/assets/icons/CloudProviderIcon";
 import { FlagIcon } from "~/assets/icons/RegionIcons";
 import { cloudProviderTitle } from "~/components/CloudProvider";
 import { Feedback } from "~/components/Feedback";
-import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -47,6 +46,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
@@ -103,14 +103,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   );
 
   if (!project) {
-    throw redirectWithErrorMessage(redirectPath, request, "Project not found");
+    throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
   }
 
   const formData = await request.formData();
   const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsedFormData.success) {
-    throw redirectWithErrorMessage(redirectPath, request, "No region specified");
+    throw await redirectWithErrorMessage(redirectPath, request, "No region specified");
   }
 
   const service = new SetDefaultRegionService();
@@ -138,7 +138,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Regions</V4Title>} />
+        <PageTitle title="Regions" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -168,13 +168,21 @@ export default function Page() {
                     <TableRow>
                       <TableHeaderCell>Region</TableHeaderCell>
                       <TableHeaderCell>Cloud Provider</TableHeaderCell>
-                      <TableHeaderCell>Location</TableHeaderCell>
+                      <TableHeaderCell>
+                        <span className="flex items-center gap-1">
+                          Location
+                          <InfoIconTooltip
+                            content="Region location is where your runs execute, not where your data is stored."
+                            contentClassName="normal-case tracking-normal"
+                          />
+                        </span>
+                      </TableHeaderCell>
                       <TableHeaderCell>Static IPs</TableHeaderCell>
                       {isAdmin && <TableHeaderCell>Admin</TableHeaderCell>}
                       <TableHeaderCell
                         alignment="right"
                         tooltip={
-                          <div className="max-w-[12rem]">
+                          <div className="max-w-48">
                             <Paragraph variant="small">
                               When you trigger a run it will execute in your default region, unless
                               you override the region when triggering.
@@ -277,7 +285,7 @@ export default function Page() {
                       })
                     )}
 
-                    <TableRow className="h-[3.125rem]">
+                    <TableRow className="h-12.5">
                       <TableCell colSpan={isAdmin ? 5 : 4}>
                         <Paragraph variant="extra-small">Suggest a new region</Paragraph>
                       </TableCell>
@@ -309,8 +317,12 @@ export default function Page() {
                     variant="minimal"
                     panelClassName="max-w-full gap-1"
                   >
-                    <Paragraph variant="extra-small" className="flex items-baseline gap-x-0.5">
-                      Trigger.dev is fully GDPR compliant. Learn more in our{" "}
+                    <Paragraph variant="extra-small">
+                      Trigger.dev is fully{" "}
+                      <TextLink to="https://security.trigger.dev/gdpr?tab=securityControls&frameworks=gdpr_v1">
+                        GDPR compliant
+                      </TextLink>
+                      . Learn more in our{" "}
                       <TextLink to="https://security.trigger.dev">security portal</TextLink> or{" "}
                       <Feedback
                         button={
@@ -318,7 +330,7 @@ export default function Page() {
                             get in touch
                           </span>
                         }
-                        defaultValue="help"
+                        defaultValue="feedback"
                       />
                       .
                     </Paragraph>
@@ -341,6 +353,7 @@ function SetDefaultDialog({
   newDefaultRegion: Region;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { isManagedCloud } = useFeatures();
   const currentDefaultRegion = regions.find((r) => r.isDefault);
 
   return (
@@ -368,7 +381,7 @@ function SetDefaultDialog({
 
             <div className="my-4 flex">
               <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
-                <div className="border-b border-grid-dimmed bg-charcoal-800 p-3 font-medium">
+                <div className="border-b border-grid-dimmed bg-background-bright p-3 font-medium">
                   <Paragraph variant="small/bright">Current default</Paragraph>
                 </div>
                 <div className="border-b border-grid-dimmed p-3">
@@ -401,14 +414,14 @@ function SetDefaultDialog({
 
               {/* Middle column with arrow */}
               <div className="flex items-center justify-center px-3">
-                <div className="flex size-10 items-center justify-center rounded-full border border-grid-dimmed bg-charcoal-800 p-2">
+                <div className="flex size-10 items-center justify-center rounded-full border border-grid-dimmed bg-background-bright p-2">
                   <ArrowRightIcon className="size-4 text-text-dimmed" />
                 </div>
               </div>
 
               {/* Right column */}
               <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
-                <div className="border-b border-grid-dimmed bg-charcoal-800 p-3 font-medium">
+                <div className="border-b border-grid-dimmed bg-background-bright p-3 font-medium">
                   <Paragraph variant="small/bright">New default</Paragraph>
                 </div>
                 <div className="border-b border-grid-dimmed p-3">
@@ -444,6 +457,27 @@ function SetDefaultDialog({
               Runs triggered from now on will execute in "{newDefaultRegion.name}", unless you{" "}
               <TextLink to={docsPath("triggering#region")}>override when triggering</TextLink>.
             </Paragraph>
+
+            <InfoPanel
+              icon={InformationCircleIcon}
+              iconClassName="size-4"
+              variant="minimal"
+              panelClassName="mt-4 max-w-full gap-1 border-t border-grid-dimmed pt-4 pb-0 pl-0"
+            >
+              <Paragraph variant="extra-small">
+                Region is where your runs execute, not where your data is stored.
+                {isManagedCloud ? (
+                  <>
+                    {" "}
+                    Trigger.dev is fully{" "}
+                    <TextLink to="https://security.trigger.dev/gdpr?tab=securityControls&frameworks=gdpr_v1">
+                      GDPR compliant
+                    </TextLink>
+                    .
+                  </>
+                ) : null}
+              </Paragraph>
+            </InfoPanel>
           </div>
         </DialogDescription>
         <DialogFooter>

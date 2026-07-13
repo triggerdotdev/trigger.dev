@@ -1,143 +1,403 @@
 @import url("non.geist");
 @import url("non.geist/mono");
 
-@import "react-grid-layout/css/styles.css";
-@import "react-resizable/css/styles.css";
+@import "react-grid-layout/css/styles.css" layer(base);
+@import "react-resizable/css/styles.css" layer(base);
 
-/* Override react-grid-layout placeholder color (default is red) */
-.react-grid-item.react-grid-placeholder {
-  background: rgb(99 102 241) !important; /* indigo-500 */
-  border-radius: 0.375rem !important; /* rounded-md */
-}
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "tailwind-scrollbar-hide/v4";
 
-/* Sidebar reorder grid: subtle placeholder */
-.sidebar-reorder-grid .react-grid-item.react-grid-placeholder {
-  background: rgb(39 42 46) !important; /* charcoal-700 */
-  border-radius: 0.25rem;
-  opacity: 1 !important;
-}
+@plugin "@tailwindcss/forms";
+@plugin "@tailwindcss/typography";
+@plugin "tailwind-scrollbar";
 
-/* Sidebar reorder grid: only animate transform (vertical position), not width/height */
-.sidebar-reorder-grid .react-grid-item {
-  transition: transform 200ms ease !important;
-}
+/* Streamdown ships prebuilt Tailwind classes - scan it for used utilities */
+@source "../node_modules/streamdown/dist";
 
-/* Override resize handle icon to white */
-.react-resizable-handle {
-  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiNmZmZmZmYiLz48L2c+PC9zdmc+') !important;
-}
-.react-resizable-handle::after {
-  border-bottom-color: rgba(255, 255, 255, 0.4) !important;
-  border-right-color: rgba(255, 255, 255, 0.4) !important;
-  border-top-color: rgba(255, 255, 255, 0.4) !important;
-  border-left-color: rgba(255, 255, 255, 0.4) !important;
-}
+/* Raw palettes and static tokens - theme-independent, never override per theme */
+@theme {
+  --font-sans: "Geist Variable", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono Variable", monaco, Consolas, "Lucida Console", monospace;
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+  --text-xxs: 0.65rem;
+  --text-xxs--line-height: 0.75rem;
+  --text-xxs--letter-spacing: -0.01em;
+  --text-xxs--font-weight: 500;
+  --text-2sm: 0.8125rem;
+  --text-2sm--line-height: 0.875rem;
+  --text-2sm--letter-spacing: -0.01em;
+  --text-2sm--font-weight: 500;
 
-@property --gradient-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
+  --color-charcoal-100: #e8e9ec;
+  --color-charcoal-200: #d7d9dd;
+  --color-charcoal-300: #b5b8c0;
+  --color-charcoal-400: #878c99;
+  --color-charcoal-500: #5f6570;
+  --color-charcoal-550: #4d525b;
+  --color-charcoal-600: #3b3e45;
+  --color-charcoal-650: #2c3034;
+  --color-charcoal-700: #272a2e;
+  --color-charcoal-750: #212327;
+  --color-charcoal-775: #1c1e21;
+  --color-charcoal-800: #1a1b1f;
+  --color-charcoal-850: #15171a;
+  --color-charcoal-900: #121317;
+  --color-charcoal-950: #0d0e12;
+  --color-charcoal-1000: #0b0c0f;
 
-@supports (-webkit-hyphens: none) {
-  .safari-only {
-    @apply border-b border-grid-dimmed;
+  --color-apple-100: #e4ffc9;
+  --color-apple-200: #cfffa0;
+  --color-apple-300: #bfff81;
+  --color-apple-400: #afff62;
+  --color-apple-500: #a8ff53;
+  --color-apple-600: #82d134;
+  --color-apple-700: #6fb12f;
+  --color-apple-750: #5e932a;
+  --color-apple-800: #45711a;
+  --color-apple-850: #2e4e10;
+  --color-apple-900: #20370a;
+  --color-apple-950: #152506;
+
+  --color-mint-50: #f0fdf4;
+  --color-mint-100: #ddfbe6;
+  --color-mint-200: #bdf5d0;
+  --color-mint-300: #87eba9;
+  --color-mint-400: #4fd97e;
+  --color-mint-500: #28bf5c;
+  --color-mint-600: #1b9e48;
+  --color-mint-700: #197c3c;
+  --color-mint-800: #196233;
+  --color-mint-900: #16512c;
+  --color-mint-950: #062d15;
+
+  --color-sun-50: #fdfee8;
+  --color-sun-100: #fdffc2;
+  --color-sun-200: #ffff89;
+  --color-sun-300: #fff852;
+  --color-sun-400: #fdea12;
+  --color-sun-500: #eccf06;
+  --color-sun-600: #cca302;
+  --color-sun-700: #a37505;
+  --color-sun-800: #865b0d;
+  --color-sun-900: #724b11;
+  --color-sun-950: #432705;
+
+  --color-lavender-50: #f4f2ff;
+  --color-lavender-100: #eae8ff;
+  --color-lavender-200: #d7d4ff;
+  --color-lavender-300: #bab2ff;
+  --color-lavender-400: #826dff;
+  --color-lavender-500: #7655fd;
+  --color-lavender-600: #6532f5;
+  --color-lavender-700: #5620e1;
+  --color-lavender-800: #481abd;
+  --color-lavender-900: #3d189a;
+  --color-lavender-950: #230c69;
+
+  --text-shadow-custom: 1px 1px 1px rgba(0, 0, 0, 0.5);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-tile-scroll: tile-move 0.5s infinite linear;
+  --animate-tile-scroll-offset: tile-move-offset 0.5s infinite linear;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes tile-move {
+    0% {
+      background-position: 0px;
+    }
+    100% {
+      background-position: 8px;
+    }
+  }
+  @keyframes tile-move-offset {
+    0% {
+      background-position: -1px;
+    }
+    100% {
+      background-position: 7px;
+    }
   }
 }
 
-@layer base {
-  * {
-    @apply border-grid-bright;
-  }
-  body {
-    @apply bg-background-dimmed text-text-dimmed;
-    font-feature-settings: "rlig" 1, "calt" 1;
-  }
+/*
+  Semantic tokens - the themable layer. Utilities compile to var(--color-*),
+  so a theme overrides these vars in a scoped selector, e.g.
+  [data-theme="light"] { --color-text-bright: #1a1b1f; }
+  Defaults below are the original dark theme.
+*/
+@theme {
+  /* Text colors */
+  --color-primary: var(--color-apple-500);
+  --color-secondary: var(--color-charcoal-650);
+  --color-tertiary: var(--color-charcoal-700);
+  --color-text-link: var(--color-lavender-400);
+  --color-text-faint: var(--color-charcoal-500);
+  --color-text-dimmed: var(--color-charcoal-400);
+  --color-text-bright: var(--color-charcoal-200);
 
-  /* Text selection styles */
-  ::selection {
-    @apply bg-text-bright/30 text-text-bright;
-  }
-  ::-moz-selection {
-    @apply bg-text-bright/30 text-text-bright;
-  }
-  
-  /* shadcn charts: https://ui.shadcn.com/docs/components/chart#add-a-grid */
-  :root {
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-  }
- 
-  .dark {
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+  /* Surfaces, from deepest to most raised */
+  --color-background-deep: var(--color-charcoal-900);
+  --color-background-dimmed: var(--color-charcoal-850);
+  --color-background-bright: var(--color-charcoal-800);
+  --color-background-hover: var(--color-charcoal-750);
+  --color-background-raised: var(--color-charcoal-700);
+  --color-surface-control: var(--color-charcoal-600);
+  --color-surface-control-hover: var(--color-charcoal-550);
+  --color-surface-control-active: var(--color-charcoal-500);
+
+  /* Borders, from subtlest to most visible */
+  --color-grid-dimmed: var(--color-charcoal-750);
+  --color-grid-bright: var(--color-charcoal-700);
+  --color-border-bright: var(--color-charcoal-600);
+  --color-border-brighter: var(--color-charcoal-550);
+  --color-border-brightest: var(--color-charcoal-500);
+  --color-success: var(--color-mint-500);
+  --color-pending: var(--color-blue-500);
+  --color-warning: var(--color-amber-500);
+  --color-error: var(--color-rose-600);
+
+  /* Environment colors */
+  --color-dev: var(--color-pink-500);
+  --color-staging: var(--color-orange-400);
+  --color-prod: var(--color-mint-500);
+  --color-preview: var(--color-yellow-400);
+
+  /* Icon colors */
+  --color-tasks: var(--color-blue-500);
+  --color-runs: var(--color-indigo-500);
+  --color-batches: var(--color-pink-500);
+  --color-schedules: var(--color-yellow-500);
+  --color-queues: var(--color-purple-500);
+  --color-query: var(--color-blue-500);
+  --color-metrics: var(--color-green-500);
+  --color-customDashboards: var(--color-charcoal-400);
+  --color-deployments: var(--color-blue-500);
+  --color-concurrency: var(--color-amber-500);
+  --color-limits: var(--color-purple-500);
+  --color-regions: var(--color-green-500);
+  --color-logs: var(--color-pink-500);
+  --color-tests: var(--color-pink-500);
+  --color-apiKeys: var(--color-amber-500);
+  --color-environmentVariables: var(--color-pink-500);
+  --color-alerts: var(--color-red-500);
+  --color-projectSettings: var(--color-blue-500);
+  --color-orgSettings: var(--color-blue-500);
+  --color-docs: var(--color-blue-500);
+  --color-bulkActions: var(--color-emerald-500);
+  --color-aiPrompts: var(--color-blue-500);
+  --color-aiMetrics: var(--color-green-500);
+  --color-errors: var(--color-amber-500);
+  --color-agents: var(--color-purple-500);
+  --color-sessions: var(--color-pink-500);
+  --color-playgrounds: var(--color-fuchsia-500);
+  --color-models: var(--color-violet-500);
+  --color-previewBranches: var(--color-yellow-500);
+}
+
+/* Callout variant accents (see components/primitives/Callout.tsx) */
+@theme {
+  --color-callout-warning-text: var(--color-yellow-200);
+  --color-callout-error-text: var(--color-rose-200);
+  --color-callout-success-text: var(--color-green-200);
+  --color-callout-docs: var(--color-blue-400);
+  --color-callout-docs-text: var(--color-blue-200);
+  --color-callout-pending: var(--color-blue-400);
+  --color-callout-pending-bg: var(--color-blue-800);
+  --color-callout-pending-text: var(--color-blue-300);
+  --color-callout-pricing: var(--color-indigo-400);
+  --color-callout-pricing-bg: var(--color-indigo-800);
+  --color-callout-pricing-text: var(--color-indigo-300);
+}
+
+/*
+  Code syntax palette - the trigger-dark highlight theme, shared by the shiki
+  theme (streamdown) and the prism theme (CodeBlock). Consumed from JS via
+  var(), so declared static to always be emitted.
+*/
+@theme static {
+  --color-code-background: #212327;
+  --color-code-foreground: #878c99;
+  --color-code-line-number: #484c54;
+  --color-code-plain: #d4d4d4;
+  --color-code-muted: #5f6570;
+  --color-code-comment: #6f736d;
+  --color-code-keyword: #e888f8;
+  --color-code-storage: #8271ed;
+  --color-code-type: #f770c6;
+  --color-code-function: #d9f07c;
+  --color-code-variable: #cccbff;
+  --color-code-constant: #9c9af2;
+  --color-code-language: #9b99ff;
+  --color-code-object-key: #8b89ff;
+  --color-code-string: #afec73;
+  --color-code-template-punctuation: #7a78ea;
+  --color-code-number: #b5cea8;
+  --color-code-builtin: #e5c07b;
+  --color-code-attribute: #c39eff;
+  --color-code-escape: #d7ba7d;
+  --color-code-regexp: #d16969;
+  --color-code-regexp-constant: #646695;
+  --color-code-invalid: #f44747;
+  --color-code-deleted: #f85149;
+  --color-code-jsx-text: #d7d9dd;
+}
+
+/*
+  CodeMirror editor palette (see components/code/codeMirrorTheme.ts).
+  Consumed from JS via var(), so declared static to always be emitted.
+*/
+@theme static {
+  --color-editor-background: var(--color-background-deep);
+  --color-editor-foreground: #abb2bf;
+  --color-editor-keyword: #c678dd;
+  --color-editor-name: #9b99ff;
+  --color-editor-function: #61afef;
+  --color-editor-constant: #d19a66;
+  --color-editor-type: #e5c07b;
+  --color-editor-operator: #56b6c2;
+  --color-editor-comment: #7d8799;
+  --color-editor-heading: #e06c75;
+  --color-editor-string: #afec73;
+  --color-editor-invalid: #ffffff;
+  --color-editor-panel-background: #21252b;
+  --color-editor-highlight-background: rgba(71, 85, 105, 0.2);
+  --color-editor-tooltip-background: #353a42;
+  --color-editor-selection: rgb(71 85 105);
+  --color-editor-cursor: #528bff;
+  --color-editor-search-match: #72a1ff59;
+  --color-editor-search-match-outline: #457dff;
+  --color-editor-search-match-selected: #6199ff2f;
+  --color-editor-selection-match: #aafe661a;
+  --color-editor-matching-bracket: rgba(18, 19, 23, 0.9);
+  --color-editor-matching-bracket-outline: rgba(81, 90, 107, 0.5);
+  --color-editor-fold-placeholder: #dddddd;
+  --color-editor-scrollbar-track-active: #131b2b;
+  --color-editor-scrollbar-thumb: #293649;
+  --color-editor-scrollbar-thumb-active: #3c4b62;
+}
+
+/*
+  Run-status chart colors. In-between shades are intentional - statuses within
+  a family (blues, roses, charcoals) are evenly spaced so chart series stay
+  distinguishable. Referenced from JS via var(--color-run-*), so declared
+  static to always be emitted.
+*/
+@theme static {
+  --color-run-pending: var(--color-charcoal-500);
+  --color-run-delayed: #6b7580;
+  --color-run-pending-version: var(--color-warning);
+  --color-run-waiting-for-deploy: #d97706;
+  --color-run-executing: var(--color-pending);
+  --color-run-retrying-after-failure: #2f6fec;
+  --color-run-dequeued: #4d8ef5;
+  --color-run-waiting-to-resume: #555d67;
+  --color-run-paused: #fbbf24;
+  --color-run-canceled: #78828c;
+  --color-run-expired: #848d96;
+  --color-run-interrupted: #d52c4d;
+  --color-run-completed-successfully: var(--color-success);
+  --color-run-completed-with-errors: #de405c;
+  --color-run-system-failure: #e7536c;
+  --color-run-crashed: #cc193d;
+  --color-run-timed-out: #f0667b;
+}
+
+/*
+  shadcn/ui tokens used by streamdown's internals. Inline so the vars resolve
+  where the utility is used - .streamdown-container redefines them locally.
+*/
+@theme inline {
+  --color-background: var(--background, #121317);
+  --color-foreground: var(--foreground, #d7d9dd);
+  --color-muted: var(--muted, #1c1e21);
+  --color-muted-foreground: var(--muted-foreground, #878c99);
+  --color-border: var(--border, #2c3034);
+  --color-sidebar: var(--sidebar, #15171a);
+  --color-primary-foreground: var(--primary-foreground, #121317);
+}
+
+@custom-variant lg-height (@media (max-height: 750px));
+@custom-variant md-height (@media (max-height: 600px));
+
+/* dark: follows the app theme (data-theme on <html>), not the OS preference */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@utility focus-custom {
+  &:focus-visible {
+    outline: 1px solid var(--color-text-link);
+    outline-offset: 0px;
+    border-radius: 3px;
   }
 }
 
-@layer utilities {
-  .scrollbar-gutter-stable {
-    scrollbar-gutter: stable;
-  }
+@utility scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
 
-  .animated-gradient-glow {
-    position: relative;
-    overflow: visible;
-  }
+/* Shared stop list for the animated glow utilities below. The gradient itself
+   is assembled per-element so the animated --gradient-angle resolves there. */
+:root {
+  --glow-gradient-stops: rgb(99 102 241), rgb(245 158 11), rgb(236 72 153), rgb(245 158 11),
+    rgb(99 102 241);
+}
 
-  .animated-gradient-glow::before {
+@utility animated-gradient-glow {
+  position: relative;
+  overflow: visible;
+
+  &::before {
     content: "";
     position: absolute;
     inset: -8px;
     z-index: -1;
-    background: conic-gradient(
-      from var(--gradient-angle),
-      rgb(99 102 241),
-      rgb(245 158 11),
-      rgb(236 72 153),
-      rgb(245 158 11),
-      rgb(99 102 241)
-    );
+    background: conic-gradient(from var(--gradient-angle), var(--glow-gradient-stops));
     border-radius: inherit;
     animation: gradient-rotation 3s linear infinite;
     pointer-events: none;
     filter: blur(0.5rem);
     opacity: 0.1;
   }
+}
 
-  .animated-gradient-glow-small {
-    position: relative;
-    overflow: visible;
-  }
+@utility animated-gradient-glow-small {
+  position: relative;
+  overflow: visible;
 
-  .animated-gradient-glow-small::before {
+  &::before {
     content: "";
     position: absolute;
     inset: -1px;
     z-index: -1;
-    background: conic-gradient(
-      from var(--gradient-angle),
-      rgb(99 102 241),
-      rgb(245 158 11),
-      rgb(236 72 153),
-      rgb(245 158 11),
-      rgb(99 102 241)
-    );
+    background: conic-gradient(from var(--gradient-angle), var(--glow-gradient-stops));
     border-radius: inherit;
     animation: gradient-rotation 3s linear infinite;
     pointer-events: none;
     filter: blur(0.2rem);
     opacity: 0.3;
   }
+}
+
+@property --gradient-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
 }
 
 @keyframes gradient-rotation {
@@ -149,24 +409,113 @@
   }
 }
 
+@layer base {
+  /* v4 defaults border color to currentcolor - keep the app-wide default from v3 */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-grid-bright);
+  }
+
+  body {
+    @apply bg-background-dimmed text-text-dimmed;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Text selection styles */
+  ::selection {
+    @apply bg-text-bright/30 text-text-bright;
+  }
+  /* Kept separate from ::selection on purpose: grouping them makes older
+     Firefox drop the whole rule. */
+  /* stylelint-disable-next-line selector-no-vendor-prefix */
+  ::-moz-selection {
+    @apply bg-text-bright/30 text-text-bright;
+  }
+
+  /* Native form controls, scrollbars etc. follow the app theme */
+  :root {
+    color-scheme: dark;
+  }
+  [data-theme="light"] {
+    color-scheme: light;
+  }
+
+  /* shadcn charts: https://ui.shadcn.com/docs/components/chart#add-a-grid */
+  :root {
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+  [data-theme="dark"] {
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+
+  /* Override react-grid-layout placeholder color (default is red) */
+  .react-grid-item.react-grid-placeholder {
+    background: rgb(99 102 241) !important; /* indigo-500 */
+    border-radius: 0.375rem !important; /* rounded-md */
+  }
+
+  /* Sidebar reorder grid: subtle placeholder */
+  .sidebar-reorder-grid .react-grid-item.react-grid-placeholder {
+    background: var(--color-background-raised) !important;
+    border-radius: 0.25rem;
+    opacity: 1 !important;
+  }
+
+  /* Sidebar reorder grid: only animate transform (vertical position), not width/height */
+  .sidebar-reorder-grid .react-grid-item {
+    transition: transform 200ms ease !important;
+  }
+
+  /* Override resize handle icon to white */
+  .react-resizable-handle {
+    background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiNmZmZmZmYiLz48L2c+PC9zdmc+') !important;
+  }
+  .react-resizable-handle::after {
+    border-bottom-color: rgba(255, 255, 255, 0.4) !important;
+    border-right-color: rgba(255, 255, 255, 0.4) !important;
+    border-top-color: rgba(255, 255, 255, 0.4) !important;
+    border-left-color: rgba(255, 255, 255, 0.4) !important;
+  }
+}
+
+@layer components {
+  @supports (-webkit-hyphens: none) {
+    .safari-only {
+      @apply border-b border-grid-dimmed;
+    }
+  }
+}
+
 /* Streamdown markdown styling */
 .streamdown-container {
-  /* Streamdown uses shadcn/ui CSS variables - define them for our theme.
-     These map Tailwind utility classes like bg-background, bg-primary, etc.
-     that streamdown uses internally for its link safety modal, code blocks,
-     and other interactive elements. */
-  --background: 230 16% 9%; /* charcoal-900 #121317 */
-  --foreground: 215 19% 87%; /* charcoal-200 #D7D9DD */
-  --muted: 220 8% 17%; /* charcoal-775 #1C1E21 */
-  --muted-foreground: 220 8% 57%; /* charcoal-400 #878C99 */
-  --border: 216 7% 27%; /* charcoal-650 #2C3034 */
-  --primary: 95 100% 66%; /* apple-500 #A8FF53 */
-  --primary-foreground: 230 16% 9%; /* charcoal-900 */
-  --sidebar: 228 10% 11%; /* charcoal-850 #15171A */;
+  /* Streamdown uses shadcn/ui CSS variables - derive them from our semantic
+     tokens so they follow the theme. They map Tailwind utility classes like
+     bg-background, bg-primary, etc. that streamdown uses internally for its
+     link safety modal, code blocks, and other interactive elements. */
+  --background: var(--color-background-deep);
+  --foreground: var(--color-text-bright);
+  --muted: var(--color-charcoal-775);
+  --muted-foreground: var(--color-text-dimmed);
+  --border: var(--color-border-bright);
+  --primary: var(--color-primary);
+  --primary-foreground: var(--color-background-deep);
+  --sidebar: var(--color-background-dimmed);
 
   /* Code block styling */
   & [data-code-block-container] {
-    @apply rounded border-charcoal-650 my-0;
+    @apply rounded-sm my-2 border-charcoal-700;
   }
   & [data-code-block] {
     border-top: none;
@@ -175,7 +524,12 @@
   & p {
     @apply my-1;
   }
-  & h1, & h2, & h3, & h4, & h5, & h6 {
+  & h1,
+  & h2,
+  & h3,
+  & h4,
+  & h5,
+  & h6 {
     @apply font-semibold text-text-bright mt-2 mb-1;
   }
   & h1 {
@@ -184,10 +538,14 @@
   & h2 {
     @apply text-sm;
   }
-  & h3, & h4, & h5, & h6 {
+  & h3,
+  & h4,
+  & h5,
+  & h6 {
     @apply text-xs;
   }
-  & ul, & ol {
+  & ul,
+  & ol {
     @apply ml-4 my-1;
   }
   & ul {
@@ -201,7 +559,7 @@
   }
   /* Inline code (not in pre blocks) */
   & code:not(pre code) {
-    @apply bg-charcoal-700 px-1 py-0.5 rounded text-text-bright font-mono;
+    @apply bg-charcoal-700 px-1 py-0.5 rounded-sm text-text-bright font-mono;
   }
   & blockquote {
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
@@ -221,26 +579,16 @@
   & table {
     @apply w-full my-2 border-collapse;
   }
-  & th, & td {
+  & th,
+  & td {
     @apply border border-charcoal-600 px-2 py-1 text-left;
   }
   & th {
     @apply bg-charcoal-700 font-semibold;
   }
 
-  /* Streamdown code block container */
-  & [data-code-block-container] {
-    @apply my-2 border-charcoal-700;
-  }
   & [data-code-block-header] {
     @apply bg-charcoal-800 text-text-dimmed border-b border-charcoal-700;
-  }
-  /* Hide light mode code block, show dark mode */
-  & [data-code-block].dark\:hidden {
-    display: none !important;
-  }
-  & [data-code-block].hidden.dark\:block {
-    display: block !important;
   }
   /* Override the bg-muted/40 class to let inline styles work */
   & [data-code-block] pre {

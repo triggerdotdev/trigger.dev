@@ -24,6 +24,7 @@ import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { subtle } from "crypto";
 import { generateErrorGroupWebhookPayload } from "./errorGroupWebhook.server";
+import { safeWebhookFetch } from "./safeWebhookFetch.server";
 
 type ErrorAlertClassification = "new_issue" | "regression" | "unignored";
 
@@ -255,7 +256,8 @@ export class DeliverErrorGroupAlertService {
     const signature = await subtle.sign("HMAC", key, hashPayload);
     const signatureHex = Buffer.from(signature).toString("hex");
 
-    const response = await fetch(webhookProperties.data.url, {
+    // Deliver via the SSRF-safe wrapper (see safeWebhookFetch.server.ts).
+    const response = await safeWebhookFetch(webhookProperties.data.url, {
       method: "POST",
       headers: {
         "content-type": "application/json",

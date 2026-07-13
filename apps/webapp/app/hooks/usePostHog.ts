@@ -5,7 +5,12 @@ import { useOrganizationChanged } from "./useOrganizations";
 import { useOptionalUser, useUserChanged } from "./useUser";
 import { useProjectChanged } from "./useProject";
 
-export const usePostHog = (apiKey?: string, logging = false, debug = false): void => {
+export const usePostHog = (
+  apiKey?: string,
+  uiHost?: string,
+  logging = false,
+  debug = false
+): void => {
   const postHogInitialized = useRef(false);
   const location = useLocation();
   const user = useOptionalUser();
@@ -16,7 +21,12 @@ export const usePostHog = (apiKey?: string, logging = false, debug = false): voi
     if (postHogInitialized.current === true) return;
     if (logging) console.log("Initializing PostHog");
     posthog.init(apiKey, {
-      api_host: "https://eu.posthog.com",
+      // Same-origin first-party proxy (see app/routes/ph.$.ts) that forwards to
+      // PostHog Cloud EU server-side.
+      api_host: "/ph",
+      // Point the toolbar at the real PostHog UI; without it, it falls back to /ph.
+      ui_host: uiHost,
+      cross_subdomain_cookie: true,
       opt_in_site_apps: true,
       debug,
       loaded: function (posthog) {
@@ -28,7 +38,7 @@ export const usePostHog = (apiKey?: string, logging = false, debug = false): voi
       },
     });
     postHogInitialized.current = true;
-  }, [apiKey, logging, user]);
+  }, [apiKey, uiHost, logging, user]);
 
   useUserChanged((user) => {
     if (postHogInitialized.current === false) return;

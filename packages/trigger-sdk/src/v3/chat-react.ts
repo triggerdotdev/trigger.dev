@@ -50,6 +50,7 @@ export type UseTriggerChatTransportOptions<TTask extends AnyTask = AnyTask> = Om
 };
 
 export type { InferChatUIMessage };
+export type { ChatTransportEvent, ChatTransportSendSource } from "./chat.js";
 
 /**
  * React hook that creates and memoizes a `TriggerChatTransport` instance.
@@ -90,10 +91,14 @@ export function useTriggerChatTransport<TTask extends AnyTask = AnyTask>(
   }
 
   // Keep callbacks up to date without recreating the transport.
-  const { onSessionChange, clientData } = options;
+  const { onSessionChange, clientData, onEvent } = options;
   useEffect(() => {
     ref.current?.setOnSessionChange(onSessionChange);
   }, [onSessionChange]);
+
+  useEffect(() => {
+    ref.current?.setOnEvent(onEvent);
+  }, [onEvent]);
 
   // Keep `clientData` up to date so the transport's per-turn merge and
   // `startSession` callback both see the latest value without

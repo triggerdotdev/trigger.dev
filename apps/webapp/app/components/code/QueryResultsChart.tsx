@@ -12,7 +12,7 @@ import { ChartBlankState } from "../primitives/charts/ChartBlankState";
 import { Callout } from "../primitives/Callout";
 import type { AggregationType, ChartConfiguration } from "../metrics/QueryWidget";
 import { aggregateValues } from "../primitives/charts/aggregation";
-import { getRunStatusHexColor } from "~/components/runs/v3/TaskRunStatus";
+import { getRunStatusChartColor } from "~/components/runs/v3/TaskRunStatus";
 import { getSeriesColor } from "./chartColors";
 
 const MAX_SERIES = 50;
@@ -936,7 +936,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   const chartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
     sortedSeries.forEach((s, i) => {
-      const statusColor = groupByIsRunStatus ? getRunStatusHexColor(s) : undefined;
+      const statusColor = groupByIsRunStatus ? getRunStatusChartColor(s) : undefined;
       const originalIndex = config.yAxisColumns.indexOf(s);
       const colorIndex = originalIndex >= 0 ? originalIndex : i;
       cfg[s] = {
@@ -1039,14 +1039,14 @@ export const QueryResultsChart = memo(function QueryResultsChart({
               y1={axisY}
               x2={x as number}
               y2={axisY - 3}
-              stroke="#878C99"
+              stroke="var(--color-text-dimmed)"
               strokeWidth={1}
             />
             <text
               x={x}
               y={axisY}
               dy={10}
-              fill="#878C99"
+              fill="var(--color-text-dimmed)"
               fontSize={11}
               textAnchor={xAxisAngle !== 0 ? "end" : "middle"}
               style={{ fontVariantNumeric: "tabular-nums" }}
@@ -1066,7 +1066,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
           y1={axisY}
           x2={x as number}
           y2={axisY - 3}
-          stroke="#272A2E"
+          stroke="var(--color-grid-bright)"
           strokeWidth={1}
         />
       );

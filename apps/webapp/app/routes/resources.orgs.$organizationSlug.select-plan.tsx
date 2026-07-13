@@ -34,7 +34,8 @@ import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { logger } from "~/services/logger.server";
-import { setPlan } from "~/services/platform.v3.server";
+import { applyPromoCode, bustPromoCreditsCache, setPlan } from "~/services/platform.v3.server";
+import { clearPromoCodeCookie, getPromoCodeFromCookie } from "~/services/promoCode.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { engine } from "~/v3/runEngine.server";
 import { cn } from "~/utils/cn";
@@ -80,7 +81,7 @@ export const action = dashboardAction(
     });
 
     if (!organization) {
-      throw redirectWithErrorMessage(form.callerPath, request, "Organization not found");
+      throw await redirectWithErrorMessage(form.callerPath, request, "Organization not found");
     }
 
     let payload: SetPlanBody;
@@ -139,7 +140,7 @@ export const action = dashboardAction(
       }
       case "paid": {
         if (form.planCode === undefined) {
-          throw redirectWithErrorMessage(form.callerPath, request, "Not a valid plan");
+          throw await redirectWithErrorMessage(form.callerPath, request, "Not a valid plan");
         }
         payload = {
           type: "paid" as const,
@@ -153,9 +154,26 @@ export const action = dashboardAction(
       }
     }
 
-    return await setPlan(organization, request, form.callerPath, payload, {
+    const result = await setPlan(organization, request, form.callerPath, payload, {
       invalidateBillingCache: engine.invalidateBillingCache.bind(engine),
+      // Redeem a promo code carried from the /promo landing page. This runs only
+      // once the Free plan has actually been provisioned (the grant target), so a
+      // failed plan change never burns the one-time code. Best-effort: it must
+      // never change the plan-selection outcome.
+      onFreePlanProvisioned: async (response) => {
+        const promoCode = await getPromoCodeFromCookie(request);
+        if (!promoCode) {
+          return;
+        }
+        const applied = await applyPromoCode(organization.id, user.id, promoCode);
+        if (applied?.applied) {
+          bustPromoCreditsCache(organization.id);
+          response.headers.append("Set-Cookie", await clearPromoCodeCookie());
+        }
+      },
     });
+
+    return result;
   }
 );
 
@@ -582,7 +600,7 @@ export function TierHobby({
           <Feedback
             defaultValue="hipaa"
             button={
-              <span className="cursor-pointer underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright">
+              <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
                 Request a BAA
               </span>
             }
@@ -736,7 +754,7 @@ export function TierPro({
           <Feedback
             defaultValue="hipaa"
             button={
-              <span className="cursor-pointer underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright">
+              <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
                 Request a BAA
               </span>
             }
@@ -755,11 +773,11 @@ export function TierEnterprise() {
           <h2 className="text-xl font-medium text-text-dimmed">Enterprise</h2>
           <p className="font-sans text-lg font-normal text-text-bright">Tailor a custom plan</p>
         </div>
-        <div className="w-full lg:w-auto lg:max-w-[16rem]">
+        <div className="w-full lg:w-auto lg:max-w-64">
           <Feedback
             defaultValue="enterprise"
             button={
-              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded border border-charcoal-600 bg-tertiary px-8 text-base font-medium transition hover:border-charcoal-550 hover:bg-charcoal-600">
+              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded border border-border-bright bg-tertiary px-8 text-base font-medium transition hover:border-border-brighter hover:bg-surface-control">
                 <span className="text-center text-text-bright">Contact us</span>
               </div>
             }
@@ -796,7 +814,7 @@ export function TierEnterprise() {
             <Feedback
               defaultValue="hipaa"
               button={
-                <span className="cursor-pointer underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright">
+                <span className="cursor-pointer underline decoration-text-faint underline-offset-4 transition hover:decoration-text-bright">
                   Request a BAA
                 </span>
               }
@@ -820,7 +838,7 @@ function TierContainer({
   return (
     <div
       className={cn(
-        "flex w-full min-w-[16rem] flex-col p-6",
+        "flex w-full min-w-64 flex-col p-6",
         isHighlighted ? "border border-indigo-500" : "border border-grid-dimmed",
         className
       )}
@@ -890,7 +908,7 @@ function FeatureItem({
           )}
         />
       ) : (
-        <XMarkIcon className="mt-0.5 size-4 min-w-4 text-charcoal-500" />
+        <XMarkIcon className="mt-0.5 size-4 min-w-4 text-text-faint" />
       )}
       <div
         className={cn(

@@ -478,7 +478,7 @@ function EnvironmentVariablesListPage({
           )}
           <div
             ref={tableScrollRef}
-            className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+            className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           >
             <Table
               containerClassName={cn(
@@ -607,7 +607,7 @@ function EnvironmentVariableTableRow({
   const borderedCellClassName = getBorderedCellClassName(variable);
 
   return (
-    <TableRow className={variable.isLastTime ? "after:bg-charcoal-600" : "after:bg-transparent"}>
+    <TableRow className={variable.isLastTime ? "after:bg-surface-control" : "after:bg-transparent"}>
       <TableCell className={cellClassName}>
         {variable.isFirstTime ? <CopyableText value={variable.key} className="font-mono" /> : null}
       </TableCell>
@@ -693,7 +693,7 @@ function EnvironmentVariableTableRow({
       </TableCell>
       <TableCellMenu
         isSticky
-        className="[&:has(.group-hover/table-row:block)]:w-auto w-0"
+        className="[&:has([data-hidden-buttons])]:w-auto w-0"
         hiddenButtons={
           // No edit/delete for environments the role can't manage — the value
           // is withheld, and the action enforces write:envvars independently.

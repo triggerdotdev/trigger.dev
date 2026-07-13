@@ -470,7 +470,7 @@ function LogoForm({
                   iconTileClass,
                   mode === "logo"
                     ? "border-indigo-500"
-                    : "border-charcoal-775 hover:border-charcoal-600"
+                    : "border-grid-dimmed hover:border-border-bright"
                 )}
               >
                 {showFavicon ? (
@@ -526,7 +526,7 @@ function LogoForm({
                   type="submit"
                   className={cn(
                     iconTileClass,
-                    avatar.type !== "letters" && "border-charcoal-775 hover:border-charcoal-600"
+                    avatar.type !== "letters" && "border-grid-dimmed hover:border-border-bright"
                   )}
                   style={{
                     borderColor: avatar.type === "letters" ? hex : undefined,
@@ -552,7 +552,7 @@ function LogoForm({
                     className={cn(
                       iconTileClass,
                       !(avatar.type === "icon" && avatar.name === name) &&
-                        "border-charcoal-775 hover:border-charcoal-600"
+                        "border-grid-dimmed hover:border-border-bright"
                     )}
                     style={{
                       borderColor: avatar.type === "icon" && avatar.name === name ? hex : undefined,
@@ -581,12 +581,12 @@ function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
   return (
     <Popover>
       <PopoverTrigger
-        className={cn(iconTileClass, "border-charcoal-775 hover:border-charcoal-600")}
+        className={cn(iconTileClass, "border-grid-dimmed hover:border-border-bright")}
       >
         <img src={colorWheelIcon} className="m-0 block size-[30px] p-0" />
       </PopoverTrigger>
       <PopoverContent
-        className="overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
@@ -618,8 +618,10 @@ function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
               fullWidth
               textAlignLeft
               className={cn(
-                "group-hover:bg-charcoal-700",
-                hex === color.hex ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined
+                "group-hover:bg-background-raised",
+                hex === color.hex
+                  ? "bg-background-hover group-hover:bg-surface-control/50"
+                  : undefined
               )}
             >
               {color.name}
@@ -636,7 +638,7 @@ function RadioDot({ active }: { active: boolean }) {
     <div
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full border-2 p-0.5 transition",
-        active ? "border-indigo-500" : "border-charcoal-700 hover:border-charcoal-600"
+        active ? "border-indigo-500" : "border-grid-bright hover:border-border-bright"
       )}
     >
       <div

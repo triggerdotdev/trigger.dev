@@ -26,7 +26,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-background-dimmed/90 backdrop-blur-sm transition-all duration-100 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
+      "fixed inset-0 z-50 bg-background-dimmed/90 backdrop-blur-xs transition-all duration-100 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
       className
     )}
     {...props}
@@ -49,7 +49,7 @@ const DialogContent = React.forwardRef<
         "fixed z-50 grid gap-4 border bg-background-dimmed shadow-lg animate-in data-[state=open]:fade-in-90",
         fullscreen
           ? "inset-6 rounded-lg pt-2.5 px-4 pb-4"
-          : "w-full rounded-b-lg px-4 pb-4 pt-2.5 data-[state=open]:slide-in-from-bottom-10 sm:max-w-lg sm:rounded-lg sm:zoom-in-90 data-[state=open]:sm:slide-in-from-bottom-0",
+          : "w-full rounded-b-lg px-4 pb-4 pt-2.5 data-[state=open]:slide-in-from-bottom-10 sm:max-w-lg sm:rounded-lg sm:zoom-in-90 sm:data-[state=open]:slide-in-from-bottom-0",
         className
       )}
       {...props}
@@ -57,7 +57,7 @@ const DialogContent = React.forwardRef<
       <hr className="absolute left-0 top-11 w-full" />
       {children}
       {showCloseButton && (
-        <DialogPrimitive.Close className="data-[state=open]:bg-accent data-[state=open]:text-muted-foreground group absolute right-2 top-[0.5625rem] flex items-center gap-1 rounded-sm p-1 py-1 pl-0 pr-1 opacity-70 transition focus-custom hover:bg-charcoal-750 hover:opacity-100 focus-visible:focus-custom disabled:pointer-events-none">
+        <DialogPrimitive.Close className="data-[state=open]:bg-accent data-[state=open]:text-muted-foreground group absolute right-2 top-2.25 flex items-center gap-1 rounded-sm p-1 py-1 pl-0 pr-1 opacity-70 transition focus-custom hover:bg-background-hover hover:opacity-100 focus-visible:focus-custom disabled:pointer-events-none">
           <ShortcutKey
             shortcut={{
               key: "esc",

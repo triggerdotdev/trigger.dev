@@ -27,7 +27,15 @@ vi.mock("~/db.server", async () => {
           if (!holder.client) {
             throw new Error(`${label} not set for this test`);
           }
-          return holder.client[prop];
+          const value = holder.client[prop];
+          // The `runStore` singleton memoizes each Prisma delegate on first access, pinning it to
+          // the first test's (later-dropped) DB. Re-resolve so it routes to the current client.
+          if (value !== null && typeof value === "object") {
+            return new Proxy(value, {
+              get: (_d, method) => holder.client[prop][method],
+            });
+          }
+          return value;
         },
       }
     );

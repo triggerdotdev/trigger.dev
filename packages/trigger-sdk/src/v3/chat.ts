@@ -23,19 +23,143 @@
  * ```
  */
 
-import type { ChatTransport, UIMessage, UIMessageChunk, ChatRequestOptions } from "ai";
+import type {
+  ChatTransport,
+  ModelMessage,
+  UIMessage,
+  UIMessageChunk,
+  ChatRequestOptions,
+} from "ai";
 import {
   controlSubtype,
   headerValue,
   PUBLIC_ACCESS_TOKEN_HEADER,
+  SESSION_IN_EVENT_ID_HEADER,
   SSEStreamSubscription,
   TRIGGER_CONTROL_SUBTYPE,
 } from "@trigger.dev/core/v3";
+
+function byteLength(body: string): number {
+  return new TextEncoder().encode(body).byteLength;
+}
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
-import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { slimSubmitMessageForWire } from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
+
+/**
+ * The wire payload shape sent by `TriggerChatTransport`.
+ * Uses `metadata` to match the AI SDK's `ChatRequestOptions` field name.
+ *
+ * Slim wire: at most ONE message per record. The agent runtime
+ * reconstructs prior history at run boot from a durable S3 snapshot +
+ * `session.out` replay (or `hydrateMessages` if registered).
+ *
+ * Declared here (rather than the internal shared module) so `declaration:
+ * true` consumers can name inferred agent types via this public subpath.
+ */
+export type ChatTaskWirePayload<TMessage extends UIMessage = UIMessage, TMetadata = unknown> = {
+  /**
+   * The single message being delivered on this trigger. Set for:
+   *   - `submit-message`: the new user message OR a tool-approval-responded
+   *     assistant message (with `state: "approval-responded"` tool parts).
+   *   - `regenerate-message`: omitted (the agent slices its own history).
+   *   - `preload` / `close` / `action`: omitted.
+   *   - `handover-prepare`: omitted (use `headStartMessages` instead).
+   */
+  message?: TMessage;
+  /**
+   * Bespoke escape hatch for `chat.headStart`. The customer's HTTP route
+   * handler ships full `UIMessage[]` history at the very first turn — before
+   * any snapshot exists. The route handler isn't subject to the
+   * `MAX_APPEND_BODY_BYTES` cap on `/in/append` because it goes through the
+   * customer's own HTTP endpoint. Used ONLY by `trigger: "handover-prepare"`.
+   * Ignored on every other trigger.
+   */
+  headStartMessages?: TMessage[];
+  chatId: string;
+  trigger:
+    | "submit-message"
+    | "regenerate-message"
+    | "preload"
+    | "close"
+    | "action"
+    /**
+     * The customer's `chat.handover` route handler kicked us off in
+     * parallel with the first-turn `streamText` running in the warm
+     * Next.js process. The run sits idle on `session.in` waiting for
+     * a `kind: "handover"` (continue from tool execution) or
+     * `kind: "handover-skip"` (handler finished pure-text, exit
+     * cleanly). See `chat.handover` in `@trigger.dev/sdk/chat-server`.
+     */
+    | "handover-prepare";
+  messageId?: string;
+  metadata?: TMetadata;
+  /** Custom action payload when `trigger` is `"action"`. Validated against `actionSchema` on the backend. */
+  action?: unknown;
+  /** Whether this run is continuing an existing chat whose previous run ended. */
+  continuation?: boolean;
+  /** The run ID of the previous run (only set when `continuation` is true). */
+  previousRunId?: string;
+  /** Override idle timeout for this run (seconds). Set by transport.preload(). */
+  idleTimeoutInSeconds?: number;
+  /**
+   * The friendlyId of the Session primitive backing this chat. The
+   * transport opens (or lazy-creates) the session with
+   * `externalId = chatId` on first message, then sends this friendlyId
+   * through to the run so the agent can attach to `.in` / `.out`
+   * without needing to round-trip through the control plane again.
+   * Optional for backward-compat while the migration is in flight;
+   * required once the legacy run-scoped stream path is removed.
+   */
+  sessionId?: string;
+};
+
+/**
+ * One chunk on the chat input stream. `kind` discriminates the variants —
+ * a single ordered stream carries all the signals (`message`, `stop`,
+ * `handover`, `handover-skip`).
+ */
+export type ChatInputChunk<TMessage extends UIMessage = UIMessage, TMetadata = unknown> =
+  | {
+      kind: "message";
+      /** Full wire payload for a new user message or regeneration. */
+      payload: ChatTaskWirePayload<TMessage, TMetadata>;
+    }
+  | {
+      kind: "stop";
+      /** Optional human-readable reason. */
+      message?: string;
+    }
+  | {
+      /**
+       * Sent by `chat.headStart` when the customer's first-turn
+       * `streamText` finishes. The agent run (parked in
+       * `handover-prepare`) wakes, seeds its accumulators with
+       * `partialAssistantMessage`, and runs the normal turn loop.
+       * `isFinal: false` means step 1 ended in tool-calls (the agent
+       * executes them and continues); `isFinal: true` means step 1 was
+       * the complete response (the agent skips the LLM call).
+       */
+      kind: "handover";
+      /** Customer's step-1 response messages (ModelMessage form). */
+      partialAssistantMessage: ModelMessage[];
+      /**
+       * The UI messageId the customer's handler used for its step-1
+       * assistant message, reused so post-handover chunks merge into
+       * the SAME assistant message on the browser side.
+       */
+      messageId?: string;
+      isFinal: boolean;
+    }
+  | {
+      /**
+       * Sent by `chat.headStart` only when the customer's handler
+       * ABORTS before producing a finishReason. The agent run exits
+       * cleanly without firing turn hooks.
+       */
+      kind: "handover-skip";
+    };
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
 
 /**
@@ -74,6 +198,89 @@ export type ChatFetchOverride = (
   init: RequestInit,
   ctx: ChatTransportEndpointContext
 ) => Promise<Response>;
+
+/**
+ * Which transport path produced a send-lifecycle event: `useChat` sends,
+ * steering (`sendPendingMessage`), actions, stops, or the first-turn
+ * `headStart` POST.
+ */
+export type ChatTransportSendSource =
+  | "submit-message"
+  | "regenerate-message"
+  | "steer"
+  | "action"
+  | "stop"
+  | "head-start";
+
+/**
+ * Lifecycle events emitted through the transport's `onEvent` callback.
+ *
+ * Send events are terminal: `message-sent` fires when the append is
+ * durably acknowledged (2xx from the session input stream, after any
+ * internal token-refresh retries), `message-send-failed` when the send
+ * definitively failed. Response events follow the output stream:
+ * `stream-connected` when the SSE subscription opens, `first-chunk` on
+ * the first response chunk of a turn, `turn-completed` when the agent's
+ * turn-complete control record arrives, and `stream-error` when the
+ * stream fails unrecoverably.
+ */
+export type ChatTransportEvent =
+  | {
+      type: "message-sent";
+      chatId: string;
+      timestamp: number;
+      messageId?: string;
+      source: ChatTransportSendSource;
+      durationMs: number;
+      /** The append's idempotency key — also stored on the server-side record. */
+      partId?: string;
+      /** Serialized request body size in bytes. */
+      bodyBytes?: number;
+    }
+  | {
+      type: "message-send-failed";
+      chatId: string;
+      timestamp: number;
+      messageId?: string;
+      source: ChatTransportSendSource;
+      error: Error;
+      status?: number;
+      durationMs: number;
+      partId?: string;
+      bodyBytes?: number;
+    }
+  | {
+      type: "stream-connected";
+      chatId: string;
+      timestamp: number;
+      resumed: boolean;
+      /** The resume cursor the subscription connected from, if any. */
+      lastEventId?: string;
+      /** The last turn-producing send on this chat (client-side attribution). */
+      messageId?: string;
+    }
+  | { type: "stream-error"; chatId: string; timestamp: number; error: Error; status?: number }
+  | {
+      type: "first-chunk";
+      chatId: string;
+      timestamp: number;
+      chunkType?: string;
+      lastEventId?: string;
+      messageId?: string;
+      /** Milliseconds since the last turn-producing send on this chat (time to first token). */
+      sinceSendMs?: number;
+    }
+  | {
+      type: "turn-completed";
+      chatId: string;
+      timestamp: number;
+      lastEventId?: string;
+      /** The agent's committed input-stream cursor from the turn-complete record. */
+      sessionInEventId?: string;
+      messageId?: string;
+      /** Milliseconds since the last turn-producing send on this chat (full turn latency). */
+      sinceSendMs?: number;
+    };
 
 /**
  * Detect 401/403 from realtime/input-stream calls without relying on `instanceof`
@@ -318,6 +525,23 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
    */
   fetch?: ChatFetchOverride;
 
+  /**
+   * Observability callback for transport lifecycle events (sends,
+   * stream connects, first chunk, turn completion). See
+   * {@link ChatTransportEvent} for the event catalog and semantics.
+   * Exceptions thrown by the callback are swallowed.
+   *
+   * @example Record send metrics:
+   * ```ts
+   * onEvent: (event) => {
+   *   if (event.type === "message-sent") {
+   *     metrics.timing("chat.send", event.durationMs);
+   *   }
+   * },
+   * ```
+   */
+  onEvent?: (event: ChatTransportEvent) => void;
+
   /** Additional headers included in every API request. */
   headers?: Record<string, string>;
 
@@ -449,10 +673,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private _onSessionChange:
     | ((chatId: string, session: ChatSessionPersistedState | null) => void)
     | undefined;
+  private _onEvent: ((event: ChatTransportEvent) => void) | undefined;
 
   private sessions: Map<string, ChatSessionState> = new Map();
   private activeStreams: Map<string, AbortController> = new Map();
   private pendingStarts: Map<string, Promise<ChatSessionState>> = new Map();
+  // Last turn-producing send per chat — attribution source for the
+  // response-side events' `messageId` / `sinceSendMs`.
+  private lastTurnSends: Map<string, { messageId?: string; at: number }> = new Map();
 
   constructor(options: TriggerChatTransportOptions) {
     this.taskId = options.task;
@@ -471,6 +699,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
     this.defaultMetadata = options.clientData;
     this._onSessionChange = options.onSessionChange;
+    this._onEvent = options.onEvent;
     this.watchMode = options.watch ?? false;
     this.headStart = options.headStart;
 
@@ -619,16 +848,20 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // Generated outside the closure so auth-retries reuse the same part id
     // and the server-side dedupe sees one logical append.
     const partId = crypto.randomUUID();
-    const sendChatMessage = async (token: string) => {
-      await this.appendInputChunk(
-        chatId,
-        token,
-        this.serializeInputChunk({ kind: "message", payload: wirePayload }),
-        partId
-      );
-    };
+    const serializedBody = this.serializeInputChunk({ kind: "message", payload: wirePayload });
+    const sendChatMessage = (token: string) =>
+      this.appendInputChunk(chatId, token, serializedBody, partId);
 
-    await this.callWithAuthRetry(chatId, state, sendChatMessage);
+    const inSeq = await this.sendWithEvents(
+      chatId,
+      trigger,
+      {
+        messageId: messageId ?? messages.at(-1)?.id,
+        partId,
+        bodyBytes: byteLength(serializedBody),
+      },
+      () => this.callWithAuthRetry(chatId, state, sendChatMessage)
+    );
 
     // Cancel any in-flight stream for this chat — the new turn supersedes it.
     const activeStream = this.activeStreams.get(chatId);
@@ -640,7 +873,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
 
-    return this.subscribeToSessionStream(state, abortSignal, chatId);
+    return this.subscribeToSessionStream(state, abortSignal, chatId, { sinceInSeq: inSeq });
   };
 
   /**
@@ -677,19 +910,35 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       metadata: args.metadata,
     };
 
-    const response = await fetch(this.headStart, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...this.extraHeaders,
+    let response!: Response;
+    const serializedBody = JSON.stringify(wirePayload);
+    await this.sendWithEvents(
+      args.chatId,
+      "head-start",
+      {
+        messageId: args.messageId ?? args.messages.at(-1)?.id,
+        bodyBytes: byteLength(serializedBody),
       },
-      body: JSON.stringify(wirePayload),
-      signal: args.abortSignal,
-    });
+      async () => {
+        response = await fetch(this.headStart!, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...this.extraHeaders,
+          },
+          body: serializedBody,
+          signal: args.abortSignal,
+        });
 
-    if (!response.ok) {
-      throw new Error(`chat.handover endpoint returned ${response.status} ${response.statusText}`);
-    }
+        if (!response.ok) {
+          const err = new Error(
+            `chat.handover endpoint returned ${response.status} ${response.statusText}`
+          ) as Error & { status: number };
+          err.status = response.status;
+          throw err;
+        }
+      }
+    );
     if (!response.body) {
       throw new Error("chat.handover endpoint returned no response body");
     }
@@ -748,8 +997,19 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         notifyChange(chatId, state);
       }
     };
+    const emit = (event: ChatTransportEvent) => this.emitEvent(event);
+    const attribution = () => this.turnAttribution(chatId);
+    let sawFirstChunk = false;
 
-    return response.body
+    emit({
+      type: "stream-connected",
+      chatId,
+      timestamp: Date.now(),
+      resumed: false,
+      messageId: this.lastTurnSends.get(chatId)?.messageId,
+    });
+
+    const piped = response.body
       .pipeThrough(new TextDecoderStream())
       .pipeThrough(parseUIMessageSseTransform())
       .pipeThrough(
@@ -759,6 +1019,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               const type = (chunk as { type?: unknown }).type;
               if (type === TRIGGER_TURN_COMPLETE) {
                 clearStreaming();
+                emit({
+                  type: "turn-completed",
+                  chatId,
+                  timestamp: Date.now(),
+                  lastEventId: sessions.get(chatId)?.lastEventId,
+                  ...attribution(),
+                });
                 return; // drop — not a real UIMessageChunk
               }
               if (type === TRIGGER_SESSION_STATE) {
@@ -769,6 +1036,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 return; // drop
               }
             }
+            if (!sawFirstChunk) {
+              sawFirstChunk = true;
+              emit({
+                type: "first-chunk",
+                chatId,
+                timestamp: Date.now(),
+                chunkType: (chunk as { type?: string } | undefined)?.type,
+                ...attribution(),
+              });
+            }
             controller.enqueue(chunk);
           },
           flush() {
@@ -776,6 +1053,44 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           },
         })
       );
+
+    // Pump wrapper: a TransformStream can't observe upstream errors, so
+    // read here to emit stream-error (aborts close cleanly, matching the
+    // session subscribe path).
+    const pipedReader = piped.getReader();
+    return new ReadableStream<UIMessageChunk>({
+      async pull(controller) {
+        try {
+          const next = await pipedReader.read();
+          if (next.done) {
+            controller.close();
+            return;
+          }
+          controller.enqueue(next.value);
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            try {
+              controller.close();
+            } catch {
+              /* already closed */
+            }
+            return;
+          }
+          const errorStatus = (error as { status?: unknown }).status;
+          emit({
+            type: "stream-error",
+            chatId,
+            timestamp: Date.now(),
+            error: error instanceof Error ? error : new Error(String(error)),
+            status: typeof errorStatus === "number" ? errorStatus : undefined,
+          });
+          controller.error(error);
+        }
+      },
+      cancel(reason) {
+        return pipedReader.cancel(reason);
+      },
+    });
   }
 
   /**
@@ -804,17 +1119,18 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
 
     const partId = crypto.randomUUID();
+    const serializedBody = this.serializeInputChunk({ kind: "message", payload: wirePayload });
     const send = async (token: string) => {
-      await this.appendInputChunk(
-        chatId,
-        token,
-        this.serializeInputChunk({ kind: "message", payload: wirePayload }),
-        partId
-      );
+      await this.appendInputChunk(chatId, token, serializedBody, partId);
     };
 
     try {
-      await this.callWithAuthRetry(chatId, state, send);
+      await this.sendWithEvents(
+        chatId,
+        "steer",
+        { messageId: message.id, partId, bodyBytes: byteLength(serializedBody) },
+        () => this.callWithAuthRetry(chatId, state, send)
+      );
       return true;
     } catch {
       return false;
@@ -846,6 +1162,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       : abortController.signal;
 
     return this.subscribeToSessionStream(state, abortSignal, options.chatId, {
+      resumed: true,
       sendStopOnAbort: !!options.abortSignal,
       // Reconnect-on-reload opts into the server's settled-peek shortcut
       // so the SSE doesn't hang for 60s when no turn is in flight. Active
@@ -865,17 +1182,18 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     if (!state) return false;
 
     const partId = crypto.randomUUID();
+    const serializedBody = this.serializeInputChunk({ kind: "stop" });
     const send = async (token: string) => {
-      await this.appendInputChunk(
-        chatId,
-        token,
-        this.serializeInputChunk({ kind: "stop" }),
-        partId
-      );
+      await this.appendInputChunk(chatId, token, serializedBody, partId);
     };
 
     try {
-      await this.callWithAuthRetry(chatId, state, send);
+      await this.sendWithEvents(
+        chatId,
+        "stop",
+        { partId, bodyBytes: byteLength(serializedBody) },
+        () => this.callWithAuthRetry(chatId, state, send)
+      );
     } catch {
       return false;
     }
@@ -924,11 +1242,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const body = this.serializeInputChunk({ kind: "message", payload: wirePayload });
     const partId = crypto.randomUUID();
-    const send = async (token: string) => {
-      await this.appendInputChunk(chatId, token, body, partId);
-    };
+    const send = (token: string) => this.appendInputChunk(chatId, token, body, partId);
 
-    await this.callWithAuthRetry(chatId, state, send);
+    const inSeq = await this.sendWithEvents(
+      chatId,
+      "action",
+      { partId, bodyBytes: byteLength(body) },
+      () => this.callWithAuthRetry(chatId, state, send)
+    );
 
     // Supersede any in-flight reader before subscribing — same as
     // `sendMessages`. Two concurrent readers both write `state.lastEventId`
@@ -945,7 +1266,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
 
-    return this.subscribeToSessionStream(state, undefined, chatId);
+    return this.subscribeToSessionStream(state, undefined, chatId, { sinceInSeq: inSeq });
   };
 
   // -------------------------------------------------------------------------
@@ -971,6 +1292,68 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     callback: ((chatId: string, session: ChatSessionPersistedState | null) => void) | undefined
   ): void {
     this._onSessionChange = callback;
+  }
+
+  /** Update the `onEvent` callback without recreating the transport. */
+  setOnEvent(callback: ((event: ChatTransportEvent) => void) | undefined): void {
+    this._onEvent = callback;
+  }
+
+  private emitEvent(event: ChatTransportEvent): void {
+    const cb = this._onEvent;
+    if (!cb) return;
+    try {
+      cb(event);
+    } catch {
+      // observability must never break the chat
+    }
+  }
+
+  /** Run a send op, emitting the terminal message-sent / message-send-failed event. */
+  private async sendWithEvents<T>(
+    chatId: string,
+    source: ChatTransportSendSource,
+    extras: { messageId?: string; partId?: string; bodyBytes?: number },
+    op: () => Promise<T>
+  ): Promise<T> {
+    const startedAt = Date.now();
+    try {
+      const result = await op();
+      const turnProducing =
+        source === "submit-message" || source === "regenerate-message" || source === "head-start";
+      if (turnProducing) {
+        this.lastTurnSends.set(chatId, { messageId: extras.messageId, at: Date.now() });
+      }
+      this.emitEvent({
+        type: "message-sent",
+        chatId,
+        timestamp: Date.now(),
+        source,
+        durationMs: Date.now() - startedAt,
+        ...extras,
+      });
+      return result;
+    } catch (error) {
+      const status = (error as { status?: unknown }).status;
+      this.emitEvent({
+        type: "message-send-failed",
+        chatId,
+        timestamp: Date.now(),
+        source,
+        error: error instanceof Error ? error : new Error(String(error)),
+        status: typeof status === "number" ? status : undefined,
+        durationMs: Date.now() - startedAt,
+        ...extras,
+      });
+      throw error;
+    }
+  }
+
+  /** Attribution fields for response-side events. */
+  private turnAttribution(chatId: string): { messageId?: string; sinceSendMs?: number } {
+    const lastSend = this.lastTurnSends.get(chatId);
+    if (!lastSend) return {};
+    return { messageId: lastSend.messageId, sinceSendMs: Date.now() - lastSend.at };
   }
 
   /**
@@ -1121,7 +1504,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     token: string,
     body: string,
     partId?: string
-  ): Promise<void> {
+  ): Promise<number | undefined> {
     const ctx: ChatTransportEndpointContext = { endpoint: "in", chatId };
     const url = `${this.resolveBaseURL(ctx)}/realtime/v1/sessions/${encodeURIComponent(chatId)}/in/append`;
     // extraHeaders first so the fixed headers below win — a transport-wide
@@ -1144,24 +1527,26 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       err.status = response.status;
       throw err;
     }
+    // The appended record's `.in` seq, for correlating the response stream to
+    // this send. Omitted by older webapps / a lost idempotency claim.
+    const data = (await response.json().catch(() => undefined)) as { seq?: unknown } | undefined;
+    return typeof data?.seq === "number" ? data.seq : undefined;
   }
 
-  private async callWithAuthRetry(
+  private async callWithAuthRetry<T>(
     chatId: string,
     state: ChatSessionState,
-    op: (token: string) => Promise<void>
-  ): Promise<void> {
+    op: (token: string) => Promise<T>
+  ): Promise<T> {
     // 1) Try with the current PAT.
     try {
-      await op(state.publicAccessToken);
-      return;
+      return await op(state.publicAccessToken);
     } catch (err) {
       if (isSessionNotFoundError(err)) {
         // The cached PAT authenticated but the session doesn't exist here —
         // recreate it and retry.
         await this.recreateSession(chatId, state);
-        await op(state.publicAccessToken);
-        return;
+        return await op(state.publicAccessToken);
       }
       if (!isAuthError(err)) throw err;
     }
@@ -1172,8 +1557,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.publicAccessToken = fresh;
     this.notifySessionChange(chatId, state);
     try {
-      await op(fresh);
-      return;
+      return await op(fresh);
     } catch (err) {
       if (!isSessionNotFoundError(err)) throw err;
     }
@@ -1182,7 +1566,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     //    state is stale (created in a different environment, or before the
     //    sessions upgrade). Recreate the session and retry once.
     await this.recreateSession(chatId, state);
-    await op(state.publicAccessToken);
+    return await op(state.publicAccessToken);
   }
 
   /**
@@ -1229,6 +1613,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     options?: {
       sendStopOnAbort?: boolean;
       peekSettled?: boolean;
+      resumed?: boolean;
+      /** `.in` seq of the send that opened this stream; skip turn-completes below it (earlier turns). */
+      sinceInSeq?: number;
     }
   ): ReadableStream<UIMessageChunk> {
     const internalAbort = new AbortController();
@@ -1403,6 +1790,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
           }
 
+          this.emitEvent({
+            type: "stream-connected",
+            chatId,
+            timestamp: Date.now(),
+            resumed: options?.resumed ?? false,
+            lastEventId: state.lastEventId,
+            messageId: this.lastTurnSends.get(chatId)?.messageId,
+          });
+          let sawFirstChunk = false;
+
           while (true) {
             let value: {
               id: string;
@@ -1476,12 +1873,29 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
 
             if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+              // Skip a turn-complete from an earlier turn (committed `.in` cursor
+              // below this send's seq), e.g. an undo action that raced this send.
+              if (options?.sinceInSeq !== undefined) {
+                const cursorRaw = headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER);
+                const cursor = cursorRaw !== undefined ? Number.parseInt(cursorRaw, 10) : NaN;
+                if (!Number.isNaN(cursor) && cursor < options.sinceInSeq) {
+                  continue;
+                }
+              }
               const refreshedToken =
                 headerValue(value.headers, PUBLIC_ACCESS_TOKEN_HEADER) ??
                 legacyChunk?.publicAccessToken;
               if (refreshedToken) {
                 state.publicAccessToken = refreshedToken;
               }
+              this.emitEvent({
+                type: "turn-completed",
+                chatId,
+                timestamp: Date.now(),
+                lastEventId: state.lastEventId,
+                sessionInEventId: headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER),
+                ...this.turnAttribution(chatId),
+              });
               state.isStreaming = false;
               this.notifySessionChange(chatId, state);
               this.coordinator?.release(chatId);
@@ -1489,6 +1903,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 lastEventId: state.lastEventId,
               });
 
+              // Re-arm per-turn events for watch mode's next turn.
+              sawFirstChunk = false;
               if (this.watchMode) continue;
 
               internalAbort.abort();
@@ -1504,6 +1920,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             // unwrapped from the S2 record envelope (the parser does the
             // JSON unwrap). Drop empty/malformed payloads defensively.
             if (value.chunk == null) continue;
+            if (!sawFirstChunk) {
+              sawFirstChunk = true;
+              this.emitEvent({
+                type: "first-chunk",
+                chatId,
+                timestamp: Date.now(),
+                chunkType: (value.chunk as { type?: string }).type,
+                lastEventId: value.id || undefined,
+                ...this.turnAttribution(chatId),
+              });
+            }
             controller.enqueue(value.chunk as UIMessageChunk);
           }
         } catch (error) {
@@ -1515,6 +1942,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
             return;
           }
+          const errorStatus = (error as { status?: unknown }).status;
+          this.emitEvent({
+            type: "stream-error",
+            chatId,
+            timestamp: Date.now(),
+            error: error instanceof Error ? error : new Error(String(error)),
+            status: typeof errorStatus === "number" ? errorStatus : undefined,
+          });
           controller.error(error);
         } finally {
           teardownWakeListeners();

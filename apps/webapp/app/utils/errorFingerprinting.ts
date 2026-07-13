@@ -12,7 +12,11 @@ export function calculateErrorFingerprint(error: unknown): string {
   // 2. It won't be an instanceof Error because it's from the database.
   const errorObj = error as any;
   const errorType = String(errorObj.type || errorObj.name || "Error");
-  const message = String(errorObj.message || "");
+  // Fall back to the error class name, then the raw serialized value, so
+  // messageless errors (e.g. tagged errors) and non-Error throws (strings,
+  // plain objects) still group by something distinctive instead of collapsing
+  // into a single fingerprint. Message-bearing errors are unaffected.
+  const message = String(errorObj.message || errorObj.name || errorObj.raw || "");
   const stack = String(errorObj.stack || errorObj.stacktrace || "");
 
   // Normalize message to group similar errors

@@ -62,7 +62,7 @@ export function AISpanDetails({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Tab bar */}
-      <div className="shrink-0 overflow-x-auto px-3 py-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="shrink-0 overflow-x-auto px-3 py-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <TabContainer>
           <TabButton
             isActive={tab === "overview"}
@@ -89,7 +89,7 @@ export function AISpanDetails({
             <span className="inline-flex items-center whitespace-nowrap">
               Tools
               {toolCount > 0 && (
-                <span className="ml-1 inline-flex min-w-4 -translate-y-px items-center justify-center rounded-full border border-charcoal-600 bg-charcoal-650 px-1 py-0.5 text-[0.625rem] font-medium leading-none text-text-bright">
+                <span className="ml-1 inline-flex min-w-4 -translate-y-px items-center justify-center rounded-full border border-border-bright bg-secondary px-1 py-0.5 text-[0.625rem] font-medium leading-none text-text-bright">
                   {toolCount}
                 </span>
               )}
@@ -109,7 +109,7 @@ export function AISpanDetails({
       </div>
 
       {/* Tab content */}
-      <div className="scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {tab === "overview" && (
           <>
             {startTime && (
@@ -221,7 +221,7 @@ function CopyRawFooter({ rawProperties }: { rawProperties: string }) {
   }
 
   return (
-    <div className="flex h-[3.25rem] shrink-0 items-center justify-end border-t border-grid-dimmed px-2">
+    <div className="flex h-13 shrink-0 items-center justify-end border-t border-grid-dimmed px-2">
       <Button
         variant="minimal/medium"
         onClick={handleCopy}
@@ -287,7 +287,7 @@ function PromptTab({
       {promptData.template && (
         <div className="flex flex-col gap-1.5 py-2.5">
           <Header3>Template</Header3>
-          <div className="rounded-md border border-grid-bright bg-charcoal-750/50 px-3.5 py-2">
+          <div className="rounded-md border border-grid-bright bg-background-hover/50 px-3.5 py-2">
             <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
               <Suspense
                 fallback={<span className="whitespace-pre-wrap">{promptData.template}</span>}

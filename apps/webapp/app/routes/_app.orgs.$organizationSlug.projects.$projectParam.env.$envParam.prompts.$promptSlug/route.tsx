@@ -549,7 +549,7 @@ export default function PromptDetailPage() {
                       ? "bg-amber-400"
                       : isCurrent
                         ? "bg-green-500"
-                        : "bg-charcoal-550"
+                        : "bg-surface-control-hover"
                   )}
                 />
                 <span className="text-xs text-text-dimmed">v{selectedVersion.version}</span>
@@ -755,7 +755,7 @@ export default function PromptDetailPage() {
                     )}
 
                     {contentTab === "metrics" && (
-                      <div className="h-full overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                      <div className="h-full overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                         <MetricsTab
                           prompt={prompt}
                           organizationId={organizationId}
@@ -785,7 +785,7 @@ export default function PromptDetailPage() {
           >
             <div className="grid h-full max-h-full grid-rows-[2rem_1fr] overflow-hidden bg-background-bright">
               {/* Tabs */}
-              <div className="overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+              <div className="overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                 <TabContainer>
                   <TabButton
                     isActive={tab === "details"}
@@ -817,7 +817,7 @@ export default function PromptDetailPage() {
               {/* Tab content */}
               <div
                 className={cn(
-                  "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                  "overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
                   tab === "versions" ? "py-0" : "px-3 py-3"
                 )}
               >
@@ -924,7 +924,7 @@ function OverrideDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col !gap-0 overflow-hidden pl-0 pr-3 pt-0 md:max-w-4xl lg:max-w-6xl">
+      <DialogContent className="flex h-[85vh] max-h-[85vh] flex-col gap-0! overflow-hidden pl-0 pr-3 pt-0 md:max-w-4xl lg:max-w-6xl">
         <DialogHeader className="px-4 py-2.5">
           {isEditingOverride ? "Edit override" : "Create override"}
         </DialogHeader>
@@ -948,7 +948,7 @@ function OverrideDialog({
 
           {/* Right panel: properties */}
           <ResizablePanel id="override-sidebar" min="220px" default="280px" max="360px">
-            <div className="h-full overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <div className="h-full overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Header3>Override settings</Header3>
@@ -980,7 +980,7 @@ function OverrideDialog({
                     <div className="space-y-1">
                       {variableFields.map((f) => (
                         <div key={f.name} className="flex items-center gap-1.5 text-xs">
-                          <code className="rounded bg-charcoal-750 px-1 py-0.5 text-text-bright">
+                          <code className="rounded bg-background-hover px-1 py-0.5 text-text-bright">
                             {f.name}
                           </code>
                           <span className="text-text-dimmed">{f.type}</span>
@@ -1167,7 +1167,7 @@ function PreviewTab({
                 {field.enumValues ? (
                   <select
                     autoFocus={index === 0}
-                    className="h-6 w-full rounded border border-charcoal-650 bg-background-bright px-1 text-xs text-text-bright focus:border-indigo-500 focus:outline-none"
+                    className="h-6 w-full rounded border border-border-bright bg-background-bright px-1 text-xs text-text-bright focus:border-indigo-500 focus:outline-hidden"
                     value={testVariables[field.name] ?? ""}
                     onChange={(e) =>
                       setTestVariables((prev) => ({
@@ -1504,7 +1504,7 @@ function GenerationsTab({
       <ResizablePanel id="prompt-gen-list" min="200px">
         <div
           ref={listRef}
-          className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           {newGenerationCount > 0 && (
             <div className="sticky top-0 z-20 flex items-center justify-center gap-2 border-b border-grid-dimmed bg-background-bright px-3 py-1.5">
@@ -1563,7 +1563,7 @@ function GenerationsTab({
                     <TableCell
                       className={cn(
                         "tabular-nums",
-                        isSelected ? "text-text-bright" : "text-charcoal-400"
+                        isSelected ? "text-text-bright" : "text-text-dimmed"
                       )}
                     >
                       v{gen.prompt_version}
@@ -1596,7 +1596,7 @@ function GenerationsTab({
                           variant="minimal/small"
                           TrailingIcon={RunsIcon}
                           trailingIconClassName="text-text-bright"
-                          className="h-[1.375rem] pl-1.5 pr-2"
+                          className="h-5.5 pl-1.5 pr-2"
                         >
                           <span className="text-[0.6875rem] text-text-bright">View run</span>
                         </LinkButton>
@@ -2081,7 +2081,9 @@ function VersionsTab({
             onClick={() => onSelectVersion(v.version)}
             className={cn(
               "flex cursor-pointer items-center gap-3 px-3 py-3 text-sm transition",
-              isSelected ? "bg-indigo-500/10 hover:bg-indigo-500/[0.07]" : "hover:bg-charcoal-750"
+              isSelected
+                ? "bg-indigo-500/10 hover:bg-indigo-500/[0.07]"
+                : "hover:bg-background-hover"
             )}
           >
             <RadioButtonCircle checked={isSelected} />
@@ -2090,7 +2092,7 @@ function VersionsTab({
                 <div
                   className={cn(
                     "size-2 shrink-0 rounded-full",
-                    isOverride ? "bg-amber-400" : isCurrent ? "bg-green-500" : "bg-charcoal-600"
+                    isOverride ? "bg-amber-400" : isCurrent ? "bg-green-500" : "bg-surface-control"
                   )}
                 />
                 <span className="font-medium text-text-bright">v{v.version}</span>
@@ -2143,9 +2145,9 @@ function PromptCopyPopover({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="-ml-1.5 flex items-center gap-1 rounded py-1.5 pl-2 pr-1.5 font-mono text-xs text-text-dimmed transition focus-custom hover:bg-charcoal-750 hover:text-text-bright">
+      <PopoverTrigger className="-ml-1.5 flex items-center gap-1 rounded py-1.5 pl-2 pr-1.5 font-mono text-xs text-text-dimmed transition focus-custom hover:bg-background-hover hover:text-text-bright">
         {slug}
-        <ChevronUpDownIcon className="size-4 text-charcoal-500" />
+        <ChevronUpDownIcon className="size-4 text-text-faint" />
       </PopoverTrigger>
       <PopoverContent
         align="start"
@@ -2214,7 +2216,7 @@ function CopyPopoverItem({
             "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition",
             copied
               ? "text-green-500"
-              : "text-text-dimmed hover:bg-charcoal-700 hover:text-text-bright"
+              : "text-text-dimmed hover:bg-background-raised hover:text-text-bright"
           )}
         >
           {copied ? (

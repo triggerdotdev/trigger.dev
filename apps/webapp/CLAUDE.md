@@ -91,24 +91,14 @@ Background job workers use `@trigger.dev/redis-worker`:
 - `app/v3/alertsWorker.server.ts`
 - `app/v3/batchTriggerWorker.server.ts`
 
-Do NOT add new jobs using zodworker/graphile-worker (legacy).
-
 ## Real-time
 
 - Socket.io: `app/v3/handleSocketIo.server.ts`, `app/v3/handleWebsockets.server.ts`
 - Electric SQL: Powers real-time data sync for the dashboard
 
-## Legacy V1 Code
+## v3 (engine V1) removed
 
-The `app/v3/` directory name is misleading - most code is actively used by V2. Only these specific files are V1-only legacy:
-- `app/v3/marqs/` (old MarQS queue system)
-- `app/v3/legacyRunEngineWorker.server.ts`
-- `app/v3/services/triggerTaskV1.server.ts`
-- `app/v3/services/cancelTaskRunV1.server.ts`
-- `app/v3/authenticatedSocketConnection.server.ts`
-- `app/v3/sharedSocketConnection.ts`
-
-Some services (e.g., `cancelTaskRun.server.ts`, `batchTriggerV3.server.ts`) branch on `RunEngineVersion` to support both V1 and V2. When editing these, only modify V2 code paths.
+v3 (engine V1: MarQS + Graphile worker) is end-of-life and its execution code is gone. The `app/v3/` directory name is historical; everything under it now serves V2. There is no V1 execution path: a `RunEngineVersion` `V1` branch (e.g. in `triggerTask.server.ts`, `cancelTaskRun.server.ts`) only rejects/finalizes gracefully so v3 clients get a clean 4xx, never a 5xx. Do not reintroduce V1. See `.claude/rules/legacy-v3-code.md` for the deprecation boundary.
 
 ## Performance: Trigger Hot Path
 

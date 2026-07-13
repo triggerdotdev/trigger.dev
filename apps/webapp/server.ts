@@ -150,8 +150,9 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         res.set("X-Robots-Tag", "noindex, nofollow");
       }
 
-      // /clean-urls/ -> /clean-urls
-      if (req.path.endsWith("/") && req.path.length > 1) {
+      // /clean-urls/ -> /clean-urls. Skip /ph: PostHog ingest endpoints end in
+      // a slash, and a 301 would drop sendBeacon POSTs.
+      if (req.path.endsWith("/") && req.path.length > 1 && !req.path.startsWith("/ph/")) {
         const query = req.url.slice(req.path.length);
         const safepath = req.path.slice(0, -1).replace(/\/+/g, "/");
         res.redirect(301, safepath + query);

@@ -240,7 +240,7 @@ export function UpsertScheduleForm({
               : "New schedule"}
         </Header2>
       </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="p-3">
           {submitFetcher ? <input type="hidden" name="_format" value="json" /> : null}
           {schedule && <input type="hidden" name="friendlyId" value={schedule.friendlyId} />}

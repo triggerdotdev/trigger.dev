@@ -18,16 +18,16 @@ const sizes = {
 
 const theme = {
   primary: {
-    base: "bg-charcoal-700",
-    active: "text-text-bright hover:bg-charcoal-750/50",
+    base: "bg-background-raised",
+    active: "text-text-bright hover:bg-background-hover/50",
     inactive: "text-text-dimmed transition hover:text-text-bright",
-    selected: "absolute inset-0 rounded-[2px] outline outline-3 outline-primary",
+    selected: "absolute inset-0 rounded-[2px] outline-solid outline-3 outline-primary",
   },
   secondary: {
-    base: "bg-charcoal-700/50",
+    base: "bg-background-raised/50",
     active: "text-text-bright",
     inactive: "text-text-dimmed transition hover:text-text-bright",
-    selected: "absolute inset-0 rounded bg-charcoal-700 border border-charcoal-600",
+    selected: "absolute inset-0 rounded bg-background-raised border border-border-bright",
   },
 };
 

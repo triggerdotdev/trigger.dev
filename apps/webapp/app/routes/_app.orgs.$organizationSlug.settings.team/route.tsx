@@ -46,11 +46,11 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { Select, SelectItem, SelectLinkItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
-import { removeTeamMember } from "~/models/member.server";
+import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
@@ -262,12 +262,9 @@ export const action = dashboardAction(
       return json(submission.reply());
     }
 
-    // Default intent: remove a member or leave the org. Scope the target to
-    // the actor's organization: an orgMember id is a globally unique key, so an
-    // unscoped lookup (plus an unscoped delete in the model) would let a
-    // manager in one org remove members of another by submitting a foreign id.
-    // Self-leave is always allowed; removing someone else requires
-    // manage:members.
+    // Default intent: remove a member or leave the org, with the target scoped
+    // to the actor's organization. Self-leave is always allowed; removing
+    // someone else requires manage:members.
     const orgId = context.organizationId;
     if (!orgId) {
       return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
@@ -295,11 +292,14 @@ export const action = dashboardAction(
     }
 
     try {
-      const deletedMember = await removeTeamMember({
-        userId,
-        memberId: submission.value.memberId,
-        slug: organizationSlug,
-      });
+      const deletedMember = await removeTeamMember(
+        {
+          userId,
+          memberId: submission.value.memberId,
+          slug: organizationSlug,
+        },
+        prisma
+      );
 
       // Sticky removal: record a tombstone so passive SSO-JIT won't re-add
       // them on next login (best-effort; no-op without the SSO plugin).
@@ -449,7 +449,7 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid max-h-full min-h-full grid-rows-[1fr_auto]">
-          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <div className="mx-auto max-w-3xl px-4 pb-4 pt-20">
               {invites.length > 0 && (
                 <>
@@ -457,7 +457,7 @@ export default function Page() {
                   <ul className="divide-ui-border mb-6 flex w-full flex-col divide-y border-y">
                     {invites.map((invite) => (
                       <li key={invite.id} className="flex items-center gap-4 py-4">
-                        <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
+                        <div className="rounded-md border border-grid-dimmed bg-background-bright p-1.5">
                           <EnvelopeIcon className="size-7 text-text-dimmed" />
                         </div>
                         <div className="flex flex-col gap-0.5">

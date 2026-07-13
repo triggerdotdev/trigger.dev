@@ -630,9 +630,29 @@ Options for the frontend transport constructor and `useTriggerChatTransport` hoo
 | `clientData`           | Typed by `clientDataSchema`                                          | —                           | Default client data merged into per-turn `metadata` and threaded through `startSession`'s params (so the first run's `payload.metadata` matches per-turn `metadata`). Live-updated when the option value changes. |
 | `sessions`             | `Record<string, ChatSession>`                                        | —                           | Restore sessions from storage. See [ChatSession](#chatsession).             |
 | `onSessionChange`      | `(chatId, session \| null) => void`                                  | —                           | Fires when session state changes. `session` is the full `ChatSession` or `null` when the run ends. |
+| `onEvent`              | `(event: ChatTransportEvent) => void`                                | —                           | Observability callback for transport lifecycle events (send outcomes, stream connects, first chunk, turn completion). See [Transport events](#transport-events). Exceptions thrown by the callback are swallowed. |
 | `multiTab`             | `boolean`                                                            | `false`                     | Enable multi-tab claim coordination via `BroadcastChannel`. See [Frontend → multi-tab](/ai-chat/frontend#multi-tab-coordination). |
 | `watch`                | `boolean`                                                            | `false`                     | Read-only watcher mode — keep the SSE subscription open across `trigger:turn-complete` so a viewer sees turns 2, 3, … through one long-lived stream. |
 | `headStart`            | `string`                                                             | —                           | URL of a [`chat.headStart`](/ai-chat/fast-starts#head-start) route handler. When set, the FIRST message of a brand-new chat POSTs to this URL so step 1's LLM call runs in your warm process while the agent run boots in parallel. Subsequent turns bypass it. |
+
+### Transport events
+
+The `onEvent` callback receives a `ChatTransportEvent` (exported from `@trigger.dev/sdk/chat` and `@trigger.dev/sdk/chat/react`) for each lifecycle moment the transport observes. All events carry `chatId` and `timestamp`.
+
+| Event | Extra fields | Fires when |
+| --- | --- | --- |
+| `message-sent` | `messageId?`, `source`, `durationMs`, `partId?`, `bodyBytes?` | A send was durably acknowledged — a 2xx from the session input stream append (or the `headStart` POST), after any internal token-refresh retries. This means the message is durably written to the stream the agent consumes from, not merely "request accepted". `partId` is the append's idempotency key, also stored on the server-side record. |
+| `message-send-failed` | `messageId?`, `source`, `error`, `status?`, `durationMs`, `partId?`, `bodyBytes?` | A send definitively failed after internal retries. Fires in addition to `useChat`'s `onError`. |
+| `stream-connected` | `resumed`, `lastEventId?`, `messageId?` | The SSE subscription to the session's output stream started delivering. `resumed: true` when reconnecting from a stored cursor (page reload) rather than following a fresh send. `lastEventId` is the cursor it connected from. |
+| `first-chunk` | `chunkType?`, `lastEventId?`, `messageId?`, `sinceSendMs?` | The first response chunk of a turn arrived. `sinceSendMs` is the delta from the last turn-producing send — time to first token without any bookkeeping. |
+| `turn-completed` | `lastEventId?`, `sessionInEventId?`, `messageId?`, `sinceSendMs?` | The agent's turn-complete control record arrived — the "finished answering" signal. `sinceSendMs` is the full turn latency; `sessionInEventId` is the agent's committed input-stream cursor. |
+| `stream-error` | `error`, `status?` | The output stream failed unrecoverably. |
+
+`source` identifies the send path: `"submit-message"`, `"regenerate-message"`, `"steer"` (`sendPendingMessage`), `"action"` (`sendAction`), `"stop"` (`stopGeneration`), or `"head-start"`.
+
+`messageId` on the response-side events is client-side attribution: the id from the most recent turn-producing send (`submit-message`, `regenerate-message`, or `head-start`) on that chat.
+
+See [Monitoring message delivery](/ai-chat/frontend#monitoring-message-delivery) for the metrics and watchdog patterns these enable.
 
 ### `accessToken` callback
 

@@ -155,7 +155,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   );
 
   if (!project) {
-    throw redirectWithErrorMessage(redirectPath, request, "Project not found");
+    throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
   }
 
   const formData = await request.formData();

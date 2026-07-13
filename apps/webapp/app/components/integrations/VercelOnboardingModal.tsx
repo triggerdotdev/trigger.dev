@@ -837,7 +837,7 @@ export function VercelOnboardingModal({
 
               <Hint>
                 Once connected, your{" "}
-                <code className="text-xs rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">
+                <code className="text-xs rounded bg-background-raised px-1 py-0.5 text-text-bright">
                   TRIGGER_SECRET_KEY
                 </code>{" "}
                 will be automatically synced to Vercel for each environment.
@@ -881,7 +881,7 @@ export function VercelOnboardingModal({
                 Select which custom Vercel environment should map to Trigger.dev's Staging
                 environment. Production and Preview environments are mapped automatically. If you
                 skip this step, the{" "}
-                <code className="rounded bg-charcoal-700 px-1 py-0.5 text-text-bright">
+                <code className="rounded bg-background-raised px-1 py-0.5 text-text-bright">
                   TRIGGER_SECRET_KEY
                 </code>{" "}
                 will not be installed for the staging environment in Vercel. You can configure this
@@ -958,7 +958,7 @@ export function VercelOnboardingModal({
                   for the recommended setup.
                 </Paragraph>
               </div>
-              <div className="flex items-center justify-between rounded border bg-charcoal-800 p-3">
+              <div className="flex items-center justify-between rounded border bg-background-bright p-3">
                 <div>
                   <Label>Pull all environment variables now</Label>
                   <Hint>Select all variables to pull from Vercel.</Hint>

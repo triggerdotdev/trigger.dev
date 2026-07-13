@@ -321,7 +321,7 @@ export default function Page() {
                       <TypedAwait resolve={runList} errorElement={<TableLoading />}>
                         {(list) =>
                           list ? (
-                            <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                            <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                               <TaskRunsTable
                                 total={list.runs.length}
                                 hasFilters={list.hasFilters}
@@ -751,7 +751,7 @@ function ScheduledTaskDetailSidebar({
         </LinkButton>
       </div>
       <div className="flex h-8 items-end justify-between gap-2 border-b border-grid-bright pl-3 pr-1.5">
-        <TabContainer className="!border-b-0">
+        <TabContainer className="border-b-0!">
           <TabButton
             isActive={activeTab === "overview"}
             layoutId="scheduled-task-detail-tabs"
@@ -780,7 +780,7 @@ function ScheduledTaskDetailSidebar({
         ) : null}
       </div>
       {activeTab === "overview" ? (
-        <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <Property.Table>
             <Property.Item>
               <Property.Label>Identifier</Property.Label>
@@ -861,7 +861,7 @@ function ScheduledTaskDetailSidebar({
           ) : null}
         </div>
       ) : (
-        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           {scheduleList ? (
             sortedSchedules.length === 0 ? (
               <div className="p-3">
@@ -1021,7 +1021,7 @@ function ActivityChartSkeleton() {
   return (
     <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
       {Array.from({ length: 42 }).map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-charcoal-850" />
+        <div key={i} className="h-full flex-1 bg-background-dimmed" />
       ))}
     </div>
   );

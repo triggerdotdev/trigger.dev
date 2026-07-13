@@ -11,6 +11,7 @@ import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenF
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { type WaitpointTokenStatus, type WaitpointTokenItem } from "@trigger.dev/core/v3";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -82,17 +83,19 @@ type Result =
     };
 
 export class WaitpointListPresenter extends BasePresenter {
-  // Optional run-ops read-routing. Omitted (single-DB / self-host) => every read
-  // goes through `_replica` exactly as today (passthrough). There is NO legacy
-  // writer/primary handle by construction — the legacy field is the read replica only.
+  // `readRoute` is retained only for caller-signature compatibility (see
+  // ApiWaitpointListPresenter and the waitpoints-tokens route). Run-graph reads now go
+  // through the shared `runStore`, which resolves residency (new vs legacy) itself and
+  // reads the single DB when the split is off — so this hint is no longer consulted here.
   constructor(
     prismaClient?: PrismaClientOrTransaction,
     replicaClient?: PrismaClientOrTransaction,
     private readonly readRoute?: {
-      runOpsNew?: PrismaClientOrTransaction; // new run-ops client
-      runOpsLegacyReplica?: PrismaClientOrTransaction; // legacy run-ops READ REPLICA only — never the legacy primary
-      splitEnabled?: boolean; // resolved boot constant
-    }
+      runOpsNew?: PrismaClientOrTransaction;
+      runOpsLegacyReplica?: PrismaClientOrTransaction;
+      splitEnabled?: boolean;
+    },
+    private readonly runStore = defaultRunStore
   ) {
     super(prismaClient, replicaClient);
   }
@@ -176,8 +179,8 @@ export class WaitpointListPresenter extends BasePresenter {
     const createdAtLte: Date | undefined = to !== undefined ? new Date(to) : undefined;
 
     const tokens = await this.#scanWaitpoints(
-      (client) =>
-        client.waitpoint.findMany({
+      () =>
+        this.runStore.findManyWaitpoints({
           where: {
             environmentId: environment.id,
             type: "MANUAL",
@@ -288,66 +291,27 @@ export class WaitpointListPresenter extends BasePresenter {
     };
   }
 
-  // Run-ops reads for the Waitpoint-token dashboard. Split on: new DB first, then
-  // the LEGACY READ REPLICA ONLY for the not-yet-migrated remainder — never the
-  // legacy primary. Split off: one plain `_replica` read.
+  // `runStore` returns the new+legacy union deduped by id but unsorted/unwindowed, so
+  // re-apply the page's keyset order + over-fetch window to match a single union scan.
   async #scanWaitpoints(
-    scan: (client: PrismaClientOrTransaction) => Promise<WaitpointRow[]>,
+    scan: () => Promise<WaitpointRow[]>,
     pageSize: number,
     direction: Direction
   ): Promise<WaitpointRow[]> {
-    if (!this.readRoute?.splitEnabled) {
-      return scan(this._replica);
-    }
-
     const overfetch = pageSize + 1;
-    const newRows = await scan(this.readRoute.runOpsNew ?? this._replica);
-
-    // New DB filled the page => any older tokens fall on a later page; keep the
-    // legacy read off the hot path. Presence on the new DB is the migrated signal.
-    if (newRows.length >= overfetch) {
-      return newRows;
-    }
-
-    // READ REPLICA handle only (there is no writer/primary field on readRoute).
-    const legacyRows = await scan(this.readRoute.runOpsLegacyReplica ?? this._replica);
-
-    // Merge under keyset order: de-dupe by id keeping the new-DB copy as
-    // authoritative, re-sort in the page's direction, re-apply the over-fetch
-    // window so the result matches a single union scan.
-    const byId = new Map<string, WaitpointRow>();
-    for (const row of newRows) {
-      byId.set(row.id, row);
-    }
-    for (const row of legacyRows) {
-      if (!byId.has(row.id)) {
-        byId.set(row.id, row);
-      }
-    }
-
-    const merged = Array.from(byId.values());
-    merged.sort((a, b) =>
+    const rows = await scan();
+    rows.sort((a, b) =>
       direction === "forward" ? compareIdDesc(a.id, b.id) : compareIdAsc(a.id, b.id)
     );
-
-    return merged.slice(0, overfetch);
+    return rows.slice(0, overfetch);
   }
 
-  // Empty-state probe: two-handle existence check (no single runId, so not
-  // readThroughRun). New DB first, then the LEGACY read replica in split mode so
-  // the empty-state never reports false-empty during migration.
+  // Empty-state probe across both residencies (runStore fans out); no single runId.
   async #probeAnyToken(environmentId: string): Promise<boolean> {
-    const onNew = await (this.readRoute?.runOpsNew ?? this._replica).waitpoint.findFirst({
+    const found = await this.runStore.findWaitpoint({
       where: { environmentId, type: "MANUAL" },
     });
-    if (onNew) return true;
-    if (!this.readRoute?.splitEnabled) return false;
-    const onLegacy = await (
-      this.readRoute.runOpsLegacyReplica ?? this._replica
-    ).waitpoint.findFirst({
-      where: { environmentId, type: "MANUAL" },
-    });
-    return Boolean(onLegacy);
+    return Boolean(found);
   }
 }
 

@@ -75,7 +75,8 @@ function createRunReplicationService(params: CreateRunReplicationServiceParams) 
 
   const service = new RunsReplicationService({
     clickhouseFactory,
-    pgConnectionUrl: env.DATABASE_URL,
+    // Legacy runs-replication source DSN; falls back to DATABASE_URL when its dedicated var is unset.
+    pgConnectionUrl: env.RUN_REPLICATION_LEGACY_DATABASE_URL ?? env.DATABASE_URL,
     serviceName: name,
     slotName: env.RUN_REPLICATION_SLOT_NAME,
     publicationName: env.RUN_REPLICATION_PUBLICATION_NAME,

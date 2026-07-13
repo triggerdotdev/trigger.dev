@@ -97,7 +97,7 @@ export default function Story() {
     <div className="flex flex-col items-start gap-y-8 p-8">
       <div className="max-w-3xl">
         <Header2 className="mb-4">Full Markdown</Header2>
-        <div className="streamdown-container rounded-lg border border-charcoal-700 bg-charcoal-900 p-6 text-sm text-text-bright/90">
+        <div className="streamdown-container rounded-lg border border-grid-bright bg-background-deep p-6 text-sm text-text-bright/90">
           <Suspense fallback={<p className="text-text-dimmed">Loading streamdown...</p>}>
             <StreamdownRenderer>{sampleMarkdown}</StreamdownRenderer>
           </Suspense>
@@ -106,7 +106,7 @@ export default function Story() {
 
       <div className="max-w-3xl">
         <Header2 className="mb-4">Code Highlighting Theme</Header2>
-        <div className="streamdown-container rounded-lg border border-charcoal-700 bg-charcoal-900 p-6 text-sm text-text-bright/90">
+        <div className="streamdown-container rounded-lg border border-grid-bright bg-background-deep p-6 text-sm text-text-bright/90">
           <Suspense fallback={<p className="text-text-dimmed">Loading streamdown...</p>}>
             <StreamdownRenderer>{codeOnlyMarkdown}</StreamdownRenderer>
           </Suspense>

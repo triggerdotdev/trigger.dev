@@ -53,6 +53,8 @@ export const BuildManifest = z.object({
       .object({
         env: z.record(z.string()).optional(),
         parentEnv: z.record(z.string()).optional(),
+        secretEnv: z.record(z.string()).optional(),
+        secretParentEnv: z.record(z.string()).optional(),
       })
       .optional(),
   }),

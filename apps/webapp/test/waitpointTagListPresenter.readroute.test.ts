@@ -15,6 +15,7 @@ vi.mock("~/db.server", () => ({
 }));
 
 import { heteroRunOpsPostgresTest, postgresTest } from "@internal/testcontainers";
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
@@ -23,6 +24,25 @@ import {
 } from "~/presenters/v3/WaitpointTagListPresenter.server";
 
 vi.setConfig({ testTimeout: 120_000 });
+
+// Wire the presenter's run store to the test containers so waitpoint-tag reads route to the
+// container DBs (NEW=dedicated, LEGACY=legacy) instead of the default localhost:5432 client.
+// In single-DB passthrough both legs point at the same client (a no-op fan-out that de-dupes
+// back to one DB's rows), mirroring production single-DB deployments.
+function makeRunStore(newClient: PrismaClient, legacyClient: PrismaClient): RoutingRunStore {
+  return new RoutingRunStore({
+    new: new PostgresRunStore({
+      prisma: newClient as never,
+      readOnlyPrisma: newClient as never,
+      schemaVariant: "dedicated",
+    }),
+    legacy: new PostgresRunStore({
+      prisma: legacyClient as never,
+      readOnlyPrisma: legacyClient as never,
+      schemaVariant: "legacy",
+    }),
+  });
+}
 
 type LegacySeedContext = {
   projectId: string;
@@ -95,7 +115,7 @@ function opts(environmentId: string, overrides: Partial<TagListOptions> = {}): T
 
 describe("WaitpointTagListPresenter read-route", () => {
   postgresTest(
-    "passthrough: no readRoute => _replica only, legacy handle never touched",
+    "passthrough: single-DB read returns the env's tags ordered id desc",
     async ({ prisma }) => {
       setDbClient(prisma);
       const ctx = await seedLegacyParents(prisma, "pass");
@@ -123,18 +143,14 @@ describe("WaitpointTagListPresenter read-route", () => {
         ],
       });
 
-      const legacyThrows = new Proxy(
-        {},
-        {
-          get() {
-            throw new Error("legacy handle must not be touched in passthrough");
-          },
-        }
-      ) as unknown as PrismaClient;
-
-      const presenter = new WaitpointTagListPresenter(prisma, prisma, {
-        runOpsLegacyReplica: legacyThrows,
-      });
+      // Single-DB deployment: both run-store legs point at the same container client, so the
+      // mandatory NEW+LEGACY fan-out in findManyWaitpointTags reads one DB and de-dupes by id.
+      const presenter = new WaitpointTagListPresenter(
+        prisma,
+        prisma,
+        undefined,
+        makeRunStore(prisma, prisma)
+      );
       const result = await presenter.call(opts(ctx.environmentId, { pageSize: 10 }));
 
       expect(result.tags.map((t) => t.name)).toEqual(["gamma", "beta", "alpha"]);
@@ -179,11 +195,12 @@ describe("WaitpointTagListPresenter read-route", () => {
         ],
       });
 
-      const presenter = new WaitpointTagListPresenter(prisma14 as any, prisma14 as any, {
-        runOpsNew: prisma17 as any,
-        runOpsLegacyReplica: prisma14 as any,
-        splitEnabled: true,
-      });
+      const presenter = new WaitpointTagListPresenter(
+        prisma14 as any,
+        prisma14 as any,
+        undefined,
+        makeRunStore(prisma17 as any, prisma14 as any)
+      );
 
       const result = await presenter.call(opts(envId, { pageSize: 4 }));
 
@@ -221,11 +238,12 @@ describe("WaitpointTagListPresenter read-route", () => {
         ],
       });
 
-      const presenter = new WaitpointTagListPresenter(prisma14 as any, prisma14 as any, {
-        runOpsNew: prisma17 as any,
-        runOpsLegacyReplica: prisma14 as any,
-        splitEnabled: true,
-      });
+      const presenter = new WaitpointTagListPresenter(
+        prisma14 as any,
+        prisma14 as any,
+        undefined,
+        makeRunStore(prisma17 as any, prisma14 as any)
+      );
 
       const page2 = await presenter.call(opts(envId, { pageSize: 2, page: 2 }));
       expect(page2.tags.map((t) => t.name)).toEqual(["d", "c"]);

@@ -1,4 +1,5 @@
 import type { ResultAsync } from "neverthrow";
+import type { PluginDatabaseConfig } from "./databaseConfig.js";
 
 // === Domain types ===
 
@@ -368,6 +369,14 @@ export interface SsoController {
   ): ResultAsync<{ effects: DirectorySyncEffect[] }, SsoWebhookError>;
 }
 
+// Host-injected configuration the plugin can't read from the environment
+// itself (the plugin runs in the host's process but owns no env contract).
+export type SsoPluginConfig = {
+  // Database connections for a plugin that owns its own client. Omitted →
+  // the plugin falls back to its own defaults.
+  database?: PluginDatabaseConfig;
+};
+
 export interface SsoPlugin {
-  create(): SsoController | Promise<SsoController>;
+  create(config?: SsoPluginConfig): SsoController | Promise<SsoController>;
 }

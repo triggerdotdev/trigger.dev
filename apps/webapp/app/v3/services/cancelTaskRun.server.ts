@@ -1,7 +1,7 @@
 import { RunEngineVersion, type TaskRun } from "@trigger.dev/database";
 import { engine } from "../runEngine.server";
+import { isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
-import { CancelTaskRunServiceV1 } from "./cancelTaskRunV1.server";
 
 export type CancelTaskRunServiceOptions = {
   reason?: string;
@@ -38,17 +38,29 @@ export class CancelTaskRunService extends BaseService {
     taskRun: CancelableTaskRun,
     options?: CancelTaskRunServiceOptions
   ): Promise<CancelTaskRunServiceResult | undefined> {
-    const service = new CancelTaskRunServiceV1(this._prisma);
-    const result = await service.call(taskRun, options);
-
-    if (!result) {
-      return;
+    // v3 (engine V1) execution is retired: there are no V1 workers or coordinator
+    // left to signal. A historical V1 run can still be cancelled by finalizing its
+    // DB row directly. Never throw here: the cancel route returns 500 on any throw.
+    if (!isCancellableRunStatus(taskRun.status)) {
+      if (options?.bulkActionId) {
+        await this._prisma.taskRun.update({
+          where: { id: taskRun.id },
+          data: { bulkActionGroupIds: { push: options.bulkActionId } },
+        });
+      }
+      return { id: taskRun.id, alreadyFinished: true };
     }
 
-    return {
-      id: result.id,
-      alreadyFinished: false,
-    };
+    await this._prisma.taskRun.update({
+      where: { id: taskRun.id },
+      data: {
+        status: "CANCELED",
+        completedAt: options?.cancelledAt ?? new Date(),
+        bulkActionGroupIds: options?.bulkActionId ? { push: options.bulkActionId } : undefined,
+      },
+    });
+
+    return { id: taskRun.id, alreadyFinished: false };
   }
 
   private async callV2(

@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "import", "react"],
+  "jsPlugins": ["./oxlint-plugins/no-thrown-unawaited-redirect.mjs"],
   "ignorePatterns": [
     "**/dist/**",
     "**/build/**",
@@ -31,6 +32,7 @@
     "import/no-duplicates": "error",
     "import/namespace": "off",
     "react-hooks/exhaustive-deps": "off",
-    "react-hooks/rules-of-hooks": "off"
+    "react-hooks/rules-of-hooks": "off",
+    "trigger/no-thrown-unawaited-redirect": "error"
   }
 }

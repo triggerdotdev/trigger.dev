@@ -197,14 +197,14 @@ export function ChartLegendCompound({
       </div>
 
       {/* Separator */}
-      <div className="mx-2 my-1 shrink-0 border-t border-charcoal-750" />
+      <div className="mx-2 my-1 shrink-0 border-t border-grid-dimmed" />
 
       {/* Legend items - scrollable when scrollable prop is true */}
       <div
         className={cn(
           "flex flex-col",
           scrollable &&
-            "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+            "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         )}
       >
         {legendItems.visible.map((item) => {
@@ -251,7 +251,7 @@ export function ChartLegendCompound({
                   content={item.label}
                   side="top"
                   disableHoverableContent
-                  className="max-w-xs break-words"
+                  className="max-w-xs wrap-break-word"
                   buttonClassName="cursor-default min-w-0"
                 />
                 <span
@@ -303,7 +303,7 @@ type ViewAllDataRowProps = {
 function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
   return (
     <div
-      className="relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-charcoal-850"
+      className="relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-background-dimmed"
       onClick={onViewAll}
       role="button"
       tabIndex={0}
@@ -316,7 +316,7 @@ function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
     >
       <div className="relative flex w-full items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
-          <div className="w-1 shrink-0 self-stretch rounded-[2px] border border-charcoal-600" />
+          <div className="w-1 shrink-0 self-stretch rounded-[2px] border border-border-bright" />
           <span className="text-text-dimmed tabular-nums">{remainingCount} more…</span>
         </div>
         <span className="self-start text-indigo-500">View all</span>

@@ -10,6 +10,7 @@ import { encryptSecret } from "~/services/secrets/secretStore.server";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { BaseService, ServiceValidationError } from "../baseService.server";
+import { assertSafeWebhookUrl, UnsafeWebhookUrlError } from "./safeWebhookUrl.server";
 
 export type CreateAlertChannelOptions = {
   name: string;
@@ -44,6 +45,19 @@ export class CreateAlertChannelService extends BaseService {
 
     if (!project) {
       throw new ServiceValidationError("Project not found");
+    }
+
+    // Validate webhook URLs here (not per-route) so every caller is covered.
+    // Delivery re-validates at connect time via safeWebhookFetch.
+    if (options.channel.type === "WEBHOOK") {
+      try {
+        await assertSafeWebhookUrl(options.channel.url);
+      } catch (error) {
+        if (error instanceof UnsafeWebhookUrlError) {
+          throw new ServiceValidationError(error.message);
+        }
+        throw error;
+      }
     }
 
     const environmentTypes =

@@ -24,6 +24,7 @@ import {
   type CreateAlertChannelOptions,
   CreateAlertChannelService,
 } from "~/v3/services/alerts/createAlertChannel.server";
+import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 
@@ -144,8 +145,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       deduplicationKey: `error-webhook:${url}:${environment.type}`,
       channel: { type: "WEBHOOK", url },
     };
-    const channel = await service.call(project.externalRef, userId, options);
-    processedChannelIds.add(channel.id);
+    try {
+      const channel = await service.call(project.externalRef, userId, options);
+      processedChannelIds.add(channel.id);
+    } catch (error) {
+      // CreateAlertChannelService rejects unsafe webhook URLs.
+      if (error instanceof ServiceValidationError) {
+        return json(submission.reply({ fieldErrors: { webhooks: [error.message] } }));
+      }
+      throw error;
+    }
   }
 
   const editableTypes = new Set<string>(["WEBHOOK"]);

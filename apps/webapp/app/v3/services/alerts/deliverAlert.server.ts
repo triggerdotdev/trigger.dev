@@ -49,6 +49,7 @@ import { alertsWorker } from "~/v3/alertsWorker.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { fromPromise } from "neverthrow";
 import { BaseService } from "../baseService.server";
+import { safeWebhookFetch } from "./safeWebhookFetch.server";
 import { CURRENT_API_VERSION } from "~/api/versions";
 import type { RunStore } from "@internal/run-store";
 import type { ControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -1033,7 +1034,8 @@ export class DeliverAlertService extends BaseService {
     const signature = await subtle.sign("HMAC", key, hashPayload);
     const signatureHex = Buffer.from(signature).toString("hex");
 
-    const response = await fetch(webhook.url, {
+    // Deliver via the SSRF-safe wrapper (see safeWebhookFetch.server.ts).
+    const response = await safeWebhookFetch(webhook.url, {
       method: "POST",
       headers: {
         "content-type": "application/json",

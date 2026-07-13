@@ -51,6 +51,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const session = await getSession(request.headers.get("cookie"));
   const toastMessage = session.get("toastMessage") as ToastMessage;
   const posthogProjectKey = env.POSTHOG_PROJECT_KEY;
+  const posthogUiHost = env.POSTHOG_HOST;
   const features = featuresForRequest(request);
   const timezone = await getTimezonePreference(request);
 
@@ -68,6 +69,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       user,
       toastMessage,
       posthogProjectKey,
+      posthogUiHost,
       features,
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
@@ -93,7 +95,7 @@ export const shouldRevalidate: ShouldRevalidateFunction = (options) => {
 export function ErrorBoundary() {
   return (
     <>
-      <html lang="en" className="h-full">
+      <html lang="en" className="h-full" data-theme="dark">
         <head>
           <meta charSet="utf-8" />
 
@@ -116,12 +118,12 @@ export function ErrorBoundary() {
 }
 
 export default function App() {
-  const { posthogProjectKey, kapa: _kapa } = useTypedLoaderData<typeof loader>();
-  usePostHog(posthogProjectKey);
+  const { posthogProjectKey, posthogUiHost, kapa: _kapa } = useTypedLoaderData<typeof loader>();
+  usePostHog(posthogProjectKey, posthogUiHost);
 
   return (
     <>
-      <html lang="en" className="h-full">
+      <html lang="en" className="h-full" data-theme="dark">
         <head>
           <Meta />
           <Links />

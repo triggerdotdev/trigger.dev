@@ -1,9 +1,7 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
-import { RunOpsCascadeCleanupService } from "~/v3/runOpsMigration/runOpsCascadeCleanup.server";
 
 type Options = ({ projectId: string } | { projectSlug: string }) & {
   userId: string;
@@ -37,11 +35,6 @@ export class DeleteProjectService {
       return;
     }
 
-    // Remove queues from MARQS
-    for (const environment of project.environments) {
-      await marqs?.removeEnvironmentQueuesFromMasterQueue(project.organization.id, environment.id);
-    }
-
     // Delete all queues from the RunEngine 2 prod master queues
     for (const environment of project.environments) {
       await engine.removeEnvironmentQueuesFromMasterQueue({
@@ -51,9 +44,7 @@ export class DeleteProjectService {
       });
     }
 
-    // Hard-delete the project's run-ops rows across both run-ops DBs (replaces the cloud-only
-    // dropped cross-seam FK cascades). Idempotent; uses the run-ops writers, not #prismaClient.
-    await new RunOpsCascadeCleanupService().cleanupProject(project.id);
+    // Soft delete only: run-ops rows are intentionally retained (no hard-delete cascade here).
 
     // Mark the project as deleted (do this last because it makes it impossible to try again)
     // - This disables all API keys

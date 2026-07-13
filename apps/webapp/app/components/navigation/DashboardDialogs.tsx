@@ -24,6 +24,7 @@ import { Label } from "../primitives/Label";
 import { Paragraph } from "../primitives/Paragraph";
 import { TextLink } from "../primitives/TextLink";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
+import { useThemeColor } from "~/hooks/useThemeColor";
 import { v3BillingPath } from "~/utils/pathBuilder";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 
@@ -90,7 +91,7 @@ export function CreateDashboardButton({
             <DialogTrigger asChild>
               <button
                 type="button"
-                className="flex h-full w-full items-center justify-center rounded text-text-dimmed focus-custom hover:bg-charcoal-600 hover:text-text-bright"
+                className="flex h-full w-full items-center justify-center rounded text-text-dimmed focus-custom hover:bg-surface-control hover:text-text-bright"
               >
                 <PlusIcon className="size-4" />
               </button>
@@ -161,8 +162,6 @@ export function CreateDashboardPageButton({
 
 const PROGRESS_RING_R = 27.5;
 const PROGRESS_RING_CIRCUMFERENCE = 2 * Math.PI * PROGRESS_RING_R;
-const PROGRESS_COLOR_SUCCESS = "#28BF5C"; // mint-500 / success
-const PROGRESS_COLOR_ERROR = "#E11D48"; // rose-600 / error
 
 function CreateDashboardUpgradeDialog({
   limits,
@@ -175,6 +174,11 @@ function CreateDashboardUpgradeDialog({
   isFreePlan: boolean;
   organization: { slug: string };
 }) {
+  // Resolved to concrete colors - framer-motion can't interpolate var() strings.
+  // Must be called before the early return below (rules of hooks).
+  const progressColorSuccess = useThemeColor("--color-success", "#28bf5c");
+  const progressColorError = useThemeColor("--color-error", "#e11d48");
+
   if (isFreePlan) {
     return (
       <DialogContent>
@@ -223,11 +227,11 @@ function CreateDashboardUpgradeDialog({
               strokeLinecap="round"
               initial={{
                 strokeDasharray: `0 ${PROGRESS_RING_CIRCUMFERENCE}`,
-                stroke: PROGRESS_COLOR_SUCCESS,
+                stroke: progressColorSuccess,
               }}
               animate={{
                 strokeDasharray: `${filled} ${PROGRESS_RING_CIRCUMFERENCE}`,
-                stroke: PROGRESS_COLOR_ERROR,
+                stroke: progressColorError,
               }}
               transition={{ duration: 1.2, ease: "easeInOut" }}
             />

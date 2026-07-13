@@ -114,7 +114,7 @@ export default function Page() {
           className="pl-1"
         />
       </div>
-      <div className="overflow-y-auto pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="px-3">
           <WaitpointDetailTable waitpoint={waitpoint} />
         </div>

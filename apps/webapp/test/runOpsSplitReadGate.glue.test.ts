@@ -17,6 +17,8 @@ describe("selectRunOpsTopology -> computeRunOpsSplitReadEnabled (seam)", () => {
         controlPlane: cp,
         buildNewWriter: vi.fn().mockReturnValue(dedicatedNew),
         buildNewReplica: vi.fn(),
+        buildLegacyWriter: vi.fn().mockReturnValue({ __tag: "legacy-writer" } as any),
+        buildLegacyReplica: vi.fn(),
       }
     );
     const warn = vi.fn();
@@ -43,6 +45,8 @@ describe("selectRunOpsTopology -> computeRunOpsSplitReadEnabled (seam)", () => {
         controlPlane: cp,
         buildNewWriter: vi.fn().mockReturnValue(cp.replica),
         buildNewReplica: vi.fn(),
+        buildLegacyWriter: vi.fn().mockReturnValue({ __tag: "legacy-writer" } as any),
+        buildLegacyReplica: vi.fn(),
       }
     );
     const warn = vi.fn();
@@ -67,6 +71,8 @@ describe("selectRunOpsTopology -> computeRunOpsSplitReadEnabled (seam)", () => {
         controlPlane: cp,
         buildNewWriter: vi.fn(),
         buildNewReplica: vi.fn(),
+        buildLegacyWriter: vi.fn(),
+        buildLegacyReplica: vi.fn(),
       }
     );
     const warn = vi.fn();

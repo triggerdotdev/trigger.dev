@@ -222,7 +222,7 @@ export default function AdminLlmModelsRoute() {
         </div>
 
         {/* Model tester */}
-        <div className="rounded-md border border-grid-dimmed bg-charcoal-800 p-3 space-y-2">
+        <div className="rounded-md border border-grid-dimmed bg-background-bright p-3 space-y-2">
           <label className="text-xs font-medium text-text-dimmed">
             Test model string — paste a model name to see which pricing model matches
           </label>
@@ -315,7 +315,7 @@ export default function AdminLlmModelsRoute() {
                         className={`inline-flex rounded-sm px-1.5 py-0.5 text-[11px] font-medium ${
                           model.source === "admin"
                             ? "bg-amber-500/20 text-amber-400"
-                            : "bg-charcoal-700 text-text-dimmed"
+                            : "bg-background-raised text-text-dimmed"
                         }`}
                       >
                         {model.source ?? "default"}

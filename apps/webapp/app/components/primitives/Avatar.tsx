@@ -146,7 +146,7 @@ function AvatarLetters({
       <span
         className={cn(
           "relative grid place-items-center overflow-hidden rounded-[10%] font-semibold",
-          includePadding ? "size-[80%]" : "size-[100%]"
+          includePadding ? "size-[80%]" : "size-full"
         )}
         style={style}
       >
@@ -177,7 +177,7 @@ function AvatarIcon({
   const IconComponent = avatarIcons[avatar.name];
   return (
     <span className="grid aspect-square place-items-center" style={styleFromSize(size)}>
-      <IconComponent className={includePadding ? "size-[80%]" : "size-[100%]"} style={style} />
+      <IconComponent className={includePadding ? "size-[80%]" : "size-full"} style={style} />
     </span>
   );
 }

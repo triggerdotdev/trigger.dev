@@ -176,6 +176,12 @@ export interface IRunsRepository {
   }>;
   countRuns(options: RunListInputOptions): Promise<number>;
   listTags(options: TagListOptions): Promise<TagList>;
+  runExistsInEnvironment(options: {
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    createdAtLowerBoundMs?: number;
+  }): Promise<boolean>;
 }
 
 export class RunsRepository implements IRunsRepository {
@@ -187,6 +193,26 @@ export class RunsRepository implements IRunsRepository {
 
   get name() {
     return "runsRepository";
+  }
+
+  async runExistsInEnvironment(options: {
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    createdAtLowerBoundMs?: number;
+  }): Promise<boolean> {
+    return startActiveSpan(
+      "runsRepository.runExistsInEnvironment",
+      async () => this.clickHouseRunsRepository.runExistsInEnvironment(options),
+      {
+        attributes: {
+          "repository.name": "clickhouse",
+          organizationId: options.organizationId,
+          projectId: options.projectId,
+          environmentId: options.environmentId,
+        },
+      }
+    );
   }
 
   async listRunIds(options: ListRunsOptions): Promise<RunIdsPage> {

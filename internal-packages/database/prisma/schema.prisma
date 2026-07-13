@@ -299,7 +299,7 @@ model OrgMemberInvite {
   /// a separate schema (Drizzle, not Prisma) so we can't model the FK
   /// here. Validation happens at write time (action) and read time
   /// (acceptInvite).
-  rbacRoleId String?
+  rbacRoleId     String?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String
 
@@ -340,9 +340,9 @@ model RuntimeEnvironment {
   ///A memorable code for the environment
   shortcode String
 
-  maximumConcurrencyLimit     Int     @default(5)
-  concurrencyLimitBurstFactor Decimal @default("2.00") @db.Decimal(4, 2)
-  paused                      Boolean @default(false)
+  maximumConcurrencyLimit     Int                     @default(5)
+  concurrencyLimitBurstFactor Decimal                 @default("2.00") @db.Decimal(4, 2)
+  paused                      Boolean                 @default(false)
   pauseSource                 EnvironmentPauseSource?
 
   autoEnableInternalSources Boolean @default(true)
@@ -378,21 +378,21 @@ model RuntimeEnvironment {
   taskScheduleInstances      TaskScheduleInstance[]
   alerts                     ProjectAlert[]
 
-  sessions             RuntimeEnvironmentSession[]
-  currentSession       RuntimeEnvironmentSession?  @relation("currentSession", fields: [currentSessionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  currentSessionId     String?
-  taskRunNumberCounter TaskRunNumberCounter[]
-  taskRunCheckpoints   TaskRunCheckpoint[]
-  waitpoints           Waitpoint[]
-  workerInstances      WorkerInstance[]
-  waitpointTags        WaitpointTag[]
-  BulkActionGroup      BulkActionGroup[]
-  customerQueries      CustomerQuery[]
-  prompts                  Prompt[]
-  playgroundConversations  PlaygroundConversation[]
-  errorGroupStates     ErrorGroupState[]
-  taskIdentifiers      TaskIdentifier[]
-  revokedApiKeys       RevokedApiKey[]
+  sessions                RuntimeEnvironmentSession[]
+  currentSession          RuntimeEnvironmentSession?  @relation("currentSession", fields: [currentSessionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  currentSessionId        String?
+  taskRunNumberCounter    TaskRunNumberCounter[]
+  taskRunCheckpoints      TaskRunCheckpoint[]
+  waitpoints              Waitpoint[]
+  workerInstances         WorkerInstance[]
+  waitpointTags           WaitpointTag[]
+  BulkActionGroup         BulkActionGroup[]
+  customerQueries         CustomerQuery[]
+  prompts                 Prompt[]
+  playgroundConversations PlaygroundConversation[]
+  errorGroupStates        ErrorGroupState[]
+  taskIdentifiers         TaskIdentifier[]
+  revokedApiKeys          RevokedApiKey[]
 
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
@@ -2479,7 +2479,7 @@ model BulkActionGroup {
   environment   RuntimeEnvironment? @relation(fields: [environmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   environmentId String?
 
-  type  BulkActionType
+  type BulkActionType
 
   /// When the group is created it's pending. After we've processed all the items it's completed. This does not mean the associated runs are completed.
   status BulkActionStatus @default(PENDING)

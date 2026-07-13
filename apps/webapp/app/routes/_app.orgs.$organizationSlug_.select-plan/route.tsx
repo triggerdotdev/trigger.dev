@@ -62,9 +62,9 @@ export default function ChoosePlanPage() {
 
   return (
     <AppContainer>
-      <PageBody className="bg-charcoal-900">
+      <PageBody className="bg-background-deep">
         <BackgroundWrapper>
-          <div className="mx-auto mt-4 flex h-fit min-h-full max-w-[80rem] flex-col items-center justify-center gap-8 lg:mt-0">
+          <div className="mx-auto mt-4 flex h-fit min-h-full max-w-320 flex-col items-center justify-center gap-8 lg:mt-0">
             <Header1 className="text-center">Subscribe for full access</Header1>
             <div className="w-full rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
               <PricingPlans

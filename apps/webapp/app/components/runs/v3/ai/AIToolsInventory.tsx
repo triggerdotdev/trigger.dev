@@ -33,7 +33,7 @@ function ToolDefRow({ def, wasCalled }: { def: ToolDefinition; wasCalled: boolea
       <div className="flex items-center gap-2">
         <div
           className={`size-1.5 shrink-0 rounded-full ${
-            wasCalled ? "bg-success" : "bg-charcoal-600"
+            wasCalled ? "bg-success" : "bg-surface-control"
           }`}
         />
         <code className="font-mono text-xs text-text-bright">{def.name}</code>

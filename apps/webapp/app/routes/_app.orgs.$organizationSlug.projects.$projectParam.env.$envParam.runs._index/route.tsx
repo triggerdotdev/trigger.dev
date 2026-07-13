@@ -111,6 +111,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     userId,
     projectId: project.id,
     ...filters,
+    includeHasAnyRuns: true,
   });
 
   // Only persist rootOnly when no tasks are filtered. While a task filter is active,

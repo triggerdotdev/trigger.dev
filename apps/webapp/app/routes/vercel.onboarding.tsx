@@ -69,7 +69,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   if (!params.success) {
     logger.error("Invalid params for Vercel onboarding", { error: params.error });
-    throw redirectWithErrorMessage(
+    throw await redirectWithErrorMessage(
       "/",
       request,
       "Invalid installation parameters. Please try again from Vercel."
@@ -89,7 +89,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   if (!params.data.code) {
     logger.error("Missing code parameter for Vercel onboarding");
-    throw redirectWithErrorMessage(
+    throw await redirectWithErrorMessage(
       "/",
       request,
       "Invalid installation parameters. Please try again from Vercel."
@@ -151,7 +151,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
         organizationId: params.data.organizationId,
         userId,
       });
-      throw redirectWithErrorMessage("/", request, "Organization not found. Please try again.");
+      throw await redirectWithErrorMessage(
+        "/",
+        request,
+        "Organization not found. Please try again."
+      );
     }
 
     return typedjson({
@@ -327,11 +331,11 @@ export default function VercelOnboardingPage() {
 
   if (data.step === "error") {
     return (
-      <AppContainer className="bg-charcoal-900">
+      <AppContainer className="bg-background-deep">
         <BackgroundWrapper>
           <MainCenteredContainer
             variant="onboarding"
-            className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+            className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
           >
             <FormTitle title="Installation Expired" description={data.error} />
             <Button variant="primary/medium" onClick={() => window.close()} className="w-full">
@@ -358,11 +362,11 @@ export default function VercelOnboardingPage() {
     })();
 
     return (
-      <AppContainer className="bg-charcoal-900">
+      <AppContainer className="bg-background-deep">
         <BackgroundWrapper>
           <MainCenteredContainer
             variant="onboarding"
-            className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+            className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
           >
             <FormTitle
               LeadingIcon={<BuildingOfficeIcon className="size-7 text-indigo-500" />}
@@ -438,11 +442,11 @@ export default function VercelOnboardingPage() {
   const isLoading = isSubmitting || isInstalling;
 
   return (
-    <AppContainer className="bg-charcoal-900">
+    <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
         <MainCenteredContainer
           variant="onboarding"
-          className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+          className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
         >
           <FormTitle
             LeadingIcon={<FolderIcon className="size-7 text-indigo-500" />}

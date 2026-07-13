@@ -391,7 +391,7 @@ export function RealtimeStreamViewer({
       {/* Content */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-x-auto overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="flex-1 overflow-x-auto overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
       >
         {error && (
           <div className="border-b border-error/20 bg-error/10 p-3">
@@ -503,7 +503,7 @@ function StreamChunkLine({
 
   return (
     <div
-      className="group flex gap-3 py-1 hover:bg-charcoal-800"
+      className="group flex gap-3 py-1 hover:bg-background-bright"
       style={{
         position: "absolute",
         top: 0,
@@ -514,14 +514,14 @@ function StreamChunkLine({
     >
       {/* Line number */}
       <div
-        className="flex-none select-none pl-2 text-right text-charcoal-500"
+        className="flex-none select-none pl-2 text-right text-text-faint"
         style={{ width: `${Math.max(maxLineNumberWidth, 3)}ch` }}
       >
         {lineNumber}
       </div>
 
       {/* Timestamp */}
-      <div className="flex-none select-none pl-1 text-charcoal-500">{timestamp}</div>
+      <div className="flex-none select-none pl-1 text-text-faint">{timestamp}</div>
 
       {/* Content */}
       <div className="whitespace-nowrap text-text-bright">{formattedData}</div>

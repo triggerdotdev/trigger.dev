@@ -136,7 +136,7 @@ function ChartBarLoadingBackground() {
                 return (
                   <motion.div
                     key={i}
-                    className="flex-1 rounded-sm bg-charcoal-750/50"
+                    className="flex-1 rounded-sm bg-background-hover/50"
                     style={{ height: `${height}%` }}
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: `${height}%`, opacity: 1 }}
@@ -175,8 +175,8 @@ function ChartBarLoadingBackground() {
                     delay: 0.3 + i * 0.08,
                   }}
                 >
-                  <div className="h-5 w-2 rounded-sm bg-charcoal-750/50" />
-                  <div className="h-5 w-full rounded-sm bg-charcoal-750/50" />
+                  <div className="h-5 w-2 rounded-sm bg-background-hover/50" />
+                  <div className="h-5 w-full rounded-sm bg-background-hover/50" />
                 </motion.div>
               ))}
             </motion.div>
@@ -263,7 +263,7 @@ function ChartLineLoadingBackground() {
       />
       <motion.path
         d={generateSmoothPath(points)}
-        stroke="#212327"
+        stroke="var(--color-background-hover)"
         strokeWidth="1"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -291,12 +291,12 @@ function ChartLineLoadingBackground() {
         >
           <defs>
             <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#212327" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="#212327" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--color-background-hover)" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="var(--color-background-hover)" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="secondAreaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#212327" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="#212327" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--color-background-hover)" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="var(--color-background-hover)" stopOpacity={0} />
             </linearGradient>
           </defs>
 
@@ -331,8 +331,8 @@ function ChartLineLoadingBackground() {
               delay: 0.3 + i * 0.08,
             }}
           >
-            <div className="h-5 w-2 rounded-sm bg-charcoal-750/50" />
-            <div className="h-5 w-full rounded-sm bg-charcoal-750/50" />
+            <div className="h-5 w-2 rounded-sm bg-background-hover/50" />
+            <div className="h-5 w-full rounded-sm bg-background-hover/50" />
           </motion.div>
         ))}
       </motion.div>

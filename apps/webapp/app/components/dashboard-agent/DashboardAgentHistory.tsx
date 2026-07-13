@@ -25,12 +25,12 @@ export function DashboardAgentHistory({
   onDelete: (chatId: string) => void;
 }) {
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div className="p-2">
         <button
           type="button"
           onClick={onNewChat}
-          className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-text-bright transition hover:bg-charcoal-800"
+          className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-text-bright transition hover:bg-background-bright"
         >
           <PlusIcon className="size-4 text-green-500" />
           New chat
@@ -46,14 +46,14 @@ export function DashboardAgentHistory({
               <li key={chat.id}>
                 <div
                   className={cn(
-                    "group flex items-center gap-2 rounded-sm px-2 py-1.5 transition-colors hover:bg-charcoal-800",
-                    chat.id === currentChatId && "bg-charcoal-750 hover:bg-charcoal-750"
+                    "group flex items-center gap-2 rounded-sm px-2 py-1.5 transition-colors hover:bg-background-bright",
+                    chat.id === currentChatId && "bg-background-hover hover:bg-background-hover"
                   )}
                 >
                   <button
                     type="button"
                     onClick={() => onSelect(chat.id)}
-                    className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left outline-none focus-custom"
+                    className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left outline-hidden focus-custom"
                   >
                     <span className="line-clamp-1 text-sm text-text-bright">{chat.title}</span>
                     {chat.lastMessageAt && (

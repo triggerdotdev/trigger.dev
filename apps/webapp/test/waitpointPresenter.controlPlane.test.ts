@@ -32,6 +32,7 @@ vi.mock("~/db.server", async () => {
     $replica: proxy,
     runOpsNewPrisma: proxy,
     sqlDatabaseSchema: Prisma.sql([`public`]),
+    DATABASE_SCHEMA: "public",
   };
 });
 

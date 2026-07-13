@@ -574,3 +574,49 @@ baseURL: ({ endpoint }) =>
 ```
 
 For per-request control beyond URL routing (header injection, custom retries, tracing), pass a `fetch` override. See [Trusted edge signals](/ai-chat/patterns/trusted-edge-signals) for a full proxy walkthrough.
+
+## Monitoring message delivery
+
+`sendMessage` from `useChat` gives no feedback about whether the message actually reached the backend. The transport's `onEvent` callback closes that gap with typed lifecycle events (see the [event catalog](/ai-chat/reference#transport-events)) so you can record real metrics:
+
+```ts
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+  onEvent: (event) => {
+    switch (event.type) {
+      case "message-sent":
+        metrics.increment("chat.message_sent");
+        metrics.timing("chat.send_duration_ms", event.durationMs);
+        break;
+      case "message-send-failed":
+        metrics.increment("chat.message_send_failed", { status: event.status });
+        break;
+    }
+  },
+});
+```
+
+A `message-sent` event means the message is durably written to the session's input stream (the stream the agent consumes from), so it's a true "sent successfully" signal. Because send and response events share the same callback, "sent but never answered" becomes a small client-side watchdog:
+
+```ts
+// Module scope (or a ref) so re-renders don't recreate it. Keyed by chatId
+// on purpose: a new send on the same chat supersedes the in-flight turn.
+const pending = new Map<string, ReturnType<typeof setTimeout>>();
+
+onEvent: (event) => {
+  if (event.type === "message-sent" && event.source === "submit-message") {
+    pending.set(event.chatId, setTimeout(() => {
+      // Log the chatId; don't tag the metric with it (unbounded cardinality).
+      metrics.increment("chat.sent_but_unanswered");
+      console.warn("sent but unanswered", event.chatId);
+    }, 30_000));
+  }
+  if (event.type === "first-chunk" || event.type === "turn-completed" || event.type === "stream-error") {
+    clearTimeout(pending.get(event.chatId));
+    pending.delete(event.chatId);
+  }
+};
+```
+
+Time to first token is `first-chunk`'s `sinceSendMs` (the transport tracks the last turn-producing send per chat, so no bookkeeping is needed), and `turn-completed`'s `sinceSendMs` is the full turn latency. Exceptions thrown inside `onEvent` are swallowed, so a failing metrics pipeline can never break the chat.

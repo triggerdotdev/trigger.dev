@@ -5,7 +5,7 @@ export function CheckboxIndicator({ checked }: { checked: boolean }) {
     <div
       className={cn(
         "flex size-4 flex-none items-center justify-center rounded border",
-        checked ? "border-indigo-500 bg-indigo-600" : "border-charcoal-600 bg-charcoal-700"
+        checked ? "border-indigo-500 bg-indigo-600" : "border-border-bright bg-background-raised"
       )}
     >
       {checked && (

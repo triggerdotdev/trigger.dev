@@ -194,22 +194,20 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   async appendPart(part: string, partId: string, runId: string, streamId: string): Promise<void> {
-    return this.#appendPartByName(part, partId, this.toStreamName(runId, streamId));
+    await this.#appendPartByName(part, partId, this.toStreamName(runId, streamId));
   }
 
-  /**
-   * Append a single record to a `Session`-primitive channel.
-   */
+  /** Append one record to a `Session` channel; returns its seq (same space as `session-in-event-id`). */
   async appendPartToSessionStream(
     part: string,
     partId: string,
     friendlyId: string,
     io: "out" | "in"
-  ): Promise<void> {
+  ): Promise<number> {
     return this.#appendPartByName(part, partId, this.toSessionStreamName(friendlyId, io));
   }
 
-  async #appendPartByName(part: string, partId: string, s2Stream: string): Promise<void> {
+  async #appendPartByName(part: string, partId: string, s2Stream: string): Promise<number> {
     this.logger.debug(`S2 appending to stream`, { part, stream: s2Stream });
 
     const recordBody = JSON.stringify({ data: part, id: partId });
@@ -223,6 +221,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     });
 
     this.logger.debug(`S2 append result`, { result });
+
+    return result.start.seq_num;
   }
 
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number> {
