@@ -415,7 +415,7 @@ ClickHouse hostname
 {{- if .Values.clickhouse.host }}
 {{- .Values.clickhouse.host }}
 {{- else if .Values.clickhouse.deploy }}
-{{- printf "%s-clickhouse" .Release.Name }}
+{{- printf "%s-clickhouse" (include "trigger-v4.fullname" .) }}
 {{- end }}
 {{- end }}
 
@@ -439,7 +439,7 @@ hex-encoded password or percent-encode before storing in the Secret.
 {{- if .Values.clickhouse.deploy -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.secure -}}
 {{- $secure := ternary "true" "false" .Values.clickhouse.secure -}}
-{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:$(CLICKHOUSE_PASSWORD)@{{ include "trigger-v4.clickhouse.hostname" . }}:8123?secure={{ $secure }}
+{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:$(CLICKHOUSE_PASSWORD)@{{ include "trigger-v4.clickhouse.hostname" . }}:{{ .Values.clickhouse.service.ports.http }}?secure={{ $secure }}
 {{- else if .Values.clickhouse.external.host -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
 {{- $secure := ternary "true" "false" .Values.clickhouse.external.secure -}}
@@ -460,7 +460,7 @@ applies to the replication URL.
 {{- define "trigger-v4.clickhouse.replication.url" -}}
 {{- if .Values.clickhouse.deploy -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.secure -}}
-{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:$(CLICKHOUSE_PASSWORD)@{{ include "trigger-v4.clickhouse.hostname" . }}:8123
+{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:$(CLICKHOUSE_PASSWORD)@{{ include "trigger-v4.clickhouse.hostname" . }}:{{ .Values.clickhouse.service.ports.http }}
 {{- else if .Values.clickhouse.external.host -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
 {{- if .Values.clickhouse.external.existingSecret -}}

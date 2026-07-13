@@ -628,19 +628,24 @@ s2:
     existingSecretAccessTokenKey: "access-token"
 
 # ClickHouse configuration
-# Subchart: https://github.com/bitnami/charts/tree/main/bitnami/clickhouse
+# Deploys a single-node ClickHouse using the official image:
+# https://hub.docker.com/r/clickhouse/clickhouse-server
+# For clustered/replicated setups, use an external ClickHouse (deploy: false).
 clickhouse:
   deploy: true
 
   image:
-    # Use bitnami legacy repo
-    repository: bitnamilegacy/clickhouse
-    # image: docker.io/bitnamilegacy/clickhouse:25.7.5-debian-12-r0
+    registry: docker.io
+    repository: clickhouse/clickhouse-server
+    # Trigger.dev requires ClickHouse >= 25.8
+    tag: "26.2"
+    # Pinning by digest is strongly recommended for reproducible deployments
+    digest: ""
+    pullPolicy: IfNotPresent
 
   # TLS/Secure connection configuration
   secure: false # Set to true to use HTTPS and secure connections
 
-  # Bitnami ClickHouse chart configuration (when deploy: true)
   auth:
     username: "default"
     password: "" # Leave empty to auto-generate into the datastore secret, or set to pin.
@@ -648,23 +653,60 @@ clickhouse:
     existingSecret: "trigger-datastore"
     existingSecretKey: "clickhouse-admin-password"
 
-  # Single-node configuration (disable clustering for dev/test)
-  keeper:
-    enabled: false
+  podAnnotations: {}
 
-  shards: 1
-  replicaCount: 1
+  # The official image runs ClickHouse as uid 101. fsGroup makes the persistent
+  # volume writable by that user without running the container as root, and
+  # OnRootMismatch relabels volumes carried over from older chart versions
+  # (different uid) on first mount without rechecking every file on later mounts.
+  podSecurityContext:
+    fsGroup: 101
+    fsGroupChangePolicy: OnRootMismatch
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+
+  service:
+    type: ClusterIP
+    ports:
+      http: 8123
+      native: 9000
 
   persistence:
     enabled: true
     size: 10Gi
+    accessMode: ReadWriteOnce
+    storageClass: ""
+    retain: false
+    # Name of an existing PVC to use for ClickHouse data instead of creating
+    # one. Normally left empty: upgrades from chart versions that bundled the
+    # Bitnami ClickHouse subchart adopt the old data PVC automatically. Set
+    # this explicitly when rendering manifests without cluster access (e.g.
+    # GitOps tools that use `helm template`), where auto-detection can't run:
+    # the old PVC is named data-<release>-clickhouse-shard0-0.
+    existingClaim: ""
 
   ## ClickHouse resource requests and limits
   ## ref: http://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
-  ## @param resourcesPreset Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if resources is set (resources is recommended for production).
-  ## More information: https://github.com/bitnami/charts/blob/main/bitnami/common/templates/_resources.tpl#L15
-  resourcesPreset: "xlarge"
+  ## ClickHouse can be very resource intensive. Setting explicit limits and
+  ## requests is strongly recommended for production (see values-production-example.yaml).
   resources: {}
+
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
 
   # External ClickHouse connection (when deploy: false)
   external:

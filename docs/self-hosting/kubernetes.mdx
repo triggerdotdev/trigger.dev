@@ -279,6 +279,16 @@ redis:
 
 #### ClickHouse
 
+<Note>Trigger.dev requires ClickHouse 25.8 or newer.</Note>
+
+<Note>
+  When upgrading from a chart version that bundled ClickHouse via the Bitnami subchart, the chart
+  automatically adopts the existing data volume, so no manual migration is needed. If you render
+  manifests without cluster access (for example with GitOps tools that use `helm template`), set
+  `clickhouse.persistence.existingClaim` to the old PVC name
+  (`data-<release>-clickhouse-shard0-0`) to keep your data.
+</Note>
+
 **Direct configuration:**
 
 ```yaml
@@ -286,7 +296,7 @@ clickhouse:
   deploy: false
   external:
     host: "my-clickhouse.example.com"
-    port: 8123
+    httpPort: 8123
     username: "my-username"
     password: "my-password"
 ```
@@ -298,7 +308,7 @@ clickhouse:
   deploy: false
   external:
     host: "my-clickhouse.example.com"
-    port: 8123
+    httpPort: 8123
     username: "my-username"
     existingSecret: "clickhouse-credentials"
     # existingSecretKey: "clickhouse-password" # default (optional)

@@ -157,18 +157,26 @@ services:
       start_period: 10s
 
   clickhouse:
-    image: bitnamilegacy/clickhouse:${CLICKHOUSE_IMAGE_TAG:-latest}
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_IMAGE_TAG:-26.2}
     restart: ${RESTART_POLICY:-unless-stopped}
     logging: *logging-config
     ports:
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9123:8123
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     environment:
-      CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env - run ./generate-secrets.sh}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env - run ./generate-secrets.sh}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
-      - clickhouse:/bitnami/clickhouse
-      - ../clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro
+      # The same volume works across upgrades from the previous Bitnami-based
+      # setup: data-paths.xml keeps the on-disk layout compatible.
+      - clickhouse:/var/lib/clickhouse
+      - ../clickhouse/data-paths.xml:/etc/clickhouse-server/config.d/data-paths.xml:ro
+      - ../clickhouse/override.xml:/etc/clickhouse-server/config.d/override.xml:ro
     networks:
       - webapp
     healthcheck:
