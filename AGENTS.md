@@ -138,7 +138,6 @@ User API call -> Webapp routes -> Services -> RunEngine -> Redis Queue -> Superv
 - **internal-packages/redis**: Redis client creation utilities (ioredis)
 - **internal-packages/testcontainers**: Test helpers for Redis/PostgreSQL containers
 - **internal-packages/schedule-engine**: Durable cron scheduling
-- **internal-packages/zod-worker**: Graphile-worker wrapper (DEPRECATED - use redis-worker)
 
 ### v3 (engine V1) removed
 

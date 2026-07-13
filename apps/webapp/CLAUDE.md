@@ -91,8 +91,6 @@ Background job workers use `@trigger.dev/redis-worker`:
 - `app/v3/alertsWorker.server.ts`
 - `app/v3/batchTriggerWorker.server.ts`
 
-Do NOT add new jobs using zodworker/graphile-worker (legacy).
-
 ## Real-time
 
 - Socket.io: `app/v3/handleSocketIo.server.ts`, `app/v3/handleWebsockets.server.ts`
