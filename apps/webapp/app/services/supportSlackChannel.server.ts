@@ -1,4 +1,5 @@
 import { WebClient } from "@slack/web-api";
+import { type PrismaClientOrTransaction } from "~/db.server";
 
 export interface SupportSlackClient {
   createPrivateChannel(name: string): Promise<{ channelId: string; channelName: string }>;
@@ -58,4 +59,94 @@ export class SupportSlackClientLive implements SupportSlackClient {
 export function createSupportSlackClient(token: string | undefined): SupportSlackClient | null {
   if (!token) return null;
   return new SupportSlackClientLive(token);
+}
+
+async function getOrganizationOwnerEmail(
+  prisma: PrismaClientOrTransaction,
+  organizationId: string
+): Promise<string | null> {
+  // First ADMIN member is treated as the org owner.
+  const adminMember = await prisma.orgMember.findFirst({
+    where: { organizationId, role: "ADMIN" },
+    include: { user: { select: { email: true } } },
+  });
+  return adminMember?.user.email ?? null;
+}
+
+async function setStatus(
+  prisma: PrismaClientOrTransaction,
+  organizationId: string,
+  status: "PENDING" | "PROVISIONING" | "INVITED" | "FAILED",
+  data: {
+    slackChannelId?: string | null;
+    slackChannelName?: string | null;
+    inviteUrl?: string | null;
+    invitedEmail?: string | null;
+    lastError?: string | null;
+  } = {}
+) {
+  await prisma.organizationSupportChannel.upsert({
+    where: { organizationId },
+    create: { organizationId, status, ...data },
+    update: { status, ...data },
+  });
+}
+
+export async function provisionOrganizationSupportChannel({
+  organizationId,
+  prisma,
+  slackClient,
+}: {
+  organizationId: string;
+  prisma: PrismaClientOrTransaction;
+  slackClient: SupportSlackClient;
+}): Promise<{ status: "invited" | "exists" | "failed"; channelId?: string }> {
+  const existing = await prisma.organizationSupportChannel.findFirst({
+    where: { organizationId },
+  });
+  if (existing?.slackChannelId) {
+    return { status: "exists", channelId: existing.slackChannelId };
+  }
+
+  const ownerEmail = await getOrganizationOwnerEmail(prisma, organizationId);
+  if (!ownerEmail) {
+    await setStatus(prisma, organizationId, "FAILED", {
+      lastError: "No organization owner email found",
+    });
+    return { status: "failed" };
+  }
+
+  const org = await prisma.organization.findFirst({
+    where: { id: organizationId },
+    select: { slug: true },
+  });
+  if (!org) {
+    await setStatus(prisma, organizationId, "FAILED", { lastError: "Organization not found" });
+    return { status: "failed" };
+  }
+
+  await setStatus(prisma, organizationId, "PROVISIONING", { invitedEmail: ownerEmail });
+
+  try {
+    const { channelId, channelName } = await slackClient.createPrivateChannel(
+      supportChannelName(org.slug)
+    );
+    const { url } = await slackClient.inviteSharedByEmail(channelId, ownerEmail);
+    await prisma.organizationSupportChannel.update({
+      where: { organizationId },
+      data: {
+        status: "INVITED",
+        slackChannelId: channelId,
+        slackChannelName: channelName,
+        inviteUrl: url ?? null,
+        lastError: null,
+      },
+    });
+    return { status: "invited", channelId };
+  } catch (error) {
+    await setStatus(prisma, organizationId, "FAILED", {
+      lastError: error instanceof Error ? error.message : String(error),
+    });
+    return { status: "failed" };
+  }
 }
