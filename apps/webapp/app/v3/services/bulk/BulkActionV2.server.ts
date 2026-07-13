@@ -25,9 +25,6 @@ import parseDuration from "parse-duration";
 import { v3BulkActionPath } from "~/utils/pathBuilder";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import pMap from "p-map";
-import { type PrismaReplicaClient } from "~/db.server";
-import { isSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
-import { hydrateRunsAcrossSeam, type SeamReadDeps } from "./BulkActionV2.batchReadThrough.server";
 
 export type CreateBulkActionInput = {
   organizationId: string;
@@ -61,20 +58,6 @@ export type ProcessToCompletionResult = {
 const REPLAY_INFLIGHT_WINDOW_MS = 30 * 60 * 1000;
 
 export class BulkActionService extends BaseService {
-  #splitEnabledPromise?: Promise<boolean>;
-
-  // Resolves split mode once per service instance and returns the read-through deps for
-  // bulk member hydration. Single-DB: read through the service replica (byte-identical to
-  // the pre-migration read). Split: adapter defaults to run-ops new + legacy read replica.
-  async #seamReadDeps(): Promise<SeamReadDeps> {
-    this.#splitEnabledPromise ??= isSplitEnabled();
-    const splitEnabled = await this.#splitEnabledPromise;
-    return {
-      splitEnabled,
-      newClient: splitEnabled ? undefined : (this._replica as unknown as PrismaReplicaClient),
-    };
-  }
-
   public async create(input: CreateBulkActionInput) {
     const { organizationId, projectId, environmentId, userId } = input;
     const filters = freezeRunListFilters(input.filters);
@@ -325,36 +308,21 @@ export class BulkActionService extends BaseService {
       case BulkActionType.CANCEL: {
         const cancelService = new CancelTaskRunService(this._prisma);
 
-        const seamDeps = await this.#seamReadDeps();
-        const runs = await hydrateRunsAcrossSeam({
-          runIds: runIdsToProcess,
-          readNew: (client, ids) =>
-            client.taskRun.findMany({
-              where: { id: { in: ids } },
-              select: {
-                id: true,
-                engine: true,
-                friendlyId: true,
-                status: true,
-                createdAt: true,
-                completedAt: true,
-                taskEventStore: true,
-              },
-            }),
-          readLegacyReplica: (replica, ids) =>
-            replica.taskRun.findMany({
-              where: { id: { in: ids } },
-              select: {
-                id: true,
-                engine: true,
-                friendlyId: true,
-                status: true,
-                createdAt: true,
-                completedAt: true,
-                taskEventStore: true,
-              },
-            }),
-          deps: seamDeps,
+        // Route the member hydration through the run store: it reads NEW first for the whole
+        // id set, then probes the legacy read replica only for the ids NEW missed that could
+        // still be cuid-resident, and merges (disjoint by construction). In single-DB mode it
+        // reads the collapsed store's replica, byte-identical to the pre-migration read.
+        const runs = await this.runStore.findRuns({
+          where: { id: { in: runIdsToProcess } },
+          select: {
+            id: true,
+            engine: true,
+            friendlyId: true,
+            status: true,
+            createdAt: true,
+            completedAt: true,
+            taskEventStore: true,
+          },
         });
 
         await pMap(
@@ -391,13 +359,10 @@ export class BulkActionService extends BaseService {
       case BulkActionType.REPLAY: {
         const replayService = new ReplayTaskRunService(this._prisma);
 
-        const seamDeps = await this.#seamReadDeps();
-        const runs = await hydrateRunsAcrossSeam({
-          runIds: runIdsToProcess,
-          readNew: (client, ids) => client.taskRun.findMany({ where: { id: { in: ids } } }),
-          readLegacyReplica: (replica, ids) =>
-            replica.taskRun.findMany({ where: { id: { in: ids } } }),
-          deps: seamDeps,
+        // Route the member hydration through the run store (NEW-first, legacy-replica probe for
+        // the misses, disjoint merge). Full-row read: replay needs the whole TaskRun.
+        const runs = await this.runStore.findRuns({
+          where: { id: { in: runIdsToProcess } },
         });
 
         await pMap(

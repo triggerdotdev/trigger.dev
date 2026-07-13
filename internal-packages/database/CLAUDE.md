@@ -10,7 +10,7 @@ Located at `prisma/schema.prisma`. Key models include TaskRun, BackgroundWorker,
 
 ```prisma
 enum RunEngineVersion {
-  V1  // Legacy (MarQS + Graphile) - DEPRECATED
+  V1  // Retired v3 engine - no longer executes; kept for historical rows and rejection
   V2  // Current (run-engine + redis-worker)
 }
 ```

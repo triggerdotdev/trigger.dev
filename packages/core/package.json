@@ -47,7 +47,6 @@
       "./v3/test": "./src/v3/test/index.ts",
       "./v3/zodfetch": "./src/v3/zodfetch.ts",
       "./v3/zodMessageHandler": "./src/v3/zodMessageHandler.ts",
-      "./v3/zodNamespace": "./src/v3/zodNamespace.ts",
       "./v3/zodSocket": "./src/v3/zodSocket.ts",
       "./v3/zodIpc": "./src/v3/zodIpc.ts",
       "./v3/utils/timers": "./src/v3/utils/timers.ts",
@@ -133,9 +132,6 @@
       ],
       "v3/zodMessageHandler": [
         "dist/commonjs/v3/zodMessageHandler.d.ts"
-      ],
-      "v3/zodNamespace": [
-        "dist/commonjs/v3/zodNamespace.d.ts"
       ],
       "v3/zodSocket": [
         "dist/commonjs/v3/zodSocket.d.ts"
@@ -536,17 +532,6 @@
       "require": {
         "types": "./dist/commonjs/v3/zodMessageHandler.d.ts",
         "default": "./dist/commonjs/v3/zodMessageHandler.js"
-      }
-    },
-    "./v3/zodNamespace": {
-      "import": {
-        "@triggerdotdev/source": "./src/v3/zodNamespace.ts",
-        "types": "./dist/esm/v3/zodNamespace.d.ts",
-        "default": "./dist/esm/v3/zodNamespace.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/v3/zodNamespace.d.ts",
-        "default": "./dist/commonjs/v3/zodNamespace.js"
       }
     },
     "./v3/zodSocket": {

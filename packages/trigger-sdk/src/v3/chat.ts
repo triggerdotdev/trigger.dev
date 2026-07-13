@@ -849,11 +849,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     // and the server-side dedupe sees one logical append.
     const partId = crypto.randomUUID();
     const serializedBody = this.serializeInputChunk({ kind: "message", payload: wirePayload });
-    const sendChatMessage = async (token: string) => {
-      await this.appendInputChunk(chatId, token, serializedBody, partId);
-    };
+    const sendChatMessage = (token: string) =>
+      this.appendInputChunk(chatId, token, serializedBody, partId);
 
-    await this.sendWithEvents(
+    const inSeq = await this.sendWithEvents(
       chatId,
       trigger,
       {
@@ -874,7 +873,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
 
-    return this.subscribeToSessionStream(state, abortSignal, chatId);
+    return this.subscribeToSessionStream(state, abortSignal, chatId, { sinceInSeq: inSeq });
   };
 
   /**
@@ -1243,12 +1242,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const body = this.serializeInputChunk({ kind: "message", payload: wirePayload });
     const partId = crypto.randomUUID();
-    const send = async (token: string) => {
-      await this.appendInputChunk(chatId, token, body, partId);
-    };
+    const send = (token: string) => this.appendInputChunk(chatId, token, body, partId);
 
-    await this.sendWithEvents(chatId, "action", { partId, bodyBytes: byteLength(body) }, () =>
-      this.callWithAuthRetry(chatId, state, send)
+    const inSeq = await this.sendWithEvents(
+      chatId,
+      "action",
+      { partId, bodyBytes: byteLength(body) },
+      () => this.callWithAuthRetry(chatId, state, send)
     );
 
     // Supersede any in-flight reader before subscribing — same as
@@ -1266,7 +1266,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.isStreaming = true;
     this.notifySessionChange(chatId, state);
 
-    return this.subscribeToSessionStream(state, undefined, chatId);
+    return this.subscribeToSessionStream(state, undefined, chatId, { sinceInSeq: inSeq });
   };
 
   // -------------------------------------------------------------------------
@@ -1310,15 +1310,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   }
 
   /** Run a send op, emitting the terminal message-sent / message-send-failed event. */
-  private async sendWithEvents(
+  private async sendWithEvents<T>(
     chatId: string,
     source: ChatTransportSendSource,
     extras: { messageId?: string; partId?: string; bodyBytes?: number },
-    op: () => Promise<void>
-  ): Promise<void> {
+    op: () => Promise<T>
+  ): Promise<T> {
     const startedAt = Date.now();
     try {
-      await op();
+      const result = await op();
       const turnProducing =
         source === "submit-message" || source === "regenerate-message" || source === "head-start";
       if (turnProducing) {
@@ -1332,6 +1332,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         durationMs: Date.now() - startedAt,
         ...extras,
       });
+      return result;
     } catch (error) {
       const status = (error as { status?: unknown }).status;
       this.emitEvent({
@@ -1503,7 +1504,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     token: string,
     body: string,
     partId?: string
-  ): Promise<void> {
+  ): Promise<number | undefined> {
     const ctx: ChatTransportEndpointContext = { endpoint: "in", chatId };
     const url = `${this.resolveBaseURL(ctx)}/realtime/v1/sessions/${encodeURIComponent(chatId)}/in/append`;
     // extraHeaders first so the fixed headers below win — a transport-wide
@@ -1526,24 +1527,26 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       err.status = response.status;
       throw err;
     }
+    // The appended record's `.in` seq, for correlating the response stream to
+    // this send. Omitted by older webapps / a lost idempotency claim.
+    const data = (await response.json().catch(() => undefined)) as { seq?: unknown } | undefined;
+    return typeof data?.seq === "number" ? data.seq : undefined;
   }
 
-  private async callWithAuthRetry(
+  private async callWithAuthRetry<T>(
     chatId: string,
     state: ChatSessionState,
-    op: (token: string) => Promise<void>
-  ): Promise<void> {
+    op: (token: string) => Promise<T>
+  ): Promise<T> {
     // 1) Try with the current PAT.
     try {
-      await op(state.publicAccessToken);
-      return;
+      return await op(state.publicAccessToken);
     } catch (err) {
       if (isSessionNotFoundError(err)) {
         // The cached PAT authenticated but the session doesn't exist here —
         // recreate it and retry.
         await this.recreateSession(chatId, state);
-        await op(state.publicAccessToken);
-        return;
+        return await op(state.publicAccessToken);
       }
       if (!isAuthError(err)) throw err;
     }
@@ -1554,8 +1557,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.publicAccessToken = fresh;
     this.notifySessionChange(chatId, state);
     try {
-      await op(fresh);
-      return;
+      return await op(fresh);
     } catch (err) {
       if (!isSessionNotFoundError(err)) throw err;
     }
@@ -1564,7 +1566,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     //    state is stale (created in a different environment, or before the
     //    sessions upgrade). Recreate the session and retry once.
     await this.recreateSession(chatId, state);
-    await op(state.publicAccessToken);
+    return await op(state.publicAccessToken);
   }
 
   /**
@@ -1612,6 +1614,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       sendStopOnAbort?: boolean;
       peekSettled?: boolean;
       resumed?: boolean;
+      /** `.in` seq of the send that opened this stream; skip turn-completes below it (earlier turns). */
+      sinceInSeq?: number;
     }
   ): ReadableStream<UIMessageChunk> {
     const internalAbort = new AbortController();
@@ -1869,6 +1873,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
 
             if (controlValue === TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) {
+              // Skip a turn-complete from an earlier turn (committed `.in` cursor
+              // below this send's seq), e.g. an undo action that raced this send.
+              if (options?.sinceInSeq !== undefined) {
+                const cursorRaw = headerValue(value.headers, SESSION_IN_EVENT_ID_HEADER);
+                const cursor = cursorRaw !== undefined ? Number.parseInt(cursorRaw, 10) : NaN;
+                if (!Number.isNaN(cursor) && cursor < options.sinceInSeq) {
+                  continue;
+                }
+              }
               const refreshedToken =
                 headerValue(value.headers, PUBLIC_ACCESS_TOKEN_HEADER) ??
                 legacyChunk?.publicAccessToken;

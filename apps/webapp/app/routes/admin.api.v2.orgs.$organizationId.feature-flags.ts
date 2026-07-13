@@ -2,9 +2,11 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-r
 import { json } from "@remix-run/server-runtime";
 import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
+import { env } from "~/env.server";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { selectMintBaselineSource, stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import {
   FEATURE_FLAG,
@@ -103,34 +105,78 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  let featureFlags: typeof Prisma.JsonNull | Record<string, unknown>;
-
   if (
     body === null ||
     (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0)
   ) {
-    featureFlags = Prisma.JsonNull;
-  } else {
-    const validationResult = validatePartialFeatureFlags(body as Record<string, unknown>);
-    if (!validationResult.success) {
-      return json(
-        { error: "Invalid feature flags", details: validationResult.error.issues },
-        { status: 400 }
-      );
+    // Clear all flags. No grace stamp (nothing to flip) and no read-then-write race.
+    try {
+      await prisma.organization.update({
+        where: { id: organizationId },
+        data: { featureFlags: Prisma.JsonNull },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+        throw new Response("Organization not found", { status: 404 });
+      }
+      throw e;
     }
-    featureFlags = validationResult.data;
+
+    controlPlaneResolver.invalidateOrganization(organizationId);
+    return json({ success: true });
   }
 
-  try {
-    await prisma.organization.update({
-      where: { id: organizationId },
-      data: { featureFlags: featureFlags as Prisma.InputJsonValue },
-    });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
-      throw new Response("Organization not found", { status: 404 });
+  const validationResult = validatePartialFeatureFlags(body as Record<string, unknown>);
+  if (!validationResult.success) {
+    return json(
+      { error: "Invalid feature flags", details: validationResult.error.issues },
+      { status: 400 }
+    );
+  }
+
+  // Derived grace-stamp fields are computed server-side; never trust them from the body.
+  const {
+    runOpsMintKindPrev: _ignoredPrev,
+    runOpsMintKindFlippedAt: _ignoredFlippedAt,
+    ...requestedFlags
+  } = validationResult.data;
+
+  // Seed the flip baseline from the current GLOBAL mint flags so an org's FIRST per-org override
+  // is graced from the currently-effective global kind, not the hardcoded default "cuid".
+  const globalFlags = (await getGlobalFlags()) as Record<string, unknown>;
+
+  // Lock the org row for the whole read -> stamp -> write so a concurrent flag save can't clobber
+  // the grace metadata (read-then-write race). PK lookup, one row, held to commit.
+  const updated = await prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ featureFlags: unknown }[]>`
+      SELECT "featureFlags" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
+
+    if (rows.length === 0) {
+      return false;
     }
-    throw e;
+
+    const existingRaw = rows[0].featureFlags as Record<string, unknown> | null;
+
+    // Anchor the flip stamp to the control-plane DB clock (see the v1 route), not this process's.
+    const [{ now: controlPlaneNow }] = await tx.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+
+    const stamped = stampMintKindFlip(
+      selectMintBaselineSource(existingRaw, globalFlags),
+      requestedFlags,
+      controlPlaneNow.getTime(),
+      env.RUN_OPS_MINT_FLIP_GRACE_MS
+    );
+
+    await tx.organization.update({
+      where: { id: organizationId },
+      data: { featureFlags: stamped as Prisma.InputJsonValue },
+    });
+
+    return true;
+  });
+
+  if (!updated) {
+    throw new Response("Organization not found", { status: 404 });
   }
 
   // Org feature flags are embedded in every env of the org; drop all its cached env rows.

@@ -402,4 +402,48 @@ describe("calculateErrorFingerprint", () => {
     };
     expect(calculateErrorFingerprint(error1)).toBe(calculateErrorFingerprint(error2));
   });
+
+  describe("message fallback to name / raw", () => {
+    it("distinguishes messageless built-in errors by their class name", () => {
+      const error1 = { type: "BUILT_IN_ERROR", name: "ListMessagesError", message: "" };
+      const error2 = { type: "BUILT_IN_ERROR", name: "SendMessageError", message: "" };
+      expect(calculateErrorFingerprint(error1)).not.toBe(calculateErrorFingerprint(error2));
+    });
+
+    it("groups two messageless errors of the same class together", () => {
+      const error1 = { type: "BUILT_IN_ERROR", name: "ListMessagesError", message: "" };
+      const error2 = { type: "BUILT_IN_ERROR", name: "ListMessagesError", message: "" };
+      expect(calculateErrorFingerprint(error1)).toBe(calculateErrorFingerprint(error2));
+    });
+
+    it("does not change the fingerprint of a message-bearing error", () => {
+      // Fingerprint must stay stable for the common path, otherwise existing
+      // error groups would split on deploy.
+      const withMessage = {
+        type: "BUILT_IN_ERROR",
+        name: "SomeError",
+        message: "Connection timeout",
+      };
+      const withoutName = { type: "BUILT_IN_ERROR", message: "Connection timeout" };
+      expect(calculateErrorFingerprint(withMessage)).toBe(calculateErrorFingerprint(withoutName));
+    });
+
+    it("distinguishes string errors by their raw value", () => {
+      const error1 = { type: "STRING_ERROR", raw: "rate limited" };
+      const error2 = { type: "STRING_ERROR", raw: "connection refused" };
+      expect(calculateErrorFingerprint(error1)).not.toBe(calculateErrorFingerprint(error2));
+    });
+
+    it("distinguishes custom errors by their raw value", () => {
+      const error1 = { type: "CUSTOM_ERROR", raw: '{"code":"E_LIMIT"}' };
+      const error2 = { type: "CUSTOM_ERROR", raw: '{"code":"E_AUTH"}' };
+      expect(calculateErrorFingerprint(error1)).not.toBe(calculateErrorFingerprint(error2));
+    });
+
+    it("prefers message over name and raw when all are present", () => {
+      const withMessage = { type: "BUILT_IN_ERROR", name: "Ignored", message: "real message" };
+      const messageOnly = { type: "BUILT_IN_ERROR", message: "real message" };
+      expect(calculateErrorFingerprint(withMessage)).toBe(calculateErrorFingerprint(messageOnly));
+    });
+  });
 });

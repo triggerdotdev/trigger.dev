@@ -20,7 +20,7 @@ function compilePattern(pattern: string): RegExp {
 }
 
 export class ModelPricingRegistry {
-  private _prisma: PrismaClient | PrismaReplicaClient;
+  private _prisma?: PrismaClient | PrismaReplicaClient;
   private _patterns: CompiledPattern[] = [];
   // TODO: When we add project-based models (users adding their own), this cache grows unbounded
   // between reloads. Fine-tuned model IDs (e.g. "ft:gpt-3.5-turbo:org:name:id") create unique
@@ -32,7 +32,7 @@ export class ModelPricingRegistry {
   /** Resolves once the initial `loadFromDatabase()` completes successfully. */
   readonly isReady: Promise<void>;
 
-  constructor(prisma: PrismaClient | PrismaReplicaClient) {
+  constructor(prisma?: PrismaClient | PrismaReplicaClient) {
     this._prisma = prisma;
     this.isReady = new Promise<void>((resolve) => {
       this._readyResolve = resolve;
@@ -44,6 +44,10 @@ export class ModelPricingRegistry {
   }
 
   async loadFromDatabase(): Promise<void> {
+    if (!this._prisma) {
+      throw new Error("loadFromDatabase requires a prisma client; use loadFromModels in a worker");
+    }
+
     const models = await this._prisma.llmModel.findMany({
       where: { projectId: null },
       include: {
@@ -89,6 +93,30 @@ export class ModelPricingRegistry {
       }
     }
 
+    this.applyPatterns(compiled);
+  }
+
+  // Build the registry from already-loaded model rows (e.g. broadcast to a worker), no DB.
+  loadFromModels(models: LlmModelWithPricing[]): void {
+    const compiled: CompiledPattern[] = [];
+
+    for (const model of models) {
+      try {
+        compiled.push({ regex: compilePattern(model.matchPattern), model });
+      } catch {
+        console.warn(`Invalid regex pattern for model ${model.modelName}: ${model.matchPattern}`);
+      }
+    }
+
+    this.applyPatterns(compiled);
+  }
+
+  // Serializable snapshot of the loaded models (safe to postMessage to a worker).
+  toSerializable(): LlmModelWithPricing[] {
+    return this._patterns.map((p) => p.model);
+  }
+
+  private applyPatterns(compiled: CompiledPattern[]): void {
     this._patterns = compiled;
     this._exactMatchCache.clear();
 
