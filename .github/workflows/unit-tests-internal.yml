@@ -121,10 +121,10 @@ jobs:
             pnpm exec turbo run test --only --concurrency=1 --filter "@internal/*" -- \
               --run --reporter=default --reporter=blob --shard="$i/$SHARD_TOTAL" --passWithNoTests \
               > "/tmp/internal-shard-$i.log" 2>&1 &
-            pids[$i]=$!
+            pids[i]=$!
           done
           for i in $(seq 1 "$SHARD_TOTAL"); do
-            if ! wait "${pids[$i]}"; then
+            if ! wait "${pids[i]}"; then
               status=1
               echo "::error::internal unit test shard $i/$SHARD_TOTAL failed"
             fi
