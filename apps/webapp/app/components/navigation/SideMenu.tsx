@@ -210,12 +210,6 @@ const DRAG_CLICK_THRESHOLD = 4;
 /** Left/right padding of the pinned top section + scroll body, interpolated 10px → 4px by --sm-collapse. */
 const SIDE_MENU_PAD_X = `calc(0.625rem - 0.375rem * var(--sm-collapse, 0))`;
 /**
- * Right padding of the scroll body, interpolated 0 → 4px by --sm-collapse: expanded, the reserved
- * scrollbar gutter provides the right-side space; collapsed there is no gutter, so this keeps the
- * rail buttons inset symmetrically (matching the left padding) instead of touching the edge.
- */
-const SIDE_MENU_SCROLL_PAD_RIGHT = `calc(0.25rem * var(--sm-collapse, 0))`;
-/**
  * The selector rows' hover chevron: its 16px of layout width follows --sm-label-opacity so an
  * invisible chevron can never hold width mid-drag and push the row's overflow clip edge into the
  * icon on the left (it would read as the icon being "masked"). Opacity stays class-driven — the
@@ -737,14 +731,19 @@ export function SideMenu({
         <div
           className={cn(
             "min-h-0 overflow-y-auto pt-2.5",
+            // No `scrollbar-gutter-stable`: a reserved gutter is a fixed width that can't animate and
+            // is dropped abruptly when `scrollbar-none` kicks in on collapse, so the right-hand
+            // spacing jumped instead of following the drag. Without it the right padding below drives
+            // the spacing and animates symmetrically with the left; the thin scrollbar still appears
+            // when the list overflows, it just no longer reserves space when it isn't scrolling.
             isCollapsed
               ? "scrollbar-none"
-              : "scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+              : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           )}
         >
           <div
             className="mb-6 flex w-full flex-col gap-4 overflow-hidden"
-            style={{ paddingLeft: SIDE_MENU_PAD_X, paddingRight: SIDE_MENU_SCROLL_PAD_RIGHT }}
+            style={{ paddingLeft: SIDE_MENU_PAD_X, paddingRight: SIDE_MENU_PAD_X }}
           >
             <div className="w-full space-y-0">
               <SideMenuItem
