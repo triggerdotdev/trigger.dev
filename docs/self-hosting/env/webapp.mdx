@@ -52,11 +52,8 @@ mode: "wide"
 | `AWS_REGION`                                     | No       | —                     | AWS region for SES.                                                                                                |
 | `AWS_ACCESS_KEY_ID`                              | No       | —                     | AWS access key ID for SES.                                                                                         |
 | `AWS_SECRET_ACCESS_KEY`                          | No       | —                     | AWS secret access key for SES.                                                                                     |
-| **Graphile & Redis worker**                      |          |                       |                                                                                                                    |
-| `WORKER_CONCURRENCY`                             | No       | 10                    | Redis worker concurrency.                                                                                          |
-| `WORKER_POLL_INTERVAL`                           | No       | 1000                  | Redis worker poll interval (ms).                                                                                   |
-| `WORKER_SCHEMA`                                  | No       | graphile_worker       | Graphile worker schema.                                                                                            |
-| `GRACEFUL_SHUTDOWN_TIMEOUT`                      | No       | 60000 (1m)            | Graphile graceful shutdown timeout (ms). Affects shutdown time.                                                    |
+| **Worker**                                       |          |                       |                                                                                                                    |
+| `GRACEFUL_SHUTDOWN_TIMEOUT`                      | No       | 60000 (1m)            | Graceful shutdown timeout (ms). Affects shutdown time.                                                             |
 | **Concurrency limits**                           |          |                       |                                                                                                                    |
 | `DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT`        | No       | 100                   | Default env execution concurrency.                                                                                 |
 | `DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT`        | No       | 300                   | Default org execution concurrency, needs to be 3x env concurrency.                                                 |
@@ -168,8 +165,6 @@ mode: "wide"
 | `MAXIMUM_DEV_QUEUE_SIZE`                         | No       | —                     | Maximum queued runs per queue in development environments.                                                         |
 | `MAXIMUM_DEPLOYED_QUEUE_SIZE`                    | No       | —                     | Maximum queued runs per queue in deployed (staging/prod) environments.                                             |
 | **Misc**                                         |          |                       |                                                                                                                    |
-| `PROVIDER_SECRET`                                | No       | provider-secret       | Secret for provider auth. **Must be set to a secure value in self-hosted/production**; the default is insecure.    |
-| `COORDINATOR_SECRET`                             | No       | coordinator-secret    | Secret for coordinator auth. **Must be set to a secure value in self-hosted/production**; the default is insecure. |
 | `TRIGGER_TELEMETRY_DISABLED`                     | No       | —                     | Disable telemetry.                                                                                                 |
 | `NODE_MAX_OLD_SPACE_SIZE`                        | No       | 8192                  | Maximum memory allocation for Node.js heap in MiB (e.g. "4096" for 4GB).                                           |
 | `OPENAI_API_KEY`                                 | No       | —                     | OpenAI API key.                                                                                                    |

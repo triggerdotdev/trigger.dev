@@ -1,4 +1,3 @@
-import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { BatchTaskRunExecutionResult } from "@trigger.dev/core/v3";
 import { ownerEngine } from "@trigger.dev/core/v3/isomorphic";
 import {
@@ -6,7 +5,6 @@ import {
   type PrismaClientOrTransaction,
   type PrismaReplicaClient,
   prisma,
-  runOpsLegacyReplica,
 } from "~/db.server";
 import type { TaskRunWithAttempts } from "~/models/taskRun.server";
 import { executionResultForTaskRun } from "~/models/taskRun.server";
@@ -87,20 +85,19 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     friendlyId: string,
     env: AuthenticatedEnvironment
   ): Promise<BatchTaskRunExecutionResult | undefined> {
-    const batchRun = await this.runStore.findBatchTaskRunByFriendlyId(
-      friendlyId,
-      env.id,
-      {
-        include: {
-          items: {
-            select: {
-              taskRunId: true,
-            },
+    const batchRun = await this._replica.batchTaskRun.findFirst({
+      where: {
+        friendlyId,
+        runtimeEnvironmentId: env.id,
+      },
+      include: {
+        items: {
+          select: {
+            taskRunId: true,
           },
         },
       },
-      this._replica
-    );
+    });
 
     if (!batchRun) {
       return undefined;
@@ -146,13 +143,10 @@ export class ApiBatchResultsPresenter extends BasePresenter {
   ): Promise<BatchTaskRunExecutionResult | undefined> {
     // Resolve both handles ONCE so the batch row and its members never read from different DBs.
     const newClient = (this.readThrough?.newClient ?? this._replica) as PrismaReplicaClient;
-    // Legacy fallback is the LEGACY RUN-OPS READ REPLICA (Aurora, cutover-safe), not the control plane.
-    const legacyReplica = (this.readThrough?.legacyReplica ??
-      runOpsLegacyReplica) as PrismaReplicaClient;
+    const legacyReplica = (this.readThrough?.legacyReplica ?? this._replica) as PrismaReplicaClient;
 
-    // Manual NEW→LEGACY fan-out (not a readThroughRun leg): rebrand the receiver so it routes run-ops.
     const readBatch = (client: PrismaClientOrTransaction) =>
-      (client as unknown as RunOpsPrismaClient).batchTaskRun.findFirst({
+      client.batchTaskRun.findFirst({
         where: {
           friendlyId,
           runtimeEnvironmentId: env.id,

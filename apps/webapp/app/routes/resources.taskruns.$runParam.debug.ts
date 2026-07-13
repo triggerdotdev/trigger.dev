@@ -3,7 +3,6 @@ import { typedjson } from "remix-typedjson";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -58,34 +57,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   if (run.engine === "V1") {
-    const queueConcurrencyLimit = await marqs.getQueueConcurrencyLimit(environment, run.queue);
-    const envConcurrencyLimit = await marqs.getEnvConcurrencyLimit(environment);
-    const queueCurrentConcurrency = await marqs.currentConcurrencyOfQueue(
-      environment,
-      run.queue,
-      run.concurrencyKey ?? undefined
-    );
-    const envCurrentConcurrency = await marqs.currentConcurrencyOfEnvironment(environment);
-
-    const queueReserveConcurrency = await marqs.reserveConcurrencyOfQueue(
-      environment,
-      run.queue,
-      run.concurrencyKey ?? undefined
-    );
-
-    const envReserveConcurrency = await marqs.reserveConcurrencyOfEnvironment(environment);
-
+    // v3 (engine V1) is retired: there are no marqs queues left to introspect for a
+    // historical V1 run, so return a minimal payload instead of querying marqs.
     return typedjson({
-      engine: "V1",
+      engine: "V1" as const,
       run,
       environment,
-      queueConcurrencyLimit,
-      envConcurrencyLimit,
-      queueCurrentConcurrency,
-      envCurrentConcurrency,
-      queueReserveConcurrency,
-      envReserveConcurrency,
-      keys: [],
     });
   } else {
     const queueConcurrencyLimit = await engine.runQueue.getQueueConcurrencyLimit(
@@ -141,7 +118,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     ];
 
     return typedjson({
-      engine: "V2",
+      engine: "V2" as const,
       run,
       environment,
       queueConcurrencyLimit,

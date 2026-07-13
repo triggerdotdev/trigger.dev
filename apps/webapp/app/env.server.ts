@@ -242,9 +242,6 @@ const EnvironmentSchema = z
     PLAIN_CUSTOMER_CARDS_SECRET: z.string().optional(),
     PLAIN_CUSTOMER_CARDS_KEY: z.string().optional(),
     PLAIN_CUSTOMER_CARDS_HEADERS: z.string().optional(),
-    WORKER_SCHEMA: z.string().default("graphile_worker"),
-    WORKER_CONCURRENCY: z.coerce.number().int().default(10),
-    WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
     // How often each replica reloads the global flags snapshot from the DB.
     // Sets kill/ramp propagation latency.
     GLOBAL_FLAGS_RELOAD_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
@@ -546,9 +543,6 @@ const EnvironmentSchema = z
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
-    //v3
-    PROVIDER_SECRET: z.string().default("provider-secret"),
-    COORDINATOR_SECRET: z.string().default("coordinator-secret"),
     DEPOT_TOKEN: z.string().optional(),
     DEPOT_ORG_ID: z.string().optional(),
     DEPOT_REGION: z.string().default("us-east-1"),
@@ -636,16 +630,6 @@ const EnvironmentSchema = z
     // log-only mode before enforcement.
     DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
 
-    // Master switch for the v3 engine (RunEngineVersion.V1) shutdown. When
-    // enabled it: rejects triggers that resolve to V1 (single, batch, schedule,
-    // replay, triggerAndWait) with a graceful error pointing at the v4 migration
-    // guide; closes the legacy `trigger dev` websocket used by v3 CLIs; and turns
-    // the V1 run-lifecycle background jobs (heartbeat timeout, TTL expiry, retry,
-    // resume, scheduled fires) into no-ops so abandoned V1 runs stop generating
-    // database load. v4 (V2) is never affected (every gate also checks the run is
-    // V1). Defaults to off so self-hosted instances still on V1 keep working.
-    DEPRECATE_V3_ENABLED: z.string().default("0"),
-
     // Verify the deploy image exists before promoting. Disable for out-of-band/air-gapped push. ECR only.
     DEPLOY_IMAGE_VERIFICATION_ENABLED: BoolEnv.default(true),
 
@@ -679,11 +663,6 @@ const EnvironmentSchema = z
     EVENTS_MEMORY_PRESSURE_THRESHOLD: z.coerce.number().int().default(5000),
     EVENTS_LOAD_SHEDDING_THRESHOLD: z.coerce.number().int().default(100000),
     EVENTS_LOAD_SHEDDING_ENABLED: z.string().default("1"),
-    SHARED_QUEUE_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
-    SHARED_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(100),
-    SHARED_QUEUE_CONSUMER_NEXT_TICK_INTERVAL_MS: z.coerce.number().int().default(100),
-    SHARED_QUEUE_CONSUMER_EMIT_RESUME_DEPENDENCY_TIMEOUT_MS: z.coerce.number().int().default(1000),
-    SHARED_QUEUE_CONSUMER_RESOLVE_PAYLOADS_BATCH_SIZE: z.coerce.number().int().default(25),
 
     MANAGED_WORKER_SECRET: z.string().default("managed-secret"),
 
@@ -803,50 +782,9 @@ const EnvironmentSchema = z
 
     LOOPS_API_KEY: z.string().optional(),
     ATTIO_API_KEY: z.string().optional(),
-    MARQS_DISABLE_REBALANCING: BoolEnv.default(false),
-    MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
-      .number()
-      .int()
-      .default(60 * 1000 * 15),
-    MARQS_SHARED_QUEUE_LIMIT: z.coerce.number().int().default(1000),
-    MARQS_MAXIMUM_QUEUE_PER_ENV_COUNT: z.coerce.number().int().default(50),
-    MARQS_DEV_QUEUE_LIMIT: z.coerce.number().int().default(1000),
-    MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
-    MARQS_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
-    MARQS_AVAILABLE_CAPACITY_BIAS: z.coerce.number().default(0.3),
-    MARQS_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
-    MARQS_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
-    MARQS_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
-    MARQS_SHARED_WORKER_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(250),
-    MARQS_SHARED_WORKER_QUEUE_MAX_MESSAGE_COUNT: z.coerce.number().int().default(10),
-
-    MARQS_SHARED_WORKER_QUEUE_EAGER_DEQUEUE_ENABLED: z.string().default("0"),
-    MARQS_WORKER_ENABLED: z.string().default("0"),
-    MARQS_WORKER_COUNT: z.coerce.number().int().default(2),
-    MARQS_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
-    MARQS_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(5),
-    MARQS_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
-    MARQS_WORKER_IMMEDIATE_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
-    MARQS_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
-    MARQS_SHARED_WORKER_QUEUE_COOLOFF_COUNT_THRESHOLD: z.coerce.number().int().default(10),
-    MARQS_SHARED_WORKER_QUEUE_COOLOFF_PERIOD_MS: z.coerce.number().int().default(5_000),
 
     PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
-    VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
-    V2_MARQS_ENABLED: z.string().default("0"),
-    V2_MARQS_CONSUMER_POOL_ENABLED: z.string().default("0"),
-    V2_MARQS_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
-    V2_MARQS_CONSUMER_POLL_INTERVAL_MS: z.coerce.number().int().default(1000),
-    V2_MARQS_QUEUE_SELECTION_COUNT: z.coerce.number().int().default(36),
-    V2_MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
-      .number()
-      .int()
-      .default(60 * 1000 * 15),
-    V2_MARQS_DEFAULT_ENV_CONCURRENCY: z.coerce.number().int().default(100),
-    V2_MARQS_VERBOSE: z.string().default("0"),
-    V3_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
-    V2_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
     /* Usage settings */
     USAGE_EVENT_URL: z.string().optional(),
     PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
@@ -1185,55 +1123,6 @@ const EnvironmentSchema = z
 
     /** The CLI should connect to this for dev runs */
     DEV_ENGINE_URL: z.string().default(process.env.APP_ORIGIN ?? "http://localhost:3030"),
-
-    LEGACY_RUN_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
-    LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
-    LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),
-    LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
-    LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
-    LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
-    LEGACY_RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
-    LEGACY_RUN_ENGINE_WORKER_LOG_LEVEL: z
-      .enum(["log", "error", "warn", "info", "debug"])
-      .default("info"),
-
-    LEGACY_RUN_ENGINE_WORKER_REDIS_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_HOST),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
-      ),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_USERNAME: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_USERNAME),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_PASSWORD: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_PASSWORD),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_TLS_DISABLED: z
-      .string()
-      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
-
-    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_SIZE: z.coerce.number().int().default(100),
-    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_STAGGER_MS: z.coerce.number().int().default(1_000),
-    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_DISABLED: z.string().default("0"),
 
     COMMON_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     COMMON_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),

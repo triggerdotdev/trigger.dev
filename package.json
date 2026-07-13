@@ -22,6 +22,7 @@
     "format:prisma": "pnpm --filter @trigger.dev/database run format:prisma && pnpm --filter @internal/run-ops-database run format:prisma",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
+    "knip:deps": "knip --production --dependencies",
     "docker": "node scripts/docker.mjs -f docker/docker-compose.yml up -d --build --remove-orphans",
     "docker:stop": "node scripts/docker.mjs -f docker/docker-compose.yml stop",
     "docker:full": "node scripts/docker.mjs -f docker/docker-compose.yml -f docker/docker-compose.extras.yml up -d --build --remove-orphans",
@@ -60,6 +61,7 @@
     "@types/node": "22.20.0",
     "@vitest/coverage-v8": "4.1.7",
     "autoprefixer": "^10.4.12",
+    "knip": "6.25.0",
     "oxfmt": "^0.54.0",
     "oxlint": "^1.69.0",
     "pkg-pr-new": "0.0.75",
@@ -81,7 +83,6 @@
     "patchedDependencies": {
       "@changesets/assemble-release-plan@5.2.4": "patches/@changesets__assemble-release-plan@5.2.4.patch",
       "engine.io-parser@5.2.2": "patches/engine.io-parser@5.2.2.patch",
-      "graphile-worker@0.16.6": "patches/graphile-worker@0.16.6.patch",
       "redlock@5.0.0-beta.2": "patches/redlock@5.0.0-beta.2.patch",
       "@kubernetes/client-node@1.0.0": "patches/@kubernetes__client-node@1.0.0.patch",
       "@sentry/remix@9.46.0": "patches/@sentry__remix@9.46.0.patch",

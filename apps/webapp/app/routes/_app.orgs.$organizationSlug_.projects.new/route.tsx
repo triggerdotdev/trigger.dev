@@ -119,8 +119,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       id: true,
       title: true,
       isActivated: true,
-      v2Enabled: true,
-      hasRequestedV3: true,
       _count: {
         select: {
           projects: {
@@ -152,8 +150,6 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       slug: organizationSlug,
       projectsCount: organization._count.projects,
       isActivated: organization.isActivated,
-      v2Enabled: organization.v2Enabled,
-      hasRequestedV3: organization.hasRequestedV3,
     },
     defaultVersion: url.searchParams.get("version") ?? "v2",
     message: message ? decodeURIComponent(message) : undefined,

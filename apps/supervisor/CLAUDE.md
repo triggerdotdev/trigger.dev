@@ -7,7 +7,7 @@ Node.js app that manages task execution containers. Receives work from the platf
 - `src/services/` - Core service logic
 - `src/workloadManager/` - Container orchestration abstraction (Docker or Kubernetes)
 - `src/workloadServer/` - HTTP server for workload communication (heartbeats, snapshots)
-- `src/clients/` - Platform communication (webapp/coordinator)
+- `src/clients/` - Platform communication (webapp)
 - `src/env.ts` - Environment configuration
 
 ## Architecture
