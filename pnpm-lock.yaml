@@ -773,9 +773,6 @@ importers:
       socket.io-adapter:
         specifier: ^2.5.4
         version: 2.5.4(bufferutil@4.0.9)
-      socket.io-client:
-        specifier: 4.7.5
-        version: 4.7.5(bufferutil@4.0.9)(supports-color@10.0.0)
       sonner:
         specifier: ^1.0.3
         version: 1.0.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)

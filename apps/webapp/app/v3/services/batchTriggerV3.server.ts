@@ -5,12 +5,7 @@ import type {
 } from "@trigger.dev/core/v3";
 import { packetRequiresOffloading, parsePacket } from "@trigger.dev/core/v3";
 import type { BatchTaskRun, TaskRunAttempt } from "@trigger.dev/database";
-import {
-  isPrismaRaceConditionError,
-  isPrismaRetriableError,
-  isUniqueConstraintError,
-  Prisma,
-} from "@trigger.dev/database";
+import { isUniqueConstraintError, Prisma } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
 import { z } from "zod";
 import type { PrismaClientOrTransaction } from "~/db.server";
@@ -29,7 +24,6 @@ import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedM
 import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
 import { batchTriggerWorker } from "../batchTriggerWorker.server";
-import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../objectStore.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
@@ -1048,82 +1042,4 @@ export async function tryCompleteBatchV3(
   logger.debug("tryCompleteBatchV3: Batch completed", { batchId, completedCount });
 
   // Dependent-attempt batches (batchTriggerAndWait) only exist on the retired V1 engine, so there is no parent to resume here.
-}
-
-export async function completeBatchTaskRunItemV3(
-  itemId: string,
-  batchTaskRunId: string,
-  tx: PrismaClientOrTransaction,
-  scheduleResumeOnComplete = false,
-  taskRunAttemptId?: string,
-  retryAttempt?: number,
-  // Threaded in so a run-ops id (NEW-resident) batch's item lands on the owning store; route by
-  // batchTaskRunId (items co-reside with their batch). Defaults to the singleton.
-  runStore: RunStore = defaultRunStore
-) {
-  const isRetry = retryAttempt !== undefined;
-
-  logger.debug("completeBatchTaskRunItemV3", {
-    itemId,
-    batchTaskRunId,
-    scheduleResumeOnComplete,
-    taskRunAttemptId,
-    retryAttempt,
-    isRetry,
-  });
-
-  try {
-    // Update item to COMPLETED (no transaction needed, no contention). Routed by
-    // batchTaskRunId so the item write lands on the batch's owning DB.
-    const updated = await runStore.updateManyBatchTaskRunItems({
-      where: { id: itemId, batchTaskRunId, status: "PENDING" },
-      data: { status: "COMPLETED", taskRunAttemptId },
-    });
-
-    if (updated.count === 0) {
-      logger.debug("completeBatchTaskRunItemV3: Item already completed", {
-        itemId,
-        batchTaskRunId,
-      });
-      return;
-    }
-
-    // Schedule debounced completion check
-    // enqueue with same ID overwrites, resetting the 200ms timer (debounce behavior)
-    await legacyRunEngineWorker.enqueue({
-      id: `tryCompleteBatchV3:${batchTaskRunId}`,
-      job: "tryCompleteBatchV3",
-      payload: { batchId: batchTaskRunId, scheduleResumeOnComplete },
-      availableAt: new Date(Date.now() + 200),
-    });
-  } catch (error) {
-    if (isPrismaRetriableError(error) || isPrismaRaceConditionError(error)) {
-      logger.error("completeBatchTaskRunItemV3 failed, scheduling retry", {
-        itemId,
-        batchTaskRunId,
-        error,
-        retryAttempt,
-        isRetry,
-      });
-
-      if (isRetry) {
-        throw error;
-      } else {
-        await legacyRunEngineWorker.enqueue({
-          id: `completeBatchTaskRunItem:${itemId}`,
-          job: "completeBatchTaskRunItem",
-          payload: { itemId, batchTaskRunId, scheduleResumeOnComplete, taskRunAttemptId },
-          availableAt: new Date(Date.now() + 2_000),
-        });
-      }
-    } else {
-      logger.error("completeBatchTaskRunItemV3 failed with non-retriable error", {
-        itemId,
-        batchTaskRunId,
-        error,
-        retryAttempt,
-        isRetry,
-      });
-    }
-  }
 }

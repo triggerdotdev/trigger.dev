@@ -1106,55 +1106,6 @@ const EnvironmentSchema = z
     /** The CLI should connect to this for dev runs */
     DEV_ENGINE_URL: z.string().default(process.env.APP_ORIGIN ?? "http://localhost:3030"),
 
-    LEGACY_RUN_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
-    LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
-    LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),
-    LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
-    LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
-    LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
-    LEGACY_RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
-    LEGACY_RUN_ENGINE_WORKER_LOG_LEVEL: z
-      .enum(["log", "error", "warn", "info", "debug"])
-      .default("info"),
-
-    LEGACY_RUN_ENGINE_WORKER_REDIS_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_HOST),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
-      ),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_USERNAME: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_USERNAME),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_PASSWORD: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_PASSWORD),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_TLS_DISABLED: z
-      .string()
-      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
-
-    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_SIZE: z.coerce.number().int().default(100),
-    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_STAGGER_MS: z.coerce.number().int().default(1_000),
-    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_DISABLED: z.string().default("0"),
-
     COMMON_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     COMMON_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
     COMMON_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),

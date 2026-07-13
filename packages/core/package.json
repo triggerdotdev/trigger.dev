@@ -133,9 +133,6 @@
       "v3/zodMessageHandler": [
         "dist/commonjs/v3/zodMessageHandler.d.ts"
       ],
-      "v3/zodNamespace": [
-        "dist/commonjs/v3/zodNamespace.d.ts"
-      ],
       "v3/zodSocket": [
         "dist/commonjs/v3/zodSocket.d.ts"
       ],
