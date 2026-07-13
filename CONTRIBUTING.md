@@ -181,7 +181,7 @@ pnpm exec trigger dev --log-level debug
 
 6. Navigate to the `hello-world` project in your local dashboard at localhost:3030 and you should see the list of tasks.
 
-7. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the reference project's `src/trigger` folder. Many of them accept an empty payload.
+7. On the Tasks page, open a task and press the "Test" button to open its test page. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the reference project's `src/trigger` folder. Many of them accept an empty payload.
 
 8. Feel free to add additional files in the reference project's `src/trigger` dir to test out specific aspects of the system, or add in edge cases.
 
