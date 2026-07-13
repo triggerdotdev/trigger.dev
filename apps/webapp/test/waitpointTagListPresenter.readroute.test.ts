@@ -29,10 +29,7 @@ vi.setConfig({ testTimeout: 120_000 });
 // container DBs (NEW=dedicated, LEGACY=legacy) instead of the default localhost:5432 client.
 // In single-DB passthrough both legs point at the same client (a no-op fan-out that de-dupes
 // back to one DB's rows), mirroring production single-DB deployments.
-function makeRunStore(
-  newClient: PrismaClient,
-  legacyClient: PrismaClient
-): RoutingRunStore {
+function makeRunStore(newClient: PrismaClient, legacyClient: PrismaClient): RoutingRunStore {
   return new RoutingRunStore({
     new: new PostgresRunStore({
       prisma: newClient as never,

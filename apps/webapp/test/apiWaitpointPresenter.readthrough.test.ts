@@ -152,7 +152,10 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         undefined,
         undefined,
         undefined,
-        makeRunStore(newClient.handle as unknown as PrismaClient, legacy.handle as unknown as PrismaClient)
+        makeRunStore(
+          newClient.handle as unknown as PrismaClient,
+          legacy.handle as unknown as PrismaClient
+        )
       );
 
       const result = await presenter.call(environmentArg(environment), id);
@@ -189,7 +192,10 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         undefined,
         undefined,
         undefined,
-        makeRunStore(newClient.handle as unknown as PrismaClient, legacy.handle as unknown as PrismaClient)
+        makeRunStore(
+          newClient.handle as unknown as PrismaClient,
+          legacy.handle as unknown as PrismaClient
+        )
       );
 
       const result = await presenter.call(environmentArg(environment), id);
@@ -324,7 +330,10 @@ describe("ApiWaitpointPresenter read-through (dedicated scalar-only run-ops NEW 
         undefined,
         undefined,
         undefined,
-        makeRunStore(newClient.handle as unknown as PrismaClient, legacy.handle as unknown as PrismaClient)
+        makeRunStore(
+          newClient.handle as unknown as PrismaClient,
+          legacy.handle as unknown as PrismaClient
+        )
       );
 
       // Must NOT throw PrismaClientValidationError; resolves the token off the legacy side.
@@ -362,7 +371,10 @@ describe("ApiWaitpointPresenter passthrough (single-DB)", () => {
         prisma,
         prisma,
         undefined,
-        makeRunStore(single.handle as unknown as PrismaClient, legacy.handle as unknown as PrismaClient)
+        makeRunStore(
+          single.handle as unknown as PrismaClient,
+          legacy.handle as unknown as PrismaClient
+        )
       );
 
       const result = await presenter.call(environmentArg(environment), id);

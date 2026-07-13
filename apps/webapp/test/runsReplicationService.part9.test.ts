@@ -131,9 +131,7 @@ describe("RunsReplicationService (part 9/9) - per-source replication-lag attribu
       );
 
       // An unrelated metric so the readers must walk past non-matching entries in the tree.
-      const batchesFlushed = metricsHelper.meter.createCounter(
-        "runs_replication.batches_flushed"
-      );
+      const batchesFlushed = metricsHelper.meter.createCounter("runs_replication.batches_flushed");
       batchesFlushed.add(1, { source: "legacy" });
 
       // Two producer identities fan into the same histogram; distinct attribute sets produce

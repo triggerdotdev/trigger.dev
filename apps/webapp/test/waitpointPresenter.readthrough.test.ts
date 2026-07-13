@@ -290,7 +290,10 @@ describe("WaitpointPresenter dual-DB read-through (hetero PG14 + PG17, no connec
           newClient: newClient.handle,
           legacyReplica: legacy.handle,
         },
-        makeRunStore(newClient.handle as unknown as PrismaClient, legacy.handle as unknown as PrismaClient)
+        makeRunStore(
+          newClient.handle as unknown as PrismaClient,
+          legacy.handle as unknown as PrismaClient
+        )
       );
 
       const result = await presenter.call(callArgs(ctx, seeded.friendlyId));

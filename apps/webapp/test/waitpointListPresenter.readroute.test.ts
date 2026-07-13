@@ -197,7 +197,12 @@ describe("WaitpointListPresenter read-route", () => {
 
     // Single-DB deployment: both run-store legs point at the same container client, so the
     // mandatory NEW+LEGACY fan-out in findManyWaitpoints reads one DB and de-dupes by id.
-    const presenter = new WaitpointListPresenter(prisma, prisma, undefined, makeRunStore(prisma, prisma));
+    const presenter = new WaitpointListPresenter(
+      prisma,
+      prisma,
+      undefined,
+      makeRunStore(prisma, prisma)
+    );
     const result = await presenter.call(baseOptions(ctx.environmentId, { pageSize: 2 }));
 
     expect(result.success).toBe(true);
