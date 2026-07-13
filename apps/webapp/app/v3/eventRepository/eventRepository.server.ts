@@ -1027,7 +1027,7 @@ export class EventRepository implements IEventRepository {
     if (options.immediate) {
       await this.insertImmediate(event);
     } else {
-      this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
+      this.insertMany([event]);
     }
   }
 
@@ -1161,7 +1161,7 @@ export class EventRepository implements IEventRepository {
     if (options.immediate) {
       await this.insertImmediate(event);
     } else {
-      this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
+      this.insertMany([event]);
     }
 
     return result;
