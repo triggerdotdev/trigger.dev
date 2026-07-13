@@ -1,11 +1,21 @@
 import { describe, it, expect } from "vitest";
 import { postgresTest } from "@internal/testcontainers";
 import {
+  isPaidPlan,
   provisionOrganizationSupportChannel,
   supportChannelName,
   type SupportSlackClient,
 } from "~/services/supportSlackChannel.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
+
+describe("isPaidPlan", () => {
+  it("gates on isPaying", () => {
+    expect(isPaidPlan(undefined)).toBe(false);
+    expect(isPaidPlan({})).toBe(false);
+    expect(isPaidPlan({ v3Subscription: { isPaying: false } })).toBe(false);
+    expect(isPaidPlan({ v3Subscription: { isPaying: true } })).toBe(true);
+  });
+});
 
 describe("supportChannelName", () => {
   it("prefixes cus- and lowercases", () => {

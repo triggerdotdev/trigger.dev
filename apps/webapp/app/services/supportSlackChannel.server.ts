@@ -18,6 +18,12 @@ export interface SupportSlackClient {
   ): Promise<{ inviteId: string; url?: string }>;
 }
 
+export function isPaidPlan(
+  plan: { v3Subscription?: { isPaying?: boolean } } | null | undefined
+): boolean {
+  return plan?.v3Subscription?.isPaying === true;
+}
+
 // Slack channel names: lowercase, only [a-z0-9-], <= 80 chars.
 export function supportChannelName(orgSlug: string): string {
   const cleaned = orgSlug
