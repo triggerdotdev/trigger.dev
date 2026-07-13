@@ -11,6 +11,12 @@ import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 
 export type WaitpointDetail = NonNullable<Awaited<ReturnType<WaitpointPresenter["call"]>>>;
 
+// Single-sourced display bound for a waitpoint's connected run friendlyIds.
+export const CONNECTED_RUNS_DISPLAY_LIMIT = 5;
+
+// Over-read connection rows on the FK-free dedicated join so danglers don't cost a display slot.
+export const CONNECTED_RUNS_CONNECTION_SCAN_LIMIT = CONNECTED_RUNS_DISPLAY_LIMIT * 5;
+
 export class WaitpointPresenter extends BasePresenter {
   constructor(
     prisma?: PrismaClientOrTransaction,
@@ -56,8 +62,8 @@ export class WaitpointPresenter extends BasePresenter {
 
   // Connected-run friendlyIds gathered across BOTH stores. The run<->waitpoint join co-locates with
   // the RUN (written on the run's DB), so the waitpoint's own store misses a cross-DB connection.
-  // The run-store fans the connection lookup out to both DBs and resolves each run id on its owning
-  // DB (by id-shape residency), so we get the union without joining across the seam.
+  // The run-store fans the connection lookup out to both DBs (bounded there) and resolves each run
+  // id on its owning DB (by id-shape residency), so we get the union without joining across the seam.
   async #connectedRunFriendlyIds(waitpointId: string): Promise<string[]> {
     const runIds = await this.runStore.findWaitpointConnectedRunIds(waitpointId);
     if (runIds.length === 0) {
@@ -66,7 +72,7 @@ export class WaitpointPresenter extends BasePresenter {
     const runs = await this.runStore.findRuns({
       where: { id: { in: runIds } },
       select: { friendlyId: true },
-      take: 5,
+      take: CONNECTED_RUNS_DISPLAY_LIMIT,
     });
     return runs.map((run) => run.friendlyId);
   }

@@ -29,6 +29,7 @@ import type {
   WaitpointColocationOptions,
 } from "./types.js";
 import { isReadReplicaClient } from "./readReplicaClient.js";
+import { CONNECTED_RUNS_LIMIT } from "./PostgresRunStore.js";
 
 /**
  * Run-ops routing substrate for the TaskRun-core method group. Implements {@link RunStore}
@@ -241,15 +242,39 @@ export class RoutingRunStore implements RunStore {
     const onPrimary = readYourWrites(argsOrClient, _client);
     const id = idFromWhere(where);
     if (id !== undefined) {
-      // Residency-classifiable (id/friendlyId): route to the owning store.
-      const store = this.#routeOrNew(id);
-      const method = onPrimary ? "findRunOnPrimary" : "findRun";
-      return (store[method] as (...rest: unknown[]) => Promise<unknown>)(where, args);
+      // Residency-classifiable (id/friendlyId): route to the owning store, then fall back to the
+      // OTHER store on a miss.
+      return this.#findRunRouted(id, where, args, onPrimary);
     }
     // Unclassifiable where (e.g. spanId, idempotencyKey): the run may live on either DB,
     // so fan out NEW-first then LEGACY rather than defaulting to NEW — defaulting silently
     // misses legacy-resident runs (span detail, idempotency-dedup probe, etc.).
     return this.#findRunUnrouted(where, args, onPrimary);
+  }
+
+  // A classifiable id names its OWNING store by id-shape, but physical residency can diverge from
+  // classification (a pre-#4154 base62 run lives on #new yet classifies LEGACY). Read the owning
+  // store first — a hit is a SINGLE read (the fast path) — then, ONLY on a miss, probe the OTHER
+  // store before returning null, so a run whose residency ≠ its id-shape is found rather than 404'd.
+  // Both legs run the SAME index-covered TaskRun lookup; the fan-out cost is paid only on the (rare)
+  // miss. Mirrors #findRunUnrouted's shape but keyed on the classified owner.
+  async #findRunRouted(
+    id: string,
+    where: Prisma.TaskRunWhereInput,
+    args: unknown,
+    onPrimary: boolean
+  ): Promise<unknown> {
+    const method = onPrimary ? "findRunOnPrimary" : "findRun";
+    const owning = this.#routeOrNew(id);
+    const fromOwning = await (owning[method] as (...rest: unknown[]) => Promise<unknown>)(
+      where,
+      args
+    );
+    if (fromOwning != null) {
+      return fromOwning;
+    }
+    const other = owning === this.#new ? this.#legacy : this.#new;
+    return (other[method] as (...rest: unknown[]) => Promise<unknown>)(where, args);
   }
 
   async #findRunUnrouted(
@@ -377,6 +402,62 @@ export class RoutingRunStore implements RunStore {
     for (const r of legacyRows) byId.set(r.id as string, r);
     for (const r of newRows) byId.set(r.id as string, r);
     return finalizeRows([...byId.values()], args, addedFields);
+  }
+
+  // Canonical grouped replacement for `Promise.all(ids.map(id => readThroughRun(id)))`: reuses
+  // `findRuns`'s bounded id-set path (`#findRunsByIdSet`), so NEW is queried once for the whole set
+  // and LEGACY once more only for the misses — never one round trip per id. Returns an id-keyed Map;
+  // missing/duplicate ids are simply absent/collapsed.
+  findRunsByIds<S extends Prisma.TaskRunSelect>(
+    ids: string[],
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ select: S }>>>;
+  findRunsByIds<I extends Prisma.TaskRunInclude>(
+    ids: string[],
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ include: I }>>>;
+  findRunsByIds(ids: string[], client?: ReadClient): Promise<Map<string, TaskRun>>;
+  async findRunsByIds(
+    ids: string[],
+    argsOrClient?:
+      | { select?: Record<string, unknown>; include?: Record<string, unknown> }
+      | ReadClient,
+    _client?: ReadClient
+  ): Promise<Map<string, unknown>> {
+    if (ids.length === 0) {
+      return new Map();
+    }
+    const args = selectOrIncludeArgs(argsOrClient);
+    // Mirrors `readYourWrites`'s slot recovery: when `argsOrClient` isn't a `{select|include}`
+    // object it may itself BE the client (2-arg call) or be undefined with the client in the
+    // 3rd slot (an explicit `(ids, undefined, client)` call, e.g. from a relation hydrator).
+    const client =
+      args === undefined ? ((argsOrClient as ReadClient | undefined) ?? _client) : _client;
+    // Force `id` into the projection so the map can key off it, even when the caller's select
+    // omits it — `findRuns` would otherwise strip it back out as an added-for-merge-only field.
+    const projected = args?.select
+      ? { select: { ...args.select, id: true } }
+      : args?.include
+        ? { include: args.include }
+        : {};
+    const rows = (await this.findRuns(
+      { where: { id: { in: ids } }, ...projected } as FindRunsArgs,
+      client
+    )) as Record<string, unknown>[];
+    const byId = new Map<string, unknown>();
+    // Strip the id we force-injected for map keying when the caller's select did not ask for it,
+    // so returned values match the declared payload type and never leak an unrequested id.
+    const stripInjectedId = args?.select != null && !("id" in (args.select as object));
+    for (const row of rows) {
+      const key = row.id as string;
+      if (stripInjectedId) {
+        delete row.id;
+      }
+      byId.set(key, row);
+    }
+    return byId;
   }
 
   // ---------------------------------------------------------------------------
@@ -916,7 +997,8 @@ export class RoutingRunStore implements RunStore {
   // Keyed by waitpointId, but the WaitpointRunConnection / CompletedWaitpoint join co-locates with the
   // RUN/snapshot — which can be on the OTHER DB from a cross-DB token — so fan out to BOTH stores and
   // merge. Dedup by value: a token mirrored onto both DBs during drain can carry the same join
-  // row on each leg.
+  // row on each leg. Each sub-store already caps at CONNECTED_RUNS_LIMIT, but a disjoint run set on
+  // each side can still make the union exceed it, so slice again after the merge.
   async findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]> {
     const [fromNew, fromLegacy] = await Promise.all([
       this.#new.findWaitpointConnectedRunIds(
@@ -928,7 +1010,7 @@ export class RoutingRunStore implements RunStore {
         RoutingRunStore.#ownPrimary(this.#legacy, client)
       ),
     ]);
-    return uniqueStrings([...fromNew, ...fromLegacy]);
+    return uniqueStrings([...fromNew, ...fromLegacy]).slice(0, CONNECTED_RUNS_LIMIT);
   }
 
   async findWaitpointCompletedSnapshotIds(
@@ -1162,23 +1244,20 @@ export class RoutingRunStore implements RunStore {
   }
 
   // connectedRuns: the WaitpointRunConnection join co-locates with the run, so read the connected run
-  // ids from EACH store, then resolve the TaskRun rows across BOTH DBs (findRun routes by id).
+  // ids from EACH store, then resolve the TaskRun rows in ONE grouped, residency-partitioned read
+  // (`findRunsByIds`) and reorder to match `runIds` (the join's own order).
   async #reresolveConnectedRunsCrossDb(
     waitpointId: string,
     projection: SubProjection,
     client?: ReadClient
   ): Promise<unknown[]> {
     const runIds = await this.findWaitpointConnectedRunIds(waitpointId, client);
-    const findRun = (this.findRun as (...rest: unknown[]) => Promise<unknown>).bind(this);
     const args = projectionAsArgs(projection);
-    const runs: unknown[] = [];
-    for (const runId of runIds) {
-      const run = await findRun({ id: runId }, args, client);
-      if (run != null) {
-        runs.push(run);
-      }
-    }
-    return runs;
+    const findRunsByIds = (
+      this.findRunsByIds as (...rest: unknown[]) => Promise<Map<string, unknown>>
+    ).bind(this);
+    const byId = runIds.length > 0 ? await findRunsByIds(runIds, args, client) : new Map();
+    return runIds.map((id) => byId.get(id)).filter((run) => run != null);
   }
 
   // completedExecutionSnapshots: the CompletedWaitpoint join co-locates with the snapshot/run, so read
@@ -1339,21 +1418,25 @@ export class RoutingRunStore implements RunStore {
     }
   }
 
-  // Resolve each edge's `taskRun` from its scalar `taskRunId` across BOTH stores (findRun routes by
-  // id and falls back NEW→LEGACY). A missing run is left null (display-only callers tolerate it; the
-  // blocked-run resume path keys off `waitpoint`).
+  // Resolve every edge's `taskRun` from its scalar `taskRunId` in ONE grouped, residency-partitioned
+  // read (`findRunsByIds`) rather than one `findRun` per edge. A missing run is left null
+  // (display-only callers tolerate it; the blocked-run resume path keys off `waitpoint`).
   async #hydrateEdgeTaskRunsCrossDb(
     edges: Record<string, unknown>[],
     projection: SubProjection,
     client?: ReadClient
   ): Promise<void> {
-    // Bind to `this`: findRun reaches the private #routeOrNew/#findRunUnrouted members, so an unbound
-    // reference loses `this` and throws on the first private access.
-    const findRun = (this.findRun as (...rest: unknown[]) => Promise<unknown>).bind(this);
+    const ids = uniqueStrings(edges.map((e) => e.taskRunId));
     const args = projectionAsArgs(projection);
+    // Bind to `this`: findRunsByIds reaches private members, so an unbound reference throws.
+    const findRunsByIds = (
+      this.findRunsByIds as (...rest: unknown[]) => Promise<Map<string, unknown>>
+    ).bind(this);
+    const byId =
+      ids.length > 0 ? await findRunsByIds(ids, args, client) : new Map<string, unknown>();
     for (const edge of edges) {
       const id = edge.taskRunId as string | undefined;
-      const run = id ? await findRun({ id }, args, client) : null;
+      const run = id ? byId.get(id) : undefined;
       edge.taskRun = applyEdgeProjection((run as Record<string, unknown>) ?? null, projection);
     }
   }
