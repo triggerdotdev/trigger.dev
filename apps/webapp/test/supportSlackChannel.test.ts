@@ -55,7 +55,10 @@ describe("pickExternalTeamId", () => {
 class FakeSupportSlackClient implements SupportSlackClient {
   public created: string[] = [];
   public invited: Array<{ channelId: string; email: string }> = [];
-  constructor(private readonly opts: { failInvite?: boolean } = {}) {}
+  constructor(private opts: { failInvite?: boolean } = {}) {}
+  setFailInvite(failInvite: boolean) {
+    this.opts = { ...this.opts, failInvite };
+  }
   async createPrivateChannel(name: string) {
     this.created.push(name);
     return { channelId: "C123", channelName: name };
@@ -164,6 +167,51 @@ describe("provisionOrganizationSupportChannel", () => {
     expect(row?.status).toBe("FAILED");
     expect(row?.lastError).toContain("no_external_invite_permission");
   });
+
+  postgresTest(
+    "retrying after a failed invite reuses the persisted channel instead of recreating it",
+    async ({ prisma }) => {
+      const { org } = await seedOrg(prisma);
+      const client = new FakeSupportSlackClient({ failInvite: true });
+
+      const firstResult = await provisionOrganizationSupportChannel({
+        organizationId: org.id,
+        prisma,
+        slackClient: client,
+      });
+
+      expect(firstResult.status).toBe("failed");
+      const rowAfterFailure = await prisma.organizationSupportChannel.findFirst({
+        where: { organizationId: org.id },
+      });
+      expect(rowAfterFailure?.status).toBe("FAILED");
+      expect(rowAfterFailure?.slackChannelId).toBe("C123");
+      expect(rowAfterFailure?.slackChannelName).toBe("cus-acme");
+      expect(client.created).toEqual(["cus-acme"]);
+
+      // Simulate a redis-worker retry: same organization, invite now succeeds.
+      client.setFailInvite(false);
+      const secondResult = await provisionOrganizationSupportChannel({
+        organizationId: org.id,
+        prisma,
+        slackClient: client,
+      });
+
+      expect(secondResult).toEqual({ status: "invited", channelId: "C123" });
+      // createPrivateChannel must not be called again across both runs.
+      expect(client.created).toEqual(["cus-acme"]);
+      expect(client.invited).toEqual([
+        { channelId: "C123", email: "owner@acme.com" },
+        { channelId: "C123", email: "owner@acme.com" },
+      ]);
+
+      const rowAfterRetry = await prisma.organizationSupportChannel.findFirst({
+        where: { organizationId: org.id },
+      });
+      expect(rowAfterRetry?.status).toBe("INVITED");
+      expect(rowAfterRetry?.slackChannelId).toBe("C123");
+    }
+  );
 
   postgresTest("LINKED row is treated as exists (no Slack calls)", async ({ prisma }) => {
     const { org } = await seedOrg(prisma);

@@ -58,13 +58,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json({ error: "Upgrade required" }, { status: 403 });
   }
 
+  try {
+    await enqueueProvisionSupportChannel({ organizationId: organization.id });
+  } catch (error) {
+    return json({ error: "Failed to start Slack channel provisioning" }, { status: 500 });
+  }
+
   await prisma.organizationSupportChannel.upsert({
     where: { organizationId: organization.id },
     create: { organizationId: organization.id, status: "PROVISIONING" },
     update: { status: "PROVISIONING" },
   });
-
-  await enqueueProvisionSupportChannel({ organizationId: organization.id });
 
   return redirect(organizationSupportPath(organization));
 };

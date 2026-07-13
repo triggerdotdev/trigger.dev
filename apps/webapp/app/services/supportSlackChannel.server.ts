@@ -1,7 +1,6 @@
 import { WebClient } from "@slack/web-api";
 import { z } from "zod";
 import { type PrismaClientOrTransaction } from "~/db.server";
-import { logger } from "./logger.server";
 
 export const OrganizationSupportChannelSchema = z.object({
   organizationId: z.string(),
@@ -217,7 +216,7 @@ export async function provisionOrganizationSupportChannel({
   const existing = await prisma.organizationSupportChannel.findFirst({
     where: { organizationId },
   });
-  if (existing?.slackChannelId) {
+  if (existing?.slackChannelId && (existing.status === "INVITED" || existing.status === "LINKED")) {
     return { status: "exists", channelId: existing.slackChannelId };
   }
 
@@ -229,21 +228,50 @@ export async function provisionOrganizationSupportChannel({
     return { status: "failed" };
   }
 
-  const org = await prisma.organization.findFirst({
-    where: { id: organizationId },
-    select: { slug: true },
-  });
-  if (!org) {
-    await setStatus(prisma, organizationId, "FAILED", { lastError: "Organization not found" });
-    return { status: "failed" };
+  // A previous attempt may have already created the Slack channel but died (or failed)
+  // before recording the invite. Reuse the persisted channel instead of re-creating it,
+  // since Slack rejects a second `conversations.create` for the same name (name_taken).
+  let channelId = existing?.slackChannelId ?? undefined;
+  let channelName = existing?.slackChannelName ?? undefined;
+
+  if (!channelId) {
+    const org = await prisma.organization.findFirst({
+      where: { id: organizationId },
+      select: { slug: true },
+    });
+    if (!org) {
+      await setStatus(prisma, organizationId, "FAILED", { lastError: "Organization not found" });
+      return { status: "failed" };
+    }
+
+    await setStatus(prisma, organizationId, "PROVISIONING", { invitedEmail: ownerEmail });
+
+    try {
+      const created = await slackClient.createPrivateChannel(supportChannelName(org.slug));
+      channelId = created.channelId;
+      channelName = created.channelName;
+      // Persist immediately so a retry never re-creates the channel, even if the
+      // invite step below fails or the process dies before it runs.
+      await setStatus(prisma, organizationId, "PROVISIONING", {
+        slackChannelId: channelId,
+        slackChannelName: channelName,
+        invitedEmail: ownerEmail,
+      });
+    } catch (error) {
+      await setStatus(prisma, organizationId, "FAILED", {
+        lastError: error instanceof Error ? error.message : String(error),
+      });
+      return { status: "failed" };
+    }
+  } else {
+    await setStatus(prisma, organizationId, "PROVISIONING", {
+      slackChannelId: channelId,
+      slackChannelName: channelName,
+      invitedEmail: ownerEmail,
+    });
   }
 
-  await setStatus(prisma, organizationId, "PROVISIONING", { invitedEmail: ownerEmail });
-
   try {
-    const { channelId, channelName } = await slackClient.createPrivateChannel(
-      supportChannelName(org.slug)
-    );
     const { url } = await slackClient.inviteSharedByEmail(channelId, ownerEmail);
     await prisma.organizationSupportChannel.update({
       where: { organizationId },
@@ -258,6 +286,8 @@ export async function provisionOrganizationSupportChannel({
     return { status: "invited", channelId };
   } catch (error) {
     await setStatus(prisma, organizationId, "FAILED", {
+      slackChannelId: channelId,
+      slackChannelName: channelName,
       lastError: error instanceof Error ? error.message : String(error),
     });
     return { status: "failed" };
@@ -450,18 +480,11 @@ export function proposeOrgMatches(
 export async function enqueueProvisionSupportChannel(
   payload: OrganizationSupportChannelPayload
 ) {
-  try {
-    // Lazy import to avoid a circular dependency with commonWorker (which imports this module's schema).
-    const { commonWorker } = await import("~/v3/commonWorker.server");
-    await commonWorker.enqueue({
-      id: `support-channel:${payload.organizationId}`,
-      job: "supportChannel.provision",
-      payload,
-    });
-  } catch (error) {
-    logger.error("Failed to enqueue support channel provisioning", {
-      organizationId: payload.organizationId,
-      error,
-    });
-  }
+  // Lazy import to avoid a circular dependency with commonWorker (which imports this module's schema).
+  const { commonWorker } = await import("~/v3/commonWorker.server");
+  await commonWorker.enqueue({
+    id: `support-channel:${payload.organizationId}`,
+    job: "supportChannel.provision",
+    payload,
+  });
 }
