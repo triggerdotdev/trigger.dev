@@ -100,7 +100,7 @@ export function SideMenuItem({
         >
           <span
             className={cn(
-              "select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]",
+              "select-none overflow-hidden whitespace-nowrap text-[0.90625rem] font-medium tracking-[-0.01em]",
               nameClassName
             )}
           >

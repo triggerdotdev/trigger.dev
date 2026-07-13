@@ -225,14 +225,17 @@ const SIDE_MENU_CHEVRON_STYLE = {
   maxWidth: "calc(var(--sm-label-opacity, 1) * 16px)",
 } as const;
 /**
- * The selector rows' label container (org/project/environment): width and opacity both follow
- * --sm-label-opacity so the label tracks a drag frame-by-frame in BOTH directions. Gating these on
- * `isCollapsed` (which only flips on release) made the labels pop in after a drag-open instead of
- * fading in like the nav items. The variable also animates during the click-toggle, and is 0/1 at
- * the collapsed/expanded resting states, so no isCollapsed classes or CSS transitions are needed.
+ * The selector rows' label container (org/project/environment): opacity follows --sm-label-opacity
+ * so the label fades frame-by-frame in BOTH directions (gating on `isCollapsed`, which only flips on
+ * release, made labels pop in after a drag-open instead of fading). The max-width cap is deliberately
+ * generous (far wider than any label) so the visible fade is driven purely by opacity — the text
+ * stays full and fades out in place rather than being truncated as the row narrows. Because the cap
+ * still scales with the variable it reaches 0 exactly as the label finishes fading, so an invisible
+ * label never holds layout width (which would push the row's clip edge into the icon). No isCollapsed
+ * classes or CSS transitions are needed: the variable is 0/1 at the collapsed/expanded resting states.
  */
 const SIDE_MENU_SELECTOR_LABEL_STYLE = {
-  maxWidth: "calc(var(--sm-label-opacity, 1) * 200px)",
+  maxWidth: "calc(var(--sm-label-opacity, 1) * 1000px)",
   opacity: "var(--sm-label-opacity, 1)",
 } as const;
 
@@ -1207,7 +1210,7 @@ function OrgSelector({
                 className="flex min-w-0 items-center gap-1.5 overflow-hidden"
                 style={SIDE_MENU_SELECTOR_LABEL_STYLE}
               >
-                <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
+                <span className="overflow-hidden whitespace-nowrap text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
                   {organization.title}
                 </span>
               </span>
@@ -1497,7 +1500,7 @@ function ProjectSelector({
                 className="flex min-w-0 items-center overflow-hidden"
                 style={SIDE_MENU_SELECTOR_LABEL_STYLE}
               >
-                <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
+                <span className="overflow-hidden whitespace-nowrap text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
                   {project.name ?? "Select a project"}
                 </span>
               </span>

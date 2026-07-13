@@ -78,7 +78,7 @@ export function HelpAndFeedback({
                   transitions: they would lag the per-frame variable writes.
                 */}
                     <span
-                      className="min-w-0 truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed group-hover:text-text-bright"
+                      className="min-w-0 overflow-hidden whitespace-nowrap text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed group-hover:text-text-bright"
                       style={{
                         maxWidth: "calc(var(--sm-label-opacity, 1) * 150px)",
                         opacity: "var(--sm-label-opacity, 1)",

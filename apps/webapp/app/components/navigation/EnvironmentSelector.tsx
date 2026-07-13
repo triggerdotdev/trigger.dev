@@ -92,16 +92,19 @@ export function EnvironmentSelector({
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
               {/*
-                Width and opacity are driven by the resizable SideMenu's `--sm-label-opacity`
-                variable so the label tracks a drag frame-by-frame in both directions (gating on
-                isCollapsed, which only flips on release, made the label pop in after a drag-open).
+                Opacity is driven by the resizable SideMenu's `--sm-label-opacity` variable so the
+                label fades frame-by-frame in both directions (gating on isCollapsed, which only flips
+                on release, made the label pop in after a drag-open). The max-width cap is generous
+                (far wider than any env name) so the visible fade is driven purely by opacity — the
+                text stays full and fades out in place instead of truncating as the row narrows —
+                while still reaching 0 as the label finishes fading so it never holds layout width.
                 Unset in the other places this selector is used (blank-state panels, Limits page)
                 → falls back to fully visible.
               */}
               <span
                 className="flex min-w-0 items-center overflow-hidden"
                 style={{
-                  maxWidth: "calc(var(--sm-label-opacity, 1) * 200px)",
+                  maxWidth: "calc(var(--sm-label-opacity, 1) * 1000px)",
                   opacity: "var(--sm-label-opacity, 1)",
                 }}
               >
@@ -109,6 +112,7 @@ export function EnvironmentSelector({
                   environment={environment}
                   className="text-[0.90625rem] font-medium tracking-[-0.01em]"
                   disableTooltip
+                  truncate={false}
                 />
               </span>
             </span>
