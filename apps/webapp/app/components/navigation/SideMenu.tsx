@@ -1289,17 +1289,6 @@ function OrgSelector({
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
-        {/*
-          When collapsed the standalone account button is hidden, so surface the account menu here
-          as a submenu at the top of the org popover (the only always-reachable menu on the rail).
-        */}
-        {isCollapsed && (
-          <div className="border-b border-grid-bright p-1">
-            <SideMenuPopoverSubMenu title="Account" icon={<UserProfilePhoto className="size-5" />}>
-              <AccountMenuItems isAdmin={isAdmin} isImpersonating={isImpersonating} />
-            </SideMenuPopoverSubMenu>
-          </div>
-        )}
         <div className="flex flex-col gap-1 p-1">
           <PopoverMenuItem
             to={organizationSettingsPath(organization)}
@@ -1389,6 +1378,17 @@ function OrgSelector({
             />
           )}
         </div>
+        {/*
+          When collapsed the standalone account button is hidden, so surface the account menu here
+          as a submenu at the bottom of the org popover (the only always-reachable menu on the rail).
+        */}
+        {isCollapsed && (
+          <div className="border-t border-grid-bright p-1">
+            <SideMenuPopoverSubMenu title="Account" icon={<UserProfilePhoto className="size-5" />}>
+              <AccountMenuItems isAdmin={isAdmin} isImpersonating={isImpersonating} />
+            </SideMenuPopoverSubMenu>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );
