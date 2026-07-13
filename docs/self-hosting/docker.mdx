@@ -344,6 +344,12 @@ TRIGGER_IMAGE_TAG=v4.5.0
 
 We patch the latest released version line only, so keep an eye on new releases to receive security fixes. See [Security & vulnerability reporting](/self-hosting/security).
 
+<Note>
+  Trigger.dev 4.5.0 is the last version we officially support for running v3 (SDK v3) tasks. If
+  you still have v3 tasks, pin `TRIGGER_IMAGE_TAG` to exactly `v4.5.0` or [migrate to
+  v4](/migrating-from-v3). 4.5.1 and later reject v3 triggers and deploys with an upgrade message.
+</Note>
+
 ## Task events
 
 By default, task events (timeline, logs, spans) are stored in PostgreSQL. For production deployments we recommend storing them in ClickHouse instead, it scales to much higher volumes and avoids unbounded growth of the `TaskEvent` table.
