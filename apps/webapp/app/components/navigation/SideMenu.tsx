@@ -125,6 +125,7 @@ import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence
 import { AlphaBadge, NewBadge } from "../FeatureBadges";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
+import { type RenderIcon } from "../primitives/Icon";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
 import { Popover, PopoverContent, PopoverMenuItem, PopoverTrigger } from "../primitives/Popover";
@@ -699,6 +700,8 @@ export function SideMenu({
               organization={organization}
               isCollapsed={isCollapsed}
               isDragging={isDragging}
+              isAdmin={isAdmin}
+              isImpersonating={user.isImpersonating}
             />
           </div>
           <CollapsibleElement isDragging={isDragging}>
@@ -1211,12 +1214,17 @@ function OrgSelector({
   organizations,
   isCollapsed = false,
   isDragging = false,
+  isAdmin,
+  isImpersonating,
 }: {
   organization: MatchedOrganization;
   organizations: MatchedOrganization[];
   isCollapsed?: boolean;
   /** True while the menu is being drag-resized; keeps the row in its expanded arrangement. */
   isDragging?: boolean;
+  /** Account context, only used to render the collapsed-rail "Account" submenu (see below). */
+  isAdmin: boolean;
+  isImpersonating: boolean;
 }) {
   const currentPlan = useCurrentPlan();
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
@@ -1281,6 +1289,17 @@ function OrgSelector({
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
+        {/*
+          When collapsed the standalone account button is hidden, so surface the account menu here
+          as a submenu at the top of the org popover (the only always-reachable menu on the rail).
+        */}
+        {isCollapsed && (
+          <div className="border-b border-grid-bright p-1">
+            <SideMenuPopoverSubMenu title="Account" icon={<UserProfilePhoto className="size-5" />}>
+              <AccountMenuItems isAdmin={isAdmin} isImpersonating={isImpersonating} />
+            </SideMenuPopoverSubMenu>
+          </div>
+        )}
         <div className="flex flex-col gap-1 p-1">
           <PopoverMenuItem
             to={organizationSettingsPath(organization)}
@@ -1375,6 +1394,99 @@ function OrgSelector({
   );
 }
 
+/**
+ * The account menu entries (admin/impersonation, Profile, Personal Access Tokens, Security, Logout).
+ * Shared so they render identically in two places: the standalone account popover (expanded rail)
+ * and the "Account" submenu inside the org popover (collapsed rail). Add new account entries here
+ * and both surfaces pick them up.
+ */
+function AccountMenuItems({
+  isAdmin,
+  isImpersonating,
+}: {
+  isAdmin: boolean;
+  isImpersonating: boolean;
+}) {
+  const submit = useSubmit();
+  const stopImpersonating = () =>
+    submit(null, { action: "/resources/impersonation", method: "delete" });
+
+  return (
+    <>
+      {isAdmin && (
+        <div className="flex flex-col gap-1 border-b border-grid-bright p-1">
+          {isImpersonating ? (
+            <PopoverMenuItem
+              title={
+                <div className="flex w-full items-center justify-between">
+                  <span className={IMPERSONATION_ACCENT.text}>Stop impersonating</span>
+                  <span className="flex items-center gap-1">
+                    <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
+                    <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
+                  </span>
+                </div>
+              }
+              icon={UserCrossIcon}
+              onClick={stopImpersonating}
+              leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, IMPERSONATION_ACCENT.text)}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
+            />
+          ) : (
+            <PopoverMenuItem
+              to={adminPath()}
+              title={
+                <div className="flex w-full items-center justify-between">
+                  <span>Admin dashboard</span>
+                  <span className="flex items-center gap-1">
+                    <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
+                    <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
+                  </span>
+                </div>
+              }
+              icon={HomeIcon}
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
+            />
+          )}
+        </div>
+      )}
+      <div className="flex flex-col gap-1 p-1">
+        <PopoverMenuItem
+          to={accountPath()}
+          title="Profile"
+          icon={AvatarCircleIcon}
+          leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+          className={SIDE_MENU_POPOVER_ITEM_LABEL}
+        />
+        <PopoverMenuItem
+          to={personalAccessTokensPath()}
+          title="Personal Access Tokens"
+          icon={ShieldIcon}
+          leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+          className={SIDE_MENU_POPOVER_ITEM_LABEL}
+        />
+        <PopoverMenuItem
+          to={accountSecurityPath()}
+          title="Security"
+          icon={PadlockIcon}
+          leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+          className={SIDE_MENU_POPOVER_ITEM_LABEL}
+        />
+      </div>
+      <div className="border-t border-grid-bright p-1">
+        <PopoverMenuItem
+          to={logoutPath()}
+          title="Logout"
+          icon={ArrowRightSquareIcon}
+          leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+          className={SIDE_MENU_POPOVER_ITEM_LABEL}
+          danger
+        />
+      </div>
+    </>
+  );
+}
+
 function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImpersonating: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const navigation = useNavigation();
@@ -1423,76 +1535,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
-        {isAdmin && (
-          <div className="flex flex-col gap-1 border-b border-grid-bright p-1">
-            {isImpersonating ? (
-              <PopoverMenuItem
-                title={
-                  <div className="flex w-full items-center justify-between">
-                    <span className={IMPERSONATION_ACCENT.text}>Stop impersonating</span>
-                    <span className="flex items-center gap-1">
-                      <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
-                      <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
-                    </span>
-                  </div>
-                }
-                icon={UserCrossIcon}
-                onClick={stopImpersonating}
-                leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, IMPERSONATION_ACCENT.text)}
-                className={SIDE_MENU_POPOVER_ITEM_LABEL}
-              />
-            ) : (
-              <PopoverMenuItem
-                to={adminPath()}
-                title={
-                  <div className="flex w-full items-center justify-between">
-                    <span>Admin dashboard</span>
-                    <span className="flex items-center gap-1">
-                      <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
-                      <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
-                    </span>
-                  </div>
-                }
-                icon={HomeIcon}
-                leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-                className={SIDE_MENU_POPOVER_ITEM_LABEL}
-              />
-            )}
-          </div>
-        )}
-        <div className="flex flex-col gap-1 p-1">
-          <PopoverMenuItem
-            to={accountPath()}
-            title="Profile"
-            icon={AvatarCircleIcon}
-            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-            className={SIDE_MENU_POPOVER_ITEM_LABEL}
-          />
-          <PopoverMenuItem
-            to={personalAccessTokensPath()}
-            title="Personal Access Tokens"
-            icon={ShieldIcon}
-            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-            className={SIDE_MENU_POPOVER_ITEM_LABEL}
-          />
-          <PopoverMenuItem
-            to={accountSecurityPath()}
-            title="Security"
-            icon={PadlockIcon}
-            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-            className={SIDE_MENU_POPOVER_ITEM_LABEL}
-          />
-        </div>
-        <div className="border-t border-grid-bright p-1">
-          <PopoverMenuItem
-            to={logoutPath()}
-            title="Logout"
-            icon={ArrowRightSquareIcon}
-            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-            className={SIDE_MENU_POPOVER_ITEM_LABEL}
-            danger
-          />
-        </div>
+        <AccountMenuItems isAdmin={isAdmin} isImpersonating={isImpersonating} />
       </PopoverContent>
     </Popover>
   );
@@ -1612,6 +1655,82 @@ function ProjectSelector({
   );
 }
 
+/**
+ * A hover-expandable submenu row inside a side-menu popover. The trigger looks like a normal menu
+ * item with a trailing chevron; hovering it (or opening it with the keyboard) reveals `children` in
+ * a popover to the right, with a short close delay so the pointer can travel across the gap. This is
+ * the shared building block for the side menu's nested menus (Account, Switch organization,
+ * Integrations) — add a new one by rendering this with the submenu entries as `children`.
+ */
+function SideMenuPopoverSubMenu({
+  title,
+  icon,
+  leadingIconClassName,
+  children,
+}: {
+  title: string;
+  icon: RenderIcon;
+  leadingIconClassName?: string;
+  children: ReactNode;
+}) {
+  const navigation = useNavigation();
+  const [isOpen, setIsOpen] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  // Close the submenu on navigation (the parent popover closes too).
+  useEffect(() => {
+    setIsOpen(false);
+  }, [navigation.location?.pathname]);
+
+  const openNow = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setIsOpen(true);
+  };
+  const closeSoon = () => {
+    // Small delay before closing so the pointer can move onto the content.
+    timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
+  };
+
+  return (
+    <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen}>
+      <div onMouseEnter={openNow} onMouseLeave={closeSoon} className="flex">
+        <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
+          <ButtonContent
+            variant="small-menu-item"
+            className={cn("hover:bg-background-hover", SIDE_MENU_POPOVER_ITEM_LABEL)}
+            LeadingIcon={icon}
+            leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, leadingIconClassName)}
+            TrailingIcon={ChevronRightIcon}
+            trailingIconClassName="text-text-dimmed"
+            textAlignLeft
+            fullWidth
+          >
+            {title}
+          </ButtonContent>
+        </PopoverTrigger>
+        <PopoverContent
+          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+          align="start"
+          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
+          side="right"
+          alignOffset={0}
+          sideOffset={-4}
+          onMouseEnter={openNow}
+          onMouseLeave={closeSoon}
+        >
+          {children}
+        </PopoverContent>
+      </div>
+    </Popover>
+  );
+}
+
 function SwitchOrganizations({
   organizations,
   organization,
@@ -1619,170 +1738,54 @@ function SwitchOrganizations({
   organizations: MatchedOrganization[];
   organization: MatchedOrganization;
 }) {
-  const navigation = useNavigation();
-  const [isMenuOpen, setMenuOpen] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Clear timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [navigation.location?.pathname]);
-
-  const handleMouseEnter = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    setMenuOpen(true);
-  };
-
-  const handleMouseLeave = () => {
-    // Small delay before closing to allow moving to the content
-    timeoutRef.current = setTimeout(() => {
-      setMenuOpen(false);
-    }, 150);
-  };
-
   return (
-    <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
-      <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} className="flex">
-        <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
-          <ButtonContent
-            variant="small-menu-item"
-            className={cn("hover:bg-background-hover", SIDE_MENU_POPOVER_ITEM_LABEL)}
-            LeadingIcon={ArrowLeftRightIcon}
-            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-            TrailingIcon={ChevronRightIcon}
-            trailingIconClassName="text-text-dimmed"
-            textAlignLeft
-            fullWidth
-          >
-            Switch organization
-          </ButtonContent>
-        </PopoverTrigger>
-        <PopoverContent
-          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
-          align="start"
-          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
-          side="right"
-          alignOffset={0}
-          sideOffset={-4}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
-          <div className="flex flex-col gap-1 p-1">
-            <PopoverMenuItem
-              to={newOrganizationPath()}
-              title="New organization"
-              icon={PlusIcon}
-              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-              className={SIDE_MENU_POPOVER_ITEM_LABEL}
-            />
-          </div>
-          <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
-            {organizations.map((org) => (
-              <PopoverMenuItem
-                key={org.id}
-                to={organizationPath(org)}
-                title={org.title}
-                icon={<Avatar size={1.25} avatar={org.avatar} orgName={org.title} />}
-                leadingIconClassName="text-text-dimmed"
-                className={SIDE_MENU_POPOVER_ITEM_LABEL}
-                isSelected={org.id === organization.id}
-              />
-            ))}
-          </div>
-        </PopoverContent>
+    <SideMenuPopoverSubMenu title="Switch organization" icon={ArrowLeftRightIcon}>
+      <div className="flex flex-col gap-1 p-1">
+        <PopoverMenuItem
+          to={newOrganizationPath()}
+          title="New organization"
+          icon={PlusIcon}
+          leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+          className={SIDE_MENU_POPOVER_ITEM_LABEL}
+        />
       </div>
-    </Popover>
+      <div className="flex flex-col gap-1 border-t border-grid-bright p-1">
+        {organizations.map((org) => (
+          <PopoverMenuItem
+            key={org.id}
+            to={organizationPath(org)}
+            title={org.title}
+            icon={<Avatar size={1.25} avatar={org.avatar} orgName={org.title} />}
+            leadingIconClassName="text-text-dimmed"
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
+            isSelected={org.id === organization.id}
+          />
+        ))}
+      </div>
+    </SideMenuPopoverSubMenu>
   );
 }
 
 function Integrations({ organization }: { organization: MatchedOrganization }) {
-  const navigation = useNavigation();
-  const [isMenuOpen, setMenuOpen] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Clear timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [navigation.location?.pathname]);
-
-  const handleMouseEnter = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    setMenuOpen(true);
-  };
-
-  const handleMouseLeave = () => {
-    // Small delay before closing to allow moving to the content
-    timeoutRef.current = setTimeout(() => {
-      setMenuOpen(false);
-    }, 150);
-  };
-
   return (
-    <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
-      <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} className="flex">
-        <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
-          <ButtonContent
-            variant="small-menu-item"
-            className={cn("hover:bg-background-hover", SIDE_MENU_POPOVER_ITEM_LABEL)}
-            LeadingIcon={IntegrationsIcon}
-            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-            TrailingIcon={ChevronRightIcon}
-            trailingIconClassName="text-text-dimmed"
-            textAlignLeft
-            fullWidth
-          >
-            Integrations
-          </ButtonContent>
-        </PopoverTrigger>
-        <PopoverContent
-          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
-          align="start"
-          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
-          side="right"
-          alignOffset={0}
-          sideOffset={-4}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
-          <div className="flex flex-col gap-1 p-1">
-            <PopoverMenuItem
-              to={organizationVercelIntegrationPath(organization)}
-              title="Vercel"
-              icon={VercelLogo}
-              leadingIconClassName="size-4 text-text-dimmed"
-              className={SIDE_MENU_POPOVER_ITEM_LABEL}
-            />
-            <PopoverMenuItem
-              to={organizationSlackIntegrationPath(organization)}
-              title="Slack"
-              icon={SlackIcon}
-              leadingIconClassName="size-4 text-text-dimmed"
-              className={SIDE_MENU_POPOVER_ITEM_LABEL}
-            />
-          </div>
-        </PopoverContent>
+    <SideMenuPopoverSubMenu title="Integrations" icon={IntegrationsIcon}>
+      <div className="flex flex-col gap-1 p-1">
+        <PopoverMenuItem
+          to={organizationVercelIntegrationPath(organization)}
+          title="Vercel"
+          icon={VercelLogo}
+          leadingIconClassName="size-4 text-text-dimmed"
+          className={SIDE_MENU_POPOVER_ITEM_LABEL}
+        />
+        <PopoverMenuItem
+          to={organizationSlackIntegrationPath(organization)}
+          title="Slack"
+          icon={SlackIcon}
+          leadingIconClassName="size-4 text-text-dimmed"
+          className={SIDE_MENU_POPOVER_ITEM_LABEL}
+        />
       </div>
-    </Popover>
+    </SideMenuPopoverSubMenu>
   );
 }
 
