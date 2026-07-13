@@ -48,7 +48,7 @@ jobs:
 
   release:
     name: 🚀 Release npm packages
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # this cannot run on non-GH runner
     environment: npm-publish
     permissions:
       contents: write
@@ -281,7 +281,7 @@ jobs:
   # The prerelease job needs to be on the same workflow file due to a limitation related to how npm verifies OIDC claims.
   prerelease:
     name: 🧪 Prerelease
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # this cannot run on non-GH runner
     environment: npm-publish
     permissions:
       contents: read
