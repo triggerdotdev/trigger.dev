@@ -1,5 +1,14 @@
 import { WebClient } from "@slack/web-api";
+import { z } from "zod";
 import { type PrismaClientOrTransaction } from "~/db.server";
+import { logger } from "./logger.server";
+
+export const OrganizationSupportChannelSchema = z.object({
+  organizationId: z.string(),
+});
+export type OrganizationSupportChannelPayload = z.infer<
+  typeof OrganizationSupportChannelSchema
+>;
 
 export interface SupportSlackClient {
   createPrivateChannel(name: string): Promise<{ channelId: string; channelName: string }>;
@@ -148,5 +157,24 @@ export async function provisionOrganizationSupportChannel({
       lastError: error instanceof Error ? error.message : String(error),
     });
     return { status: "failed" };
+  }
+}
+
+export async function enqueueProvisionSupportChannel(
+  payload: OrganizationSupportChannelPayload
+) {
+  try {
+    // Lazy import to avoid a circular dependency with commonWorker (which imports this module's schema).
+    const { commonWorker } = await import("~/v3/commonWorker.server");
+    await commonWorker.enqueue({
+      id: `support-channel:${payload.organizationId}`,
+      job: "supportChannel.provision",
+      payload,
+    });
+  } catch (error) {
+    logger.error("Failed to enqueue support channel provisioning", {
+      organizationId: payload.organizationId,
+      error,
+    });
   }
 }

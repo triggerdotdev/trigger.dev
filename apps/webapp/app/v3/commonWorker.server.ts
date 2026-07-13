@@ -2,6 +2,7 @@ import { Logger } from "@trigger.dev/core/logger";
 import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { DeliverEmailSchema } from "emails";
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
 import { sendEmail } from "~/services/email.server";
@@ -12,6 +13,11 @@ import {
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
 import { logger } from "~/services/logger.server";
+import {
+  createSupportSlackClient,
+  OrganizationSupportChannelSchema,
+  provisionOrganizationSupportChannel,
+} from "~/services/supportSlackChannel.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
@@ -135,6 +141,13 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
+      "supportChannel.provision": {
+        schema: OrganizationSupportChannelSchema,
+        visibilityTimeoutMs: 30_000,
+        retry: {
+          maxAttempts: 3,
+        },
+      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -189,6 +202,15 @@ function initializeWorker() {
       processBulkAction: async ({ payload }) => {
         const service = new BulkActionService();
         await service.process(payload.bulkActionId);
+      },
+      "supportChannel.provision": async ({ payload }) => {
+        const slackClient = createSupportSlackClient(env.SLACK_BOT_TOKEN);
+        if (!slackClient) return;
+        await provisionOrganizationSupportChannel({
+          organizationId: payload.organizationId,
+          prisma,
+          slackClient,
+        });
       },
     },
   });
