@@ -11,7 +11,7 @@ import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenF
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { type WaitpointTokenStatus, type WaitpointTokenItem } from "@trigger.dev/core/v3";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
-import { runStore } from "~/v3/runStore.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -94,7 +94,8 @@ export class WaitpointListPresenter extends BasePresenter {
       runOpsNew?: PrismaClientOrTransaction;
       runOpsLegacyReplica?: PrismaClientOrTransaction;
       splitEnabled?: boolean;
-    }
+    },
+    private readonly runStore = defaultRunStore
   ) {
     super(prismaClient, replicaClient);
   }
@@ -179,7 +180,7 @@ export class WaitpointListPresenter extends BasePresenter {
 
     const tokens = await this.#scanWaitpoints(
       () =>
-        runStore.findManyWaitpoints({
+        this.runStore.findManyWaitpoints({
           where: {
             environmentId: environment.id,
             type: "MANUAL",
@@ -307,7 +308,7 @@ export class WaitpointListPresenter extends BasePresenter {
 
   // Empty-state probe across both residencies (runStore fans out); no single runId.
   async #probeAnyToken(environmentId: string): Promise<boolean> {
-    const found = await runStore.findWaitpoint({
+    const found = await this.runStore.findWaitpoint({
       where: { environmentId, type: "MANUAL" },
     });
     return Boolean(found);

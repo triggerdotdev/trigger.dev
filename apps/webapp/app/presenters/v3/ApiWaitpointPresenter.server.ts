@@ -5,7 +5,7 @@ import { BasePresenter } from "./basePresenter.server";
 import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import type { PrismaClientOrTransaction, PrismaReplicaClient } from "~/db.server";
-import { runStore } from "~/v3/runStore.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
 // Retained only to preserve the public constructor signature the route passes. Run-ops routing
 // (NEW vs LEGACY residency, replica reads) is now handled inside the injected `runStore`, so
@@ -21,7 +21,8 @@ export class ApiWaitpointPresenter extends BasePresenter {
   constructor(
     prismaClient?: PrismaClientOrTransaction,
     replicaClient?: PrismaClientOrTransaction,
-    private readonly readThroughDeps?: ApiWaitpointPresenterReadThroughDeps
+    private readonly readThroughDeps?: ApiWaitpointPresenterReadThroughDeps,
+    private readonly runStore = defaultRunStore
   ) {
     super(prismaClient, replicaClient);
   }
@@ -41,7 +42,7 @@ export class ApiWaitpointPresenter extends BasePresenter {
     return this.trace("call", async (span) => {
       // The store routes by the waitpointId's residency (id shape) and reads the owning
       // store's replica. waitpointId is pre-decoded from the friendlyId via WaitpointId.toId.
-      const waitpoint = await runStore.findWaitpoint({
+      const waitpoint = await this.runStore.findWaitpoint({
         where: {
           id: waitpointId,
           environmentId: environment.id,

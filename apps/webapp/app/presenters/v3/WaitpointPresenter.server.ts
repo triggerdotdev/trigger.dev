@@ -4,7 +4,7 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
-import { runStore } from "~/v3/runStore.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 import { NextRunListPresenter, type NextRunListItem } from "./NextRunListPresenter.server";
 import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
@@ -21,7 +21,8 @@ export class WaitpointPresenter extends BasePresenter {
       newClient?: PrismaClientOrTransaction;
       legacyReplica?: PrismaClientOrTransaction;
       splitEnabled?: boolean;
-    }
+    },
+    private readonly runStore = defaultRunStore
   ) {
     super(prisma, replica);
   }
@@ -30,7 +31,7 @@ export class WaitpointPresenter extends BasePresenter {
     // Keyed by (friendlyId, environmentId) with no classifiable waitpoint id, so the run-store
     // probes NEW then LEGACY and reads each store's own replica — resolving the waitpoint whichever
     // run store owns it. When split is off it reads the single control-plane replica (passthrough).
-    return runStore.findWaitpoint({
+    return this.runStore.findWaitpoint({
       where: { friendlyId, environmentId },
       select: {
         id: true,
@@ -58,11 +59,11 @@ export class WaitpointPresenter extends BasePresenter {
   // The run-store fans the connection lookup out to both DBs and resolves each run id on its owning
   // DB (by id-shape residency), so we get the union without joining across the seam.
   async #connectedRunFriendlyIds(waitpointId: string): Promise<string[]> {
-    const runIds = await runStore.findWaitpointConnectedRunIds(waitpointId);
+    const runIds = await this.runStore.findWaitpointConnectedRunIds(waitpointId);
     if (runIds.length === 0) {
       return [];
     }
-    const runs = await runStore.findRuns({
+    const runs = await this.runStore.findRuns({
       where: { id: { in: runIds } },
       select: { friendlyId: true },
       take: 5,

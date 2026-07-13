@@ -58,6 +58,7 @@ import {
   heteroPostgresTest,
   replicationContainerTest,
 } from "@internal/testcontainers";
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
 import type { PrismaClient, WaitpointType } from "@trigger.dev/database";
 import { PrismaClient as PrismaClientCtor } from "@trigger.dev/database";
 import { setTimeout } from "node:timers/promises";
@@ -66,6 +67,25 @@ import { WaitpointPresenter } from "~/presenters/v3/WaitpointPresenter.server";
 import { setupClickhouseReplication } from "./utils/replicationUtils";
 
 vi.setConfig({ testTimeout: 90_000 });
+
+// Wire the presenter's run store to the test containers so waitpoint reads route to the
+// container DBs (NEW=dedicated, LEGACY=legacy) instead of the default localhost:5432 client.
+// The NEW leg is the read-through preferred store; find* methods probe NEW then LEGACY and some
+// collection reads (connected-run gather) fan out to BOTH legs.
+function makeRunStore(newClient: PrismaClient, legacyClient: PrismaClient) {
+  return new RoutingRunStore({
+    new: new PostgresRunStore({
+      prisma: newClient as never,
+      readOnlyPrisma: newClient as never,
+      schemaVariant: "dedicated",
+    }),
+    legacy: new PostgresRunStore({
+      prisma: legacyClient as never,
+      readOnlyPrisma: legacyClient as never,
+      schemaVariant: "legacy",
+    }),
+  });
+}
 
 // A read client whose waitpoint.findFirst is recorded; throws if used after being marked
 // forbidden, so we can prove a store was NEVER read. Every other access forwards to the real
@@ -245,16 +265,23 @@ describe("WaitpointPresenter dual-DB read-through (hetero PG14 + PG17, no connec
       const newClient = recording(prisma17);
       const legacy = recording(prisma14, { forbidden: true });
 
-      const presenter = new WaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: newClient.handle,
-        legacyReplica: legacy.handle,
-      });
+      const presenter = new WaitpointPresenter(
+        undefined,
+        undefined,
+        {
+          splitEnabled: true,
+          newClient: newClient.handle,
+          legacyReplica: legacy.handle,
+        },
+        makeRunStore(newClient.handle as unknown as PrismaClient, legacy.handle as unknown as PrismaClient)
+      );
 
       const result = await presenter.call(callArgs(ctx, seeded.friendlyId));
 
       expect(result?.id).toBe(seeded.friendlyId);
-      // New-first short-circuit: legacy never probed (the throwing handle proves it).
+      // New-first short-circuit: the waitpoint lookup resolves on NEW and never falls through to
+      // legacy's waitpoint.findFirst (the throwing handle proves it). The connected-run gather does
+      // fan out to both legs, but via `$queryRaw`, so the waitpoint.findFirst tripwire stays clean.
       expect(newClient.calls.length).toBe(1);
       expect(legacy.calls.length).toBe(0);
     }
@@ -351,11 +378,16 @@ describe("WaitpointPresenter connected-runs hydrate routed through read-through 
         // Wait for CH replication so the connected-run id-set page is non-empty.
         await setTimeout(1500);
 
-        const presenter = new WaitpointPresenter(prisma, prisma, {
-          splitEnabled: true,
-          newClient: prismaNew,
-          legacyReplica: prisma,
-        });
+        const presenter = new WaitpointPresenter(
+          prisma,
+          prisma,
+          {
+            splitEnabled: true,
+            newClient: prismaNew,
+            legacyReplica: prisma,
+          },
+          makeRunStore(prismaNew, prisma)
+        );
 
         const result = await presenter.call(callArgs(ctx, seeded.friendlyId));
 
@@ -389,8 +421,14 @@ describe("WaitpointPresenter bare-ctor production default activates readThroughR
       newClientHolder.client = prisma17;
       legacyReplicaHolder.client = prisma17;
 
-      // No newClient/legacyReplica injected — production ctor shape.
-      const presenter = new WaitpointPresenter(undefined, undefined, { splitEnabled: true });
+      // Production readThroughDeps shape (no newClient/legacyReplica), but the run store is wired to
+      // the per-test container instead of the global singleton (which caches across files on globalThis).
+      const presenter = new WaitpointPresenter(
+        undefined,
+        undefined,
+        { splitEnabled: true },
+        makeRunStore(prisma17, prisma17)
+      );
 
       const result = await presenter.call(callArgs(ctx, seeded.friendlyId));
 

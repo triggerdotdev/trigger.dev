@@ -20,20 +20,27 @@ describe("checkpoint WAIT_FOR_BATCH reads the primary, not a lagging replica", (
   it("threads the primary so an already-resumed batch keeps the run alive", async () => {
     // A freezable attempt so control reaches the WAIT_FOR_BATCH arm. This object IS the primary the
     // fix must thread into the batch read.
+    const attempt = {
+      id: "attempt_1",
+      status: "EXECUTING",
+      taskRunId: "run_1",
+      backgroundWorkerId: "bw_1",
+      taskRun: { id: "run_1", status: "EXECUTING", runtimeEnvironmentId: "env_1" },
+    };
+    // backgroundWorker + deployment are control-plane rows read off the seam via this._prisma.
     const prisma = {
       taskRunAttempt: {
-        findFirst: async () => ({
-          id: "attempt_1",
-          status: "EXECUTING",
-          taskRunId: "run_1",
-          taskRun: { id: "run_1", status: "EXECUTING", runtimeEnvironmentId: "env_1" },
-          backgroundWorker: { id: "bw_1", deployment: { imageReference: "img:1" } },
-        }),
+        findFirst: async () => attempt,
+      },
+      backgroundWorker: {
+        findFirst: async () => ({ id: "bw_1", deployment: { imageReference: "img:1" } }),
       },
     };
 
     let seenClient: unknown = "NOT_CALLED";
     const runStore = {
+      // The attempt + run are read through the store (routed by residency), not this._prisma.
+      findTaskRunAttempt: async (_args: unknown, _client?: unknown) => attempt,
       findBatchTaskRunByFriendlyId: async (
         _friendlyId: string,
         _environmentId: string,
