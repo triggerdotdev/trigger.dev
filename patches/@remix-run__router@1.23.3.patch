@@ -1,0 +1,58 @@
+diff --git a/dist/router.cjs.js b/dist/router.cjs.js
+index 6aa7db6fb5a7182afcdf17b16a3356abfa1e7945..95edbde228beff8dbd13fb2800302e31a932ef25 100644
+--- a/dist/router.cjs.js
++++ b/dist/router.cjs.js
+@@ -783,6 +783,11 @@ function convertRoutesToDataRoutes(routes, mapRouteProperties, parentPath, manif
+  *
+  * @see https://reactrouter.com/v6/utils/match-routes
+  */
++// trigger.dev perf patch — memoize per-request route matching. See patches/README.md
++// (backports the idea in react-router PR #14866, which was closed in favor of the partial
++// fix #14967; maintainer suggested patch-package until the Remix 3 route-pattern rewrite).
++let __branchCache = new WeakMap();
++let __compileCache = new Map();
+ function matchRoutes(routes, locationArg, basename) {
+   if (basename === void 0) {
+     basename = "/";
+@@ -795,8 +800,13 @@ function matchRoutesImpl(routes, locationArg, basename, allowPartial) {
+   if (pathname == null) {
+     return null;
+   }
+-  let branches = flattenRoutes(routes);
+-  rankRouteBranches(branches);
++  // flatten+rank depend only on `routes` (static) — cache per route-tree ref.
++  let branches = __branchCache.get(routes);
++  if (!branches) {
++    branches = flattenRoutes(routes);
++    rankRouteBranches(branches);
++    __branchCache.set(routes, branches);
++  }
+   let matches = null;
+   let decoded = decodePath(pathname);
+   for (let i = 0; matches == null && i < branches.length; ++i) {
+@@ -1115,6 +1125,12 @@ function compilePath(path, caseSensitive, end) {
+   if (end === void 0) {
+     end = true;
+   }
++  // perf patch: cache the compiled [regexp, params] by pattern (see patches/README.md).
++  let __ck = path + "\0" + caseSensitive + "\0" + end;
++  let __cc = __compileCache.get(__ck);
++  if (__cc !== void 0) {
++    return __cc;
++  }
+   warning(path === "*" || !path.endsWith("*") || path.endsWith("/*"), "Route path \"" + path + "\" will be treated as if it were " + ("\"" + path.replace(/\*$/, "/*") + "\" because the `*` character must ") + "always follow a `/` in the pattern. To get rid of this warning, " + ("please change the route path to \"" + path.replace(/\*$/, "/*") + "\"."));
+   let params = [];
+   let regexpSource = "^" + path.replace(/\/*\*?$/, "") // Ignore trailing / and /*, we'll handle it below
+@@ -1147,7 +1163,11 @@ function compilePath(path, caseSensitive, end) {
+     regexpSource += "(?:(?=\\/|$))";
+   } else ;
+   let matcher = new RegExp(regexpSource, caseSensitive ? undefined : "i");
+-  return [matcher, params];
++  let __res = [matcher, params];
++  // Bounded: route patterns are a static set; the cap guards any dynamic matchPath() use.
++  if (__compileCache.size >= 2000) __compileCache.clear();
++  __compileCache.set(__ck, __res);
++  return __res;
+ }
+ function decodePath(value) {
+   try {

@@ -55,4 +55,3 @@ export class QueryPresenter extends BasePresenter {
     };
   }
 }
-

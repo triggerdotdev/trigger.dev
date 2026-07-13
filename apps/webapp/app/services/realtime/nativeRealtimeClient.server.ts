@@ -1,7 +1,8 @@
 import { json } from "@remix-run/server-runtime";
 import { safeParseNaturalLanguageDurationAgo } from "@trigger.dev/core/v3/isomorphic";
 import { randomUUID } from "node:crypto";
-import { API_VERSIONS, CURRENT_API_VERSION } from "~/api/versions";
+import type { API_VERSIONS } from "~/api/versions";
+import { CURRENT_API_VERSION } from "~/api/versions";
 import {
   type CachedLimitProvider,
   type RealtimeEnvironment,
@@ -26,11 +27,7 @@ import {
   type SerializedRowChange,
 } from "./electricStreamProtocol.server";
 import { BoundedTtlCache } from "./boundedTtlCache";
-import {
-  type EnvChangeRouter,
-  type FeedFilter,
-  type MatchedRow,
-} from "./envChangeRouter.server";
+import { type EnvChangeRouter, type FeedFilter, type MatchedRow } from "./envChangeRouter.server";
 import { type RunHydrator, type RunListResolver } from "./runReader.server";
 import { type RealtimeConcurrencyLimiter } from "./realtimeConcurrencyLimiter.server";
 import { InMemoryReplayCursorStore, type ReplayCursorStore } from "./replayCursorStore.server";
@@ -391,7 +388,9 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
     existingHandle?: string
   ): Response {
     const body = buildSnapshotBody(row, skipColumns);
-    const offset = row ? encodeOffset(row.updatedAt.getTime(), this.#nextSeq()) : encodeOffset(0, 0);
+    const offset = row
+      ? encodeOffset(row.updatedAt.getTime(), this.#nextSeq())
+      : encodeOffset(0, 0);
     return this.#buildResponse(body, apiVersion, clientVersion, {
       offset,
       handle: existingHandle ?? this.#mintHandle(runId),
@@ -568,14 +567,22 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
       let prevSeen = this.#workingSetCache.get(workingSetKey);
 
       const markPollEnd = () => this.#replayCursors.set(workingSetKey, Date.now());
-      const emitFromSerialized = (changes: SerializedRowChange[], maxUpdatedAt: number): Response => {
+      const emitFromSerialized = (
+        changes: SerializedRowChange[],
+        maxUpdatedAt: number
+      ): Response => {
         const seq = this.#nextSeq();
         markPollEnd();
-        return this.#buildResponse(buildRowsBodyFromSerialized(changes), apiVersion, clientVersion, {
-          offset: encodeOffset(maxUpdatedAt, seq),
-          handle,
-          cursor: String(seq),
-        });
+        return this.#buildResponse(
+          buildRowsBodyFromSerialized(changes),
+          apiVersion,
+          clientVersion,
+          {
+            offset: encodeOffset(maxUpdatedAt, seq),
+            handle,
+            cursor: String(seq),
+          }
+        );
       };
       const emitFromRows = (changes: RowChange[], maxUpdatedAt: number): Response => {
         const seq = this.#nextSeq();
@@ -853,7 +860,8 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
    * same projected columns, so cached rows always match the requesting feed. */
   #runSetCacheKey(environmentId: string, filter: RunSetFilter, skipColumns: string[]): string {
     // JSON-encode the arrays (not a join) so a tag containing the separator can't collide with a different filter.
-    const tags = filter.tags && filter.tags.length > 0 ? JSON.stringify([...filter.tags].sort()) : "";
+    const tags =
+      filter.tags && filter.tags.length > 0 ? JSON.stringify([...filter.tags].sort()) : "";
     const cols = skipColumns.length > 0 ? JSON.stringify([...skipColumns].sort()) : "";
     const maxListResults = this.options.maxListResults ?? DEFAULT_MAX_LIST_RESULTS;
     return `${environmentId}|${tags}|${filter.batchId ?? ""}|${
@@ -1040,7 +1048,8 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
   }
 
   #resolveSkipColumns(url: URL, requestOptions?: RealtimeRequestOptions): string[] {
-    const raw = requestOptions?.skipColumns ?? url.searchParams.get("skipColumns")?.split(",") ?? [];
+    const raw =
+      requestOptions?.skipColumns ?? url.searchParams.get("skipColumns")?.split(",") ?? [];
     return raw.map((c) => c.trim()).filter((c) => c !== "" && !RESERVED_COLUMNS.includes(c));
   }
 }

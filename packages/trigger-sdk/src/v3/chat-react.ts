@@ -50,6 +50,7 @@ export type UseTriggerChatTransportOptions<TTask extends AnyTask = AnyTask> = Om
 };
 
 export type { InferChatUIMessage };
+export type { ChatTransportEvent, ChatTransportSendSource } from "./chat.js";
 
 /**
  * React hook that creates and memoizes a `TriggerChatTransport` instance.
@@ -90,10 +91,14 @@ export function useTriggerChatTransport<TTask extends AnyTask = AnyTask>(
   }
 
   // Keep callbacks up to date without recreating the transport.
-  const { onSessionChange, clientData } = options;
+  const { onSessionChange, clientData, onEvent } = options;
   useEffect(() => {
     ref.current?.setOnSessionChange(onSessionChange);
   }, [onSessionChange]);
+
+  useEffect(() => {
+    ref.current?.setOnEvent(onEvent);
+  }, [onEvent]);
 
   // Keep `clientData` up to date so the transport's per-turn merge and
   // `startSession` callback both see the latest value without
@@ -174,10 +179,7 @@ export function useMultiTabChat<T = unknown>(
   useEffect(() => {
     if (!transport.hasClaim(chatId) && latestMessagesRef.current.length > 0) {
       if (idleRef.current !== null) {
-        const cancel =
-          typeof cancelIdleCallback === "function"
-            ? cancelIdleCallback
-            : clearTimeout;
+        const cancel = typeof cancelIdleCallback === "function" ? cancelIdleCallback : clearTimeout;
         cancel(idleRef.current as any);
         idleRef.current = null;
       }
@@ -294,7 +296,15 @@ export type UsePendingMessagesReturn = {
 export function usePendingMessages<TUIMessage extends UIMessage = UIMessage>(
   options: UsePendingMessagesOptions<TUIMessage>
 ): UsePendingMessagesReturn {
-  const { transport, chatId, status, messages, setMessages, sendMessage, metadata } = options;
+  const {
+    transport,
+    chatId,
+    status,
+    messages,
+    setMessages: _setMessages,
+    sendMessage,
+    metadata,
+  } = options;
 
   // Internal state: track messages with their mode
   type InternalMessage = TUIMessage & { _mode: "steering" | "queued" };

@@ -1,22 +1,29 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { CheckCircleIcon, LockClosedIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { DialogClose } from "@radix-ui/react-dialog";
 import {
   Form,
   useActionData,
-  useNavigation,
-  useNavigate,
-  useSearchParams,
   useLocation,
+  useNavigate,
+  useNavigation,
+  useSearchParams,
 } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedFetcher } from "remix-typedjson";
+import { GitBranchIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
+import {
+  EnvironmentIcon,
+  environmentFullTitle,
+  environmentTextClassName,
+} from "~/components/environments/EnvironmentLabel";
 import { OctoKitty } from "~/components/GitHubLoginButton";
+import { Button } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
-import { DialogClose } from "@radix-ui/react-dialog";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -25,18 +32,12 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
-import { DateTime } from "~/components/primitives/DateTime";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
-import {
-  EnvironmentIcon,
-  environmentFullTitle,
-  environmentTextClassName,
-} from "~/components/environments/EnvironmentLabel";
-import { GitBranchIcon } from "lucide-react";
 import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
@@ -46,22 +47,21 @@ import {
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { ProjectSettingsService } from "~/services/projectSettings.server";
+import { GitHubSettingsPresenter } from "~/presenters/v3/GitHubSettingsPresenter.server";
 import { logger } from "~/services/logger.server";
 import { triggerInitialDeployment } from "~/services/platform.v3.server";
-import { VercelIntegrationService } from "~/services/vercelIntegration.server";
-import { requireUserId } from "~/services/session.server";
+import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+import { requireUserId } from "~/services/session.server";
+import { VercelIntegrationService } from "~/services/vercelIntegration.server";
+import { cn } from "~/utils/cn";
 import {
-  githubAppInstallPath,
   EnvironmentParamSchema,
+  githubAppInstallPath,
   v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
-import { cn } from "~/utils/cn";
 import { type BranchTrackingConfig } from "~/v3/github";
-import { GitHubSettingsPresenter } from "~/presenters/v3/GitHubSettingsPresenter.server";
-import { useEffect, useState } from "react";
 
 // ============================================================================
 // Types
@@ -208,10 +208,10 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
-    const submission = parse(formData, { schema: GitHubActionSchema });
+    const submission = parseWithZod(formData, { schema: GitHubActionSchema });
 
-    if (!submission.value || submission.intent !== "submit") {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
     const projectSettingsService = new ProjectSettingsService();
@@ -415,10 +415,10 @@ export function ConnectGitHubRepoModal({
 
   const [form, { installationId, repositoryId }] = useForm({
     id: "connect-repo",
-    lastSubmission: lastSubmission,
+    lastResult: lastSubmission,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parse(formData, {
+      return parseWithZod(formData, {
         schema: ConnectGitHubRepoFormSchema,
       });
     },
@@ -484,7 +484,7 @@ export function ConnectGitHubRepoModal({
       >
         <DialogHeader>Connect GitHub repository</DialogHeader>
         <div className="mt-2 flex flex-col gap-4">
-          <Form method="post" action={actionUrl} {...form.props} className="w-full">
+          <Form method="post" action={actionUrl} {...getFormProps(form)} className="w-full">
             {redirectUrl && <input type="hidden" name="redirectUrl" value={redirectUrl} />}
             <Paragraph className="mb-3">
               Choose a GitHub repository to connect to your project.
@@ -540,7 +540,7 @@ export function ConnectGitHubRepoModal({
                     </SelectItem>,
                   ]}
                 </Select>
-                <FormError id={installationId.errorId}>{installationId.error}</FormError>
+                <FormError id={installationId.errorId}>{installationId.errors}</FormError>
               </InputGroup>
               <InputGroup className="max-w-full">
                 <Label htmlFor={repositoryId.id}>Repository</Label>
@@ -586,9 +586,9 @@ export function ConnectGitHubRepoModal({
                   </TextLink>
                   .
                 </Hint>
-                <FormError id={repositoryId.errorId}>{repositoryId.error}</FormError>
+                <FormError id={repositoryId.errorId}>{repositoryId.errors}</FormError>
               </InputGroup>
-              <FormError>{form.error}</FormError>
+              <FormError>{form.errors}</FormError>
               <FormButtons
                 confirmButton={
                   <Button
@@ -719,10 +719,10 @@ export function ConnectedGitHubRepoForm({
 
   const [gitSettingsForm, fields] = useForm({
     id: "update-git-settings",
-    lastSubmission: lastSubmission,
+    lastResult: lastSubmission,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parse(formData, {
+      return parseWithZod(formData, {
         schema: UpdateGitSettingsFormSchema,
       });
     },
@@ -803,7 +803,7 @@ export function ConnectedGitHubRepoForm({
         </Dialog>
       </div>
 
-      <Form method="post" action={actionUrl} {...gitSettingsForm.props}>
+      <Form method="post" action={actionUrl} {...getFormProps(gitSettingsForm)}>
         {redirectUrl && <input type="hidden" name="redirectUrl" value={redirectUrl} />}
         <Fieldset>
           <InputGroup fullWidth>
@@ -819,7 +819,7 @@ export function ConnectedGitHubRepoForm({
                 </span>
               </div>
               <Input
-                {...conform.input(fields.productionBranch, { type: "text" })}
+                {...getInputProps(fields.productionBranch, { type: "text" })}
                 defaultValue={connectedGitHubRepo.branchTracking?.prod?.branch}
                 placeholder="none"
                 variant="tertiary"
@@ -839,7 +839,7 @@ export function ConnectedGitHubRepoForm({
                 </span>
               </div>
               <Input
-                {...conform.input(fields.stagingBranch, { type: "text" })}
+                {...getInputProps(fields.stagingBranch, { type: "text" })}
                 defaultValue={connectedGitHubRepo.branchTracking?.staging?.branch}
                 placeholder="none"
                 variant="tertiary"
@@ -888,10 +888,10 @@ export function ConnectedGitHubRepoForm({
                 )}
               </div>
             </div>
-            <FormError>{fields.productionBranch?.error}</FormError>
-            <FormError>{fields.stagingBranch?.error}</FormError>
-            <FormError>{fields.previewDeploymentsEnabled?.error}</FormError>
-            <FormError>{gitSettingsForm.error}</FormError>
+            <FormError>{fields.productionBranch?.errors}</FormError>
+            <FormError>{fields.stagingBranch?.errors}</FormError>
+            <FormError>{fields.previewDeploymentsEnabled?.errors}</FormError>
+            <FormError>{gitSettingsForm.errors}</FormError>
           </InputGroup>
 
           <FormButtons

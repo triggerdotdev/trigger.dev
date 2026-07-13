@@ -49,9 +49,7 @@ export const getCurrentWorker = {
       }
 
       contents.push("");
-      contents.push(
-        "Use the `get_task_schema` tool with a task slug to get its payload schema."
-      );
+      contents.push("Use the `get_task_schema` tool with a task slug to get its payload schema.");
     } else {
       contents.push(`The worker has no tasks registered.`);
     }
@@ -198,16 +196,10 @@ export const getTaskSchemaTool = {
 
     if (!task) {
       const available = workerResult.data.worker.tasks.map((t) => t.slug).join(", ");
-      return respondWithError(
-        `Task "${input.taskSlug}" not found. Available tasks: ${available}`
-      );
+      return respondWithError(`Task "${input.taskSlug}" not found. Available tasks: ${available}`);
     }
 
-    const content = [
-      `## ${task.slug}`,
-      "",
-      `**File:** ${task.filePath}`,
-    ];
+    const content = [`## ${task.slug}`, "", `**File:** ${task.filePath}`];
 
     if (task.payloadSchema) {
       content.push("");

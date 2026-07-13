@@ -13,17 +13,14 @@ const TEST_URL = "https://default:password@ch-org.example.com:8443";
 const TEST_URL_2 = "https://default:password@ch-other.example.com:8443";
 
 describe("ClickHouse Factory", () => {
-  postgresTest(
-    "returns default client when org has no data store",
-    async ({ prisma }) => {
-      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
-      await registry.loadFromDatabase();
+  postgresTest("returns default client when org has no data store", async ({ prisma }) => {
+    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
+    await registry.loadFromDatabase();
 
-      const factory = new ClickhouseFactory(registry);
-      const client = await factory.getClickhouseForOrganization("org-no-store", "standard");
-      expect(client).toBeDefined();
-    }
-  );
+    const factory = new ClickhouseFactory(registry);
+    const client = await factory.getClickhouseForOrganization("org-no-store", "standard");
+    expect(client).toBeDefined();
+  });
 
   postgresTest(
     "returns org-specific client when a data store is configured",

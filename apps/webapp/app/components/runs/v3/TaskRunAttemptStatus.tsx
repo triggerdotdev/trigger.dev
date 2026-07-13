@@ -7,7 +7,7 @@ import {
 } from "@heroicons/react/20/solid";
 import type { TaskRunAttemptStatus as TaskRunAttemptStatusType } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { HourglassIcon, SnowflakeIcon } from "lucide-react";
+import { HourglassIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TaskRunAttemptStatus } from "~/database-types";
 import { cn } from "~/utils/cn";
@@ -79,22 +79,22 @@ export function TaskRunAttemptStatusIcon({
 
 export function runAttemptStatusClassNameColor(status: ExtendedTaskAttemptStatus | null): string {
   if (status === null) {
-    return "text-charcoal-500";
+    return "text-text-faint";
   }
 
   switch (status) {
     case "ENQUEUED":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "PENDING":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "EXECUTING":
       return "text-pending";
     case "PAUSED":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "FAILED":
       return "text-error";
     case "CANCELED":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "COMPLETED":
       return "text-success";
     default: {

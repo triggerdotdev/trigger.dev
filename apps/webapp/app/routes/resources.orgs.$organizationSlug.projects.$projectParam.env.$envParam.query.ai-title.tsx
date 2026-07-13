@@ -8,16 +8,33 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { aiTitleRateLimiter } from "~/v3/services/aiTitleRateLimiter.server";
 import { AIQueryTitleService } from "~/v3/services/aiQueryTitleService.server";
 
+// `/resources/*` isn't covered by the global apiRateLimiter (`/api/*` only),
+// so this endpoint needs its own per-route limiter and length cap.
+const MAX_QUERY_LENGTH = 10_000;
+
 const RequestSchema = z.object({
-  query: z.string().min(1, "Query is required"),
+  query: z.string().min(1, "Query is required").max(MAX_QUERY_LENGTH),
   queryId: z.string().optional(),
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+
+  const limit = await aiTitleRateLimiter.limit(`user:${userId}`);
+  if (!limit.success) {
+    return json(
+      {
+        success: false as const,
+        error: "Too many requests — please wait a moment and try again.",
+        title: null,
+      },
+      { status: 429 }
+    );
+  }
 
   // Parse the request body
   const [error, data] = await tryCatch(request.json());

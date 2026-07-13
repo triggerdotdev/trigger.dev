@@ -1,4 +1,4 @@
-import { InitialUsageState, UsageManager, UsageMeasurement, UsageSample } from "./types.js";
+import type { InitialUsageState, UsageManager, UsageMeasurement, UsageSample } from "./types.js";
 
 export class NoopUsageManager implements UsageManager {
   disable(): void {

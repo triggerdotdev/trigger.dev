@@ -35,4 +35,3 @@ export const redirectCookie = createCookie("google-redirect-to", {
   sameSite: "lax",
   secure: env.NODE_ENV === "production",
 });
-

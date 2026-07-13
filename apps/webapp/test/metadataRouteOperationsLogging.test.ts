@@ -26,7 +26,10 @@ vi.mock("~/services/apiAuth.server", () => ({
 }));
 vi.mock("~/v3/services/common.server", () => ({
   ServiceValidationError: class extends Error {
-    constructor(public override message: string, public status?: number) {
+    constructor(
+      public override message: string,
+      public status?: number
+    ) {
       super(message);
     }
   },
@@ -77,7 +80,7 @@ describe("routeOperationsToRun — non-throw buffer outcome logging", () => {
 
       expect(warnSpy).toHaveBeenCalledWith(
         "metadata route: parent/root buffer op did not apply",
-        expect.objectContaining({ targetRunId: "run_buffered_1", kind }),
+        expect.objectContaining({ targetRunId: "run_buffered_1", kind })
       );
     });
   }
@@ -95,7 +98,7 @@ describe("routeOperationsToRun — non-throw buffer outcome logging", () => {
 
     expect(warnSpy).not.toHaveBeenCalledWith(
       "metadata route: parent/root buffer op did not apply",
-      expect.anything(),
+      expect.anything()
     );
   });
 
@@ -110,11 +113,11 @@ describe("routeOperationsToRun — non-throw buffer outcome logging", () => {
     // early on bufferError).
     expect(warnSpy).toHaveBeenCalledWith(
       "metadata route: buffer fallback for parent/root op failed",
-      expect.objectContaining({ targetRunId: "run_buffered_1" }),
+      expect.objectContaining({ targetRunId: "run_buffered_1" })
     );
     expect(warnSpy).not.toHaveBeenCalledWith(
       "metadata route: parent/root buffer op did not apply",
-      expect.anything(),
+      expect.anything()
     );
   });
 

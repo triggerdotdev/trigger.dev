@@ -431,7 +431,8 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     // Only large machine affinity produces hard requirements (non-large runs must stay off the large pool).
     // Schedule affinity is soft both ways.
     const required = [
-      ...(largeNodeAffinity?.requiredDuringSchedulingIgnoredDuringExecution?.nodeSelectorTerms ?? []),
+      ...(largeNodeAffinity?.requiredDuringSchedulingIgnoredDuringExecution?.nodeSelectorTerms ??
+        []),
     ];
 
     const hasNodeAffinity = preferred.length > 0 || required.length > 0;
@@ -443,7 +444,9 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     return {
       ...(hasNodeAffinity && {
         nodeAffinity: {
-          ...(preferred.length > 0 && { preferredDuringSchedulingIgnoredDuringExecution: preferred }),
+          ...(preferred.length > 0 && {
+            preferredDuringSchedulingIgnoredDuringExecution: preferred,
+          }),
           ...(required.length > 0 && {
             requiredDuringSchedulingIgnoredDuringExecution: { nodeSelectorTerms: required },
           }),
@@ -497,7 +500,10 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   }
 
   #getScheduleNodeAffinityRules(isScheduledRun: boolean): k8s.V1NodeAffinity | undefined {
-    if (!env.KUBERNETES_SCHEDULED_RUN_AFFINITY_ENABLED || !env.KUBERNETES_SCHEDULED_RUN_AFFINITY_POOL_LABEL_VALUE) {
+    if (
+      !env.KUBERNETES_SCHEDULED_RUN_AFFINITY_ENABLED ||
+      !env.KUBERNETES_SCHEDULED_RUN_AFFINITY_POOL_LABEL_VALUE
+    ) {
       return undefined;
     }
 

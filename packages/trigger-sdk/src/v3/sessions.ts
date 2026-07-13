@@ -1,10 +1,13 @@
+import { SpanStatusCode } from "@opentelemetry/api";
 import type {
   ApiPromise,
   ApiRequestOptions,
   AsyncIterableStream,
   CloseSessionRequestBody,
-  CreatedSessionResponseBody,
+  ControlEvent,
   CreateSessionRequestBody,
+  CreatedSessionResponseBody,
+  InitializeSessionStreamResponseLike,
   InputStreamOnceOptions,
   InputStreamOnceResult,
   InputStreamWaitOptions,
@@ -14,11 +17,12 @@ import type {
   PipeStreamOptions,
   PipeStreamResult,
   RetrieveSessionResponseBody,
+  StreamWriteResult,
   UpdateSessionRequestBody,
   WriterStreamOptions,
+  CursorPagePromise,
 } from "@trigger.dev/core/v3";
 import {
-  CursorPagePromise,
   InputStreamOncePromise,
   ManualWaitpointPromise,
   SemanticInternalAttributes,
@@ -34,19 +38,13 @@ import {
   trimSessionStream,
   writeSessionControlRecord,
 } from "@trigger.dev/core/v3";
-import type {
-  ControlEvent,
-  InitializeSessionStreamResponseLike,
-  StreamWriteResult,
-} from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { SpanStatusCode } from "@opentelemetry/api";
 import { tracer } from "./tracer.js";
 
 export type {
-  CreatedSessionResponseBody,
-  CreateSessionRequestBody,
   CloseSessionRequestBody,
+  CreateSessionRequestBody,
+  CreatedSessionResponseBody,
   ListSessionsOptions,
   ListedSessionItem,
   RetrieveSessionResponseBody,
@@ -409,16 +407,13 @@ export class SessionOutputChannel {
    * shared {@link SSEStreamSubscription} plumbing used by run-scoped
    * realtime streams.
    */
-  async read<T = unknown>(
-    options?: SessionSubscribeOptions<T>
-  ): Promise<AsyncIterableStream<T>> {
+  async read<T = unknown>(options?: SessionSubscribeOptions<T>): Promise<AsyncIterableStream<T>> {
     const apiClient = apiClientManager.clientOrThrow();
 
     return apiClient.subscribeToSessionStream<T>(this.sessionId, "out", {
       signal: options?.signal,
       timeoutInSeconds: options?.timeoutInSeconds,
-      lastEventId:
-        options?.lastEventId != null ? String(options.lastEventId) : undefined,
+      lastEventId: options?.lastEventId != null ? String(options.lastEventId) : undefined,
       onPart: options?.onPart,
       onControl: options?.onControl,
       onComplete: options?.onComplete,
@@ -758,11 +753,14 @@ export class SessionInputChannel {
                 : undefined;
 
             if (waitResult.ok) {
-              // Advance the seq counter so the SSE tail doesn't replay the
-              // record that was consumed via the waitpoint.
+              // Advance both cursors past the record consumed via the
+              // waitpoint: the seq counter so the SSE tail doesn't replay
+              // it, and the consume cursor so turn-completes don't stamp a
+              // stale `session-in-event-id`.
               const prevSeq = sessionStreams.lastSeqNum(this.sessionId, "in");
               const nextSeq = (prevSeq ?? -1) + 1;
               sessionStreams.setLastSeqNum(this.sessionId, "in", nextSeq);
+              sessionStreams.setLastDispatchedSeqNum(this.sessionId, "in", nextSeq);
 
               return { ok: true as const, output: data as T };
             } else {
@@ -803,6 +801,7 @@ export class SessionInputChannel {
   async waitWithIdleTimeout<T = unknown>(
     options: InputStreamWaitWithIdleTimeoutOptions
   ): Promise<{ ok: true; output: T } | { ok: false; error?: Error }> {
+    // eslint-disable-next-line no-this-alias
     const self = this;
     const spanName =
       options.spanName ?? `sessions.open(${this.sessionId}).in.waitWithIdleTimeout()`;
@@ -827,9 +826,7 @@ export class SessionInputChannel {
           span.setAttribute("wait.resolved", "skipped");
           return {
             ok: false as const,
-            error: new WaitpointTimeoutError(
-              "Idle timeout elapsed and skipSuspend is set"
-            ),
+            error: new WaitpointTimeoutError("Idle timeout elapsed and skipSuspend is set"),
           };
         }
 

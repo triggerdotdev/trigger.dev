@@ -3,10 +3,7 @@ import { createOrganization } from "./app/models/organization.server";
 import { createProject } from "./app/models/project.server";
 import { ClickHouse } from "@internal/clickhouse";
 import type { TaskEventV2Input, LlmMetricsV1Input } from "@internal/clickhouse";
-import {
-  generateTraceId,
-  generateSpanId,
-} from "./app/v3/eventRepository/common.server";
+import { generateTraceId, generateSpanId } from "./app/v3/eventRepository/common.server";
 import {
   enrichCreatableEvents,
   setLlmPricingRegistry,
@@ -24,9 +21,18 @@ const QUEUE_NAME = "task/ai-chat";
 const WORKER_VERSION = "seed-ai-spans-v1";
 
 const SEED_USER_IDS = [
-  "user_alice", "user_bob", "user_carol", "user_dave",
-  "user_eve", "user_frank", "user_grace", "user_heidi",
-  "user_ivan", "user_judy", "user_karl", "user_liam",
+  "user_alice",
+  "user_bob",
+  "user_carol",
+  "user_dave",
+  "user_eve",
+  "user_frank",
+  "user_grace",
+  "user_heidi",
+  "user_ivan",
+  "user_judy",
+  "user_karl",
+  "user_liam",
 ];
 
 function randomUserId(): string {
@@ -80,8 +86,7 @@ function eventToClickhouseRow(event: CreateEventInput): TaskEventV2Input {
   // attributes
   const publicAttrs = removePrivateProperties(event.properties as Attributes);
   const unflattened = publicAttrs ? unflattenAttributes(publicAttrs) : {};
-  const attributes =
-    unflattened && typeof unflattened === "object" ? { ...unflattened } : {};
+  const attributes = unflattened && typeof unflattened === "object" ? { ...unflattened } : {};
 
   // metadata — mirrors createEventToTaskEventV1InputMetadata
   const metadataObj: Record<string, unknown> = {};
@@ -118,9 +123,7 @@ function eventToClickhouseRow(event: CreateEventInput): TaskEventV2Input {
     status,
     attributes,
     metadata,
-    expires_at: formatClickhouseDateTime(
-      new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-    ),
+    expires_at: formatClickhouseDateTime(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)),
     machine_id: "",
   };
 }
@@ -386,9 +389,7 @@ Please structure your response with clear headings, use tables for comparative d
 
   const enrichedCount = enriched.filter((e) => e._llmMetrics != null).length;
   const totalCost = enriched.reduce((sum, e) => sum + (e._llmMetrics?.totalCost ?? 0), 0);
-  console.log(
-    `Enriched ${enrichedCount} spans with LLM cost (total: $${totalCost.toFixed(6)})`
-  );
+  console.log(`Enriched ${enrichedCount} spans with LLM cost (total: $${totalCost.toFixed(6)})`);
 
   // 11. Insert into ClickHouse
   const clickhouseUrl = process.env.CLICKHOUSE_URL ?? process.env.EVENTS_CLICKHOUSE_URL;
@@ -844,8 +845,7 @@ Cut (-25 bps):     10.7%
         "ai.response.finishReason": "tool-calls",
         "ai.response.id": "msg_seed_003",
         "ai.response.model": "claude-haiku-4-5-20251001",
-        "ai.response.text":
-          "I'll search for the latest Federal Reserve interest rate information.",
+        "ai.response.text": "I'll search for the latest Federal Reserve interest rate information.",
         "ai.response.toolCalls": JSON.stringify([
           {
             toolCallId: "toolu_seed_001",
@@ -1099,7 +1099,15 @@ Cut (-25 bps):     10.7%
       }
     }
 
-    events.push(makeEvent({ message: opts.wrapperMsg, spanId: wId, parentId: runFnId, ...wrap, properties: wrapperProps }));
+    events.push(
+      makeEvent({
+        message: opts.wrapperMsg,
+        spanId: wId,
+        parentId: runFnId,
+        ...wrap,
+        properties: wrapperProps,
+      })
+    );
 
     cursor = wrap.startMs + 50;
     const doTiming = next(opts.doDurationMs);
@@ -1159,29 +1167,45 @@ Cut (-25 bps):     10.7%
     }
     if (opts.extraDoProps) Object.assign(doProps, opts.extraDoProps);
 
-    events.push(makeEvent({ message: opts.doMsg, spanId: dId, parentId: wId, ...doTiming, properties: doProps }));
+    events.push(
+      makeEvent({
+        message: opts.doMsg,
+        spanId: dId,
+        parentId: wId,
+        ...doTiming,
+        properties: doProps,
+      })
+    );
 
     return { wrapperId: wId, doId: dId };
   }
 
   // Helper: add a tool call span
-  function addToolCall(parentId: string, name: string, args: string, result: string, durationMs = 500) {
+  function addToolCall(
+    parentId: string,
+    name: string,
+    args: string,
+    result: string,
+    durationMs = 500
+  ) {
     const id = generateSpanId();
     const timing = next(durationMs);
-    events.push(makeEvent({
-      message: "ai.toolCall",
-      spanId: id,
-      parentId,
-      ...timing,
-      properties: {
-        "ai.operationId": "ai.toolCall",
-        "ai.toolCall.name": name,
-        "ai.toolCall.id": `call_${generateSpanId().slice(0, 8)}`,
-        "ai.toolCall.args": args,
-        "ai.toolCall.result": result,
-        "operation.name": "ai.toolCall",
-      },
-    }));
+    events.push(
+      makeEvent({
+        message: "ai.toolCall",
+        spanId: id,
+        parentId,
+        ...timing,
+        properties: {
+          "ai.operationId": "ai.toolCall",
+          "ai.toolCall.name": name,
+          "ai.toolCall.id": `call_${generateSpanId().slice(0, 8)}`,
+          "ai.toolCall.args": args,
+          "ai.toolCall.result": result,
+          "operation.name": "ai.toolCall",
+        },
+      })
+    );
     return id;
   }
 
@@ -1253,7 +1277,8 @@ The document primarily discusses **quarterly earnings guidance** for the technol
           canonicalSlug: "openai/gpt-5-mini",
           finalProvider: "openai",
           fallbacksAvailable: ["azure"],
-          planningReasoning: "System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)",
+          planningReasoning:
+            "System credentials planned for: openai, azure. Total execution order: openai(system) → azure(system)",
           modelAttemptCount: 1,
         },
         cost: "0.000482",
@@ -1293,7 +1318,12 @@ The document primarily discusses **quarterly earnings guidance** for the technol
       },
     },
   });
-  addToolCall(ds.wrapperId, "classifyContent", '{"text":"Federal Reserve rate analysis"}', '{"category":"finance","confidence":0.98}');
+  addToolCall(
+    ds.wrapperId,
+    "classifyContent",
+    '{"text":"Federal Reserve rate analysis"}',
+    '{"category":"finance","confidence":0.98}'
+  );
 
   // =====================================================================
   // 8) Gateway → Anthropic claude-haiku via gateway prefix
@@ -1354,7 +1384,10 @@ The document primarily discusses **quarterly earnings guidance** for the technol
     finishReason: "stop",
     wrapperDurationMs: 1_200,
     doDurationMs: 1_000,
-    responseObject: JSON.stringify({ sentiment: "neutral", topics: ["monetary_policy", "interest_rates"] }),
+    responseObject: JSON.stringify({
+      sentiment: "neutral",
+      topics: ["monetary_policy", "interest_rates"],
+    }),
     useCompletionStyle: true,
     providerMetadata: {
       gateway: {
@@ -1495,16 +1528,23 @@ The next decision point will hinge on incoming data, particularly:
     wrapperDurationMs: 3_500,
     doDurationMs: 3_000,
     responseText: "Let me look up the latest rate decision.",
-    toolCallsJson: JSON.stringify([{
-      toolCallId: "call_azure_001",
-      toolName: "lookupRate",
-      input: '{"source":"federal_reserve","metric":"funds_rate"}',
-    }]),
+    toolCallsJson: JSON.stringify([
+      {
+        toolCallId: "call_azure_001",
+        toolName: "lookupRate",
+        input: '{"source":"federal_reserve","metric":"funds_rate"}',
+      },
+    ]),
     providerMetadata: {
       azure: { responseId: "resp_seed_azure_001", serviceTier: "default" },
     },
   });
-  addToolCall(az.wrapperId, "lookupRate", '{"source":"federal_reserve","metric":"funds_rate"}', '{"rate":"4.25-4.50%","effectiveDate":"2024-12-18"}');
+  addToolCall(
+    az.wrapperId,
+    "lookupRate",
+    '{"source":"federal_reserve","metric":"funds_rate"}',
+    '{"rate":"4.25-4.50%","effectiveDate":"2024-12-18"}'
+  );
 
   // =====================================================================
   // 14) Perplexity → sonar-pro
@@ -1605,7 +1645,8 @@ The FOMC has cited three primary factors:
 ### Technical Note
 
 The effective federal funds rate (\`EFFR\`) currently sits at **4.33%**, near the midpoint of the target range. The overnight reverse repo facility (ON RRP) rate is set at **4.25%**.`,
-    responseReasoning: "The user is asking about the current Federal Reserve interest rate. Let me provide a comprehensive answer based on the most recent FOMC decision. I should include context about the rate trajectory and forward guidance. I'll structure this with a table showing the recent rate changes and explain the pause rationale.",
+    responseReasoning:
+      "The user is asking about the current Federal Reserve interest rate. Let me provide a comprehensive answer based on the most recent FOMC decision. I should include context about the rate trajectory and forward guidance. I'll structure this with a table showing the recent rate changes and explain the pause rationale.",
     cacheReadTokens: 12400,
     cacheCreationTokens: 2800,
     providerMetadata: {
@@ -1637,11 +1678,13 @@ The effective federal funds rate (\`EFFR\`) currently sits at **4.33%**, near th
     wrapperDurationMs: 6_000,
     doDurationMs: 5_500,
     responseText: "I'll search for the latest FOMC decision and rate information.",
-    toolCallsJson: JSON.stringify([{
-      toolCallId: "call_vertex_001",
-      toolName: "searchFOMC",
-      input: '{"query":"latest FOMC decision december 2024"}',
-    }]),
+    toolCallsJson: JSON.stringify([
+      {
+        toolCallId: "call_vertex_001",
+        toolName: "searchFOMC",
+        input: '{"query":"latest FOMC decision december 2024"}',
+      },
+    ]),
     providerMetadata: {
       google: {
         usageMetadata: {
@@ -1653,7 +1696,13 @@ The effective federal funds rate (\`EFFR\`) currently sits at **4.33%**, near th
       },
     },
   });
-  addToolCall(vt.wrapperId, "searchFOMC", '{"query":"latest FOMC decision december 2024"}', '{"decision":"hold","rate":"4.25-4.50%","date":"2024-12-18","vote":"unanimous"}', 800);
+  addToolCall(
+    vt.wrapperId,
+    "searchFOMC",
+    '{"query":"latest FOMC decision december 2024"}',
+    '{"decision":"hold","rate":"4.25-4.50%","date":"2024-12-18","vote":"unanimous"}',
+    800
+  );
 
   // =====================================================================
   // 18) openai.responses → gpt-5.4 with reasoning tokens
@@ -1704,7 +1753,8 @@ rates = {
 | Global growth slowdown | ↓ Downside | Medium |
 
 > *"The committee remains attentive to the risks to both sides of its dual mandate."* — Chair Powell, Dec 18 press conference`,
-    responseReasoning: "I need to provide accurate, up-to-date information about the Federal Reserve interest rate. The last FOMC meeting was in December 2024 where they cut rates by 25 bps after two previous cuts. Let me include the dot plot projections and a risk assessment table for a comprehensive view.",
+    responseReasoning:
+      "I need to provide accurate, up-to-date information about the Federal Reserve interest rate. The last FOMC meeting was in December 2024 where they cut rates by 25 bps after two previous cuts. Let me include the dot plot projections and a risk assessment table for a comprehensive view.",
     reasoningTokens: 516,
     providerMetadata: {
       openai: {

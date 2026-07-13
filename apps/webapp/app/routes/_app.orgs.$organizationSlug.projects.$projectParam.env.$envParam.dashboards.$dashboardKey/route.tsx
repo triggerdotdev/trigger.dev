@@ -77,7 +77,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const filters = dashboard.filters ?? ["tasks", "queues"];
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
 
   // Load distinct models from ClickHouse if the dashboard has a models filter
   let possibleModels: { model: string; system: string }[] = [];
@@ -205,7 +208,11 @@ export function MetricDashboard({
   /** Which filters to show. Defaults to ["tasks", "queues"]. */
   filters?: BuiltInDashboardFilter[];
   /** Possible tasks for filtering */
-  possibleTasks?: { slug: string; triggerSource: TaskTriggerSource; isInLatestDeployment: boolean }[];
+  possibleTasks?: {
+    slug: string;
+    triggerSource: TaskTriggerSource;
+    isInLatestDeployment: boolean;
+  }[];
   /** Possible models for filtering */
   possibleModels?: ModelOption[];
   /** Possible prompt slugs for filtering */
@@ -317,14 +324,12 @@ export function MetricDashboard({
             </Form>
           )}
         </div>
-        {filterAccessories && (
-          <div className="flex shrink-0 items-center">{filterAccessories}</div>
-        )}
+        {filterAccessories && <div className="flex shrink-0 items-center">{filterAccessories}</div>}
       </div>
       <div
         ref={containerRef}
         className={cn(
-          "overflow-y-auto scrollbar-thin scrollbar-track-charcoal-800 scrollbar-thumb-charcoal-700",
+          "overflow-y-auto scrollbar-thin scrollbar-track-background-bright scrollbar-thumb-background-raised",
           isInteracting && "select-none"
         )}
       >

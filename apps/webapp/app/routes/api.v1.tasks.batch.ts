@@ -1,16 +1,11 @@
 import { json } from "@remix-run/server-runtime";
-import {
-  BatchTriggerTaskV2RequestBody,
-  BatchTriggerTaskV2Response,
-  generateJWT,
-} from "@trigger.dev/core/v3";
+import type { BatchTriggerTaskV2Response } from "@trigger.dev/core/v3";
+import { BatchTriggerTaskV2RequestBody, generateJWT } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import {
-  createActionApiRoute,
-  everyResource,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import {
@@ -80,7 +75,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-span-parent-as-link": spanParentAsLink,
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
-      "x-trigger-engine-version": engineVersion,
+      "x-trigger-engine-version": _engineVersion,
       "batch-processing-strategy": batchProcessingStrategy,
       "x-trigger-realtime-streams-version": realtimeStreamsVersion,
       "x-trigger-source": triggerSourceHeader,
@@ -125,7 +120,7 @@ const { action, loader } = createActionApiRoute(
         realtimeStreamsVersion: determineRealtimeStreamsVersion(
           realtimeStreamsVersion ?? undefined
         ),
-        triggerSource: isFromWorker ? "sdk" : sanitizeTriggerSource(triggerSourceHeader) ?? "api",
+        triggerSource: isFromWorker ? "sdk" : (sanitizeTriggerSource(triggerSourceHeader) ?? "api"),
         triggerAction: "trigger",
       });
 

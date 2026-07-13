@@ -1,9 +1,11 @@
 import { CalendarDaysIcon, CreditCardIcon, StarIcon } from "@heroicons/react/20/solid";
+import { type MetaFunction } from "@remix-run/react";
 import { type PlanDefinition } from "@trigger.dev/platform";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -17,11 +19,8 @@ import {
   OrganizationParamsSchema,
   organizationPath,
   v3StripePortalPath,
-  v3UsagePath,
 } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
-import { type MetaFunction } from "@remix-run/react";
-import { Callout } from "~/components/primitives/Callout";
 
 export const meta: MetaFunction = () => {
   return [

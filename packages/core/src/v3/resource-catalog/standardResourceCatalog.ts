@@ -1,4 +1,4 @@
-import {
+import type {
   PromptManifest,
   PromptMetadata,
   SkillManifest,
@@ -9,8 +9,12 @@ import {
   WorkerManifest,
   QueueManifest,
 } from "../schemas/index.js";
-import { PromptMetadataWithFunctions, TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
-import { ResourceCatalog } from "./catalog.js";
+import type {
+  PromptMetadataWithFunctions,
+  TaskMetadataWithFunctions,
+  TaskSchema,
+} from "../types/index.js";
+import type { ResourceCatalog } from "./catalog.js";
 
 /**
  * Sentinel file-context value the runtime workers set around task execution
@@ -118,10 +122,7 @@ export class StandardResourceCatalog implements ResourceCatalog {
     // registration. Skip the runtime sentinel context (a task() firing during
     // another task's run) — that's a re-registration, not a duplicate
     // definition, and the indexer never uses the sentinel.
-    if (
-      this._taskMetadata.has(task.id) &&
-      this._currentFileContext.filePath !== NO_FILE_CONTEXT
-    ) {
+    if (this._taskMetadata.has(task.id) && this._currentFileContext.filePath !== NO_FILE_CONTEXT) {
       const existingFilePath = this._taskFileMetadata.get(task.id)?.filePath;
       const currentFilePath = this._currentFileContext.filePath;
       const collision = this._taskIdCollisions.find((c) => c.id === task.id);

@@ -1,4 +1,5 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import pMap from "p-map";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";

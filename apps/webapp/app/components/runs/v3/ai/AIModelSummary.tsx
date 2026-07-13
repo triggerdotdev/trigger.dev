@@ -23,7 +23,10 @@ export function AITagsRow({ aiData }: { aiData: AISpanData }) {
     <div className="flex flex-col gap-1 py-2.5">
       <div className="flex flex-col text-xs @container">
         {aiData.responseId && (
-          <MetricRow label="Response ID" value={<TruncatedCopyableValue value={aiData.responseId} />} />
+          <MetricRow
+            label="Response ID"
+            value={<TruncatedCopyableValue value={aiData.responseId} />}
+          />
         )}
         <MetricRow label="Model" value={aiData.model} />
         {aiData.provider !== "unknown" && <MetricRow label="Provider" value={aiData.provider} />}
@@ -125,7 +128,7 @@ function MetricRow({
   bold?: boolean;
 }) {
   return (
-    <div className="grid h-7 grid-cols-[1fr_auto] items-center gap-4 rounded-sm px-1.5 transition odd:bg-charcoal-750/40 @[28rem]:grid-cols-[8rem_1fr] hover:bg-white/[0.04]">
+    <div className="grid h-7 grid-cols-[1fr_auto] items-center gap-4 rounded-sm px-1.5 transition odd:bg-background-hover/40 @[28rem]:grid-cols-[8rem_1fr] hover:bg-white/4">
       <span className="text-text-dimmed">{label}</span>
       <span
         className={`text-right @[28rem]:text-left ${
@@ -145,4 +148,3 @@ function formatTtfc(ms: number): string {
   }
   return `${Math.round(ms)}ms`;
 }
-

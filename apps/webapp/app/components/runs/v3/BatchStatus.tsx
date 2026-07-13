@@ -1,8 +1,4 @@
-import {
-  CheckCircleIcon,
-  ExclamationTriangleIcon,
-  XCircleIcon,
-} from "@heroicons/react/20/solid";
+import { CheckCircleIcon, ExclamationTriangleIcon, XCircleIcon } from "@heroicons/react/20/solid";
 import type { BatchTaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { Spinner } from "~/components/primitives/Spinner";

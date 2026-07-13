@@ -33,7 +33,7 @@ concurrency:
 jobs:
   scan:
     name: Scan
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     permissions:
       contents: read
       packages: read # pull the image from GHCR

@@ -1,5 +1,8 @@
 import type {
+  DirectorySyncEffect,
+  DirectorySyncStatus,
   OrgSsoStatus,
+  PluginDatabaseConfig,
   SsoBeginError,
   SsoCompleteError,
   SsoController,
@@ -20,9 +23,7 @@ import { ResultAsync } from "neverthrow";
 import { SsoFallback } from "./fallback.js";
 export type { SsoController } from "@trigger.dev/plugins";
 
-export type SsoPrismaInput =
-  | PrismaClient
-  | { primary: PrismaClient; replica: PrismaClient };
+export type SsoPrismaInput = PrismaClient | { primary: PrismaClient; replica: PrismaClient };
 
 export type SsoCreateOptions = {
   // When true, skip loading the plugin. Useful for tests and for
@@ -32,6 +33,11 @@ export type SsoCreateOptions = {
   // module or a synthetic ERR_MODULE_NOT_FOUND failure without touching
   // the real plugin install on disk.
   importer?: (moduleName: string) => Promise<{ default: SsoPlugin }>;
+  // Writer/reader connection URLs + pool sizes for a plugin that owns its
+  // own database client, resolved by the host from its env so the plugin
+  // follows the host's writer/replica topology. The fallback ignores this —
+  // it queries through the Prisma clients passed as `SsoPrismaInput`.
+  database?: PluginDatabaseConfig;
 };
 
 // Loads the cloud plugin lazily; falls back to the OSS no-op
@@ -44,22 +50,18 @@ export class LazyController implements SsoController {
     this._init = this.load(prisma, options);
   }
 
-  private async load(
-    prisma: SsoPrismaInput,
-    options?: SsoCreateOptions
-  ): Promise<SsoController> {
+  private async load(prisma: SsoPrismaInput, options?: SsoCreateOptions): Promise<SsoController> {
     if (options?.forceFallback) {
       return new SsoFallback(prisma).create();
     }
     const moduleName = "@triggerdotdev/plugins/sso";
     const importer =
-      options?.importer ??
-      ((m: string) => import(m) as Promise<{ default: SsoPlugin }>);
+      options?.importer ?? ((m: string) => import(m) as Promise<{ default: SsoPlugin }>);
     try {
       const module = await importer(moduleName);
       const plugin: SsoPlugin = module.default;
       console.log("SSO: using plugin implementation");
-      return plugin.create();
+      return plugin.create({ database: options?.database });
     } catch (err) {
       // Distinguish the two failure modes the dynamic import can hit:
       //
@@ -75,10 +77,8 @@ export class LazyController implements SsoController {
       // plugin's own module name.
       const code = (err as NodeJS.ErrnoException | undefined)?.code;
       const message = err instanceof Error ? err.message : String(err);
-      const isModuleNotFound =
-        code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
-      const isPluginItselfMissing =
-        isModuleNotFound && message.includes(moduleName);
+      const isModuleNotFound = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
+      const isPluginItselfMissing = isModuleNotFound && message.includes(moduleName);
 
       if (!isPluginItselfMissing) {
         console.error(
@@ -116,7 +116,7 @@ export class LazyController implements SsoController {
   generatePortalLink(params: {
     organizationId: string;
     userId: string;
-    intent: "sso" | "domain_verification";
+    intent: "sso" | "domain_verification" | "dsync";
     returnUrl: string;
   }): ResultAsync<{ url: string }, SsoPortalError> {
     return this.call((c) => c.generatePortalLink(params));
@@ -150,6 +150,62 @@ export class LazyController implements SsoController {
     jitDefaultRoleId: string | null;
   }): ResultAsync<void, SsoMutationError> {
     return this.call((c) => c.updateConfig(params));
+  }
+
+  getDirectorySyncStatus(
+    organizationId: string
+  ): ResultAsync<DirectorySyncStatus, SsoDecisionError> {
+    return this.call((c) => c.getDirectorySyncStatus(organizationId));
+  }
+
+  setDirectoryGroupRole(params: {
+    organizationId: string;
+    groupId: string;
+    roleId: string | null;
+  }): ResultAsync<{ effects: DirectorySyncEffect[] }, SsoMutationError> {
+    return this.call((c) => c.setDirectoryGroupRole(params));
+  }
+
+  setDirectoryDefaultRole(params: {
+    organizationId: string;
+    roleId: string | null;
+  }): ResultAsync<void, SsoMutationError> {
+    return this.call((c) => c.setDirectoryDefaultRole(params));
+  }
+
+  setAllowExternalDomainSync(params: {
+    organizationId: string;
+    allowed: boolean;
+  }): ResultAsync<void, SsoMutationError> {
+    return this.call((c) => c.setAllowExternalDomainSync(params));
+  }
+
+  getMembershipPolicy(
+    organizationId: string
+  ): ResultAsync<{ manualMembershipAllowed: boolean }, SsoDecisionError> {
+    return this.call((c) => c.getMembershipPolicy(organizationId));
+  }
+
+  setAllowManualMembership(params: {
+    organizationId: string;
+    allowed: boolean;
+  }): ResultAsync<void, SsoMutationError> {
+    return this.call((c) => c.setAllowManualMembership(params));
+  }
+
+  recordMembershipRemoval(params: {
+    organizationId: string;
+    userId: string;
+    reason: "manual_removal" | "self_leave";
+  }): ResultAsync<void, SsoMutationError> {
+    return this.call((c) => c.recordMembershipRemoval(params));
+  }
+
+  clearMembershipRemoval(params: {
+    organizationId: string;
+    userId: string;
+  }): ResultAsync<void, SsoMutationError> {
+    return this.call((c) => c.clearMembershipRemoval(params));
   }
 
   decideRouteForEmail(email: string): ResultAsync<SsoRouteDecision, SsoDecisionError> {
@@ -215,7 +271,9 @@ export class LazyController implements SsoController {
     return this.call((c) => c.verifyWebhook(params));
   }
 
-  processWebhookEvent(event: SsoWebhookEvent): ResultAsync<void, SsoWebhookError> {
+  processWebhookEvent(
+    event: SsoWebhookEvent
+  ): ResultAsync<{ effects: DirectorySyncEffect[] }, SsoWebhookError> {
     return this.call((c) => c.processWebhookEvent(event));
   }
 }

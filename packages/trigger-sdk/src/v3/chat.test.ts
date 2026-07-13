@@ -107,49 +107,9 @@ function chatIdFromUrl(urlStr: string): string | undefined {
   return m?.[1];
 }
 
-const DEFAULT_RUN_ID = "run_default";
-const DEFAULT_SESSION_ID = "session_default";
-const DEFAULT_SESSION_PAT = "pat_session_default";
-
-function createSessionResponseBody(options?: {
-  sessionId?: string;
-  externalId?: string;
-  publicAccessToken?: string;
-  runId?: string;
-}): string {
-  const externalId = options?.externalId ?? null;
-  return JSON.stringify({
-    id: options?.sessionId ?? DEFAULT_SESSION_ID,
-    externalId,
-    type: "chat.agent",
-    taskIdentifier: "my-chat-task",
-    triggerConfig: { basePayload: { chatId: externalId ?? "" } },
-    currentRunId: options?.runId ?? DEFAULT_RUN_ID,
-    runId: options?.runId ?? DEFAULT_RUN_ID,
-    publicAccessToken: options?.publicAccessToken ?? DEFAULT_SESSION_PAT,
-    tags: [],
-    metadata: null,
-    closedAt: null,
-    closedReason: null,
-    expiresAt: null,
-    createdAt: new Date(0).toISOString(),
-    updatedAt: new Date(0).toISOString(),
-    isCached: false,
-  });
-}
-
-function defaultSessionCreateResponse(options?: {
-  sessionId?: string;
-  externalId?: string;
-  publicAccessToken?: string;
-  runId?: string;
-}): Response {
-  return new Response(createSessionResponseBody(options), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
+const _DEFAULT_RUN_ID = "run_default";
+const _DEFAULT_SESSION_ID = "session_default";
+const _DEFAULT_SESSION_PAT = "pat_session_default";
 function defaultAppendResponse(): Response {
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
@@ -173,22 +133,17 @@ function defaultSseResponse(
 }
 
 function authError(status = 401): Response {
-  return new Response(
-    JSON.stringify({ error: "Unauthorized", name: "TriggerApiError", status }),
-    {
-      status,
-      headers: { "content-type": "application/json" },
-    }
-  );
+  return new Response(JSON.stringify({ error: "Unauthorized", name: "TriggerApiError", status }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 /**
  * Drains a UIMessageChunk stream into an array. Used to assert what
  * the transport surfaced after filtering control chunks.
  */
-async function drainChunks(
-  stream: ReadableStream<UIMessageChunk>
-): Promise<UIMessageChunk[]> {
+async function drainChunks(stream: ReadableStream<UIMessageChunk>): Promise<UIMessageChunk[]> {
   const reader = stream.getReader();
   const out: UIMessageChunk[] = [];
   try {
@@ -331,9 +286,7 @@ describe("TriggerChatTransport", () => {
     });
 
     it("is idempotent — second call returns the cached state without re-invoking startSession", async () => {
-      const startSession = vi
-        .fn()
-        .mockResolvedValue({ publicAccessToken: "session-pat-2" });
+      const startSession = vi.fn().mockResolvedValue({ publicAccessToken: "session-pat-2" });
 
       const transport = new TriggerChatTransport({
         task: "my-chat-task",
@@ -369,9 +322,7 @@ describe("TriggerChatTransport", () => {
     });
 
     it("preload() is an alias for start()", async () => {
-      const startSession = vi
-        .fn()
-        .mockResolvedValue({ publicAccessToken: "session-pat-pre" });
+      const startSession = vi.fn().mockResolvedValue({ publicAccessToken: "session-pat-pre" });
 
       const transport = new TriggerChatTransport({
         task: "my-chat-task",
@@ -393,9 +344,7 @@ describe("TriggerChatTransport", () => {
     });
 
     it("threads the transport's `clientData` through to startSession", async () => {
-      const startSession = vi
-        .fn()
-        .mockResolvedValue({ publicAccessToken: "session-pat-cd" });
+      const startSession = vi.fn().mockResolvedValue({ publicAccessToken: "session-pat-cd" });
 
       const transport = new TriggerChatTransport({
         task: "my-chat-task",
@@ -414,9 +363,7 @@ describe("TriggerChatTransport", () => {
     });
 
     it("setClientData updates the value passed to subsequent startSession calls", async () => {
-      const startSession = vi
-        .fn()
-        .mockResolvedValue({ publicAccessToken: "session-pat-set" });
+      const startSession = vi.fn().mockResolvedValue({ publicAccessToken: "session-pat-set" });
 
       const transport = new TriggerChatTransport({
         task: "my-chat-task",
@@ -438,9 +385,7 @@ describe("TriggerChatTransport", () => {
 
   describe("ensureSessionState (lazy start on first sendMessage)", () => {
     it("calls startSession lazily on first sendMessage when no PAT is hydrated", async () => {
-      const startSession = vi
-        .fn()
-        .mockResolvedValue({ publicAccessToken: "lazy-session-pat" });
+      const startSession = vi.fn().mockResolvedValue({ publicAccessToken: "lazy-session-pat" });
 
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
         const urlStr = typeof url === "string" ? url : url.toString();
@@ -565,8 +510,8 @@ describe("TriggerChatTransport", () => {
       expect(chunks).toHaveLength(sampleChunks.length);
       expect(chunks[0]).toEqual(sampleChunks[0]);
 
-      const append = requests.find((r) =>
-        isSessionStreamAppendUrl(r.url) && r.url.endsWith("/in/append")
+      const append = requests.find(
+        (r) => isSessionStreamAppendUrl(r.url) && r.url.endsWith("/in/append")
       );
       expect(append).toBeDefined();
       expect(chatIdFromUrl(append!.url)).toBe("chat-1");
@@ -620,9 +565,7 @@ describe("TriggerChatTransport", () => {
       });
 
       const baseURLFn = vi.fn(({ endpoint }: { endpoint: "in" | "out"; chatId: string }) =>
-        endpoint === "out"
-          ? "https://stream.example.com"
-          : "https://api.example.com"
+        endpoint === "out" ? "https://stream.example.com" : "https://api.example.com"
       );
 
       const transport = new TriggerChatTransport({
@@ -658,11 +601,7 @@ describe("TriggerChatTransport", () => {
       const fetchCalls: Array<{ url: string; endpoint: string; chatId: string }> = [];
 
       const customFetch = vi.fn(
-        async (
-          url: string,
-          init: RequestInit,
-          ctx: { endpoint: "in" | "out"; chatId: string }
-        ) => {
+        async (url: string, init: RequestInit, ctx: { endpoint: "in" | "out"; chatId: string }) => {
           fetchCalls.push({ url, endpoint: ctx.endpoint, chatId: ctx.chatId });
           if (isSessionStreamAppendUrl(url)) return defaultAppendResponse();
           if (isSessionOutSubscribeUrl(url)) return defaultSseResponse();
@@ -1194,9 +1133,7 @@ describe("TriggerChatTransport", () => {
 
       // Only the endpoint was called — no /api/v1/sessions, no .in/append,
       // no .out subscribe. The handler owns first-turn end-to-end.
-      const endpointPosts = requests.filter(
-        (r) => r.url === "https://my-app.example/api/chat"
-      );
+      const endpointPosts = requests.filter((r) => r.url === "https://my-app.example/api/chat");
       expect(endpointPosts).toHaveLength(1);
       expect(requests.some((r) => isSessionCreateUrl(r.url))).toBe(false);
       expect(requests.some((r) => isSessionStreamAppendUrl(r.url))).toBe(false);

@@ -57,13 +57,21 @@ const TOOL_CALL_PARTIAL: ModelMessage[] = [
     content: [
       { type: "text", text: "let me check the weather" },
       { type: "tool-call", toolCallId: "tc-1", toolName: "weather", input: { city: "tokyo" } },
-      { type: "tool-approval-request", approvalId: "handover-approval-1", toolCallId: "tc-1" } as never,
+      {
+        type: "tool-approval-request",
+        approvalId: "handover-approval-1",
+        toolCallId: "tc-1",
+      } as never,
     ],
   },
   {
     role: "tool",
     content: [
-      { type: "tool-approval-response", approvalId: "handover-approval-1", approved: true } as never,
+      {
+        type: "tool-approval-response",
+        approvalId: "handover-approval-1",
+        approved: true,
+      } as never,
     ],
   },
 ];
@@ -293,7 +301,11 @@ describe("chat.customAgent + headStart handover", () => {
     const prior: UIMessage[] = [
       { id: "u-1", role: "user", parts: [{ type: "text", text: "hello" }] },
       // Already-persisted partial under the same id the handover uses.
-      { id: "asst-dup", role: "assistant", parts: [{ type: "text", text: "Hi there, hope you're well." }] },
+      {
+        id: "asst-dup",
+        role: "assistant",
+        parts: [{ type: "text", text: "Hi there, hope you're well." }],
+      },
     ];
 
     const agent = chat.customAgent({

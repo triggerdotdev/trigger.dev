@@ -2,65 +2,62 @@
 // ClickHouse SQL printer with tenant isolation and schema validation
 
 import {
-  And,
-  Alias,
-  ArithmeticOperation,
+  type Alias,
+  type And,
+  type ArithmeticOperation,
+  type ArrayAccess,
+  type AST,
+  type Array as ASTArray,
+  type BetweenExpr,
+  type Call,
+  type CompareOperation,
+  type Constant,
+  type CTE,
+  type Dict,
+  type Expression,
+  type Field,
+  type JoinConstraint,
+  type JoinExpr,
+  type Lambda,
+  type LimitByExpr,
+  type Not,
+  type Or,
+  type OrderExpr,
+  type Placeholder,
+  type RatioExpr,
+  type SampleExpr,
+  type SelectQuery,
+  type SelectSetQuery,
+  type Tuple,
+  type TupleAccess,
+  type WindowExpr,
+  type WindowFrameExpr,
+  type WindowFunction,
   ArithmeticOperationOp,
-  Array as ASTArray,
-  ArrayAccess,
-  AST,
-  BetweenExpr,
-  Call,
-  CompareOperation,
   CompareOperationOp,
-  Constant,
-  CTE,
-  Dict,
-  Expression,
-  Field,
-  JoinConstraint,
-  JoinExpr,
-  Lambda,
-  LimitByExpr,
-  Not,
-  Or,
-  OrderExpr,
-  Placeholder,
-  RatioExpr,
-  SampleExpr,
-  SelectQuery,
-  SelectSetQuery,
-  Tuple,
-  TupleAccess,
-  WindowExpr,
-  WindowFrameExpr,
-  WindowFunction,
 } from "./ast";
-import { escapeClickHouseIdentifier, escapeTSQLIdentifier, escapeClickHouseString } from "./escape";
 import { ImpossibleASTError, NotImplementedError, QueryError } from "./errors";
+import { escapeClickHouseIdentifier } from "./escape";
 import {
-  TSQL_CLICKHOUSE_FUNCTIONS,
-  TSQL_AGGREGATIONS,
-  TSQL_COMPARISON_MAPPING,
   findTSQLAggregation,
   findTSQLFunction,
+  TSQL_COMPARISON_MAPPING,
   validateFunctionArgs,
 } from "./functions";
-import { PrinterContext, WhereClauseCondition } from "./printer_context";
-import { calculateTimeBucketInterval } from "./time_buckets";
+import type { PrinterContext, WhereClauseCondition } from "./printer_context";
 import {
-  findTable,
-  validateTable,
-  TableSchema,
-  ColumnSchema,
-  getInternalValue,
-  isVirtualColumn,
-  OutputColumnMetadata,
-  ClickHouseType,
-  hasFieldMapping,
-  getInternalValueFromMappingCaseInsensitive,
+  type ClickHouseType,
   type ColumnFormatType,
+  type ColumnSchema,
+  type OutputColumnMetadata,
+  type TableSchema,
+  getInternalValue,
+  getInternalValueFromMappingCaseInsensitive,
+  hasFieldMapping,
+  isVirtualColumn,
+  validateTable,
 } from "./schema";
+import { calculateTimeBucketInterval } from "./time_buckets";
 
 /**
  * Result of printing an AST to ClickHouse SQL
@@ -741,7 +738,9 @@ export class ClickHousePrinter {
       }
 
       // Set format hint from prettyFormat() or auto-populate from customRenderType
-      const sourceWithFormat = sourceColumn as (Partial<ColumnSchema> & { format?: ColumnFormatType }) | null;
+      const sourceWithFormat = sourceColumn as
+        | (Partial<ColumnSchema> & { format?: ColumnFormatType })
+        | null;
       if (sourceWithFormat?.format) {
         metadata.format = sourceWithFormat.format;
       } else if (sourceColumn?.customRenderType) {
@@ -1980,28 +1979,10 @@ export class ClickHousePrinter {
       CompareOperationOp.NotILike,
     ];
     const useTextColumn = textColumnOps.includes(node.op);
-    const leftTextColumn = useTextColumn ? this.getTextColumnForExpression(node.left) : null;
+    const leftTextColumn = useTextColumn ? this.printTextColumnReference(node.left) : null;
 
-    // Build the left side, qualifying the text column with table alias if present
-    let left: string;
-    if (leftTextColumn) {
-      // Check if the field is qualified with a table alias (e.g., r.output)
-      // and prepend that alias to the text column to avoid ambiguity in JOINs
-      const fieldNode = node.left as Field;
-      if (fieldNode.expression_type === "field" && fieldNode.chain.length >= 2) {
-        const firstPart = fieldNode.chain[0];
-        if (typeof firstPart === "string" && this.tableContexts.has(firstPart)) {
-          // The field is qualified with a table alias, prepend it to the text column
-          left = this.printIdentifier(firstPart) + "." + this.printIdentifier(leftTextColumn);
-        } else {
-          left = this.printIdentifier(leftTextColumn);
-        }
-      } else {
-        left = this.printIdentifier(leftTextColumn);
-      }
-    } else {
-      left = this.visit(node.left);
-    }
+    // Build the left side, using the (alias-qualified) text column when available
+    const left = leftTextColumn ?? this.visit(node.left);
     const right = this.visit(transformedRight);
 
     switch (node.op) {
@@ -2531,6 +2512,49 @@ export class ClickHousePrinter {
   }
 
   /**
+   * Print a bare JSON field as its String companion (textColumn), keeping the table alias
+   * when qualified (r.output -> r.output_text). Returns null if there is no textColumn.
+   */
+  private printTextColumnReference(expr: Expression): string | null {
+    const textColumn = this.getTextColumnForExpression(expr);
+    if (!textColumn) return null;
+
+    const fieldNode = expr as Field;
+    if (fieldNode.expression_type === "field" && fieldNode.chain.length >= 2) {
+      const firstPart = fieldNode.chain[0];
+      if (typeof firstPart === "string" && this.tableContexts.has(firstPart)) {
+        return this.printIdentifier(firstPart) + "." + this.printIdentifier(textColumn);
+      }
+    }
+    return this.printIdentifier(textColumn);
+  }
+
+  /**
+   * Print a JSON-string function argument, swapping a bare JSON field for its textColumn.
+   * Descends through value-preserving passthrough wrappers (e.g. assumeNotNull(output))
+   * so the swap still applies inside them. Returns null if no textColumn swap applies.
+   */
+  private substituteJsonTextArg(expr: Expression): string | null {
+    const direct = this.printTextColumnReference(expr);
+    if (direct) return direct;
+
+    const call = expr as Call;
+    if (
+      call.expression_type === "call" &&
+      ClickHousePrinter.JSON_PASSTHROUGH_WRAPPERS.has(call.name.toLowerCase()) &&
+      call.args.length > 0
+    ) {
+      const inner = this.substituteJsonTextArg(call.args[0]);
+      if (inner) {
+        const clickhouseName = findTSQLFunction(call.name)?.clickhouseName ?? call.name;
+        const rest = call.args.slice(1).map((arg) => this.visit(arg));
+        return `${clickhouseName}(${[inner, ...rest].join(", ")})`;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Get the dataPrefix for a field chain if the root column has one defined.
    * Returns null if the column doesn't have a dataPrefix or if this isn't a subfield access.
    */
@@ -2983,6 +3007,35 @@ export class ClickHousePrinter {
   ]);
 
   /**
+   * ClickHouse JSON functions whose first argument must be a String containing JSON text.
+   * Passing a native JSON column fails with "should be a string containing JSON, illegal
+   * type: JSON", so we print the column's String companion (textColumn) for that argument.
+   */
+  private static readonly JSON_TEXT_ARG_FUNCTIONS = new Set([
+    "jsonhas",
+    "jsonlength",
+    "jsontype",
+    "jsonextract",
+    "jsonextractuint",
+    "jsonextractint",
+    "jsonextractfloat",
+    "jsonextractbool",
+    "jsonextractstring",
+    "jsonextractraw",
+    "jsonextractarrayraw",
+    "jsonextractkeysandvalues",
+    "jsonextractkeys",
+  ]);
+
+  /**
+   * Value-preserving wrappers a user may put between a JSON column and a JSON function,
+   * e.g. `JSONExtractString(assumeNotNull(output), 'x')`. The text-column swap descends
+   * through these. Functions that transform the value (e.g. toJSONString) are excluded so
+   * their argument keeps reading the native column.
+   */
+  private static readonly JSON_PASSTHROUGH_WRAPPERS = new Set(["assumenotnull"]);
+
+  /**
    * Visit function call arguments, handling date functions that require an interval unit
    * keyword as their first argument. For these functions, the first arg is output as a
    * bare keyword instead of being parameterized or resolved as a column reference.
@@ -2990,15 +3043,19 @@ export class ClickHousePrinter {
   private visitCallArgs(functionName: string, args: Expression[]): string[] {
     const lowerName = functionName.toLowerCase();
 
-    if (
-      ClickHousePrinter.DATE_FUNCTIONS_WITH_INTERVAL_UNIT.has(lowerName) &&
-      args.length > 0
-    ) {
+    if (ClickHousePrinter.DATE_FUNCTIONS_WITH_INTERVAL_UNIT.has(lowerName) && args.length > 0) {
       const firstArg = args[0];
       const intervalUnit = this.extractIntervalUnit(firstArg);
 
       if (intervalUnit) {
         return [intervalUnit, ...args.slice(1).map((arg) => this.visit(arg))];
+      }
+    }
+
+    if (ClickHousePrinter.JSON_TEXT_ARG_FUNCTIONS.has(lowerName) && args.length > 0) {
+      const textColumn = this.substituteJsonTextArg(args[0]);
+      if (textColumn) {
+        return [textColumn, ...args.slice(1).map((arg) => this.visit(arg))];
       }
     }
 

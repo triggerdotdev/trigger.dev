@@ -9,7 +9,7 @@ import {
   NoRetry,
   WorkerQueueManager,
 } from "../index.js";
-import type { FairQueueKeyProducer, FairQueueOptions, StoredMessage } from "../types.js";
+import type { FairQueueKeyProducer, FairQueueOptions } from "../types.js";
 import type { RedisOptions } from "@internal/redis";
 
 // Define a common payload schema for tests
@@ -134,7 +134,6 @@ class TestFairQueueHelper {
     return this.fairQueue.getTotalInflightCount();
   }
 
-
   registerTelemetryGauges(options?: { observedTenants?: string[] }) {
     return this.fairQueue.registerTelemetryGauges(options);
   }
@@ -199,7 +198,7 @@ class TestFairQueueHelper {
           };
 
           await this.messageHandler(ctx);
-        } catch (error) {
+        } catch (_error) {
           if (this.abortController.signal.aborted) break;
         }
       }
@@ -1371,5 +1370,4 @@ describe("FairQueue", () => {
       }
     );
   });
-
 });

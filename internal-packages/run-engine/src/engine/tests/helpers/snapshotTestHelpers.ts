@@ -1,5 +1,5 @@
 import { generateFriendlyId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
-import {
+import type {
   PrismaClient,
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
@@ -294,7 +294,9 @@ export async function setupTestScenario(
     }
 
     // Get the waitpoint IDs that should be "completed" at this snapshot
-    const completedWaitpointIds = waitpoints.slice(0, config.completedWaitpointCount).map((w) => w.id);
+    const completedWaitpointIds = waitpoints
+      .slice(0, config.completedWaitpointCount)
+      .map((w) => w.id);
 
     const snapshot = await createTestSnapshot(prisma, {
       runId: run.id,

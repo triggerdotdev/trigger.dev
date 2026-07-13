@@ -1,6 +1,6 @@
-import { Tracer } from "@opentelemetry/api";
+import type { Tracer } from "@opentelemetry/api";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { RunsReplicationService } from "~/services/runsReplicationService.server";
+import type { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { runStore } from "~/v3/runStore.server";
 import { startSpan } from "~/v3/tracing.server";
 import { FINAL_RUN_STATUSES } from "../v3/taskStatus";

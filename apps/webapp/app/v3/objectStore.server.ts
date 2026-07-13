@@ -283,11 +283,7 @@ export async function downloadPacketFromObjectStore(
   }
 
   const { protocol, path } = parseStorageUri(packet.data);
-  const key = buildPacketObjectStoreKey(
-    environment.project.externalRef,
-    environment.slug,
-    path
-  );
+  const key = buildPacketObjectStoreKey(environment.project.externalRef, environment.slug, path);
 
   const client = getObjectStoreClient(protocol);
 

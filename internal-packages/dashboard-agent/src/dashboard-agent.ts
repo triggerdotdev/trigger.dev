@@ -45,8 +45,7 @@ let dbClient: DashboardAgentDbClient | undefined;
 
 function getDb(): DashboardAgentDbClient {
   if (!dbClient) {
-    const connectionString =
-      process.env.DASHBOARD_AGENT_DATABASE_URL ?? process.env.DATABASE_URL;
+    const connectionString = process.env.DASHBOARD_AGENT_DATABASE_URL ?? process.env.DATABASE_URL;
     if (!connectionString) {
       throw new Error(
         "DASHBOARD_AGENT_DATABASE_URL (or DATABASE_URL) must be set for the dashboard agent"
@@ -182,7 +181,9 @@ async function generateAndSaveTitle(
   const { text } = await generateText({
     model:
       locals.get(dashboardAgentModelKey) ??
-      registry.languageModel((resolved.model ?? "anthropic:claude-haiku-4-5") as `anthropic:${string}`),
+      registry.languageModel(
+        (resolved.model ?? "anthropic:claude-haiku-4-5") as `anthropic:${string}`
+      ),
     system: resolved.text,
     prompt: userText,
     ...resolved.toAISDKTelemetry(),
@@ -373,7 +374,9 @@ export const dashboardAgent = chat.agent({
       // prompt's model through the provider registry.
       model:
         locals.get(dashboardAgentModelKey) ??
-        registry.languageModel((resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`),
+        registry.languageModel(
+          (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
+        ),
       messages,
       abortSignal: signal,
       // toStreamTextOptions() defaults to a single step; override so the model

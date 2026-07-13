@@ -12,7 +12,11 @@ export function calculateErrorFingerprint(error: unknown): string {
   // 2. It won't be an instanceof Error because it's from the database.
   const errorObj = error as any;
   const errorType = String(errorObj.type || errorObj.name || "Error");
-  const message = String(errorObj.message || "");
+  // Fall back to the error class name, then the raw serialized value, so
+  // messageless errors (e.g. tagged errors) and non-Error throws (strings,
+  // plain objects) still group by something distinctive instead of collapsing
+  // into a single fingerprint. Message-bearing errors are unaffected.
+  const message = String(errorObj.message || errorObj.name || errorObj.raw || "");
   const stack = String(errorObj.stack || errorObj.stacktrace || "");
 
   // Normalize message to group similar errors
@@ -54,7 +58,7 @@ export function normalizeErrorMessage(message: string): string {
       // Standalone numeric IDs (4+ digits)
       .replace(/\b\d{4,}\b/g, "<id>")
       // File paths (Unix style)
-      .replace(/(?:\/[^\/\s]+){2,}/g, "<path>")
+      .replace(/(?:\/[^/\s]+){2,}/g, "<path>")
       // File paths (Windows style)
       .replace(/[A-Z]:\\(?:[^\\]+\\)+[^\\]+/g, "<path>")
       // Email addresses
@@ -83,7 +87,7 @@ export function normalizeStackTrace(stack: string): string {
       // Remove standalone numbers
       line = line.replace(/\b\d+\b/g, "_");
       // Remove file paths but keep filename
-      line = line.replace(/(?:\/[^\/\s]+)+\/([^\/\s]+)/g, "$1");
+      line = line.replace(/(?:\/[^/\s]+)+\/([^/\s]+)/g, "$1");
       // Normalize whitespace
       line = line.trim();
       return line;

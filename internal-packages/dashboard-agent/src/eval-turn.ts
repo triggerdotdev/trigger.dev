@@ -25,10 +25,11 @@ const JUDGE_MODEL = "claude-sonnet-4-6";
 let dbClient: DashboardAgentDbClient | undefined;
 function getEvalDb(): DashboardAgentDbClient {
   if (!dbClient) {
-    const connectionString =
-      process.env.DASHBOARD_AGENT_DATABASE_URL ?? process.env.DATABASE_URL;
+    const connectionString = process.env.DASHBOARD_AGENT_DATABASE_URL ?? process.env.DATABASE_URL;
     if (!connectionString) {
-      throw new Error("DASHBOARD_AGENT_DATABASE_URL (or DATABASE_URL) must be set for the eval task");
+      throw new Error(
+        "DASHBOARD_AGENT_DATABASE_URL (or DATABASE_URL) must be set for the eval task"
+      );
     }
     dbClient = createDashboardAgentDb(connectionString, { max: 2 });
   }
@@ -77,8 +78,15 @@ const TurnEval = z.object({
     .int()
     .min(1)
     .max(5)
-    .describe("Does the answer use only facts from the tool results? Penalize invented ids/counts/status. 5 = fully grounded."),
-  answered: z.number().int().min(1).max(5).describe("Does it directly answer the question? 5 = fully."),
+    .describe(
+      "Does the answer use only facts from the tool results? Penalize invented ids/counts/status. 5 = fully grounded."
+    ),
+  answered: z
+    .number()
+    .int()
+    .min(1)
+    .max(5)
+    .describe("Does it directly answer the question? 5 = fully."),
   concise: z.number().int().min(1).max(5).describe("Direct, no padding. Do not reward length."),
   // Insight classification.
   intentCategory: z
@@ -86,17 +94,25 @@ const TurnEval = z.object({
     .describe("What the user was trying to do."),
   outcome: z
     .enum(["resolved", "partial", "unresolved", "deflected"])
-    .describe("Did the agent actually help? deflected = sent the user elsewhere without answering."),
+    .describe(
+      "Did the agent actually help? deflected = sent the user elsewhere without answering."
+    ),
   sentiment: z.enum(["positive", "neutral", "negative", "frustrated"]),
   capabilityGap: z
     .boolean()
     .describe("The agent lacked a tool, data, or permission needed to fully help."),
-  docsGap: z.boolean().describe("A how-to the agent answered weakly or that better docs would solve."),
+  docsGap: z
+    .boolean()
+    .describe("A how-to the agent answered weakly or that better docs would solve."),
   supportOpportunity: z
     .boolean()
-    .describe("The user seems stuck, blocked, or frustrated and would benefit from a human follow-up."),
+    .describe(
+      "The user seems stuck, blocked, or frustrated and would benefit from a human follow-up."
+    ),
   featureRequest: z.boolean().describe("The user wants something the product does not do."),
-  topics: z.array(z.string()).describe("1-3 short topic tags, e.g. 'concurrency', 'failed deploys'."),
+  topics: z
+    .array(z.string())
+    .describe("1-3 short topic tags, e.g. 'concurrency', 'failed deploys'."),
   signals: z
     .array(
       z.object({

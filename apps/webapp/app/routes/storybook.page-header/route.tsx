@@ -3,7 +3,7 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 
 export default function Story() {
   return (
-    <div className="flex flex-col gap-4 bg-charcoal-800 p-4">
+    <div className="flex flex-col gap-4 bg-background-bright p-4">
       <div className="bg-background-bright">
         <NavBar>
           <PageTitle title="Organizations" />

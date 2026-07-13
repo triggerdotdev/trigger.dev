@@ -1,12 +1,11 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
-import { z } from "zod";
-import { TaskRunStatus } from "~/database-types";
-import { RunsReplicationService } from "~/services/runsReplicationService.server";
-import { createInMemoryTracing, createInMemoryMetrics } from "./utils/tracing";
-import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 import superjson from "superjson";
+import { z } from "zod";
+import { RunsReplicationService } from "~/services/runsReplicationService.server";
+import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
+import { createInMemoryTracing } from "./utils/tracing";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -99,18 +98,23 @@ describe("RunsReplicationService (part 1/7)", () => {
         },
       });
 
-      await setTimeout(1000);
-
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication",
         query: "SELECT * FROM trigger_dev.task_runs_v2",
         schema: z.any(),
       });
 
-      const [queryError, result] = await queryRuns({});
+      const result = await vi.waitFor(
+        async () => {
+          const [queryError, rows] = await queryRuns({});
 
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1);
+          expect(queryError).toBeNull();
+          expect(rows?.length).toBe(1);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       expect(result?.[0]).toEqual(
         expect.objectContaining({
           run_id: taskRun.id,
@@ -156,7 +160,7 @@ describe("RunsReplicationService (part 1/7)", () => {
         logLevel: "warn",
       });
 
-      const { tracer, exporter } = createInMemoryTracing();
+      const { tracer, exporter: _exporter } = createInMemoryTracing();
 
       const runsReplicationService = new RunsReplicationService({
         clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
@@ -229,18 +233,23 @@ describe("RunsReplicationService (part 1/7)", () => {
         },
       });
 
-      await setTimeout(1000);
-
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication",
         query: "SELECT * FROM trigger_dev.task_runs_v2",
         schema: z.any(),
       });
 
-      const [queryError, result] = await queryRuns({});
+      const result = await vi.waitFor(
+        async () => {
+          const [queryError, rows] = await queryRuns({});
 
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1);
+          expect(queryError).toBeNull();
+          expect(rows?.length).toBe(1);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       expect(result?.[0]).toEqual(
         expect.objectContaining({
           run_id: taskRun.id,
@@ -261,10 +270,17 @@ describe("RunsReplicationService (part 1/7)", () => {
         params: z.object({ run_id: z.string() }),
       });
 
-      const [payloadQueryError, payloadResult] = await queryPayloads({ run_id: taskRun.id });
+      const payloadResult = await vi.waitFor(
+        async () => {
+          const [payloadQueryError, payloadRows] = await queryPayloads({ run_id: taskRun.id });
 
-      expect(payloadQueryError).toBeNull();
-      expect(payloadResult?.length).toBe(1);
+          expect(payloadQueryError).toBeNull();
+          expect(payloadRows?.length).toBe(1);
+
+          return payloadRows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       expect(payloadResult?.[0]).toEqual(
         expect.objectContaining({
           run_id: taskRun.id,
@@ -429,8 +445,6 @@ describe("RunsReplicationService (part 1/7)", () => {
         },
       });
 
-      await setTimeout(1000);
-
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-batching",
         query: "SELECT * FROM trigger_dev.task_runs_v2 WHERE run_id = {run_id:String}",
@@ -438,10 +452,17 @@ describe("RunsReplicationService (part 1/7)", () => {
         params: z.object({ run_id: z.string() }),
       });
 
-      const [queryError, result] = await queryRuns({ run_id: taskRun.id });
+      const result = await vi.waitFor(
+        async () => {
+          const [queryError, rows] = await queryRuns({ run_id: taskRun.id });
 
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1);
+          expect(queryError).toBeNull();
+          expect(rows?.length).toBe(1);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
       expect(result?.[0]).toEqual(
         expect.objectContaining({
           run_id: taskRun.id,
@@ -534,8 +555,6 @@ describe("RunsReplicationService (part 1/7)", () => {
         },
       });
 
-      await setTimeout(1000);
-
       const queryPayloads = clickhouse.reader.query({
         name: "runs-replication-payload",
         query: "SELECT * FROM trigger_dev.raw_task_runs_payload_v1 WHERE run_id = {run_id:String}",
@@ -543,10 +562,18 @@ describe("RunsReplicationService (part 1/7)", () => {
         params: z.object({ run_id: z.string() }),
       });
 
-      const [queryError, result] = await queryPayloads({ run_id: taskRun.id });
+      const result = await vi.waitFor(
+        async () => {
+          const [queryError, rows] = await queryPayloads({ run_id: taskRun.id });
 
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1);
+          expect(queryError).toBeNull();
+          expect(rows?.length).toBe(1);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
+
       expect(result?.[0]).toEqual(
         expect.objectContaining({
           run_id: taskRun.id,
@@ -640,8 +667,6 @@ describe("RunsReplicationService (part 1/7)", () => {
         },
       });
 
-      await setTimeout(1000);
-
       const queryPayloads = clickhouse.reader.query({
         name: "runs-replication-payload",
         query: "SELECT * FROM trigger_dev.raw_task_runs_payload_v1 WHERE run_id = {run_id:String}",
@@ -649,10 +674,18 @@ describe("RunsReplicationService (part 1/7)", () => {
         params: z.object({ run_id: z.string() }),
       });
 
-      const [queryError, result] = await queryPayloads({ run_id: taskRun.id });
+      const result = await vi.waitFor(
+        async () => {
+          const [queryError, rows] = await queryPayloads({ run_id: taskRun.id });
 
-      expect(queryError).toBeNull();
-      expect(result?.length).toBe(1);
+          expect(queryError).toBeNull();
+          expect(rows?.length).toBe(1);
+
+          return rows;
+        },
+        { timeout: 30_000, interval: 250 }
+      );
+
       expect(result?.[0]).toEqual(
         expect.objectContaining({
           run_id: taskRun.id,

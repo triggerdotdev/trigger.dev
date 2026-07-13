@@ -1,18 +1,24 @@
-import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
+import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Card } from "~/components/primitives/charts/Card";
+import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
+import { ChartCard } from "~/components/primitives/charts/ChartCard";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
+import { statusColor } from "~/components/primitives/charts/statusColors";
+import { CopyableText } from "~/components/primitives/CopyableText";
+import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import {
   Dialog,
   DialogContent,
@@ -21,27 +27,18 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
-import { ScheduleLimitActions } from "~/components/schedules/ScheduleLimitActions";
-import { SchedulesUsageBar } from "~/components/schedules/SchedulesUsageBar";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { InlineCode } from "~/components/code/InlineCode";
-import { CopyableText } from "~/components/primitives/CopyableText";
-import { PaginationControls } from "~/components/primitives/Pagination";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { useToast } from "~/components/primitives/Toast";
-import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { PaginationControls } from "~/components/primitives/Pagination";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
-import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -53,24 +50,26 @@ import {
   TableRow,
   type TableVariant,
 } from "~/components/primitives/Table";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { useToast } from "~/components/primitives/Toast";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { ScheduleTypeIcon, scheduleTypeName } from "~/components/runs/v3/ScheduleType";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
+import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
+import { ScheduleLimitActions } from "~/components/schedules/ScheduleLimitActions";
+import { SchedulesUsageBar } from "~/components/schedules/SchedulesUsageBar";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
-import type { loader as scheduleDetailLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.$scheduleParam/route";
-import type { loader as scheduleEditLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.edit.$scheduleParam/route";
-import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
-import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import {
   TaskDetailPresenter,
   type TaskActivity,
@@ -81,7 +80,6 @@ import { requireUser } from "~/services/session.server";
 import {
   docsPath,
   EnvironmentParamSchema,
-  v3BillingPath,
   v3CreateBulkActionPath,
   v3EditSchedulePath,
   v3EnvironmentPath,
@@ -92,6 +90,11 @@ import {
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
+import type { loader as scheduleDetailLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.$scheduleParam/route";
+import type { loader as scheduleEditLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.edit.$scheduleParam/route";
+import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
@@ -149,7 +152,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies TaskActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies TaskActivity);
 
   const pageRaw = parseFiniteInt(url.searchParams.get("page"));
   const schedulesPage = pageRaw !== undefined && pageRaw > 0 ? pageRaw : 1;
@@ -191,6 +194,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const { task, activity, scheduleList, runList } = useTypedLoaderData<typeof loader>();
+  const zoomToTimeFilter = useZoomToTimeFilter();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -296,16 +300,15 @@ export default function Page() {
                 {/* Activity chart */}
                 <ResizablePanel id="scheduled-task-activity" min="220px" default="320px">
                   <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-2">
-                    <Card className="h-full overflow-hidden px-0 pb-2 pt-3">
-                      <Card.Header>Runs by status</Card.Header>
-                      <div className="min-h-0 flex-1 px-2">
+                    <ChartSyncProvider onZoom={zoomToTimeFilter}>
+                      <ChartCard title="Runs by status">
                         <Suspense fallback={<ActivityChartSkeleton />}>
                           <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
                             {(result) => <ActivityChart activity={result} />}
                           </TypedAwait>
                         </Suspense>
-                      </div>
-                    </Card>
+                      </ChartCard>
+                    </ChartSyncProvider>
                   </div>
                 </ResizablePanel>
 
@@ -318,7 +321,7 @@ export default function Page() {
                       <TypedAwait resolve={runList} errorElement={<TableLoading />}>
                         {(list) =>
                           list ? (
-                            <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                            <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                               <TaskRunsTable
                                 total={list.runs.length}
                                 hasFilters={list.hasFilters}
@@ -653,8 +656,7 @@ function ScheduleSheet({
   // Only show the loading spinner when we actually lack good data —
   // background reloads (e.g. after enable/disable) keep the inspector
   // visible with its current values until the fresh data arrives.
-  const isDetailLoading =
-    isStaleSchedule || (!!openScheduleId && detailFetcher.data === undefined);
+  const isDetailLoading = isStaleSchedule || (!!openScheduleId && detailFetcher.data === undefined);
   // Distinct from loading: the loader has resolved and the schedule is
   // genuinely gone (returned `null`, e.g. deleted externally).
   const isScheduleMissing =
@@ -749,7 +751,7 @@ function ScheduledTaskDetailSidebar({
         </LinkButton>
       </div>
       <div className="flex h-8 items-end justify-between gap-2 border-b border-grid-bright pl-3 pr-1.5">
-        <TabContainer className="!border-b-0">
+        <TabContainer className="border-b-0!">
           <TabButton
             isActive={activeTab === "overview"}
             layoutId="scheduled-task-detail-tabs"
@@ -778,7 +780,7 @@ function ScheduledTaskDetailSidebar({
         ) : null}
       </div>
       {activeTab === "overview" ? (
-        <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <Property.Table>
             <Property.Item>
               <Property.Label>Identifier</Property.Label>
@@ -859,7 +861,7 @@ function ScheduledTaskDetailSidebar({
           ) : null}
         </div>
       ) : (
-        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           {scheduleList ? (
             sortedSchedules.length === 0 ? (
               <div className="p-3">
@@ -980,81 +982,22 @@ function SchedulesMiniTable({
   );
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  COMPLETED: "#28BF5C",
-  RUNNING: "#3B82F6",
-  FAILED: "#E11D48",
-  CANCELED: "#878C99",
-};
-
 function ActivityChart({ activity }: { activity: TaskActivity }) {
   const chartConfig: ChartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
     for (const status of activity.statuses) {
       cfg[status] = {
         label: status.charAt(0) + status.slice(1).toLowerCase(),
-        color: STATUS_COLOR[status] ?? "#9CA3AF",
+        color: statusColor(status),
       };
     }
     return cfg;
   }, [activity.statuses]);
 
-  const { xAxisFormatter, xAxisTicks } = useMemo(() => {
-    const data = activity.data;
-    const range = data.length >= 2 ? data[data.length - 1].bucket - data[0].bucket : 0;
-    const oneDay = 24 * 60 * 60 * 1000;
-    const showTime = range <= oneDay;
-
-    const formatter = (value: number) => {
-      const date = new Date(value);
-      return showTime
-        ? date.toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-            timeZone: "UTC",
-          })
-        : date.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            timeZone: "UTC",
-          });
-    };
-
-    const ticks = showTime
-      ? undefined
-      : data.filter((d) => new Date(d.bucket).getUTCHours() === 0).map((d) => d.bucket);
-
-    return { xAxisFormatter: formatter, xAxisTicks: ticks };
-  }, [activity.data]);
-
-  const tooltipLabelFormatter = useMemo(() => {
-    const data = activity.data;
-    const bucketMs = data.length >= 2 ? data[1].bucket - data[0].bucket : 0;
-    const oneDay = 24 * 60 * 60 * 1000;
-    const isSubDayBucket = bucketMs > 0 && bucketMs < oneDay;
-
-    return (_label: string, payload: { payload?: { bucket?: number } }[]) => {
-      const ts = payload?.[0]?.payload?.bucket;
-      if (typeof ts !== "number" || !Number.isFinite(ts)) return _label;
-      const date = new Date(ts);
-      return isSubDayBucket
-        ? date.toLocaleString("en-US", {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-            timeZone: "UTC",
-          })
-        : date.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-            timeZone: "UTC",
-          });
-    };
-  }, [activity.data]);
+  const { tickFormatter, tooltipLabelFormatter } = useMemo(
+    () => buildActivityTimeAxis(activity.data),
+    [activity.data]
+  );
 
   return (
     <Chart.Root
@@ -1067,10 +1010,7 @@ function ActivityChart({ activity }: { activity: TaskActivity }) {
       <Chart.Bar
         stackId="status"
         barRadius={0}
-        xAxisProps={{
-          tickFormatter: xAxisFormatter,
-          ...(xAxisTicks ? { ticks: xAxisTicks, interval: 0 } : {}),
-        }}
+        xAxisProps={{ tickFormatter }}
         tooltipLabelFormatter={tooltipLabelFormatter}
       />
     </Chart.Root>
@@ -1081,7 +1021,7 @@ function ActivityChartSkeleton() {
   return (
     <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
       {Array.from({ length: 42 }).map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-charcoal-850" />
+        <div key={i} className="h-full flex-1 bg-background-dimmed" />
       ))}
     </div>
   );

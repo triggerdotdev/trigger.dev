@@ -15,6 +15,10 @@ import { featuresForUrl } from "~/features.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 import { enqueueAttioWorkspaceSync } from "~/services/attio.server";
+import {
+  applyBillingLimitPauseAfterEnvCreate,
+  getInitialEnvPauseStateForBillingLimit,
+} from "~/v3/services/billingLimit/getInitialEnvPauseStateForBillingLimit.server";
 export type { Organization };
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
@@ -98,7 +102,10 @@ export async function createOrganization(
           role: "ADMIN",
         },
       },
-      v3Enabled: true,
+      // Managed-cloud orgs start deactivated so they're routed through
+      // select-plan, which provisions their billing entitlement and activates
+      // them. Self-hosters have no billing gate, so they're active immediately.
+      isActivated: !features.isManagedCloud,
     },
     include: {
       members: true,
@@ -125,6 +132,8 @@ export async function createEnvironment({
   isBranchableEnvironment = false,
   member,
   prismaClient = prisma,
+  /** When set, skips billing lookup — caller must supply the limit for this org + type. */
+  maximumConcurrencyLimit,
 }: {
   organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
   project: Pick<Project, "id">;
@@ -132,15 +141,18 @@ export async function createEnvironment({
   isBranchableEnvironment?: boolean;
   member?: OrgMember;
   prismaClient?: PrismaClientOrTransaction;
+  maximumConcurrencyLimit?: number;
 }) {
   const slug = envSlug(type);
   const apiKey = createApiKeyForEnv(type);
   const pkApiKey = createPkApiKeyForEnv(type);
   const shortcode = createShortcode().join("-");
 
-  const limit = await getDefaultEnvironmentConcurrencyLimit(organization.id, type);
+  const limit =
+    maximumConcurrencyLimit ?? (await getDefaultEnvironmentConcurrencyLimit(organization.id, type));
+  const billingPause = await getInitialEnvPauseStateForBillingLimit(organization.id, type);
 
-  return await prismaClient.runtimeEnvironment.create({
+  const environment = await prismaClient.runtimeEnvironment.create({
     data: {
       slug,
       apiKey,
@@ -148,6 +160,8 @@ export async function createEnvironment({
       shortcode,
       autoEnableInternalSources: type !== "DEVELOPMENT",
       maximumConcurrencyLimit: limit,
+      paused: billingPause.paused,
+      pauseSource: billingPause.pauseSource,
       organization: {
         connect: {
           id: organization.id,
@@ -162,7 +176,15 @@ export async function createEnvironment({
       type,
       isBranchableEnvironment,
     },
+    include: {
+      organization: true,
+      project: true,
+    },
   });
+
+  await applyBillingLimitPauseAfterEnvCreate(environment);
+
+  return environment;
 }
 
 function createShortcode() {

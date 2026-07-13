@@ -97,52 +97,49 @@ describe("RunEngine.createCancelledRun", () => {
       } finally {
         await engine.quit();
       }
-    },
+    }
   );
 
-  containerTest(
-    "emits runCancelled with correct payload",
-    async ({ prisma, redisOptions }) => {
-      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const engine = new RunEngine({ prisma, ...baseEngineOptions(redisOptions) });
-      const captured: EventBusEventArgs<"runCancelled">[0][] = [];
-      engine.eventBus.on("runCancelled", (event) => {
-        captured.push(event);
+  containerTest("emits runCancelled with correct payload", async ({ prisma, redisOptions }) => {
+    const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const engine = new RunEngine({ prisma, ...baseEngineOptions(redisOptions) });
+    const captured: EventBusEventArgs<"runCancelled">[0][] = [];
+    engine.eventBus.on("runCancelled", (event) => {
+      captured.push(event);
+    });
+
+    try {
+      const cancelledAt = new Date();
+      const cancelReason = "Test cancel";
+      const friendlyId = freshRunId();
+      await engine.createCancelledRun({
+        snapshot: {
+          friendlyId,
+          environment: env,
+          taskIdentifier: "test-task",
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "0000000000000000cccc000000000000",
+          spanId: "dddd000000000000",
+          queue: "task/test-task",
+          isTest: false,
+          tags: [],
+        },
+        cancelledAt,
+        cancelReason,
       });
 
-      try {
-        const cancelledAt = new Date();
-        const cancelReason = "Test cancel";
-        const friendlyId = freshRunId();
-        await engine.createCancelledRun({
-          snapshot: {
-            friendlyId,
-            environment: env,
-            taskIdentifier: "test-task",
-            payload: "{}",
-            payloadType: "application/json",
-            context: {},
-            traceContext: {},
-            traceId: "0000000000000000cccc000000000000",
-            spanId: "dddd000000000000",
-            queue: "task/test-task",
-            isTest: false,
-            tags: [],
-          },
-          cancelledAt,
-          cancelReason,
-        });
-
-        expect(captured).toHaveLength(1);
-        expect(captured[0]!.run.status).toBe("CANCELED");
-        expect(captured[0]!.run.friendlyId).toBe(friendlyId);
-        expect(captured[0]!.run.error).toEqual({ type: "STRING_ERROR", raw: cancelReason });
-        expect(captured[0]!.organization.id).toBe(env.organization.id);
-      } finally {
-        await engine.quit();
-      }
-    },
-  );
+      expect(captured).toHaveLength(1);
+      expect(captured[0]!.run.status).toBe("CANCELED");
+      expect(captured[0]!.run.friendlyId).toBe(friendlyId);
+      expect(captured[0]!.run.error).toEqual({ type: "STRING_ERROR", raw: cancelReason });
+      expect(captured[0]!.organization.id).toBe(env.organization.id);
+    } finally {
+      await engine.quit();
+    }
+  });
 
   containerTest(
     "emitRunCancelledEvent: false suppresses the bus emit but still writes the CANCELED PG row",
@@ -192,7 +189,7 @@ describe("RunEngine.createCancelledRun", () => {
       } finally {
         await engine.quit();
       }
-    },
+    }
   );
 
   containerTest(
@@ -232,7 +229,7 @@ describe("RunEngine.createCancelledRun", () => {
       } finally {
         await engine.quit();
       }
-    },
+    }
   );
 
   // Regression: cjson encodes empty Lua tables as `{}`, not `[]`. When
@@ -279,7 +276,7 @@ describe("RunEngine.createCancelledRun", () => {
       } finally {
         await engine.quit();
       }
-    },
+    }
   );
 
   // Regression: the P2002-on-id idempotency path used to return ANY
@@ -335,11 +332,11 @@ describe("RunEngine.createCancelledRun", () => {
             },
             cancelledAt: new Date(),
             cancelReason: "Should not silently overwrite a live row",
-          }),
+          })
         ).rejects.toThrow(/createCancelledRun conflict.*PENDING/);
       } finally {
         await engine.quit();
       }
-    },
+    }
   );
 });

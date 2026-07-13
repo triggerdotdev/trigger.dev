@@ -1,6 +1,6 @@
 const API_NAME = "resource-catalog";
 
-import {
+import type {
   PromptManifest,
   QueueManifest,
   SkillManifest,
@@ -8,7 +8,11 @@ import {
   TaskManifest,
   WorkerManifest,
 } from "../schemas/index.js";
-import { PromptMetadataWithFunctions, TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
+import type {
+  PromptMetadataWithFunctions,
+  TaskMetadataWithFunctions,
+  TaskSchema,
+} from "../types/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { type ResourceCatalog } from "./catalog.js";
 import { NoopResourceCatalog } from "./noopResourceCatalog.js";

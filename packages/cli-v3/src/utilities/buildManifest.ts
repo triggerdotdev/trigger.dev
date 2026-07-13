@@ -1,4 +1,4 @@
-import { BuildManifest } from "@trigger.dev/core/v3/schemas";
+import type { BuildManifest } from "@trigger.dev/core/v3/schemas";
 
 export function buildManifestToJSON(manifest: BuildManifest): BuildManifest {
   const { deploy, build, externals, ...rest } = manifest;

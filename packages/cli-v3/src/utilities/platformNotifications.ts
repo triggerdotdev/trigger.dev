@@ -1,7 +1,7 @@
 import { log } from "@clack/prompts";
 import chalk from "chalk";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { CliApiClient } from "../apiClient.js";
+import type { CliApiClient } from "../apiClient.js";
 import { chalkGrey } from "./cliOutput.js";
 import { applyColorMarkup } from "./colorMarkup.js";
 import { evaluateDiscovery } from "./discoveryCheck.js";
@@ -27,10 +27,7 @@ export async function fetchPlatformNotification(
   options: FetchNotificationOptions
 ): Promise<PlatformNotification | undefined> {
   const [error, result] = await tryCatch(
-    options.apiClient.getCliPlatformNotification(
-      options.projectRef,
-      AbortSignal.timeout(7000)
-    )
+    options.apiClient.getCliPlatformNotification(options.projectRef, AbortSignal.timeout(7000))
   );
 
   if (error) {
@@ -63,9 +60,7 @@ export async function fetchPlatformNotification(
   return { level: type, title, description, actionUrl };
 }
 
-function displayPlatformNotification(
-  notification: PlatformNotification | undefined
-): void {
+function displayPlatformNotification(notification: PlatformNotification | undefined): void {
   if (!notification) return;
 
   const message = formatNotificationMessage(notification);

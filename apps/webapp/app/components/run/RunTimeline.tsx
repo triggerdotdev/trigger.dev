@@ -1,17 +1,14 @@
 import { ClockIcon } from "@heroicons/react/20/solid";
-import type { SpanEvent } from "@trigger.dev/core/v3";
-import {
-  formatDuration,
-  millisecondsToNanoseconds,
-  nanosecondsToMilliseconds,
-} from "@trigger.dev/core/v3/utils/durations";
-import { Fragment, ReactNode, useState } from "react";
-import { cn } from "~/utils/cn";
-import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
-import { LiveTimer } from "../runs/v3/LiveTimer";
+import { formatDuration, nanosecondsToMilliseconds } from "@trigger.dev/core/v3/utils/durations";
+import type { ReactNode } from "react";
+import { Fragment } from "react";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
+import { cn } from "~/utils/cn";
+import type { TimelineSpanEvent } from "~/utils/timelineSpanEvents";
+import { getHelpTextForEvent } from "~/utils/timelineSpanEvents";
+import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { getHelpTextForEvent, TimelineSpanEvent } from "~/utils/timelineSpanEvents";
+import { LiveTimer } from "../runs/v3/LiveTimer";
 
 // Types for the RunTimeline component
 export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed";
@@ -416,7 +413,7 @@ function EventMarker({
     case "start-cap":
       return (
         <>
-          <div className={cn("h-full w-[0.4375rem] border-b", borderClass)} />
+          <div className={cn("h-full w-1.75 border-b", borderClass)} />
           <div className={cn("relative h-full w-px", bgClass)}>
             {state === "inprogress" && (
               <div
@@ -444,9 +441,7 @@ function EventMarker({
               />
             )}
           </div>
-          <div
-            className={cn("size-[0.3125rem] min-h-[0.3125rem] rounded-full border", borderClass)}
-          />
+          <div className={cn("size-1.25 min-h-1.25 rounded-full border", borderClass)} />
           <div className={cn("relative h-full w-px", bgClass)}>
             {state === "inprogress" && (
               <div
@@ -461,10 +456,10 @@ function EventMarker({
         </>
       );
     case "dot-solid":
-      return <div className={cn("size-[0.3125rem] rounded-full", bgClass)} />;
+      return <div className={cn("size-1.25 rounded-full", bgClass)} />;
     case "start-cap-thick":
       return (
-        <div className={cn("relative h-full w-[0.4375rem] rounded-t-[0.125rem]", bgClass)}>
+        <div className={cn("relative h-full w-1.75 rounded-t-xs", bgClass)}>
           {state === "inprogress" && (
             <div
               className="absolute inset-0 h-full w-full animate-tile-scroll-offset opacity-30"
@@ -477,9 +472,9 @@ function EventMarker({
         </div>
       );
     case "end-cap-thick":
-      return <div className={cn("h-full w-[0.4375rem] rounded-b-[0.125rem]", bgClass)} />;
+      return <div className={cn("h-full w-1.75 rounded-b-xs", bgClass)} />;
     default:
-      return <div className={cn("size-[0.3125rem] rounded-full bg-yellow-500")} />;
+      return <div className={cn("size-1.25 rounded-full bg-yellow-500")} />;
   }
 }
 
@@ -530,16 +525,14 @@ function LineMarker({
       break;
     case "inprogress":
       containerClass =
-        style === "normal"
-          ? "rounded-b-[0.125rem] bg-pending"
-          : "rounded-b-[0.125rem] bg-text-dimmed";
+        style === "normal" ? "rounded-b-xs bg-pending" : "rounded-b-xs bg-text-dimmed";
       break;
   }
 
   switch (variant) {
     case "normal":
       return (
-        <div className={cn("relative w-[0.4375rem]", containerClass)}>
+        <div className={cn("relative w-1.75", containerClass)}>
           {state === "inprogress" && (
             <div
               className="absolute inset-0 h-full w-full animate-tile-scroll opacity-30"
@@ -566,7 +559,7 @@ function LineMarker({
         </div>
       );
     default:
-      return <div className="w-px rounded-[0.125rem] bg-text-dimmed" />;
+      return <div className="w-px rounded-xs bg-text-dimmed" />;
   }
 }
 

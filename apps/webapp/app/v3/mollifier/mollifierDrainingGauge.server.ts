@@ -19,10 +19,12 @@ let intervalHandle: ReturnType<typeof setInterval> | null = null;
 //
 // Idempotent: a second call is a no-op (Remix dev hot-reload re-runs
 // the bootstrap; the existing interval keeps ticking).
-export function startMollifierDrainingGauge(opts: {
-  intervalMs?: number;
-  getBuffer?: typeof getMollifierBuffer;
-} = {}): void {
+export function startMollifierDrainingGauge(
+  opts: {
+    intervalMs?: number;
+    getBuffer?: typeof getMollifierBuffer;
+  } = {}
+): void {
   if (intervalHandle !== null) return;
 
   const intervalMs = opts.intervalMs ?? POLL_INTERVAL_MS;

@@ -78,14 +78,14 @@ export function DeploymentStatusIcon({
 export function deploymentStatusClassNameColor(status: WorkerDeploymentStatus): string {
   switch (status) {
     case "PENDING":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "INSTALLING":
     case "BUILDING":
     case "DEPLOYING":
       return "text-pending";
     case "TIMED_OUT":
     case "CANCELED":
-      return "text-charcoal-500";
+      return "text-text-faint";
     case "DEPLOYED":
       return "text-success";
     case "FAILED":

@@ -14,7 +14,10 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ authentication }) => {
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(authentication.environment.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      authentication.environment.organizationId,
+      "standard"
+    );
     const presenter = new PromptPresenter(clickhouse);
     const prompts = await presenter.listPrompts(
       authentication.environment.projectId,

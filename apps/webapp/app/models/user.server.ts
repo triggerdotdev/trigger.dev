@@ -3,12 +3,11 @@ import type { GitHubProfile } from "remix-auth-github";
 import type { GoogleProfile } from "remix-auth-google";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
-import {
-  DashboardPreferences,
-  getDashboardPreferences,
-} from "~/services/dashboardPreferences.server";
+import type { DashboardPreferences } from "~/services/dashboardPreferences.server";
+import { getDashboardPreferences } from "~/services/dashboardPreferences.server";
 export type { User } from "@trigger.dev/database";
 import { assertEmailAllowed } from "~/utils/email";
+import { emailMatchesPattern } from "~/utils/emailPattern";
 import { logger } from "~/services/logger.server";
 
 type FindOrCreateMagicLink = {
@@ -76,8 +75,7 @@ export async function findOrCreateMagicLinkUser({
     },
   });
 
-  const adminEmailRegex = env.ADMIN_EMAILS ? new RegExp(env.ADMIN_EMAILS) : undefined;
-  const makeAdmin = adminEmailRegex ? adminEmailRegex.test(email) : false;
+  const makeAdmin = env.ADMIN_EMAILS ? emailMatchesPattern(env.ADMIN_EMAILS, email) : false;
 
   const user = await prisma.user.upsert({
     where: {
@@ -395,7 +393,14 @@ export function updateUser({
 }) {
   return prisma.user.update({
     where: { id },
-    data: { name, email, marketingEmails, referralSource, onboardingData, confirmedBasicDetails: true },
+    data: {
+      name,
+      email,
+      marketingEmails,
+      referralSource,
+      onboardingData,
+      confirmedBasicDetails: true,
+    },
   });
 }
 

@@ -1,12 +1,9 @@
-import { ApiClient } from "../apiClient/index.js";
-import {
-  InputStreamOncePromise,
-  InputStreamOnceResult,
-  InputStreamTimeoutError,
-} from "../inputStreams/types.js";
-import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
+import type { ApiClient } from "../apiClient/index.js";
+import type { InputStreamOnceResult } from "../inputStreams/types.js";
+import { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
+import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 import { computeReconnectDelayMs } from "../utils/reconnectBackoff.js";
-import { SessionChannelIO, SessionStreamManager } from "./types.js";
+import type { SessionChannelIO, SessionStreamManager } from "./types.js";
 import { controlSubtype } from "./wireProtocol.js";
 
 // A handler that synchronously returns `true` CONSUMES the record: it is
@@ -98,11 +95,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     private debug: boolean = false
   ) {}
 
-  on(
-    sessionId: string,
-    io: SessionChannelIO,
-    handler: SessionStreamHandler
-  ): { off: () => void } {
+  on(sessionId: string, io: SessionChannelIO, handler: SessionStreamHandler): { off: () => void } {
     const key = keyFor(sessionId, io);
 
     let handlerSet = this.handlers.get(key);
@@ -250,11 +243,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     return this.lastDispatchedSeqNums.get(keyFor(sessionId, io));
   }
 
-  setLastDispatchedSeqNum(
-    sessionId: string,
-    io: SessionChannelIO,
-    seqNum: number
-  ): void {
+  setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
     this.#advanceLastDispatched(keyFor(sessionId, io), seqNum);
   }
 
@@ -265,11 +254,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
-  setMinTimestamp(
-    sessionId: string,
-    io: SessionChannelIO,
-    minTimestamp: number | undefined
-  ): void {
+  setMinTimestamp(sessionId: string, io: SessionChannelIO, minTimestamp: number | undefined): void {
     const key = keyFor(sessionId, io);
     if (minTimestamp === undefined) {
       this.minTimestamps.delete(key);
@@ -300,7 +285,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   disconnectStream(sessionId: string, io: SessionChannelIO): void {
     const key = keyFor(sessionId, io);
     const tail = this.tails.get(key);
-    const bufferedSize = this.buffer.get(key)?.length ?? 0;
+    const _bufferedSize = this.buffer.get(key)?.length ?? 0;
     // Mark as explicitly disconnected BEFORE we abort, so the tail's
     // `.finally` reconnect path sees the flag when it runs (which can be
     // synchronous in the AbortError catch). Cleared on the next explicit
@@ -397,8 +382,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
         }
 
         const hasHandlers = this.handlers.has(key) && this.handlers.get(key)!.size > 0;
-        const hasWaiters =
-          this.onceWaiters.has(key) && this.onceWaiters.get(key)!.length > 0;
+        const hasWaiters = this.onceWaiters.has(key) && this.onceWaiters.get(key)!.length > 0;
         if (hasHandlers || hasWaiters) {
           // Exponential backoff with jitter. 1s base, doubling each
           // attempt, capped at 30s. Without this, a persistent backend
@@ -415,8 +399,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
             // handlers/waiters means we should stay quiet.
             if (this.tails.has(key)) return;
             if (this.explicitlyDisconnected.has(key)) return;
-            const stillHasHandlers =
-              this.handlers.has(key) && this.handlers.get(key)!.size > 0;
+            const stillHasHandlers = this.handlers.has(key) && this.handlers.get(key)!.size > 0;
             const stillHasWaiters =
               this.onceWaiters.has(key) && this.onceWaiters.get(key)!.length > 0;
             if (!stillHasHandlers && !stillHasWaiters) return;
@@ -427,11 +410,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     this.tails.set(key, { abortController, promise });
   }
 
-  async #runTail(
-    sessionId: string,
-    io: SessionChannelIO,
-    signal: AbortSignal
-  ): Promise<void> {
+  async #runTail(sessionId: string, io: SessionChannelIO, signal: AbortSignal): Promise<void> {
     const key = keyFor(sessionId, io);
     try {
       const lastSeq = this.seqNums.get(key);

@@ -1,22 +1,21 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import { createRedisClient, type Redis } from "@internal/redis";
 import { SpanKind, type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { nanoid } from "nanoid";
 import { setInterval } from "node:timers/promises";
 import { type z } from "zod";
+import { isAbortError } from "../utils.js";
 import { ConcurrencyManager } from "./concurrency.js";
 import { MasterQueue } from "./masterQueue.js";
-import { TenantDispatch } from "./tenantDispatch.js";
-import { type RetryStrategy, ExponentialBackoffRetry } from "./retry.js";
-import { isAbortError } from "../utils.js";
+import { type RetryStrategy } from "./retry.js";
 import {
-  FairQueueTelemetry,
-  FairQueueAttributes,
-  MessagingAttributes,
   BatchedSpanManager,
+  FairQueueAttributes,
+  FairQueueTelemetry,
+  MessagingAttributes,
 } from "./telemetry.js";
+import { TenantDispatch } from "./tenantDispatch.js";
 import type {
-  ConcurrencyGroupConfig,
   DeadLetterMessage,
   DispatchSchedulerContext,
   EnqueueBatchOptions,
@@ -34,17 +33,17 @@ import { VisibilityManager } from "./visibility.js";
 import { WorkerQueueManager } from "./workerQueue.js";
 
 // Re-export all types and components
-export * from "./types.js";
+export * from "./concurrency.js";
 export * from "./keyProducer.js";
 export * from "./masterQueue.js";
-export * from "./concurrency.js";
-export * from "./visibility.js";
-export * from "./workerQueue.js";
+export * from "./retry.js";
 export * from "./scheduler.js";
 export * from "./schedulers/index.js";
-export * from "./retry.js";
 export * from "./telemetry.js";
 export * from "./tenantDispatch.js";
+export * from "./types.js";
+export * from "./visibility.js";
+export * from "./workerQueue.js";
 
 /**
  * FairQueue is the main orchestrator for fair queue message routing.
@@ -191,7 +190,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       keys: options.keys,
       shardCount: this.shardCount,
     });
-
 
     if (options.concurrencyGroups && options.concurrencyGroups.length > 0) {
       this.concurrencyManager = new ConcurrencyManager({
@@ -1248,11 +1246,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     const descriptor: QueueDescriptor = storedMessage
-      ? this.queueDescriptorCache.get(queueId) ?? {
+      ? (this.queueDescriptorCache.get(queueId) ?? {
           id: queueId,
           tenantId: storedMessage.tenantId,
           metadata: storedMessage.metadata ?? {},
-        }
+        })
       : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
     // Complete in visibility manager
@@ -1264,10 +1262,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     // Update both old and new indexes, clean up caches if queue is empty
-    const { queueEmpty } = await this.#updateAllIndexesAfterDequeue(
-      queueId,
-      descriptor.tenantId
-    );
+    const { queueEmpty } = await this.#updateAllIndexesAfterDequeue(queueId, descriptor.tenantId);
     if (queueEmpty) {
       this.queueDescriptorCache.delete(queueId);
       this.queueCooloffStates.delete(queueId);
@@ -1306,11 +1301,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     const descriptor: QueueDescriptor = storedMessage
-      ? this.queueDescriptorCache.get(queueId) ?? {
+      ? (this.queueDescriptorCache.get(queueId) ?? {
           id: queueId,
           tenantId: storedMessage.tenantId,
           metadata: storedMessage.metadata ?? {},
-        }
+        })
       : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
     // Release back to queue (visibility manager updates dispatch indexes atomically)
@@ -1471,7 +1466,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     const dlqKey = this.keys.deadLetterQueueKey(storedMessage.tenantId);
     const dlqDataKey = this.keys.deadLetterQueueDataKey(storedMessage.tenantId);
-    const shardId = this.masterQueue.getShardForQueue(storedMessage.queueId);
+    const _shardId = this.masterQueue.getShardForQueue(storedMessage.queueId);
 
     const dlqMessage: DeadLetterMessage<z.infer<TPayloadSchema>> = {
       id: storedMessage.id,
@@ -1599,42 +1594,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     return false;
-  }
-
-  #incrementCooloff(queueId: string): void {
-    // Safety check: if the cache is too large, just clear it
-    if (this.queueCooloffStates.size >= this.maxCooloffStatesSize) {
-      this.logger.warn("Cooloff states cache hit size cap, clearing all entries", {
-        size: this.queueCooloffStates.size,
-        cap: this.maxCooloffStatesSize,
-      });
-      this.queueCooloffStates.clear();
-    }
-
-    const state = this.queueCooloffStates.get(queueId) ?? {
-      tag: "normal" as const,
-      consecutiveFailures: 0,
-    };
-
-    if (state.tag === "normal") {
-      const newFailures = state.consecutiveFailures + 1;
-      if (newFailures >= this.cooloffThreshold) {
-        this.queueCooloffStates.set(queueId, {
-          tag: "cooloff",
-          expiresAt: Date.now() + this.cooloffPeriodMs,
-        });
-        this.logger.debug("Queue entered cooloff", {
-          queueId,
-          cooloffPeriodMs: this.cooloffPeriodMs,
-          consecutiveFailures: newFailures,
-        });
-      } else {
-        this.queueCooloffStates.set(queueId, {
-          tag: "normal",
-          consecutiveFailures: newFailures,
-        });
-      }
-    }
   }
 
   #resetCooloff(queueId: string): void {

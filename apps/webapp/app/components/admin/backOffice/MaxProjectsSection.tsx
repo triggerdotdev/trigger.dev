@@ -42,7 +42,7 @@ export function MaxProjectsSection({
   }, [savedJustNow, hasFieldErrors]);
 
   return (
-    <section className="flex flex-col gap-3 rounded-md border border-charcoal-700 bg-charcoal-800 p-4">
+    <section className="flex flex-col gap-3 rounded-md border border-grid-bright bg-background-bright p-4">
       <div className="flex items-center justify-between">
         <Header2>Maximum projects</Header2>
         {!isEditing && (
@@ -68,9 +68,7 @@ export function MaxProjectsSection({
         <Property.Table>
           <Property.Item>
             <Property.Label>Limit</Property.Label>
-            <Property.Value>
-              {maximumProjectCount.toLocaleString()}
-            </Property.Value>
+            <Property.Value>{maximumProjectCount.toLocaleString()}</Property.Value>
           </Property.Item>
         </Property.Table>
       ) : (
@@ -89,11 +87,7 @@ export function MaxProjectsSection({
             <FormError>{fieldError("maximumProjectCount")}</FormError>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              type="submit"
-              variant="primary/medium"
-              disabled={isSubmitting || !value.trim()}
-            >
+            <Button type="submit" variant="primary/medium" disabled={isSubmitting || !value.trim()}>
               Save
             </Button>
             <Button

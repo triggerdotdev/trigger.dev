@@ -1,35 +1,34 @@
-import {
+import type {
   BatchTriggerTaskV2RequestBody,
   BatchTriggerTaskV2Response,
   IOPacket,
-  packetRequiresOffloading,
-  parsePacket,
 } from "@trigger.dev/core/v3";
-import {
-  BatchTaskRun,
-  isPrismaRaceConditionError,
-  isPrismaRetriableError,
-  isUniqueConstraintError,
-  Prisma,
-  TaskRunAttempt,
-} from "@trigger.dev/database";
+import { packetRequiresOffloading, parsePacket } from "@trigger.dev/core/v3";
+import type { BatchTaskRun, TaskRunAttempt } from "@trigger.dev/database";
+import { isUniqueConstraintError, Prisma } from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
 import { z } from "zod";
-import { prisma, PrismaClientOrTransaction } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
+import { prisma } from "~/db.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { env } from "~/env.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { batchTaskRunItemStatusForRunStatus } from "~/models/taskRun.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { dependentAttemptWhere } from "./dependentAttemptScope";
 import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { resolveRunIdMintKind, type RunIdMintKind } from "~/v3/engineVersion.server";
+import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
+import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
+import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
 import { batchTriggerWorker } from "../batchTriggerWorker.server";
-import { generateFriendlyId } from "../friendlyIdentifiers";
-import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
-import { marqs } from "../marqs/index.server";
 import { guardQueueSizeLimitsForEnv } from "../queueSizeLimits.server";
 import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../objectStore.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { startActiveSpan } from "../tracer.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { ResumeBatchRunService } from "./resumeBatchRun.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 
 const PROCESSING_BATCH_SIZE = 50;
@@ -81,9 +80,8 @@ type RunItemData = {
  * we increment the BatchTaskRun's completed count. Once the completed count is equal to the expected count, and the
  * batch is sealed, we can consider the batch completed.
  *
- * So now when the v3 batch is considered completed, we will enqueue the ResumeBatchRunService to resume the dependent
- * task attempt if there is one. This is in contrast to v2 batches where every time a task was completed, we would schedule
- * the ResumeBatchRunService to check if the batch was completed and set it to completed if it was.
+ * When the v3 batch is considered completed it is marked COMPLETED. (Dependent-attempt
+ * batches from batchTriggerAndWait only existed on the retired V1 engine.)
  *
  * We've also introduced a new column "resumedAt" that will be set when the batch is resumed. Previously in v2 batches, the status == "COMPLETED" was overloaded
  * to mean that the batch was completed and resumed. Now we have a separate column to track when the batch was resumed (and to make sure it's only resumed once).
@@ -102,7 +100,15 @@ export class BatchTriggerV3Service extends BaseService {
   constructor(
     batchProcessingStrategy?: BatchProcessingStrategy,
     asyncBatchProcessSizeThreshold: number = ASYNC_BATCH_PROCESS_SIZE_THRESHOLD,
-    protected readonly _prisma: PrismaClientOrTransaction = prisma
+    protected readonly _prisma: PrismaClientOrTransaction = prisma,
+    protected readonly runStore: RunStore = defaultRunStore,
+    // Injected so tests force the env-default branch deterministically; defaults
+    // to the live per-env mint resolver.
+    private readonly resolveMintKind: (environment: {
+      organizationId: string;
+      id: string;
+      orgFeatureFlags?: unknown;
+    }) => Promise<RunIdMintKind> = resolveRunIdMintKind
   ) {
     super(_prisma);
 
@@ -124,13 +130,15 @@ export class BatchTriggerV3Service extends BaseService {
             throw new ServiceValidationError("A batch trigger must have at least one item");
           }
 
+          // BatchTaskRun.runtimeEnvironmentId no longer has an FK into RuntimeEnvironment;
+          // validate env existence app-side before any create arm (passthrough when split is off).
+          await controlPlaneResolver.assertEnvExists(environment.id);
+
           const existingBatch = options.idempotencyKey
-            ? await this._prisma.batchTaskRun.findFirst({
-                where: {
-                  runtimeEnvironmentId: environment.id,
-                  idempotencyKey: options.idempotencyKey,
-                },
-              })
+            ? await this.runStore.findBatchTaskRunByIdempotencyKey(
+                environment.id,
+                options.idempotencyKey
+              )
             : undefined;
 
           if (existingBatch) {
@@ -150,9 +158,10 @@ export class BatchTriggerV3Service extends BaseService {
               });
 
               // Update the existing batch to remove the idempotency key
-              await this._prisma.batchTaskRun.update({
+              await this.runStore.updateBatchTaskRun({
                 where: { id: existingBatch.id },
                 data: { idempotencyKey: null },
+                select: { id: true },
               });
 
               // Don't return, just continue with the batch trigger
@@ -163,13 +172,21 @@ export class BatchTriggerV3Service extends BaseService {
             }
           }
 
-          const batchId = generateFriendlyId("batch");
+          const { id: batchInternalId, friendlyId: batchId } = await mintBatchFriendlyId({
+            environment: {
+              organizationId: environment.organizationId,
+              id: environment.id,
+              orgFeatureFlags: environment.organization.featureFlags,
+            },
+            parentRunFriendlyId: body.parentRunId,
+          });
 
           span.setAttribute("batchId", batchId);
 
           const dependentAttempt = body?.dependentAttempt
             ? await this._prisma.taskRunAttempt.findFirst({
-                where: { friendlyId: body.dependentAttempt },
+                // Scope to the caller's environment (see dependentAttemptWhere).
+                where: dependentAttemptWhere(body.dependentAttempt, environment.id),
                 include: {
                   taskRun: {
                     select: {
@@ -203,9 +220,8 @@ export class BatchTriggerV3Service extends BaseService {
             }
           }
 
-          const runs = await this.#prepareRunData(environment, body);
+          const runs = await this.#prepareRunData(environment, body, batchId);
 
-          // Calculate how many new runs we need to create
           const newRunCount = runs.filter((r) => !r.isCached).length;
 
           if (newRunCount === 0) {
@@ -213,19 +229,18 @@ export class BatchTriggerV3Service extends BaseService {
               batchId,
             });
 
-            await this._prisma.batchTaskRun.create({
-              data: {
-                friendlyId: batchId,
-                runtimeEnvironmentId: environment.id,
-                idempotencyKey: options.idempotencyKey,
-                idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
-                dependentTaskAttemptId: dependentAttempt?.id,
-                runCount: body.items.length,
-                runIds: runs.map((r) => r.id),
-                status: "COMPLETED",
-                batchVersion: "v3",
-                oneTimeUseToken: options.oneTimeUseToken,
-              },
+            await this.runStore.createBatchTaskRun({
+              id: batchInternalId,
+              friendlyId: batchId,
+              runtimeEnvironmentId: environment.id,
+              idempotencyKey: options.idempotencyKey,
+              idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
+              dependentTaskAttemptId: dependentAttempt?.id,
+              runCount: body.items.length,
+              runIds: runs.map((r) => r.id),
+              status: "COMPLETED",
+              batchVersion: "v3",
+              oneTimeUseToken: options.oneTimeUseToken,
             });
 
             return {
@@ -236,7 +251,7 @@ export class BatchTriggerV3Service extends BaseService {
             };
           }
 
-          const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, marqs, newRunCount);
+          const queueSizeGuard = await guardQueueSizeLimitsForEnv(environment, newRunCount);
 
           logger.debug("Queue size guard result", {
             newRunCount,
@@ -266,6 +281,7 @@ export class BatchTriggerV3Service extends BaseService {
 
           const batch = await this.#createAndProcessBatchTaskRun(
             batchId,
+            batchInternalId,
             runs,
             payloadPacket,
             newRunCount,
@@ -320,30 +336,62 @@ export class BatchTriggerV3Service extends BaseService {
     }
   }
 
+  // Mint a child run's friendlyId so it lands in the SAME physical store as its
+  // residency anchor. The caller passes the batch's friendlyId, so a run-ops id
+  // (NEW) anchor yields a run-ops id (NEW) child and a cuid anchor yields a cuid
+  // (LEGACY) child. With no anchor it falls back to the env's cutover setting.
+  // Mirrors RunEngineTriggerTaskService.mintRunFriendlyId.
+  private async mintChildFriendlyId(
+    environment: AuthenticatedEnvironment,
+    anchorFriendlyId?: string,
+    region?: string
+  ): Promise<string> {
+    const mintKind = anchorFriendlyId
+      ? resolveInheritedMintKind(anchorFriendlyId)
+      : await this.resolveMintKind({
+          organizationId: environment.organizationId,
+          id: environment.id,
+          orgFeatureFlags: environment.organization.featureFlags,
+        });
+
+    return mintFriendlyIdForKind(mintKind, region);
+  }
+
   async #prepareRunData(
     environment: AuthenticatedEnvironment,
-    body: BatchTriggerTaskV2RequestBody
+    body: BatchTriggerTaskV2RequestBody,
+    batchFriendlyId: string
   ): Promise<Array<RunItemData>> {
+    // Anchor every child to the batch's residency: the batch friendlyId is
+    // minted once, so deriving each child's id-kind from it — rather than re-resolving
+    // the per-org flag, which can flip mid-batch — keeps batch + children co-resident.
+    const childAnchor = batchFriendlyId;
+
     // batchTriggerAndWait cannot have cached runs because that does not work in run engine v1 and is not available in the client
     if (body?.dependentAttempt) {
-      return body.items.map((item) => ({
-        id: generateFriendlyId("run"),
-        isCached: false,
-        idempotencyKey: undefined,
-        taskIdentifier: item.task,
-      }));
+      return Promise.all(
+        body.items.map(async (item) => ({
+          id: await this.mintChildFriendlyId(environment, childAnchor, item.options?.region),
+          isCached: false,
+          idempotencyKey: undefined,
+          taskIdentifier: item.task,
+        }))
+      );
     }
 
     // Group items by taskIdentifier
-    const itemsByTask = body.items.reduce((acc, item) => {
-      if (!item.options?.idempotencyKey) return acc;
+    const itemsByTask = body.items.reduce(
+      (acc, item) => {
+        if (!item.options?.idempotencyKey) return acc;
 
-      if (!acc[item.task]) {
-        acc[item.task] = [];
-      }
-      acc[item.task].push(item);
-      return acc;
-    }, {} as Record<string, typeof body.items>);
+        if (!acc[item.task]) {
+          acc[item.task] = [];
+        }
+        acc[item.task].push(item);
+        return acc;
+      },
+      {} as Record<string, typeof body.items>
+    );
 
     logger.debug("[BatchTriggerV2][call] Grouped items by task identifier", {
       itemsByTask,
@@ -372,42 +420,42 @@ export class BatchTriggerV3Service extends BaseService {
       )
     ).then((results) => results.flat());
 
-    // Now we need to create an array of all the run IDs, in order
-    // If we have a cached run, that isn't expired, we should use that run ID
-    // If we have a cached run, that is expired, we should generate a new run ID and save that cached run ID to a set of expired run IDs
-    // If we don't have a cached run, we should generate a new run ID
+    // Build the run IDs in order: reuse an unexpired cached id, else mint a new id (and record any
+    // expired cached id so its idempotency key can be cleared below).
     const expiredRunIds = new Set<string>();
 
-    const runs = body.items.map((item) => {
-      const cachedRun = cachedRuns.find((r) => r.idempotencyKey === item.options?.idempotencyKey);
+    const runs = await Promise.all(
+      body.items.map(async (item) => {
+        const cachedRun = cachedRuns.find((r) => r.idempotencyKey === item.options?.idempotencyKey);
 
-      if (cachedRun) {
-        if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < new Date()) {
-          expiredRunIds.add(cachedRun.friendlyId);
+        if (cachedRun) {
+          if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < new Date()) {
+            expiredRunIds.add(cachedRun.friendlyId);
+
+            return {
+              id: await this.mintChildFriendlyId(environment, childAnchor, item.options?.region),
+              isCached: false,
+              idempotencyKey: item.options?.idempotencyKey ?? undefined,
+              taskIdentifier: item.task,
+            };
+          }
 
           return {
-            id: generateFriendlyId("run"),
-            isCached: false,
+            id: cachedRun.friendlyId,
+            isCached: true,
             idempotencyKey: item.options?.idempotencyKey ?? undefined,
             taskIdentifier: item.task,
           };
         }
 
         return {
-          id: cachedRun.friendlyId,
-          isCached: true,
+          id: await this.mintChildFriendlyId(environment, childAnchor, item.options?.region),
+          isCached: false,
           idempotencyKey: item.options?.idempotencyKey ?? undefined,
           taskIdentifier: item.task,
         };
-      }
-
-      return {
-        id: generateFriendlyId("run"),
-        isCached: false,
-        idempotencyKey: item.options?.idempotencyKey ?? undefined,
-        taskIdentifier: item.task,
-      };
-    });
+      })
+    );
 
     // Expire the cached runs that are no longer valid
     if (expiredRunIds.size) {
@@ -422,6 +470,7 @@ export class BatchTriggerV3Service extends BaseService {
 
   async #createAndProcessBatchTaskRun(
     batchId: string,
+    batchInternalId: string,
     runs: Array<RunItemData>,
     payloadPacket: IOPacket,
     newRunCount: number,
@@ -431,21 +480,20 @@ export class BatchTriggerV3Service extends BaseService {
     dependentAttempt?: TaskRunAttempt
   ) {
     if (runs.length <= this._asyncBatchProcessSizeThreshold) {
-      const batch = await this._prisma.batchTaskRun.create({
-        data: {
-          friendlyId: batchId,
-          runtimeEnvironmentId: environment.id,
-          idempotencyKey: options.idempotencyKey,
-          idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
-          dependentTaskAttemptId: dependentAttempt?.id,
-          runCount: runs.length,
-          runIds: runs.map((r) => r.id),
-          payload: payloadPacket.data,
-          payloadType: payloadPacket.dataType,
-          options,
-          batchVersion: "v3",
-          oneTimeUseToken: options.oneTimeUseToken,
-        },
+      const batch = await this.runStore.createBatchTaskRun({
+        id: batchInternalId,
+        friendlyId: batchId,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: options.idempotencyKey,
+        idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
+        dependentTaskAttemptId: dependentAttempt?.id,
+        runCount: runs.length,
+        runIds: runs.map((r) => r.id),
+        payload: payloadPacket.data,
+        payloadType: payloadPacket.dataType,
+        options,
+        batchVersion: "v3",
+        oneTimeUseToken: options.oneTimeUseToken,
       });
 
       const result = await this.#processBatchTaskRunItems(
@@ -464,42 +512,40 @@ export class BatchTriggerV3Service extends BaseService {
           error: result.error,
         });
 
-        await this._prisma.batchTaskRun.update({
-          where: {
-            id: batch.id,
-          },
+        await this.runStore.updateBatchTaskRun({
+          where: { id: batch.id },
           data: {
             status: "ABORTED",
             completedAt: new Date(),
           },
+          select: { id: true },
         });
 
         throw result.error;
       }
 
-      // Update the batch to be sealed
-      await this._prisma.batchTaskRun.update({
+      await this.runStore.updateBatchTaskRun({
         where: { id: batch.id },
         data: { sealed: true, sealedAt: new Date() },
+        select: { id: true },
       });
 
       return batch;
     } else {
-      const batch = await this._prisma.batchTaskRun.create({
-        data: {
-          friendlyId: batchId,
-          runtimeEnvironmentId: environment.id,
-          idempotencyKey: options.idempotencyKey,
-          idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
-          dependentTaskAttemptId: dependentAttempt?.id,
-          runCount: body.items.length,
-          runIds: runs.map((r) => r.id),
-          payload: payloadPacket.data,
-          payloadType: payloadPacket.dataType,
-          options,
-          batchVersion: "v3",
-          oneTimeUseToken: options.oneTimeUseToken,
-        },
+      const batch = await this.runStore.createBatchTaskRun({
+        id: batchInternalId,
+        friendlyId: batchId,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: options.idempotencyKey,
+        idempotencyKeyExpiresAt: options.idempotencyKeyExpiresAt,
+        dependentTaskAttemptId: dependentAttempt?.id,
+        runCount: body.items.length,
+        runIds: runs.map((r) => r.id),
+        payload: payloadPacket.data,
+        payloadType: payloadPacket.dataType,
+        options,
+        batchVersion: "v3",
+        oneTimeUseToken: options.oneTimeUseToken,
       });
 
       switch (this._batchProcessingStrategy) {
@@ -522,11 +568,12 @@ export class BatchTriggerV3Service extends BaseService {
             count: PROCESSING_BATCH_SIZE,
           }));
 
-          await this._prisma.batchTaskRun.update({
+          await this.runStore.updateBatchTaskRun({
             where: { id: batch.id },
             data: {
               processingJobsExpectedCount: ranges.length,
             },
+            select: { id: true },
           });
 
           await Promise.all(
@@ -592,33 +639,30 @@ export class BatchTriggerV3Service extends BaseService {
 
     const $attemptCount = options.attemptCount + 1;
 
-    // Add early return if max attempts reached
     if ($attemptCount > MAX_ATTEMPTS) {
       logger.error("[BatchTriggerV2][processBatchTaskRun] Max attempts reached", {
         options,
         attemptCount: $attemptCount,
       });
-      // You might want to update the batch status to failed here
       return;
     }
 
-    const batch = await this._prisma.batchTaskRun.findFirst({
-      where: { id: options.batchId },
-      include: {
-        runtimeEnvironment: {
-          include: {
-            project: true,
-            organization: true,
-          },
-        },
-      },
-    });
+    const batch = await this.runStore.findBatchTaskRunById(options.batchId);
 
     if (!batch) {
       return;
     }
 
-    // Check to make sure the currentIndex is not greater than the runCount
+    // BatchTaskRun -> RuntimeEnvironment FK is dropped; resolve the env from the scalar id.
+    const environment = await findEnvironmentById(batch.runtimeEnvironmentId);
+    if (!environment) {
+      logger.error("[BatchTriggerV2][processBatchTaskRun] Environment not found", {
+        batchId: batch.id,
+        runtimeEnvironmentId: batch.runtimeEnvironmentId,
+      });
+      return;
+    }
+
     if (options.range.start >= batch.runCount) {
       logger.debug("[BatchTriggerV2][processBatchTaskRun] currentIndex is greater than runCount", {
         options,
@@ -636,7 +680,7 @@ export class BatchTriggerV3Service extends BaseService {
         data: batch.payload ?? undefined,
         dataType: batch.payloadType,
       },
-      batch.runtimeEnvironment
+      environment
     );
 
     const payload = await parsePacket(payloadPacket);
@@ -657,7 +701,7 @@ export class BatchTriggerV3Service extends BaseService {
 
     const result = await this.#processBatchTaskRunItems(
       batch,
-      batch.runtimeEnvironment,
+      environment,
       options.range.start,
       options.range.count,
       $payload,
@@ -693,12 +737,12 @@ export class BatchTriggerV3Service extends BaseService {
 
     switch (options.strategy) {
       case "sequential": {
-        // We can tell if we are done by checking if the result.workingIndex is equal or greater than the runCount
+        // Done once we've walked past the last item in the batch
         if (result.workingIndex >= batch.runCount) {
-          // Update the batch to be sealed
-          await this._prisma.batchTaskRun.update({
+          await this.runStore.updateBatchTaskRun({
             where: { id: batch.id },
             data: { sealed: true, sealedAt: new Date() },
+            select: { id: true },
           });
 
           logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing complete", {
@@ -708,7 +752,6 @@ export class BatchTriggerV3Service extends BaseService {
             attemptCount: $attemptCount,
           });
         } else {
-          // Requeue the next batch of processing
           await this.#enqueueBatchTaskRun({
             batchId: batch.id,
             processingId: options.processingId,
@@ -724,9 +767,9 @@ export class BatchTriggerV3Service extends BaseService {
         break;
       }
       case "parallel": {
-        // We need to increment the processingJobsCount and check if we are done
+        // Each processing job increments the count; the last one to arrive seals the batch
         const { processingJobsCount, processingJobsExpectedCount } =
-          await this._prisma.batchTaskRun.update({
+          await this.runStore.updateBatchTaskRun({
             where: { id: batch.id },
             data: {
               processingJobsCount: {
@@ -740,10 +783,10 @@ export class BatchTriggerV3Service extends BaseService {
           });
 
         if (processingJobsCount >= processingJobsExpectedCount) {
-          // Update the batch to be sealed
-          await this._prisma.batchTaskRun.update({
+          await this.runStore.updateBatchTaskRun({
             where: { id: batch.id },
             data: { sealed: true, sealedAt: new Date() },
+            select: { id: true },
           });
 
           logger.debug("[BatchTriggerV2][processBatchTaskRun] Batch processing complete", {
@@ -764,7 +807,6 @@ export class BatchTriggerV3Service extends BaseService {
     items: BatchTriggerTaskV2RequestBody["items"],
     options?: BatchTriggerTaskServiceOptions
   ): Promise<{ workingIndex: number; error?: Error }> {
-    // Grab the next PROCESSING_BATCH_SIZE runIds
     const runIds = batch.runIds.slice(currentIndex, currentIndex + batchSize);
 
     logger.debug("[BatchTriggerV2][processBatchTaskRun] Processing batch items", {
@@ -774,7 +816,7 @@ export class BatchTriggerV3Service extends BaseService {
       runCount: batch.runCount,
     });
 
-    // Combine the "window" between currentIndex and currentIndex + PROCESSING_BATCH_SIZE with the runId and the item in the payload which is an array
+    // Pair each runId in this window with its item from the payload array
     const itemsToProcess = runIds.map((runId, index) => ({
       runId,
       item: items[index + currentIndex],
@@ -813,13 +855,14 @@ export class BatchTriggerV3Service extends BaseService {
     }
 
     if (expectedCount > 0) {
-      await this._prisma.batchTaskRun.update({
+      await this.runStore.updateBatchTaskRun({
         where: { id: batch.id },
         data: {
           expectedCount: {
             increment: expectedCount,
           },
         },
+        select: { id: true },
       });
     }
 
@@ -871,12 +914,10 @@ export class BatchTriggerV3Service extends BaseService {
 
     if (!result.isCached) {
       try {
-        await this._prisma.batchTaskRunItem.create({
-          data: {
-            batchTaskRunId: batch.id,
-            taskRunId: result.run.id,
-            status: batchTaskRunItemStatusForRunStatus(result.run.status),
-          },
+        await this.runStore.createBatchTaskRunItem({
+          batchTaskRunId: batch.id,
+          taskRunId: result.run.id,
+          status: batchTaskRunItemStatusForRunStatus(result.run.status),
         });
 
         return true;
@@ -933,7 +974,12 @@ export class BatchTriggerV3Service extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      const uploadedFilename = await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
+      const uploadedFilename = await uploadPacketToObjectStore(
+        filename,
+        packet.data,
+        packet.dataType,
+        environment
+      );
 
       return {
         data: uploadedFilename,
@@ -946,18 +992,12 @@ export class BatchTriggerV3Service extends BaseService {
 export async function tryCompleteBatchV3(
   batchId: string,
   tx: PrismaClientOrTransaction,
-  scheduleResumeOnComplete: boolean
+  scheduleResumeOnComplete: boolean,
+  // Threaded in so a run-ops id (NEW-resident) batch + its items are read/written on the owning
+  // store, not the control-plane `tx`. Defaults to the singleton (single-DB = passthrough).
+  runStore: RunStore = defaultRunStore
 ) {
-  const batch = await tx.batchTaskRun.findFirst({
-    where: { id: batchId },
-    select: {
-      id: true,
-      sealed: true,
-      status: true,
-      expectedCount: true,
-      dependentTaskAttemptId: true,
-    },
-  });
+  const batch = await runStore.findBatchTaskRunById(batchId);
 
   if (!batch) {
     logger.debug("tryCompleteBatchV3: Batch not found", { batchId });
@@ -974,9 +1014,9 @@ export async function tryCompleteBatchV3(
     return;
   }
 
-  // Count completed items (read-only, no contention)
-  const completedCount = await tx.batchTaskRunItem.count({
-    where: { batchTaskRunId: batchId, status: "COMPLETED" },
+  const completedCount = await runStore.countBatchTaskRunItems({
+    batchTaskRunId: batchId,
+    status: "COMPLETED",
   });
 
   if (completedCount < batch.expectedCount) {
@@ -989,7 +1029,7 @@ export async function tryCompleteBatchV3(
   }
 
   // Mark batch COMPLETED (idempotent via status check)
-  const updated = await tx.batchTaskRun.updateMany({
+  const updated = await runStore.updateManyBatchTaskRun({
     where: { id: batchId, status: "PENDING" },
     data: { status: "COMPLETED", completedAt: new Date(), completedCount },
   });
@@ -1001,81 +1041,5 @@ export async function tryCompleteBatchV3(
 
   logger.debug("tryCompleteBatchV3: Batch completed", { batchId, completedCount });
 
-  if (scheduleResumeOnComplete && batch.dependentTaskAttemptId) {
-    await ResumeBatchRunService.enqueue(batchId, true, tx);
-  }
-}
-
-export async function completeBatchTaskRunItemV3(
-  itemId: string,
-  batchTaskRunId: string,
-  tx: PrismaClientOrTransaction,
-  scheduleResumeOnComplete = false,
-  taskRunAttemptId?: string,
-  retryAttempt?: number
-) {
-  const isRetry = retryAttempt !== undefined;
-
-  logger.debug("completeBatchTaskRunItemV3", {
-    itemId,
-    batchTaskRunId,
-    scheduleResumeOnComplete,
-    taskRunAttemptId,
-    retryAttempt,
-    isRetry,
-  });
-
-  try {
-    // Update item to COMPLETED (no transaction needed, no contention)
-    const updated = await tx.batchTaskRunItem.updateMany({
-      where: { id: itemId, status: "PENDING" },
-      data: { status: "COMPLETED", taskRunAttemptId },
-    });
-
-    if (updated.count === 0) {
-      logger.debug("completeBatchTaskRunItemV3: Item already completed", {
-        itemId,
-        batchTaskRunId,
-      });
-      return;
-    }
-
-    // Schedule debounced completion check
-    // enqueue with same ID overwrites, resetting the 200ms timer (debounce behavior)
-    await legacyRunEngineWorker.enqueue({
-      id: `tryCompleteBatchV3:${batchTaskRunId}`,
-      job: "tryCompleteBatchV3",
-      payload: { batchId: batchTaskRunId, scheduleResumeOnComplete },
-      availableAt: new Date(Date.now() + 200),
-    });
-  } catch (error) {
-    if (isPrismaRetriableError(error) || isPrismaRaceConditionError(error)) {
-      logger.error("completeBatchTaskRunItemV3 failed, scheduling retry", {
-        itemId,
-        batchTaskRunId,
-        error,
-        retryAttempt,
-        isRetry,
-      });
-
-      if (isRetry) {
-        throw error;
-      } else {
-        await legacyRunEngineWorker.enqueue({
-          id: `completeBatchTaskRunItem:${itemId}`,
-          job: "completeBatchTaskRunItem",
-          payload: { itemId, batchTaskRunId, scheduleResumeOnComplete, taskRunAttemptId },
-          availableAt: new Date(Date.now() + 2_000),
-        });
-      }
-    } else {
-      logger.error("completeBatchTaskRunItemV3 failed with non-retriable error", {
-        itemId,
-        batchTaskRunId,
-        error,
-        retryAttempt,
-        isRetry,
-      });
-    }
-  }
+  // Dependent-attempt batches (batchTriggerAndWait) only exist on the retired V1 engine, so there is no parent to resume here.
 }

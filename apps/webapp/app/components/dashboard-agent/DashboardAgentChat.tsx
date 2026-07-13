@@ -101,7 +101,7 @@ export function DashboardAgentChat({
       const res = await fetch(actionPath, { method: "POST", body });
       const data = (await res.json()) as { publicAccessToken?: string; error?: string };
       if (!res.ok || !data.publicAccessToken) {
-        throw new Error(data.error ?? "The dashboard agent couldn't start.");
+        throw new Error(data.error ?? "The chat couldn't start.");
       }
       return { publicAccessToken: data.publicAccessToken };
     },
@@ -112,7 +112,7 @@ export function DashboardAgentChat({
       const res = await fetch(actionPath, { method: "POST", body });
       const data = (await res.json()) as { token?: string; error?: string };
       if (!res.ok || !data.token) {
-        throw new Error(data.error ?? "Couldn't refresh the dashboard agent token.");
+        throw new Error(data.error ?? "Couldn't refresh the chat token.");
       }
       return data.token;
     },

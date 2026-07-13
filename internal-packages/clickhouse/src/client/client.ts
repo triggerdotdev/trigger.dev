@@ -4,12 +4,11 @@ import {
   ClickHouseLogLevel,
   type ClickHouseSettings,
   createClient,
-  type ResultSet,
-  type Row,
   type BaseQueryParams,
   type InsertResult,
 } from "@clickhouse/client";
-import { recordSpanError, Span, startSpan, trace, Tracer } from "@internal/tracing";
+import type { Span, Tracer } from "@internal/tracing";
+import { recordSpanError, startSpan, trace } from "@internal/tracing";
 import { flattenAttributes, tryCatch, type Result } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { InsertError, QueryError } from "./errors.js";
@@ -493,7 +492,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           }
 
           for (const row of rows) {
-            const rowData = row.json();
+            const rowData = row.json() as any[];
 
             const hydratedRow: Record<string, any> = {};
             for (let i = 0; i < req.columns.length; i++) {
@@ -518,12 +517,16 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
-  public queryFastStream<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+  public queryFastStream<
+    TOut extends Record<string, any>,
+    TParams extends Record<string, any>,
+  >(req: {
     name: string;
     query: string;
     columns: Array<string | ColumnExpression>;
     settings?: ClickHouseSettings;
   }): ClickhouseQueryStreamFunction<TParams, TOut> {
+    // eslint-disable-next-line no-this-alias
     const self = this;
 
     return async function* (params, options) {

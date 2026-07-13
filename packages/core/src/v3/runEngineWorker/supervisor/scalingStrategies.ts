@@ -1,4 +1,4 @@
-import { QueueMetricsProcessor } from "./queueMetricsProcessor.js";
+import type { QueueMetricsProcessor } from "./queueMetricsProcessor.js";
 
 export type ScalingStrategyKind = "none" | "smooth" | "aggressive";
 

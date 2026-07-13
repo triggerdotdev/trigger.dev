@@ -68,7 +68,7 @@ function ChartsDashboard() {
     [dateRange?.startDate, dateRange?.endDate]
   );
 
-  const filteredBarData2 = useMemo(
+  const _filteredBarData2 = useMemo(
     () =>
       filterDataByDateRange(API_DATA.barChartData, "day", dateRange?.startDate, dateRange?.endDate),
     [dateRange?.startDate, dateRange?.endDate]
@@ -87,7 +87,7 @@ function ChartsDashboard() {
 
   return (
     <div className="grid">
-      <div className="flex items-center justify-between gap-4 border-b border-charcoal-700 bg-background-bright p-2 pl-3">
+      <div className="flex items-center justify-between gap-4 border-b border-grid-bright bg-background-bright p-2 pl-3">
         <div className="flex w-fit items-center">
           <RadioGroup
             name="chartState"
@@ -167,7 +167,6 @@ function ChartsDashboard() {
             </Chart.Root>
           </Card.Content>
         </Card>
-
 
         {/* Simple Line Chart (no zoom, but synced with date range) */}
         <Card>

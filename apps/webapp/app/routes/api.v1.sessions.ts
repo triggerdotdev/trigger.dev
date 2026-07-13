@@ -158,10 +158,7 @@ const { action } = createActionApiRoute(
       // via the JWT ability's wildcard branches.
       action: "write",
       resource: (_params, _searchParams, _headers, body) =>
-        anyResource([
-          { type: "tasks", id: body.taskIdentifier },
-          { type: "sessions" },
-        ]),
+        anyResource([{ type: "tasks", id: body.taskIdentifier }, { type: "sessions" }]),
     },
     corsStrategy: "all",
   },
@@ -280,10 +277,7 @@ const { action } = createActionApiRoute(
       // the externalId; otherwise the friendlyId. Mirrors the
       // canonical addressing key used server-side.
       const addressingKey = session.externalId ?? session.friendlyId;
-      const publicAccessToken = await mintSessionToken(
-        authentication.environment,
-        addressingKey
-      );
+      const publicAccessToken = await mintSessionToken(authentication.environment, addressingKey);
 
       const sessionItem: SessionItem = {
         ...serializeSession(session),

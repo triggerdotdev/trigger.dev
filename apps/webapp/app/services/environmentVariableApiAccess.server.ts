@@ -43,7 +43,10 @@ export async function authorizePatEnvironmentAccess({
   resource: EnvironmentScopedResource;
   action: "read" | "write";
 }): Promise<Response | undefined> {
-  const bearer = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+  const bearer = request.headers
+    .get("Authorization")
+    ?.replace(/^Bearer /, "")
+    .trim();
   const isUat = !!bearer && isUserActorToken(bearer);
 
   // Machine creds (apiKey) and org tokens carry no user role to enforce. A

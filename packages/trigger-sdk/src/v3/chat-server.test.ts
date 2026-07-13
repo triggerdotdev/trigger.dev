@@ -201,8 +201,8 @@ describe("chat.headStart (route handler)", () => {
     expect(res.headers.get("X-Trigger-Chat-Access-Token")).toBe(SESSION_PAT);
     expect(res.headers.get("Content-Type")).toMatch(/text\/event-stream/);
 
-    const sessionCreate = requests.find((r) =>
-      r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
+    const sessionCreate = requests.find(
+      (r) => r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
     );
     expect(sessionCreate).toBeDefined();
     const body = JSON.parse(sessionCreate!.init!.body as string);
@@ -228,10 +228,17 @@ describe("chat.headStart (route handler)", () => {
         return appendOkResponse();
       }
       if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
-        return new Response(new ReadableStream({ start(c) { c.close(); } }), {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              c.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        );
       }
       throw new Error(`Unexpected URL: ${urlStr}`);
     });
@@ -262,16 +269,12 @@ describe("chat.headStart (route handler)", () => {
       )
     );
 
-    const sessionCreate = requests.find((r) =>
-      r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
+    const sessionCreate = requests.find(
+      (r) => r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
     );
     expect(sessionCreate).toBeDefined();
     const body = JSON.parse(sessionCreate!.init!.body as string);
-    expect(body.triggerConfig.tags).toEqual([
-      "chat:chat-1",
-      "org:acme",
-      "agentic-run:xyz",
-    ]);
+    expect(body.triggerConfig.tags).toEqual(["chat:chat-1", "org:acme", "agentic-run:xyz"]);
     expect(body.triggerConfig.queue).toBe("my-queue");
     expect(body.triggerConfig.basePayload.trigger).toBe("handover-prepare");
     expect(body.triggerConfig.basePayload.chatId).toBe("chat-1");
@@ -290,10 +293,17 @@ describe("chat.headStart (route handler)", () => {
       }
       // Stitched response subscribes to `.out` after handover.
       if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
-        return new Response(new ReadableStream({ start(c) { c.close(); } }), {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              c.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        );
       }
       throw new Error(`Unexpected URL: ${urlStr}`);
     });
@@ -332,8 +342,7 @@ describe("chat.headStart (route handler)", () => {
 
     const handoverPost = requests.find(
       (r) =>
-        r.url.includes("/realtime/v1/sessions/chat-final/in/append") &&
-        r.init?.body !== undefined
+        r.url.includes("/realtime/v1/sessions/chat-final/in/append") && r.init?.body !== undefined
     );
     expect(handoverPost).toBeDefined();
     const body = JSON.parse(handoverPost!.init!.body as string);
@@ -366,10 +375,17 @@ describe("chat.headStart (route handler)", () => {
       // closes immediately — this test validates dispatch only, not
       // the agent-side resume.
       if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
-        return new Response(new ReadableStream({ start(c) { c.close(); } }), {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              c.close();
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          }
+        );
       }
       throw new Error(`Unexpected URL: ${urlStr}`);
     });
@@ -412,8 +428,7 @@ describe("chat.headStart (route handler)", () => {
 
     const handoverPost = requests.find(
       (r) =>
-        r.url.includes("/realtime/v1/sessions/chat-tool/in/append") &&
-        r.init?.body !== undefined
+        r.url.includes("/realtime/v1/sessions/chat-tool/in/append") && r.init?.body !== undefined
     );
     expect(handoverPost).toBeDefined();
     const body = JSON.parse(handoverPost!.init!.body as string);
@@ -430,9 +445,7 @@ describe("chat.headStart (route handler)", () => {
       (m: { role: string }) => m.role === "assistant"
     );
     expect(assistant).toBeDefined();
-    const toolCallPart = assistant.content.find(
-      (p: { type: string }) => p.type === "tool-call"
-    );
+    const toolCallPart = assistant.content.find((p: { type: string }) => p.type === "tool-call");
     expect(toolCallPart).toBeDefined();
     const approvalRequestPart = assistant.content.find(
       (p: { type: string }) => p.type === "tool-approval-request"

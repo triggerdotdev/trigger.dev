@@ -88,11 +88,12 @@ describe("chat snapshot helpers", () => {
     it("returns the snapshot on a successful GET", async () => {
       const { getChatSnapshotUrl } = stubApiClient({});
       const snapshot = buildSnapshot(2);
-      stubFetch(async () =>
-        new Response(JSON.stringify(snapshot), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
+      stubFetch(
+        async () =>
+          new Response(JSON.stringify(snapshot), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
       );
 
       const result = await readChatSnapshot("session-1");
@@ -122,11 +123,12 @@ describe("chat snapshot helpers", () => {
 
     it("returns undefined when the response body is malformed JSON", async () => {
       stubApiClient({});
-      stubFetch(async () =>
-        new Response("not-json-{[", {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
+      stubFetch(
+        async () =>
+          new Response("not-json-{[", {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
       );
 
       const result = await readChatSnapshot("malformed-session");
@@ -141,11 +143,12 @@ describe("chat snapshot helpers", () => {
         savedAt: Date.now(),
         messages: [],
       };
-      stubFetch(async () =>
-        new Response(JSON.stringify(futureSnapshot), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        })
+      stubFetch(
+        async () =>
+          new Response(JSON.stringify(futureSnapshot), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
       );
 
       const result = await readChatSnapshot("v99-session");
@@ -154,10 +157,11 @@ describe("chat snapshot helpers", () => {
 
     it("returns undefined when `messages` field is missing or wrong type", async () => {
       stubApiClient({});
-      stubFetch(async () =>
-        new Response(JSON.stringify({ version: 1, savedAt: 1, messages: "not-an-array" }), {
-          status: 200,
-        })
+      stubFetch(
+        async () =>
+          new Response(JSON.stringify({ version: 1, savedAt: 1, messages: "not-an-array" }), {
+            status: 200,
+          })
       );
 
       const result = await readChatSnapshot("bad-shape-session");
@@ -190,9 +194,7 @@ describe("chat snapshot helpers", () => {
 
     it("returns undefined when the response is not an object", async () => {
       stubApiClient({});
-      stubFetch(async () =>
-        new Response(JSON.stringify("just-a-string"), { status: 200 })
-      );
+      stubFetch(async () => new Response(JSON.stringify("just-a-string"), { status: 200 }));
 
       const result = await readChatSnapshot("string-response");
       expect(result).toBeUndefined();
@@ -224,7 +226,9 @@ describe("chat snapshot helpers", () => {
       stubApiClient({});
       stubFetch(async () => new Response("forbidden", { status: 403 }));
 
-      await expect(writeChatSnapshot("forbidden-session", buildSnapshot())).resolves.toBeUndefined();
+      await expect(
+        writeChatSnapshot("forbidden-session", buildSnapshot())
+      ).resolves.toBeUndefined();
     });
 
     it("returns without throwing on a fetch network error (warns)", async () => {

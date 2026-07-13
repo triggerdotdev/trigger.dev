@@ -29,8 +29,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }),
   ]);
 
-  const metricDashboardsLimitValue = (plan?.v3Subscription?.plan?.limits as any)
-    ?.metricDashboards;
+  const metricDashboardsLimitValue = (plan?.v3Subscription?.plan?.limits as any)?.metricDashboards;
   const dashboardLimit =
     typeof metricDashboardsLimitValue === "number"
       ? metricDashboardsLimitValue

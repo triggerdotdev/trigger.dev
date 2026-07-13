@@ -12,9 +12,7 @@ export const VercelOAuthStateSchema = z.object({
 
 export type VercelOAuthState = z.infer<typeof VercelOAuthStateSchema>;
 
-export async function generateVercelOAuthState(
-  params: VercelOAuthState
-): Promise<string> {
+export async function generateVercelOAuthState(params: VercelOAuthState): Promise<string> {
   return generateJWT({
     secretKey: env.ENCRYPTION_KEY,
     payload: params,

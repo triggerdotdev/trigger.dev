@@ -45,8 +45,8 @@ export class VisibilityManager {
     this.shardCount = options.shardCount;
     this.defaultTimeoutMs = options.defaultTimeoutMs;
     this.logger = options.logger ?? {
-      debug: () => { },
-      error: () => { },
+      debug: () => {},
+      error: () => {},
     };
 
     this.#registerCommands();
@@ -280,7 +280,7 @@ export class VisibilityManager {
    * @param tenantId - The tenant ID
    * @param score - Optional score for the message (defaults to now)
    */
-  async release<TPayload = unknown>(
+  async release<_TPayload = unknown>(
     messageId: string,
     queueId: string,
     queueKey: string,

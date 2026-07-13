@@ -1,8 +1,12 @@
-import { ReactElement } from "react";
-import { AwsSesMailTransport, AwsSesMailTransportOptions } from "./aws-ses";
-import { NullMailTransport, NullMailTransportOptions } from "./null";
-import { ResendMailTransport, ResendMailTransportOptions } from "./resend";
-import { SmtpMailTransport, SmtpMailTransportOptions } from "./smtp";
+import type { ReactElement } from "react";
+import type { AwsSesMailTransportOptions } from "./aws-ses";
+import { AwsSesMailTransport } from "./aws-ses";
+import type { NullMailTransportOptions } from "./null";
+import { NullMailTransport } from "./null";
+import type { ResendMailTransportOptions } from "./resend";
+import { ResendMailTransport } from "./resend";
+import type { SmtpMailTransportOptions } from "./smtp";
+import { SmtpMailTransport } from "./smtp";
 
 export type MailMessage = {
   to: string;
@@ -18,7 +22,7 @@ export type PlainTextMailMessage = {
   replyTo: string;
   subject: string;
   text: string;
-}
+};
 
 export interface MailTransport {
   send(message: MailMessage): Promise<void>;
@@ -33,13 +37,13 @@ export class EmailError extends Error {
 }
 
 export type MailTransportOptions =
-  AwsSesMailTransportOptions |
-  ResendMailTransportOptions |
-  NullMailTransportOptions |
-  SmtpMailTransportOptions
+  | AwsSesMailTransportOptions
+  | ResendMailTransportOptions
+  | NullMailTransportOptions
+  | SmtpMailTransportOptions;
 
 export function constructMailTransport(options: MailTransportOptions): MailTransport {
-  switch(options.type) {
+  switch (options.type) {
     case "aws-ses":
       return new AwsSesMailTransport(options);
     case "resend":

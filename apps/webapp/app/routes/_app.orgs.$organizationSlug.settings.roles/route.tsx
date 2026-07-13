@@ -21,13 +21,12 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { cn } from "~/utils/cn";
+import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
-import { useShowSelfServe } from "~/hooks/useShowSelfServe";
-import { TextLink } from "~/components/primitives/TextLink";
 
 export const meta: MetaFunction = () => {
   return [
@@ -130,7 +129,7 @@ export default function Page() {
               </Paragraph>
             ) : null}
           </div>
-          <div className="min-h-0 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="min-h-0 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             {columns.length === 0 ? (
               <EmptyState isUsingPlugin={isUsingPlugin} showSelfServe={showSelfServe} />
             ) : (
@@ -163,7 +162,7 @@ export default function Page() {
                   ) : (
                     grouped.flatMap(({ group, permissions }) => [
                       <TableRow key={`${group}-header`}>
-                        <TableCell colSpan={columns.length + 2} className="bg-charcoal-800">
+                        <TableCell colSpan={columns.length + 2} className="bg-background-bright">
                           <Header3 className="text-xs uppercase tracking-wide text-text-dimmed">
                             {group}
                           </Header3>

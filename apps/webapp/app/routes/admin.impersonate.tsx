@@ -1,4 +1,8 @@
-import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import {
+  redirect,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from "@remix-run/server-runtime";
 import { z } from "zod";
 import { redirectWithImpersonation } from "~/models/admin.server";
 import { requireUser } from "~/services/session.server";

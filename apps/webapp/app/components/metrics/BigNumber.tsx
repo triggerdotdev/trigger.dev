@@ -40,7 +40,7 @@ export function BigNumber({
     <div className="flex flex-col justify-between gap-4 rounded-sm border border-grid-dimmed bg-background-bright p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Header3 className="leading-6">{title}</Header3>
-        {accessory && <div className="flex-shrink-0">{accessory}</div>}
+        {accessory && <div className="shrink-0">{accessory}</div>}
       </div>
       <div
         className={cn(

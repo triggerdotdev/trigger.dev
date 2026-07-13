@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { BuildingOffice2Icon, GlobeAltIcon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, redirect, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
@@ -46,10 +46,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export const action: ActionFunction = async ({ request }) => {
   const user = await requireUser(request);
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   try {
@@ -79,6 +79,10 @@ export const action: ActionFunction = async ({ request }) => {
       avatar,
     });
 
+    // A promo code carried over from the /promo landing page (via cookie) is
+    // redeemed later, once the org is activated through plan selection and its
+    // usage entitlement exists — not here, where there's nothing to grant onto.
+
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
     const configurationId = url.searchParams.get("configurationId");
@@ -94,8 +98,7 @@ export const action: ActionFunction = async ({ request }) => {
       if (next) {
         params.set("next", next);
       }
-      const redirectUrl = `${organizationPath(organization)}/projects/new?${params.toString()}`;
-      return redirect(redirectUrl);
+      return redirect(`${organizationPath(organization)}/projects/new?${params.toString()}`);
     }
 
     return redirect(organizationPath(organization));
@@ -115,9 +118,9 @@ export default function NewOrganizationPage() {
 
   const [form, { orgName }] = useForm({
     id: "create-organization",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
     shouldValidate: "onSubmit",
@@ -141,25 +144,28 @@ export default function NewOrganizationPage() {
     );
 
   return (
-    <AppContainer className="bg-charcoal-900">
+    <AppContainer className="bg-background-deep">
       <BackgroundWrapper>
-        <MainCenteredContainer variant="onboarding" className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+        <MainCenteredContainer
+          variant="onboarding"
+          className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+        >
           <FormTitle
             LeadingIcon={<BuildingOffice2Icon className="size-6 text-fuchsia-600" />}
             title="Create an Organization"
           />
-          <Form method="post" {...form.props}>
+          <Form method="post" {...getFormProps(form)}>
             <Fieldset>
               <InputGroup>
                 <Label htmlFor={orgName.id}>Organization name *</Label>
                 <Input
-                  {...conform.input(orgName, { type: "text" })}
+                  {...getInputProps(orgName, { type: "text" })}
                   placeholder="Your Organization name"
                   icon={BuildingOffice2Icon}
                   autoFocus
                 />
                 <Hint>Normally your company name.</Hint>
-                <FormError id={orgName.errorId}>{orgName.error}</FormError>
+                <FormError id={orgName.errorId}>{orgName.errors}</FormError>
               </InputGroup>
               {isManagedCloud && (
                 <>

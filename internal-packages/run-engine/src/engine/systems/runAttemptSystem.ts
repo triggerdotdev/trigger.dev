@@ -1,19 +1,17 @@
+import type { UnkeyCache } from "@internal/cache";
 import {
   createCache,
   createLRUMemoryStore,
   DefaultStatefulContext,
   Namespace,
   RedisCacheStore,
-  UnkeyCache,
 } from "@internal/cache";
-import { RedisOptions } from "@internal/redis";
+import type { RedisOptions } from "@internal/redis";
 import { startSpan } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
-import {
+import type {
   CompleteRunAttemptResult,
   ExecutionResult,
-  FlushedRunMetadata,
-  GitMeta,
   MachinePreset,
   MachinePresetName,
   StartRunAttemptResult,
@@ -29,17 +27,13 @@ import {
   TaskRunInternalError,
   TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3/schemas";
+import { FlushedRunMetadata, GitMeta } from "@trigger.dev/core/v3/schemas";
 import {
   extractIdempotencyKeyScope,
   getUserProvidedIdempotencyKey,
 } from "@trigger.dev/core/v3/serverOnly";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
-import {
-  $transaction,
-  PrismaClientOrTransaction,
-  RuntimeEnvironmentType,
-  TaskRun,
-} from "@trigger.dev/database";
+import type { PrismaClientOrTransaction, RuntimeEnvironmentType } from "@trigger.dev/database";
 import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
 import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
@@ -51,19 +45,20 @@ import {
   isInitialState,
   isPendingExecuting,
 } from "../statuses.js";
-import { RunEngineOptions } from "../types.js";
-import { BatchSystem } from "./batchSystem.js";
-import { DelayedRunSystem } from "./delayedRunSystem.js";
-import {
+import type { RunEngineOptions } from "../types.js";
+import type { BatchSystem } from "./batchSystem.js";
+import type { DelayedRunSystem } from "./delayedRunSystem.js";
+import type {
   EnhancedExecutionSnapshot,
-  executionResultFromSnapshot,
   ExecutionSnapshotSystem,
+} from "./executionSnapshotSystem.js";
+import {
+  executionResultFromSnapshot,
   getLatestExecutionSnapshot,
 } from "./executionSnapshotSystem.js";
-import { SystemResources } from "./systems.js";
-import { WaitpointSystem } from "./waitpointSystem.js";
+import type { SystemResources } from "./systems.js";
+import type { WaitpointSystem } from "./waitpointSystem.js";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
-import type { AuthenticatedEnvironment } from "../../shared/index.js";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -210,16 +205,7 @@ export class RunAttemptSystem {
           traceContext: true,
           priorityMs: true,
           taskIdentifier: true,
-          runtimeEnvironment: {
-            select: {
-              id: true,
-              slug: true,
-              type: true,
-              branchName: true,
-              git: true,
-              organizationId: true,
-            },
-          },
+          runtimeEnvironmentId: true,
           parentTaskRunId: true,
           rootTaskRunId: true,
           batchId: true,
@@ -232,6 +218,12 @@ export class RunAttemptSystem {
       throw new ServiceValidationError("Task run not found", 404);
     }
 
+    const env = await this.$.controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+    if (!env) {
+      throw new ServiceValidationError("Task run environment not found", 404);
+    }
+
     const [task, queue, organization, project, machinePreset, deployment] = await Promise.all([
       run.lockedById
         ? this.#resolveTaskRunExecutionTask(run.lockedById)
@@ -242,10 +234,10 @@ export class RunAttemptSystem {
       this.#resolveTaskRunExecutionQueue({
         lockedQueueId: run.lockedQueueId ?? undefined,
         queueName: run.queue,
-        runtimeEnvironmentId: run.runtimeEnvironment.id,
+        runtimeEnvironmentId: env.id,
       }),
-      this.#resolveTaskRunExecutionOrganization(run.runtimeEnvironment.organizationId),
-      this.#resolveTaskRunExecutionProjectByRuntimeEnvironmentId(run.runtimeEnvironment.id),
+      this.#resolveTaskRunExecutionOrganization(env.organizationId),
+      this.#resolveTaskRunExecutionProjectByRuntimeEnvironmentId(env.id),
       run.lockedById
         ? this.#resolveTaskRunExecutionMachinePreset(run.lockedById, run.machinePreset)
         : Promise.resolve(
@@ -277,7 +269,7 @@ export class RunAttemptSystem {
         priority: run.priorityMs === 0 ? undefined : run.priorityMs / 1_000,
         parentTaskRunId: run.parentTaskRunId ? RunId.toFriendlyId(run.parentTaskRunId) : undefined,
         rootTaskRunId: run.rootTaskRunId ? RunId.toFriendlyId(run.rootTaskRunId) : undefined,
-        region: run.runtimeEnvironment.type !== "DEVELOPMENT" ? run.workerQueue : undefined,
+        region: env.type !== "DEVELOPMENT" ? run.workerQueue : undefined,
       },
       attempt: {
         number: run.attemptNumber ?? 1,
@@ -290,11 +282,11 @@ export class RunAttemptSystem {
       machine: machinePreset,
       deployment,
       environment: {
-        id: run.runtimeEnvironment.id,
-        slug: run.runtimeEnvironment.slug,
-        type: run.runtimeEnvironment.type,
-        branchName: run.runtimeEnvironment.branchName ?? undefined,
-        git: safeParseGitMeta(run.runtimeEnvironment.git),
+        id: env.id,
+        slug: env.slug,
+        type: env.type,
+        branchName: env.branchName ?? undefined,
+        git: safeParseGitMeta(env.git),
       },
       batch: run.batchId ? { id: BatchId.toFriendlyId(run.batchId) } : undefined,
     };
@@ -322,7 +314,7 @@ export class RunAttemptSystem {
       "startRunAttempt",
       async (span) => {
         return this.$.runLock.lock("startRunAttempt", [runId], async () => {
-          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
           if (latestSnapshot.id !== snapshotId) {
             //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
@@ -355,7 +347,9 @@ export class RunAttemptSystem {
                 lockedById: true,
                 ttl: true,
               },
-            }
+            },
+            // read-your-writes on the owning primary (dequeue just wrote lockedById; a replica lags).
+            prisma
           );
 
           this.$.logger.debug("Creating a task run attempt", { taskRun });
@@ -398,10 +392,14 @@ export class RunAttemptSystem {
             throw new ServiceValidationError("Max attempts reached", 400);
           }
 
-          const result = await $transaction(
-            prisma,
-            async (tx) => {
-              const run = await this.$.runStore.startAttempt(
+          // Atomic unit: the attempt bump (startAttempt) and the EXECUTING snapshot must
+          // commit together or a crash between them leaves the run EXECUTING with no snapshot. Under
+          // the run-ops split these route to the SAME owning DB but, as two router calls, would each
+          // auto-commit. `runStore.runInTransaction(runId, ...)` wraps both in ONE transaction on the
+          // run's owning store; the inner writes go through the tx-bound `store` (not the router).
+          const [transactionError, result] = await tryCatch(
+            this.$.runStore.runInTransaction(taskRun.id, async (store, tx) => {
+              const run = await store.startAttempt(
                 taskRun.id,
                 {
                   attemptNumber: nextAttemptNumber,
@@ -444,16 +442,7 @@ export class RunAttemptSystem {
                     priorityMs: true,
                     batchId: true,
                     realtimeStreamsVersion: true,
-                    runtimeEnvironment: {
-                      select: {
-                        id: true,
-                        slug: true,
-                        type: true,
-                        branchName: true,
-                        git: true,
-                        organizationId: true,
-                      },
-                    },
+                    runtimeEnvironmentId: true,
                     parentTaskRunId: true,
                     rootTaskRunId: true,
                     workerQueue: true,
@@ -463,24 +452,28 @@ export class RunAttemptSystem {
                 tx
               );
 
-              const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(tx, {
-                run,
-                snapshot: {
-                  executionStatus: "EXECUTING",
-                  description: `Attempt created, starting execution${
-                    isWarmStart ? " (warm start)" : ""
-                  }`,
+              const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
+                tx,
+                {
+                  run,
+                  snapshot: {
+                    executionStatus: "EXECUTING",
+                    description: `Attempt created, starting execution${
+                      isWarmStart ? " (warm start)" : ""
+                    }`,
+                  },
+                  previousSnapshotId: latestSnapshot.id,
+                  environmentId: latestSnapshot.environmentId,
+                  environmentType: latestSnapshot.environmentType,
+                  projectId: latestSnapshot.projectId,
+                  organizationId: latestSnapshot.organizationId,
+                  batchId: latestSnapshot.batchId ?? undefined,
+                  completedWaitpoints: latestSnapshot.completedWaitpoints,
+                  workerId,
+                  runnerId,
                 },
-                previousSnapshotId: latestSnapshot.id,
-                environmentId: latestSnapshot.environmentId,
-                environmentType: latestSnapshot.environmentType,
-                projectId: latestSnapshot.projectId,
-                organizationId: latestSnapshot.organizationId,
-                batchId: latestSnapshot.batchId ?? undefined,
-                completedWaitpoints: latestSnapshot.completedWaitpoints,
-                workerId,
-                runnerId,
-              });
+                store
+              );
 
               if (taskRun.ttl) {
                 //don't expire the run, it's going to execute
@@ -488,21 +481,18 @@ export class RunAttemptSystem {
               }
 
               return { updatedRun: run, snapshot: newSnapshot };
-            },
-            (error) => {
-              this.$.logger.error("RunEngine.createRunAttempt(): prisma.$transaction error", {
-                code: error.code,
-                meta: error.meta,
-                stack: error.stack,
-                message: error.message,
-                name: error.name,
-              });
-              throw new ServiceValidationError(
-                "Failed to update task run and execution snapshot",
-                500
-              );
-            }
+            })
           );
+
+          if (transactionError) {
+            this.$.logger.error("RunEngine.createRunAttempt(): prisma.$transaction error", {
+              error: transactionError,
+            });
+            throw new ServiceValidationError(
+              "Failed to update task run and execution snapshot",
+              500
+            );
+          }
 
           if (!result) {
             this.$.logger.error("RunEngine.createRunAttempt(): failed to create task run attempt", {
@@ -513,6 +503,14 @@ export class RunAttemptSystem {
           }
 
           const { updatedRun, snapshot } = result;
+
+          const env = await this.$.controlPlaneResolver.resolveAuthenticatedEnv(
+            updatedRun.runtimeEnvironmentId
+          );
+
+          if (!env) {
+            throw new ServiceValidationError("Task run environment not found", 404);
+          }
 
           this.$.eventBus.emit("runAttemptStarted", {
             time: new Date(),
@@ -528,17 +526,17 @@ export class RunAttemptSystem {
               batchId: updatedRun.batchId,
             },
             organization: {
-              id: updatedRun.runtimeEnvironment.organizationId,
+              id: env.organizationId,
             },
             project: {
               id: updatedRun.projectId,
             },
             environment: {
-              id: updatedRun.runtimeEnvironment.id,
+              id: env.id,
             },
           });
 
-          const environmentGit = safeParseGitMeta(updatedRun.runtimeEnvironment.git);
+          const environmentGit = safeParseGitMeta(env.git);
 
           const [metadata, task, queue, organization, project, machinePreset, deployment] =
             await Promise.all([
@@ -550,14 +548,10 @@ export class RunAttemptSystem {
               this.#resolveTaskRunExecutionQueue({
                 lockedQueueId: updatedRun.lockedQueueId ?? undefined,
                 queueName: updatedRun.queue,
-                runtimeEnvironmentId: updatedRun.runtimeEnvironment.id,
+                runtimeEnvironmentId: env.id,
               }),
-              this.#resolveTaskRunExecutionOrganization(
-                updatedRun.runtimeEnvironment.organizationId
-              ),
-              this.#resolveTaskRunExecutionProjectByRuntimeEnvironmentId(
-                updatedRun.runtimeEnvironment.id
-              ),
+              this.#resolveTaskRunExecutionOrganization(env.organizationId),
+              this.#resolveTaskRunExecutionProjectByRuntimeEnvironmentId(env.id),
               this.#resolveTaskRunExecutionMachinePreset(
                 taskRun.lockedById,
                 updatedRun.machinePreset
@@ -609,19 +603,16 @@ export class RunAttemptSystem {
               rootTaskRunId: updatedRun.rootTaskRunId
                 ? RunId.toFriendlyId(updatedRun.rootTaskRunId)
                 : undefined,
-              region:
-                updatedRun.runtimeEnvironment.type !== "DEVELOPMENT"
-                  ? updatedRun.workerQueue
-                  : undefined,
+              region: env.type !== "DEVELOPMENT" ? updatedRun.workerQueue : undefined,
               realtimeStreamsVersion: updatedRun.realtimeStreamsVersion ?? undefined,
             },
             task,
             queue,
             environment: {
-              id: updatedRun.runtimeEnvironment.id,
-              slug: updatedRun.runtimeEnvironment.slug,
-              type: updatedRun.runtimeEnvironment.type,
-              branchName: updatedRun.runtimeEnvironment.branchName ?? undefined,
+              id: env.id,
+              slug: env.slug,
+              type: env.type,
+              branchName: env.branchName ?? undefined,
               git: environmentGit,
             },
             organization,
@@ -705,7 +696,7 @@ export class RunAttemptSystem {
       "#completeRunAttemptSuccess",
       async (span) => {
         return this.$.runLock.lock("attemptSucceeded", [runId], async () => {
-          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
           if (latestSnapshot.id !== snapshotId) {
             throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -780,11 +771,6 @@ export class RunAttemptSystem {
                     id: true,
                   },
                 },
-                project: {
-                  select: {
-                    organizationId: true,
-                  },
-                },
                 batchId: true,
                 createdAt: true,
                 completedAt: true,
@@ -798,9 +784,16 @@ export class RunAttemptSystem {
             },
             prisma
           );
-          const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
-          await this.$.runQueue.acknowledgeMessage(run.project.organizationId, runId);
+          const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+          if (!env) {
+            throw new ServiceValidationError("Task run environment not found", 404);
+          }
+
+          const newSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+
+          await this.$.runQueue.acknowledgeMessage(env.organizationId, runId);
 
           // We need to manually emit this as we created the final snapshot as part of the task run update
           this.$.eventBus.emit("executionSnapshotCreated", {
@@ -841,7 +834,7 @@ export class RunAttemptSystem {
               attemptNumber: run.attemptNumber ?? 1,
             },
             organization: {
-              id: run.project.organizationId,
+              id: env.organizationId,
             },
             project: {
               id: run.projectId,
@@ -890,7 +883,7 @@ export class RunAttemptSystem {
       "completeRunAttemptFailure",
       async (span) => {
         return this.$.runLock.lock("attemptFailed", [runId], async () => {
-          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
           if (latestSnapshot.id !== snapshotId) {
             throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -933,11 +926,6 @@ export class RunAttemptSystem {
                   status: true,
                   spanId: true,
                   maxAttempts: true,
-                  runtimeEnvironment: {
-                    select: {
-                      organizationId: true,
-                    },
-                  },
                   taskEventStore: true,
                   createdAt: true,
                   completedAt: true,
@@ -1017,18 +1005,35 @@ export class RunAttemptSystem {
                   costInCents: updatedUsage.costInCents,
                 },
                 {
-                  include: {
-                    runtimeEnvironment: {
-                      include: {
-                        project: true,
-                        organization: true,
-                        orgMember: true,
-                      },
-                    },
+                  select: {
+                    id: true,
+                    friendlyId: true,
+                    status: true,
+                    attemptNumber: true,
+                    spanId: true,
+                    queue: true,
+                    taskIdentifier: true,
+                    traceContext: true,
+                    baseCostInCents: true,
+                    runTags: true,
+                    batchId: true,
+                    createdAt: true,
+                    completedAt: true,
+                    updatedAt: true,
+                    taskEventStore: true,
+                    runtimeEnvironmentId: true,
                   },
                 },
                 this.$.prisma
               );
+
+              const env = await this.$.controlPlaneResolver.resolveAuthenticatedEnv(
+                run.runtimeEnvironmentId
+              );
+
+              if (!env) {
+                throw new ServiceValidationError("Task run environment not found", 404);
+              }
 
               const nextAttemptNumber =
                 latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
@@ -1071,18 +1076,9 @@ export class RunAttemptSystem {
                   batchId: run.batchId,
                 },
                 organization: {
-                  id: run.runtimeEnvironment.organizationId,
+                  id: env.organizationId,
                 },
-                // The Prisma payload structurally satisfies the slim
-                // AuthenticatedEnvironment except for `concurrencyLimitBurstFactor`
-                // (Decimal vs number). Coerce that one field; cast away
-                // the excess-property mismatch (the rest of Prisma's
-                // RuntimeEnvironment columns are extra, not missing).
-                environment: {
-                  ...run.runtimeEnvironment,
-                  concurrencyLimitBurstFactor:
-                    run.runtimeEnvironment.concurrencyLimitBurstFactor.toNumber(),
-                } as unknown as AuthenticatedEnvironment,
+                environment: env,
                 retryAt,
               });
 
@@ -1096,9 +1092,9 @@ export class RunAttemptSystem {
                 //we nack the message, requeuing it for later
                 const nackResult = await this.tryNackAndRequeue({
                   run,
-                  environment: run.runtimeEnvironment,
-                  orgId: run.runtimeEnvironment.organizationId,
-                  projectId: run.runtimeEnvironment.project.id,
+                  environment: env,
+                  orgId: env.organizationId,
+                  projectId: env.project.id,
                   timestamp: retryAt.getTime(),
                   error: {
                     type: "INTERNAL_ERROR",
@@ -1173,7 +1169,7 @@ export class RunAttemptSystem {
       this.$.tracer,
       "systemFailure",
       async (span) => {
-        const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+        const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
         //already finished
         if (latestSnapshot.executionStatus === "FINISHED") {
@@ -1225,7 +1221,7 @@ export class RunAttemptSystem {
     batchId,
     tx,
   }: {
-    run: TaskRun;
+    run: { id: string };
     environment: {
       id: string;
       type: RuntimeEnvironmentType;
@@ -1344,7 +1340,7 @@ export class RunAttemptSystem {
 
     return startSpan(this.$.tracer, "cancelRun", async (span) => {
       return this.$.runLock.lock("cancelRun", [runId], async () => {
-        const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+        const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
         //already finished, do nothing
         if (latestSnapshot.executionStatus === "FINISHED") {
@@ -1407,7 +1403,7 @@ export class RunAttemptSystem {
         const run = await this.$.runStore.cancelRun(
           runId,
           {
-            completedAt: finalizeRun ? completedAt ?? new Date() : completedAt,
+            completedAt: finalizeRun ? (completedAt ?? new Date()) : completedAt,
             error,
             ...(bulkActionId && { bulkActionId }),
             ...(usageUpdate && {
@@ -1429,11 +1425,7 @@ export class RunAttemptSystem {
               parentTaskRunId: true,
               delayUntil: true,
               updatedAt: true,
-              runtimeEnvironment: {
-                select: {
-                  organizationId: true,
-                },
-              },
+              runtimeEnvironmentId: true,
               associatedWaitpoint: {
                 select: {
                   id: true,
@@ -1449,13 +1441,19 @@ export class RunAttemptSystem {
           prisma
         );
 
+        const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+        if (!env) {
+          throw new ServiceValidationError("Task run environment not found", 404);
+        }
+
         //if the run is delayed and hasn't started yet, we need to prevent it being added to the queue in future
         if (isInitialState(latestSnapshot.executionStatus) && run.delayUntil) {
           await this.delayedRunSystem.preventDelayedRunFromBeingEnqueued({ runId });
         }
 
         //remove it from the queue and release concurrency
-        await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
+        await this.$.runQueue.acknowledgeMessage(env.organizationId, runId, {
           removeFromWorkerQueue: true,
         });
 
@@ -1639,22 +1637,10 @@ export class RunAttemptSystem {
             updatedAt: true,
             usageDurationMs: true,
             costInCents: true,
+            runtimeEnvironmentId: true,
             associatedWaitpoint: {
               select: {
                 id: true,
-              },
-            },
-            runtimeEnvironment: {
-              select: {
-                id: true,
-                type: true,
-                organizationId: true,
-                project: {
-                  select: {
-                    id: true,
-                    organizationId: true,
-                  },
-                },
               },
             },
             taskEventStore: true,
@@ -1665,6 +1651,12 @@ export class RunAttemptSystem {
         this.$.prisma
       );
 
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+      if (!env) {
+        throw new ServiceValidationError("Task run environment not found", 404);
+      }
+
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run,
         snapshot: {
@@ -1672,15 +1664,15 @@ export class RunAttemptSystem {
           description: "Run failed",
         },
         previousSnapshotId: latestSnapshot.id,
-        environmentId: run.runtimeEnvironment.id,
-        environmentType: run.runtimeEnvironment.type,
-        projectId: run.runtimeEnvironment.project.id,
-        organizationId: run.runtimeEnvironment.project.organizationId,
+        environmentId: env.id,
+        environmentType: env.type,
+        projectId: env.projectId,
+        organizationId: env.organizationId,
         workerId,
         runnerId,
       });
 
-      await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
+      await this.$.runQueue.acknowledgeMessage(env.organizationId, runId, {
         removeFromWorkerQueue: true,
       });
 
@@ -1708,13 +1700,13 @@ export class RunAttemptSystem {
           costInCents: run.costInCents,
         },
         organization: {
-          id: run.runtimeEnvironment.project.organizationId,
+          id: env.organizationId,
         },
         project: {
-          id: run.runtimeEnvironment.project.id,
+          id: env.projectId,
         },
         environment: {
-          id: run.runtimeEnvironment.id,
+          id: env.id,
         },
       });
 
@@ -2012,14 +2004,11 @@ export class RunAttemptSystem {
       if (!metadata.success) {
         // Customer's metadata operations don't match the schema (typically
         // non-JSON values in `operations[].value`). System ignores it.
-        this.$.logger.warn(
-          "RunEngine.completeRunAttempt(): failed to validate flushed metadata",
-          {
-            runId,
-            flushedMetadata: completion.flushedMetadata,
-            error: metadata.error,
-          }
-        );
+        this.$.logger.warn("RunEngine.completeRunAttempt(): failed to validate flushed metadata", {
+          runId,
+          flushedMetadata: completion.flushedMetadata,
+          error: metadata.error,
+        });
 
         return;
       }

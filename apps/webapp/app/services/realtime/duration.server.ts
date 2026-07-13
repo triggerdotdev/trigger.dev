@@ -28,20 +28,19 @@ export function parseDuration(input: string): number {
   }
   const value = parseInt(match[1]!, 10);
   const unit = match[2]!;
-  const multiplier =
-    /^s/.test(unit)
-      ? 1
-      : /^m(?:in|ins|inute|inutes)?$/.test(unit)
-        ? 60
-        : /^h/.test(unit)
-          ? 3600
-          : /^d/.test(unit)
-            ? 86400
-            : /^w/.test(unit)
-              ? 604800
-              : /^y/.test(unit)
-                ? 31_536_000
-                : NaN;
+  const multiplier = /^s/.test(unit)
+    ? 1
+    : /^m(?:in|ins|inute|inutes)?$/.test(unit)
+      ? 60
+      : /^h/.test(unit)
+        ? 3600
+        : /^d/.test(unit)
+          ? 86400
+          : /^w/.test(unit)
+            ? 604800
+            : /^y/.test(unit)
+              ? 31_536_000
+              : NaN;
   if (!Number.isFinite(multiplier)) {
     throw new Error(`Invalid duration unit: ${unit}`);
   }

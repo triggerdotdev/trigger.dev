@@ -250,9 +250,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       // name registered, so subsequent attempts use a suffixed name.
       let suffixAttempts = false;
       for (; attempt <= this.createMaxAttempts; attempt++) {
-        const attemptRunnerId = suffixAttempts
-          ? runnerNameForAttempt(runnerId, attempt)
-          : runnerId;
+        const attemptRunnerId = suffixAttempts ? runnerNameForAttempt(runnerId, attempt) : runnerId;
         [error, data] = await tryCatch(
           this.compute.instances.create(
             attemptRunnerId === runnerId

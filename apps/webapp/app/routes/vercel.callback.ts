@@ -14,7 +14,7 @@ const VercelCallbackSchema = z
     error: z.string().optional(),
     error_description: z.string().optional(),
     configurationId: z.string().optional(),
-    next: z.string().optional()
+    next: z.string().optional(),
   })
   .passthrough();
 

@@ -725,6 +725,14 @@ export function branchesPath(
   return `${v3EnvironmentPath(organization, project, environment)}/branches`;
 }
 
+export function branchesDevPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/dev-branches`;
+}
+
 export function concurrencyPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -755,8 +763,13 @@ export function v3BillingPath(organization: OrgForPath, message?: string) {
   }`;
 }
 
+export function v3BillingLimitsPath(organization: OrgForPath) {
+  return `${organizationPath(organization)}/settings/billing-limits`;
+}
+
+/** @deprecated Use v3BillingLimitsPath — redirects from billing-alerts are preserved */
 export function v3BillingAlertsPath(organization: OrgForPath) {
-  return `${organizationPath(organization)}/settings/billing-alerts`;
+  return v3BillingLimitsPath(organization);
 }
 
 export function v3PrivateConnectionsPath(organization: OrgForPath) {

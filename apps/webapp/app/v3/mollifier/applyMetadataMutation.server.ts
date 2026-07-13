@@ -81,10 +81,7 @@ export async function applyMetadataMutationToBufferedRun(input: {
     if (!entry) return { kind: "not_found" };
     // Env+org check: an entry from a different env is treated as a
     // miss (not 403) so existence in other envs doesn't leak.
-    if (
-      entry.envId !== input.environmentId ||
-      entry.orgId !== input.organizationId
-    ) {
+    if (entry.envId !== input.environmentId || entry.orgId !== input.organizationId) {
       return { kind: "not_found" };
     }
     if (entry.status !== "QUEUED" || entry.materialised) {
@@ -146,7 +143,7 @@ export async function applyMetadataMutationToBufferedRun(input: {
       // metadata; ignore `body.metadata` to match PG behaviour.
       metadataObject = applyMetadataOperations(
         parseSnapshotMetadata(),
-        input.body.operations,
+        input.body.operations
       ).newMetadata;
     } else if (input.body.metadata !== undefined) {
       // No operations — full replace.

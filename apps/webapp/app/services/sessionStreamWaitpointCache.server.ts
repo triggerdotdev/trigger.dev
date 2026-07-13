@@ -87,13 +87,7 @@ export async function addSessionStreamWaitpoint(
 
   try {
     const key = buildKey(environmentId, addressingKey, io);
-    await redis.eval(
-      ADD_WAITPOINT_SCRIPT,
-      1,
-      key,
-      waitpointId,
-      String(ttlMs ?? DEFAULT_TTL_MS)
-    );
+    await redis.eval(ADD_WAITPOINT_SCRIPT, 1, key, waitpointId, String(ttlMs ?? DEFAULT_TTL_MS));
   } catch (error) {
     logger.error("Failed to set session stream waitpoint cache", {
       environmentId,

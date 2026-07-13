@@ -1,6 +1,7 @@
 import { Logger } from "@trigger.dev/core/logger";
-import { MollifierBuffer } from "./buffer.js";
-import { BufferEntry, deserialiseSnapshot } from "./schemas.js";
+import type { MollifierBuffer } from "./buffer.js";
+import type { BufferEntry } from "./schemas.js";
+import { deserialiseSnapshot } from "./schemas.js";
 
 export type MollifierDrainerHandler<TPayload> = (input: {
   runId: string;
@@ -132,9 +133,7 @@ export class MollifierDrainer<TPayload = unknown> {
     // commands into one batch, so the burst is cheap; SMEMBERS on a small set
     // is O(N) per org and trivial at this scale. `Promise.all` preserves
     // order, so the org→envs pairing below stays deterministic.
-    const envsByOrg = await Promise.all(
-      orgSlice.map((orgId) => this.buffer.listEnvsForOrg(orgId)),
-    );
+    const envsByOrg = await Promise.all(orgSlice.map((orgId) => this.buffer.listEnvsForOrg(orgId)));
     const targets: string[] = [];
     for (let i = 0; i < orgSlice.length; i++) {
       const orgId = orgSlice[i]!;
@@ -291,7 +290,7 @@ export class MollifierDrainer<TPayload = unknown> {
       if (winner === timeoutSentinel) {
         this.logger.warn(
           "MollifierDrainer.stop: deadline exceeded; returning while loop iteration is in flight",
-          { timeoutMs: options.timeoutMs },
+          { timeoutMs: options.timeoutMs }
         );
       }
     } finally {
@@ -419,14 +418,11 @@ export class MollifierDrainer<TPayload = unknown> {
         } catch (writeErr) {
           if (this.isRetryable(writeErr)) {
             await this.buffer.requeue(entry.runId);
-            this.logger.warn(
-              "MollifierDrainer: terminal-failure callback retryable; requeued",
-              {
-                runId: entry.runId,
-                attempts: nextAttempts,
-                writeErr,
-              },
-            );
+            this.logger.warn("MollifierDrainer: terminal-failure callback retryable; requeued", {
+              runId: entry.runId,
+              attempts: nextAttempts,
+              writeErr,
+            });
             return "failed";
           }
           this.logger.error("MollifierDrainer: terminal-failure callback failed", {

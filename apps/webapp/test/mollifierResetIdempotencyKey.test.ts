@@ -90,7 +90,7 @@ describe("ResetIdempotencyKeyService — buffer-outage handling", () => {
 
     const error = await service.call("ikey", "task", env).then(
       () => null,
-      (err) => err,
+      (err) => err
     );
     expect(error).toBeInstanceOf(ServiceValidationError);
     expect(error.status).toBe(503);

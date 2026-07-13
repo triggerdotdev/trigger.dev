@@ -209,7 +209,10 @@ export function TriggerLoginStepV3({ title }: TabsProps) {
   );
 }
 
-export function TriggerDeployStep({ title, environment }: TabsProps & { environment: { type: string } }) {
+export function TriggerDeployStep({
+  title,
+  environment,
+}: TabsProps & { environment: { type: string } }) {
   const triggerCliTag = useTriggerCliTag();
   const { activePackageManager, setActivePackageManager } = usePackageManager();
 

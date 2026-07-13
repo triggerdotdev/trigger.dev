@@ -7,16 +7,14 @@ import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 import { PassThrough } from "stream";
-import * as Worker from "~/services/worker.server";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
+import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
-import {
-  OperatingSystemContextProvider,
-  OperatingSystemPlatform,
-} from "./components/primitives/OperatingSystemProvider";
-import { Prisma } from "./db.server";
+import type { OperatingSystemPlatform } from "./components/primitives/OperatingSystemProvider";
+import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
+import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
 import { eventLoopMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
@@ -41,8 +39,7 @@ import { registerRunChangeNotifierHandlers } from "./services/realtime/runChange
 // to globalThis is an unambiguous side effect the bundler must preserve. See
 // TRI-9864 for the incident write-up.
 import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
-(globalThis as Record<string, unknown>).__sessionsReplicationInstance =
-  sessionsReplicationInstance;
+(globalThis as Record<string, unknown>).__sessionsReplicationInstance = sessionsReplicationInstance;
 import { globalFlagsRegistry } from "./v3/globalFlagsRegistry.server";
 (globalThis as Record<string, unknown>).__globalFlagsRegistry = globalFlagsRegistry;
 import { workerRegionRegistry } from "./v3/workerRegions.server";
@@ -229,12 +226,9 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
   }
 });
 
-Worker.init().catch((error) => {
-  logError(error);
-});
-
 initMollifierDrainerWorker();
 initMollifierStaleSweepWorker();
+initBillingLimitWorker();
 
 bootstrap().catch((error) => {
   logError(error);
@@ -242,10 +236,6 @@ bootstrap().catch((error) => {
 
 function logError(error: unknown, request?: Request) {
   console.error(error);
-
-  if (error instanceof Error && error.message.startsWith("There are locked jobs present")) {
-    console.log("⚠️  graphile-worker migration issue detected!");
-  }
 }
 
 process.on("uncaughtException", (error, origin) => {
@@ -270,6 +260,17 @@ process.on("uncaughtException", (error, origin) => {
   }
 
   process.exit(1);
+});
+
+// Boot-time run-ops split interlock. Async, so it runs as a
+// fire-and-forget at startup; a flag-on-but-sentinel-fails misconfig crashes
+// the process loudly before any run-ops routing is wired.
+singleton("AssertRunOpsSplitSentinel", () => {
+  assertRunOpsSplitSentinel().catch((error) => {
+    logger.error("Run-ops split sentinel assertion failed; refusing to start", { error });
+    process.exit(1);
+  });
+  return true;
 });
 
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);

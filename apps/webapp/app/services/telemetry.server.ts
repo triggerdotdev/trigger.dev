@@ -1,6 +1,6 @@
 import { PostHog } from "posthog-node";
 import { env } from "~/env.server";
-import { MatchedOrganization } from "~/hooks/useOrganizations";
+import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";
@@ -22,7 +22,7 @@ class Telemetry {
     }
 
     if (postHogApiKey) {
-      this.#posthogClient = new PostHog(postHogApiKey, { host: "https://eu.posthog.com" });
+      this.#posthogClient = new PostHog(postHogApiKey, { host: env.POSTHOG_HOST });
     } else {
       console.log("No PostHog API key, so analytics won't track");
     }
@@ -47,11 +47,11 @@ class Telemetry {
           createdAt: user.createdAt,
           isNewUser,
         };
-        
+
         if (referralSource) {
           properties.referralSource = referralSource;
         }
-        
+
         this.#posthogClient.identify({
           distinctId: user.id,
           properties,

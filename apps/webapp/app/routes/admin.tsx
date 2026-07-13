@@ -4,9 +4,8 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { Tabs } from "~/components/primitives/Tabs";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 
-export const loader = dashboardLoader(
-  { authorization: { requireSuper: true } },
-  async ({ user }) => typedjson({ user })
+export const loader = dashboardLoader({ authorization: { requireSuper: true } }, async ({ user }) =>
+  typedjson({ user })
 );
 
 export default function Page() {
@@ -26,10 +25,6 @@ export default function Page() {
             {
               label: "Organizations",
               to: `/admin/orgs${searchSuffix}`,
-            },
-            {
-              label: "Concurrency",
-              to: "/admin/concurrency",
             },
             {
               label: "LLM Models",

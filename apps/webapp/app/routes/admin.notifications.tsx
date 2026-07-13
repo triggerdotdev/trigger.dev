@@ -229,8 +229,8 @@ async function handleCreateAction(formData: FormData, userId: string, isPreview:
     startsAt: isPreview
       ? new Date().toISOString()
       : fields.startsAt
-      ? new Date(fields.startsAt + "Z").toISOString()
-      : new Date().toISOString(),
+        ? new Date(fields.startsAt + "Z").toISOString()
+        : new Date().toISOString(),
     endsAt: isPreview
       ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
       : new Date(fields.endsAt + "Z").toISOString(),
@@ -458,7 +458,7 @@ export default function AdminNotificationsRoute() {
             ) : (
               notifications.map((n) => {
                 const status = getNotificationStatus(n);
-                const isActive = status === "active";
+                const _isActive = status === "active";
                 return (
                   <TableRow key={n.id} className="group/row">
                     <TableCell>
@@ -862,7 +862,7 @@ function NotificationForm({
       {surface === "CLI" && (title || description) && (
         <div>
           <Label variant="small">CLI preview</Label>
-          <div className="mt-1 rounded border border-grid-dimmed bg-charcoal-900 p-3 font-mono text-xs leading-relaxed">
+          <div className="mt-1 rounded border border-grid-dimmed bg-background-deep p-3 font-mono text-xs leading-relaxed">
             {title && (
               <p className="font-bold text-text-bright">
                 <CliColorMarkup text={title} fallbackClass="text-text-bright" />
@@ -1002,7 +1002,7 @@ function NotificationForm({
             defaultValue={
               n?.startsAt ? toDatetimeLocalUTC(new Date(n.startsAt)) : defaultStartsAt()
             }
-            className="mt-1 block h-8 w-full rounded border border-charcoal-800 bg-charcoal-750 px-2 text-sm text-text-bright transition hover:border-charcoal-600 hover:bg-charcoal-650"
+            className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
             required={isEdit}
           />
         </div>
@@ -1014,7 +1014,7 @@ function NotificationForm({
             name="endsAt"
             type="datetime-local"
             defaultValue={n?.endsAt ? toDatetimeLocalUTC(new Date(n.endsAt)) : defaultEndsAt()}
-            className="mt-1 block h-8 w-full rounded border border-charcoal-800 bg-charcoal-750 px-2 text-sm text-text-bright transition hover:border-charcoal-600 hover:bg-charcoal-650"
+            className="mt-1 block h-8 w-full rounded border border-background-bright bg-background-hover px-2 text-sm text-text-bright transition hover:border-border-bright hover:bg-secondary"
             required
           />
         </div>
@@ -1024,7 +1024,7 @@ function NotificationForm({
         <>
           <input type="hidden" name="discoveryMatchBehavior" value={discoveryMatchBehavior} />
 
-          <div className="grid grid-cols-3 gap-3 rounded border border-grid-dimmed bg-charcoal-900 p-3">
+          <div className="grid grid-cols-3 gap-3 rounded border border-grid-dimmed bg-background-deep p-3">
             <div>
               <Label variant="small">Max show count</Label>
               <Input
@@ -1065,7 +1065,7 @@ function NotificationForm({
             </div>
           </div>
 
-          <div className="space-y-3 rounded border border-grid-dimmed bg-charcoal-900 p-3">
+          <div className="space-y-3 rounded border border-grid-dimmed bg-background-deep p-3">
             <Paragraph variant="small" className="text-text-dimmed">
               Discovery (optional) — only show notification if file pattern matches
             </Paragraph>
@@ -1107,10 +1107,7 @@ function NotificationForm({
                 >
                   {(items) =>
                     items.map((item) => (
-                      <SelectItem
-                        key={item === DISCOVERY_MATCH_NONE ? "none" : item}
-                        value={item}
-                      >
+                      <SelectItem key={item === DISCOVERY_MATCH_NONE ? "none" : item} value={item}>
                         {item === DISCOVERY_MATCH_NONE ? DISCOVERY_MATCH_LABEL : item}
                       </SelectItem>
                     ))
@@ -1211,7 +1208,7 @@ function NotificationDetailContent({
               image={n.payloadImage ?? undefined}
             />
           ) : (
-            <div className="rounded border border-grid-dimmed bg-charcoal-900 p-3 font-mono text-xs leading-relaxed">
+            <div className="rounded border border-grid-dimmed bg-background-deep p-3 font-mono text-xs leading-relaxed">
               <p className="font-bold text-text-bright">
                 <CliColorMarkup text={n.payloadTitle} fallbackClass="text-text-bright" />
               </p>
@@ -1286,7 +1283,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded border border-grid-dimmed bg-charcoal-900 p-2 text-center">
+    <div className="rounded border border-grid-dimmed bg-background-deep p-2 text-center">
       <p className="font-mono text-lg font-medium text-text-bright">{value}</p>
       <p className="text-xs text-text-dimmed">{label}</p>
     </div>
@@ -1374,7 +1371,7 @@ function Badge({
     amber: "bg-amber-500/20 text-amber-400",
     blue: "bg-blue-500/20 text-blue-400",
     green: "bg-green-500/20 text-green-400",
-    gray: "bg-charcoal-700 text-text-dimmed",
+    gray: "bg-background-raised text-text-dimmed",
   };
 
   return (
@@ -1438,7 +1435,7 @@ function StatusBadge({ status }: { status: NotificationStatus }) {
     active: "bg-green-500/20 text-green-400",
     pending: "bg-blue-500/20 text-blue-400",
     releasing: "bg-amber-500/20 text-amber-400",
-    expired: "bg-charcoal-700 text-text-dimmed",
+    expired: "bg-background-raised text-text-dimmed",
     archived: "bg-red-500/20 text-red-400",
   };
 

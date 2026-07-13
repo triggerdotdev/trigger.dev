@@ -1,17 +1,12 @@
-import { useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher } from "@remix-run/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Feedback } from "~/components/Feedback";
 import { Button } from "~/components/primitives/Buttons";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -54,14 +49,14 @@ export function PurchaseSchedulesModal({
   const showSelfServe = useShowSelfServe();
   const fetcher = useFetcher();
   const lastSubmission =
-    fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
+    fetcher.data && typeof fetcher.data === "object" && "status" in fetcher.data
       ? fetcher.data
       : undefined;
   const [form, { amount }] = useForm({
     id: "purchase-schedules",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: PurchaseSchema });
+      return parseWithZod(formData, { schema: PurchaseSchema });
     },
     shouldRevalidate: "onSubmit",
   });
@@ -128,7 +123,7 @@ export function PurchaseSchedulesModal({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <fetcher.Form method="post" action={actionPath} {...form.props}>
+        <fetcher.Form method="post" action={actionPath} {...getFormProps(form)}>
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
               <Paragraph variant="small/bright">
@@ -155,10 +150,8 @@ export function PurchaseSchedulesModal({
                   {formatNumber(bundles)} {bundles === 1 ? "bundle" : "bundles"} ={" "}
                   {formatNumber(amountValue)} schedules
                 </Paragraph>
-                <FormError id={amount.errorId}>
-                  {amount.error ?? amount.initialError?.[""]?.[0]}
-                </FormError>
-                <FormError>{form.error}</FormError>
+                <FormError id={amount.errorId}>{amount.errors}</FormError>
+                <FormError>{form.errors}</FormError>
               </InputGroup>
             </Fieldset>
             {state === "need_to_delete" ? (

@@ -2,6 +2,7 @@ import { type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { nanoid } from "nanoid";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 export class ArchiveBranchService {
   #prismaClient: PrismaClient;
@@ -38,6 +39,17 @@ export class ArchiveBranchService {
                   },
                 }
               : { id: orgFilter.organizationId },
+          // Dev branches are per-org-member, so org membership alone isn't enough:
+          // only the owner may archive their own dev branch. Non-dev branches (e.g.
+          // preview) remain scoped by org membership only.
+          ...(orgFilter.type === "userMembership"
+            ? {
+                OR: [
+                  { type: { not: "DEVELOPMENT" as const } },
+                  { orgMember: { userId: orgFilter.userId } },
+                ],
+              }
+            : {}),
         },
         include: {
           organization: {
@@ -56,13 +68,22 @@ export class ArchiveBranchService {
         },
       });
 
+      // A branch is defined by having a parent; any root (dev/preview parent,
+      // prod, staging) has none and can't be archived. For dev, that root is
+      // the default branch, so give the clearer message.
       if (!environment.parentEnvironmentId) {
         return {
           success: false as const,
-          error: "This isn't a branch, and cannot be archived.",
+          error:
+            environment.type === "DEVELOPMENT"
+              ? "The default development branch cannot be archived."
+              : "This isn't a branch, and cannot be archived.",
         };
       }
 
+      // Branch archive is a SOFT update — do NOT hard-delete run-ops rows here (it would destroy a
+      // retained branch's history). Any env hard-delete/purge belongs on a dedicated purge path
+      // (owned by the cloud env-purge runbook), which has no site today.
       const slug = `${environment.slug}-${nanoid(6)}`;
       const shortcode = slug;
 
@@ -70,6 +91,9 @@ export class ArchiveBranchService {
         where: { id: environmentId },
         data: { archivedAt: new Date(), slug, shortcode },
       });
+
+      // archivedAt/slug/shortcode changed in the control-plane; drop any cached copy.
+      controlPlaneResolver.invalidateEnvironment(environmentId);
 
       return {
         success: true as const,

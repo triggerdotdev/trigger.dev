@@ -1,13 +1,7 @@
-import {
-  InputStreamOncePromise,
-  InputStreamOnceResult,
-  InputStreamTimeoutError,
-} from "../inputStreams/types.js";
+import type { InputStreamOnceResult } from "../inputStreams/types.js";
+import { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
-import type {
-  SessionChannelIO,
-  SessionStreamManager,
-} from "../sessionStreams/types.js";
+import type { SessionChannelIO, SessionStreamManager } from "../sessionStreams/types.js";
 
 type OnceWaiter = {
   resolve: (value: InputStreamOnceResult<unknown>) => void;
@@ -39,12 +33,9 @@ export class TestSessionStreamManager implements SessionStreamManager {
   private onceWaiters = new Map<string, OnceWaiter[]>();
   private buffer = new Map<string, unknown[]>();
   private seqNums = new Map<string, number>();
+  private dispatchedSeqNums = new Map<string, number>();
 
-  on(
-    sessionId: string,
-    io: SessionChannelIO,
-    handler: Handler
-  ): { off: () => void } {
+  on(sessionId: string, io: SessionChannelIO, handler: Handler): { off: () => void } {
     const key = keyFor(sessionId, io);
 
     let set = this.handlers.get(key);
@@ -160,19 +151,20 @@ export class TestSessionStreamManager implements SessionStreamManager {
     this.seqNums.set(keyFor(sessionId, io), seqNum);
   }
 
-  lastDispatchedSeqNum(_sessionId: string, _io: SessionChannelIO): number | undefined {
-    // The test harness drives records via `__sendFromTest` without seq
-    // numbers, so the committed-consume cursor stays undefined. Tests
-    // that need cursor behaviour exercise it via the real manager.
-    return undefined;
+  lastDispatchedSeqNum(sessionId: string, io: SessionChannelIO): number | undefined {
+    // `__sendFromTest` carries no seq numbers, so this only reflects
+    // explicit `setLastDispatchedSeqNum` calls (e.g. the waitpoint
+    // delivery path). Full cursor behaviour is exercised via the real
+    // manager.
+    return this.dispatchedSeqNums.get(keyFor(sessionId, io));
   }
 
-  setLastDispatchedSeqNum(
-    _sessionId: string,
-    _io: SessionChannelIO,
-    _seqNum: number
-  ): void {
-    // no-op — see comment on `lastDispatchedSeqNum`.
+  setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
+    const key = keyFor(sessionId, io);
+    const current = this.dispatchedSeqNums.get(key);
+    if (current === undefined || seqNum > current) {
+      this.dispatchedSeqNums.set(key, seqNum);
+    }
   }
 
   setMinTimestamp(
@@ -216,6 +208,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
     this.handlers.clear();
     this.buffer.clear();
     this.seqNums.clear();
+    this.dispatchedSeqNums.clear();
   }
 
   disconnect(): void {
@@ -242,11 +235,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
    * resolves. Consumption is decided on the synchronous return value,
    * exactly like production.
    */
-  async __sendFromTest(
-    sessionId: string,
-    io: SessionChannelIO,
-    data: unknown
-  ): Promise<void> {
+  async __sendFromTest(sessionId: string, io: SessionChannelIO, data: unknown): Promise<void> {
     const key = keyFor(sessionId, io);
 
     const waiters = this.onceWaiters.get(key);

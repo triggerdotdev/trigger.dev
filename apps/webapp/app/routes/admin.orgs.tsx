@@ -118,19 +118,13 @@ export default function AdminDashboardRoute() {
                     </TableCell>
                     <TableCell>{org.deletedAt ? "☠️" : ""}</TableCell>
                     <TableCell>
-                      <LinkButton
-                        to={`/admin/back-office/orgs/${org.id}`}
-                        variant="tertiary/small"
-                      >
+                      <LinkButton to={`/admin/back-office/orgs/${org.id}`} variant="tertiary/small">
                         Open
                       </LinkButton>
                     </TableCell>
                     <TableCell isSticky={true}>
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="tertiary/small"
-                          onClick={() => openFlagsDialog(org.id)}
-                        >
+                        <Button variant="tertiary/small" onClick={() => openFlagsDialog(org.id)}>
                           Flags
                         </Button>
                         <LinkButton

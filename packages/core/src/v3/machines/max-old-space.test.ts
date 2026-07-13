@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { nodeOptionsWithMaxOldSpaceSize } from "./index.js";
-import { MachinePreset } from "../schemas/common.js";
+import type { MachinePreset } from "../schemas/common.js";
 
 describe("nodeOptionsWithMaxOldSpaceSize", () => {
   const testMachine: MachinePreset = {

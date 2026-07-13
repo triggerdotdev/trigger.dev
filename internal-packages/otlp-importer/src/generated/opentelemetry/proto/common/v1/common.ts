@@ -93,7 +93,9 @@ export const AnyValue = {
     }
     if (message.intValue !== undefined) {
       if (BigInt.asIntN(64, message.intValue) !== message.intValue) {
-        throw new globalThis.Error("value provided for field message.intValue of type int64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.intValue of type int64 too large"
+        );
       }
       writer.uint32(24).int64(message.intValue.toString());
     }
@@ -184,8 +186,12 @@ export const AnyValue = {
       intValue: isSet(object.intValue) ? BigInt(object.intValue) : undefined,
       doubleValue: isSet(object.doubleValue) ? globalThis.Number(object.doubleValue) : undefined,
       arrayValue: isSet(object.arrayValue) ? ArrayValue.fromJSON(object.arrayValue) : undefined,
-      kvlistValue: isSet(object.kvlistValue) ? KeyValueList.fromJSON(object.kvlistValue) : undefined,
-      bytesValue: isSet(object.bytesValue) ? Buffer.from(bytesFromBase64(object.bytesValue)) : undefined,
+      kvlistValue: isSet(object.kvlistValue)
+        ? KeyValueList.fromJSON(object.kvlistValue)
+        : undefined,
+      bytesValue: isSet(object.bytesValue)
+        ? Buffer.from(bytesFromBase64(object.bytesValue))
+        : undefined,
     };
   },
 
@@ -224,12 +230,14 @@ export const AnyValue = {
     message.boolValue = object.boolValue ?? undefined;
     message.intValue = object.intValue ?? undefined;
     message.doubleValue = object.doubleValue ?? undefined;
-    message.arrayValue = (object.arrayValue !== undefined && object.arrayValue !== null)
-      ? ArrayValue.fromPartial(object.arrayValue)
-      : undefined;
-    message.kvlistValue = (object.kvlistValue !== undefined && object.kvlistValue !== null)
-      ? KeyValueList.fromPartial(object.kvlistValue)
-      : undefined;
+    message.arrayValue =
+      object.arrayValue !== undefined && object.arrayValue !== null
+        ? ArrayValue.fromPartial(object.arrayValue)
+        : undefined;
+    message.kvlistValue =
+      object.kvlistValue !== undefined && object.kvlistValue !== null
+        ? KeyValueList.fromPartial(object.kvlistValue)
+        : undefined;
     message.bytesValue = object.bytesValue ?? undefined;
     return message;
   },
@@ -272,7 +280,9 @@ export const ArrayValue = {
 
   fromJSON(object: any): ArrayValue {
     return {
-      values: globalThis.Array.isArray(object?.values) ? object.values.map((e: any) => AnyValue.fromJSON(e)) : [],
+      values: globalThis.Array.isArray(object?.values)
+        ? object.values.map((e: any) => AnyValue.fromJSON(e))
+        : [],
     };
   },
 
@@ -331,7 +341,9 @@ export const KeyValueList = {
 
   fromJSON(object: any): KeyValueList {
     return {
-      values: globalThis.Array.isArray(object?.values) ? object.values.map((e: any) => KeyValue.fromJSON(e)) : [],
+      values: globalThis.Array.isArray(object?.values)
+        ? object.values.map((e: any) => KeyValue.fromJSON(e))
+        : [],
     };
   },
 
@@ -422,9 +434,10 @@ export const KeyValue = {
   fromPartial<I extends Exact<DeepPartial<KeyValue>, I>>(object: I): KeyValue {
     const message = createBaseKeyValue();
     message.key = object.key ?? "";
-    message.value = (object.value !== undefined && object.value !== null)
-      ? AnyValue.fromPartial(object.value)
-      : undefined;
+    message.value =
+      object.value !== undefined && object.value !== null
+        ? AnyValue.fromPartial(object.value)
+        : undefined;
     return message;
   },
 };
@@ -527,7 +540,9 @@ export const InstrumentationScope = {
   create<I extends Exact<DeepPartial<InstrumentationScope>, I>>(base?: I): InstrumentationScope {
     return InstrumentationScope.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<InstrumentationScope>, I>>(object: I): InstrumentationScope {
+  fromPartial<I extends Exact<DeepPartial<InstrumentationScope>, I>>(
+    object: I
+  ): InstrumentationScope {
     const message = createBaseInstrumentationScope();
     message.name = object.name ?? "";
     message.version = object.version ?? "";
@@ -564,14 +579,19 @@ function base64FromBytes(arr: Uint8Array): string {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin ? T
-  : T extends globalThis.Array<infer U> ? globalThis.Array<DeepPartial<U>>
-  : T extends ReadonlyArray<infer U> ? ReadonlyArray<DeepPartial<U>>
-  : T extends {} ? { [K in keyof T]?: DeepPartial<T[K]> }
-  : Partial<T>;
+export type DeepPartial<T> = T extends Builtin
+  ? T
+  : T extends globalThis.Array<infer U>
+    ? globalThis.Array<DeepPartial<U>>
+    : T extends ReadonlyArray<infer U>
+      ? ReadonlyArray<DeepPartial<U>>
+      : T extends {}
+        ? { [K in keyof T]?: DeepPartial<T[K]> }
+        : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin ? P
+export type Exact<P, I extends P> = P extends Builtin
+  ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {

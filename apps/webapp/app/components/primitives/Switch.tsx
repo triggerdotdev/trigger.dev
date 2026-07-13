@@ -7,7 +7,7 @@ import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKey
 
 const small = {
   container:
-    "flex items-center h-[1.5rem] gap-x-1.5 rounded hover:bg-tertiary pr-1 py-[0.1rem] pl-1.5 hover:disabled:bg-charcoal-700 transition focus-custom disabled:opacity-50 text-text-dimmed hover:text-text-bright disabled:hover:cursor-not-allowed hover:cursor-pointer disabled:hover:text-rose-500",
+    "flex items-center h-6 gap-x-1.5 rounded hover:bg-tertiary pr-1 py-[0.1rem] pl-1.5 hover:disabled:bg-background-raised transition focus-custom disabled:opacity-50 text-text-dimmed hover:text-text-bright disabled:hover:cursor-not-allowed hover:cursor-pointer disabled:hover:text-rose-500",
   root: "h-3 w-6",
   thumb: "size-2.5 data-[state=checked]:translate-x-2.5 data-[state=unchecked]:translate-x-0",
   text: "text-xs text-text-dimmed",
@@ -25,25 +25,25 @@ const variations = {
     container: small.container,
     root: cn(
       small.root,
-      "group-data-[state=unchecked]:bg-charcoal-600 group-data-[state=unchecked]:group-hover:bg-charcoal-500/50"
+      "group-data-[state=unchecked]:bg-surface-control group-hover:group-data-[state=unchecked]:bg-surface-control-active/50"
     ),
     thumb: small.thumb,
     text: cn(
       small.text,
-      "transition group-hover:text-text-bright group-disabled:group-hover:text-text-dimmed"
+      "transition group-hover:text-text-bright group-hover:group-disabled:text-text-dimmed"
     ),
   },
   "secondary/small": {
     container: cn(
       small.container,
-      "border border-charcoal-600 hover:border-charcoal-550 bg-secondary hover:bg-charcoal-600"
+      "border border-border-bright hover:border-border-brighter bg-secondary hover:bg-surface-control"
     ),
     root: cn(
       small.root,
-      "group-data-[state=unchecked]:bg-charcoal-550 group-data-[state=unchecked]:group-hover:bg-charcoal-500"
+      "group-data-[state=unchecked]:bg-surface-control-hover group-hover:group-data-[state=unchecked]:bg-surface-control-active"
     ),
     thumb: small.thumb,
-    text: cn(small.text, "transition text-text-bright group-disabled:group-hover:text-text-dimmed"),
+    text: cn(small.text, "transition text-text-bright group-hover:group-disabled:text-text-dimmed"),
   },
   medium: {
     container:
@@ -91,7 +91,7 @@ export const Switch = React.forwardRef<React.ElementRef<typeof SwitchPrimitives.
     const switchElement = (
       <div
         className={cn(
-          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-blue-500 group-data-[state=unchecked]:bg-charcoal-700 group-data-[state=unchecked]:group-hover:bg-charcoal-500/50",
+          "inline-flex shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors group-disabled:cursor-not-allowed group-disabled:opacity-50 group-data-[state=checked]:bg-blue-500 group-data-[state=unchecked]:bg-background-raised group-hover:group-data-[state=unchecked]:bg-surface-control-active/50",
           root
         )}
       >

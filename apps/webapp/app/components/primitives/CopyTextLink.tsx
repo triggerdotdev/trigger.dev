@@ -16,18 +16,12 @@ export function CopyTextLink({ value, className }: CopyTextLinkProps) {
       onClick={copy}
       className={cn(
         "inline-flex cursor-pointer items-center gap-1 text-xs transition-colors",
-        copied
-          ? "text-success"
-          : "text-text-dimmed hover:text-text-bright",
+        copied ? "text-success" : "text-text-dimmed hover:text-text-bright",
         className
       )}
     >
       {copied ? "Copied" : "Copy"}
-      {copied ? (
-        <ClipboardCheckIcon className="size-3" />
-      ) : (
-        <ClipboardIcon className="size-3" />
-      )}
+      {copied ? <ClipboardCheckIcon className="size-3" /> : <ClipboardIcon className="size-3" />}
     </button>
   );
 }

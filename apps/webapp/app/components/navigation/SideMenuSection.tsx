@@ -40,7 +40,7 @@ export function SideMenuSection({
       <div className="relative w-full">
         {/* Header - fades out when sidebar is collapsed */}
         <motion.div
-          className="group/section flex cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 transition hover:bg-charcoal-750"
+          className="group/section flex cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 transition hover:bg-background-hover"
           initial={false}
           animate={{
             opacity: isSideMenuCollapsed ? 0 : 1,
@@ -63,7 +63,7 @@ export function SideMenuSection({
         </motion.div>
         {/* Divider - absolutely positioned, visible when sidebar is collapsed but section is expanded */}
         <motion.div
-          className="absolute left-2 right-2 top-1 h-px bg-charcoal-600"
+          className="absolute left-2 right-2 top-1 h-px bg-surface-control"
           initial={false}
           animate={{
             opacity: isSideMenuCollapsed && !isCollapsed ? 1 : 0,

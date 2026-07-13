@@ -101,7 +101,7 @@ describe("runStaleSweepOnce — unit", () => {
     const spies = spyDeps();
     const result = await runStaleSweepOnce(
       { staleThresholdMs: 1000 },
-      { ...spies.deps, getBuffer: () => null, state: makeFakeState() },
+      { ...spies.deps, getBuffer: () => null, state: makeFakeState() }
     );
     expect(result).toEqual({
       orgsScanned: 0,
@@ -157,8 +157,8 @@ describe("runStaleSweepOnce — unit", () => {
           state: failingState,
           getBuffer: () => buffer,
           now: () => Date.now(),
-        },
-      ),
+        }
+      )
     ).rejects.toThrow("Redis read failed");
 
     expect(readAttempts).toBe(1);
@@ -220,7 +220,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
               getBuffer: () => buffer,
               state,
               now: () => futureNow,
-            },
+            }
           );
 
           expect(result.envsScanned).toBe(2);
@@ -250,7 +250,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -278,7 +278,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         const spies = spyDeps();
         await runStaleSweepOnce(
           { staleThresholdMs: 60 * 1000 },
-          { ...spies.deps, getBuffer: () => buffer, state },
+          { ...spies.deps, getBuffer: () => buffer, state }
         );
         expect(spies.snapshots).toHaveLength(1);
         // env_a has entries but none stale → not in the snapshot.
@@ -287,7 +287,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         await state.close();
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -310,7 +310,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         const spies = spyDeps();
         const result = await runStaleSweepOnce(
           { staleThresholdMs: 60 * 1000 },
-          { ...spies.deps, getBuffer: () => buffer, state },
+          { ...spies.deps, getBuffer: () => buffer, state }
         );
         expect(result.staleCount).toBe(0);
         expect(spies.staleEntryCount).toBe(0);
@@ -319,7 +319,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         await state.close();
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -376,7 +376,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         await state.close();
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -430,7 +430,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         await state.close();
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -501,48 +501,44 @@ describe("runStaleSweepOnce — testcontainers", () => {
         await state.close();
         await buffer.close();
       }
-    },
+    }
   );
 
-  redisTest(
-    "scans across multiple orgs",
-    { timeout: 20_000 },
-    async ({ redisOptions }) => {
-      // The drainer pops with org-level fairness, so the sweep must
-      // walk every org/env to surface stale entries across all of them
-      // — not just stop at the first env it finds. If a future refactor
-      // collapsed listOrgs/listEnvsForOrg into a single env-flat list,
-      // this test catches a regression there.
-      const buffer = new MollifierBuffer({ redisOptions });
-      const state = new MollifierStaleSweepState({ redisOptions });
-      try {
-        await buffer.accept({
-          runId: "run_x",
-          envId: "env_x",
-          orgId: "org_x",
-          payload: JSON.stringify(SNAPSHOT),
-        });
-        await buffer.accept({
-          runId: "run_y",
-          envId: "env_y",
-          orgId: "org_y",
-          payload: JSON.stringify(SNAPSHOT),
-        });
-        const futureNow = Date.now() + 5 * 60 * 1000;
-        const spies = spyDeps();
-        const result = await runStaleSweepOnce(
-          { staleThresholdMs: 60 * 1000 },
-          { ...spies.deps, getBuffer: () => buffer, state, now: () => futureNow },
-        );
-        expect(result.orgsScanned).toBe(2);
-        expect(result.envsScanned).toBe(2);
-        expect(result.staleCount).toBe(2);
-      } finally {
-        await state.close();
-        await buffer.close();
-      }
-    },
-  );
+  redisTest("scans across multiple orgs", { timeout: 20_000 }, async ({ redisOptions }) => {
+    // The drainer pops with org-level fairness, so the sweep must
+    // walk every org/env to surface stale entries across all of them
+    // — not just stop at the first env it finds. If a future refactor
+    // collapsed listOrgs/listEnvsForOrg into a single env-flat list,
+    // this test catches a regression there.
+    const buffer = new MollifierBuffer({ redisOptions });
+    const state = new MollifierStaleSweepState({ redisOptions });
+    try {
+      await buffer.accept({
+        runId: "run_x",
+        envId: "env_x",
+        orgId: "org_x",
+        payload: JSON.stringify(SNAPSHOT),
+      });
+      await buffer.accept({
+        runId: "run_y",
+        envId: "env_y",
+        orgId: "org_y",
+        payload: JSON.stringify(SNAPSHOT),
+      });
+      const futureNow = Date.now() + 5 * 60 * 1000;
+      const spies = spyDeps();
+      const result = await runStaleSweepOnce(
+        { staleThresholdMs: 60 * 1000 },
+        { ...spies.deps, getBuffer: () => buffer, state, now: () => futureNow }
+      );
+      expect(result.orgsScanned).toBe(2);
+      expect(result.envsScanned).toBe(2);
+      expect(result.staleCount).toBe(2);
+    } finally {
+      await state.close();
+      await buffer.close();
+    }
+  });
 
   redisTest(
     "state survives process restart: a second state instance picks up the cursor and counts",
@@ -611,7 +607,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         await state2.close();
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -672,7 +668,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         await state.close();
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -690,7 +686,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         const spies = spyDeps();
         const result = await runStaleSweepOnce(
           { staleThresholdMs: 60 * 1000, maxOrgsPerPass: 10 },
-          { ...spies.deps, getBuffer: () => buffer, state },
+          { ...spies.deps, getBuffer: () => buffer, state }
         );
         expect(result).toEqual({
           orgsScanned: 0,
@@ -706,7 +702,7 @@ describe("runStaleSweepOnce — testcontainers", () => {
         await state.close();
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -754,19 +750,23 @@ describe("runStaleSweepOnce — testcontainers", () => {
         await state.close();
         await buffer.close();
       }
-    },
+    }
   );
 });
 
 describe("MollifierStaleSweepState — direct unit tests", () => {
-  redisTest("readCursor returns 0 when the key is absent", { timeout: 20_000 }, async ({ redisOptions }) => {
-    const state = new MollifierStaleSweepState({ redisOptions });
-    try {
-      expect(await state.readCursor()).toBe(0);
-    } finally {
-      await state.close();
+  redisTest(
+    "readCursor returns 0 when the key is absent",
+    { timeout: 20_000 },
+    async ({ redisOptions }) => {
+      const state = new MollifierStaleSweepState({ redisOptions });
+      try {
+        expect(await state.readCursor()).toBe(0);
+      } finally {
+        await state.close();
+      }
     }
-  });
+  );
 
   redisTest(
     "writeCursor + readCursor round-trip; readCursor parses a non-numeric value as 0",
@@ -784,7 +784,7 @@ describe("MollifierStaleSweepState — direct unit tests", () => {
       } finally {
         await state.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -812,7 +812,7 @@ describe("MollifierStaleSweepState — direct unit tests", () => {
       } finally {
         await state.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -834,7 +834,7 @@ describe("MollifierStaleSweepState — direct unit tests", () => {
       } finally {
         await state.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -855,7 +855,7 @@ describe("MollifierStaleSweepState — direct unit tests", () => {
       } finally {
         await state.close();
       }
-    },
+    }
   );
 });
 
@@ -940,7 +940,7 @@ describe("startStaleSweepInterval — lifecycle", () => {
         reportStaleEntrySnapshot: () => {},
         logger: { warn: () => {} },
         now: () => Date.now(),
-      },
+      }
     );
 
     // Wait for the interval to fire one tick. The tick will start, call
@@ -969,8 +969,6 @@ describe("startStaleSweepInterval — lifecycle", () => {
     // The tick's readCursor:end MUST appear before the close — otherwise
     // we closed the Redis client out from under an in-flight tick.
     expect(callOrder.indexOf("readCursor:end")).toBeGreaterThan(-1);
-    expect(callOrder.indexOf("close")).toBeGreaterThan(
-      callOrder.indexOf("readCursor:end"),
-    );
+    expect(callOrder.indexOf("close")).toBeGreaterThan(callOrder.indexOf("readCursor:end"));
   });
 });

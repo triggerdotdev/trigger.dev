@@ -10,7 +10,9 @@ const DELAY_MS = 200;
 const SETTLE_MS = 600;
 
 function createService() {
-  const snapshot = vi.fn(async (_opts: { runnerId: string; metadata: Record<string, string> }) => true);
+  const snapshot = vi.fn(
+    async (_opts: { runnerId: string; metadata: Record<string, string> }) => true
+  );
 
   const computeManager = {
     snapshotDelayMs: DELAY_MS,
@@ -97,9 +99,7 @@ describe("ComputeSnapshotService", () => {
       expect(service.cancel("run_1", "runner-b")).toBe(false);
 
       await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(1), { timeout: 2_000 });
-      expect(snapshot).toHaveBeenCalledWith(
-        expect.objectContaining({ runnerId: "runner-a" })
-      );
+      expect(snapshot).toHaveBeenCalledWith(expect.objectContaining({ runnerId: "runner-a" }));
     } finally {
       service.stop();
     }

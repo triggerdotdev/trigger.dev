@@ -1,3 +1,4 @@
+import * as Ariakit from "@ariakit/react";
 import {
   AdjustmentsHorizontalIcon,
   ArrowTopRightOnSquareIcon,
@@ -5,7 +6,6 @@ import {
   CubeIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import * as Ariakit from "@ariakit/react";
 import {
   Form,
   type MetaFunction,
@@ -31,10 +31,10 @@ import {
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/primitives/Dialog";
@@ -42,22 +42,22 @@ import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
+  collapsibleHandleClassName,
   RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
-  collapsibleHandleClassName,
   useFrozenValue,
 } from "~/components/primitives/Resizable";
 import { SearchInput } from "~/components/primitives/SearchInput";
+import {
+  SelectItem,
+  SelectList,
+  SelectPopover,
+  SelectProvider,
+} from "~/components/primitives/Select";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Switch } from "~/components/primitives/Switch";
-import {
-  SelectProvider,
-  SelectPopover,
-  SelectList,
-  SelectItem,
-} from "~/components/primitives/Select";
 import {
   Table,
   TableBody,
@@ -67,46 +67,48 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { UsageSparkline } from "~/components/primitives/UsageSparkline";
 import {
   appliedSummary,
   TimeFilter,
   type TimeFilterApplyValues,
   timeFilterFromTo,
 } from "~/components/runs/v3/SharedFilters";
-import { parseFiniteInt } from "~/utils/searchParams";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
   type ModelCatalogItem,
   type ModelComparisonItem,
+  ModelRegistryPresenter,
   type PopularModel,
   type ProjectModelUsageItem,
-  ModelRegistryPresenter,
 } from "~/presenters/v3/ModelRegistryPresenter.server";
+import { MetricWidget } from "~/routes/resources.metric";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
-import { useEnvironment } from "~/hooks/useEnvironment";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { EnvironmentParamSchema, v3BuiltInDashboardPath, v3ModelComparePath } from "~/utils/pathBuilder";
 import {
-  formatModelPrice,
-  formatTokenCount,
   formatFeature,
-  formatProviderName,
   formatModelCost,
+  formatModelPrice,
+  formatProviderName,
+  formatTokenCount,
 } from "~/utils/modelFormatters";
 import { formatNumberCompact } from "~/utils/numberFormatter";
-import { Spinner } from "~/components/primitives/Spinner";
-import { UsageSparkline } from "~/components/primitives/UsageSparkline";
-import { MetricWidget } from "~/routes/resources.metric";
-import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
+import {
+  EnvironmentParamSchema,
+  v3BuiltInDashboardPath,
+  v3ModelComparePath,
+} from "~/utils/pathBuilder";
+import { parseFiniteInt } from "~/utils/searchParams";
 
-import { type loader as compareLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.models.compare/route";
 import { IconColumns3 } from "@tabler/icons-react";
+import { type loader as compareLoader } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.models.compare/route";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Models | Trigger.dev" }];
@@ -126,7 +128,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
   const presenter = new ModelRegistryPresenter(clickhouse);
   const catalog = await presenter.getModelCatalog();
 
@@ -191,10 +196,7 @@ export function shouldRevalidate({
     params.sort();
     return params.toString();
   };
-  if (
-    currentUrl.pathname === nextUrl.pathname &&
-    normalize(currentUrl) === normalize(nextUrl)
-  ) {
+  if (currentUrl.pathname === nextUrl.pathname && normalize(currentUrl) === normalize(nextUrl)) {
     return false;
   }
   return defaultShouldRevalidate;
@@ -267,7 +269,7 @@ function ProviderFilter({ providers }: { providers: string[] }) {
             onRemove={() => del("providers")}
           />
         </Ariakit.TooltipAnchor>
-        <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
+        <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
           <div className="flex items-center gap-3">
             <span>Filter by provider</span>
             <ShortcutKey className="size-4 flex-none" shortcut={providerShortcut} variant="small" />
@@ -324,7 +326,7 @@ function FeaturesFilter({ features }: { features: string[] }) {
             onRemove={() => del("features")}
           />
         </Ariakit.TooltipAnchor>
-        <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
+        <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
           <div className="flex items-center gap-3">
             <span>Filter by features</span>
             <ShortcutKey className="size-4 flex-none" shortcut={featuresShortcut} variant="small" />
@@ -449,7 +451,7 @@ function FiltersBar({
               shortcut={detailsShortcut}
             />
           </Ariakit.TooltipAnchor>
-          <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
+          <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright py-1.5 pl-2.5 pr-3 text-xs text-text-dimmed">
             <div className="flex items-center gap-3">
               <span>Toggle all details</span>
               <ShortcutKey
@@ -652,7 +654,7 @@ function buildComparisonRows(
         const slug = c?.provider ?? dataMap.get(m)?.genAiSystem;
         if (!slug) return "—";
         return (
-          <span className="flex items-center gap-1.5">
+          <span key={m} className="flex items-center gap-1.5">
             {providerIcon(slug)}
             {formatProviderName(slug)}
           </span>
@@ -696,7 +698,10 @@ function buildComparisonRows(
       label: formatFeature(feature),
       values: models.map((m) =>
         getCatalog(m)?.features.includes(feature) ? (
-          <CheckIcon className="size-4 text-success/70 group-hover/table-row:text-success" />
+          <CheckIcon
+            key={m}
+            className="size-4 text-success/70 group-hover/table-row:text-success"
+          />
         ) : (
           "—"
         )
@@ -768,12 +773,12 @@ function CompareDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-fit gap-[0.4375rem] !px-0 !pb-0 !pt-0 sm:!max-w-[90vw]">
+      <DialogContent className="gap-1.75 px-0! pb-0! pt-0! sm:w-fit! sm:max-w-[90vw]!">
         <DialogHeader className="h-11 justify-center px-4">
           <DialogTitle>Compare models</DialogTitle>
         </DialogHeader>
         {rows.length > 0 ? (
-          <div className="-mt-[0.375rem] max-h-[70vh] overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [&_tbody_tr:last-child]:after:hidden">
+          <div className="-mt-1.5 max-h-[70vh] overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control [&_tbody_tr:last-child]:after:hidden">
             <Table stickyHeader showTopBorder={false}>
               <TableHeader>
                 <TableRow>
@@ -895,7 +900,7 @@ function ModelDetailPanel({
           className="pl-1"
         />
       </div>
-      <div className="h-fit overflow-x-auto whitespace-nowrap px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="h-fit overflow-x-auto whitespace-nowrap px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <TabContainer>
           <TabButton
             isActive={tab === "overview"}
@@ -915,7 +920,7 @@ function ModelDetailPanel({
           </TabButton>
         </TabContainer>
       </div>
-      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {tab === "overview" && <DetailOverviewTab model={model} />}
         {tab === "usage" && (
           <DetailYourUsageTab
@@ -1047,7 +1052,7 @@ function DetailYourUsageTab({
     projectId,
     environmentId,
     scope: "environment" as const,
-    period: range.from && range.to ? null : range.period ?? "7d",
+    period: range.from && range.to ? null : (range.period ?? "7d"),
     from: range.from ?? null,
     to: range.to ?? null,
   };
@@ -1241,20 +1246,24 @@ function YourModelsTab({
     projectId,
     environmentId,
     scope: "environment" as const,
-    period: from && to ? null : period ?? "7d",
+    period: from && to ? null : (period ?? "7d"),
     from,
     to,
   };
 
   return (
-    <div className="overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div className="grid grid-cols-1 gap-3 px-3 lg:grid-cols-3">
         <div className="h-[312px]">
           <MetricWidget
             widgetKey="your-models-cost-time"
             title="Cost over time"
             query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["cost"] })}
+            config={chartConfig({
+              chartType: "bar",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["cost"],
+            })}
             {...widgetProps}
           />
         </div>
@@ -1277,7 +1286,11 @@ function YourModelsTab({
             widgetKey="your-models-calls-over-time"
             title="Calls over time"
             query={`SELECT timeBucket(), count() AS calls FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["calls"] })}
+            config={chartConfig({
+              chartType: "bar",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["calls"],
+            })}
             {...widgetProps}
           />
         </div>
@@ -1287,8 +1300,8 @@ function YourModelsTab({
         {usage.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-12">
             <p className="max-w-md text-center text-sm text-text-dimmed">
-              No model usage in this environment yet. Models you call from your tasks will appear here
-              with usage metrics.
+              No model usage in this environment yet. Models you call from your tasks will appear
+              here with usage metrics.
             </p>
             <Button variant="secondary/small" onClick={onGoToLibrary}>
               Browse the model library
@@ -1427,10 +1440,10 @@ export default function ModelsPage() {
     tabParam === "library"
       ? "library"
       : tabParam === "yours"
-      ? "yours"
-      : projectUsage.length > 0
-      ? "yours"
-      : "library";
+        ? "yours"
+        : projectUsage.length > 0
+          ? "yours"
+          : "library";
   const setView = (next: ModelsTab) => replace({ tab: next });
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
   const [showAllDetails, setShowAllDetails] = useState(false);

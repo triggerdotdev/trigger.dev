@@ -1,7 +1,8 @@
 "use client";
 
 import useSWRMutation from "swr/mutation";
-import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
+import type { UseApiClientOptions } from "./useApiClient.js";
+import { useApiClient } from "./useApiClient.js";
 
 /**
  * Base interface for task trigger instances.

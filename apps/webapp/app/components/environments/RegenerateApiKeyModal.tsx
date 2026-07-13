@@ -89,7 +89,7 @@ const RegenerateApiKeyModalContent = ({
             <Paragraph variant="small/bright">Enter this text below to confirm:</Paragraph>
             <Paragraph
               variant="small"
-              className="select-all rounded-md border border-grid-bright bg-charcoal-900 px-2 py-1 font-mono"
+              className="select-all rounded-md border border-grid-bright bg-background-deep px-2 py-1 font-mono"
             >
               {randomWord}
             </Paragraph>

@@ -105,7 +105,8 @@ const logFormat: TraceExportFormat = {
     const level = event.level.padEnd(5);
     const errMsg = errorMessage(event);
     const status = event.isError ? (errMsg ? ` [ERROR: ${errMsg}]` : " [ERROR]") : "";
-    const duration = event.durationNs > 0 ? ` (${formatDurationNanoseconds(event.durationNs)})` : "";
+    const duration =
+      event.durationNs > 0 ? ` (${formatDurationNanoseconds(event.durationNs)})` : "";
 
     let out = `${time} ${level} [${lineage(event)}] ${event.message}${status}${duration}\n`;
     if (hasProperties(event.propertiesText)) {

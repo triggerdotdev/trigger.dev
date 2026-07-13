@@ -1,6 +1,8 @@
 import { ChevronRightIcon, Cog8ToothIcon } from "@heroicons/react/20/solid";
+import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
+import { isBranchableEnvironment } from "~/utils/branchableEnvironment";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
-import { useNavigation } from "@remix-run/react";
+import { useNavigation, useRevalidator } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -9,8 +11,14 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization, type MatchedOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
-import { branchesPath, docsPath, v3BillingPath } from "~/utils/pathBuilder";
-import { EnvironmentCombo, EnvironmentIcon, EnvironmentLabel, environmentFullTitle } from "../environments/EnvironmentLabel";
+import { branchesPath, branchesDevPath, docsPath, v3BillingPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentCombo,
+  EnvironmentIcon,
+  EnvironmentLabel,
+  environmentFullTitle,
+  environmentTextClassName,
+} from "../environments/EnvironmentLabel";
 import { ButtonContent } from "../primitives/Buttons";
 import { Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
@@ -44,20 +52,28 @@ export function EnvironmentSelector({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigation = useNavigation();
   const { urlForEnvironment } = useEnvironmentSwitcher();
+  const revalidator = useRevalidator();
 
   useEffect(() => {
     setIsMenuOpen(false);
   }, [navigation.location?.pathname]);
 
-  const hasStaging = project.environments.some((env) => env.type === "STAGING");
+  // Fetch immediately on open so the list is fresh right away
+  useEffect(() => {
+    if (isMenuOpen && revalidator.state !== "loading") {
+      revalidator.revalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMenuOpen]);
 
+  const hasStaging = project.environments.some((env) => env.type === "STAGING");
   return (
     <Popover onOpenChange={(open) => setIsMenuOpen(open)} open={isMenuOpen}>
       <SimpleTooltip
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded pl-1.75 transition-colors hover:bg-background-hover",
               isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
               className
             )}
@@ -91,12 +107,12 @@ export function EnvironmentSelector({
         side="right"
         sideOffset={8}
         hidden={!isCollapsed}
-        buttonClassName="!h-8"
+        buttonClassName="h-8!"
         asChild
         disableHoverableContent
       />
       <PopoverContent
-        className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-56 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         side={isCollapsed ? "right" : "bottom"}
         sideOffset={isCollapsed ? 8 : 4}
         align="start"
@@ -104,34 +120,34 @@ export function EnvironmentSelector({
       >
         <div className="flex flex-col gap-1 p-1">
           {project.environments
-            .filter((env) => env.branchName === null)
+            .filter((env) => env.parentEnvironmentId === null)
             .map((env) => {
-              switch (env.isBranchableEnvironment) {
-                case true: {
-                  const branchEnvironments = project.environments.filter(
-                    (e) => e.parentEnvironmentId === env.id
-                  );
-                  return (
-                    <Branches
-                      key={env.id}
-                      parentEnvironment={env}
-                      branchEnvironments={branchEnvironments}
-                      currentEnvironment={environment}
-                    />
-                  );
-                }
-                case false:
-                  return (
-                    <PopoverMenuItem
-                      key={env.id}
-                      to={urlForEnvironment(env)}
-                      title={
-                        <EnvironmentCombo environment={env} className="mx-auto grow text-2sm" />
-                      }
-                      isSelected={env.id === environment.id}
-                    />
-                  );
+              const renderAsBranchable = isBranchableEnvironment(env);
+
+              if (renderAsBranchable) {
+                const branchEnvironments = project.environments.filter(
+                  (e) => e.parentEnvironmentId === env.id
+                );
+                const allBranchEnvironments =
+                  env.type === "DEVELOPMENT" ? [env, ...branchEnvironments] : branchEnvironments;
+                return (
+                  <Branches
+                    key={env.id}
+                    parentEnvironment={env}
+                    branchEnvironments={allBranchEnvironments}
+                    currentEnvironment={environment}
+                  />
+                );
               }
+
+              return (
+                <PopoverMenuItem
+                  key={env.id}
+                  to={urlForEnvironment(env)}
+                  title={<EnvironmentCombo environment={env} className="mx-auto grow text-2sm" />}
+                  isSelected={env.id === environment.id}
+                />
+              );
             })}
         </div>
         {!hasStaging && isManagedCloud && (
@@ -223,10 +239,17 @@ function Branches({
     branchEnvironments.length === 0
       ? "no-branches"
       : activeBranches.length === 0
-      ? "no-active-branches"
-      : "has-branches";
+        ? "no-active-branches"
+        : "has-branches";
 
-  const currentBranchIsArchived = environment.archivedAt !== null;
+  // Only surface the active environment's archived-branch item in the submenu it
+  // actually belongs to. Both Development and Preview render this component, so
+  // without the parent check an archived dev branch would leak into the Preview
+  // submenu (and vice-versa).
+  const currentBranchIsArchived =
+    environment.archivedAt !== null && environment.parentEnvironmentId === parentEnvironment.id;
+
+  const envTextClassName = environmentTextClassName(parentEnvironment);
 
   return (
     <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
@@ -234,7 +257,7 @@ function Branches({
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
-            className="hover:bg-charcoal-750"
+            className="hover:bg-background-hover"
             TrailingIcon={ChevronRightIcon}
             trailingIconClassName="text-text-dimmed"
             textAlignLeft
@@ -244,7 +267,7 @@ function Branches({
           </ButtonContent>
         </PopoverTrigger>
         <PopoverContent
-          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           align="start"
           style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
           side="right"
@@ -260,11 +283,15 @@ function Branches({
                 to={urlForEnvironment(environment)}
                 title={
                   <>
-                    <span className="block w-full text-preview">{environment.branchName}</span>
+                    <span className={cn("block w-full", envTextClassName)}>
+                      {environment.branchName}
+                    </span>
                     <Badge variant="extra-small">Archived</Badge>
                   </>
                 }
-                icon={<BranchEnvironmentIconSmall className="size-4 shrink-0 text-preview" />}
+                icon={
+                  <BranchEnvironmentIconSmall className={cn("size-4 shrink-0", envTextClassName)} />
+                }
                 isSelected={environment.id === currentEnvironment.id}
               />
             )}
@@ -276,8 +303,16 @@ function Branches({
                     <PopoverMenuItem
                       key={env.id}
                       to={urlForEnvironment(env)}
-                      title={<span className="block w-full text-preview">{env.branchName}</span>}
-                      icon={<BranchEnvironmentIconSmall className="size-4 shrink-0 text-preview" />}
+                      title={
+                        <span className={cn("block w-full", envTextClassName)}>
+                          {env.branchName ?? DEFAULT_DEV_BRANCH}
+                        </span>
+                      }
+                      icon={
+                        <BranchEnvironmentIconSmall
+                          className={cn("size-4 shrink-0", envTextClassName)}
+                        />
+                      }
                       isSelected={env.id === currentEnvironment.id}
                     />
                   ))}
@@ -285,7 +320,7 @@ function Branches({
             ) : state === "no-branches" ? (
               <div className="flex max-w-sm flex-col gap-1 p-2">
                 <div className="flex items-center gap-1">
-                  <BranchEnvironmentIconSmall className="size-4 text-preview" />
+                  <BranchEnvironmentIconSmall className={cn("size-4", envTextClassName)} />
                   <Header2>Create your first branch</Header2>
                 </div>
                 <Paragraph spacing variant="small">
@@ -304,13 +339,22 @@ function Branches({
               </div>
             )}
           </div>
-          <div className="border-t border-charcoal-700 p-1">
-            <PopoverMenuItem
-              to={branchesPath(organization, project, environment)}
-              title="Manage branches"
-              icon={<Cog8ToothIcon className="size-4 text-text-dimmed" />}
-              leadingIconClassName="text-text-dimmed"
-            />
+          <div className="border-t border-grid-bright p-1">
+            {parentEnvironment.type === "DEVELOPMENT" ? (
+              <PopoverMenuItem
+                to={branchesDevPath(organization, project, environment)}
+                title="Manage dev branches"
+                icon={<Cog8ToothIcon className="size-4 text-text-dimmed" />}
+                leadingIconClassName="text-text-dimmed"
+              />
+            ) : (
+              <PopoverMenuItem
+                to={branchesPath(organization, project, environment)}
+                title="Manage preview branches"
+                icon={<Cog8ToothIcon className="size-4 text-text-dimmed" />}
+                leadingIconClassName="text-text-dimmed"
+              />
+            )}
           </div>
         </PopoverContent>
       </div>

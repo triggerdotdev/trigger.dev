@@ -1,6 +1,6 @@
 import { BackgroundWorkerMetadata, tryCatch } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
-import { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
+import type { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
@@ -10,7 +10,6 @@ import {
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { syncDeclarativeSchedules } from "./createBackgroundWorker.server";
-import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { compareDeploymentVersions } from "../utils/deploymentVersions";
 
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
@@ -173,18 +172,6 @@ export class ChangeCurrentDeploymentService extends BaseService {
       logger.error("Error syncing declarative schedules on deployment change", {
         error: scheduleSyncError,
       });
-    }
-
-    // Only V1 engine workers need the WAITING_FOR_DEPLOY drain — V2 runs sit
-    // in PENDING_VERSION and are handled out of band, so enqueuing here for V2
-    // just produces empty scans of the TaskRun status index.
-    const worker = await this._prisma.backgroundWorker.findFirst({
-      where: { id: deployment.workerId },
-      select: { engine: true },
-    });
-
-    if (worker?.engine === "V1") {
-      await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
     }
   }
 

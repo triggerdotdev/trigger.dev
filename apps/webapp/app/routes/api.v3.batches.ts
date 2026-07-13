@@ -1,24 +1,25 @@
 import { json } from "@remix-run/server-runtime";
-import { CreateBatchRequestBody, CreateBatchResponse, generateJWT } from "@trigger.dev/core/v3";
-import { prisma } from "~/db.server";
+import type { CreateBatchResponse } from "@trigger.dev/core/v3";
+import { CreateBatchRequestBody, generateJWT } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { BatchRateLimitExceededError } from "~/runEngine/concerns/batchLimits.server";
 import { CreateBatchService } from "~/runEngine/services/createBatch.server";
-import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 import {
   handleRequestIdempotency,
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
+import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
-import { sanitizeTriggerSource } from "~/utils/triggerSource";
-import { clientSafeErrorMessage } from "~/utils/prismaErrors";
-import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
-import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
-import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 import { engine } from "~/v3/runEngine.server";
+import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 
 /**
  * Phase 1 of 2-phase batch API: Create a batch.
@@ -88,16 +89,9 @@ const { action, loader } = createActionApiRoute(
     >(body.idempotencyKey, {
       requestType: "create-batch",
       findCachedEntity: async (cachedRequestId) => {
-        return await prisma.batchTaskRun.findFirst({
-          where: {
-            id: cachedRequestId,
-            runtimeEnvironmentId: authentication.environment.id,
-          },
-          select: {
-            friendlyId: true,
-            runCount: true,
-          },
-        });
+        const batch = await engine.runStore.findBatchTaskRunById(cachedRequestId);
+        if (!batch || batch.runtimeEnvironmentId !== authentication.environment.id) return null;
+        return batch;
       },
       buildResponse: (cachedBatch) => ({
         id: cachedBatch.friendlyId,
@@ -132,7 +126,7 @@ const { action, loader } = createActionApiRoute(
         realtimeStreamsVersion: determineRealtimeStreamsVersion(
           realtimeStreamsVersion ?? undefined
         ),
-        triggerSource: isFromWorker ? "sdk" : sanitizeTriggerSource(triggerSourceHeader) ?? "api",
+        triggerSource: isFromWorker ? "sdk" : (sanitizeTriggerSource(triggerSourceHeader) ?? "api"),
       });
 
       const $responseHeaders = await responseHeaders(

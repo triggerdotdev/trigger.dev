@@ -1,7 +1,7 @@
 import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
-import { SupervisorHttpClient } from "./http.js";
-import { WorkerApiDequeueResponseBody, WorkerQueueClass } from "./schemas.js";
-import { PreDequeueFn, PreSkipFn } from "./types.js";
+import type { SupervisorHttpClient } from "./http.js";
+import type { WorkerApiDequeueResponseBody, WorkerQueueClass } from "./schemas.js";
+import type { PreDequeueFn, PreSkipFn } from "./types.js";
 import type { ConsumerPoolMetrics } from "./consumerPoolMetrics.js";
 
 export interface QueueConsumer {
@@ -18,7 +18,10 @@ export type RunQueueConsumerOptions = {
   maxRunCount?: number;
   /** Which worker-queue class this consumer pulls from. Defaults to the worker's region queue. */
   queueClass?: WorkerQueueClass;
-  onDequeue: (messages: WorkerApiDequeueResponseBody, timing?: { dequeueResponseMs: number; pollingIntervalMs: number }) => Promise<void>;
+  onDequeue: (
+    messages: WorkerApiDequeueResponseBody,
+    timing?: { dequeueResponseMs: number; pollingIntervalMs: number }
+  ) => Promise<void>;
   /** Optional shared pool metrics. When provided, dequeue API latency is recorded as a histogram. */
   metrics?: ConsumerPoolMetrics;
 };
@@ -29,7 +32,10 @@ export class RunQueueConsumer implements QueueConsumer {
   private readonly preSkip?: PreSkipFn;
   private readonly maxRunCount?: number;
   private readonly queueClass?: WorkerQueueClass;
-  private readonly onDequeue: (messages: WorkerApiDequeueResponseBody, timing?: { dequeueResponseMs: number; pollingIntervalMs: number }) => Promise<void>;
+  private readonly onDequeue: (
+    messages: WorkerApiDequeueResponseBody,
+    timing?: { dequeueResponseMs: number; pollingIntervalMs: number }
+  ) => Promise<void>;
   private readonly metrics?: ConsumerPoolMetrics;
 
   private readonly logger = new SimpleStructuredLogger("queue-consumer");
@@ -142,7 +148,10 @@ export class RunQueueConsumer implements QueueConsumer {
         );
 
         try {
-          await this.onDequeue(response.data, { dequeueResponseMs, pollingIntervalMs: this.lastScheduledIntervalMs });
+          await this.onDequeue(response.data, {
+            dequeueResponseMs,
+            pollingIntervalMs: this.lastScheduledIntervalMs,
+          });
 
           if (response.data.length > 0) {
             nextIntervalMs = this.intervalMs;

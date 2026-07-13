@@ -3,7 +3,6 @@ import { BaseService } from "./baseService.server";
 import { commonWorker } from "../commonWorker.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { type PrismaClientOrTransaction } from "~/db.server";
-import { workerQueue } from "~/services/worker.server";
 import { DeploymentService } from "./deployment.server";
 import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
 
@@ -96,8 +95,6 @@ export class TimeoutDeploymentService extends BaseService {
   }
 
   static async dequeue(deploymentId: string, tx?: PrismaClientOrTransaction) {
-    // For backwards compatibility during transition, we need to dequeue/ack from both workers
-    await workerQueue.dequeue(`timeoutDeployment:${deploymentId}`, { tx });
     await commonWorker.ack(`timeoutDeployment:${deploymentId}`);
   }
 }

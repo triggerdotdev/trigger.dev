@@ -73,9 +73,9 @@ describe("K8sPodCountSignalSource", () => {
       engageThreshold: 10000,
       releaseThreshold: 5000,
     });
-    expect((await source.read()).engaged).toBe(true);  // engage
+    expect((await source.read()).engaged).toBe(true); // engage
     count = 7000;
-    expect((await source.read()).engaged).toBe(true);  // band -> still engaged
+    expect((await source.read()).engaged).toBe(true); // band -> still engaged
     count = 4999;
     expect((await source.read()).engaged).toBe(false); // below release -> off
     count = 7000;

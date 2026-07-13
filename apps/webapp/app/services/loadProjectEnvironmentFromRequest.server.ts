@@ -4,10 +4,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
-export async function loadProjectEnvironmentFromRequest(
-  request: Request,
-  params: Params<string>
-) {
+export async function loadProjectEnvironmentFromRequest(request: Request, params: Params<string>) {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 

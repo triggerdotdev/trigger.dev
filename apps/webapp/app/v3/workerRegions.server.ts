@@ -39,10 +39,7 @@ export function backingForQueue(
   if (!region) return undefined;
   const backing = groups.find(
     (g) =>
-      g.workloadType === "MICROVM" &&
-      g.region === region &&
-      !g.hidden &&
-      g.masterQueue !== queue
+      g.workloadType === "MICROVM" && g.region === region && !g.hidden && g.masterQueue !== queue
   );
   if (!backing) return undefined;
   return { workerQueue: backing.masterQueue, enableFastPath: backing.enableFastPath };

@@ -8,7 +8,6 @@ import {
   newOrganizationPath,
   newProjectPath,
   v3EnvironmentPath,
-  v3ProjectPath,
 } from "~/utils/pathBuilder";
 
 //this loader chooses the best project to redirect you to, ideally based on the cookie
@@ -28,7 +27,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
     //redirect them to the most appropriate project
     return redirect(v3EnvironmentPath(organization, project, environment));
-  } catch (e) {
+  } catch (_e) {
     const organization = await prisma.organization.findFirst({
       where: {
         members: {

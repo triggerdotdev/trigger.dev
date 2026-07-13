@@ -13,7 +13,8 @@ import { getCurrentPlan } from "~/services/platform.v3.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { LogsListPresenter, LogEntry } from "~/presenters/v3/LogsListPresenter.server";
+import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
+import { LogsListPresenter } from "~/presenters/v3/LogsListPresenter.server";
 import type { LogLevel } from "~/utils/logUtils";
 import { $replica, prisma } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
@@ -137,7 +138,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const plan = await getCurrentPlan(project.organizationId);
   const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
 
-  const logsClickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "logs");
+  const logsClickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "logs"
+  );
   const presenter = new LogsListPresenter($replica, logsClickhouse);
 
   const listPromise = presenter

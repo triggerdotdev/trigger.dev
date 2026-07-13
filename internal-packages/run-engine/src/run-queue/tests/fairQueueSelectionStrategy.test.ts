@@ -3,8 +3,9 @@ import { describe, expect, vi } from "vitest";
 import { RUN_QUEUE_RESUME_PRIORITY_TIMESTAMP_OFFSET } from "../constants.js";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
-import { EnvQueues, RunQueueKeyProducer } from "../types.js";
-import { createRedisClient, RedisOptions } from "@internal/redis";
+import type { EnvQueues, RunQueueKeyProducer } from "../types.js";
+import type { RedisOptions } from "@internal/redis";
+import { createRedisClient } from "@internal/redis";
 
 vi.setConfig({ testTimeout: 60_000 }); // 30 seconds timeout
 
@@ -250,7 +251,7 @@ describe("FairDequeuingStrategy", () => {
 
       const startDistribute2 = performance.now();
 
-      const result2 = await strategy.distributeFairQueuesFromParentQueue(
+      const _result2 = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );
@@ -264,7 +265,7 @@ describe("FairDequeuingStrategy", () => {
 
       const startDistribute3 = performance.now();
 
-      const result3 = await strategy.distributeFairQueuesFromParentQueue(
+      const _result3 = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );
@@ -408,13 +409,13 @@ describe("FairDequeuingStrategy", () => {
       expect(firstPositionStdDevEnvs).toBeLessThan(5); // Allow 5% standard deviation for envs
 
       // Verify that each org and env gets a fair chance at first position
-      for (const [orgId, stats] of Object.entries(orgStats)) {
+      for (const [_orgId, stats] of Object.entries(orgStats)) {
         const firstPositionPercentage = (stats.firstPosition / iterations) * 100;
         expect(firstPositionPercentage).toBeGreaterThan(expectedFirstPositionPercentage * 0.7); // Within 30% of expected
         expect(firstPositionPercentage).toBeLessThan(expectedFirstPositionPercentage * 1.3);
       }
 
-      for (const [envId, stats] of Object.entries(envStats)) {
+      for (const [_envId, stats] of Object.entries(envStats)) {
         const firstPositionPercentage = (stats.firstPosition / iterations) * 100;
         expect(firstPositionPercentage).toBeGreaterThan(expectedEnvFirstPositionPercentage * 0.7); // Within 30% of expected
         expect(firstPositionPercentage).toBeLessThan(expectedEnvFirstPositionPercentage * 1.3);

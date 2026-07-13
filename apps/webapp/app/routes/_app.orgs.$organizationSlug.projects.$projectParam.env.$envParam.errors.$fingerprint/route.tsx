@@ -1,11 +1,8 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import {
-  IconAlarmSnooze as IconAlarmSnoozeBase,
-  IconCircleDotted,
-} from "@tabler/icons-react";
+import { IconAlarmSnooze as IconAlarmSnoozeBase, IconCircleDotted } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { isPast } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
@@ -140,10 +137,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: actionSchema });
+  const submission = parseWithZod(formData, { schema: actionSchema });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const actions = new ErrorGroupActions();
@@ -553,7 +550,7 @@ function ErrorGroupDetail({
               />
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-3">
-                <BugIcon className="size-16 text-charcoal-650" />
+                <BugIcon className="size-16 text-secondary" />
                 <Paragraph className="max-w-32 text-center text-text-dimmed">
                   No runs found for this error.
                 </Paragraph>
@@ -584,7 +581,7 @@ function ErrorDetailSidebar({
       <div className="border-b border-grid-dimmed px-3 py-2">
         <Header2 className="truncate">Details</Header2>
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="flex flex-col gap-4">
           <Property.Table>
             {/* Status */}
@@ -805,7 +802,7 @@ function ErrorStatusDropdown({
           <IconCircleDotted className="-ml-1 mr-1 size-3.5 text-text-bright" />
           Mark error as…
         </PopoverArrowTrigger>
-        <PopoverContent className="inline-flex !min-w-0 flex-col p-1" align="end">
+        <PopoverContent className="inline-flex min-w-0! flex-col p-1" align="end">
           <ErrorStatusMenuItems
             status={state.status}
             taskIdentifier={taskIdentifier}
@@ -876,7 +873,7 @@ function ActivityChart({
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-        <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
+        <CartesianGrid vertical={false} stroke="var(--color-grid-bright)" strokeDasharray="3 3" />
         <XAxis
           dataKey="__timestamp"
           tickFormatter={xAxisFormatter}
@@ -884,14 +881,14 @@ function ActivityChart({
           height={24}
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "#878C99" }}
+          tick={{ fontSize: 11, fill: "var(--color-text-dimmed)" }}
         />
         <YAxis
           width={30}
           tickMargin={4}
           axisLine={false}
           tickLine={false}
-          tick={{ fontSize: 11, fill: "#878C99" }}
+          tick={{ fontSize: 11, fill: "var(--color-text-dimmed)" }}
           domain={["auto", (dataMax: number) => dataMax * 1.15]}
         />
         <Tooltip
@@ -940,7 +937,7 @@ const ActivityTooltip = ({
   return (
     <TooltipPortal active={active}>
       <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-        <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+        <Header3 className="border-b border-b-border-bright pb-2">{formattedDate}</Header3>
         <div className="mt-2 flex flex-col gap-1">
           {payload.map((entry, i) => {
             const value = (entry.value as number) ?? 0;
@@ -962,7 +959,7 @@ function ActivityChartBlankState() {
   return (
     <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
       {[...Array(42)].map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-charcoal-850" />
+        <div key={i} className="h-full flex-1 bg-background-dimmed" />
       ))}
     </div>
   );

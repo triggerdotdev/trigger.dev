@@ -717,64 +717,61 @@ describe("BatchQueue", () => {
       }
     );
 
-    redisTest(
-      "should delay processing when rate limited",
-      async ({ redisContainer }) => {
-        let limitCallCount = 0;
-        const rateLimiter: GlobalRateLimiter = {
-          async limit() {
-            limitCallCount++;
-            // Rate limit the first 3 calls, then allow
-            if (limitCallCount <= 3) {
-              return { allowed: false, resetAt: Date.now() + 100 };
-            }
-            return { allowed: true };
-          },
-        };
+    redisTest("should delay processing when rate limited", async ({ redisContainer }) => {
+      let limitCallCount = 0;
+      const rateLimiter: GlobalRateLimiter = {
+        async limit() {
+          limitCallCount++;
+          // Rate limit the first 3 calls, then allow
+          if (limitCallCount <= 3) {
+            return { allowed: false, resetAt: Date.now() + 100 };
+          }
+          return { allowed: true };
+        },
+      };
 
-        const queue = new BatchQueue({
-          redis: {
-            host: redisContainer.getHost(),
-            port: redisContainer.getPort(),
-            keyPrefix: "test:",
-          },
-          drr: { quantum: 5, maxDeficit: 50 },
-          consumerCount: 1,
-          consumerIntervalMs: 50,
-          startConsumers: true,
-          globalRateLimiter: rateLimiter,
+      const queue = new BatchQueue({
+        redis: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          keyPrefix: "test:",
+        },
+        drr: { quantum: 5, maxDeficit: 50 },
+        consumerCount: 1,
+        consumerIntervalMs: 50,
+        startConsumers: true,
+        globalRateLimiter: rateLimiter,
+      });
+
+      let completionResult: CompleteBatchResult | null = null;
+
+      try {
+        queue.onProcessItem(async ({ itemIndex }) => {
+          return { success: true, runId: `run_${itemIndex}` };
         });
 
-        let completionResult: CompleteBatchResult | null = null;
+        queue.onBatchComplete(async (result) => {
+          completionResult = result;
+        });
 
-        try {
-          queue.onProcessItem(async ({ itemIndex }) => {
-            return { success: true, runId: `run_${itemIndex}` };
-          });
+        await queue.initializeBatch(createInitOptions("batch1", "env1", 3));
+        await enqueueItems(queue, "batch1", "env1", createBatchItems(3));
 
-          queue.onBatchComplete(async (result) => {
-            completionResult = result;
-          });
+        // Should still complete despite initial rate limiting
+        await vi.waitFor(
+          () => {
+            expect(completionResult).not.toBeNull();
+          },
+          { timeout: 10000 }
+        );
 
-          await queue.initializeBatch(createInitOptions("batch1", "env1", 3));
-          await enqueueItems(queue, "batch1", "env1", createBatchItems(3));
-
-          // Should still complete despite initial rate limiting
-          await vi.waitFor(
-            () => {
-              expect(completionResult).not.toBeNull();
-            },
-            { timeout: 10000 }
-          );
-
-          expect(completionResult!.successfulRunCount).toBe(3);
-          // Rate limiter was called more times than items due to initial rejections
-          expect(limitCallCount).toBeGreaterThan(3);
-        } finally {
-          await queue.close();
-        }
+        expect(completionResult!.successfulRunCount).toBe(3);
+        // Rate limiter was called more times than items due to initial rejections
+        expect(limitCallCount).toBeGreaterThan(3);
+      } finally {
+        await queue.close();
       }
-    );
+    });
   });
 
   describe("skipRetries on failed items", () => {

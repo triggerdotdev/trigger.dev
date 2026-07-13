@@ -42,7 +42,10 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Prompt not found" }, { status: 404 });
     }
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(prompt.project.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      prompt.project.organizationId,
+      "standard"
+    );
     const presenter = new PromptPresenter(clickhouse);
     const versions = await presenter.listVersions(prompt.id);
 

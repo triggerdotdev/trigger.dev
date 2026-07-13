@@ -17,6 +17,11 @@ export const FEATURE_FLAG = {
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
   computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
+  devBranchesEnabled: "devBranchesEnabled",
+  runOpsMintKind: "runOpsMintKind",
+  // Grace-linger stamp carried alongside runOpsMintKind on flip. See mintFlipGrace.ts.
+  runOpsMintKindPrev: "runOpsMintKindPrev",
+  runOpsMintKindFlippedAt: "runOpsMintKindFlippedAt",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -26,7 +31,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
   // Gates the in-dashboard AI agent panel. Controllable globally and per-org
-  // (org wins); admins/impersonators always see it. Defaults off via DASHBOARD_AGENT_ENABLED.
+  // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.
   [FEATURE_FLAG.hasDashboardAgentAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
@@ -47,6 +52,15 @@ export const FeatureFlagCatalog = {
   // When on, migrated orgs build their compute template in required mode at deploy
   // (fails the deploy on error) instead of shadow. Strict boolean (see above).
   [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
+  // Per-org access to development branches. Off unless enabled for the org.
+  [FEATURE_FLAG.devBranchesEnabled]: z.coerce.boolean(),
+  // Per-org run-ops-id mint cutover. Defaults to "cuid"; only honored when
+  // RUN_OPS_MINT_ENABLED is on AND isSplitEnabled() is true.
+  [FEATURE_FLAG.runOpsMintKind]: z.enum(["cuid", "runOpsId"]),
+  // Grace-linger stamp: the previously-effective kind and the flip timestamp, written
+  // by stampMintKindFlip on a genuine flip. Display-only (see ORG_LOCKED_FLAGS).
+  [FEATURE_FLAG.runOpsMintKindPrev]: z.enum(["cuid", "runOpsId"]),
+  [FEATURE_FLAG.runOpsMintKindFlippedAt]: z.string().datetime(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -63,6 +77,8 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
 export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.defaultWorkerInstanceGroupId,
   FEATURE_FLAG.taskEventRepository,
+  FEATURE_FLAG.runOpsMintKindPrev,
+  FEATURE_FLAG.runOpsMintKindFlippedAt,
 ];
 
 // Create a Zod schema from the existing catalog

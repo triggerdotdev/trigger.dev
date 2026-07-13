@@ -1,5 +1,5 @@
 import { WebClient } from "@slack/web-api";
-import {
+import type {
   IntegrationService,
   Organization,
   OrganizationIntegration,
@@ -9,6 +9,8 @@ import { z } from "zod";
 import { $transaction, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { slackSecretLogFields } from "./safeIntegrationLog";
+import { slackAccessResultLogFields } from "./slackOAuthResultLog";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
@@ -76,7 +78,7 @@ export class OrgIntegrationRepository {
         return new WebClient(
           options?.forceBotToken
             ? secret.botAccessToken
-            : secret.userAccessToken ?? secret.botAccessToken,
+            : (secret.userAccessToken ?? secret.botAccessToken),
           {
             retryConfig: {
               retries: 2,
@@ -97,7 +99,9 @@ export class OrgIntegrationRepository {
     !!env.ORG_SLACK_INTEGRATION_CLIENT_ID && !!env.ORG_SLACK_INTEGRATION_CLIENT_SECRET;
 
   static isVercelSupported =
-    !!env.VERCEL_INTEGRATION_CLIENT_ID && !!env.VERCEL_INTEGRATION_CLIENT_SECRET && !!env.VERCEL_INTEGRATION_APP_SLUG;
+    !!env.VERCEL_INTEGRATION_CLIENT_ID &&
+    !!env.VERCEL_INTEGRATION_CLIENT_SECRET &&
+    !!env.VERCEL_INTEGRATION_APP_SLUG;
 
   /**
    * Generate the URL to install the Vercel integration.
@@ -203,9 +207,8 @@ export class OrgIntegrationRepository {
         });
 
         if (result.ok) {
-          logger.debug("Received slack access token", {
-            result,
-          });
+          // `result` carries Slack tokens; log only non-secret diagnostics.
+          logger.debug("Received slack access token", slackAccessResultLogFields(result));
 
           if (!result.access_token) {
             throw new Error("Failed to get access token");
@@ -228,9 +231,12 @@ export class OrgIntegrationRepository {
               raw: result,
             };
 
-            logger.debug("Setting secret", {
-              secretValue,
-            });
+            // `secretValue` carries the tokens encrypted below; log only
+            // non-secret fields.
+            logger.debug(
+              "Setting secret",
+              slackSecretLogFields(integrationFriendlyId, secretValue)
+            );
 
             await secretStore.setSecret(integrationFriendlyId, secretValue);
 

@@ -62,10 +62,7 @@ describe("ExternalSpanExporterWrapper warm-start regression", () => {
 
     manager.traceContext = { external: { traceparent: TRACEPARENT_RUN_A } };
 
-    const wrapper = new ExternalSpanExporterWrapper(
-      exporter,
-      "ffffffffffffffffffffffffffffffff"
-    );
+    const wrapper = new ExternalSpanExporterWrapper(exporter, "ffffffffffffffffffffffffffffffff");
 
     manager.traceContext = { external: { traceparent: TRACEPARENT_RUN_B } };
 

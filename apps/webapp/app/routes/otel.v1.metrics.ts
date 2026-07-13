@@ -1,9 +1,10 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import {
   ExportMetricsServiceRequest,
   ExportMetricsServiceResponse,
 } from "@trigger.dev/otlp-importer";
-import { otlpExporter } from "~/v3/otlpExporter.server";
+import { otlpExporter, otlpTransformWorkerPoolEnabled } from "~/v3/otlpExporter.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
@@ -13,14 +14,21 @@ export async function action({ request }: ActionFunctionArgs) {
       const exporter = await otlpExporter;
       const body = await request.json();
 
-      const exportResponse = await exporter.exportMetrics(
-        body as ExportMetricsServiceRequest
-      );
+      const exportResponse = await exporter.exportMetrics(body as ExportMetricsServiceRequest);
 
       return json(exportResponse, { status: 200 });
     } else if (contentType.startsWith("application/x-protobuf")) {
       const exporter = await otlpExporter;
       const buffer = await request.arrayBuffer();
+
+      if (otlpTransformWorkerPoolEnabled) {
+        await exporter.exportMetricsRaw(new Uint8Array(buffer));
+
+        return new Response(
+          ExportMetricsServiceResponse.encode(ExportMetricsServiceResponse.create()).finish(),
+          { status: 200 }
+        );
+      }
 
       const exportRequest = ExportMetricsServiceRequest.decode(new Uint8Array(buffer));
 

@@ -48,7 +48,8 @@ const sheetVariants = cva(
 );
 
 interface SheetContentProps
-  extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
+  extends
+    React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {}
 
 const SheetContent = React.forwardRef<
@@ -90,7 +91,7 @@ const SheetTitle = React.forwardRef<
     {...props}
   >
     {children}
-    <SheetPrimitive.Close className="flex items-center gap-1 rounded-sm p-1 pl-0 transition hover:bg-charcoal-750 focus-visible:focus-custom disabled:pointer-events-none">
+    <SheetPrimitive.Close className="flex items-center gap-1 rounded-sm p-1 pl-0 transition hover:bg-background-hover focus-visible:focus-custom disabled:pointer-events-none">
       <ShortcutKey shortcut={{ key: "esc" }} variant="small" />
       <XMarkIcon className="size-4 text-text-dimmed" />
       <span className="sr-only">Close</span>

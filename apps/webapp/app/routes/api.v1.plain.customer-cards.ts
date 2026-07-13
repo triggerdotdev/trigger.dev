@@ -16,13 +16,10 @@ const PlainCustomerCardRequestSchema = z.object({
       email: z.string().optional(),
       externalId: z.string().optional(),
     })
-    .refine(
-      (data) => data.email || data.externalId,
-      {
-        message: "Either customer.email or customer.externalId must be provided",
-        path: ["customer"],
-      }
-    ),
+    .refine((data) => data.email || data.externalId, {
+      message: "Either customer.email or customer.externalId must be provided",
+      path: ["customer"],
+    }),
   thread: z
     .object({
       id: z.string(),
@@ -30,7 +27,10 @@ const PlainCustomerCardRequestSchema = z.object({
     .optional(),
 });
 
-function sanitizeHeaders(request: Request, skipHeaders?: string[]): Partial<Record<string, string>> {
+function sanitizeHeaders(
+  request: Request,
+  skipHeaders?: string[]
+): Partial<Record<string, string>> {
   const authHeaderName = (env.PLAIN_CUSTOMER_CARDS_HEADERS || "Authorization").toLowerCase();
   const defaultSkipHeaders = skipHeaders || [authHeaderName, "cookie"];
   const sanitizedHeaders: Partial<Record<string, string>> = {};
@@ -112,7 +112,6 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   try {
-
     const { customer, cardKeys } = parsed.data;
 
     const userInclude = {
@@ -137,8 +136,8 @@ export async function action({ request }: ActionFunctionArgs) {
     const where = customer.externalId
       ? { id: customer.externalId }
       : customer.email
-      ? { email: customer.email }
-      : null;
+        ? { email: customer.email }
+        : null;
 
     const user = where ? await prisma.user.findFirst({ where, include: userInclude }) : null;
 
@@ -166,7 +165,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
           cards.push({
             key: accountDetailsKey,
-            timeToLiveSeconds: 15, 
+            timeToLiveSeconds: 15,
             components: [
               uiComponent.container({
                 content: [
@@ -283,10 +282,7 @@ export async function action({ request }: ActionFunctionArgs) {
           }
 
           const orgComponents = user.orgMemberships.flatMap(
-            (
-              membership: (typeof user.orgMemberships)[0],
-              index: number
-            ) => {
+            (membership: (typeof user.orgMemberships)[0], index: number) => {
               const org = membership.organization;
               const projectCount = org.projects.length;
 
@@ -375,11 +371,9 @@ export async function action({ request }: ActionFunctionArgs) {
             break;
           }
 
-          const projectComponents = allProjects.slice(0, 10).flatMap(
-            (
-              project: typeof allProjects[0] & { orgSlug: string },
-              index: number
-            ) => {
+          const projectComponents = allProjects
+            .slice(0, 10)
+            .flatMap((project: (typeof allProjects)[0] & { orgSlug: string }, index: number) => {
               return [
                 ...(index > 0 ? [uiComponent.divider({ spacingSize: "M" })] : []),
                 uiComponent.text({
@@ -403,8 +397,7 @@ export async function action({ request }: ActionFunctionArgs) {
                   ],
                 }),
               ];
-            }
-          );
+            });
 
           cards.push({
             key: "projects",

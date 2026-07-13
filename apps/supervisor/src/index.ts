@@ -1,5 +1,6 @@
 import { SupervisorSession } from "@trigger.dev/core/v3/workers";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
+import { formatLogLine, startTelnetLogServer } from "@trigger.dev/core/v3/telnetLogServer";
 import { env } from "./env.js";
 import { WorkloadServer } from "./workloadServer/index.js";
 import type { WorkloadManagerOptions, WorkloadManager } from "./workloadManager/types.js";
@@ -274,7 +275,10 @@ class ManagedSupervisor {
           rampMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS,
           dryRun: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_DRY_RUN,
           logger: this.logger,
-          metrics: new BackpressureMetrics({ register, prefix: "supervisor_backpressure_pod_count" }),
+          metrics: new BackpressureMetrics({
+            register,
+            prefix: "supervisor_backpressure_pod_count",
+          }),
         })
       );
       this.logger.log("🛑 Dequeue backpressure enabled (pod-count source)", {
@@ -744,6 +748,15 @@ class ManagedSupervisor {
     await this.failedPodHandler?.stop();
     await this.metricsServer?.stop();
   }
+}
+
+// Opt-in, dev-only: mirror this process's structured logs to a local telnet/TCP stream.
+if (env.SUPERVISOR_TELNET_LOGS_PORT && env.SUPERVISOR_TELNET_LOGS_PORT > 0) {
+  const telnetLogServer = startTelnetLogServer({
+    port: env.SUPERVISOR_TELNET_LOGS_PORT,
+    name: "supervisor",
+  });
+  SimpleStructuredLogger.onLog = (log) => telnetLogServer.broadcast(formatLogLine(log));
 }
 
 const worker = new ManagedSupervisor();

@@ -52,7 +52,10 @@ export const loader = createLoaderApiRoute(
       return json({ error: "Prompt not found" }, { status: 404 });
     }
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(prompt.project.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      prompt.project.organizationId,
+      "standard"
+    );
     const presenter = new PromptPresenter(clickhouse);
     const version = await presenter.resolveVersion(prompt.id, {
       version: searchParams.version,
@@ -123,7 +126,10 @@ const { action } = createActionApiRoute(
       return json({ error: "Prompt not found" }, { status: 404 });
     }
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(authentication.environment.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      authentication.environment.organizationId,
+      "standard"
+    );
     const presenter = new PromptPresenter(clickhouse);
     const version = await presenter.resolveVersion(prompt.id, {
       version: body.version,
@@ -156,21 +162,15 @@ const { action } = createActionApiRoute(
 
 export { action };
 
-function compileTemplate(
-  template: string,
-  variables: Record<string, unknown>
-): string {
-  let result = template.replace(
-    /\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g,
-    (_match, key, content) => {
-      const value = variables[key];
-      return value
-        ? content.replace(/\{\{(\w+)\}\}/g, (_m: string, k: string) => {
-            return String(variables[k] ?? "");
-          })
-        : "";
-    }
-  );
+function compileTemplate(template: string, variables: Record<string, unknown>): string {
+  let result = template.replace(/\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_match, key, content) => {
+    const value = variables[key];
+    return value
+      ? content.replace(/\{\{(\w+)\}\}/g, (_m: string, k: string) => {
+          return String(variables[k] ?? "");
+        })
+      : "";
+  });
 
   result = result.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key) => {
     const value = variables[key];

@@ -4,13 +4,13 @@ import { createRequestHandler } from "@remix-run/express";
 import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
 import compression from "compression";
 import type { Server as EngineServer } from "engine.io";
-import express from "express";
+import express, { type RequestHandler } from "express";
 import morgan from "morgan";
 import { nanoid } from "nanoid";
 import path from "path";
 import type { Server as IoServer } from "socket.io";
-import { WebSocketServer } from "ws";
-import { RateLimitMiddleware } from "~/services/apiRateLimit.server";
+import type { WebSocketServer } from "ws";
+import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
 import cluster from "node:cluster";
 import os from "node:os";
@@ -103,6 +103,10 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
 
   // Remix fingerprints its assets so we can cache forever.
   app.use("/build", express.static("public/build", { immutable: true, maxAge: "1y" }));
+  // Stale dev builds can request an old hashed manifest; don't fall through to Remix.
+  app.use("/build", (_req, res) => {
+    res.status(404).end();
+  });
 
   // Everything else (like favicon.ico) is cached for an hour. You may want to be
   // more aggressive with this caching.
@@ -135,8 +139,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
-    const tenantContextMiddleware: import("express").RequestHandler =
-      build.entry.module.tenantContextMiddleware;
+    const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -147,8 +150,9 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         res.set("X-Robots-Tag", "noindex, nofollow");
       }
 
-      // /clean-urls/ -> /clean-urls
-      if (req.path.endsWith("/") && req.path.length > 1) {
+      // /clean-urls/ -> /clean-urls. Skip /ph: PostHog ingest endpoints end in
+      // a slash, and a 301 would drop sendBeacon POSTs.
+      if (req.path.endsWith("/") && req.path.length > 1 && !req.path.startsWith("/ph/")) {
         const query = req.url.slice(req.path.length);
         const safepath = req.path.slice(0, -1).replace(/\/+/g, "/");
         res.redirect(301, safepath + query);
@@ -266,7 +270,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         console.log(`Socket.io client connected, upgrading their connection...`);
 
         // https://github.com/socketio/socket.io/issues/4693
-        (socketIo?.io.engine as EngineServer).handleUpgrade(req, socket, head);
+        (socketIo!.io.engine as EngineServer).handleUpgrade(req, socket, head);
         return;
       }
 

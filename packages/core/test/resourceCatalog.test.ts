@@ -82,8 +82,7 @@ describe("StandardResourceCatalog — runtime registration via sentinel context"
       vi.spyOn(console, "warn").mockImplementation(() => {});
       const catalog = new StandardResourceCatalog();
 
-      (globalThis as { __catalogRegisterTaskMetadata?: unknown })
-        .__catalogRegisterTaskMetadata = (
+      (globalThis as { __catalogRegisterTaskMetadata?: unknown }).__catalogRegisterTaskMetadata = (
         task: Parameters<StandardResourceCatalog["registerTaskMetadata"]>[0]
       ) => {
         catalog.registerTaskMetadata(task);
@@ -124,33 +123,26 @@ describe("StandardResourceCatalog — runtime registration via sentinel context"
     catalog.clearCurrentFileContext();
   });
 
-  it(
-    "control: real file context registers without firing the sentinel warning",
-    async () => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const catalog = new StandardResourceCatalog();
+  it("control: real file context registers without firing the sentinel warning", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const catalog = new StandardResourceCatalog();
 
-      (globalThis as { __catalogRegisterTaskMetadata?: unknown })
-        .__catalogRegisterTaskMetadata = (
-        task: Parameters<StandardResourceCatalog["registerTaskMetadata"]>[0]
-      ) => {
-        catalog.registerTaskMetadata(task);
-      };
+    (globalThis as { __catalogRegisterTaskMetadata?: unknown }).__catalogRegisterTaskMetadata = (
+      task: Parameters<StandardResourceCatalog["registerTaskMetadata"]>[0]
+    ) => {
+      catalog.registerTaskMetadata(task);
+    };
 
-      catalog.setCurrentFileContext(
-        "/app/dist/lazy-task.entry.mjs",
-        "src/tasks/lazy-task.ts"
-      );
-      await import("./fixtures/dynamic-task-module.mjs?control");
-      catalog.clearCurrentFileContext();
+    catalog.setCurrentFileContext("/app/dist/lazy-task.entry.mjs", "src/tasks/lazy-task.ts");
+    await import("./fixtures/dynamic-task-module.mjs?control");
+    catalog.clearCurrentFileContext();
 
-      const task = catalog.getTask("lazy-task");
-      expect(task).toBeDefined();
-      expect(task?.filePath).toBe("/app/dist/lazy-task.entry.mjs");
-      expect(task?.entryPoint).toBe("src/tasks/lazy-task.ts");
-      expect(warn).not.toHaveBeenCalled();
-    }
-  );
+    const task = catalog.getTask("lazy-task");
+    expect(task).toBeDefined();
+    expect(task?.filePath).toBe("/app/dist/lazy-task.entry.mjs");
+    expect(task?.entryPoint).toBe("src/tasks/lazy-task.ts");
+    expect(warn).not.toHaveBeenCalled();
+  });
 });
 
 describe("StandardResourceCatalog — duplicate task id collisions", () => {

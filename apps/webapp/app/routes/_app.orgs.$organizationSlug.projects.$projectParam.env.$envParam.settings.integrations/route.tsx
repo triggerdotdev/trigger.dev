@@ -1,12 +1,12 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
-import { Form, useActionData, useNavigation } from "@remix-run/react";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
+import { Form, useActionData, useNavigation, useSearchParams } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData, useTypedFetcher } from "remix-typedjson";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { InlineCode } from "~/components/code/InlineCode";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
-import { throwPermissionDenied } from "~/utils/permissionDenied";
-import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -18,28 +18,28 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useEnvironment } from "~/hooks/useEnvironment";
 import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
 } from "~/models/message.server";
-import { ProjectSettingsService } from "~/services/projectSettings.server";
-import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
-import { logger } from "~/services/logger.server";
-import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useSearchParams } from "@remix-run/react";
-import { type BuildSettings } from "~/v3/buildSettings";
-import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
-import {
-  VercelSettingsPanel,
-  VercelOnboardingModal,
-} from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
-import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
+import { logger } from "~/services/logger.server";
+import { ProjectSettingsService } from "~/services/projectSettings.server";
+import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
+import { type BuildSettings } from "~/v3/buildSettings";
+import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
+import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import {
+  VercelOnboardingModal,
+  VercelSettingsPanel,
+} from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 
 export const loader = dashboardLoader(
   {
@@ -131,6 +131,8 @@ const UpdateBuildSettingsFormSchema = z.object({
     .refine((val) => !val || val.length <= 500, {
       message: "Pre-build command must not exceed 500 characters",
     }),
+  // Positive checkbox in the UI ("Use native build server"). It is checked by
+  // default; we store the inverse as `disableNativeBuildServer`.
   useNativeBuildServer: z
     .string()
     .optional()
@@ -152,10 +154,10 @@ export const action = dashboardAction(
     const { organizationSlug, projectParam } = params;
 
     const formData = await request.formData();
-    const submission = parse(formData, { schema: UpdateBuildSettingsFormSchema });
+    const submission = parseWithZod(formData, { schema: UpdateBuildSettingsFormSchema });
 
-    if (!submission.value || submission.intent !== "submit") {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
     const projectSettingsService = new ProjectSettingsService();
@@ -178,7 +180,8 @@ export const action = dashboardAction(
       installCommand: installCommand || undefined,
       preBuildCommand: preBuildCommand || undefined,
       triggerConfigFilePath: triggerConfigFilePath || undefined,
-      useNativeBuildServer: useNativeBuildServer,
+      // Native build server is the default, so we only persist the opt-out.
+      disableNativeBuildServer: useNativeBuildServer ? undefined : true,
     });
 
     if (resultOrFail.isErr()) {
@@ -380,6 +383,11 @@ export default function IntegrationsSettingsPage() {
 
               <div>
                 <Header2 spacing>Build settings</Header2>
+                <Hint className="mb-2">
+                  These settings apply to deployments triggered from GitHub and to CLI deployments
+                  run with the <InlineCode variant="extra-small">--native-build-server</InlineCode>{" "}
+                  flag.
+                </Hint>
                 <div className="w-full rounded-sm border border-grid-dimmed p-4">
                   <BuildSettingsForm buildSettings={buildSettings ?? {}} />
                 </div>
@@ -427,11 +435,14 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
   const navigation = useNavigation();
 
   const [hasBuildSettingsChanges, setHasBuildSettingsChanges] = useState(false);
+  // The native build server is enabled by default; it's only off when the
+  // project has explicitly opted out via `disableNativeBuildServer`.
+  const nativeBuildServerEnabled = buildSettings?.disableNativeBuildServer !== true;
   const [buildSettingsValues, setBuildSettingsValues] = useState({
     preBuildCommand: buildSettings?.preBuildCommand || "",
     installCommand: buildSettings?.installCommand || "",
     triggerConfigFilePath: buildSettings?.triggerConfigFilePath || "",
-    useNativeBuildServer: buildSettings?.useNativeBuildServer || false,
+    useNativeBuildServer: nativeBuildServerEnabled,
   });
 
   useEffect(() => {
@@ -439,16 +450,16 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
       buildSettingsValues.preBuildCommand !== (buildSettings?.preBuildCommand || "") ||
       buildSettingsValues.installCommand !== (buildSettings?.installCommand || "") ||
       buildSettingsValues.triggerConfigFilePath !== (buildSettings?.triggerConfigFilePath || "") ||
-      buildSettingsValues.useNativeBuildServer !== (buildSettings?.useNativeBuildServer || false);
+      buildSettingsValues.useNativeBuildServer !== nativeBuildServerEnabled;
     setHasBuildSettingsChanges(hasChanges);
-  }, [buildSettingsValues, buildSettings]);
+  }, [buildSettingsValues, buildSettings, nativeBuildServerEnabled]);
 
   const [buildSettingsForm, fields] = useForm({
     id: "update-build-settings",
-    lastSubmission: lastSubmission,
+    lastResult: lastSubmission,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parse(formData, {
+      return parseWithZod(formData, {
         schema: UpdateBuildSettingsFormSchema,
       });
     },
@@ -459,12 +470,12 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
     (navigation.state === "submitting" || navigation.state === "loading");
 
   return (
-    <Form method="post" {...buildSettingsForm.props}>
+    <Form method="post" {...getFormProps(buildSettingsForm)}>
       <Fieldset>
         <InputGroup fullWidth>
           <Label htmlFor={fields.triggerConfigFilePath.id}>Trigger config file</Label>
           <Input
-            {...conform.input(fields.triggerConfigFilePath, { type: "text" })}
+            {...getInputProps(fields.triggerConfigFilePath, { type: "text" })}
             defaultValue={buildSettings?.triggerConfigFilePath || ""}
             placeholder="trigger.config.ts"
             onChange={(e) => {
@@ -478,14 +489,14 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             Path to your Trigger configuration file, relative to the root directory of your repo.
           </Hint>
           <FormError id={fields.triggerConfigFilePath.errorId}>
-            {fields.triggerConfigFilePath.error}
+            {fields.triggerConfigFilePath.errors}
           </FormError>
         </InputGroup>
 
         <InputGroup fullWidth>
           <Label htmlFor={fields.installCommand.id}>Install command</Label>
           <Input
-            {...conform.input(fields.installCommand, { type: "text" })}
+            {...getInputProps(fields.installCommand, { type: "text" })}
             defaultValue={buildSettings?.installCommand || ""}
             placeholder="e.g., `npm install`, `pnpm install`, or `bun install`"
             onChange={(e) => {
@@ -499,12 +510,14 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             Command to install your project dependencies. This will be run from the root directory
             of your repo. Auto-detected by default.
           </Hint>
-          <FormError id={fields.installCommand.errorId}>{fields.installCommand.error}</FormError>
+          <FormError id={fields.installCommand.errorId}>
+            {fields.installCommand.errors?.join(", ")}
+          </FormError>
         </InputGroup>
         <InputGroup fullWidth>
           <Label htmlFor={fields.preBuildCommand.id}>Pre-build command</Label>
           <Input
-            {...conform.input(fields.preBuildCommand, { type: "text" })}
+            {...getInputProps(fields.preBuildCommand, { type: "text" })}
             defaultValue={buildSettings?.preBuildCommand || ""}
             placeholder="e.g., `npm run prisma:generate`"
             onChange={(e) => {
@@ -518,16 +531,17 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             Any command that needs to run before we build and deploy your project. This will be run
             from the root directory of your repo.
           </Hint>
-          <FormError id={fields.preBuildCommand.errorId}>{fields.preBuildCommand.error}</FormError>
+          <FormError id={fields.preBuildCommand.errorId}>
+            {fields.preBuildCommand.errors?.join(", ")}
+          </FormError>
         </InputGroup>
         <div className="border-t border-grid-dimmed pt-4">
           <InputGroup>
             <CheckboxWithLabel
-              id={fields.useNativeBuildServer.id}
-              {...conform.input(fields.useNativeBuildServer, { type: "checkbox" })}
+              {...getInputProps(fields.useNativeBuildServer, { type: "checkbox" })}
               label="Use native build server"
               variant="simple/small"
-              defaultChecked={buildSettings?.useNativeBuildServer || false}
+              defaultChecked={nativeBuildServerEnabled}
               onChange={(isChecked) => {
                 setBuildSettingsValues((prev) => ({
                   ...prev,
@@ -536,15 +550,15 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
               }}
             />
             <Hint>
-              Native build server builds do not rely on external build providers and will become the
-              default in the future. Version 4.2.0 or newer is required.
+              Native build server builds don't rely on external build providers and are used by
+              default. Requires version 4.2.0 or newer.
             </Hint>
             <FormError id={fields.useNativeBuildServer.errorId}>
-              {fields.useNativeBuildServer.error}
+              {fields.useNativeBuildServer.errors}
             </FormError>
           </InputGroup>
         </div>
-        <FormError>{buildSettingsForm.error}</FormError>
+        <FormError>{buildSettingsForm.errors}</FormError>
         <FormButtons
           confirmButton={
             <Button

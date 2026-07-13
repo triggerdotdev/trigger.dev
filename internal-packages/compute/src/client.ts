@@ -62,7 +62,11 @@ class HttpTransport {
     return options?.signal ?? AbortSignal.timeout(this.opts.timeoutMs);
   }
 
-  async post<T = unknown>(path: string, body: unknown, options?: RequestOptions): Promise<T | undefined> {
+  async post<T = unknown>(
+    path: string,
+    body: unknown,
+    options?: RequestOptions
+  ): Promise<T | undefined> {
     const url = `${this.opts.gatewayUrl}${path}`;
 
     const response = await fetch(url, {

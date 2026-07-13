@@ -1,12 +1,12 @@
 import type { RunEngine } from "@internal/run-engine";
-import { Prisma, TaskQueueType } from "@trigger.dev/database";
+import type { Prisma } from "@trigger.dev/database";
+import { TaskQueueType } from "@trigger.dev/database";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "~/v3/engineVersion.server";
 import { engine } from "~/v3/runEngine.server";
 import { BasePresenter } from "./basePresenter.server";
 import { toQueueItem } from "./QueueRetrievePresenter.server";
-import type { QueueListPagination } from "./queueListPagination.server";
 
 type QueueListEngine = Pick<RunEngine, "lengthOfQueues" | "currentConcurrencyOfQueues">;
 
@@ -232,7 +232,7 @@ export class QueueListPresenter extends BasePresenter {
         concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
         concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
         concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy
-          ? overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null
+          ? (overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null)
           : null,
         paused: queue.paused,
       })

@@ -160,8 +160,7 @@ describe("API", () => {
   // Plus the equivalent full matrix for input-streams which the smoke
   // matrix doesn't touch.
   describe("Resource-scoped writes — waitpoints (gap-fill)", () => {
-    const pathFor = (friendlyId: string) =>
-      `/api/v1/waitpoints/tokens/${friendlyId}/complete`;
+    const pathFor = (friendlyId: string) => `/api/v1/waitpoints/tokens/${friendlyId}/complete`;
     const completeRequest = (path: string, headers: Record<string, string>) =>
       getTestServer().webapp.fetch(path, {
         method: "POST",
@@ -402,21 +401,6 @@ describe("API", () => {
   describe("Trigger task — single (api.v1.tasks.$taskId.trigger)", () => {
     const TASK_ID = "test-task";
     const path = `/api/v1/tasks/${TASK_ID}/trigger`;
-
-    async function seedAndRequest(
-      headers: Record<string, string>,
-      body: unknown = { payload: {} }
-    ) {
-      const server = getTestServer();
-      const seed = await seedTestEnvironment(server.prisma);
-      const res = await server.webapp.fetch(path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify(body),
-      });
-      return { res, seed };
-    }
-
     it("missing auth: 401", async () => {
       const server = getTestServer();
       const res = await server.webapp.fetch(path, {
@@ -941,10 +925,9 @@ describe("API", () => {
         },
         expirationTime: "15m",
       });
-      const res = await get(
-        "?filter%5BtaskIdentifier%5D=task_a%2Ctask_b",
-        { Authorization: `Bearer ${jwt}` }
-      );
+      const res = await get("?filter%5BtaskIdentifier%5D=task_a%2Ctask_b", {
+        Authorization: `Bearer ${jwt}`,
+      });
       // Resource array is [{type:"runs"}, {type:"tasks",id:"task_a"}, {type:"tasks",id:"task_b"}].
       // The scope read:tasks:task_a matches the second element → access granted.
       // Handler may 500 (ClickHouse unreachable in tests) but auth passed.
@@ -964,10 +947,9 @@ describe("API", () => {
         },
         expirationTime: "15m",
       });
-      const res = await get(
-        "?filter%5BtaskIdentifier%5D=task_a",
-        { Authorization: `Bearer ${jwt}` }
-      );
+      const res = await get("?filter%5BtaskIdentifier%5D=task_a", {
+        Authorization: `Bearer ${jwt}`,
+      });
       // Resource is [{runs}, {tasks:task_a}]. JWT scope says
       // read:tasks:task_z which doesn't match the runs collection
       // (wrong type) or the task_a element (wrong id). 403.
@@ -1767,10 +1749,9 @@ describe("API", () => {
         payload: { pub: true, sub: seed.environment.id, scopes: ["read:batch"] },
         expirationTime: "15m",
       });
-      const res = await getTestServer().webapp.fetch(
-        `/api/v2/batches/${seeded.batchFriendlyId}`,
-        { headers: { Authorization: `Bearer ${jwt}` } }
-      );
+      const res = await getTestServer().webapp.fetch(`/api/v2/batches/${seeded.batchFriendlyId}`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
       expect(res.status).not.toBe(401);
       expect(res.status).not.toBe(403);
     });
@@ -2064,14 +2045,11 @@ describe("API", () => {
       });
       // Body must satisfy the route's schema ({ version: positive int })
       // — otherwise body validation 400s before authorization runs.
-      const res = await server.webapp.fetch(
-        "/api/v1/prompts/some-slug/override/reactivate",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
-          body: JSON.stringify({ version: 1 }),
-        }
-      );
+      const res = await server.webapp.fetch("/api/v1/prompts/some-slug/override/reactivate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ version: 1 }),
+      });
       expect(res.status).toBe(403);
     });
   });
@@ -2252,9 +2230,12 @@ describe("API", () => {
         payload: { pub: true, sub: seed.environment.id, scopes: ["read:query:runs"] },
         expirationTime: "15m",
       });
-      const res = await post({ query: "SELECT * FROM runs" }, {
-        Authorization: `Bearer ${jwt}`,
-      });
+      const res = await post(
+        { query: "SELECT * FROM runs" },
+        {
+          Authorization: `Bearer ${jwt}`,
+        }
+      );
       expect(res.status).not.toBe(401);
       expect(res.status).not.toBe(403);
     });
@@ -2290,8 +2271,7 @@ describe("API", () => {
       });
       const res = await post(
         {
-          query:
-            "SELECT count() FROM runs UNION ALL SELECT count() FROM metrics",
+          query: "SELECT count() FROM runs UNION ALL SELECT count() FROM metrics",
         },
         { Authorization: `Bearer ${jwt}` }
       );
@@ -2314,8 +2294,7 @@ describe("API", () => {
       });
       const res = await post(
         {
-          query:
-            "SELECT count() FROM runs UNION ALL SELECT count() FROM metrics",
+          query: "SELECT count() FROM runs UNION ALL SELECT count() FROM metrics",
         },
         { Authorization: `Bearer ${jwt}` }
       );
@@ -2335,9 +2314,12 @@ describe("API", () => {
         },
         expirationTime: "15m",
       });
-      const res = await post({ query: "SELECT * FROM runs" }, {
-        Authorization: `Bearer ${jwt}`,
-      });
+      const res = await post(
+        { query: "SELECT * FROM runs" },
+        {
+          Authorization: `Bearer ${jwt}`,
+        }
+      );
       expect(res.status).toBe(403);
     });
 
@@ -2349,9 +2331,12 @@ describe("API", () => {
         payload: { pub: true, sub: seed.environment.id, scopes: ["admin"] },
         expirationTime: "15m",
       });
-      const res = await post({ query: "SELECT * FROM runs" }, {
-        Authorization: `Bearer ${jwt}`,
-      });
+      const res = await post(
+        { query: "SELECT * FROM runs" },
+        {
+          Authorization: `Bearer ${jwt}`,
+        }
+      );
       expect(res.status).not.toBe(401);
       expect(res.status).not.toBe(403);
     });
@@ -2422,9 +2407,7 @@ describe("API", () => {
     // Old superScopes: ["read:sessions", "read:all", "admin"]
     describe("List sessions — GET /api/v1/sessions", () => {
       const path = (taskFilter?: string) =>
-        taskFilter
-          ? `/api/v1/sessions?filter[taskIdentifier]=${taskFilter}`
-          : "/api/v1/sessions";
+        taskFilter ? `/api/v1/sessions?filter[taskIdentifier]=${taskFilter}` : "/api/v1/sessions";
 
       const fetchWithJwt = async (jwt: string, taskFilter?: string) =>
         getTestServer().webapp.fetch(path(taskFilter), {
@@ -2445,9 +2428,7 @@ describe("API", () => {
 
       it("read:tasks:foo on filter=foo: auth passes", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "read:tasks:foo",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:tasks:foo"]);
         const res = await fetchWithJwt(jwt, "foo");
         expect(res.status).not.toBe(401);
         expect(res.status).not.toBe(403);
@@ -2455,18 +2436,14 @@ describe("API", () => {
 
       it("read:tasks:bar on filter=foo: 403 (per-task narrowing)", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "read:tasks:bar",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:tasks:bar"]);
         const res = await fetchWithJwt(jwt, "foo");
         expect(res.status).toBe(403);
       });
 
       it("read:sessions on filter=foo: auth passes (was a superScope)", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "read:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:sessions"]);
         const res = await fetchWithJwt(jwt, "foo");
         expect(res.status).not.toBe(401);
         expect(res.status).not.toBe(403);
@@ -2474,9 +2451,7 @@ describe("API", () => {
 
       it("read:sessions on no-filter list: auth passes", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "read:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:sessions"]);
         const res = await fetchWithJwt(jwt);
         expect(res.status).not.toBe(401);
         expect(res.status).not.toBe(403);
@@ -2502,18 +2477,14 @@ describe("API", () => {
         // No filter → resource is `{ type: "sessions" }` only. read:tasks
         // doesn't match the sessions type, so 403 — explicit narrowing.
         const seed = await seedTestEnvironment(getTestServer().prisma);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "read:tasks",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:tasks"]);
         const res = await fetchWithJwt(jwt);
         expect(res.status).toBe(403);
       });
 
       it("write:tasks:foo (wrong action) on filter=foo: 403", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "write:tasks:foo",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:tasks:foo"]);
         const res = await fetchWithJwt(jwt, "foo");
         expect(res.status).toBe(403);
       });
@@ -2549,9 +2520,7 @@ describe("API", () => {
 
       it("write:tasks:foo matching body: auth passes", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "write:tasks:foo",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:tasks:foo"]);
         const res = await post(jwt, "foo");
         // Body validation / handler can fail later (404 if task is
         // missing, 400 for invalid body) — we only care that auth
@@ -2562,18 +2531,14 @@ describe("API", () => {
 
       it("write:tasks:bar mismatching body: 403", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "write:tasks:bar",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:tasks:bar"]);
         const res = await post(jwt, "foo");
         expect(res.status).toBe(403);
       });
 
       it("write:sessions: auth passes (was a superScope)", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "write:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:sessions"]);
         const res = await post(jwt, "foo");
         expect(res.status).not.toBe(401);
         expect(res.status).not.toBe(403);
@@ -2597,9 +2562,7 @@ describe("API", () => {
 
       it("read:tasks:foo (wrong action): 403", async () => {
         const seed = await seedTestEnvironment(getTestServer().prisma);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "read:tasks:foo",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:tasks:foo"]);
         const res = await post(jwt, "foo");
         expect(res.status).toBe(403);
       });
@@ -2649,9 +2612,7 @@ describe("API", () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "read:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:sessions"]);
         const res = await get(session.friendlyId, jwt);
         expect(res.status).toBe(200);
       });
@@ -2705,9 +2666,7 @@ describe("API", () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "admin:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["admin:sessions"]);
         const res = await patch(session.friendlyId, jwt);
         expect(res.status).toBe(200);
       });
@@ -2734,9 +2693,7 @@ describe("API", () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "write:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:sessions"]);
         const res = await patch(session.friendlyId, jwt);
         expect(res.status).toBe(403);
       });
@@ -2747,17 +2704,14 @@ describe("API", () => {
     // action: "admin" — same matrix as PATCH.
     describe("Close session — POST /api/v1/sessions/:session/close", () => {
       const close = async (sessionParam: string, jwt: string) =>
-        getTestServer().webapp.fetch(
-          `/api/v1/sessions/${sessionParam}/close`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${jwt}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ reason: "test" }),
-          }
-        );
+        getTestServer().webapp.fetch(`/api/v1/sessions/${sessionParam}/close`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ reason: "test" }),
+        });
 
       const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
         generateJWT({
@@ -2770,9 +2724,7 @@ describe("API", () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "admin:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["admin:sessions"]);
         const res = await close(session.friendlyId, jwt);
         expect(res.status).not.toBe(401);
         expect(res.status).not.toBe(403);
@@ -2792,9 +2744,7 @@ describe("API", () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "write:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:sessions"]);
         const res = await close(session.friendlyId, jwt);
         expect(res.status).toBe(403);
       });
@@ -2805,22 +2755,19 @@ describe("API", () => {
     // action: "write" — multi-key sessions resource.
     describe("End-and-continue — POST /api/v1/sessions/:session/end-and-continue", () => {
       const endAndContinue = async (sessionParam: string, jwt: string) =>
-        getTestServer().webapp.fetch(
-          `/api/v1/sessions/${sessionParam}/end-and-continue`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${jwt}`,
-              "Content-Type": "application/json",
-            },
-            // Body shape doesn't matter for auth — handler runs after
-            // the auth check so any 4xx here means auth passed.
-            body: JSON.stringify({
-              reason: "test",
-              callingRunId: "run_does_not_exist",
-            }),
-          }
-        );
+        getTestServer().webapp.fetch(`/api/v1/sessions/${sessionParam}/end-and-continue`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+            "Content-Type": "application/json",
+          },
+          // Body shape doesn't matter for auth — handler runs after
+          // the auth check so any 4xx here means auth passed.
+          body: JSON.stringify({
+            reason: "test",
+            callingRunId: "run_does_not_exist",
+          }),
+        });
 
       const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
         generateJWT({
@@ -2833,9 +2780,7 @@ describe("API", () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "write:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:sessions"]);
         const res = await endAndContinue(session.friendlyId, jwt);
         expect(res.status).not.toBe(401);
         expect(res.status).not.toBe(403);
@@ -2855,9 +2800,7 @@ describe("API", () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "read:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:sessions"]);
         const res = await endAndContinue(session.friendlyId, jwt);
         expect(res.status).toBe(403);
       });
@@ -2869,8 +2812,7 @@ describe("API", () => {
     // multi-key sessions resource. No deep matrix here; one positive
     // test per old superScope per method is enough.
     describe("Realtime IO — /realtime/v1/sessions/:session/:io", () => {
-      const ioPath = (sessionParam: string) =>
-        `/realtime/v1/sessions/${sessionParam}/in`;
+      const ioPath = (sessionParam: string) => `/realtime/v1/sessions/${sessionParam}/in`;
 
       const mintJwt = async (apiKey: string, envId: string, scopes: string[]) =>
         generateJWT({
@@ -2883,9 +2825,7 @@ describe("API", () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "read:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:sessions"]);
         const res = await server.webapp.fetch(ioPath(session.friendlyId), {
           method: "HEAD",
           headers: { Authorization: `Bearer ${jwt}` },
@@ -2911,9 +2851,7 @@ describe("API", () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "write:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:sessions"]);
         const res = await server.webapp.fetch(ioPath(session.friendlyId), {
           method: "PUT",
           headers: { Authorization: `Bearer ${jwt}` },
@@ -2941,9 +2879,7 @@ describe("API", () => {
         const server = getTestServer();
         const seed = await seedTestEnvironment(server.prisma);
         const session = await seedTestApiSession(server.prisma, seed.environment);
-        const jwt = await mintJwt(seed.apiKey, seed.environment.id, [
-          "write:sessions",
-        ]);
+        const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["write:sessions"]);
         const res = await server.webapp.fetch(appendPath(session.friendlyId), {
           method: "POST",
           headers: {

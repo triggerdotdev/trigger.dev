@@ -302,20 +302,14 @@ export class ExponentialBackoff {
       let attemptTimeout: NodeJS.Timeout | undefined = undefined;
 
       try {
-        const result = await new Promise<T>(async (resolve, reject) => {
+        const result = await new Promise<T>((resolve, reject) => {
           if (attemptTimeoutMs > 0) {
             attemptTimeout = setTimeout(() => {
               reject(new AttemptTimeout());
             }, attemptTimeoutMs);
           }
 
-          try {
-            const callbackResult = await callback({ delay, retry, elapsedMs });
-
-            resolve(callbackResult);
-          } catch (error) {
-            reject(error);
-          }
+          callback({ delay, retry, elapsedMs }).then(resolve, reject);
         });
 
         return {

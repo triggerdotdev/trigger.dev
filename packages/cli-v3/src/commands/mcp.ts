@@ -3,17 +3,17 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { VERSION } from "@trigger.dev/core";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { Command, Option as CommandOption } from "commander";
+import type { Command } from "commander";
 import { z } from "zod";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
-import { CLOUD_API_URL } from "../consts.js";
+import { serverMetadata } from "../mcp/config.js";
 import { McpContext } from "../mcp/context.js";
+import { toMcpContextOptions } from "../mcp/contextOptions.js";
 import { FileLogger } from "../mcp/logger.js";
 import { registerTools } from "../mcp/tools.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { installMcpServer } from "./install-mcp.js";
-import { serverMetadata } from "../mcp/config.js";
 import { initiateSkillsInstallWizard } from "./skills.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({
@@ -95,13 +95,7 @@ export async function mcpCommand(options: McpCommandOptions) {
     ? new FileLogger(options.logFile, server)
     : undefined;
 
-  const context = new McpContext(server, {
-    projectRef: options.projectRef,
-    fileLogger,
-    apiUrl: options.apiUrl ?? CLOUD_API_URL,
-    profile: options.profile,
-    readonly: options.readonly,
-  });
+  const context = new McpContext(server, toMcpContextOptions(options, fileLogger));
 
   registerTools(context);
 

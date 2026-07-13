@@ -1,16 +1,16 @@
 import {
+  type CompletedWaitpoint,
+  type MachinePresetResources,
+  type ServerBackgroundWorker,
+  type TaskRunExecution,
+  type TaskRunExecutionPayload,
+  type TaskRunExecutionResult,
+  type WorkerManifest,
   attemptKey,
-  CompletedWaitpoint,
   ExecutorToWorkerMessageCatalog,
-  MachinePresetResources,
-  ServerBackgroundWorker,
   TaskRunErrorCodes,
-  TaskRunExecution,
-  TaskRunExecutionPayload,
-  TaskRunExecutionResult,
   type TaskRunInternalError,
   tryCatch,
-  WorkerManifest,
   WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
 import {
@@ -18,12 +18,12 @@ import {
   ZodIpcConnection,
 } from "@trigger.dev/core/v3/zodIpc";
 import { Evt } from "evt";
-import { ChildProcess, fork } from "node:child_process";
+import { type ChildProcess, fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
 import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";
 import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
-import { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
+import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
 import {
   CancelledProcessError,
@@ -115,7 +115,7 @@ export class TaskRunProcess {
 
     try {
       await this.#cancel();
-    } catch (err) {}
+    } catch (_err) {}
 
     await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
   }
@@ -213,9 +213,7 @@ export class TaskRunProcess {
           // expires — surfacing as TIMED_OUT/MAX_DURATION_EXCEEDED with empty attempts. Reject
           // any pending attempts now and gracefully terminate the worker so OTEL gets a flush
           // window before SIGKILL.
-          this.#rejectPendingAttempts(
-            new UncaughtExceptionError(message.error, message.origin)
-          );
+          this.#rejectPendingAttempts(new UncaughtExceptionError(message.error, message.origin));
 
           await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
         },
@@ -317,11 +315,7 @@ export class TaskRunProcess {
 
       // @ts-expect-error - rejecter is assigned in the promise constructor above
       rejecter(
-        new UnexpectedExitError(
-          -1,
-          null,
-          "Child process is not connected, cannot execute task run"
-        )
+        new UnexpectedExitError(-1, null, "Child process is not connected, cannot execute task run")
       );
     }
 

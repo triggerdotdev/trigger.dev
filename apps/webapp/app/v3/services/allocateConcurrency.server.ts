@@ -2,6 +2,7 @@ import { tryCatch } from "@trigger.dev/core";
 import { ManageConcurrencyPresenter } from "~/presenters/v3/ManageConcurrencyPresenter.server";
 import { BaseService } from "./baseService.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 type Input = {
   userId: string;
@@ -88,6 +89,9 @@ export class AllocateConcurrencyService extends BaseService {
       if (!updatedEnvironment.paused) {
         await updateEnvConcurrencyLimits(updatedEnvironment);
       }
+
+      // maximumConcurrencyLimit changed in the control-plane; drop any cached copy.
+      controlPlaneResolver.invalidateEnvironment(environment.id);
     }
 
     return {

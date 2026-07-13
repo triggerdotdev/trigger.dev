@@ -4,13 +4,7 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Button } from "./primitives/Buttons";
 import { Header3 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger
-} from "./primitives/SheetV3";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "./primitives/SheetV3";
 import { ShortcutKey } from "./primitives/ShortcutKey";
 
 export function Shortcuts() {
@@ -83,7 +77,7 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ key: "f" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Toggle side menu">
-              <ShortcutKey shortcut={{ modifiers: ["mod"]}} variant="medium/bright" />
+              <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
               <ShortcutKey shortcut={{ key: "b" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Select filter">

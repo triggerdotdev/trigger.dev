@@ -45,7 +45,8 @@ function sampleEvents(): StreamedTraceEvent[] {
       level: "ERROR",
       message: "task failed",
       isError: true,
-      propertiesText: '{"error":{"message":"boom: it failed","name":"Error","stackTrace":"Error: boom\\n    at fn"}}',
+      propertiesText:
+        '{"error":{"message":"boom: it failed","name":"Error","stackTrace":"Error: boom\\n    at fn"}}',
     },
     {
       spanId: "quiet1",
@@ -75,7 +76,9 @@ async function drain(gen: AsyncIterable<string>): Promise<string> {
 }
 
 function render(formatName: string, items = sampleEvents(), opts = {}): Promise<string> {
-  return drain(streamTraceExport(toAsyncIterable(items), getTraceExportFormat(formatName), CTX, opts));
+  return drain(
+    streamTraceExport(toAsyncIterable(items), getTraceExportFormat(formatName), CTX, opts)
+  );
 }
 
 describe("getTraceExportFormat", () => {
@@ -142,7 +145,9 @@ describe("markdown format", () => {
     expect(text).toContain("task: agent-workflow");
     expect(text).toContain("url: https://app.example.com/orgs/o/projects/p/env/dev/runs/run_x");
     expect(text).toContain("# Trace for run_x");
-    expect(text).toContain("[View in dashboard](https://app.example.com/orgs/o/projects/p/env/dev/runs/run_x)");
+    expect(text).toContain(
+      "[View in dashboard](https://app.example.com/orgs/o/projects/p/env/dev/runs/run_x)"
+    );
     expect(text).toContain("| time | level | event | duration | span ← parent | properties |");
     expect(text).not.toContain("```json");
     expect(text).toContain("`log1 ← root1`");

@@ -1,23 +1,26 @@
+import type { UIMessage } from "@ai-sdk/react";
+import { useChat } from "@ai-sdk/react";
 import { BoltIcon, CheckIcon, StopIcon } from "@heroicons/react/20/solid";
 import { ClipboardIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { type MetaFunction } from "@remix-run/node";
 import { Link, useFetcher, useNavigate, useRouteLoaderData } from "@remix-run/react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useChat } from "@ai-sdk/react";
+import { generateJWT as internal_generateJWT, MachinePresetName } from "@trigger.dev/core/v3";
 import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { JSONEditor } from "~/components/code/JSONEditor";
 import { Button } from "~/components/primitives/Buttons";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
-  Popover,
-  PopoverContent,
-  PopoverMenuItem,
-  PopoverVerticalEllipseTrigger,
-} from "~/components/primitives/Popover";
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
+} from "~/components/primitives/ClientTabs";
+import { DateTime } from "~/components/primitives/DateTime";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
@@ -25,41 +28,37 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Spinner } from "~/components/primitives/Spinner";
-import type { PlaygroundConversation } from "~/presenters/v3/PlaygroundPresenter.server";
-import { DateTime } from "~/components/primitives/DateTime";
-import { cn } from "~/utils/cn";
-import { JSONEditor } from "~/components/code/JSONEditor";
-import { ToolUseRow, AssistantResponse, ChatBubble } from "~/components/runs/v3/ai/AIChatMessages";
-import { MessageBubble } from "~/components/runs/v3/agent/AgentMessageView";
-import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverVerticalEllipseTrigger,
+} from "~/components/primitives/Popover";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import {
-  ClientTabs,
-  ClientTabsContent,
-  ClientTabsList,
-  ClientTabsTrigger,
-} from "~/components/primitives/ClientTabs";
+import { Select, SelectItem } from "~/components/primitives/Select";
+import { Spinner } from "~/components/primitives/Spinner";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { MessageBubble } from "~/components/runs/v3/agent/AgentMessageView";
+import { RunTagInput } from "~/components/runs/v3/RunTagInput";
+import { env as serverEnv } from "~/env.server";
+import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import type { PlaygroundConversation } from "~/presenters/v3/PlaygroundPresenter.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { RunTagInput } from "~/components/runs/v3/RunTagInput";
-import { Select, SelectItem } from "~/components/primitives/Select";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { env as serverEnv } from "~/env.server";
-import { generateJWT as internal_generateJWT, MachinePresetName } from "@trigger.dev/core/v3";
-import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
-import { SchemaTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/SchemaTabContent";
 import { AIPayloadTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/AIPayloadTabContent";
-import type { UIMessage } from "@ai-sdk/react";
+import { SchemaTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/SchemaTabContent";
+import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Playground | Trigger.dev" }];
@@ -196,10 +195,10 @@ function PlaygroundChat() {
 
   const [conversationId, setConversationId] = useState<string | null>(() =>
     activeConversation
-      ? recentConversations.find((c) => c.chatId === activeConversation.chatId)?.id ?? null
+      ? (recentConversations.find((c) => c.chatId === activeConversation.chatId)?.id ?? null)
       : null
   );
-  const [chatId, setChatId] = useState(() => activeConversation?.chatId ?? crypto.randomUUID());
+  const [chatId, _setChatId] = useState(() => activeConversation?.chatId ?? crypto.randomUUID());
   const [clientDataJson, setClientDataJson] = useState(() =>
     activeConversation?.clientData ? JSON.stringify(activeConversation.clientData, null, 2) : "{}"
   );
@@ -252,8 +251,10 @@ function PlaygroundChat() {
     return data.publicAccessToken;
   }, [actionPath, agent.slug, chatId, tags, machine, maxAttempts, maxDuration, version, region]);
 
-  // Resource route prefix — all realtime traffic goes through session-authed routes
-  const playgroundBaseURL = `${apiOrigin}/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground`;
+  // Same-origin resource routes: use the page origin, not apiOrigin, so in/append
+  // doesn't go cross-origin (CORS preflight) when API_ORIGIN != APP_ORIGIN.
+  const origin = typeof window !== "undefined" ? window.location.origin : apiOrigin;
+  const playgroundBaseURL = `${origin}/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground`;
 
   // The transport is constructed once (guarded ref below); reading
   // `startSession` directly there would freeze its closure to the
@@ -459,7 +460,7 @@ function PlaygroundChat() {
 
           {/* Scroll container is always mounted — useAutoScrollToBottom caches
               its container on mount and won't refind it across remounts. */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <div
               ref={messagesRootRef}
               className={cn(
@@ -507,7 +508,7 @@ function PlaygroundChat() {
                   ))}
                   {isSubmitted && (
                     <div className="flex justify-start">
-                      <div className="flex items-center gap-2 rounded-lg bg-charcoal-750 px-4 py-2.5">
+                      <div className="flex items-center gap-2 rounded-lg bg-background-hover px-4 py-2.5">
                         <Spinner className="size-3" />
                         <span className="text-sm text-text-dimmed">Thinking…</span>
                       </div>
@@ -558,7 +559,7 @@ function PlaygroundChat() {
                             "rounded px-1.5 py-0.5",
                             msg.mode === "steering"
                               ? "bg-amber-500/10 text-amber-400"
-                              : "bg-charcoal-700 text-text-dimmed"
+                              : "bg-background-raised text-text-dimmed"
                           )}
                         >
                           {msg.mode === "steering" ? "Steering" : "Queued"}
@@ -642,7 +643,7 @@ function ChatComposer({
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-charcoal-650 bg-background-bright p-2 transition focus-within:border-charcoal-550">
+    <div className="rounded-2xl border border-border-bright bg-background-bright p-2 transition focus-within:border-border-brighter">
       <div className="flex items-end gap-2">
         <textarea
           ref={inputRef}
@@ -651,7 +652,7 @@ function ChatComposer({
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           className={cn(
-            "scrollbar-gutter-stable flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-none ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [field-sizing:content] focus:border-0 focus:outline-none focus:ring-0",
+            "scrollbar-gutter-stable flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:border-0 focus:outline-hidden focus:ring-0",
             minHeightClassName,
             maxHeightClassName
           )}
@@ -790,7 +791,7 @@ function PlaygroundSidebar({
         defaultValue="clientData"
         className="flex h-full min-h-0 flex-col overflow-hidden pt-1"
       >
-        <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="h-fit overflow-x-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <ClientTabsList variant="underline" className="mx-3 shrink-0">
             <ClientTabsTrigger
               value="clientData"
@@ -830,7 +831,7 @@ function PlaygroundSidebar({
         {/* Client Data tab */}
         <ClientTabsContent
           value="clientData"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <div className="min-w-64 space-y-4 p-3">
             <div className="space-y-2">
@@ -840,7 +841,7 @@ function PlaygroundSidebar({
                   Sent with each conversation turn.
                 </Paragraph>
               </div>
-              <div className="overflow-hidden rounded border border-charcoal-650">
+              <div className="overflow-hidden rounded border border-border-bright">
                 <JSONEditor
                   defaultValue={clientDataJson}
                   readOnly={false}
@@ -883,7 +884,7 @@ function PlaygroundSidebar({
         {/* Options tab */}
         <ClientTabsContent
           value="options"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <div className="space-y-4 p-3">
             <InputGroup fullWidth>
@@ -1021,7 +1022,7 @@ function PlaygroundSidebar({
         {/* Session tab */}
         <ClientTabsContent
           value="session"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <div className="min-w-64 space-y-3 p-3">
             {session ? (
@@ -1054,7 +1055,7 @@ function PlaygroundSidebar({
         {/* History tab */}
         <ClientTabsContent
           value="history"
-          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         >
           <HistoryTabContent
             conversations={recentConversations}
@@ -1207,7 +1208,7 @@ function ConversationMenu({
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverVerticalEllipseTrigger variant="minimal" />
-      <PopoverContent className="w-fit min-w-[12rem] p-1" align="end">
+      <PopoverContent className="w-fit min-w-48 p-1" align="end">
         <div className="flex flex-col gap-1">
           <PopoverMenuItem
             icon={PlusIcon}
@@ -1302,8 +1303,8 @@ function HistoryTabContent({
           <li key={conv.id}>
             <div
               className={cn(
-                "group flex items-start gap-2 rounded-sm px-2 py-1.5 transition-colors hover:bg-charcoal-800",
-                isActive && "bg-charcoal-750 hover:bg-charcoal-750",
+                "group flex items-start gap-2 rounded-sm px-2 py-1.5 transition-colors hover:bg-background-bright",
+                isActive && "bg-background-hover hover:bg-background-hover",
                 deletingId === conv.id && "pointer-events-none opacity-50"
               )}
             >
@@ -1312,7 +1313,7 @@ function HistoryTabContent({
               </span>
               <Link
                 to={`?conversation=${conv.id}`}
-                className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-none focus-custom"
+                className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-hidden focus-custom"
               >
                 <Paragraph variant="small/bright" className="line-clamp-1 text-left">
                   {conv.title}

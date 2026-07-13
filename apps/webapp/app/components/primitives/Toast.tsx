@@ -114,7 +114,10 @@ export function ToastUI({
           <Action action={action} toastId={t} className="my-2" />
         </div>
         <button
-          className={cn("-mr-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright", title && "-mt-1")}
+          className={cn(
+            "-mr-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright",
+            title && "-mt-1"
+          )}
           onClick={() => toast.dismiss(t)}
         >
           <XMarkIcon className="size-4" />

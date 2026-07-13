@@ -196,298 +196,289 @@ describe("RunEngine lazy waitpoint creation", () => {
     }
   });
 
-  containerTest(
-    "Completion without waitpoint succeeds",
-    async ({ prisma, redisOptions }) => {
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+  containerTest("Completion without waitpoint succeeds", async ({ prisma, redisOptions }) => {
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
-        },
-        queue: {
-          redis: redisOptions,
-          masterQueueConsumersDisabled: true,
-          processWorkerQueueDebounceMs: 50,
-        },
-        runLock: {
-          redis: redisOptions,
-        },
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
         machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
           },
-          baseCostInCents: 0.0001,
         },
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
 
-      try {
-        const taskIdentifier = "test-task";
+    try {
+      const taskIdentifier = "test-task";
 
-        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
-        // Trigger a standalone run (no waitpoint)
-        const run = await engine.trigger(
-          {
-            number: 1,
-            friendlyId: "run_complete1",
-            environment: authenticatedEnvironment,
-            taskIdentifier,
-            payload: "{}",
-            payloadType: "application/json",
-            context: {},
-            traceContext: {},
-            traceId: "t12345",
-            spanId: "s12345",
-            workerQueue: "main",
-            queue: `task/${taskIdentifier}`,
-            isTest: false,
-            tags: [],
-          },
-          prisma
-        );
-
-        // Verify no waitpoint
-        const dbRun = await prisma.taskRun.findFirst({
-          where: { id: run.id },
-          include: { associatedWaitpoint: true },
-        });
-        assertNonNullable(dbRun);
-        expect(dbRun.associatedWaitpoint).toBeNull();
-
-        // Dequeue and start the run
-        await setTimeout(500);
-        const dequeued = await engine.dequeueFromWorkerQueue({
-          consumerId: "test_12345",
+      // Trigger a standalone run (no waitpoint)
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_complete1",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
           workerQueue: "main",
-        });
-        const attemptResult = await engine.startRunAttempt({
-          runId: run.id,
-          snapshotId: dequeued[0].snapshot.id,
-        });
-
-        // Complete the run - should NOT throw even without waitpoint
-        const completeResult = await engine.completeRunAttempt({
-          runId: run.id,
-          snapshotId: attemptResult.snapshot.id,
-          completion: {
-            id: run.id,
-            ok: true,
-            output: '{"result":"success"}',
-            outputType: "application/json",
-          },
-        });
-
-        // Verify run completed successfully
-        expect(completeResult.attemptStatus).toBe("RUN_FINISHED");
-        const executionData = await engine.getRunExecutionData({ runId: run.id });
-        assertNonNullable(executionData);
-        expect(executionData.run.status).toBe("COMPLETED_SUCCESSFULLY");
-        expect(executionData.snapshot.executionStatus).toBe("FINISHED");
-      } finally {
-        await engine.quit();
-      }
-    }
-  );
-
-  containerTest(
-    "Cancellation without waitpoint succeeds",
-    async ({ prisma, redisOptions }) => {
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
+          queue: `task/${taskIdentifier}`,
+          isTest: false,
+          tags: [],
         },
-        queue: {
-          redis: redisOptions,
-          masterQueueConsumersDisabled: true,
-          processWorkerQueueDebounceMs: 50,
-        },
-        runLock: {
-          redis: redisOptions,
-        },
-        machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
-          },
-          baseCostInCents: 0.0001,
-        },
-        tracer: trace.getTracer("test", "0.0.0"),
+        prisma
+      );
+
+      // Verify no waitpoint
+      const dbRun = await prisma.taskRun.findFirst({
+        where: { id: run.id },
+        include: { associatedWaitpoint: true },
+      });
+      assertNonNullable(dbRun);
+      expect(dbRun.associatedWaitpoint).toBeNull();
+
+      // Dequeue and start the run
+      await setTimeout(500);
+      const dequeued = await engine.dequeueFromWorkerQueue({
+        consumerId: "test_12345",
+        workerQueue: "main",
+      });
+      const attemptResult = await engine.startRunAttempt({
+        runId: run.id,
+        snapshotId: dequeued[0].snapshot.id,
       });
 
-      try {
-        const taskIdentifier = "test-task";
-
-        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
-
-        // Trigger a standalone run (no waitpoint)
-        const run = await engine.trigger(
-          {
-            number: 1,
-            friendlyId: "run_cancel1",
-            environment: authenticatedEnvironment,
-            taskIdentifier,
-            payload: "{}",
-            payloadType: "application/json",
-            context: {},
-            traceContext: {},
-            traceId: "t12345",
-            spanId: "s12345",
-            workerQueue: "main",
-            queue: `task/${taskIdentifier}`,
-            isTest: false,
-            tags: [],
-          },
-          prisma
-        );
-
-        // Verify no waitpoint
-        const dbRun = await prisma.taskRun.findFirst({
-          where: { id: run.id },
-          include: { associatedWaitpoint: true },
-        });
-        assertNonNullable(dbRun);
-        expect(dbRun.associatedWaitpoint).toBeNull();
-
-        // Cancel the run - should NOT throw even without waitpoint
-        const cancelResult = await engine.cancelRun({
-          runId: run.id,
-          reason: "Test cancellation",
-        });
-
-        // Verify run was cancelled
-        expect(cancelResult.alreadyFinished).toBe(false);
-        const executionData = await engine.getRunExecutionData({ runId: run.id });
-        assertNonNullable(executionData);
-        expect(executionData.run.status).toBe("CANCELED");
-        expect(executionData.snapshot.executionStatus).toBe("FINISHED");
-      } finally {
-        await engine.quit();
-      }
-    }
-  );
-
-  containerTest(
-    "TTL expiration without waitpoint succeeds",
-    async ({ prisma, redisOptions }) => {
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
+      // Complete the run - should NOT throw even without waitpoint
+      const completeResult = await engine.completeRunAttempt({
+        runId: run.id,
+        snapshotId: attemptResult.snapshot.id,
+        completion: {
+          id: run.id,
+          ok: true,
+          output: '{"result":"success"}',
+          outputType: "application/json",
         },
-        queue: {
-          redis: redisOptions,
-          masterQueueConsumersDisabled: true,
-          processWorkerQueueDebounceMs: 50,
-          ttlSystem: {
-            pollIntervalMs: 100,
-            batchSize: 10,
-            batchMaxWaitMs: 100,
-          },
-        },
-        runLock: {
-          redis: redisOptions,
-        },
-        machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
-          },
-          baseCostInCents: 0.0001,
-        },
-        tracer: trace.getTracer("test", "0.0.0"),
       });
 
-      try {
-        const taskIdentifier = "test-task";
-
-        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
-
-        // TTL only expires runs still queued waiting on a concurrency slot.
-        await engine.runQueue.updateEnvConcurrencyLimits({
-          ...authenticatedEnvironment,
-          maximumConcurrencyLimit: 0,
-        });
-
-        // Trigger a standalone run with TTL (no waitpoint)
-        const run = await engine.trigger(
-          {
-            number: 1,
-            friendlyId: "run_ttl1",
-            environment: authenticatedEnvironment,
-            taskIdentifier,
-            payload: "{}",
-            payloadType: "application/json",
-            context: {},
-            traceContext: {},
-            traceId: "t12345",
-            spanId: "s12345",
-            workerQueue: "main",
-            queue: `task/${taskIdentifier}`,
-            isTest: false,
-            tags: [],
-            ttl: "1s",
-          },
-          prisma
-        );
-
-        // Verify no waitpoint
-        const dbRun = await prisma.taskRun.findFirst({
-          where: { id: run.id },
-          include: { associatedWaitpoint: true },
-        });
-        assertNonNullable(dbRun);
-        expect(dbRun.associatedWaitpoint).toBeNull();
-
-        // Wait for TTL to expire
-        await setTimeout(1_500);
-
-        // Verify run expired successfully (no throw).
-        // The batch TTL path does not create execution snapshots, so check
-        // the status directly from the database rather than via
-        // getRunExecutionData.
-        const expiredRun = await prisma.taskRun.findUnique({
-          where: { id: run.id },
-          select: { status: true },
-        });
-        expect(expiredRun?.status).toBe("EXPIRED");
-      } finally {
-        await engine.quit();
-      }
+      // Verify run completed successfully
+      expect(completeResult.attemptStatus).toBe("RUN_FINISHED");
+      const executionData = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData);
+      expect(executionData.run.status).toBe("COMPLETED_SUCCESSFULLY");
+      expect(executionData.snapshot.executionStatus).toBe("FINISHED");
+    } finally {
+      await engine.quit();
     }
-  );
+  });
+
+  containerTest("Cancellation without waitpoint succeeds", async ({ prisma, redisOptions }) => {
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    try {
+      const taskIdentifier = "test-task";
+
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      // Trigger a standalone run (no waitpoint)
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_cancel1",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
+          workerQueue: "main",
+          queue: `task/${taskIdentifier}`,
+          isTest: false,
+          tags: [],
+        },
+        prisma
+      );
+
+      // Verify no waitpoint
+      const dbRun = await prisma.taskRun.findFirst({
+        where: { id: run.id },
+        include: { associatedWaitpoint: true },
+      });
+      assertNonNullable(dbRun);
+      expect(dbRun.associatedWaitpoint).toBeNull();
+
+      // Cancel the run - should NOT throw even without waitpoint
+      const cancelResult = await engine.cancelRun({
+        runId: run.id,
+        reason: "Test cancellation",
+      });
+
+      // Verify run was cancelled
+      expect(cancelResult.alreadyFinished).toBe(false);
+      const executionData = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData);
+      expect(executionData.run.status).toBe("CANCELED");
+      expect(executionData.snapshot.executionStatus).toBe("FINISHED");
+    } finally {
+      await engine.quit();
+    }
+  });
+
+  containerTest("TTL expiration without waitpoint succeeds", async ({ prisma, redisOptions }) => {
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+        masterQueueConsumersDisabled: true,
+        processWorkerQueueDebounceMs: 50,
+        ttlSystem: {
+          pollIntervalMs: 100,
+          batchSize: 10,
+          batchMaxWaitMs: 100,
+        },
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    try {
+      const taskIdentifier = "test-task";
+
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      // TTL only expires runs still queued waiting on a concurrency slot.
+      await engine.runQueue.updateEnvConcurrencyLimits({
+        ...authenticatedEnvironment,
+        maximumConcurrencyLimit: 0,
+      });
+
+      // Trigger a standalone run with TTL (no waitpoint)
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_ttl1",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t12345",
+          spanId: "s12345",
+          workerQueue: "main",
+          queue: `task/${taskIdentifier}`,
+          isTest: false,
+          tags: [],
+          ttl: "1s",
+        },
+        prisma
+      );
+
+      // Verify no waitpoint
+      const dbRun = await prisma.taskRun.findFirst({
+        where: { id: run.id },
+        include: { associatedWaitpoint: true },
+      });
+      assertNonNullable(dbRun);
+      expect(dbRun.associatedWaitpoint).toBeNull();
+
+      // Wait for TTL to expire
+      await setTimeout(1_500);
+
+      // Verify run expired successfully (no throw).
+      // The batch TTL path does not create execution snapshots, so check
+      // the status directly from the database rather than via
+      // getRunExecutionData.
+      const expiredRun = await prisma.taskRun.findUnique({
+        where: { id: run.id },
+        select: { status: true },
+      });
+      expect(expiredRun?.status).toBe("EXPIRED");
+    } finally {
+      await engine.quit();
+    }
+  });
 
   containerTest(
     "getOrCreateRunWaitpoint: returns existing waitpoint",

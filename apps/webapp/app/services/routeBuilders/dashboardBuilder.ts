@@ -83,7 +83,7 @@ export function dashboardLoader<
   TParams extends AnyZodSchema | undefined = undefined,
   TSearchParams extends AnyZodSchema | undefined = undefined,
   TContext extends AuthScope = AuthScope,
-  TReturn extends Response = Response
+  TReturn extends Response = Response,
 >(
   options: DashboardLoaderOptions<TParams, TSearchParams, TContext>,
   handler: (args: DashboardLoaderHandlerArgs<TParams, TSearchParams, TContext>) => Promise<TReturn>
@@ -109,7 +109,7 @@ export function dashboardLoader<
 export type DashboardActionOptions<
   TParams,
   TSearchParams,
-  TContext extends AuthScope
+  TContext extends AuthScope,
 > = DashboardLoaderOptions<TParams, TSearchParams, TContext>;
 
 export type DashboardActionHandlerArgs<TParams, TSearchParams, TContext> =
@@ -119,7 +119,7 @@ export function dashboardAction<
   TParams extends AnyZodSchema | undefined = undefined,
   TSearchParams extends AnyZodSchema | undefined = undefined,
   TContext extends AuthScope = AuthScope,
-  TReturn extends Response = Response
+  TReturn extends Response = Response,
 >(
   options: DashboardActionOptions<TParams, TSearchParams, TContext>,
   handler: (args: DashboardActionHandlerArgs<TParams, TSearchParams, TContext>) => Promise<TReturn>

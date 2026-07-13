@@ -35,9 +35,12 @@ function parsePrBody(body) {
   const entries = [];
   if (!body) return entries;
 
-  // Deduplicate by PR number
+  // Deduplicate by entry content. A single changeset that targets multiple
+  // packages is rendered once per package section, so the same text repeats and
+  // we collapse it. But several distinct changesets from one PR have distinct
+  // text (and each still carries that PR's link), so keying on content keeps
+  // them all instead of dropping every entry after the first for that PR.
   const seen = new Set();
-  const prPattern = /\[#(\d+)\]\(([^)]+)\)/;
 
   // A standalone dependency-bump list item, e.g. "`@trigger.dev/core@4.5.0-rc.7`"
   // or "trigger.dev@4.5.0-rc.7". These normally appear nested under
@@ -87,19 +90,18 @@ function parsePrBody(body) {
     if (headLine.startsWith("Updated dependencies")) continue;
     if (depBumpPattern.test(headLine)) continue;
 
-    // Deduplicate by PR number (the changeset link lives on the head line)
-    const prMatch = itemLines[0].match(prPattern);
-    if (prMatch) {
-      const prNumber = prMatch[1];
-      if (seen.has(prNumber)) continue;
-      seen.add(prNumber);
-    }
-
     // Reconstruct the full item: head line + dedented continuation lines, so
     // code blocks and sub-bullets survive. Continuation under a "-   " item is
     // indented 4 spaces; strip up to 4 to bring it back to the base level.
     const continuation = itemLines.slice(1).map((l) => l.replace(/^ {1,4}/, ""));
     const text = [headLine, ...continuation].join("\n").replace(/\s+$/, "");
+
+    // Deduplicate on the full entry text (which embeds the PR link). The same
+    // changeset echoed across package sections collapses to one, while multiple
+    // distinct changesets from a single PR are each preserved.
+    const dedupeKey = text.replace(/\s+/g, " ").trim();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
 
     // Categorize off the head line
     const lower = headLine.toLowerCase();
@@ -181,28 +183,8 @@ async function getPrForCommit(commitSha) {
 // --- Parse .server-changes/ files ---
 
 async function parseServerChanges() {
-  const dir = join(ROOT_DIR, ".server-changes");
   const entries = [];
-
-  let files;
-  try {
-    files = await fs.readdir(dir);
-  } catch {
-    return entries;
-  }
-
-  // Collect file info and look up commits in parallel
-  const fileData = [];
-  for (const file of files) {
-    if (!file.endsWith(".md") || file === "README.md") continue;
-
-    const filePath = join(".server-changes", file);
-    const content = await fs.readFile(join(dir, file), "utf-8");
-    const parsed = parseFrontmatter(content);
-    if (!parsed.body.trim()) continue;
-
-    fileData.push({ filePath, parsed });
-  }
+  const fileData = await getServerChangeFileData();
 
   // Look up commits for all files in parallel
   const commits = await Promise.all(fileData.map((f) => getCommitForFile(f.filePath)));
@@ -228,6 +210,98 @@ async function parseServerChanges() {
   }
 
   return entries;
+}
+
+async function getServerChangeFileData() {
+  // The changesets version command deletes .server-changes before this script
+  // enhances the release PR body. We combine files still live on disk with the
+  // ones recovered from the release branch diff, deduped by filename, rather
+  // than picking one source or the other. This is additive so a partial cleanup
+  // (some files deleted, some still live) can't silently drop entries. Live
+  // files win on collision since they are the current on-disk truth.
+  const [live, deleted] = await Promise.all([
+    getLiveServerChangeFileData(),
+    getDeletedServerChangeFileDataFromReleaseBranch(),
+  ]);
+
+  const byName = new Map();
+  for (const fileData of deleted) {
+    byName.set(fileData.filePath.split("/").pop(), fileData);
+  }
+  for (const fileData of live) {
+    byName.set(fileData.filePath.split("/").pop(), fileData);
+  }
+
+  return [...byName.values()].sort((a, b) => a.filePath.localeCompare(b.filePath));
+}
+
+async function getLiveServerChangeFileData() {
+  const dir = join(ROOT_DIR, ".server-changes");
+
+  let files;
+  try {
+    files = await fs.readdir(dir);
+  } catch {
+    return [];
+  }
+
+  const fileData = [];
+  for (const file of files.sort()) {
+    if (!file.endsWith(".md") || file === "README.md") continue;
+
+    const filePath = join(".server-changes", file);
+    const content = await fs.readFile(join(dir, file), "utf-8");
+    const parsed = parseFrontmatter(content);
+    if (!parsed.body.trim()) continue;
+
+    fileData.push({ filePath, parsed });
+  }
+
+  return fileData;
+}
+
+async function getDeletedServerChangeFileDataFromReleaseBranch() {
+  const baseRef = process.env.SERVER_CHANGES_BASE_REF || "origin/main";
+  const releaseRef = process.env.SERVER_CHANGES_RELEASE_REF || "origin/changeset-release/main";
+
+  let mergeBase;
+  let deletedFiles;
+  try {
+    mergeBase = await gitExec(["merge-base", baseRef, releaseRef]);
+    deletedFiles = await gitExec([
+      "diff",
+      "--name-only",
+      "--diff-filter=D",
+      `${mergeBase}..${releaseRef}`,
+      "--",
+      ".server-changes",
+    ]);
+  } catch (err) {
+    console.error(
+      "[enhance-release-pr] failed to recover deleted server-changes from release branch:",
+      err
+    );
+    return [];
+  }
+
+  const fileData = [];
+  for (const filePath of deletedFiles.split("\n").filter(Boolean).sort()) {
+    const file = filePath.split("/").pop();
+    if (!file?.endsWith(".md") || file === "README.md") continue;
+
+    try {
+      const content = await gitExec(["show", `${mergeBase}:${filePath}`]);
+      const parsed = parseFrontmatter(content);
+      if (!parsed.body.trim()) continue;
+      fileData.push({ filePath, parsed });
+    } catch (err) {
+      // If an individual file cannot be recovered, skip it rather than hiding
+      // all other server changes.
+      console.error(`[enhance-release-pr] failed to read deleted server-change ${filePath}:`, err);
+    }
+  }
+
+  return fileData;
 }
 
 function parseFrontmatter(content) {

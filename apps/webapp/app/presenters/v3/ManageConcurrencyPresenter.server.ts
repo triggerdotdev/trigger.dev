@@ -82,7 +82,8 @@ export class ManageConcurrencyPresenter extends BasePresenter {
     const projectEnvironments: EnvironmentWithConcurrency[] = [];
     for (const environment of environments) {
       // Don't count parent environments
-      if (environment.isBranchableEnvironment) continue;
+      // We don't use isBranchableEnvironment() here as it will include the root dev env
+      if (environment.type === "PREVIEW" && environment.isBranchableEnvironment) continue;
 
       // Don't count deleted projects
       if (environment.project.deletedAt) continue;

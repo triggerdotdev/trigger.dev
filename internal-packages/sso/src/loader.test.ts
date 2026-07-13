@@ -34,6 +34,39 @@ function makeStubController(overrides: Partial<SsoController> = {}): SsoControll
     generatePortalLink() {
       return okAsync({ url: "https://stub.example/portal" });
     },
+    getDirectorySyncStatus() {
+      return okAsync({
+        hasDirectory: false,
+        hasActiveDirectory: false,
+        allowExternalDomainSync: false,
+        allowManualMembership: true,
+        directoryDefaultRoleId: null,
+        userCount: 0,
+        directories: [],
+        groups: [],
+      });
+    },
+    setDirectoryGroupRole() {
+      return okAsync({ effects: [] });
+    },
+    setDirectoryDefaultRole() {
+      return okAsync(undefined as void);
+    },
+    setAllowExternalDomainSync() {
+      return okAsync(undefined as void);
+    },
+    getMembershipPolicy() {
+      return okAsync({ manualMembershipAllowed: true });
+    },
+    setAllowManualMembership() {
+      return okAsync(undefined as void);
+    },
+    recordMembershipRemoval() {
+      return okAsync(undefined as void);
+    },
+    clearMembershipRemoval() {
+      return okAsync(undefined as void);
+    },
     setEnforced() {
       return okAsync(undefined as void);
     },
@@ -77,7 +110,7 @@ function makeStubController(overrides: Partial<SsoController> = {}): SsoControll
       return errAsync("invalid_signature" as const);
     },
     processWebhookEvent() {
-      return okAsync(undefined as void);
+      return okAsync({ effects: [] });
     },
     ...overrides,
   };
@@ -122,10 +155,7 @@ describe("SSO LazyController", () => {
         const controller = new LazyController(fakePrisma, { importer });
         await controller.isUsingPlugin();
         const fallbackLogs = logSpy.mock.calls.filter((args) =>
-          args.some(
-            (a) =>
-              typeof a === "string" && a.includes("no plugin installed")
-          )
+          args.some((a) => typeof a === "string" && a.includes("no plugin installed"))
         );
         expect(fallbackLogs.length).toBe(0);
         expect(errorSpy).not.toHaveBeenCalled();
@@ -152,9 +182,7 @@ describe("SSO LazyController", () => {
         const controller = new LazyController(fakePrisma, { importer });
         await controller.isUsingPlugin();
         const fallbackLogs = logSpy.mock.calls.filter((args) =>
-          args.some(
-            (a) => typeof a === "string" && a.includes("no plugin installed")
-          )
+          args.some((a) => typeof a === "string" && a.includes("no plugin installed"))
         );
         expect(fallbackLogs.length).toBe(1);
       } finally {
@@ -170,10 +198,9 @@ describe("SSO LazyController", () => {
       const importer = vi.fn(async () => {
         // Module-not-found from a *transitive* dep, not the plugin
         // itself — its `message` won't contain the plugin's moduleName.
-        const err = Object.assign(
-          new Error(`Cannot find module 'some-transitive-dep'`),
-          { code: "ERR_MODULE_NOT_FOUND" }
-        );
+        const err = Object.assign(new Error(`Cannot find module 'some-transitive-dep'`), {
+          code: "ERR_MODULE_NOT_FOUND",
+        });
         throw err;
       });
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);

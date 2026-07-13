@@ -112,7 +112,9 @@ describe("parseError truncation", () => {
 
     expect(parsed.type).toBe("BUILT_IN_ERROR");
     if (parsed.type === "BUILT_IN_ERROR") {
-      const frameLines = parsed.stackTrace.split("\n").filter((l) => l.trimStart().startsWith("at "));
+      const frameLines = parsed.stackTrace
+        .split("\n")
+        .filter((l) => l.trimStart().startsWith("at "));
       expect(frameLines.length).toBe(50);
       expect(parsed.stackTrace).toContain("frames omitted");
     }
@@ -139,7 +141,9 @@ describe("sanitizeError truncation", () => {
     });
 
     if (result.type === "BUILT_IN_ERROR") {
-      const frameLines = result.stackTrace.split("\n").filter((l) => l.trimStart().startsWith("at "));
+      const frameLines = result.stackTrace
+        .split("\n")
+        .filter((l) => l.trimStart().startsWith("at "));
       expect(frameLines.length).toBe(50);
     }
   });
@@ -249,7 +253,7 @@ describe("truncateStack message line bounding", () => {
 
 describe("shouldRetryError + shouldLookupRetrySettings", () => {
   const internal = (code: string): TaskRunError =>
-    ({ type: "INTERNAL_ERROR", code } as TaskRunError);
+    ({ type: "INTERNAL_ERROR", code }) as TaskRunError;
 
   it("retries SIGSEGV (changed from non-retriable) and looks up retry settings", () => {
     const err = internal("TASK_PROCESS_SIGSEGV");

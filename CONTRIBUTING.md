@@ -29,7 +29,7 @@ branch are tagged into a release periodically.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/en) version 20.20.2
+- [Node.js](https://nodejs.org/en) version 22.23.1
 - [pnpm package manager](https://pnpm.io/installation) version 10.33.2
 - [Docker](https://www.docker.com/get-started/)
 - [protobuf](https://github.com/protocolbuffers/protobuf)
@@ -49,7 +49,7 @@ branch are tagged into a release periodically.
    ```
    cd trigger.dev
    ```
-3. Ensure you are on the correct version of Node.js (20.20.2). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
+3. Ensure you are on the correct version of Node.js (22.23.1). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
 
 4. Run `corepack enable` to use the correct version of pnpm (`10.33.2`) as specified in the root `package.json` file.
 
@@ -223,9 +223,15 @@ pnpm exec trigger dev --log-level debug
 ### PR workflow
 
 1. **Always open your PR in draft status first.** Do not mark it as "Ready for Review" until the steps below are complete.
-2. **Address all CodeRabbit code review comments.** Our CI runs an automated code review via CodeRabbit. Go through each comment and either fix the issue or resolve it with a comment explaining why no change is needed.
-3. **Wait for all CI checks to pass.** Do not mark the PR as "Ready for Review" until every check is green.
-4. **Then mark the PR as "Ready for Review"** so a maintainer can take a look.
+2. **Run format and lint locally before pushing:**
+   ```bash
+   pnpm run format      # auto-fixes formatting (oxfmt)
+   pnpm run lint:fix    # auto-fixes lint violations (oxlint)
+   ```
+   Both are enforced by CI — the `code-quality` check will fail if either produces a diff or errors.
+3. **Address all CodeRabbit code review comments.** Our CI runs an automated code review via CodeRabbit. Go through each comment and either fix the issue or resolve it with a comment explaining why no change is needed.
+4. **Wait for all CI checks to pass.** Do not mark the PR as "Ready for Review" until every check is green.
+5. **Then mark the PR as "Ready for Review"** so a maintainer can take a look.
 
 ### Cost/benefit analysis for risky changes
 
@@ -259,7 +265,7 @@ Most of the time the changes you'll make are likely to be categorized as patch r
 
 ## Adding server changes
 
-Changesets only track published npm packages. If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, `apps/coordinator/`, etc.) with no package changes, add a `.server-changes/` file so the change appears in release notes.
+Changesets only track published npm packages. If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes, add a `.server-changes/` file so the change appears in release notes.
 
 Create a markdown file with a descriptive name:
 
@@ -275,7 +281,7 @@ EOF
 ```
 
 **Fields:**
-- `area` (required): `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
+- `area` (required): `webapp` | `supervisor`
 - `type` (required): `feature` | `fix` | `improvement` | `breaking`
 
 The body text (below the frontmatter) is a one-line description of the change. Keep it concise — it will appear in release notes.

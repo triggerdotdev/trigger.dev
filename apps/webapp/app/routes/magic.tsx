@@ -38,9 +38,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const session = await getSession(request.headers.get("cookie"));
     session.flash("auth:error", {
       message:
-        thrown instanceof Error
-          ? thrown.message
-          : "Your magic link is invalid or has expired.",
+        thrown instanceof Error ? thrown.message : "Your magic link is invalid or has expired.",
     });
     return redirect("/login/magic", {
       headers: { "Set-Cookie": await commitSession(session) },

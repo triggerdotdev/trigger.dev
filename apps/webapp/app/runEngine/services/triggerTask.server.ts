@@ -1,16 +1,16 @@
 import {
+  type RunEngine,
   RunDuplicateIdempotencyKeyError,
-  RunEngine,
   RunOneTimeUseTokenError,
 } from "@internal/run-engine";
-import { Tracer } from "@opentelemetry/api";
+import type { Tracer } from "@opentelemetry/api";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
+  type TriggerTaskRequestBody,
   RunAnnotations,
   TaskRunError,
   taskRunErrorEnhancer,
   taskRunErrorToString,
-  TriggerTaskRequestBody,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import {
@@ -25,13 +25,16 @@ import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
+import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
+import { mintFriendlyIdForKind } from "~/v3/runOpsMigration/mintAnchoredRunFriendlyId.server";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
 } from "../../v3/services/triggerTask.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
 import {
-  IdempotencyKeyConcern,
+  type IdempotencyKeyConcern,
   type ClaimedIdempotency,
 } from "../concerns/idempotencyKeys.server";
 import {
@@ -65,7 +68,6 @@ import {
   type MollifierGetBuffer,
 } from "~/v3/mollifier/mollifierBuffer.server";
 import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
-import { type MollifierBuffer } from "@trigger.dev/redis-worker";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -126,6 +128,34 @@ export class RunEngineTriggerTaskService {
       opts.isMollifierGloballyEnabled ?? (() => env.TRIGGER_MOLLIFIER_ENABLED === "1");
   }
 
+  // Mint a new run's friendlyId. The id-kind decides which store the run is born
+  // in (cuid → legacy store, run-ops id → new store), so the whole subgraph of a run
+  // must agree. Two cases:
+  //
+  //  - ROOT run (no parent): mint by the environment's cutover setting.
+  //  - CHILD run (has a parent): inherit the parent's residency by id-shape, so a
+  //    parent and child never split across stores (run-ops parent → run-ops child,
+  //    cuid parent → cuid child).
+  // `region` is the caller-requested region (body.options.region). The id is
+  // minted before the worker queue is resolved (the idempotency concern needs
+  // the friendlyId first), so the stamped region char reflects the requested
+  // region — or the default char when the run targets the default region.
+  private async mintRunFriendlyId(
+    environment: AuthenticatedEnvironment,
+    parentRunFriendlyId?: string,
+    region?: string
+  ): Promise<string> {
+    const mintKind = parentRunFriendlyId
+      ? resolveInheritedMintKind(parentRunFriendlyId)
+      : await resolveRunIdMintKind({
+          organizationId: environment.organizationId,
+          id: environment.id,
+          orgFeatureFlags: environment.organization.featureFlags,
+        });
+
+    return mintFriendlyIdForKind(mintKind, region);
+  }
+
   public async call({
     taskId,
     environment,
@@ -151,7 +181,16 @@ export class RunEngineTriggerTaskService {
           span.setAttribute("taskId", taskId);
           span.setAttribute("attempt", attempt);
 
-          const runFriendlyId = options?.runFriendlyId ?? RunId.generate().friendlyId;
+          // Mint the run id. A caller-supplied id (idempotent retry) wins;
+          // otherwise mint by residency — inheriting the parent's store when a
+          // parent is present, else the environment's setting.
+          const runFriendlyId =
+            options?.runFriendlyId ??
+            (await this.mintRunFriendlyId(
+              environment,
+              body.options?.parentRunId,
+              body.options?.region
+            ));
           const triggerRequest = {
             taskId,
             friendlyId: runFriendlyId,
@@ -160,7 +199,6 @@ export class RunEngineTriggerTaskService {
             options,
           } satisfies TriggerTaskRequest;
 
-          // Validate max attempts
           const maxAttemptsValidation = this.validator.validateMaxAttempts({
             taskId,
             attempt,
@@ -170,7 +208,6 @@ export class RunEngineTriggerTaskService {
             throw maxAttemptsValidation.error;
           }
 
-          // Validate tags
           const tagValidation = this.validator.validateTags({
             tags: body.options?.tags,
           });
@@ -179,7 +216,6 @@ export class RunEngineTriggerTaskService {
             throw tagValidation.error;
           }
 
-          // Validate entitlement (unless skipChecks is enabled)
           let planType: string | undefined;
 
           if (!options.skipChecks) {
@@ -191,7 +227,6 @@ export class RunEngineTriggerTaskService {
               throw entitlementValidation.error;
             }
 
-            // Extract plan type from entitlement response
             planType = entitlementValidation.plan?.type;
           } else {
             // When skipChecks is enabled, planType should be passed via options
@@ -235,23 +270,21 @@ export class RunEngineTriggerTaskService {
             if (debounceDelayError || !debounceDelayUntil) {
               throw new ServiceValidationError(
                 `Invalid debounce delay: ${body.options.debounce.delay}. ` +
-                `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+                  `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
               );
             }
           }
 
-          // Get parent run if specified
           const parentRun = body.options?.parentRunId
             ? await runStore.findRun(
-              {
-                id: RunId.fromFriendlyId(body.options.parentRunId),
-                runtimeEnvironmentId: environment.id,
-              },
-              this.prisma
-            )
+                {
+                  id: RunId.fromFriendlyId(body.options.parentRunId),
+                  runtimeEnvironmentId: environment.id,
+                },
+                this.prisma
+              )
             : undefined;
 
-          // Validate parent run
           const parentRunValidation = this.validator.validateParentRun({
             taskId,
             parentRun: parentRun ?? undefined,
@@ -271,8 +304,11 @@ export class RunEngineTriggerTaskService {
             return idempotencyKeyConcernResult;
           }
 
-          const { idempotencyKey, idempotencyKeyExpiresAt, claim: claimResult } =
-            idempotencyKeyConcernResult;
+          const {
+            idempotencyKey,
+            idempotencyKeyExpiresAt,
+            claim: claimResult,
+          } = idempotencyKeyConcernResult;
 
           // If we own an idempotency claim, the trigger pipeline below MUST
           // resolve it — publish on success so waiters see our runId,
@@ -290,18 +326,18 @@ export class RunEngineTriggerTaskService {
 
           const lockedToBackgroundWorker = body.options?.lockToVersion
             ? await this.prisma.backgroundWorker.findFirst({
-              where: {
-                projectId: environment.projectId,
-                runtimeEnvironmentId: environment.id,
-                version: body.options?.lockToVersion,
-              },
-              select: {
-                id: true,
-                version: true,
-                sdkVersion: true,
-                cliVersion: true,
-              },
-            })
+                where: {
+                  projectId: environment.projectId,
+                  runtimeEnvironmentId: environment.id,
+                  version: body.options?.lockToVersion,
+                },
+                select: {
+                  id: true,
+                  version: true,
+                  sdkVersion: true,
+                  cliVersion: true,
+                },
+              })
             : undefined;
 
           const { queueName, lockedQueueId, taskTtl, taskKind } =
@@ -340,10 +376,10 @@ export class RunEngineTriggerTaskService {
 
           const metadataPacket = body.options?.metadata
             ? handleMetadataPacket(
-              body.options?.metadata,
-              body.options?.metadataType ?? "application/json",
-              this.metadataMaximumSize
-            )
+                body.options?.metadata,
+                body.options?.metadataType ?? "application/json",
+                this.metadataMaximumSize
+              )
             : undefined;
 
           const tags = (
@@ -367,8 +403,12 @@ export class RunEngineTriggerTaskService {
           // from the in-memory snapshots (no DB query). A cold read (registry not yet
           // loaded) returns undefined/[] and the resolver falls back to not-migrated.
           const workerGroups = workerRegionRegistry.current() ?? [];
-          const region = baseWorkerQueue ? regionForQueue(baseWorkerQueue, workerGroups) : undefined;
-          const backing = baseWorkerQueue ? backingForQueue(baseWorkerQueue, workerGroups) : undefined;
+          const region = baseWorkerQueue
+            ? regionForQueue(baseWorkerQueue, workerGroups)
+            : undefined;
+          const backing = baseWorkerQueue
+            ? backingForQueue(baseWorkerQueue, workerGroups)
+            : undefined;
           const migrated = resolveComputeMigration({
             baseWorkerQueue,
             baseEnableFastPath: enableFastPath,
@@ -376,12 +416,14 @@ export class RunEngineTriggerTaskService {
             backing,
             planType,
             orgId: environment.organization.id,
-            orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
+            orgFeatureFlags: environment.organization.featureFlags as Record<
+              string,
+              unknown
+            > | null,
             flags: globalFlagsRegistry.current(),
             envType: environment.type,
           });
 
-          // Build annotations for this run
           const triggerSource = options.triggerSource ?? "api";
           const triggerAction = options.triggerAction ?? "trigger";
           const parentAnnotations = RunAnnotations.safeParse(parentRun?.annotations).data;
@@ -470,8 +512,10 @@ export class RunEngineTriggerTaskService {
                         orgId: environment.organizationId,
                         taskId,
                         orgFeatureFlags:
-                          (environment.organization.featureFlags as Record<string, unknown> | null) ??
-                          null,
+                          (environment.organization.featureFlags as Record<
+                            string,
+                            unknown
+                          > | null) ?? null,
                         options: {
                           debounce: body.options?.debounce,
                           oneTimeUseToken: options.oneTimeUseToken,
@@ -629,26 +673,26 @@ export class RunEngineTriggerTaskService {
                     onDebounced:
                       body.options?.debounce && body.options?.resumeParentOnCompletion
                         ? async ({ existingRun, waitpoint, debounceKey }) => {
-                          return await this.traceEventConcern.traceDebouncedRun(
-                            triggerRequest,
-                            parentRun?.taskEventStore,
-                            {
-                              existingRun,
-                              debounceKey,
-                              incomplete: waitpoint.status === "PENDING",
-                              isError: waitpoint.outputIsError,
-                            },
-                            async (spanEvent) => {
-                              const spanId =
-                                options?.parentAsLinkType === "replay"
-                                  ? spanEvent.spanId
-                                  : spanEvent.traceparent?.spanId
-                                    ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
-                                    : spanEvent.spanId;
-                              return spanId;
-                            }
-                          );
-                        }
+                            return await this.traceEventConcern.traceDebouncedRun(
+                              triggerRequest,
+                              parentRun?.taskEventStore,
+                              {
+                                existingRun,
+                                debounceKey,
+                                incomplete: waitpoint.status === "PENDING",
+                                isError: waitpoint.outputIsError,
+                              },
+                              async (spanEvent) => {
+                                const spanId =
+                                  options?.parentAsLinkType === "replay"
+                                    ? spanEvent.spanId
+                                    : spanEvent.traceparent?.spanId
+                                      ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
+                                      : spanEvent.spanId;
+                                return spanId;
+                              }
+                            );
+                          }
                         : undefined,
                   },
                   this.prisma
@@ -703,7 +747,7 @@ export class RunEngineTriggerTaskService {
 
             throw error;
           }
-        },
+        }
       );
       // Pipeline returned successfully — publish the claim if we held
       // one. Waiters polling for our key resolve to this runId.
@@ -745,13 +789,23 @@ export class RunEngineTriggerTaskService {
     workerQueue?: string;
     region?: string;
     enableFastPath: boolean;
-    lockedToBackgroundWorker?: { id: string; version: string; sdkVersion: string; cliVersion: string };
+    lockedToBackgroundWorker?: {
+      id: string;
+      version: string;
+      sdkVersion: string;
+      cliVersion: string;
+    };
     delayUntil?: Date;
     ttl?: string;
     metadataPacket?: { data?: string; dataType: string };
     tags: string[];
     depth: number;
-    parentRun?: { id: string; rootTaskRunId?: string | null; queueTimestamp?: Date | null; taskEventStore?: string };
+    parentRun?: {
+      id: string;
+      rootTaskRunId?: string | null;
+      queueTimestamp?: Date | null;
+      taskEventStore?: string;
+    };
     annotations: {
       triggerSource: string;
       triggerAction: string;
@@ -826,7 +880,7 @@ export class RunEngineTriggerTaskService {
       queueTimestamp:
         args.options.queueTimestamp ??
         (args.parentRun && args.body.options?.resumeParentOnCompletion
-          ? args.parentRun.queueTimestamp ?? undefined
+          ? (args.parentRun.queueTimestamp ?? undefined)
           : undefined),
       scheduleId: args.options.scheduleId,
       scheduleInstanceId: args.options.scheduleInstanceId,

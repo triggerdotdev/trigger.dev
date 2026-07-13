@@ -1,14 +1,14 @@
-import { Result } from "@trigger.dev/core/v3";
+import type { Result } from "@trigger.dev/core/v3";
 import { InsertError, QueryError } from "./errors.js";
-import {
+import type {
   ClickhouseQueryBuilderFastFunction,
   ClickhouseQueryBuilderFunction,
   ClickhouseReader,
   ClickhouseWriter,
   QueryResultWithStats,
 } from "./types.js";
-import { z } from "zod";
-import { ClickHouseSettings, InsertResult } from "@clickhouse/client";
+import type { z } from "zod";
+import type { ClickHouseSettings, InsertResult } from "@clickhouse/client";
 import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
 
 export class NoopClient implements ClickhouseReader, ClickhouseWriter {
@@ -95,7 +95,10 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
-  public queryFastStream<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+  public queryFastStream<
+    TOut extends Record<string, any>,
+    TParams extends Record<string, any>,
+  >(req: {
     name: string;
     query: string;
     columns: string[];

@@ -224,8 +224,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
             scope === "project" || scope === "environment"
               ? { op: "eq", value: projectId }
               : undefined,
-          environment_id:
-            scope === "environment" ? { op: "eq", value: environmentId } : undefined,
+          environment_id: scope === "environment" ? { op: "eq", value: environmentId } : undefined,
         }),
     [timeColumn]: { op: "gte", value: maxQueryPeriodDate },
     // Optional filters for tasks and queues
@@ -246,8 +245,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
         : undefined,
     operation_id:
       operations && operations.length > 0 ? { op: "in", values: operations } : undefined,
-    gen_ai_system:
-      providers && providers.length > 0 ? { op: "in", values: providers } : undefined,
+    gen_ai_system: providers && providers.length > 0 ? { op: "in", values: providers } : undefined,
   } satisfies Record<string, WhereClauseCondition | undefined>;
 
   // Compute the effective time range for timeBucket() interval calculation
@@ -275,7 +273,10 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       environment: Object.fromEntries(environments.map((e) => [e.id, e.slug])),
     };
 
-    const queryClickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "query");
+    const queryClickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "query"
+    );
     const result = await executeTSQL(queryClickhouse.reader, {
       ...baseOptions,
       schema: z.record(z.any()),

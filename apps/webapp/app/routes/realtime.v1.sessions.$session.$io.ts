@@ -98,10 +98,7 @@ const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      const row = await resolveSessionWithWriterFallback(
-        auth.environment.id,
-        params.session
-      );
+      const row = await resolveSessionWithWriterFallback(auth.environment.id, params.session);
       if (!row && isSessionFriendlyIdForm(params.session)) {
         return undefined; // 404 — opaque friendlyId must reference a real row
       }

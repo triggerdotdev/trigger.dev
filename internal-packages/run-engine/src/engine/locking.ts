@@ -1,20 +1,12 @@
 // import { default: Redlock } from "redlock";
 const { default: Redlock } = require("redlock");
 import { AsyncLocalStorage } from "async_hooks";
-import { Redis } from "@internal/redis";
-import * as redlock from "redlock";
+import type { Redis } from "@internal/redis";
+import type * as redlock from "redlock";
 import { tryCatch } from "@trigger.dev/core";
-import { Logger } from "@trigger.dev/core/logger";
-import {
-  startSpan,
-  Tracer,
-  Meter,
-  getMeter,
-  ValueType,
-  ObservableResult,
-  Attributes,
-  Histogram,
-} from "@internal/tracing";
+import type { Logger } from "@trigger.dev/core/logger";
+import type { Tracer, Meter, ObservableResult, Attributes, Histogram } from "@internal/tracing";
+import { startSpan, getMeter, ValueType } from "@internal/tracing";
 import { ServiceValidationError } from "./errors.js";
 
 const SemanticAttributes = {

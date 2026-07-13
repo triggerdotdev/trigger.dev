@@ -7,7 +7,8 @@ import {
 import { useRef, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
-import { Tree, TreeView, flattenTree, useTree } from "~/components/primitives/TreeView/TreeView";
+import type { Tree } from "~/components/primitives/TreeView/TreeView";
+import { TreeView, flattenTree, useTree } from "~/components/primitives/TreeView/TreeView";
 import { cn } from "~/utils/cn";
 
 const words = [
@@ -145,7 +146,7 @@ function TreeViewParent({
 
   const {
     nodes,
-    selected,
+    selected: _selected,
     getTreeProps,
     getNodeProps,
     toggleNodeSelection,
@@ -153,7 +154,7 @@ function TreeViewParent({
     selectNode,
     selectFirstVisibleNode,
     selectLastVisibleNode,
-    scrollToNode,
+    scrollToNode: _scrollToNode,
     virtualizer,
   } = useTree({
     tree,
@@ -204,7 +205,7 @@ function TreeViewParent({
         nodes={nodes}
         getNodeProps={getNodeProps}
         getTreeProps={getTreeProps}
-        parentClassName="h-96 bg-charcoal-900"
+        parentClassName="h-96 bg-background-deep"
         renderNode={({ node, state, index, virtualizer, virtualItem }) => (
           <div
             style={{

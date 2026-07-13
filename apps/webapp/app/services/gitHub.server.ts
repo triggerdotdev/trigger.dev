@@ -45,8 +45,8 @@ export async function linkGitHubAppInstallation(
         ? "login" in installation.account
           ? installation.account.login
           : "slug" in installation.account
-          ? installation.account.slug
-          : "-"
+            ? installation.account.slug
+            : "-"
         : "-",
       permissions: installation.permissions,
       repositorySelection,
@@ -91,8 +91,8 @@ export async function updateGitHubAppInstallation(installationId: number): Promi
         ? "login" in installation.account
           ? installation.account.login
           : "slug" in installation.account
-          ? installation.account.slug
-          : "-"
+            ? installation.account.slug
+            : "-"
         : "-",
       permissions: installation.permissions,
       suspendedAt: existingInstallation?.suspendedAt,

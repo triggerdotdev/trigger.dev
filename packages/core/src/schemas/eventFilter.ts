@@ -53,8 +53,8 @@ const EventMatcherSchema = z.union([
         $includes: z.union([z.string(), z.number(), z.boolean()]),
       }),
       z.object({
-        $not: z.union([z.string(), z.number(), z.boolean()])
-      })
+        $not: z.union([z.string(), z.number(), z.boolean()]),
+      }),
     ])
   ),
 ]);

@@ -56,26 +56,23 @@ export function startNodejsRuntimeMetrics(meterProvider: MeterProvider) {
   observables.push(heapUsed, heapTotal);
 
   // Single batch callback for all metrics
-  meter.addBatchObservableCallback(
-    (obs) => {
-      // ELU
-      const currentElu = performance.eventLoopUtilization();
-      const diff = performance.eventLoopUtilization(currentElu, lastElu);
-      lastElu = currentElu;
-      obs.observe(eluGauge, diff.utilization);
+  meter.addBatchObservableCallback((obs) => {
+    // ELU
+    const currentElu = performance.eventLoopUtilization();
+    const diff = performance.eventLoopUtilization(currentElu, lastElu);
+    lastElu = currentElu;
+    obs.observe(eluGauge, diff.utilization);
 
-      // Event loop delay (nanoseconds -> seconds)
-      if (eld && eldP95 && eldMax) {
-        obs.observe(eldP95, eld.percentile(95) / 1e9);
-        obs.observe(eldMax, eld.max / 1e9);
-        eld.reset();
-      }
+    // Event loop delay (nanoseconds -> seconds)
+    if (eld && eldP95 && eldMax) {
+      obs.observe(eldP95, eld.percentile(95) / 1e9);
+      obs.observe(eldMax, eld.max / 1e9);
+      eld.reset();
+    }
 
-      // Heap
-      const mem = process.memoryUsage();
-      obs.observe(heapUsed, mem.heapUsed);
-      obs.observe(heapTotal, mem.heapTotal);
-    },
-    observables
-  );
+    // Heap
+    const mem = process.memoryUsage();
+    obs.observe(heapUsed, mem.heapUsed);
+    obs.observe(heapTotal, mem.heapTotal);
+  }, observables);
 }

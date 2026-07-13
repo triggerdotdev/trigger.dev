@@ -1,4 +1,5 @@
-import { PlainClient, uiComponent } from "@team-plain/typescript-sdk";
+import type { uiComponent } from "@team-plain/typescript-sdk";
+import { PlainClient } from "@team-plain/typescript-sdk";
 import { env } from "~/env.server";
 
 type Input = {
@@ -10,14 +11,7 @@ type Input = {
   labelTypeIds?: string[];
 };
 
-export async function sendToPlain({
-  userId,
-  email,
-  name,
-  title,
-  components,
-  labelTypeIds,
-}: Input) {
+export async function sendToPlain({ userId, email, name, title, components, labelTypeIds }: Input) {
   if (!env.PLAIN_API_KEY) {
     return;
   }

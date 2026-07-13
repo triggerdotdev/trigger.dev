@@ -417,8 +417,12 @@ describe("KeyProducer", () => {
 
   it("isCkWildcard", () => {
     const keyProducer = new RunQueueFullKeyProducer();
-    expect(keyProducer.isCkWildcard("{org:o1234}:proj:p1234:env:e1234:queue:task/foo:ck:*")).toBe(true);
-    expect(keyProducer.isCkWildcard("{org:o1234}:proj:p1234:env:e1234:queue:task/foo:ck:bar")).toBe(false);
+    expect(keyProducer.isCkWildcard("{org:o1234}:proj:p1234:env:e1234:queue:task/foo:ck:*")).toBe(
+      true
+    );
+    expect(keyProducer.isCkWildcard("{org:o1234}:proj:p1234:env:e1234:queue:task/foo:ck:bar")).toBe(
+      false
+    );
     expect(keyProducer.isCkWildcard("{org:o1234}:proj:p1234:env:e1234:queue:task/foo")).toBe(false);
   });
 

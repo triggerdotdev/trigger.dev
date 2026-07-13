@@ -1,10 +1,8 @@
-import * as https from "node:https";
 import * as k8s from "@kubernetes/client-node";
-import { Informer } from "@kubernetes/client-node";
-import { ListPromise } from "@kubernetes/client-node";
-import { KubernetesObject } from "@kubernetes/client-node";
+import type { Informer, KubernetesObject, ListPromise } from "@kubernetes/client-node";
 import { assertExhaustive } from "@trigger.dev/core/utils";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
+import * as https from "node:https";
 
 export const RUNTIME_ENV = process.env.KUBERNETES_PORT ? "kubernetes" : "local";
 

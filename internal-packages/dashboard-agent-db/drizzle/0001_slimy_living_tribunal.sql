@@ -1,4 +1,4 @@
-CREATE TABLE "trigger_dashboard_agent"."chat_turn_evals" (
+CREATE TABLE IF NOT EXISTS "trigger_dashboard_agent"."chat_turn_evals" (
 	"chat_id" text NOT NULL,
 	"turn" integer NOT NULL,
 	"organization_id" text NOT NULL,
@@ -34,5 +34,5 @@ CREATE TABLE "trigger_dashboard_agent"."chat_turn_evals" (
 	CONSTRAINT "chat_turn_evals_chat_id_turn_pk" PRIMARY KEY("chat_id","turn")
 );
 --> statement-breakpoint
-CREATE INDEX "chat_turn_evals_org_created_idx" ON "trigger_dashboard_agent"."chat_turn_evals" USING btree ("organization_id","created_at" DESC NULLS LAST);--> statement-breakpoint
-CREATE INDEX "chat_turn_evals_org_opps_idx" ON "trigger_dashboard_agent"."chat_turn_evals" USING btree ("organization_id","created_at" DESC NULLS LAST) WHERE "trigger_dashboard_agent"."chat_turn_evals"."capability_gap" or "trigger_dashboard_agent"."chat_turn_evals"."docs_gap" or "trigger_dashboard_agent"."chat_turn_evals"."support_opportunity" or "trigger_dashboard_agent"."chat_turn_evals"."feature_request";
+CREATE INDEX IF NOT EXISTS "chat_turn_evals_org_created_idx" ON "trigger_dashboard_agent"."chat_turn_evals" USING btree ("organization_id","created_at" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "chat_turn_evals_org_opps_idx" ON "trigger_dashboard_agent"."chat_turn_evals" USING btree ("organization_id","created_at" DESC NULLS LAST) WHERE "trigger_dashboard_agent"."chat_turn_evals"."capability_gap" or "trigger_dashboard_agent"."chat_turn_evals"."docs_gap" or "trigger_dashboard_agent"."chat_turn_evals"."support_opportunity" or "trigger_dashboard_agent"."chat_turn_evals"."feature_request";

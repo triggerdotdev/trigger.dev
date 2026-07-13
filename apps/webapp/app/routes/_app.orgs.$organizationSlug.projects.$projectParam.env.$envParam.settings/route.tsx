@@ -7,7 +7,11 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { useProject } from "~/hooks/useProject";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3ProjectSettingsGeneralPath, v3ProjectSettingsIntegrationsPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  v3ProjectSettingsGeneralPath,
+  v3ProjectSettingsIntegrationsPath,
+} from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [

@@ -94,9 +94,7 @@ describe("transformResults", () => {
   });
 
   it("should not modify columns without valueMap", () => {
-    const rows = [
-      { id: "run_1", status: "COMPLETED_SUCCESSFULLY", task_identifier: "my-task" },
-    ];
+    const rows = [{ id: "run_1", status: "COMPLETED_SUCCESSFULLY", task_identifier: "my-task" }];
 
     const transformed = transformResults(rows, [taskRunsSchema]);
 
@@ -231,4 +229,3 @@ describe("createResultTransformer", () => {
     expect(transformed).toBe(rows);
   });
 });
-

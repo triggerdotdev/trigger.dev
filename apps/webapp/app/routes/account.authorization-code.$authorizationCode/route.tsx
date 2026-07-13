@@ -1,5 +1,5 @@
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
@@ -42,7 +42,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const clientName = (searchParams.success ? searchParams.data.clientName : undefined) ?? "unknown";
 
   try {
-    const personalAccessToken = await createPersonalAccessTokenFromAuthorizationCode(
+    const _personalAccessToken = await createPersonalAccessTokenFromAuthorizationCode(
       parsedParams.data.authorizationCode,
       userId
     );
@@ -78,7 +78,7 @@ export default function Page() {
 
   return (
     <AppContainer>
-      <MainCenteredContainer className="max-w-[22rem]">
+      <MainCenteredContainer className="max-w-88">
         <div className="flex flex-col items-center space-y-4">
           {result.success ? (
             <div>

@@ -1,4 +1,4 @@
-import {
+import type {
   PromptManifest,
   QueueManifest,
   SkillManifest,
@@ -6,7 +6,11 @@ import {
   TaskManifest,
   WorkerManifest,
 } from "../schemas/index.js";
-import { PromptMetadataWithFunctions, TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
+import type {
+  PromptMetadataWithFunctions,
+  TaskMetadataWithFunctions,
+  TaskSchema,
+} from "../types/index.js";
 
 export interface ResourceCatalog {
   setCurrentFileContext(filePath: string, entryPoint: string): void;

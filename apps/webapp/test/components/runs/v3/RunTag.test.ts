@@ -52,17 +52,23 @@ describe("splitTag", () => {
 
   it("should handle special characters in values", () => {
     expect(splitTag("region:us-west-2")).toEqual({ key: "region", value: "us-west-2" });
-    expect(splitTag("query:SELECT * FROM users")).toEqual({ key: "query", value: "SELECT * FROM users" });
+    expect(splitTag("query:SELECT * FROM users")).toEqual({
+      key: "query",
+      value: "SELECT * FROM users",
+    });
     expect(splitTag("path:/api/v1/users")).toEqual({ key: "path", value: "/api/v1/users" });
   });
 
   it("should handle values containing numbers and special formats", () => {
-    expect(splitTag("uuid:123e4567-e89b-12d3-a456-426614174000")).toEqual({ 
-      key: "uuid", 
-      value: "123e4567-e89b-12d3-a456-426614174000" 
+    expect(splitTag("uuid:123e4567-e89b-12d3-a456-426614174000")).toEqual({
+      key: "uuid",
+      value: "123e4567-e89b-12d3-a456-426614174000",
     });
     expect(splitTag("ip_192.168.1.1")).toEqual({ key: "ip", value: "192.168.1.1" });
-    expect(splitTag("date:2023-04-01T12:00:00Z")).toEqual({ key: "date", value: "2023-04-01T12:00:00Z" });
+    expect(splitTag("date:2023-04-01T12:00:00Z")).toEqual({
+      key: "date",
+      value: "2023-04-01T12:00:00Z",
+    });
   });
 
   it("should handle keys with numbers", () => {
@@ -71,7 +77,13 @@ describe("splitTag", () => {
   });
 
   it("should handle particularly complex mixed cases", () => {
-    expect(splitTag("env:prod_us-west-2_replica")).toEqual({ key: "env", value: "prod_us-west-2_replica" });
-    expect(splitTag("status_error:connection:timeout")).toEqual({ key: "status", value: "error:connection:timeout" });
+    expect(splitTag("env:prod_us-west-2_replica")).toEqual({
+      key: "env",
+      value: "prod_us-west-2_replica",
+    });
+    expect(splitTag("status_error:connection:timeout")).toEqual({
+      key: "status",
+      value: "error:connection:timeout",
+    });
   });
-}); 
+});

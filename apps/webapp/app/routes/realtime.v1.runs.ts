@@ -1,10 +1,7 @@
 import { z } from "zod";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { resolveRealtimeStreamClient } from "~/services/realtime/resolveRealtimeStreamClient.server";
-import {
-  anyResource,
-  createLoaderApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const SearchParamsSchema = z.object({
   tags: z
@@ -34,7 +31,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ searchParams, authentication, request, apiVersion }) => {
-    // Pick the Electric proxy or the native backend per org (defaults to Electric); both implement streamRuns.
+    // Resolve the native realtime client; it implements streamRuns.
     const client = await resolveRealtimeStreamClient(authentication.environment);
 
     return client.streamRuns(

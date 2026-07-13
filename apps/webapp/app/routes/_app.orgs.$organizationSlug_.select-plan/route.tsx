@@ -1,6 +1,6 @@
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
-import { AppContainer, MainBody, PageBody } from "~/components/layout/AppLayout";
+import { AppContainer, PageBody } from "~/components/layout/AppLayout";
 import { Header1 } from "~/components/primitives/Headers";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
@@ -43,7 +43,7 @@ export const loader = dashboardLoader(
       throw new Response(null, { status: 404, statusText: "Organization not found" });
     }
 
-    if (organization.v3Enabled) {
+    if (organization.isActivated) {
       return redirect(organizationPath({ slug: organizationSlug }));
     }
 
@@ -62,9 +62,9 @@ export default function ChoosePlanPage() {
 
   return (
     <AppContainer>
-      <PageBody className="bg-charcoal-900">
+      <PageBody className="bg-background-deep">
         <BackgroundWrapper>
-          <div className="mx-auto mt-4 flex h-fit min-h-full max-w-[80rem] flex-col items-center justify-center gap-8 lg:mt-0">
+          <div className="mx-auto mt-4 flex h-fit min-h-full max-w-320 flex-col items-center justify-center gap-8 lg:mt-0">
             <Header1 className="text-center">Subscribe for full access</Header1>
             <div className="w-full rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
               <PricingPlans
@@ -73,7 +73,6 @@ export default function ChoosePlanPage() {
                 subscription={v3Subscription}
                 organizationSlug={organizationSlug}
                 hasPromotedPlan
-                showGithubVerificationBadge
                 periodEnd={periodEnd}
               />
             </div>

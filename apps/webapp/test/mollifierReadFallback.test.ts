@@ -21,7 +21,7 @@ describe("findRunByIdWithMollifierFallback", () => {
   it("returns null when buffer is unavailable (mollifier disabled)", async () => {
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => null },
+      { getBuffer: () => null }
     );
     expect(result).toBeNull();
   });
@@ -29,7 +29,7 @@ describe("findRunByIdWithMollifierFallback", () => {
   it("returns null when no buffer entry exists", async () => {
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(null) },
+      { getBuffer: () => fakeBuffer(null) }
     );
     expect(result).toBeNull();
   });
@@ -46,7 +46,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result).toBeNull();
   });
@@ -63,7 +63,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result).toBeNull();
   });
@@ -80,7 +80,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result).not.toBeNull();
     expect(result!.friendlyId).toBe("run_1");
@@ -101,7 +101,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.status).toBe("QUEUED");
   });
@@ -119,7 +119,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.status).toBe("FAILED");
     expect(result!.error).toEqual({ code: "VALIDATION", message: "task not found" });
@@ -154,7 +154,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result).not.toBeNull();
     expect(result!.payloadType).toBe("application/json");
@@ -188,7 +188,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.traceId).toBe("trace_abc");
     expect(result!.spanId).toBe("span_xyz");
@@ -222,7 +222,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result).not.toBeNull();
     expect(result!.idempotencyKeyOptions).toEqual({
@@ -256,7 +256,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result).not.toBeNull();
     expect(result!.idempotencyKeyOptions).toBeUndefined();
@@ -274,7 +274,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.payloadType).toBeUndefined();
     expect(result!.metadata).toBeUndefined();
@@ -310,7 +310,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result).not.toBeNull();
     expect(result!.id).toBeTypeOf("string");
@@ -344,7 +344,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.batchId).toBe("batch_internal_cuid");
   });
@@ -361,7 +361,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.batchId).toBeUndefined();
   });
@@ -383,7 +383,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result).not.toBeNull();
     expect(result!.status).toBe("QUEUED");
@@ -410,7 +410,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.status).toBe("CANCELED");
     expect(result!.cancelledAt).toEqual(new Date(cancelledAtIso));
@@ -430,7 +430,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.runtimeEnvironmentId).toBe("env_a");
     expect(result!.workerQueue).toBeUndefined();
@@ -457,7 +457,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.batchId).toBe("batch_internal_xyz");
   });
@@ -479,7 +479,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.batchId).toBeUndefined();
   });
@@ -509,7 +509,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.parentTaskRunFriendlyId).toBe(parent.friendlyId);
     expect(result!.rootTaskRunFriendlyId).toBe(root.friendlyId);
@@ -527,7 +527,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     };
     const result = await findRunByIdWithMollifierFallback(
       { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
-      { getBuffer: () => fakeBuffer(entry) },
+      { getBuffer: () => fakeBuffer(entry) }
     );
     expect(result!.parentTaskRunFriendlyId).toBeUndefined();
     expect(result!.rootTaskRunFriendlyId).toBeUndefined();

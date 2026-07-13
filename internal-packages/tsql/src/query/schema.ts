@@ -869,7 +869,11 @@ export function sanitizeErrorMessage(message: string, schemas: TableSchema[]): s
     // Collect tenant column names to strip (global tables have no tenant columns)
     const tenantCols = table.tenantColumns;
     if (tenantCols) {
-      columnsToStrip.push(tenantCols.organizationId, tenantCols.projectId, tenantCols.environmentId);
+      columnsToStrip.push(
+        tenantCols.organizationId,
+        tenantCols.projectId,
+        tenantCols.environmentId
+      );
     }
 
     // Collect required filter columns to strip

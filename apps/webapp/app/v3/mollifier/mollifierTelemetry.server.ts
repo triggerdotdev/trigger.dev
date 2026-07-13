@@ -30,7 +30,7 @@ export type RecordDecisionOptions = {
 // unit-testable without standing up an OTel meter.
 export function decisionLabels(
   outcome: DecisionOutcome,
-  opts: RecordDecisionOptions,
+  opts: RecordDecisionOptions
 ): Record<string, string> {
   return {
     outcome,
@@ -54,7 +54,7 @@ export const realtimeBufferedSubscriptionsCounter = meter.createCounter(
   {
     description:
       "Realtime subscriptions opened against a runId that exists only in the mollifier buffer",
-  },
+  }
 );
 
 // No `envId` attribute — `envId` is a banned high-cardinality metric
@@ -72,13 +72,9 @@ export function recordRealtimeBufferedSubscription(): void {
 // single stuck entry observed by N sweep ticks adds N to the counter,
 // so `rate()` over an alerting window reflects (entries × ticks), not
 // "entries that are stale right now".
-export const staleEntriesCounter = meter.createCounter(
-  "mollifier.stale_entries",
-  {
-    description:
-      "Mollifier buffer entries whose dwell exceeds the stale threshold (per sweep pass)",
-  },
-);
+export const staleEntriesCounter = meter.createCounter("mollifier.stale_entries", {
+  description: "Mollifier buffer entries whose dwell exceeds the stale threshold (per sweep pass)",
+});
 
 // No `envId` attribute — see comment above.
 export function recordStaleEntry(): void {
@@ -90,13 +86,10 @@ export function recordStaleEntry(): void {
 // the gauge drops back to 0 when the drainer catches up instead of
 // staying latched. Recommended alert:
 //   mollifier_stale_entries_current > 0 for 5m
-export const staleEntriesGauge = meter.createObservableGauge(
-  "mollifier.stale_entries.current",
-  {
-    description:
-      "Buffer entries whose dwell exceeds the stale threshold, as observed by the latest sweep pass",
-  },
-);
+export const staleEntriesGauge = meter.createObservableGauge("mollifier.stale_entries.current", {
+  description:
+    "Buffer entries whose dwell exceeds the stale threshold, as observed by the latest sweep pass",
+});
 
 let latestStaleTotal = 0;
 
@@ -115,7 +108,7 @@ meter.addBatchObservableCallback(
   (result) => {
     result.observe(staleEntriesGauge, latestStaleTotal);
   },
-  [staleEntriesGauge],
+  [staleEntriesGauge]
 );
 
 // Observability gauge for entries currently in DRAINING state — popped
@@ -130,13 +123,10 @@ meter.addBatchObservableCallback(
 //
 // No `envId` attribute — same high-cardinality constraint as the other
 // mollifier gauges. The per-entry hash carries env/org for drill-down.
-export const drainingCountGauge = meter.createObservableGauge(
-  "mollifier.draining.current",
-  {
-    description:
-      "Mollifier buffer entries currently in DRAINING state (popped but not yet acked/failed/requeued)",
-  },
-);
+export const drainingCountGauge = meter.createObservableGauge("mollifier.draining.current", {
+  description:
+    "Mollifier buffer entries currently in DRAINING state (popped but not yet acked/failed/requeued)",
+});
 
 let latestDrainingCount = 0;
 
@@ -148,7 +138,7 @@ meter.addBatchObservableCallback(
   (result) => {
     result.observe(drainingCountGauge, latestDrainingCount);
   },
-  [drainingCountGauge],
+  [drainingCountGauge]
 );
 
 // Electric SQL's shape-stream protocol adds a `handle=` query param on

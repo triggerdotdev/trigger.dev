@@ -60,9 +60,8 @@ export type SkillHandle<TIdentifier extends string = string> = {
 export type AnySkillHandle = SkillHandle<string>;
 
 /** Extract the id literal type from a SkillHandle. */
-export type SkillIdentifier<T extends AnySkillHandle> = T extends SkillHandle<infer TId>
-  ? TId
-  : string;
+export type SkillIdentifier<T extends AnySkillHandle> =
+  T extends SkillHandle<infer TId> ? TId : string;
 
 /**
  * Bundled skills are copied to `${cwd}/.trigger/skills/{id}/` by the CLI at

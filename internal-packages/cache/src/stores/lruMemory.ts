@@ -28,9 +28,10 @@ export type LRUMemoryStoreConfig = {
  * but will be evicted by LRU when the cache is full.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export class LRUMemoryStore<TNamespace extends string, TValue = any>
-  implements Store<TNamespace, TValue>
-{
+export class LRUMemoryStore<TNamespace extends string, TValue = any> implements Store<
+  TNamespace,
+  TValue
+> {
   readonly name: string;
   private readonly cache: LRUCache<string, Entry<TValue>>;
 
@@ -110,10 +111,7 @@ export class LRUMemoryStore<TNamespace extends string, TValue = any>
     }
   }
 
-  async remove(
-    namespace: TNamespace,
-    keys: string | string[]
-  ): Promise<Result<void, CacheError>> {
+  async remove(namespace: TNamespace, keys: string | string[]): Promise<Result<void, CacheError>> {
     try {
       const keyArray = Array.isArray(keys) ? keys : [keys];
 

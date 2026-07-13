@@ -534,6 +534,88 @@ electric:
     # - name: CUSTOM_VAR
     #   value: "custom-value"
 
+# S2 (realtime streams v2)
+# s2-lite is the open-source, self-hostable S2 server (https://s2.dev). It backs
+# realtime streams v2, which power AI-agent token streaming and run streams. When
+# enabled, the webapp defaults to v2; set `defaultStreamVersion: v1` to fall back
+# to the Redis-backed v1 streams. Disable entirely with `deploy: false` and no
+# external endpoint.
+s2:
+  deploy: true
+  image:
+    registry: ghcr.io
+    repository: s2-streamstore/s2
+    tag: "latest"
+    # Pinning by digest is strongly recommended for reproducible deployments
+    digest: "sha256:d6ded5ca7dd619fa7c946f06e39a98f9c95c6883c8bb884e5eaa129f232c920c"
+    pullPolicy: IfNotPresent
+
+  # Which stream protocol version the webapp defaults to when a client doesn't pin one.
+  # Only takes effect while S2 is enabled (deploy: true or an external endpoint set);
+  # with S2 fully disabled the webapp always falls back to v1.
+  defaultStreamVersion: "v2"
+
+  # Basin that holds realtime streams. Created on startup from the init config.
+  # Must be at least 8 characters.
+  basin: "trigger-realtime"
+
+  # s2-lite needs no authentication; skip minting per-stream access tokens.
+  # Set to false when pointing at a hosted S2 that requires a token.
+  skipAccessTokens: true
+
+  podAnnotations: {}
+
+  # s2-lite is distroless and runs as uid 65532. fsGroup makes the persistent
+  # volume writable by that user without running the container as root.
+  podSecurityContext:
+    fsGroup: 65532
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+
+  service:
+    type: ClusterIP
+    port: 80
+    # High container port so s2-lite can bind as the non-root image user (65532)
+    # without needing CAP_NET_BIND_SERVICE for a privileged port
+    targetPort: 8080
+
+  # Persistent storage for the SlateDB-backed stream data
+  persistence:
+    enabled: true
+    size: 5Gi
+    accessMode: ReadWriteOnce
+    storageClass: ""
+    retain: false
+
+  resources: {}
+
+  # Health probe configuration (distroless image → TCP probes, no shell/HTTP tooling)
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 5
+    successThreshold: 1
+
+  # External S2 connection (when deploy: false). Point at a hosted S2 basin, e.g.
+  # "https://<basin>.b.aws.s2.dev/v1", set skipAccessTokens: false above, and
+  # supply an access token either inline or via an existing secret.
+  external:
+    endpoint: ""
+    accessToken: ""
+    existingSecret: ""
+    existingSecretAccessTokenKey: "access-token"
+
 # ClickHouse configuration
 # Subchart: https://github.com/bitnami/charts/tree/main/bitnami/clickhouse
 clickhouse:

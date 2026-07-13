@@ -117,7 +117,11 @@ export function logTransactionInfrastructureError(
   error: unknown,
   log: ErrorLogger = logger
 ): boolean {
-  if (!isInfrastructureError(error) || isPrismaKnownError(error) || infraErrorAlreadyLogged(error)) {
+  if (
+    !isInfrastructureError(error) ||
+    isPrismaKnownError(error) ||
+    infraErrorAlreadyLogged(error)
+  ) {
     return false;
   }
 

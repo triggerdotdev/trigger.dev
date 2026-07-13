@@ -1,130 +1,130 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { VERSION } from "../../version.js";
+import type { ApiClientConfiguration } from "../apiClientManager-api.js";
 import { generateJWT } from "../jwt.js";
 import {
-  AddTagsRequestBody,
-  ApiDeploymentListOptions,
+  type AddTagsRequestBody,
+  type ApiDeploymentListOptions,
+  type BatchItemNDJSON,
+  type BatchTriggerTaskV3RequestBody,
+  type CloseSessionRequestBody,
+  type CompleteWaitpointTokenRequestBody,
+  type CreateBatchRequestBody,
+  type CreateEnvironmentVariableRequestBody,
+  type CreateInputStreamWaitpointRequestBody,
+  type CreatePromptOverrideRequestBody,
+  type CreateScheduleOptions,
+  type CreateSessionRequestBody,
+  type CreateSessionStreamWaitpointRequestBody,
+  type CreateWaitpointTokenRequestBody,
+  type EndAndContinueSessionRequestBody,
+  type ListQueueOptions,
+  type ListScheduleOptions,
+  type ListSessionsOptions,
+  type PromotePromptVersionRequestBody,
+  type QueueTypeName,
+  type ReactivatePromptOverrideRequestBody,
+  type RescheduleRunRequestBody,
+  type ResolvePromptRequestBody,
+  type RetrieveQueueParam,
+  type RetryOptions,
+  type TriggerTaskRequestBody,
+  type UpdateEnvironmentVariableRequestBody,
+  type UpdateMetadataRequestBody,
+  type UpdatePromptOverrideRequestBody,
+  type UpdateScheduleOptions,
+  type UpdateSessionRequestBody,
+  type WaitForDurationRequestBody,
+  AbortBulkActionResponseBody,
   ApiDeploymentListResponseItem,
-  ApiDeploymentListSearchParams,
-  RetrieveCurrentDeploymentResponseBody,
+  BulkActionObject,
+  CreateBulkActionResponseBody,
   AppendToStreamResponseBody,
-  BatchItemNDJSON,
   BatchTaskRunExecutionResult,
-  BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   CanceledRunResponse,
-  CloseSessionRequestBody,
-  CompleteWaitpointTokenRequestBody,
   CompleteWaitpointTokenResponseBody,
-  CreatedSessionResponseBody,
-  CreateSessionRequestBody,
-  EndAndContinueSessionRequestBody,
-  EndAndContinueSessionResponseBody,
-  ListSessionsOptions,
-  ListSessionsResponseBody,
-  ListedSessionItem,
-  RetrieveSessionResponseBody,
-  UpdateSessionRequestBody,
-  CreateBatchRequestBody,
   CreateBatchResponse,
-  CreateEnvironmentVariableRequestBody,
-  CreateInputStreamWaitpointRequestBody,
   CreateInputStreamWaitpointResponseBody,
-  CreateSessionStreamWaitpointRequestBody,
   CreateSessionStreamWaitpointResponseBody,
-  CreateScheduleOptions,
   CreateStreamResponseBody,
   CreateUploadPayloadUrlResponseBody,
-  CreateWaitpointTokenRequestBody,
   CreateWaitpointTokenResponseBody,
+  CreatedSessionResponseBody,
   DeletedScheduleObject,
+  EndAndContinueSessionResponseBody,
   EnvironmentVariableResponseBody,
   EnvironmentVariableWithSecret,
-  ListQueueOptions,
-  ListRunResponseItem,
-  ListScheduleOptions,
-  QueueItem,
-  QueueTypeName,
-  QueryExecuteRequestBody,
-  QueryExecuteResponseBody,
-  QueryExecuteCSVResponseBody,
-  QuerySchemaResponseBody,
   ListDashboardsResponseBody,
-  ReplayRunResponse,
-  RescheduleRunRequestBody,
-  ResetIdempotencyKeyResponse,
-  RetrieveBatchV2Response,
-  RetrieveQueueParam,
-  ResolvePromptRequestBody,
-  ResolvePromptResponseBody,
-  ListPromptsResponseBody,
   ListPromptVersionsResponseBody,
-  PromotePromptVersionRequestBody,
-  CreatePromptOverrideRequestBody,
-  UpdatePromptOverrideRequestBody,
-  ReactivatePromptOverrideRequestBody,
+  ListPromptsResponseBody,
+  ListRunResponseItem,
+  ListedSessionItem,
   PromptOkResponseBody,
   PromptOverrideCreatedResponseBody,
+  QueryExecuteResponseBody,
+  QuerySchemaResponseBody,
+  QueueItem,
+  ReadSessionStreamRecordsResponseBody,
+  ReplayRunResponse,
+  ResetIdempotencyKeyResponse,
+  ResolvePromptResponseBody,
+  RetrieveBatchV2Response,
+  RetrieveCurrentDeploymentResponseBody,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
+  RetrieveSessionResponseBody,
   RetrieveSpanDetailResponseBody,
   ScheduleObject,
   SendInputStreamResponseBody,
   StreamBatchItemsResponse,
   TaskRunExecutionResult,
-  ReadSessionStreamRecordsResponseBody,
-  TriggerTaskRequestBody,
   TriggerTaskResponse,
-  UpdateEnvironmentVariableRequestBody,
-  UpdateMetadataRequestBody,
   UpdateMetadataResponseBody,
-  UpdateScheduleOptions,
-  WaitForDurationRequestBody,
   WaitForDurationResponseBody,
   WaitForWaitpointTokenResponseBody,
   WaitpointRetrieveTokenResponse,
   WaitpointTokenItem,
 } from "../schemas/index.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import { controlSubtype, type ControlEvent } from "../sessionStreams/wireProtocol.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
-import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
-import { Prettify } from "../types/utils.js";
+import type { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
+import type { Prettify } from "../types/utils.js";
+import { getEnvVar } from "../utils/getEnv.js";
+import { calculateNextRetryDelay } from "../utils/retries.js";
 import {
-  AnyZodFetchOptions,
-  ApiPromise,
-  ApiRequestOptions,
-  CursorPagePromise,
-  ZodFetchOptions,
+  type AnyZodFetchOptions,
+  type ApiPromise,
+  type ApiRequestOptions,
+  type CursorPagePromise,
+  type ZodFetchOptions,
   isRequestOptions,
   zodfetch,
   zodfetchCursorPage,
   zodfetchOffsetLimitPage,
 } from "./core.js";
 import { ApiConnectionError, ApiError, BatchNotSealedError } from "./errors.js";
-import { calculateNextRetryDelay } from "../utils/retries.js";
-import { RetryOptions } from "../schemas/index.js";
 import {
-  AnyRealtimeRun,
-  AnyRunShape,
-  RealtimeRun,
-  RunShape,
-  RunStreamCallback,
-  RunSubscription,
-  SSEStreamSubscriptionFactory,
+  type AnyRealtimeRun,
+  type AnyRunShape,
+  type RealtimeRun,
+  type RealtimeRunSkipColumns,
+  type RunShape,
+  type RunStreamCallback,
+  type RunSubscription,
+  type TaskRunShape,
   SSEStreamSubscription,
-  TaskRunShape,
+  SSEStreamSubscriptionFactory,
   runShapeStream,
-  RealtimeRunSkipColumns,
   type SSEStreamPart,
 } from "./runStream.js";
-import {
-  controlSubtype,
-  type ControlEvent,
-} from "../sessionStreams/wireProtocol.js";
-import {
+import type {
+  CreateBulkActionOptions,
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
+  ListBulkActionsQueryParams,
   ListProjectRunsQueryParams,
   ListRunsQueryParams,
   ListWaitpointTokensQueryParams,
@@ -132,8 +132,6 @@ import {
   UpdateEnvironmentVariableParams,
 } from "./types.js";
 import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
-import { ApiClientConfiguration } from "../apiClientManager-api.js";
-import { getEnvVar } from "../utils/getEnv.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -148,11 +146,13 @@ export type CreateBatchApiResponse = Prettify<
 >;
 
 export type {
+  CreateBulkActionOptions,
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
+  RealtimeRunSkipColumns,
+  ListBulkActionsQueryParams,
   SubscribeToRunsQueryParams,
   UpdateEnvironmentVariableParams,
-  RealtimeRunSkipColumns,
 };
 
 export type ClientTriggerOptions = {
@@ -186,7 +186,7 @@ export type ApiClientFutureFlags = {
   v2RealtimeStreams?: boolean;
 };
 
-export { isRequestOptions, SSEStreamSubscription };
+export { SSEStreamSubscription, isRequestOptions };
 export type {
   AnyRealtimeRun,
   AnyRunShape,
@@ -195,8 +195,8 @@ export type {
   RunShape,
   RunStreamCallback,
   RunSubscription,
-  TaskRunShape,
   SSEStreamPart,
+  TaskRunShape,
 };
 
 export * from "./getBranch.js";
@@ -215,6 +215,8 @@ export class ApiClient {
   constructor(
     baseUrl: string,
     accessToken: string,
+    // Carries the branch for any branchable env (preview or dev) — both ride the
+    // x-trigger-branch header, and the server disambiguates by the token's env.
     previewBranch?: string,
     requestOptions: ApiRequestOptions = {},
     futureFlags: ApiClientFutureFlags = {}
@@ -495,9 +497,9 @@ export class ApiClient {
         await safeStreamCancel(forRetry);
 
         const errText = await response.text().catch((e) => (e as Error).message);
-        let errJSON: Object | undefined;
+        let errJSON: object | undefined;
         try {
-          errJSON = JSON.parse(errText) as Object;
+          errJSON = JSON.parse(errText) as object;
         } catch {
           // ignore
         }
@@ -735,6 +737,64 @@ export class ApiClient {
     return zodfetch(
       CanceledRunResponse,
       `${this.baseUrl}/api/v2/runs/${runId}/cancel`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  createBulkAction(options: CreateBulkActionOptions, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CreateBulkActionResponseBody,
+      `${this.baseUrl}/api/v1/bulk-actions`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(options),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listBulkActions(
+    query?: ListBulkActionsQueryParams,
+    requestOptions?: ZodFetchOptions
+  ): CursorPagePromise<typeof BulkActionObject> {
+    return zodfetchCursorPage(
+      BulkActionObject,
+      `${this.baseUrl}/api/v1/bulk-actions`,
+      {
+        query: new URLSearchParams(),
+        limit: query?.limit,
+        after: query?.after,
+        before: query?.before,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveBulkAction(bulkActionId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      BulkActionObject,
+      `${this.baseUrl}/api/v1/bulk-actions/${bulkActionId}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  abortBulkAction(bulkActionId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      AbortBulkActionResponseBody,
+      `${this.baseUrl}/api/v1/bulk-actions/${bulkActionId}/abort`,
       {
         method: "POST",
         headers: this.#getHeaders(false),
@@ -1866,9 +1926,7 @@ export class ApiClient {
     );
   }
 
-  async listDashboards(
-    requestOptions?: ZodFetchOptions
-  ): Promise<ListDashboardsResponseBody> {
+  async listDashboards(requestOptions?: ZodFetchOptions): Promise<ListDashboardsResponseBody> {
     return zodfetch(
       ListDashboardsResponseBody,
       `${this.baseUrl}/api/v1/query/dashboards`,
@@ -1947,11 +2005,7 @@ export class ApiClient {
     return headers;
   }
 
-  resolvePrompt(
-    slug: string,
-    body: ResolvePromptRequestBody,
-    requestOptions?: ZodFetchOptions
-  ) {
+  resolvePrompt(slug: string, body: ResolvePromptRequestBody, requestOptions?: ZodFetchOptions) {
     return zodfetch(
       ResolvePromptResponseBody,
       `${this.baseUrl}/api/v1/prompts/${slug}`,
@@ -1982,7 +2036,11 @@ export class ApiClient {
     );
   }
 
-  promotePromptVersion(slug: string, body: PromotePromptVersionRequestBody, requestOptions?: ZodFetchOptions) {
+  promotePromptVersion(
+    slug: string,
+    body: PromotePromptVersionRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
     return zodfetch(
       PromptOkResponseBody,
       `${this.baseUrl}/api/v1/prompts/${slug}/promote`,
@@ -1991,7 +2049,11 @@ export class ApiClient {
     );
   }
 
-  createPromptOverride(slug: string, body: CreatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+  createPromptOverride(
+    slug: string,
+    body: CreatePromptOverrideRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
     return zodfetch(
       PromptOverrideCreatedResponseBody,
       `${this.baseUrl}/api/v1/prompts/${slug}/override`,
@@ -2000,7 +2062,11 @@ export class ApiClient {
     );
   }
 
-  updatePromptOverride(slug: string, body: UpdatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+  updatePromptOverride(
+    slug: string,
+    body: UpdatePromptOverrideRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
     return zodfetch(
       PromptOkResponseBody,
       `${this.baseUrl}/api/v1/prompts/${slug}/override`,
@@ -2018,7 +2084,11 @@ export class ApiClient {
     );
   }
 
-  reactivatePromptOverride(slug: string, body: ReactivatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+  reactivatePromptOverride(
+    slug: string,
+    body: ReactivatePromptOverrideRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
     return zodfetch(
       PromptOkResponseBody,
       `${this.baseUrl}/api/v1/prompts/${slug}/override/reactivate`,

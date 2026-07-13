@@ -303,9 +303,7 @@ describe("ModelPricingRegistry", () => {
           name: "Large Context",
           isDefault: false,
           priority: 0,
-          conditions: [
-            { usageDetailPattern: "input", operator: "gt" as const, value: 200000 },
-          ],
+          conditions: [{ usageDetailPattern: "input", operator: "gt" as const, value: 200000 }],
           prices: [
             { usageType: "input", price: 0.0000025 },
             { usageType: "output", price: 0.00001 },
@@ -371,9 +369,7 @@ describe("ModelPricingRegistry", () => {
             name: "Conditional",
             isDefault: false,
             priority: 1,
-            conditions: [
-              { usageDetailPattern: "input", operator: "gt" as const, value: 100 },
-            ],
+            conditions: [{ usageDetailPattern: "input", operator: "gt" as const, value: 100 }],
             prices: [{ usageType: "input", price: 0.0001 }],
           },
           {
@@ -405,9 +401,7 @@ describe("ModelPricingRegistry", () => {
             name: "Conditional",
             isDefault: false,
             priority: 0,
-            conditions: [
-              { usageDetailPattern: "input", operator: "gt" as const, value: 999999 },
-            ],
+            conditions: [{ usageDetailPattern: "input", operator: "gt" as const, value: 999999 }],
             prices: [{ usageType: "input", price: 0.001 }],
           },
           {
@@ -489,5 +483,39 @@ describe("ModelPricingRegistry", () => {
       expect(langfuseRegistry.match("claude-sonnet-4-5-20250929")).not.toBeNull();
       expect(langfuseRegistry.match("claude-sonnet-4-20250514")).not.toBeNull();
     });
+  });
+});
+
+describe("loadFromModels / toSerializable (worker in-memory load)", () => {
+  it("matches and prices from in-memory models without a DB", () => {
+    const reg = new ModelPricingRegistry();
+    reg.loadFromModels([gpt4o, claudeSonnet]);
+
+    expect(reg.isLoaded).toBe(true);
+    expect(reg.match("gpt-4o")).not.toBeNull();
+    expect(reg.match("gpt-4o-2024-08-06")).not.toBeNull();
+
+    const cost = reg.calculateCost("gpt-4o", { input: 1000, output: 500 });
+    expect(cost).not.toBeNull();
+    expect(cost!.totalCost).toBeGreaterThan(0);
+  });
+
+  it("round-trips through toSerializable (the main->worker broadcast shape)", () => {
+    const source = new ModelPricingRegistry();
+    source.loadFromModels([gpt4o, claudeSonnet]);
+
+    const worker = new ModelPricingRegistry();
+    worker.loadFromModels(source.toSerializable());
+
+    for (const m of ["gpt-4o", "gpt-4o-2024-08-06", "claude-sonnet-4-0", "unknown-model"]) {
+      expect(worker.match(m)).toEqual(source.match(m));
+    }
+    const usage = { input: 1234, output: 567 };
+    expect(worker.calculateCost("gpt-4o", usage)).toEqual(source.calculateCost("gpt-4o", usage));
+  });
+
+  it("throws if loadFromDatabase is called without a prisma client", async () => {
+    const reg = new ModelPricingRegistry();
+    await expect(reg.loadFromDatabase()).rejects.toThrow(/requires a prisma client/);
   });
 });

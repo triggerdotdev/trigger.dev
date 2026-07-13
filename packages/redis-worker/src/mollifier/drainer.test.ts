@@ -38,96 +38,104 @@ function eachEnvAsOwnOrg(envs: string[]): Partial<StubBuffer> {
 }
 
 describe("MollifierDrainer.runOnce", () => {
-  redisTest("drains one queued entry through the handler and acks", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      ...noopOptions,
-    });
-
-    const handlerCalls: Array<{ runId: string; envId: string; orgId: string; payload: unknown }> =
-      [];
-    const handler = async (input: {
-      runId: string;
-      envId: string;
-      orgId: string;
-      payload: unknown;
-    }) => {
-      handlerCalls.push(input);
-    };
-    const drainer = new MollifierDrainer({
-      buffer,
-      handler,
-      concurrency: 5,
-      maxAttempts: 3,
-      isRetryable: () => false,
-      logger: new Logger("test-drainer", "log"),
-    });
-
-    try {
-      await buffer.accept({
-        runId: "run_1",
-        envId: "env_a",
-        orgId: "org_1",
-        payload: serialiseSnapshot({ foo: 1 }),
+  redisTest(
+    "drains one queued entry through the handler and acks",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
       });
 
-      const result = await drainer.runOnce();
-      expect(result.drained).toBe(1);
-      expect(result.failed).toBe(0);
-      expect(handlerCalls).toHaveLength(1);
-      expect(handlerCalls[0]).toMatchObject({
-        runId: "run_1",
-        envId: "env_a",
-        orgId: "org_1",
-        payload: { foo: 1 },
+      const handlerCalls: Array<{ runId: string; envId: string; orgId: string; payload: unknown }> =
+        [];
+      const handler = async (input: {
+        runId: string;
+        envId: string;
+        orgId: string;
+        payload: unknown;
+      }) => {
+        handlerCalls.push(input);
+      };
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        concurrency: 5,
+        maxAttempts: 3,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
       });
 
-      // After ack the entry persists as a read-fallback safety net with
-      // materialised=true and a fresh grace TTL.
-      const entry = await buffer.getEntry("run_1");
-      expect(entry).not.toBeNull();
-      expect(entry!.materialised).toBe(true);
-    } finally {
-      await buffer.close();
+      try {
+        await buffer.accept({
+          runId: "run_1",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ foo: 1 }),
+        });
+
+        const result = await drainer.runOnce();
+        expect(result.drained).toBe(1);
+        expect(result.failed).toBe(0);
+        expect(handlerCalls).toHaveLength(1);
+        expect(handlerCalls[0]).toMatchObject({
+          runId: "run_1",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: { foo: 1 },
+        });
+
+        // After ack the entry persists as a read-fallback safety net with
+        // materialised=true and a fresh grace TTL.
+        const entry = await buffer.getEntry("run_1");
+        expect(entry).not.toBeNull();
+        expect(entry!.materialised).toBe(true);
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 
-  redisTest("runOnce with no entries does nothing", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      ...noopOptions,
-    });
+  redisTest(
+    "runOnce with no entries does nothing",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
 
-    let handlerCalls = 0;
-    const handler = async () => {
-      handlerCalls++;
-    };
-    const drainer = new MollifierDrainer({
-      buffer,
-      handler,
-      concurrency: 5,
-      maxAttempts: 3,
-      isRetryable: () => false,
-      logger: new Logger("test-drainer", "log"),
-    });
+      let handlerCalls = 0;
+      const handler = async () => {
+        handlerCalls++;
+      };
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        concurrency: 5,
+        maxAttempts: 3,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
+      });
 
-    try {
-      const result = await drainer.runOnce();
-      expect(result.drained).toBe(0);
-      expect(result.failed).toBe(0);
-      expect(handlerCalls).toBe(0);
-    } finally {
-      await buffer.close();
+      try {
+        const result = await drainer.runOnce();
+        expect(result.drained).toBe(0);
+        expect(result.failed).toBe(0);
+        expect(handlerCalls).toBe(0);
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 });
 
 describe("MollifierDrainer.drainBatchSize", () => {
@@ -314,7 +322,7 @@ describe("MollifierDrainer.drainBatchSize", () => {
     for (let i = 0; i < envCount; i++) {
       queues.set(
         `env_${i}`,
-        Array.from({ length: perEnv }, (_, j) => `env_${i}_run_${j}`),
+        Array.from({ length: perEnv }, (_, j) => `env_${i}_run_${j}`)
       );
     }
     const handled: string[] = [];
@@ -379,7 +387,7 @@ describe("MollifierDrainer.drainBatchSize", () => {
         Array.from({ length: 100 }, (_, i) => ({
           runId: `${e}_run_${i}`,
           orgId: "org_A",
-        })),
+        }))
       );
     }
     queues.set(
@@ -387,7 +395,7 @@ describe("MollifierDrainer.drainBatchSize", () => {
       Array.from({ length: 100 }, (_, i) => ({
         runId: `${orgBEnv}_run_${i}`,
         orgId: "org_B",
-      })),
+      }))
     );
 
     const drainedByOrg: Record<string, number> = { org_A: 0, org_B: 0 };
@@ -508,7 +516,7 @@ describe("MollifierDrainer.drainBatchSize", () => {
     for (let i = 0; i < envCount; i++) {
       queues.set(
         `env_${i}`,
-        Array.from({ length: perEnv }, (_, j) => `env_${i}_run_${j}`),
+        Array.from({ length: perEnv }, (_, j) => `env_${i}_run_${j}`)
       );
     }
     let inflightPoppedNotAcked = 0;
@@ -608,95 +616,103 @@ describe("MollifierDrainer.drainBatchSize", () => {
 });
 
 describe("MollifierDrainer error handling", () => {
-  redisTest("retryable error requeues and increments attempts", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      ...noopOptions,
-    });
+  redisTest(
+    "retryable error requeues and increments attempts",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
 
-    let calls = 0;
-    const handler = async () => {
-      calls++;
-      throw new Error("transient");
-    };
+      let calls = 0;
+      const handler = async () => {
+        calls++;
+        throw new Error("transient");
+      };
 
-    const drainer = new MollifierDrainer({
-      buffer,
-      handler,
-      concurrency: 1,
-      maxAttempts: 3,
-      isRetryable: () => true,
-      logger: new Logger("test-drainer", "log"),
-    });
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        concurrency: 1,
+        maxAttempts: 3,
+        isRetryable: () => true,
+        logger: new Logger("test-drainer", "log"),
+      });
 
-    try {
-      await buffer.accept({ runId: "run_r", envId: "env_a", orgId: "org_1", payload: "{}" });
+      try {
+        await buffer.accept({ runId: "run_r", envId: "env_a", orgId: "org_1", payload: "{}" });
 
-      await drainer.runOnce();
-      const after1 = await buffer.getEntry("run_r");
-      expect(after1!.status).toBe("QUEUED");
-      expect(after1!.attempts).toBe(1);
+        await drainer.runOnce();
+        const after1 = await buffer.getEntry("run_r");
+        expect(after1!.status).toBe("QUEUED");
+        expect(after1!.attempts).toBe(1);
 
-      await drainer.runOnce();
-      const after2 = await buffer.getEntry("run_r");
-      expect(after2!.status).toBe("QUEUED");
-      expect(after2!.attempts).toBe(2);
+        await drainer.runOnce();
+        const after2 = await buffer.getEntry("run_r");
+        expect(after2!.status).toBe("QUEUED");
+        expect(after2!.attempts).toBe(2);
 
-      const result3 = await drainer.runOnce();
-      // On attempt 3 the drainer hits maxAttempts and calls fail(),
-      // which deletes the entry — once the drainer-handler has written
-      // the SYSTEM_FAILURE PG row the buffer entry is no longer
-      // load-bearing. The runOnce result is the surviving signal.
-      const after3 = await buffer.getEntry("run_r");
-      expect(after3).toBeNull();
-      expect(result3.failed).toBe(1);
-      expect(calls).toBe(3);
-    } finally {
-      await buffer.close();
+        const result3 = await drainer.runOnce();
+        // On attempt 3 the drainer hits maxAttempts and calls fail(),
+        // which deletes the entry — once the drainer-handler has written
+        // the SYSTEM_FAILURE PG row the buffer entry is no longer
+        // load-bearing. The runOnce result is the surviving signal.
+        const after3 = await buffer.getEntry("run_r");
+        expect(after3).toBeNull();
+        expect(result3.failed).toBe(1);
+        expect(calls).toBe(3);
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 
-  redisTest("non-retryable error transitions directly to FAILED", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      ...noopOptions,
-    });
+  redisTest(
+    "non-retryable error transitions directly to FAILED",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
 
-    const handler = async () => {
-      throw new Error("validation failure");
-    };
+      const handler = async () => {
+        throw new Error("validation failure");
+      };
 
-    const drainer = new MollifierDrainer({
-      buffer,
-      handler,
-      concurrency: 1,
-      maxAttempts: 3,
-      isRetryable: () => false,
-      logger: new Logger("test-drainer", "log"),
-    });
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        concurrency: 1,
+        maxAttempts: 3,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
+      });
 
-    try {
-      await buffer.accept({ runId: "run_nr", envId: "env_a", orgId: "org_1", payload: "{}" });
+      try {
+        await buffer.accept({ runId: "run_nr", envId: "env_a", orgId: "org_1", payload: "{}" });
 
-      const result = await drainer.runOnce();
+        const result = await drainer.runOnce();
 
-      // fail() deletes the entry once the drainer-handler has written
-      // the canonical SYSTEM_FAILURE PG row.
-      const entry = await buffer.getEntry("run_nr");
-      expect(entry).toBeNull();
-      expect(result.failed).toBe(1);
-    } finally {
-      await buffer.close();
+        // fail() deletes the entry once the drainer-handler has written
+        // the canonical SYSTEM_FAILURE PG row.
+        const entry = await buffer.getEntry("run_nr");
+        expect(entry).toBeNull();
+        expect(result.failed).toBe(1);
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 
   redisTest(
     "multi-org round-robin: drains one item per org per runOnce",
@@ -752,7 +768,7 @@ describe("MollifierDrainer error handling", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -809,7 +825,12 @@ describe("MollifierDrainer.onTerminalFailure", () => {
       });
 
       try {
-        await buffer.accept({ runId: "run_exhaust", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.accept({
+          runId: "run_exhaust",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+        });
 
         // Attempt 1: retryable error → requeue, no terminal callback fires.
         const r1 = await drainer.runOnce();
@@ -836,7 +857,7 @@ describe("MollifierDrainer.onTerminalFailure", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -882,7 +903,7 @@ describe("MollifierDrainer.onTerminalFailure", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -929,7 +950,12 @@ describe("MollifierDrainer.onTerminalFailure", () => {
       });
 
       try {
-        await buffer.accept({ runId: "run_cb_retry", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.accept({
+          runId: "run_cb_retry",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+        });
 
         // Tick 1: handler throws → attempts=1 < maxAttempts=3 → requeue
         // (no callback invocation, retryable path).
@@ -957,7 +983,7 @@ describe("MollifierDrainer.onTerminalFailure", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -992,7 +1018,12 @@ describe("MollifierDrainer.onTerminalFailure", () => {
       });
 
       try {
-        await buffer.accept({ runId: "run_cb_dead", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.accept({
+          runId: "run_cb_dead",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+        });
 
         const r = await drainer.runOnce();
         expect(r.failed).toBe(1);
@@ -1003,7 +1034,7 @@ describe("MollifierDrainer.onTerminalFailure", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1042,7 +1073,7 @@ describe("MollifierDrainer.onTerminalFailure", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -1398,17 +1429,15 @@ describe("MollifierDrainer per-tick org cap", () => {
     for (const h of heavy) {
       queues.set(
         h,
-        Array.from({ length: 100 }, (_, i) => `${h}_run_${i}`),
+        Array.from({ length: 100 }, (_, i) => `${h}_run_${i}`)
       );
     }
     queues.set(light, [`${light}_run_0`]);
 
-    const activeEnvs = () =>
-      [...queues.keys()].filter((k) => (queues.get(k)?.length ?? 0) > 0);
+    const activeEnvs = () => [...queues.keys()].filter((k) => (queues.get(k)?.length ?? 0) > 0);
     const buffer = makeStubBuffer({
       listOrgs: async () => activeEnvs(),
-      listEnvsForOrg: async (orgId: string) =>
-        activeEnvs().includes(orgId) ? [orgId] : [],
+      listEnvsForOrg: async (orgId: string) => (activeEnvs().includes(orgId) ? [orgId] : []),
       pop: async (envId: string) => {
         const q = queues.get(envId);
         if (!q || q.length === 0) return null;
@@ -1472,7 +1501,7 @@ describe("MollifierDrainer per-tick org cap", () => {
         Array.from({ length: 100 }, (_, i) => ({
           runId: `${e}_run_${i}`,
           orgId: "org_A",
-        })),
+        }))
       );
     }
     queues.set(orgBEnv, [{ runId: `${orgBEnv}_run_0`, orgId: "org_B" }]);
@@ -1563,7 +1592,7 @@ describe("MollifierDrainer per-tick org cap", () => {
         Array.from({ length: 100 }, (_, i) => ({
           runId: `${e}_run_${i}`,
           orgId: "org_A",
-        })),
+        }))
       );
     }
     queues.set(
@@ -1571,7 +1600,7 @@ describe("MollifierDrainer per-tick org cap", () => {
       Array.from({ length: 100 }, (_, i) => ({
         runId: `${orgBEnv}_run_${i}`,
         orgId: "org_B",
-      })),
+      }))
     );
 
     const drainedByOrg: Record<string, number> = { org_A: 0, org_B: 0 };
@@ -1648,9 +1677,7 @@ describe("MollifierDrainer per-tick org cap", () => {
         return anyEnvActive ? [orgId] : [];
       },
       listEnvsForOrg: async (org: string) =>
-        org === orgId
-          ? [...queues.keys()].filter((k) => (queues.get(k) ?? 0) > 0)
-          : [],
+        org === orgId ? [...queues.keys()].filter((k) => (queues.get(k) ?? 0) > 0) : [],
       pop: async (envId: string) => {
         const remaining = queues.get(envId) ?? 0;
         if (remaining === 0) return null;
@@ -1696,7 +1723,6 @@ describe("MollifierDrainer per-tick org cap", () => {
 });
 
 describe("MollifierDrainer additional coverage", () => {
-
   it("a malformed payload is treated as a non-retryable handler error and goes terminal", async () => {
     // The deserialise call lives inside processEntry's try, so a JSON parse
     // failure is caught by the same handler-error branch. With
@@ -1934,101 +1960,109 @@ describe("MollifierDrainer additional coverage", () => {
 });
 
 describe("MollifierDrainer.start/stop", () => {
-  redisTest("start polls and processes, stop halts the loop", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      ...noopOptions,
-    });
+  redisTest(
+    "start polls and processes, stop halts the loop",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
 
-    const handled: string[] = [];
-    const handler = async (input: { runId: string }) => {
-      handled.push(input.runId);
-    };
+      const handled: string[] = [];
+      const handler = async (input: { runId: string }) => {
+        handled.push(input.runId);
+      };
 
-    const drainer = new MollifierDrainer({
-      buffer,
-      handler,
-      concurrency: 5,
-      maxAttempts: 3,
-      isRetryable: () => false,
-      pollIntervalMs: 20,
-      logger: new Logger("test-drainer", "log"),
-    });
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        concurrency: 5,
+        maxAttempts: 3,
+        isRetryable: () => false,
+        pollIntervalMs: 20,
+        logger: new Logger("test-drainer", "log"),
+      });
 
-    try {
-      await buffer.accept({ runId: "live_1", envId: "env_a", orgId: "org_1", payload: "{}" });
-      await buffer.accept({ runId: "live_2", envId: "env_a", orgId: "org_1", payload: "{}" });
+      try {
+        await buffer.accept({ runId: "live_1", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.accept({ runId: "live_2", envId: "env_a", orgId: "org_1", payload: "{}" });
 
-      drainer.start();
+        drainer.start();
 
-      const deadline = Date.now() + 5_000;
-      while (handled.length < 2 && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 50));
+        const deadline = Date.now() + 5_000;
+        while (handled.length < 2 && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 50));
+        }
+
+        await drainer.stop();
+
+        expect(new Set(handled)).toEqual(new Set(["live_1", "live_2"]));
+      } finally {
+        await buffer.close();
       }
-
-      await drainer.stop();
-
-      expect(new Set(handled)).toEqual(new Set(["live_1", "live_2"]));
-    } finally {
-      await buffer.close();
     }
-  });
+  );
 
-  redisTest("stop returns after timeoutMs even if a handler is hung", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      ...noopOptions,
-    });
+  redisTest(
+    "stop returns after timeoutMs even if a handler is hung",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
 
-    let handlerStarted = false;
-    const handler = async () => {
-      handlerStarted = true;
-      await new Promise<void>(() => {});
-    };
+      let handlerStarted = false;
+      const handler = async () => {
+        handlerStarted = true;
+        await new Promise<void>(() => {});
+      };
 
-    const drainer = new MollifierDrainer({
-      buffer,
-      handler,
-      concurrency: 1,
-      maxAttempts: 3,
-      isRetryable: () => false,
-      pollIntervalMs: 20,
-      logger: new Logger("test-drainer", "log"),
-    });
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        concurrency: 1,
+        maxAttempts: 3,
+        isRetryable: () => false,
+        pollIntervalMs: 20,
+        logger: new Logger("test-drainer", "log"),
+      });
 
-    try {
-      await buffer.accept({ runId: "hung", envId: "env_a", orgId: "org_1", payload: "{}" });
+      try {
+        await buffer.accept({ runId: "hung", envId: "env_a", orgId: "org_1", payload: "{}" });
 
-      drainer.start();
+        drainer.start();
 
-      const deadline = Date.now() + 2_000;
-      while (!handlerStarted && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 25));
+        const deadline = Date.now() + 2_000;
+        while (!handlerStarted && Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 25));
+        }
+        expect(handlerStarted).toBe(true);
+
+        const stopStart = Date.now();
+        await drainer.stop({ timeoutMs: 500 });
+        const stopElapsed = Date.now() - stopStart;
+
+        // Allow a small jitter window below `timeoutMs` — Node's setTimeout can
+        // fire a millisecond or two early under CI load. The behaviour we're
+        // pinning is "stop honors the deadline instead of waiting for the hung
+        // handler indefinitely", not millisecond-precise timing.
+        expect(stopElapsed).toBeGreaterThanOrEqual(450);
+        expect(stopElapsed).toBeLessThan(2_000);
+      } finally {
+        await buffer.close();
       }
-      expect(handlerStarted).toBe(true);
-
-      const stopStart = Date.now();
-      await drainer.stop({ timeoutMs: 500 });
-      const stopElapsed = Date.now() - stopStart;
-
-      // Allow a small jitter window below `timeoutMs` — Node's setTimeout can
-      // fire a millisecond or two early under CI load. The behaviour we're
-      // pinning is "stop honors the deadline instead of waiting for the hung
-      // handler indefinitely", not millisecond-precise timing.
-      expect(stopElapsed).toBeGreaterThanOrEqual(450);
-      expect(stopElapsed).toBeLessThan(2_000);
-    } finally {
-      await buffer.close();
     }
-  });
+  );
 });
 
 describe("MollifierDrainer concurrency cap", () => {
@@ -2093,6 +2127,6 @@ describe("MollifierDrainer concurrency cap", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });

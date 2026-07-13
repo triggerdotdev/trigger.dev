@@ -1,5 +1,5 @@
-import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import {
   EnvelopeIcon,
   GlobeAltIcon,
@@ -7,31 +7,30 @@ import {
   LockClosedIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
+import { BellAlertIcon } from "@heroicons/react/24/solid";
 import { useFetcher, useNavigate } from "@remix-run/react";
 import { SlackIcon } from "@trigger.dev/companyicons";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { InlineCode } from "~/components/code/InlineCode";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout, variantClasses } from "~/components/primitives/Callout";
-import { useToast } from "~/components/primitives/Toast";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
-import { InlineCode } from "~/components/code/InlineCode";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { TextLink } from "~/components/primitives/TextLink";
+import { useToast } from "~/components/primitives/Toast";
 import { UnorderedList } from "~/components/primitives/UnorderedList";
-import type { ErrorAlertChannelData } from "~/presenters/v3/ErrorAlertChannelPresenter.server";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
+import type { ErrorAlertChannelData } from "~/presenters/v3/ErrorAlertChannelPresenter.server";
 import { cn } from "~/utils/cn";
 import { organizationSlackIntegrationPath } from "~/utils/pathBuilder";
-import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { TextLink } from "~/components/primitives/TextLink";
-import { BellAlertIcon } from "@heroicons/react/24/solid";
 
 export const ErrorAlertsFormSchema = z.object({
   emails: z.preprocess((i) => {
@@ -104,10 +103,10 @@ export function ConfigureErrorAlerts({
     existingWebhooks.length > 0 ? [...existingWebhooks.map((w) => w.url), ""] : [""]
   );
 
-  const [form, { emails, webhooks, slackChannel, slackIntegrationId }] = useForm({
+  const [form, fields] = useForm<z.infer<typeof ErrorAlertsFormSchema>>({
     id: "configure-error-alerts",
     onValidate({ formData }) {
-      return parse(formData, { schema: ErrorAlertsFormSchema });
+      return parseWithZod(formData, { schema: ErrorAlertsFormSchema });
     },
     shouldRevalidate: "onSubmit",
     defaultValue: {
@@ -115,9 +114,10 @@ export function ConfigureErrorAlerts({
       webhooks: webhookFieldValues.current,
     },
   });
+  const { emails, webhooks, slackChannel, slackIntegrationId } = fields;
 
-  const emailFields = useFieldList(form.ref, emails);
-  const webhookFields = useFieldList(form.ref, webhooks);
+  const emailFields = emails.getFieldList();
+  const webhookFields = webhooks.getFieldList();
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
@@ -135,13 +135,8 @@ export function ConfigureErrorAlerts({
         />
       </div>
 
-      <fetcher.Form
-        method="post"
-        action={formAction}
-        {...form.props}
-        className="contents"
-      >
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <fetcher.Form method="post" action={formAction} {...getFormProps(form)} className="contents">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <Fieldset className="flex flex-col gap-4 p-4">
             <div className="flex flex-col">
               <Header3>Receive alerts when</Header3>
@@ -160,7 +155,7 @@ export function ConfigureErrorAlerts({
                   {emailFields.map((emailField, index) => (
                     <Fragment key={emailField.key}>
                       <Input
-                        {...conform.input(emailField, { type: "email" })}
+                        {...getInputProps(emailField, { type: "email" })}
                         placeholder={index === 0 ? "Enter an email address" : "Add another email"}
                         icon={EnvelopeIcon}
                         onChange={(e) => {
@@ -169,11 +164,11 @@ export function ConfigureErrorAlerts({
                             emailFields.length === emailFieldValues.current.length &&
                             emailFieldValues.current.every((v) => v !== "")
                           ) {
-                            requestIntent(form.ref.current ?? undefined, list.append(emails.name));
+                            form.insert({ name: emails.name });
                           }
                         }}
                       />
-                      <FormError id={emailField.errorId}>{emailField.error}</FormError>
+                      <FormError id={emailField.errorId}>{emailField.errors}</FormError>
                     </Fragment>
                   ))}
                 </InputGroup>
@@ -320,7 +315,7 @@ export function ConfigureErrorAlerts({
                 {webhookFields.map((webhookField, index) => (
                   <Fragment key={webhookField.key}>
                     <Input
-                      {...conform.input(webhookField, { type: "url" })}
+                      {...getInputProps(webhookField, { type: "url" })}
                       placeholder={
                         index === 0 ? "https://example.com/webhook" : "Add another webhook URL"
                       }
@@ -331,18 +326,18 @@ export function ConfigureErrorAlerts({
                           webhookFields.length === webhookFieldValues.current.length &&
                           webhookFieldValues.current.every((v) => v !== "")
                         ) {
-                          requestIntent(form.ref.current ?? undefined, list.append(webhooks.name));
+                          form.insert({ name: webhooks.name });
                         }
                       }}
                     />
-                    <FormError id={webhookField.errorId}>{webhookField.error}</FormError>
+                    <FormError id={webhookField.errorId}>{webhookField.errors}</FormError>
                   </Fragment>
                 ))}
                 <Hint>We'll issue POST requests to these URLs with a JSON payload.</Hint>
               </InputGroup>
             </div>
 
-            <FormError>{form.error}</FormError>
+            <FormError>{form.errors}</FormError>
           </Fieldset>
         </div>
 

@@ -1,5 +1,4 @@
-import React from "react";
-import { Header1, Header2 } from "~/components/primitives/Headers";
+import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   CopyableTableCell,
@@ -42,7 +41,7 @@ export default function Story() {
         <Paragraph>
           This table scrolls when a max-height is applied to the Table component.
         </Paragraph>
-        <Table containerClassName="max-h-[11.5rem]">
+        <Table containerClassName="max-h-46">
           <TableHeader className="bg-background-bright">
             <TableRow>
               <TableHeaderCell>Col 1</TableHeaderCell>

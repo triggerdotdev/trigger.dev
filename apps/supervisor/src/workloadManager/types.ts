@@ -1,4 +1,9 @@
-import type { EnvironmentType, MachinePreset, PlacementTag, RunAnnotations } from "@trigger.dev/core/v3";
+import type {
+  EnvironmentType,
+  MachinePreset,
+  PlacementTag,
+  RunAnnotations,
+} from "@trigger.dev/core/v3";
 
 export interface WorkloadManagerOptions {
   workloadApiProtocol: "http" | "https";

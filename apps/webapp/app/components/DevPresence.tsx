@@ -42,7 +42,7 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
 
   // Only subscribe to event source if enabled is true
   const streamedEvents = useEventSource(
-    `/resources/orgs/${organization.slug}/projects/${project.slug}/dev/presence`,
+    `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/presence`,
     {
       event: "presence",
       disabled: !enabled,
@@ -154,8 +154,8 @@ export function DevPresencePanel({ isConnected }: { isConnected: boolean | undef
         {isConnected === undefined
           ? "Checking connection..."
           : isConnected
-          ? "Your dev server is connected"
-          : "Your dev server is not connected"}
+            ? "Your dev server is connected"
+            : "Your dev server is not connected"}
       </DialogHeader>
       <div className="mt-2 flex flex-col gap-3 px-2">
         <div className="flex flex-col items-center justify-center gap-6 px-6 py-10">
@@ -169,8 +169,8 @@ export function DevPresencePanel({ isConnected }: { isConnected: boolean | undef
             {isConnected === undefined
               ? "Checking connection..."
               : isConnected
-              ? "Your local dev server is connected to Trigger.dev"
-              : "Your local dev server is not connected to Trigger.dev"}
+                ? "Your local dev server is connected to Trigger.dev"
+                : "Your local dev server is not connected to Trigger.dev"}
           </Paragraph>
         </div>
         {isConnected ? null : (

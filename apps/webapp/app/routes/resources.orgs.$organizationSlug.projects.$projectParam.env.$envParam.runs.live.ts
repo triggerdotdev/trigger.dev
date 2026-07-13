@@ -23,8 +23,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     Object.fromEntries(url.searchParams)
   );
 
-  const newRunsSince =
-    includeNewRuns && since !== undefined ? since : undefined;
+  const newRunsSince = includeNewRuns && since !== undefined ? since : undefined;
 
   if (runIds.length === 0 && newRunsSince === undefined) {
     return { runs: [] };

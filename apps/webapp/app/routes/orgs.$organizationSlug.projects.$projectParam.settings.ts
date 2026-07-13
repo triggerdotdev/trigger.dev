@@ -20,6 +20,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           id: true,
           type: true,
           slug: true,
+          parentEnvironmentId: true,
           orgMember: {
             select: {
               userId: true,

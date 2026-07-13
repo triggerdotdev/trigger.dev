@@ -1,5 +1,5 @@
 import { BookOpenIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction, Outlet, useNavigation, useParams } from "@remix-run/react";
+import { type MetaFunction, Outlet, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { TestHasNoTasks } from "~/components/BlankStatePanels";

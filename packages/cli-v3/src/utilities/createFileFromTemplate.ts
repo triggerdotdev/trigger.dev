@@ -1,6 +1,6 @@
 import fs from "fs/promises";
-import { pathExists, readFile } from "./fileSystem.js";
 import path from "path";
+import { pathExists } from "./fileSystem.js";
 
 type Result =
   | {

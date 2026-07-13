@@ -1,8 +1,7 @@
-import { useState } from "react";
 import type { ColumnSchema } from "@internal/tsql";
+import { useState } from "react";
 import { Badge } from "~/components/primitives/Badge";
 import { CopyableText } from "~/components/primitives/CopyableText";
-import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { querySchemas } from "~/v3/querySchemas";
@@ -24,7 +23,7 @@ function ColumnHelpItem({ col }: { col: ColumnSchema }) {
           <span className="text-xs text-text-dimmed">Example:</span>
           <CopyableText
             value={col.example}
-            className="rounded-sm bg-charcoal-750 px-1.5 py-0.5 font-mono text-xxs"
+            className="rounded-sm bg-background-hover px-1.5 py-0.5 font-mono text-xxs"
           />
         </div>
       )}
@@ -35,7 +34,7 @@ function ColumnHelpItem({ col }: { col: ColumnSchema }) {
             <CopyableText
               key={value}
               value={col.valueMap?.[value] ?? value}
-              className="rounded-sm bg-charcoal-750 px-1.5 py-0.5 font-mono text-xxs"
+              className="rounded-sm bg-background-hover px-1.5 py-0.5 font-mono text-xxs"
             />
           ))}
         </div>
@@ -77,4 +76,3 @@ export function TableSchemaContent() {
     </div>
   );
 }
-

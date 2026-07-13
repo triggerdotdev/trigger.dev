@@ -16,7 +16,7 @@ export default function Story() {
       <Popover onOpenChange={(open) => setIsOpen(open)}>
         <PopoverArrowTrigger isOpen={isOpen}>My Blog</PopoverArrowTrigger>
         <PopoverContent
-          className="min-w-[20rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-80 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           align="start"
         >
           <Fragment>
@@ -27,7 +27,7 @@ export default function Story() {
               <PopoverMenuItem to="#" title="New Project" isSelected={false} icon={PlusIcon} />
             </div>
           </Fragment>
-          <div className="border-t border-charcoal-800 p-1">
+          <div className="border-t border-background-bright p-1">
             <PopoverMenuItem to="#" title="New Organization" isSelected={false} icon={PlusIcon} />
           </div>
         </PopoverContent>

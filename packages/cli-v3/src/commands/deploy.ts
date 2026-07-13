@@ -1,20 +1,21 @@
 import { intro, log, outro } from "@clack/prompts";
 import { getBranch, prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
-import {
+import type {
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
   GitMeta,
   DeploymentFinalizedEvent,
-  DeploymentEventFromString,
   DeploymentTriggeredVia,
 } from "@trigger.dev/core/v3/schemas";
-import { Command, Option as CommandOption } from "commander";
+import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import type { Command } from "commander";
+import { Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
 import { isCI } from "std-env";
 import { x } from "tinyexec";
 import { z } from "zod";
 import chalk from "chalk";
-import { CliApiClient } from "../apiClient.js";
+import type { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
@@ -453,16 +454,23 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
+  const childVars = buildManifest.deploy.sync?.env ?? {};
+  const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
+  const secretChildVars = buildManifest.deploy.sync?.secretEnv ?? {};
+  const secretParentVars = buildManifest.deploy.sync?.secretParentEnv ?? {};
+
   const hasVarsToSync =
-    Object.keys(buildManifest.deploy.sync?.env || {}).length > 0 ||
+    Object.keys(childVars).length > 0 ||
+    Object.keys(secretChildVars).length > 0 ||
     // Only sync parent variables if this is a branch environment
-    (branch && Object.keys(buildManifest.deploy.sync?.parentEnv || {}).length > 0);
+    (branch && (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
 
   if (hasVarsToSync) {
-    const childVars = buildManifest.deploy.sync?.env ?? {};
-    const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
-
-    const numberOfEnvVars = Object.keys(childVars).length + Object.keys(parentVars).length;
+    const numberOfEnvVars =
+      Object.keys(childVars).length +
+      Object.keys(parentVars).length +
+      Object.keys(secretChildVars).length +
+      Object.keys(secretParentVars).length;
     const vars = numberOfEnvVars === 1 ? "var" : "vars";
 
     if (!options.skipSyncEnvVars) {
@@ -474,7 +482,9 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
         resolvedConfig.project,
         options.env,
         childVars,
-        parentVars
+        parentVars,
+        secretChildVars,
+        secretParentVars
       );
 
       if (!uploadResult.success) {
@@ -767,13 +777,41 @@ export async function syncEnvVarsWithServer(
   projectRef: string,
   environmentSlug: string,
   envVars: Record<string, string>,
-  parentEnvVars?: Record<string, string>
+  parentEnvVars?: Record<string, string>,
+  secretEnvVars?: Record<string, string>,
+  secretParentEnvVars?: Record<string, string>
 ) {
-  return await apiClient.importEnvVars(projectRef, environmentSlug, {
-    variables: envVars,
-    parentVariables: parentEnvVars,
-    override: true,
-  });
+  const hasNonSecret =
+    Object.keys(envVars).length > 0 || Object.keys(parentEnvVars ?? {}).length > 0;
+  const hasSecret =
+    Object.keys(secretEnvVars ?? {}).length > 0 ||
+    Object.keys(secretParentEnvVars ?? {}).length > 0;
+
+  // The import API applies isSecret per call, so secret and non-secret vars go in separate calls.
+  // Default to success so an all-empty call (no vars to sync) is a no-op, not undefined.
+  let result: Awaited<ReturnType<typeof apiClient.importEnvVars>> = {
+    success: true,
+    data: { success: true },
+  };
+
+  if (hasNonSecret) {
+    result = await apiClient.importEnvVars(projectRef, environmentSlug, {
+      variables: envVars,
+      parentVariables: parentEnvVars,
+      override: true,
+    });
+  }
+
+  if (hasSecret && result.success) {
+    result = await apiClient.importEnvVars(projectRef, environmentSlug, {
+      variables: secretEnvVars ?? {},
+      parentVariables: secretParentEnvVars,
+      override: true,
+      isSecret: true,
+    });
+  }
+
+  return result;
 }
 
 async function failDeploy(
@@ -1214,10 +1252,10 @@ async function handleNativeBuildServerDeploy({
           level === "error"
             ? chalk.bold(chalkError(message))
             : level === "warn"
-            ? chalkWarning(message)
-            : level === "debug"
-            ? chalkGrey(message)
-            : message;
+              ? chalkWarning(message)
+              : level === "debug"
+                ? chalkGrey(message)
+                : message;
 
         // We use console.log here instead of clack's logger as the current version does not support changing the line spacing.
         // And the logs look verbose with the default spacing.

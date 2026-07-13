@@ -1,5 +1,5 @@
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
-import { TimeoutManager } from "./types.js";
+import type { TimeoutManager } from "./types.js";
 
 const API_NAME = "timeout";
 
@@ -47,7 +47,9 @@ export class TimeoutAPI implements TimeoutManager {
     this.disable();
   }
 
-  public registerListener(listener: (timeoutInSeconds: number, elapsedTimeInSeconds: number) => void | Promise<void>) {
+  public registerListener(
+    listener: (timeoutInSeconds: number, elapsedTimeInSeconds: number) => void | Promise<void>
+  ) {
     const manager = this.#getManager();
     if (manager.registerListener) {
       manager.registerListener(listener);

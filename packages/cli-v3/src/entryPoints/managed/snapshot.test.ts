@@ -1,6 +1,6 @@
 import { SnapshotManager } from "./snapshot.js";
 import { ConsoleRunLogger } from "./logger.js";
-import { RunExecutionData, TaskRunExecutionStatus } from "@trigger.dev/core/v3";
+import type { RunExecutionData, TaskRunExecutionStatus } from "@trigger.dev/core/v3";
 import { setTimeout } from "timers/promises";
 import { isCI } from "std-env";
 
@@ -368,7 +368,7 @@ describe("SnapshotManager", () => {
     const executionOrder: string[] = [];
     const executionTimes: { start: number; end: number; type: string }[] = [];
     let currentlyExecuting = false;
-    let handlerExecutionCount = 0;
+    let _handlerExecutionCount = 0;
 
     const manager = new SnapshotManager({
       runnerId: "test-runner-1",

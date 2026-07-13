@@ -258,15 +258,13 @@ export async function runInMockTaskContext<T>(
     },
     locals: {
       get: <TValue>(key: LocalsKey<TValue>) => localsManager.getLocal(key),
-      set: <TValue>(key: LocalsKey<TValue>, value: TValue) =>
-        localsManager.setLocal(key, value),
+      set: <TValue>(key: LocalsKey<TValue>, value: TValue) => localsManager.setLocal(key, value),
     },
     sessions: {
       in: {
         send: (sessionId, data, io = "in") =>
           sessionStreamManager.__sendFromTest(sessionId, io, data),
-        close: (sessionId, io = "in") =>
-          sessionStreamManager.__closeFromTest(sessionId, io),
+        close: (sessionId, io = "in") => sessionStreamManager.__closeFromTest(sessionId, io),
       },
     },
     ctx,

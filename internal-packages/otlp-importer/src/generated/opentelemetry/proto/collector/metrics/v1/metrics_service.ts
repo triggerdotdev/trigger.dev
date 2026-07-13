@@ -62,7 +62,10 @@ function createBaseExportMetricsServiceRequest(): ExportMetricsServiceRequest {
 }
 
 export const ExportMetricsServiceRequest = {
-  encode(message: ExportMetricsServiceRequest, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+  encode(
+    message: ExportMetricsServiceRequest,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
     for (const v of message.resourceMetrics) {
       ResourceMetrics.encode(v!, writer.uint32(10).fork()).ldelim();
     }
@@ -108,12 +111,17 @@ export const ExportMetricsServiceRequest = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportMetricsServiceRequest>, I>>(base?: I): ExportMetricsServiceRequest {
+  create<I extends Exact<DeepPartial<ExportMetricsServiceRequest>, I>>(
+    base?: I
+  ): ExportMetricsServiceRequest {
     return ExportMetricsServiceRequest.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportMetricsServiceRequest>, I>>(object: I): ExportMetricsServiceRequest {
+  fromPartial<I extends Exact<DeepPartial<ExportMetricsServiceRequest>, I>>(
+    object: I
+  ): ExportMetricsServiceRequest {
     const message = createBaseExportMetricsServiceRequest();
-    message.resourceMetrics = object.resourceMetrics?.map((e) => ResourceMetrics.fromPartial(e)) || [];
+    message.resourceMetrics =
+      object.resourceMetrics?.map((e) => ResourceMetrics.fromPartial(e)) || [];
     return message;
   },
 };
@@ -123,7 +131,10 @@ function createBaseExportMetricsServiceResponse(): ExportMetricsServiceResponse 
 }
 
 export const ExportMetricsServiceResponse = {
-  encode(message: ExportMetricsServiceResponse, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+  encode(
+    message: ExportMetricsServiceResponse,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
     if (message.partialSuccess !== undefined) {
       ExportMetricsPartialSuccess.encode(message.partialSuccess, writer.uint32(10).fork()).ldelim();
     }
@@ -169,14 +180,19 @@ export const ExportMetricsServiceResponse = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportMetricsServiceResponse>, I>>(base?: I): ExportMetricsServiceResponse {
+  create<I extends Exact<DeepPartial<ExportMetricsServiceResponse>, I>>(
+    base?: I
+  ): ExportMetricsServiceResponse {
     return ExportMetricsServiceResponse.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportMetricsServiceResponse>, I>>(object: I): ExportMetricsServiceResponse {
+  fromPartial<I extends Exact<DeepPartial<ExportMetricsServiceResponse>, I>>(
+    object: I
+  ): ExportMetricsServiceResponse {
     const message = createBaseExportMetricsServiceResponse();
-    message.partialSuccess = (object.partialSuccess !== undefined && object.partialSuccess !== null)
-      ? ExportMetricsPartialSuccess.fromPartial(object.partialSuccess)
-      : undefined;
+    message.partialSuccess =
+      object.partialSuccess !== undefined && object.partialSuccess !== null
+        ? ExportMetricsPartialSuccess.fromPartial(object.partialSuccess)
+        : undefined;
     return message;
   },
 };
@@ -186,10 +202,15 @@ function createBaseExportMetricsPartialSuccess(): ExportMetricsPartialSuccess {
 }
 
 export const ExportMetricsPartialSuccess = {
-  encode(message: ExportMetricsPartialSuccess, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+  encode(
+    message: ExportMetricsPartialSuccess,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
     if (message.rejectedDataPoints !== BigInt("0")) {
       if (BigInt.asIntN(64, message.rejectedDataPoints) !== message.rejectedDataPoints) {
-        throw new globalThis.Error("value provided for field message.rejectedDataPoints of type int64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.rejectedDataPoints of type int64 too large"
+        );
       }
       writer.uint32(8).int64(message.rejectedDataPoints.toString());
     }
@@ -231,7 +252,9 @@ export const ExportMetricsPartialSuccess = {
 
   fromJSON(object: any): ExportMetricsPartialSuccess {
     return {
-      rejectedDataPoints: isSet(object.rejectedDataPoints) ? BigInt(object.rejectedDataPoints) : BigInt("0"),
+      rejectedDataPoints: isSet(object.rejectedDataPoints)
+        ? BigInt(object.rejectedDataPoints)
+        : BigInt("0"),
       errorMessage: isSet(object.errorMessage) ? globalThis.String(object.errorMessage) : "",
     };
   },
@@ -247,10 +270,14 @@ export const ExportMetricsPartialSuccess = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportMetricsPartialSuccess>, I>>(base?: I): ExportMetricsPartialSuccess {
+  create<I extends Exact<DeepPartial<ExportMetricsPartialSuccess>, I>>(
+    base?: I
+  ): ExportMetricsPartialSuccess {
     return ExportMetricsPartialSuccess.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportMetricsPartialSuccess>, I>>(object: I): ExportMetricsPartialSuccess {
+  fromPartial<I extends Exact<DeepPartial<ExportMetricsPartialSuccess>, I>>(
+    object: I
+  ): ExportMetricsPartialSuccess {
     const message = createBaseExportMetricsPartialSuccess();
     message.rejectedDataPoints = object.rejectedDataPoints ?? BigInt("0");
     message.errorMessage = object.errorMessage ?? "";
@@ -293,14 +320,19 @@ interface Rpc {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin ? T
-  : T extends globalThis.Array<infer U> ? globalThis.Array<DeepPartial<U>>
-  : T extends ReadonlyArray<infer U> ? ReadonlyArray<DeepPartial<U>>
-  : T extends {} ? { [K in keyof T]?: DeepPartial<T[K]> }
-  : Partial<T>;
+export type DeepPartial<T> = T extends Builtin
+  ? T
+  : T extends globalThis.Array<infer U>
+    ? globalThis.Array<DeepPartial<U>>
+    : T extends ReadonlyArray<infer U>
+      ? ReadonlyArray<DeepPartial<U>>
+      : T extends {}
+        ? { [K in keyof T]?: DeepPartial<T[K]> }
+        : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin ? P
+export type Exact<P, I extends P> = P extends Builtin
+  ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {

@@ -1,4 +1,4 @@
-import { API_VERSIONS } from "~/api/versions";
+import type { API_VERSIONS } from "~/api/versions";
 import { logger } from "../logger.server";
 import {
   type RealtimeEnvironment,

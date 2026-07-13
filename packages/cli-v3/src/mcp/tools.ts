@@ -1,4 +1,4 @@
-import { McpContext } from "./context.js";
+import type { McpContext } from "./context.js";
 import { deployTool, listDeploysTool } from "./tools/deploys.js";
 import { searchDocsTool } from "./tools/docs.js";
 import {
@@ -30,11 +30,7 @@ import {
   reactivatePromptOverrideTool,
 } from "./tools/prompts.js";
 import { listAgentsTool } from "./tools/agents.js";
-import {
-  startAgentChatTool,
-  sendAgentMessageTool,
-  closeAgentChatTool,
-} from "./tools/agentChat.js";
+import { startAgentChatTool, sendAgentMessageTool, closeAgentChatTool } from "./tools/agentChat.js";
 import { respondWithError } from "./utils.js";
 
 /** Tool names that perform write/mutating operations. */

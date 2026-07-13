@@ -1,8 +1,7 @@
+import { type PrismaClient } from "@trigger.dev/database";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { BasePresenter } from "./basePresenter.server";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
-import { type PrismaClient } from "@trigger.dev/database";
-import { timeFilters } from "~/components/runs/v3/SharedFilters";
 
 export type TagListOptions = {
   organizationId: string;
@@ -37,7 +36,10 @@ export class RunTagListPresenter extends BasePresenter {
   }: TagListOptions) {
     const hasFilters = Boolean(name?.trim());
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,

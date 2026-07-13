@@ -1,7 +1,7 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { type ReactNode, Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
@@ -9,11 +9,13 @@ import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { PageBody } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Card } from "~/components/primitives/charts/Card";
+import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
+import { ChartCard } from "~/components/primitives/charts/ChartCard";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
+import { statusColor } from "~/components/primitives/charts/statusColors";
 import { CopyableText } from "~/components/primitives/CopyableText";
-import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -24,6 +26,7 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { SessionsTable } from "~/components/sessions/v1/SessionsTable";
@@ -31,6 +34,7 @@ import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -109,7 +113,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
   const sessionActivity = presenter
     .getSessionActivity({
@@ -120,7 +124,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
   const llmCostActivity = presenter
     .getLlmCostActivity({
@@ -131,7 +135,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
   const llmTokenActivity = presenter
     .getLlmTokenActivity({
@@ -142,7 +146,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
   const runList = new NextRunListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {
@@ -201,6 +205,7 @@ export default function Page() {
   const tasksPath = v3EnvironmentPath(organization, project, environment);
 
   const [tab, setTab] = useState<AgentTab>("sessions");
+  const zoomToTimeFilter = useZoomToTimeFilter();
   const tabLabel = tab === "sessions" ? "Sessions" : "Runs";
 
   return (
@@ -270,67 +275,69 @@ export default function Page() {
                 {/* Activity / LLM cost / Token charts */}
                 <ResizablePanel id="agent-activity" min="220px" default="320px">
                   <div className="flex h-full flex-col overflow-hidden bg-background p-2">
-                    <div className="grid min-h-0 flex-1 grid-cols-3 gap-2">
-                      <ChartCard title={tabLabel}>
-                        {tab === "sessions" ? (
+                    <ChartSyncProvider onZoom={zoomToTimeFilter}>
+                      <div className="grid min-h-0 flex-1 grid-cols-3 gap-2">
+                        <ChartCard title={tabLabel}>
+                          {tab === "sessions" ? (
+                            <Suspense fallback={<ActivityChartSkeleton />}>
+                              <TypedAwait
+                                resolve={sessionActivity}
+                                errorElement={<ActivityChartSkeleton />}
+                              >
+                                {(result) => <ActivityChart activity={result} />}
+                              </TypedAwait>
+                            </Suspense>
+                          ) : (
+                            <Suspense fallback={<ActivityChartSkeleton />}>
+                              <TypedAwait
+                                resolve={runActivity}
+                                errorElement={<ActivityChartSkeleton />}
+                              >
+                                {(result) => <ActivityChart activity={result} />}
+                              </TypedAwait>
+                            </Suspense>
+                          )}
+                        </ChartCard>
+
+                        <ChartCard title="LLM spend ($)">
                           <Suspense fallback={<ActivityChartSkeleton />}>
                             <TypedAwait
-                              resolve={sessionActivity}
+                              resolve={llmCostActivity}
                               errorElement={<ActivityChartSkeleton />}
                             >
-                              {(result) => <ActivityChart activity={result} />}
+                              {(result) => (
+                                <ScalarActivityChart
+                                  activity={result}
+                                  seriesKey="cost"
+                                  label="Spend"
+                                  color="var(--color-agents)"
+                                  valueFormatter={formatCurrency}
+                                />
+                              )}
                             </TypedAwait>
                           </Suspense>
-                        ) : (
+                        </ChartCard>
+
+                        <ChartCard title="Tokens">
                           <Suspense fallback={<ActivityChartSkeleton />}>
                             <TypedAwait
-                              resolve={runActivity}
+                              resolve={llmTokenActivity}
                               errorElement={<ActivityChartSkeleton />}
                             >
-                              {(result) => <ActivityChart activity={result} />}
+                              {(result) => (
+                                <ScalarActivityChart
+                                  activity={result}
+                                  seriesKey="tokens"
+                                  label="Tokens"
+                                  color="#14B8A6"
+                                  valueFormatter={formatTokens}
+                                />
+                              )}
                             </TypedAwait>
                           </Suspense>
-                        )}
-                      </ChartCard>
-
-                      <ChartCard title="LLM spend ($)">
-                        <Suspense fallback={<ActivityChartSkeleton />}>
-                          <TypedAwait
-                            resolve={llmCostActivity}
-                            errorElement={<ActivityChartSkeleton />}
-                          >
-                            {(result) => (
-                              <ScalarActivityChart
-                                activity={result}
-                                seriesKey="cost"
-                                label="Spend"
-                                color="#A855F7"
-                                valueFormatter={formatCurrency}
-                              />
-                            )}
-                          </TypedAwait>
-                        </Suspense>
-                      </ChartCard>
-
-                      <ChartCard title="Tokens">
-                        <Suspense fallback={<ActivityChartSkeleton />}>
-                          <TypedAwait
-                            resolve={llmTokenActivity}
-                            errorElement={<ActivityChartSkeleton />}
-                          >
-                            {(result) => (
-                              <ScalarActivityChart
-                                activity={result}
-                                seriesKey="tokens"
-                                label="Tokens"
-                                color="#14B8A6"
-                                valueFormatter={formatTokens}
-                              />
-                            )}
-                          </TypedAwait>
-                        </Suspense>
-                      </ChartCard>
-                    </div>
+                        </ChartCard>
+                      </div>
+                    </ChartSyncProvider>
                   </div>
                 </ResizablePanel>
 
@@ -368,7 +375,7 @@ function AgentContentArea({
           <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
             {(list) =>
               list ? (
-                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                   <SessionsTable
                     sessions={list.sessions}
                     filters={list.filters}
@@ -388,7 +395,7 @@ function AgentContentArea({
           <TypedAwait resolve={runList} errorElement={<TableLoading />}>
             {(list) =>
               list ? (
-                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
                   <TaskRunsTable
                     total={list.runs.length}
                     hasFilters={list.hasFilters}
@@ -424,7 +431,7 @@ function AgentDetailSidebar({
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
+      <div className="flex min-w-0 items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
         <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
           <CubeSparkleIcon className="size-4.5 shrink-0 text-agents" />
           <span className="truncate">{agent.slug}</span>
@@ -440,7 +447,7 @@ function AgentDetailSidebar({
           Test agent
         </LinkButton>
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <Property.Table>
           <Property.Item>
             <Property.Label>Slug</Property.Label>
@@ -492,32 +499,20 @@ function AgentDetailSidebar({
   );
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  // Run statuses
-  COMPLETED: "#28BF5C",
-  RUNNING: "#3B82F6",
-  FAILED: "#E11D48",
-  CANCELED: "#878C99",
-  // Session statuses
-  ACTIVE: "#3B82F6",
-  CLOSED: "#28BF5C",
-  EXPIRED: "#878C99",
-};
-
 function ActivityChart({ activity }: { activity: AgentActivity }) {
   const chartConfig: ChartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
     for (const status of activity.statuses) {
       cfg[status] = {
         label: status.charAt(0) + status.slice(1).toLowerCase(),
-        color: STATUS_COLOR[status] ?? "#9CA3AF",
+        color: statusColor(status),
       };
     }
     return cfg;
   }, [activity.statuses]);
 
-  const { xAxisFormatter, xAxisTicks, tooltipLabelFormatter } = useMemo(
-    () => buildTimeAxis(activity.data),
+  const { tickFormatter, tooltipLabelFormatter } = useMemo(
+    () => buildActivityTimeAxis(activity.data),
     [activity.data]
   );
 
@@ -532,10 +527,7 @@ function ActivityChart({ activity }: { activity: AgentActivity }) {
       <Chart.Bar
         stackId="status"
         barRadius={0}
-        xAxisProps={{
-          tickFormatter: xAxisFormatter,
-          ...(xAxisTicks ? { ticks: xAxisTicks, interval: 0 } : {}),
-        }}
+        xAxisProps={{ tickFormatter }}
         tooltipLabelFormatter={tooltipLabelFormatter}
       />
     </Chart.Root>
@@ -546,7 +538,7 @@ function ActivityChartSkeleton() {
   return (
     <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
       {Array.from({ length: 42 }).map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-charcoal-850" />
+        <div key={i} className="h-full flex-1 bg-background-dimmed" />
       ))}
     </div>
   );
@@ -557,15 +549,6 @@ function TableLoading() {
     <div className="flex h-full items-center justify-center">
       <Spinner className="size-6" />
     </div>
-  );
-}
-
-function ChartCard({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <Card className="h-full overflow-hidden px-0 pb-2 pt-3">
-      <Card.Header>{title}</Card.Header>
-      <div className="min-h-0 flex-1 px-2">{children}</div>
-    </Card>
   );
 }
 
@@ -587,8 +570,8 @@ function ScalarActivityChart({
     [seriesKey, label, color]
   );
 
-  const { xAxisFormatter, xAxisTicks, tooltipLabelFormatter } = useMemo(
-    () => buildTimeAxis(activity.data),
+  const { tickFormatter, tooltipLabelFormatter } = useMemo(
+    () => buildActivityTimeAxis(activity.data),
     [activity.data]
   );
 
@@ -596,67 +579,12 @@ function ScalarActivityChart({
     <Chart.Root config={chartConfig} data={activity.data} dataKey="bucket" fillContainer>
       <Chart.Bar
         barRadius={0}
-        xAxisProps={{
-          tickFormatter: xAxisFormatter,
-          ...(xAxisTicks ? { ticks: xAxisTicks, interval: 0 } : {}),
-        }}
+        xAxisProps={{ tickFormatter }}
         tooltipLabelFormatter={tooltipLabelFormatter}
         tooltipValueFormatter={valueFormatter}
       />
     </Chart.Root>
   );
-}
-
-function buildTimeAxis(data: AgentActivity["data"]) {
-  const range = data.length >= 2 ? data[data.length - 1].bucket - data[0].bucket : 0;
-  const oneDay = 24 * 60 * 60 * 1000;
-  const showTime = range <= oneDay;
-
-  const xAxisFormatter = (value: number) => {
-    const date = new Date(value);
-    return showTime
-      ? date.toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-          timeZone: "UTC",
-        })
-      : date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          timeZone: "UTC",
-        });
-  };
-
-  const xAxisTicks = showTime
-    ? undefined
-    : data.filter((d) => new Date(d.bucket).getUTCHours() === 0).map((d) => d.bucket);
-
-  const bucketMs = data.length >= 2 ? data[1].bucket - data[0].bucket : 0;
-  const isSubDayBucket = bucketMs > 0 && bucketMs < oneDay;
-
-  const tooltipLabelFormatter = (_label: string, payload: { payload?: { bucket?: number } }[]) => {
-    const ts = payload?.[0]?.payload?.bucket;
-    if (typeof ts !== "number" || !Number.isFinite(ts)) return _label;
-    const date = new Date(ts);
-    return isSubDayBucket
-      ? date.toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-          timeZone: "UTC",
-        })
-      : date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-          timeZone: "UTC",
-        });
-  };
-
-  return { xAxisFormatter, xAxisTicks, tooltipLabelFormatter };
 }
 
 function formatCurrency(value: number): string {

@@ -1,4 +1,4 @@
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 
 export async function action({ request }: ActionFunctionArgs) {
   if (process.env.NODE_ENV === "production") {

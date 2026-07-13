@@ -1,14 +1,10 @@
-import {
-  type ListRunResponse,
-  type ListRunResponseItem,
-  MachinePresetName,
-  parsePacket,
-  RunStatus,
-} from "@trigger.dev/core/v3";
+import { MachinePresetName, parsePacket, RunStatus } from "@trigger.dev/core/v3";
 import { type Project, type RuntimeEnvironment, type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
-import { API_VERSIONS, RunStatusUnspecifiedApiVersion } from "~/api/versions";
+import type { API_VERSIONS } from "~/api/versions";
+import { RunStatusUnspecifiedApiVersion } from "~/api/versions";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { CoercedDate } from "~/utils/zod";
@@ -16,6 +12,15 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { ApiRetrieveRunPresenter } from "./ApiRetrieveRunPresenter.server";
 import { NextRunListPresenter, type RunListOptions } from "./NextRunListPresenter.server";
 import { BasePresenter } from "./basePresenter.server";
+
+// Forwarded verbatim into `NextRunListPresenter` for the routed run-ops (TaskRun) reads. When
+// omitted, both clients default to the inherited `_replica` => passthrough single-DB. The
+// control-plane `runtimeEnvironment.findMany` env-scoping lookup is never routed.
+type ApiRunListPresenterReadThroughDeps = {
+  newClient?: PrismaClientOrTransaction;
+  legacyReplica?: PrismaClientOrTransaction;
+  splitEnabled?: boolean;
+};
 
 export const ApiRunListSearchParams = z.object({
   "page[size]": z.coerce.number().int().positive().min(1).max(100).optional(),
@@ -156,6 +161,14 @@ export const ApiRunListSearchParams = z.object({
 type ApiRunListSearchParams = z.infer<typeof ApiRunListSearchParams>;
 
 export class ApiRunListPresenter extends BasePresenter {
+  constructor(
+    prismaClient?: PrismaClientOrTransaction,
+    replicaClient?: PrismaClientOrTransaction,
+    private readonly readThroughDeps?: ApiRunListPresenterReadThroughDeps
+  ) {
+    super(prismaClient, replicaClient);
+  }
+
   public async call(
     project: Pick<Project, "id">,
     searchParams: ApiRunListSearchParams,
@@ -275,8 +288,11 @@ export class ApiRunListPresenter extends BasePresenter {
         options.machines = searchParams["filter[machine]"];
       }
 
-      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
-      const presenter = new NextRunListPresenter(this._replica, clickhouse);
+      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+        organizationId,
+        "standard"
+      );
+      const presenter = new NextRunListPresenter(this._replica, clickhouse, this.readThroughDeps);
 
       logger.debug("Calling RunListPresenter", { options });
 

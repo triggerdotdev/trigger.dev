@@ -1,5 +1,5 @@
-import { RetryOptions, TaskRunContext } from "../schemas/index.js";
-import { HandleErrorResult } from "../types/index.js";
+import type { RetryOptions, TaskRunContext } from "../schemas/index.js";
+import type { HandleErrorResult } from "../types/index.js";
 
 export type TaskInitOutput = Record<string, any> | void | undefined;
 

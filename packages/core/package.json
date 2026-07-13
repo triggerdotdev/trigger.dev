@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "4.5.0-rc.7",
+  "version": "4.5.3",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "publishConfig": {
@@ -43,10 +43,10 @@
       "./v3/utils/omit": "./src/v3/utils/omit.ts",
       "./v3/utils/retries": "./src/v3/utils/retries.ts",
       "./v3/utils/structuredLogger": "./src/v3/utils/structuredLogger.ts",
+      "./v3/telnetLogServer": "./src/v3/telnetLogServer.ts",
       "./v3/test": "./src/v3/test/index.ts",
       "./v3/zodfetch": "./src/v3/zodfetch.ts",
       "./v3/zodMessageHandler": "./src/v3/zodMessageHandler.ts",
-      "./v3/zodNamespace": "./src/v3/zodNamespace.ts",
       "./v3/zodSocket": "./src/v3/zodSocket.ts",
       "./v3/zodIpc": "./src/v3/zodIpc.ts",
       "./v3/utils/timers": "./src/v3/utils/timers.ts",
@@ -124,14 +124,14 @@
       "v3/utils/structuredLogger": [
         "dist/commonjs/v3/utils/structuredLogger.d.ts"
       ],
+      "v3/telnetLogServer": [
+        "dist/commonjs/v3/telnetLogServer.d.ts"
+      ],
       "v3/zodfetch": [
         "dist/commonjs/v3/zodfetch.d.ts"
       ],
       "v3/zodMessageHandler": [
         "dist/commonjs/v3/zodMessageHandler.d.ts"
-      ],
-      "v3/zodNamespace": [
-        "dist/commonjs/v3/zodNamespace.d.ts"
       ],
       "v3/zodSocket": [
         "dist/commonjs/v3/zodSocket.d.ts"
@@ -490,6 +490,17 @@
         "default": "./dist/commonjs/v3/utils/structuredLogger.js"
       }
     },
+    "./v3/telnetLogServer": {
+      "import": {
+        "@triggerdotdev/source": "./src/v3/telnetLogServer.ts",
+        "types": "./dist/esm/v3/telnetLogServer.d.ts",
+        "default": "./dist/esm/v3/telnetLogServer.js"
+      },
+      "require": {
+        "types": "./dist/commonjs/v3/telnetLogServer.d.ts",
+        "default": "./dist/commonjs/v3/telnetLogServer.js"
+      }
+    },
     "./v3/test": {
       "import": {
         "@triggerdotdev/source": "./src/v3/test/index.ts",
@@ -521,17 +532,6 @@
       "require": {
         "types": "./dist/commonjs/v3/zodMessageHandler.d.ts",
         "default": "./dist/commonjs/v3/zodMessageHandler.js"
-      }
-    },
-    "./v3/zodNamespace": {
-      "import": {
-        "@triggerdotdev/source": "./src/v3/zodNamespace.ts",
-        "types": "./dist/esm/v3/zodNamespace.d.ts",
-        "default": "./dist/esm/v3/zodNamespace.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/v3/zodNamespace.d.ts",
-        "default": "./dist/commonjs/v3/zodNamespace.js"
       }
     },
     "./v3/zodSocket": {

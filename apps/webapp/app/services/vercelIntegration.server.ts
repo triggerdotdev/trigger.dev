@@ -9,13 +9,15 @@ import { prisma, $transaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
-import {
-  VercelProjectIntegrationDataSchema,
+import type {
   VercelProjectIntegrationData,
   VercelIntegrationConfig,
   SyncEnvVarsMapping,
   TriggerEnvironmentType,
   EnvSlug,
+} from "~/v3/vercel/vercelProjectIntegrationSchema";
+import {
+  VercelProjectIntegrationDataSchema,
   envTypeToSlug,
   createDefaultVercelIntegrationData,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
@@ -44,7 +46,7 @@ export class VercelIntegrationService {
   }
 
   async getVercelProjectIntegration(
-    projectId: string,
+    projectId: string
   ): Promise<VercelProjectIntegrationWithData | null> {
     const integration = await this.#prismaClient.organizationProjectIntegration.findFirst({
       where: {
@@ -107,7 +109,9 @@ export class VercelIntegrationService {
 
     return integrations
       .map((integration) => {
-        const parsedData = VercelProjectIntegrationDataSchema.safeParse(integration.integrationData);
+        const parsedData = VercelProjectIntegrationDataSchema.safeParse(
+          integration.integrationData
+        );
         if (!parsedData.success) {
           logger.error("Failed to parse Vercel integration data", {
             integrationId: integration.id,
@@ -199,9 +203,7 @@ export class VercelIntegrationService {
         });
 
         if (existing) {
-          const parsedData = VercelProjectIntegrationDataSchema.safeParse(
-            existing.integrationData
-          );
+          const parsedData = VercelProjectIntegrationDataSchema.safeParse(existing.integrationData);
 
           const updated = await tx.organizationProjectIntegration.update({
             where: { id: existing.id },
@@ -270,14 +272,15 @@ export class VercelIntegrationService {
       : { success: false, errors: [syncResultAsync.error.message] };
 
     if (wasCreated) {
-      const disableResult = await VercelIntegrationRepository.getVercelClient(orgIntegration)
-        .andThen((client) =>
-          VercelIntegrationRepository.disableAutoAssignCustomDomains(
-            client,
-            params.vercelProjectId,
-            teamId
-          )
-        );
+      const disableResult = await VercelIntegrationRepository.getVercelClient(
+        orgIntegration
+      ).andThen((client) =>
+        VercelIntegrationRepository.disableAutoAssignCustomDomains(
+          client,
+          params.vercelProjectId,
+          teamId
+        )
+      );
 
       if (disableResult.isErr()) {
         logger.warn("Failed to disable autoAssignCustomDomains during project selection", {
@@ -329,9 +332,8 @@ export class VercelIntegrationService {
       return { ...updated, parsedIntegrationData: updatedData };
     }
 
-    const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
-      projectId
-    );
+    const orgIntegration =
+      await VercelIntegrationRepository.findVercelOrgIntegrationForProject(projectId);
 
     if (orgIntegration) {
       await this.#syncTriggerVersionToVercelProduction(
@@ -377,11 +379,14 @@ export class VercelIntegrationService {
       });
 
       if (removeResult.isErr()) {
-        logger.error("Failed to remove staging TRIGGER_SECRET_KEY from previous custom environment", {
-          projectId,
-          previousCustomEnvironmentId,
-          error: removeResult.error.message,
-        });
+        logger.error(
+          "Failed to remove staging TRIGGER_SECRET_KEY from previous custom environment",
+          {
+            projectId,
+            previousCustomEnvironmentId,
+            error: removeResult.error.message,
+          }
+        );
       }
     }
 
@@ -534,7 +539,12 @@ export class VercelIntegrationService {
       return null;
     }
 
-    const syncEnvVarsMapping = params.syncEnvVarsMapping ?? { "dev":{}, "stg":{}, "prod":{}, "preview":{} };
+    const syncEnvVarsMapping = params.syncEnvVarsMapping ?? {
+      dev: {},
+      stg: {},
+      prod: {},
+      preview: {},
+    };
     const updatedData: VercelProjectIntegrationData = {
       ...existing.parsedIntegrationData,
       config: {
@@ -557,9 +567,8 @@ export class VercelIntegrationService {
       },
     });
 
-    const orgIntegration = await VercelIntegrationRepository.findVercelOrgIntegrationForProject(
-      projectId
-    );
+    const orgIntegration =
+      await VercelIntegrationRepository.findVercelOrgIntegrationForProject(projectId);
 
     if (orgIntegration) {
       const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
@@ -702,7 +711,10 @@ export class VercelIntegrationService {
       logger.error("Failed to sync TRIGGER_VERSION to Vercel production", {
         projectId,
         vercelProjectId,
-        error: createResult.error instanceof Error ? createResult.error.message : String(createResult.error),
+        error:
+          createResult.error instanceof Error
+            ? createResult.error.message
+            : String(createResult.error),
       });
       return;
     }
@@ -826,4 +838,3 @@ export class VercelIntegrationService {
     return true;
   }
 }
-

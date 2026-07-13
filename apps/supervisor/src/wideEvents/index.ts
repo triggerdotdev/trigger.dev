@@ -11,12 +11,7 @@ export { type Env, isValidRequestId, newState, type NewStateOptions } from "./ne
 export { emit, EmitMessage } from "./emit.js";
 export { parseTraceId } from "./traceparent.js";
 export { fromContext, wideEventStorage } from "./context.js";
-export {
-  type PhaseOpt,
-  recordPhase,
-  recordPhaseSince,
-  timePhase,
-} from "./record.js";
+export { type PhaseOpt, recordPhase, recordPhaseSince, timePhase } from "./record.js";
 export {
   emitOneShot,
   runWideEvent,

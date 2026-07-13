@@ -1,5 +1,6 @@
-import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch, UpsertBranchRequestBody } from "@trigger.dev/core/v3";
+import { DEFAULT_DEV_BRANCH, isDefaultDevBranch } from "@trigger.dev/core/v3/utils/gitBranch";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { authenticateRequest } from "~/services/apiAuth.server";
@@ -69,24 +70,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const previewEnvironment = await prisma.runtimeEnvironment.findFirst({
-    select: {
-      id: true,
-    },
-    where: {
-      projectId: project.id,
-      slug: "preview",
-    },
-  });
+  const { branch, env, git } = parsed.data;
 
-  if (!previewEnvironment) {
+  if (env === "development" && authenticationResult.type === "organizationAccessToken") {
     return json(
-      { error: "You don't have preview branches setup. Go to the dashboard to enable them." },
+      { error: "Cannot create dev branches with organization access tokens." },
       { status: 400 }
     );
   }
 
-  const { branch, env, git } = parsed.data;
+  if (env === "development" && isDefaultDevBranch(branch)) {
+    return json(
+      { error: `Cannot create dev branch with name '${DEFAULT_DEV_BRANCH}'.` },
+      { status: 400 }
+    );
+  }
 
   const service = new UpsertBranchService();
   const result = await service.call(
@@ -94,8 +92,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       ? { type: "orgId", organizationId: authenticationResult.result.organizationId }
       : { type: "userMembership", userId: authenticationResult.result.userId },
     {
+      env,
       branchName: branch,
-      parentEnvironmentId: previewEnvironment.id,
+      projectId: project.id,
       git,
     }
   );

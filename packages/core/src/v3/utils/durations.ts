@@ -1,4 +1,5 @@
-import humanizeDuration, { Unit } from "humanize-duration";
+import type { Unit } from "humanize-duration";
+import humanizeDuration from "humanize-duration";
 
 function dateDifference(date1: Date, date2: Date) {
   return Math.abs(date1.getTime() - date2.getTime());
@@ -46,8 +47,8 @@ export function formatDurationMilliseconds(
     units: options?.units
       ? options.units
       : milliseconds < 1000
-      ? belowOneSecondUnits
-      : aboveOneSecondUnits,
+        ? belowOneSecondUnits
+        : aboveOneSecondUnits,
     maxDecimalPoints: options?.maxDecimalPoints ?? 1,
     largest: options?.maxUnits ?? 2,
   });

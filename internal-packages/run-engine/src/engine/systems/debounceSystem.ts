@@ -1,7 +1,7 @@
 import {
+  type Redis,
+  type RedisOptions,
   createRedisClient,
-  Redis,
-  RedisOptions,
   type Callback,
   type Result,
 } from "@internal/redis";
@@ -10,16 +10,19 @@ import {
   parseNaturalLanguageDuration,
   parseNaturalLanguageDurationInMs,
 } from "@trigger.dev/core/v3/isomorphic";
-import {
+import type {
   PrismaClientOrTransaction,
   PrismaReplicaClient,
   TaskRun,
   Waitpoint,
 } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
-import { SystemResources } from "./systems.js";
-import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { DelayedRunSystem } from "./delayedRunSystem.js";
+import type { SystemResources } from "./systems.js";
+import {
+  type ExecutionSnapshotSystem,
+  getLatestExecutionSnapshot,
+} from "./executionSnapshotSystem.js";
+import type { DelayedRunSystem } from "./delayedRunSystem.js";
 import { LockAcquisitionTimeoutError } from "../locking.js";
 
 export type DebounceOptions = {
@@ -742,7 +745,7 @@ return 0
       // Get the latest execution snapshot
       let snapshot;
       try {
-        snapshot = await getLatestExecutionSnapshot(prisma, existingRunId);
+        snapshot = await getLatestExecutionSnapshot(prisma, existingRunId, this.$.runStore);
       } catch (error) {
         // Run no longer exists or has no snapshot
         this.$.logger.debug("handleExistingRun: existing run not found or has no snapshot", {

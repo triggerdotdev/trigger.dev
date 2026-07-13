@@ -20,11 +20,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [warp-ubuntu-latest-x64-4x, warp-windows-latest-x64-4x]
         package-manager: ["npm", "pnpm"]
     steps:
       - name: ⬇️ Checkout repo
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -37,11 +37,13 @@ jobs:
       - name: ⎔ Setup node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 20.20.2
+          node-version: 22.23.1
 
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile --filter trigger.dev...
 
+      # Prisma clients generate concurrently and share one engine binary in the
+      # pnpm store; the generate script retries the transient Windows EPERM race.
       - name: 📀 Generate Prisma Client
         run: pnpm run generate
 

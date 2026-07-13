@@ -1,12 +1,7 @@
 import { useNavigation, useSearchParams } from "@remix-run/react";
 import { useEffect } from "react";
 import { z } from "zod";
-import {
-  redirect,
-  typedjson,
-  useTypedActionData,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { redirect, typedjson, useTypedActionData, useTypedLoaderData } from "remix-typedjson";
 import {
   API_RATE_LIMIT_INTENT,
   API_RATE_LIMIT_SAVED_VALUE,
@@ -81,67 +76,61 @@ export const action = dashboardAction(
     const formData = await request.formData();
     const intent = formData.get("intent");
 
-  if (intent === MAX_PROJECTS_INTENT) {
-    const result = await handleMaxProjectsAction(formData, orgId, user.id);
-    if (!result.ok) {
-      return typedjson(
-        { section: MAX_PROJECTS_SAVED_VALUE, errors: result.errors },
-        { status: 400 }
+    if (intent === MAX_PROJECTS_INTENT) {
+      const result = await handleMaxProjectsAction(formData, orgId, user.id);
+      if (!result.ok) {
+        return typedjson(
+          { section: MAX_PROJECTS_SAVED_VALUE, errors: result.errors },
+          { status: 400 }
+        );
+      }
+      return redirect(
+        `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${MAX_PROJECTS_SAVED_VALUE}`
       );
     }
-    return redirect(
-      `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${MAX_PROJECTS_SAVED_VALUE}`
-    );
-  }
 
-  if (intent === API_RATE_LIMIT_INTENT) {
-    const result = await handleApiRateLimitAction(formData, orgId, user.id);
-    if (!result.ok) {
-      return typedjson(
-        { section: API_RATE_LIMIT_SAVED_VALUE, errors: result.errors },
-        { status: 400 }
+    if (intent === API_RATE_LIMIT_INTENT) {
+      const result = await handleApiRateLimitAction(formData, orgId, user.id);
+      if (!result.ok) {
+        return typedjson(
+          { section: API_RATE_LIMIT_SAVED_VALUE, errors: result.errors },
+          { status: 400 }
+        );
+      }
+      return redirect(
+        `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${API_RATE_LIMIT_SAVED_VALUE}`
       );
     }
-    return redirect(
-      `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${API_RATE_LIMIT_SAVED_VALUE}`
-    );
-  }
 
-  if (intent === BATCH_RATE_LIMIT_INTENT) {
-    const result = await handleBatchRateLimitAction(formData, orgId, user.id);
-    if (!result.ok) {
-      return typedjson(
-        { section: BATCH_RATE_LIMIT_SAVED_VALUE, errors: result.errors },
-        { status: 400 }
+    if (intent === BATCH_RATE_LIMIT_INTENT) {
+      const result = await handleBatchRateLimitAction(formData, orgId, user.id);
+      if (!result.ok) {
+        return typedjson(
+          { section: BATCH_RATE_LIMIT_SAVED_VALUE, errors: result.errors },
+          { status: 400 }
+        );
+      }
+      return redirect(
+        `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${BATCH_RATE_LIMIT_SAVED_VALUE}`
       );
     }
-    return redirect(
-      `/admin/back-office/orgs/${orgId}?${SAVED_QUERY_KEY}=${BATCH_RATE_LIMIT_SAVED_VALUE}`
-    );
-  }
 
-    return typedjson(
-      { section: null, errors: { intent: ["Unknown intent."] } },
-      { status: 400 }
-    );
+    return typedjson({ section: null, errors: { intent: ["Unknown intent."] } }, { status: 400 });
   }
 );
 
 export default function BackOfficeOrgPage() {
-  const { org, apiEffective, batchEffective } =
-    useTypedLoaderData<typeof loader>();
+  const { org, apiEffective, batchEffective } = useTypedLoaderData<typeof loader>();
   const actionData = useTypedActionData<typeof action>();
   const navigation = useNavigation();
   const submittingIntent = navigation.formData?.get("intent");
-  const isSubmittingApi =
-    navigation.state !== "idle" && submittingIntent === API_RATE_LIMIT_INTENT;
+  const isSubmittingApi = navigation.state !== "idle" && submittingIntent === API_RATE_LIMIT_INTENT;
   const isSubmittingBatch =
     navigation.state !== "idle" && submittingIntent === BATCH_RATE_LIMIT_INTENT;
   const isSubmittingMaxProjects =
     navigation.state !== "idle" && submittingIntent === MAX_PROJECTS_INTENT;
 
-  const errorSection =
-    actionData && "section" in actionData ? actionData.section : null;
+  const errorSection = actionData && "section" in actionData ? actionData.section : null;
   const errors =
     actionData && "errors" in actionData
       ? (actionData.errors as Record<string, string[] | undefined>)
@@ -152,8 +141,7 @@ export default function BackOfficeOrgPage() {
   // If the action just returned errors for the same section, hide the
   // "Saved." banner so it doesn't render alongside field errors. Suppressing
   // here propagates to every read site (auto-dismiss + JSX comparisons).
-  const savedSection =
-    errors && errorSection === savedSectionRaw ? null : savedSectionRaw;
+  const savedSection = errors && errorSection === savedSectionRaw ? null : savedSectionRaw;
 
   // Auto-dismiss the "saved" banner after a few seconds.
   useEffect(() => {

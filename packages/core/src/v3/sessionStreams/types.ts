@@ -1,9 +1,6 @@
-import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
-import {
-  InputStreamOncePromise,
-  InputStreamOnceResult,
-  InputStreamTimeoutError,
-} from "../inputStreams/types.js";
+import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
+import type { InputStreamOnceResult } from "../inputStreams/types.js";
+import { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
 
 /**
  * Re-export the run-scoped input stream once-promise machinery so callers
@@ -70,11 +67,7 @@ export interface SessionStreamManager {
    * `session-in-event-id` header on the latest `turn-complete` on
    * `.out`. Monotonic: only ever advances forward, never backwards.
    */
-  setLastDispatchedSeqNum(
-    sessionId: string,
-    io: SessionChannelIO,
-    seqNum: number
-  ): void;
+  setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void;
 
   /**
    * Set a per-stream lower-bound SSE timestamp. Records whose timestamp
@@ -84,11 +77,7 @@ export interface SessionStreamManager {
    *
    * Pass `undefined` to clear the filter.
    */
-  setMinTimestamp(
-    sessionId: string,
-    io: SessionChannelIO,
-    minTimestamp: number | undefined
-  ): void;
+  setMinTimestamp(sessionId: string, io: SessionChannelIO, minTimestamp: number | undefined): void;
 
   /** Remove and discard the first buffered record. Returns true if one was removed. */
   shiftBuffer(sessionId: string, io: SessionChannelIO): boolean;

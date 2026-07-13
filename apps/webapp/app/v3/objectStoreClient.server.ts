@@ -46,7 +46,11 @@ class Aws4FetchClient implements IObjectStoreClient {
     return url.toString();
   }
 
-  async putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string> {
+  async putObject(
+    key: string,
+    body: ReadableStream | string,
+    contentType: string
+  ): Promise<string> {
     const objectUrl = this.buildUrl(key);
     const response = await this.awsClient.fetch(objectUrl, {
       method: "PUT",
@@ -114,7 +118,11 @@ class AwsSdkClient implements IObjectStoreClient {
     return url.href;
   }
 
-  async putObject(key: string, body: ReadableStream | string, contentType: string): Promise<string> {
+  async putObject(
+    key: string,
+    body: ReadableStream | string,
+    contentType: string
+  ): Promise<string> {
     const s3Key = this.toS3ObjectKey(key);
     await this.s3Client.send(
       new PutObjectCommand({

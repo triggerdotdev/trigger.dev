@@ -1,5 +1,12 @@
 import {
-  type ApiRequestOptions,
+  type AsyncIterableStream,
+  type WriterStreamOptions,
+  type PipeStreamOptions,
+  type PipeStreamResult,
+  type ReadStreamOptions,
+  type AppendStreamOptions,
+  type RealtimeDefinedStream,
+  type InferStreamType,
   realtimeStreams,
   inputStreams,
   taskContext,
@@ -8,28 +15,14 @@ import {
   accessoryAttributes,
   SemanticInternalAttributes,
   apiClientManager,
-  AsyncIterableStream,
-  WriterStreamOptions,
-  PipeStreamOptions,
-  PipeStreamResult,
-  ReadStreamOptions,
-  AppendStreamOptions,
-  RealtimeDefinedStream,
-  InferStreamType,
   ManualWaitpointPromise,
   WaitpointTimeoutError,
   runtime,
   logger,
   type RealtimeDefinedInputStream,
-  type InputStreamSubscription,
-  type InputStreamOnceOptions,
   InputStreamOncePromise,
   type InputStreamOnceResult,
-  type InputStreamWaitOptions,
-  type InputStreamWaitWithIdleTimeoutOptions,
-  type SendInputStreamOptions,
   type InferInputStreamType,
-  type StreamWriteResult,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { tracer } from "./tracer.js";
@@ -628,7 +621,7 @@ function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>)
   function safeEnqueue(data: TPart) {
     try {
       controller.enqueue(data);
-    } catch (error) {
+    } catch (_error) {
       // suppress errors when the stream has been closed
     }
   }
@@ -677,7 +670,7 @@ function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>)
   waitForStreams.finally(() => {
     try {
       controller.close();
-    } catch (error) {
+    } catch (_error) {
       // suppress errors when the stream has been closed
     }
   });
@@ -751,10 +744,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
   return {
     id: opts.id,
     on(handler) {
-      return inputStreams.on(
-        opts.id,
-        handler as (data: unknown) => void | Promise<void>
-      );
+      return inputStreams.on(opts.id, handler as (data: unknown) => void | Promise<void>);
     },
     once(options) {
       const ctx = taskContext.ctx;
@@ -774,9 +764,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "streams",
                 [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
-                ...(runId
-                  ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${opts.id}` }
-                  : {}),
+                ...(runId ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${opts.id}` } : {}),
                 streamId: opts.id,
                 ...accessoryAttributes({
                   items: [{ text: opts.id, variant: "normal" }],
@@ -815,7 +803,6 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
           const result = await tracer.startActiveSpan(
             options?.spanName ?? `inputStream.wait()`,
             async (span) => {
-
               // 1. Block the run on the waitpoint
               const waitResponse = await apiClient.waitForWaitpointToken({
                 runFriendlyId: ctx.run.id,
@@ -839,12 +826,12 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               const data =
                 waitResult.output !== undefined
                   ? await conditionallyImportAndParsePacket(
-                    {
-                      data: waitResult.output,
-                      dataType: waitResult.outputType ?? "application/json",
-                    },
-                    apiClient
-                  )
+                      {
+                        data: waitResult.output,
+                        dataType: waitResult.outputType ?? "application/json",
+                      },
+                      apiClient
+                    )
                   : undefined;
 
               if (waitResult.ok) {
@@ -890,6 +877,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
       });
     },
     async waitWithIdleTimeout(options) {
+      // eslint-disable-next-line no-this-alias
       const self = this;
       const spanName = options.spanName ?? `inputStream.waitWithIdleTimeout()`;
 
@@ -916,9 +904,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
             span.setAttribute("wait.resolved", "skipped");
             return {
               ok: false as const,
-              error: new WaitpointTimeoutError(
-                "Idle timeout elapsed and skipSuspend is set"
-              ),
+              error: new WaitpointTimeoutError("Idle timeout elapsed and skipSuspend is set"),
             };
           }
 

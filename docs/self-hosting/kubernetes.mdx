@@ -61,7 +61,7 @@ webapp:
 ```bash
 helm upgrade -n trigger --install trigger \
   oci://ghcr.io/triggerdotdev/charts/trigger \
-  --version "~4.0.0" \
+  --version "^4.5.0" \
   --create-namespace
 ```
 
@@ -107,11 +107,11 @@ The following commands will display the default values:
 ```bash
 # Specific version
 helm show values oci://ghcr.io/triggerdotdev/charts/trigger \
-  --version "4.0.5"
+  --version "4.5.0"
 
 # Latest v4
 helm show values oci://ghcr.io/triggerdotdev/charts/trigger \
-  --version "~4.0.0"
+  --version "^4.5.0"
 ```
 
 ### Custom values
@@ -171,7 +171,7 @@ Deploy with your custom values:
 ```bash
 helm upgrade -n trigger --install trigger \
   oci://ghcr.io/triggerdotdev/charts/trigger \
-  --version "~4.0.0" \
+  --version "^4.5.0" \
   --create-namespace \
   -f values-custom.yaml
 ```
@@ -375,6 +375,32 @@ webapp:
 
 This only affects new runs; existing runs continue to read from wherever their events were originally stored.
 
+## Realtime streams
+
+Realtime streams power AI-agent token streaming and run streams. They default to **v2**, backed by the bundled `s2` deployment — [s2-lite](https://s2.dev), the open-source, self-hostable S2 server. The chart deploys it with a persistent volume, so no extra services are required.
+
+To fall back to the Redis-backed **v1** streams, set the default version to `v1`:
+
+```yaml
+s2:
+  defaultStreamVersion: "v1"
+```
+
+To use a hosted S2 at [s2.dev](https://s2.dev) instead of the bundled s2-lite, disable the bundled deployment and point at your basin. Supply the access token via an existing secret:
+
+```yaml
+s2:
+  deploy: false
+  skipAccessTokens: false
+  external:
+    endpoint: "https://your-basin.b.aws.s2.dev/v1"
+    existingSecret: "s2-credentials"
+    existingSecretAccessTokenKey: "access-token"
+  basin: "your-basin"
+```
+
+To disable realtime streams v2 entirely and use v1, set `s2.deploy: false` with no external endpoint. See `helm show values` for all `s2` options.
+
 ## Worker token
 
 When using the default bootstrap configuration, worker creation and authentication is handled automatically. The webapp generates a worker token and makes it available to the supervisor via a shared volume.
@@ -510,14 +536,14 @@ You can lock versions in two ways:
 # Pin to a specific version for production
 helm upgrade -n trigger --install trigger \
   oci://ghcr.io/triggerdotdev/charts/trigger \
-  --version "4.0.5"
+  --version "4.5.0"
 
 # The app version will be different from the chart version
 # This is the version of the Trigger.dev webapp and supervisor
 # ..and should always match your Trigger.dev CLI version
 helm show chart \
   oci://ghcr.io/triggerdotdev/charts/trigger \
-  --version "4.0.5" | grep appVersion
+  --version "4.5.0" | grep appVersion
 ```
 
 **Specific image tags:**
@@ -525,11 +551,11 @@ helm show chart \
 ```yaml
 webapp:
   image:
-    tag: "v4.0.0"
+    tag: "v4.5.0"
 
 supervisor:
   image:
-    tag: "v4.0.0"
+    tag: "v4.5.0"
 ```
 
 The chart version's `appVersion` field determines the default image tags. Newer image tags may be incompatible with older chart versions and vice versa.
@@ -576,7 +602,6 @@ kubectl delete namespace trigger
 - **Deploy fails**: Verify registry access and authentication
 - **Pods stuck pending**: Describe the pod and check the events
 - **Worker token issues**: Check webapp and supervisor logs for errors
-- **Deploy fails with `ERROR: schema "graphile_worker" does not exist`**: See the [Docker troubleshooting](/self-hosting/docker#troubleshooting) section for details on resolving PostgreSQL SSL certificate issues that prevent Graphile Worker migrations.
 
 See the [Docker troubleshooting](/self-hosting/docker#troubleshooting) section for more information.
 

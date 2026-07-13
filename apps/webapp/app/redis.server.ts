@@ -1,4 +1,4 @@
-import { Cluster, Redis, type ClusterNode, type ClusterOptions } from "ioredis";
+import { type Cluster, Redis, type ClusterNode, type ClusterOptions } from "ioredis";
 import { defaultReconnectOnError } from "@internal/redis";
 import { logger } from "./services/logger.server";
 

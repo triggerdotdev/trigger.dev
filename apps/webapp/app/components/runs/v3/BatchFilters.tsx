@@ -1,15 +1,10 @@
 import * as Ariakit from "@ariakit/react";
-import {
-  CalendarIcon,
-  CpuChipIcon,
-  Squares2X2Icon,
-  TrashIcon,
-  XMarkIcon,
-} from "@heroicons/react/20/solid";
+import { Squares2X2Icon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { BatchTaskRunStatus, RuntimeEnvironment } from "@trigger.dev/database";
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import type { BatchTaskRunStatus } from "@trigger.dev/database";
+import { type ReactNode, useRef } from "react";
 import { z } from "zod";
+import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -29,6 +24,7 @@ import {
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { makeFriendlyIdValidator } from "~/utils/friendlyId";
 import { Button } from "../../primitives/Buttons";
 import {
   allBatchStatuses,
@@ -37,13 +33,12 @@ import {
   descriptionForBatchStatus,
 } from "./BatchStatus";
 import {
-  TimeFilter,
   appliedSummary,
   FilterMenuProvider,
   IdFilterDropdown,
   type IdFilterDropdownProps,
+  TimeFilter,
 } from "./SharedFilters";
-import { StatusIcon } from "~/assets/icons/StatusIcon";
 
 export const BatchStatus = z.enum(allBatchStatuses);
 
@@ -203,7 +198,7 @@ function PermanentStatusFilter() {
                     className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  <div className="flex h-6 items-center gap-1 rounded border border-border-bright bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-border-brighter group-hover:bg-surface-control">
                     <div className="grid size-4 place-items-center">
                       <div className="size-[75%] rounded-full border-2 border-text-bright" />
                     </div>
@@ -211,7 +206,7 @@ function PermanentStatusFilter() {
                   </div>
                 )}
               </Ariakit.TooltipAnchor>
-              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span>Filter by status</span>
                   <ShortcutKey
@@ -231,10 +226,7 @@ function PermanentStatusFilter() {
   );
 }
 
-function validateBatchId(value: string): string | undefined {
-  if (!value.startsWith("batch_")) return "Batch IDs start with 'batch_'";
-  if (value.length !== 27 && value.length !== 31) return "Batch IDs are 27 or 31 characters long";
-}
+const validateBatchId = makeFriendlyIdValidator("batch", "Batch");
 
 function BatchIdDropdown(
   props: Omit<IdFilterDropdownProps, "label" | "placeholder" | "paramKey" | "validate">
@@ -291,13 +283,13 @@ function PermanentBatchIdFilter() {
                     className="pl-1"
                   />
                 ) : (
-                  <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
+                  <div className="flex h-6 items-center gap-1.5 rounded border border-border-bright bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-border-brighter group-hover:bg-surface-control">
                     <Squares2X2Icon className="size-3.5" />
                     <span>Batch ID</span>
                   </div>
                 )}
               </Ariakit.TooltipAnchor>
-              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+              <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
                 <div className="flex items-center gap-2">
                   <span>Filter by batch ID</span>
                   <ShortcutKey

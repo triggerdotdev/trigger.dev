@@ -1,6 +1,6 @@
 import { S2, AppendRecord, BatchTransform } from "@s2-dev/streamstore";
 import { ChatChunkTooLargeError } from "../errors.js";
-import { StreamsWriter, StreamWriteResult } from "./types.js";
+import type { StreamsWriter, StreamWriteResult } from "./types.js";
 import { nanoid } from "nanoid";
 
 // S2 caps a single record at 1 MiB of metered bytes (body + headers + 8 byte
@@ -238,7 +238,7 @@ async function* streamToAsyncIterator<T>(stream: ReadableStream<T>): AsyncIterab
 function safeReleaseLock(reader: ReadableStreamDefaultReader<any>) {
   try {
     reader.releaseLock();
-  } catch (error) {}
+  } catch (_error) {}
 }
 
 // chat.agent emits two chunk shapes through this writer:

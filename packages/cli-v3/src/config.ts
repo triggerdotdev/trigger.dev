@@ -1,14 +1,15 @@
-import {
+import type {
   BuildRuntime,
   CompatibilityFlag,
   CompatibilityFlagFeatures,
   ResolveEnvironmentVariablesFunction,
   TriggerConfig,
 } from "@trigger.dev/core/v3";
-import { DEFAULT_RUNTIME, ResolvedConfig } from "@trigger.dev/core/v3/build";
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import { DEFAULT_RUNTIME } from "@trigger.dev/core/v3/build";
 import * as c12 from "c12";
 import { defu } from "defu";
-import * as esbuild from "esbuild";
+import type * as esbuild from "esbuild";
 import { readdir } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { findWorkspaceDir, resolveLockfile, resolvePackageJSON, resolveTSConfig } from "pkg-types";
@@ -118,8 +119,8 @@ export function configPlugin(resolvedConfig: ResolvedConfig): esbuild.Plugin | u
             ? $mod.exports.default.$args[0]
             : $mod.exports.default
           : $mod.exports.config?.$type === "function-call"
-          ? $mod.exports.config.$args[0]
-          : $mod.exports.config;
+            ? $mod.exports.config.$args[0]
+            : $mod.exports.config;
 
         options.build = {};
 
@@ -177,8 +178,8 @@ async function resolveConfig(
   const workingDir = result.configFile
     ? dirname(result.configFile)
     : packageJsonPath
-    ? dirname(packageJsonPath)
-    : cwd;
+      ? dirname(packageJsonPath)
+      : cwd;
 
   const config =
     "config" in result.config ? (result.config.config as TriggerConfig) : result.config;

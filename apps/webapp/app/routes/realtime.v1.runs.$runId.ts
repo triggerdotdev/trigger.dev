@@ -1,12 +1,8 @@
-import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { resolveRealtimeStreamClient } from "~/services/realtime/resolveRealtimeStreamClient.server";
-import {
-  anyResource,
-  createLoaderApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
@@ -52,7 +48,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ authentication, request, resource: run, apiVersion }) => {
-    // Pick the Electric proxy or the native backend per org (defaults to Electric); both implement streamRun.
+    // Resolve the native realtime client; it implements streamRun.
     const client = await resolveRealtimeStreamClient(authentication.environment);
 
     return client.streamRun(

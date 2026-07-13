@@ -1,5 +1,6 @@
-import { json, TypedResponse } from "@remix-run/server-runtime";
-import { WorkerApiDequeueResponseBody } from "@trigger.dev/core/v3/workers";
+import type { TypedResponse } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
+import type { WorkerApiDequeueResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { createLoaderWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 

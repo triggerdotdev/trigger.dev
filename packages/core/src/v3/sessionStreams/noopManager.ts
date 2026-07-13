@@ -1,6 +1,6 @@
-import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
+import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 import { InputStreamOncePromise } from "../inputStreams/types.js";
-import { SessionChannelIO, SessionStreamManager } from "./types.js";
+import type { SessionChannelIO, SessionStreamManager } from "./types.js";
 
 export class NoopSessionStreamManager implements SessionStreamManager {
   on(
@@ -35,11 +35,7 @@ export class NoopSessionStreamManager implements SessionStreamManager {
     return undefined;
   }
 
-  setLastDispatchedSeqNum(
-    _sessionId: string,
-    _io: SessionChannelIO,
-    _seqNum: number
-  ): void {}
+  setLastDispatchedSeqNum(_sessionId: string, _io: SessionChannelIO, _seqNum: number): void {}
 
   setMinTimestamp(
     _sessionId: string,

@@ -1,6 +1,6 @@
 import { ComputeClient, stripImageDigest } from "@internal/compute";
 import type { TemplateCreateResultEntry } from "@internal/compute";
-import { MachinePresetName } from "@trigger.dev/core/v3";
+import type { MachinePresetName } from "@trigger.dev/core/v3";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
@@ -78,10 +78,7 @@ export class ComputeTemplateCreationService {
     writer?: WritableStreamDefaultWriter;
   }): Promise<void> {
     return startActiveSpan("compute.template.create", async (span) => {
-      const { mode, migrated, reason } = await this.resolveMode(
-        options.projectId,
-        options.prisma
-      );
+      const { mode, migrated, reason } = await this.resolveMode(options.projectId, options.prisma);
 
       span.setAttributes({
         ...attributesFromAuthenticatedEnv(options.authenticatedEnv),

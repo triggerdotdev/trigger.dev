@@ -55,7 +55,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     return typedjson({ comparison: [] as ModelComparisonItem[], models: responseModels });
   }
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
   const presenter = new ModelRegistryPresenter(clickhouse);
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -201,9 +204,7 @@ export default function ModelComparePage() {
                       <TableCell key={i} alignment="right">
                         <span
                           className={`tabular-nums ${
-                            row.bestIndex === i
-                              ? "font-medium text-success"
-                              : "text-text-bright"
+                            row.bestIndex === i ? "font-medium text-success" : "text-text-bright"
                           }`}
                         >
                           {value}

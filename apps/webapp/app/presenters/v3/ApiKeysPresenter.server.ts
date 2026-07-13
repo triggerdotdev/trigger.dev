@@ -69,15 +69,14 @@ export class ApiKeysPresenter {
       throw new Error("Environment not found");
     }
 
-    const vercelIntegration =
-      await this.#prismaClient.organizationProjectIntegration.findFirst({
-        where: {
-          projectId: environment.project.id,
-          deletedAt: null,
-          organizationIntegration: { service: "VERCEL", deletedAt: null },
-        },
-        select: { id: true },
-      });
+    const vercelIntegration = await this.#prismaClient.organizationProjectIntegration.findFirst({
+      where: {
+        projectId: environment.project.id,
+        deletedAt: null,
+        organizationIntegration: { service: "VERCEL", deletedAt: null },
+      },
+      select: { id: true },
+    });
 
     return {
       environment: {

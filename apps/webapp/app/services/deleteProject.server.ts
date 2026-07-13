@@ -1,7 +1,7 @@
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 type Options = ({ projectId: string } | { projectSlug: string }) & {
   userId: string;
@@ -35,11 +35,6 @@ export class DeleteProjectService {
       return;
     }
 
-    // Remove queues from MARQS
-    for (const environment of project.environments) {
-      await marqs?.removeEnvironmentQueuesFromMasterQueue(project.organization.id, environment.id);
-    }
-
     // Delete all queues from the RunEngine 2 prod master queues
     for (const environment of project.environments) {
       await engine.removeEnvironmentQueuesFromMasterQueue({
@@ -48,6 +43,8 @@ export class DeleteProjectService {
         projectId: project.id,
       });
     }
+
+    // Soft delete only: run-ops rows are intentionally retained (no hard-delete cascade here).
 
     // Mark the project as deleted (do this last because it makes it impossible to try again)
     // - This disables all API keys
@@ -60,6 +57,11 @@ export class DeleteProjectService {
         deletedAt: new Date(),
       },
     });
+
+    // project.deletedAt (which gates env resolution) changed; drop every cached env of this project.
+    for (const environment of project.environments) {
+      controlPlaneResolver.invalidateEnvironment(environment.id);
+    }
   }
 
   async #getProjectId(options: Options) {

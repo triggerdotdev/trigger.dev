@@ -1,4 +1,5 @@
-import { PrismaClientOrTransaction, prisma } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
+import { prisma } from "~/db.server";
 import { z } from "zod";
 import { env } from "~/env.server";
 import nodeCrypto from "node:crypto";
@@ -219,7 +220,7 @@ class PrismaSecretStore implements SecretStoreProvider {
 
 export function getSecretStore<
   K extends SecretStoreOptions,
-  TOptions extends ProviderInitializationOptions[K]
+  TOptions extends ProviderInitializationOptions[K],
 >(provider: K, options?: TOptions): SecretStore {
   switch (provider) {
     case "DATABASE": {

@@ -1,6 +1,6 @@
-import { ClickHouseSettings } from "@clickhouse/client";
+import type { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
-import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
+import type { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 
 export const SessionV1 = z.object({
   environment_id: z.string(),
@@ -118,6 +118,7 @@ export function insertSessionsCompactArrays(ch: ClickhouseWriter, settings?: Cli
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       ...settings,
     },
   });
@@ -131,6 +132,7 @@ export function insertSessions(ch: ClickhouseWriter, settings?: ClickHouseSettin
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       ...settings,
     },
   });
@@ -157,10 +159,7 @@ export function getSessionsQueryBuilder(ch: ClickhouseReader, settings?: ClickHo
   });
 }
 
-export function getSessionsCountQueryBuilder(
-  ch: ClickhouseReader,
-  settings?: ClickHouseSettings
-) {
+export function getSessionsCountQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilder({
     name: "getSessionsCount",
     baseQuery: "SELECT count() as count FROM trigger_dev.sessions_v1 FINAL",
@@ -175,10 +174,7 @@ export const SessionTagsQueryResult = z.object({
 
 export type SessionTagsQueryResult = z.infer<typeof SessionTagsQueryResult>;
 
-export function getSessionTagsQueryBuilder(
-  ch: ClickhouseReader,
-  settings?: ClickHouseSettings
-) {
+export function getSessionTagsQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilder({
     name: "getSessionTags",
     baseQuery: "SELECT DISTINCT arrayJoin(tags) as tag FROM trigger_dev.sessions_v1",

@@ -28,7 +28,7 @@ export function DashboardAgentSuggestedPrompts({
             key={prompt}
             type="button"
             onClick={() => onSelect(prompt)}
-            className="rounded-md border border-charcoal-700 bg-charcoal-800/40 px-3 py-2 text-left text-sm text-text-dimmed transition hover:border-charcoal-600 hover:text-text-bright"
+            className="rounded-md border border-grid-bright bg-background-bright/40 px-3 py-2 text-left text-sm text-text-dimmed transition hover:border-border-bright hover:text-text-bright"
           >
             {prompt}
           </button>

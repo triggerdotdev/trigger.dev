@@ -1,5 +1,5 @@
-import { AnyRunShape } from "@trigger.dev/core/v3";
-import {
+import type { AnyRunShape } from "@trigger.dev/core/v3";
+import type {
   ListRunResponseItem,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
@@ -473,10 +473,10 @@ export function formatSpanDetail(span: RetrieveSpanDetailResponseBody): string {
   const statusIndicator = span.isCancelled
     ? "[CANCELLED]"
     : span.isError
-    ? "[ERROR]"
-    : span.isPartial
-    ? "[IN PROGRESS]"
-    : "[COMPLETED]";
+      ? "[ERROR]"
+      : span.isPartial
+        ? "[IN PROGRESS]"
+        : "[COMPLETED]";
 
   lines.push(`## Span: ${span.message} ${statusIndicator}`);
   lines.push(`Span ID: ${span.spanId}`);

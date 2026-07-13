@@ -11,9 +11,7 @@ vi.mock("~/db.server", () => ({
     fnOrOptions?: ((tx: unknown) => Promise<unknown>) | unknown
   ) => {
     const fn =
-      typeof nameOrFn === "string"
-        ? (fnOrOptions as (tx: unknown) => Promise<unknown>)
-        : nameOrFn;
+      typeof nameOrFn === "string" ? (fnOrOptions as (tx: unknown) => Promise<unknown>) : nameOrFn;
 
     return prismaClient.$transaction(fn);
   },
@@ -45,7 +43,9 @@ describe("loadEnvironmentVariablesEnvironments", () => {
     });
 
     expect(result.environments.map((environment) => environment.id)).toContain(production.id);
-    expect(result.environments.every((environment) => typeof environment.id === "string")).toBe(true);
+    expect(result.environments.every((environment) => typeof environment.id === "string")).toBe(
+      true
+    );
   });
 
   postgresTest("rejects users who are not project members", async ({ prisma }) => {
@@ -125,20 +125,23 @@ describe("loadEnvironmentVariablesEnvironments", () => {
     expect(result.hasStaging).toBe(true);
   });
 
-  postgresTest("returns hasStaging false when no staging environment exists", async ({ prisma }) => {
-    const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+  postgresTest(
+    "returns hasStaging false when no staging environment exists",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
 
-    await createRuntimeEnvironment(prisma, {
-      projectId: project.id,
-      organizationId: organization.id,
-      type: "PRODUCTION",
-    });
+      await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
 
-    const result = await loadEnvironmentVariablesEnvironments(prisma, {
-      userId: user.id,
-      projectId: project.id,
-    });
+      const result = await loadEnvironmentVariablesEnvironments(prisma, {
+        userId: user.id,
+        projectId: project.id,
+      });
 
-    expect(result.hasStaging).toBe(false);
-  });
+      expect(result.hasStaging).toBe(false);
+    }
+  );
 });

@@ -10,7 +10,12 @@ import {
   type PromptOverrideCreatedResponseBody,
   type UpdatePromptOverrideRequestBody,
 } from "@trigger.dev/core/v3";
-import type { AnyPromptHandle, PromptIdentifier, PromptVariables, ResolvedPrompt } from "./prompt.js";
+import type {
+  AnyPromptHandle,
+  PromptIdentifier,
+  PromptVariables,
+  ResolvedPrompt,
+} from "./prompt.js";
 import { tracer } from "./tracer.js";
 
 function promptSpanOptions(name: string, slug: string) {
@@ -119,9 +124,7 @@ export async function resolvePrompt<TPromptHandle extends AnyPromptHandle = AnyP
 }
 
 /** List all prompts in the current environment. */
-export function listPrompts(
-  requestOptions?: ApiRequestOptions
-): Promise<ListPromptsResponseBody> {
+export function listPrompts(requestOptions?: ApiRequestOptions): Promise<ListPromptsResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
   return apiClient.listPrompts({
     tracer,
@@ -158,14 +161,18 @@ export async function promotePromptVersion(
   requestOptions?: ApiRequestOptions
 ): Promise<PromptOkResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
-  return apiClient.promotePromptVersion(slug, { version }, {
-    ...promptSpanOptions("prompts.promote()", slug),
-    attributes: {
-      ...promptSpanOptions("prompts.promote()", slug).attributes,
-      "prompt.slug": slug,
-      "prompt.version": version,
-    },
-  });
+  return apiClient.promotePromptVersion(
+    slug,
+    { version },
+    {
+      ...promptSpanOptions("prompts.promote()", slug),
+      attributes: {
+        ...promptSpanOptions("prompts.promote()", slug).attributes,
+        "prompt.slug": slug,
+        "prompt.version": version,
+      },
+    }
+  );
 }
 
 /** Create an override — a dashboard/API edit that takes priority over the deployed version. */
@@ -226,12 +233,16 @@ export async function reactivatePromptOverride(
   requestOptions?: ApiRequestOptions
 ): Promise<PromptOkResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
-  return apiClient.reactivatePromptOverride(slug, { version }, {
-    ...promptSpanOptions("prompts.reactivateOverride()", slug),
-    attributes: {
-      ...promptSpanOptions("prompts.reactivateOverride()", slug).attributes,
-      "prompt.slug": slug,
-      "prompt.version": version,
-    },
-  });
+  return apiClient.reactivatePromptOverride(
+    slug,
+    { version },
+    {
+      ...promptSpanOptions("prompts.reactivateOverride()", slug),
+      attributes: {
+        ...promptSpanOptions("prompts.reactivateOverride()", slug).attributes,
+        "prompt.slug": slug,
+        "prompt.version": version,
+      },
+    }
+  );
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isValidGitBranchName, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import {
+  DEFAULT_DEV_BRANCH,
+  isDefaultDevBranch,
+  isValidGitBranchName,
+  sanitizeBranchName,
+} from "@trigger.dev/core/v3/utils/gitBranch";
 
 describe("isValidGitBranchName", () => {
   it("returns true for a valid branch name", async () => {
@@ -104,5 +109,29 @@ describe("branchNameFromRef", () => {
   it("returns null for an empty string", async () => {
     const result = sanitizeBranchName("");
     expect(result).toBeNull();
+  });
+
+  it("returns null for null/undefined", async () => {
+    expect(sanitizeBranchName(null)).toBeNull();
+    expect(sanitizeBranchName(undefined)).toBeNull();
+  });
+});
+
+describe("isDefaultDevBranch", () => {
+  it("is true only for the reserved sentinel", () => {
+    expect(isDefaultDevBranch(DEFAULT_DEV_BRANCH)).toBe(true);
+    expect(isDefaultDevBranch("default")).toBe(true);
+  });
+
+  it("is false for any named branch", () => {
+    expect(isDefaultDevBranch("my-feature")).toBe(false);
+    // Case matters — the sentinel is an exact wire value.
+    expect(isDefaultDevBranch("Default")).toBe(false);
+    expect(isDefaultDevBranch("default-ish")).toBe(false);
+  });
+
+  it("is false for null/undefined (no header means no branch, resolved elsewhere)", () => {
+    expect(isDefaultDevBranch(null)).toBe(false);
+    expect(isDefaultDevBranch(undefined)).toBe(false);
   });
 });

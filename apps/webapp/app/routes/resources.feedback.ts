@@ -1,4 +1,4 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type PlainClient, uiComponent } from "@team-plain/typescript-sdk";
 import { z } from "zod";
@@ -6,53 +6,50 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { sendToPlain } from "~/utils/plain.server";
 
-let client: PlainClient | undefined;
+let _client: PlainClient | undefined;
 
 export const feedbackTypes = {
   bug: {
     label: "Bug report",
     labelTypeId: "lt_01HB920BTPFS36KH1JT9C36YVY",
-    threadTitle: "Contact form: Bug report",
+    threadTitle: "Web app: Bug report",
   },
   feature: {
     label: "Feature request",
     labelTypeId: "lt_01HB920BV8CJGYXVE15WWN6P07",
-    threadTitle: "Contact form: Feature request",
+    threadTitle: "Web app: Feature request",
   },
   help: {
     label: "Help me out",
     labelTypeId: "lt_01KTVCAPZY5ZJ0SS4ACMXWYYT3",
-    threadTitle: "Contact form: Help me out",
+    threadTitle: "Web app: Help me out",
   },
   enterprise: {
     label: "Enterprise enquiry",
     labelTypeId: "lt_01K7PF5EV2877EH4SZYB667FW4",
-    threadTitle: "Contact form: Enterprise enquiry",
+    threadTitle: "Web app: Enterprise enquiry",
   },
   feedback: {
     label: "General feedback",
     labelTypeId: "lt_01HB920BSRZ3RA1ETHBVEB5ST2",
-    threadTitle: "Contact form: General feedback",
+    threadTitle: "Web app: General feedback",
   },
   concurrency: {
     label: "Increase my concurrency",
     labelTypeId: "lt_01KTVCCY2PDE5V6WV2PQ8N85K2",
-    threadTitle: "Contact form: Increase my concurrency",
+    threadTitle: "Web app: Increase my concurrency",
   },
   region: {
     label: "Suggest a new region",
     labelTypeId: "lt_01KTVCDPYYBW6KS9H5V8MTQ0GG",
-    threadTitle: "Contact form: Suggest a new region",
+    threadTitle: "Web app: Suggest a new region",
   },
   hipaa: {
     label: "HIPAA BAA request",
     labelTypeId: "lt_01KS54WBRYKE6DY369KPK2SS4W",
-    threadTitle: "Contact form: HIPAA BAA request",
+    threadTitle: "Web app: HIPAA BAA request",
   },
-} as const satisfies Record<
-  string,
-  { label: string; labelTypeId?: string; threadTitle: string }
->;
+} as const satisfies Record<string, { label: string; labelTypeId?: string; threadTitle: string }>;
 
 export type FeedbackType = keyof typeof feedbackTypes;
 
@@ -76,10 +73,10 @@ export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const inquiry = feedbackTypes[submission.value.feedbackType as FeedbackType];
@@ -121,7 +118,10 @@ export async function action({ request }: ActionFunctionArgs) {
       "Thanks for your feedback! We'll get back to you soon."
     );
   } catch (e) {
-    submission.error.message = [e instanceof Error ? e.message : "Unknown error"];
-    return json(submission);
+    return json(
+      submission.reply({
+        fieldErrors: { message: [e instanceof Error ? e.message : "Unknown error"] },
+      })
+    );
   }
 }

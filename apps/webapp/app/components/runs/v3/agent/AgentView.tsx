@@ -320,7 +320,9 @@ function useAgentSessionMessages({
       if (!res) return false;
       for (const [mid, msg] of pendingRef.current) {
         const parts = (msg.parts ?? []) as Array<Record<string, unknown>>;
-        const idx = parts.findIndex((p) => (p as { toolCallId?: string }).toolCallId === toolCallId);
+        const idx = parts.findIndex(
+          (p) => (p as { toolCallId?: string }).toolCallId === toolCallId
+        );
         if (idx < 0) continue;
         const cur = parts[idx]!;
         const terminal =
@@ -424,7 +426,7 @@ function useAgentSessionMessages({
         signal: abort.signal,
         timeoutInSeconds: 120,
         ...(lastEventId !== undefined ? { lastEventId } : {}),
-      } as const);
+      }) as const;
 
     const commonSubOptions = {
       signal: abort.signal,
@@ -600,7 +602,11 @@ function useAgentSessionMessages({
 
             // New user turns — merge in (dedupe by id).
             for (const m of candidates) {
-              if (m == null || (m as { role?: string }).role !== "user" || typeof m.id !== "string") {
+              if (
+                m == null ||
+                (m as { role?: string }).role !== "user" ||
+                typeof m.id !== "string"
+              ) {
                 continue;
               }
               if (pendingRef.current.has(m.id)) continue;

@@ -32,9 +32,7 @@ export function useReorderableList<T>({
 }) {
   const orderFetcher = useFetcher();
 
-  const [order, setOrder] = useState<string[]>(
-    () => initialOrder ?? items.map(itemKey)
-  );
+  const [order, setOrder] = useState<string[]>(() => initialOrder ?? items.map(itemKey));
 
   // Sync order when organizationId changes (component may not remount)
   useEffect(() => {

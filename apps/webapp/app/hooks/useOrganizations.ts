@@ -1,5 +1,5 @@
-import { UIMatch } from "@remix-run/react";
-import { UseDataFunctionReturn } from "remix-typedjson";
+import type { UIMatch } from "@remix-run/react";
+import type { UseDataFunctionReturn } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import type { loader as orgLoader } from "~/routes/_app.orgs.$organizationSlug/route";
 import { useChanged } from "./useChanged";
@@ -86,4 +86,20 @@ export function useWidgetLimitPerDashboard(matches?: UIMatch[]) {
     matches,
   });
   return data?.widgetLimitPerDashboard ?? 16;
+}
+
+export function useBillingLimit(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.billingLimit;
+}
+
+export function useCanManageBillingLimits(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.canManageBillingLimits === true;
 }

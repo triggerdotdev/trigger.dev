@@ -19,10 +19,7 @@ function makeMessage(runFriendlyId = "run_1"): DequeuedMessage {
   } as unknown as DequeuedMessage;
 }
 
-function createService(opts: {
-  latestSnapshotId?: string;
-  probeError?: boolean;
-}) {
+function createService(opts: { latestSnapshotId?: string; probeError?: boolean }) {
   const getLatestSnapshot = vi.fn(async (_runId: string) =>
     opts.probeError
       ? { success: false as const, error: "connection refused" }

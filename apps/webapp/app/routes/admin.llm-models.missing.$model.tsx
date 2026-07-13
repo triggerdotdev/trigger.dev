@@ -96,7 +96,7 @@ export default function AdminMissingModelDetailRoute() {
 
         {/* Token types summary */}
         {tokenSummary.length > 0 && (
-          <div className="rounded-md border border-grid-dimmed bg-charcoal-800 p-3 space-y-2">
+          <div className="rounded-md border border-grid-dimmed bg-background-bright p-3 space-y-2">
             <span className="text-xs font-medium text-text-dimmed">
               Token types seen across samples
             </span>
@@ -104,11 +104,13 @@ export default function AdminMissingModelDetailRoute() {
               {tokenSummary.map((t) => (
                 <span
                   key={t.key}
-                  className="inline-flex items-center gap-1.5 rounded-sm bg-charcoal-700 px-2 py-1 text-xs font-mono"
+                  className="inline-flex items-center gap-1.5 rounded-sm bg-background-raised px-2 py-1 text-xs font-mono"
                 >
                   <span className="text-text-bright">{t.key}</span>
                   <span className="text-text-dimmed">
-                    {t.min === t.max ? t.min.toLocaleString() : `${t.min.toLocaleString()}-${t.max.toLocaleString()}`}
+                    {t.min === t.max
+                      ? t.min.toLocaleString()
+                      : `${t.min.toLocaleString()}-${t.max.toLocaleString()}`}
                   </span>
                 </span>
               ))}
@@ -123,7 +125,8 @@ export default function AdminMissingModelDetailRoute() {
         {providerCosts.length > 0 && (
           <div className="rounded-md border border-green-500/30 bg-green-500/5 p-3 space-y-2">
             <span className="text-xs font-medium text-green-400">
-              Provider-reported cost data found in {providerCosts.length} span{providerCosts.length !== 1 ? "s" : ""}
+              Provider-reported cost data found in {providerCosts.length} span
+              {providerCosts.length !== 1 ? "s" : ""}
             </span>
             <div className="space-y-1">
               {providerCosts.map((c, i) => (
@@ -143,7 +146,9 @@ export default function AdminMissingModelDetailRoute() {
                 </span>
                 <div className="flex gap-4 mt-1 font-mono text-text-bright">
                   <span>input: {providerCosts[0].estimatedInputPrice.toExponential(4)}</span>
-                  <span>output: {(providerCosts[0].estimatedOutputPrice ?? 0).toExponential(4)}</span>
+                  <span>
+                    output: {(providerCosts[0].estimatedOutputPrice ?? 0).toExponential(4)}
+                  </span>
                 </div>
                 <span className="text-text-dimmed mt-1 block">
                   Cross-reference with the provider's pricing page before using these estimates.
@@ -154,7 +159,7 @@ export default function AdminMissingModelDetailRoute() {
         )}
 
         {/* Prompt section */}
-        <div className="rounded-md border border-grid-dimmed bg-charcoal-800 p-3 space-y-2">
+        <div className="rounded-md border border-grid-dimmed bg-background-bright p-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-text-dimmed">
               Claude Code prompt — paste this to have it add pricing for this model
@@ -163,7 +168,7 @@ export default function AdminMissingModelDetailRoute() {
               {copied ? "Copied!" : "Copy prompt"}
             </Button>
           </div>
-          <pre className="max-h-64 overflow-auto rounded bg-charcoal-900 p-3 text-xs text-text-dimmed font-mono whitespace-pre-wrap">
+          <pre className="max-h-64 overflow-auto rounded bg-background-deep p-3 text-xs text-text-dimmed font-mono whitespace-pre-wrap">
             {prompt}
           </pre>
         </div>
@@ -185,12 +190,12 @@ export default function AdminMissingModelDetailRoute() {
             return (
               <div
                 key={s.span_id}
-                className="rounded-md border border-grid-dimmed bg-charcoal-800"
+                className="rounded-md border border-grid-dimmed bg-background-bright"
               >
                 <button
                   type="button"
                   onClick={() => toggleSpan(s.span_id)}
-                  className="w-full flex items-center justify-between p-3 text-left hover:bg-charcoal-750"
+                  className="w-full flex items-center justify-between p-3 text-left hover:bg-background-hover"
                 >
                   <div className="flex items-center gap-3 text-xs">
                     <span className="font-mono text-text-dimmed">{s.span_id.slice(0, 8)}</span>
@@ -291,7 +296,7 @@ type ProviderCostInfo = {
   cost: number;
   inputTokens: number;
   outputTokens: number;
-  estimatedInputPrice?: number;  // per-token estimate
+  estimatedInputPrice?: number; // per-token estimate
   estimatedOutputPrice?: number; // per-token estimate
 };
 
@@ -311,7 +316,9 @@ function extractProviderCosts(samples: MissingModelSample[]): ProviderCostInfo[]
     const aiResponse = getNestedObj(attrs, ["ai", "response"]);
     const rawMeta = aiResponse?.providerMetadata;
     if (typeof rawMeta === "string") {
-      try { providerMeta = JSON.parse(rawMeta) as Record<string, unknown>; } catch {}
+      try {
+        providerMeta = JSON.parse(rawMeta) as Record<string, unknown>;
+      } catch {}
     } else if (rawMeta && typeof rawMeta === "object") {
       providerMeta = rawMeta as Record<string, unknown>;
     }
@@ -376,16 +383,23 @@ function extractProviderCosts(samples: MissingModelSample[]): ProviderCostInfo[]
 // Prompt builder — focused on figuring out pricing, not API mechanics
 // ---------------------------------------------------------------------------
 
-function buildPrompt(modelName: string, samples: MissingModelSample[], providerCosts: ProviderCostInfo[]): string {
+function buildPrompt(
+  modelName: string,
+  samples: MissingModelSample[],
+  providerCosts: ProviderCostInfo[]
+): string {
   const hasPrefix = modelName.includes("/");
   const prefix = hasPrefix ? modelName.split("/")[0] : null;
   const baseName = hasPrefix ? modelName.split("/").slice(1).join("/") : modelName;
 
   // Extract token types from samples
   const tokenTypes = extractTokenTypes(samples);
-  const tokenTypeList = tokenTypes.length > 0
-    ? tokenTypes.map((t) => `  - ${t.key}: ${t.min === t.max ? t.min : `${t.min}-${t.max}`}`).join("\n")
-    : "  (no token data found in samples)";
+  const tokenTypeList =
+    tokenTypes.length > 0
+      ? tokenTypes
+          .map((t) => `  - ${t.key}: ${t.min === t.max ? t.min : `${t.min}-${t.max}`}`)
+          .join("\n")
+      : "  (no token data found in samples)";
 
   // Get a compact sample of attributes for context
   let sampleAttrs = "";
@@ -453,18 +467,30 @@ Prices (per token):
   - \`input\` and \`output\` — always required
   - \`input_cached_tokens\` — if the provider offers prompt caching discounts
   - \`cache_creation_input_tokens\` — if there's a cache write cost
-  - \`reasoning_tokens\` — if the model has chain-of-thought/reasoning tokens${providerCosts.length > 0 ? `
+  - \`reasoning_tokens\` — if the model has chain-of-thought/reasoning tokens${
+    providerCosts.length > 0
+      ? `
 
 ## Provider-reported costs (from ${providerCosts[0].source})
 The gateway/router is reporting costs for this model. Use these to cross-reference your pricing:
-${providerCosts.map((c) => `- $${c.cost.toFixed(6)} for ${c.inputTokens.toLocaleString()} input + ${c.outputTokens.toLocaleString()} output tokens`).join("\n")}${providerCosts[0].estimatedInputPrice != null ? `
+${providerCosts.map((c) => `- $${c.cost.toFixed(6)} for ${c.inputTokens.toLocaleString()} input + ${c.outputTokens.toLocaleString()} output tokens`).join("\n")}${
+          providerCosts[0].estimatedInputPrice != null
+            ? `
 - Estimated per-token rates (rough, assuming ~3x output/input ratio):
   - input: ${providerCosts[0].estimatedInputPrice.toExponential(4)} (${(providerCosts[0].estimatedInputPrice * 1_000_000).toFixed(4)} $/M)
   - output: ${(providerCosts[0].estimatedOutputPrice ?? 0).toExponential(4)} (${((providerCosts[0].estimatedOutputPrice ?? 0) * 1_000_000).toFixed(4)} $/M)
-- Verify these against the official pricing page before using.` : ""}` : ""}${sampleAttrs ? `
+- Verify these against the official pricing page before using.`
+            : ""
+        }`
+      : ""
+  }${
+    sampleAttrs
+      ? `
 
 ## Sample span attributes (first span)
 \`\`\`json
 ${sampleAttrs}
-\`\`\`` : ""}`;
+\`\`\``
+      : ""
+  }`;
 }

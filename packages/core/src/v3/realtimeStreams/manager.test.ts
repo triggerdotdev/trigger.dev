@@ -58,10 +58,7 @@ describe("StandardRealtimeStreamsManager createStream cache", () => {
     const { client, spy } = makeApiClient(async () => ({ version: "v1", headers: {} }));
     const manager = new StandardRealtimeStreamsManager(client, "http://localhost");
 
-    await Promise.all([
-      getCached(manager, "run-1", "chat"),
-      getCached(manager, "run-2", "chat"),
-    ]);
+    await Promise.all([getCached(manager, "run-1", "chat"), getCached(manager, "run-2", "chat")]);
 
     expect(spy).toHaveBeenCalledTimes(2);
   });
@@ -108,11 +105,7 @@ describe("StandardRealtimeStreamsManager createStream cache", () => {
     // writer's `wait()` rejects.
     (
       manager as unknown as {
-        evictCreateStreamIfStale: (
-          runId: string,
-          key: string,
-          expected: Promise<unknown>
-        ) => void;
+        evictCreateStreamIfStale: (runId: string, key: string, expected: Promise<unknown>) => void;
       }
     ).evictCreateStreamIfStale("run-1", "chat", cachedPromise);
 
@@ -132,11 +125,7 @@ describe("StandardRealtimeStreamsManager createStream cache", () => {
     const stalePromise = Promise.resolve({ version: "v1", headers: {} });
     (
       manager as unknown as {
-        evictCreateStreamIfStale: (
-          runId: string,
-          key: string,
-          expected: Promise<unknown>
-        ) => void;
+        evictCreateStreamIfStale: (runId: string, key: string, expected: Promise<unknown>) => void;
       }
     ).evictCreateStreamIfStale("run-1", "chat", stalePromise);
 

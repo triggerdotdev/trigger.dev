@@ -30,7 +30,7 @@ async function updatePlaceholderInFile(filePath: string, version: string) {
     const fileContents = await fs.readFile(filePath, "utf-8");
     const updatedContents = fileContents.replace("0.0.0", version);
     await fs.writeFile(filePath, updatedContents);
-  } catch (e) {}
+  } catch (_e) {}
 }
 
 updateVersion().catch((e) => {

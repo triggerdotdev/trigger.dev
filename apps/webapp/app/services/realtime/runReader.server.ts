@@ -1,4 +1,8 @@
-import { type Prisma, type PrismaClient, type PrismaClientOrTransaction } from "@trigger.dev/database";
+import {
+  type Prisma,
+  type PrismaClient,
+  type PrismaClientOrTransaction,
+} from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
 import { BoundedTtlCache } from "./boundedTtlCache";
 import { RESERVED_COLUMNS, type RealtimeRunRow } from "./electricStreamProtocol.server";
@@ -91,7 +95,7 @@ export type RunHydratorOptions = {
 const DEFAULT_CACHE_TTL_MS = 250;
 const DEFAULT_MAX_CACHE_ENTRIES = 5_000;
 
-/** Hydrates runs by id from the read replica, projected to the realtime columns; concurrent same-run refetches are single-flighted + short-TTL cached. */
+/** Hydrates runs by id through the runStore seam (split routing lives in the store, below this file), projected to the realtime columns; concurrent same-run refetches are single-flighted + short-TTL cached. */
 export class RunHydrator {
   readonly #inflight = new Map<string, Promise<RealtimeRunRow | null>>();
   readonly #cache: BoundedTtlCache<RealtimeRunRow | null>;

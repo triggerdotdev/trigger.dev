@@ -1,0 +1,5 @@
+self-hosted-runner:
+  labels:
+    - warp-ubuntu-*
+    - warp-macos-*
+    - warp-windows-*

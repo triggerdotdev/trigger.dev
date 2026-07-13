@@ -42,12 +42,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
-  const canViewLogsPage = user.admin || user.isImpersonating || await hasLogsPageAccess(
-    user.id,
-    user.admin,
-    user.isImpersonating,
-    organizationSlug
-  );
+  const canViewLogsPage =
+    user.admin ||
+    user.isImpersonating ||
+    (await hasLogsPageAccess(user.id, user.admin, user.isImpersonating, organizationSlug));
 
   return typedjson({ canViewLogsPage });
 };

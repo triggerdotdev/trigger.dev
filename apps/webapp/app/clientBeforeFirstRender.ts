@@ -22,10 +22,7 @@ function cleanupLegacyResizablePanelStorage() {
     const toRemove: string[] = [];
     for (let i = 0; i < window.localStorage.length; i++) {
       const key = window.localStorage.key(i);
-      if (
-        key &&
-        (key.startsWith("panel-group-react-aria") || key === "panel-run-parent-v2")
-      ) {
+      if (key && (key.startsWith("panel-group-react-aria") || key === "panel-run-parent-v2")) {
         toRemove.push(key);
       }
     }

@@ -5,8 +5,6 @@ import {
   BulkActionType,
   type PrismaClient,
 } from "@trigger.dev/database";
-import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
-import { type CreateBulkActionPayload } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   parseRunListInputOptions,
@@ -14,31 +12,127 @@ import {
   RunsRepository,
 } from "~/services/runsRepository/runsRepository.server";
 import { BaseService } from "../baseService.server";
+import { ServiceValidationError } from "../common.server";
 import { commonWorker } from "~/v3/commonWorker.server";
 import { env } from "~/env.server";
 import { logger } from "@trigger.dev/sdk";
 import { CancelTaskRunService } from "../cancelTaskRun.server";
 import { tryCatch } from "@trigger.dev/core";
 import { ReplayTaskRunService } from "../replayTaskRun.server";
+import { WorkerGroupService } from "../worker/workerGroupService.server";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import parseDuration from "parse-duration";
 import { v3BulkActionPath } from "~/utils/pathBuilder";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import pMap from "p-map";
+import { type PrismaReplicaClient } from "~/db.server";
+import { isSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
+import { hydrateRunsAcrossSeam, type SeamReadDeps } from "./BulkActionV2.batchReadThrough.server";
+
+export type CreateBulkActionInput = {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  userId?: string | null;
+  action: "cancel" | "replay";
+  filters: RunListInputFilters;
+  title?: string;
+  region?: string;
+  emailNotification?: boolean;
+  triggerSource?: string;
+};
+
+export type ProcessToCompletionOptions = {
+  /** Absolute timestamp (ms) after which processing stops and returns incomplete. */
+  deadline?: number;
+};
+
+export type ProcessToCompletionResult = {
+  completed: boolean;
+};
+
+// How recently a PENDING replay must have made progress to still count against
+// the per-environment concurrency limit. Every processed batch bumps the
+// group's `updatedAt`, so a live replay keeps a fresh heartbeat for its whole
+// life no matter how long it runs, while a replay whose job has exhausted its
+// retries (and stopped making progress) ages out and frees its slot. This is
+// wide enough to cover the worst-case gap between batches for a healthy replay
+// that is retrying.
+const REPLAY_INFLIGHT_WINDOW_MS = 30 * 60 * 1000;
 
 export class BulkActionService extends BaseService {
-  public async create(
-    organizationId: string,
-    projectId: string,
-    environmentId: string,
-    userId: string,
-    payload: CreateBulkActionPayload,
-    request: Request
-  ) {
-    const filters = await getFilters(payload, request);
+  #splitEnabledPromise?: Promise<boolean>;
+
+  // Resolves split mode once per service instance and returns the read-through deps for
+  // bulk member hydration. Single-DB: read through the service replica (byte-identical to
+  // the pre-migration read). Split: adapter defaults to run-ops new + legacy read replica.
+  async #seamReadDeps(): Promise<SeamReadDeps> {
+    this.#splitEnabledPromise ??= isSplitEnabled();
+    const splitEnabled = await this.#splitEnabledPromise;
+    return {
+      splitEnabled,
+      newClient: splitEnabled ? undefined : (this._replica as unknown as PrismaReplicaClient),
+    };
+  }
+
+  public async create(input: CreateBulkActionInput) {
+    const { organizationId, projectId, environmentId, userId } = input;
+    const filters = freezeRunListFilters(input.filters);
+
+    // Concurrency guard for replays.
+    // The seek is backed by the (environmentId, status, type) index; the
+    // `updatedAt` window is applied on top so we only count replays that are
+    // actually still making progress. A replay whose job has died stops bumping
+    // `updatedAt` and drops out of the count, so it can't permanently hold a
+    // slot. Aborting a replay (dashboard or API) clears its slot immediately.
+    if (input.action === "replay") {
+      const maxConcurrentReplays = env.BULK_ACTION_MAX_CONCURRENT_REPLAYS;
+      const inFlightReplays = await this._replica.bulkActionGroup.count({
+        where: {
+          environmentId,
+          type: BulkActionType.REPLAY,
+          status: BulkActionStatus.PENDING,
+          updatedAt: { gte: new Date(Date.now() - REPLAY_INFLIGHT_WINDOW_MS) },
+        },
+      });
+
+      if (inFlightReplays >= maxConcurrentReplays) {
+        throw new ServiceValidationError(
+          `You can only run ${maxConcurrentReplays} bulk replays at a time in this environment. Wait for an in-progress replay to finish before starting another.`,
+          429
+        );
+      }
+    }
+
+    // Region is a replay-only override that re-routes the replayed runs. It's
+    // stored alongside the run-list filters under a dedicated key so it isn't
+    // mistaken for a `regions` selection filter when the params are parsed.
+    const replayRegion = input.action === "replay" ? input.region : undefined;
+    if (replayRegion) {
+      // Validating the region override up-front so an invalid/unauthorized
+      // region surfaces as a user-input (400) error rather than a 500.
+      const [regionError] = await tryCatch(
+        new WorkerGroupService({ prisma: this._prisma }).getDefaultWorkerGroupForProject({
+          projectId,
+          regionOverride: replayRegion,
+        })
+      );
+      if (regionError) {
+        throw new ServiceValidationError(regionError.message, 400);
+      }
+    }
+
+    const params = {
+      ...filters,
+      ...(replayRegion ? { replayRegion } : {}),
+      ...(input.triggerSource ? { triggerSource: input.triggerSource } : {}),
+    };
 
     // Count the runs that will be affected by the bulk action
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,
@@ -59,13 +153,13 @@ export class BulkActionService extends BaseService {
         projectId,
         environmentId,
         userId,
-        name: payload.title,
-        type: payload.action === "cancel" ? BulkActionType.CANCEL : BulkActionType.REPLAY,
-        params: filters,
+        name: input.title,
+        type: input.action === "cancel" ? BulkActionType.CANCEL : BulkActionType.REPLAY,
+        params,
         queryName: "bulk_action_v1",
         totalCount: count,
         completionNotification:
-          payload.emailNotification === true
+          input.emailNotification === true
             ? BulkActionNotificationType.EMAIL
             : BulkActionNotificationType.NONE,
       },
@@ -85,7 +179,42 @@ export class BulkActionService extends BaseService {
     };
   }
 
-  public async process(bulkActionId: string) {
+  public async processToCompletion(
+    bulkActionId: string,
+    options?: ProcessToCompletionOptions
+  ): Promise<ProcessToCompletionResult> {
+    while (true) {
+      const group = await this._prisma.bulkActionGroup.findFirst({
+        where: { id: bulkActionId },
+        select: { status: true },
+      });
+
+      if (!group) {
+        throw new Error(`Bulk action group not found: ${bulkActionId}`);
+      }
+
+      if (group.status === BulkActionStatus.COMPLETED) {
+        return { completed: true };
+      }
+
+      if (group.status === BulkActionStatus.ABORTED) {
+        return { completed: false };
+      }
+
+      if (options?.deadline !== undefined && Date.now() >= options.deadline) {
+        return { completed: false };
+      }
+
+      await this.process(bulkActionId, { continueInline: true });
+    }
+  }
+
+  public async process(
+    bulkActionId: string,
+    options?: {
+      continueInline?: boolean;
+    }
+  ) {
     // 1. Get the bulk action group
     const group = await this._prisma.bulkActionGroup.findFirst({
       where: { id: bulkActionId },
@@ -138,9 +267,21 @@ export class BulkActionService extends BaseService {
       return;
     }
 
+    if (group.status === BulkActionStatus.COMPLETED) {
+      return;
+    }
+
     // 2. Parse the params
     const rawParams = group.params && typeof group.params === "object" ? group.params : {};
     const finalizeRun = "finalizeRun" in rawParams && (rawParams as any).finalizeRun === true;
+    const replayRegion =
+      "replayRegion" in rawParams && typeof (rawParams as any).replayRegion === "string"
+        ? (rawParams as any).replayRegion
+        : undefined;
+    const triggerSource =
+      "triggerSource" in rawParams && typeof (rawParams as any).triggerSource === "string"
+        ? (rawParams as any).triggerSource
+        : "dashboard";
     const filters = parseRunListInputOptions({
       organizationId: group.project.organizationId,
       projectId: group.projectId,
@@ -148,13 +289,15 @@ export class BulkActionService extends BaseService {
       ...rawParams,
     });
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(group.project.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      group.project.organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,
     });
 
-    // In the future we can support multiple query names, when we make changes
     if (group.queryName !== "bulk_action_v1") {
       throw new Error(`Bulk action group has invalid query name: ${group.queryName}`);
     }
@@ -182,25 +325,37 @@ export class BulkActionService extends BaseService {
       case BulkActionType.CANCEL: {
         const cancelService = new CancelTaskRunService(this._prisma);
 
-        const runs = await this.runStore.findRuns(
-          {
-            where: {
-              id: {
-                in: runIdsToProcess,
+        const seamDeps = await this.#seamReadDeps();
+        const runs = await hydrateRunsAcrossSeam({
+          runIds: runIdsToProcess,
+          readNew: (client, ids) =>
+            client.taskRun.findMany({
+              where: { id: { in: ids } },
+              select: {
+                id: true,
+                engine: true,
+                friendlyId: true,
+                status: true,
+                createdAt: true,
+                completedAt: true,
+                taskEventStore: true,
               },
-            },
-            select: {
-              id: true,
-              engine: true,
-              friendlyId: true,
-              status: true,
-              createdAt: true,
-              completedAt: true,
-              taskEventStore: true,
-            },
-          },
-          this._replica
-        );
+            }),
+          readLegacyReplica: (replica, ids) =>
+            replica.taskRun.findMany({
+              where: { id: { in: ids } },
+              select: {
+                id: true,
+                engine: true,
+                friendlyId: true,
+                status: true,
+                createdAt: true,
+                completedAt: true,
+                taskEventStore: true,
+              },
+            }),
+          deps: seamDeps,
+        });
 
         await pMap(
           runs,
@@ -236,16 +391,14 @@ export class BulkActionService extends BaseService {
       case BulkActionType.REPLAY: {
         const replayService = new ReplayTaskRunService(this._prisma);
 
-        const runs = await this.runStore.findRuns(
-          {
-            where: {
-              id: {
-                in: runIdsToProcess,
-              },
-            },
-          },
-          this._replica
-        );
+        const seamDeps = await this.#seamReadDeps();
+        const runs = await hydrateRunsAcrossSeam({
+          runIds: runIdsToProcess,
+          readNew: (client, ids) => client.taskRun.findMany({ where: { id: { in: ids } } }),
+          readLegacyReplica: (replica, ids) =>
+            replica.taskRun.findMany({ where: { id: { in: ids } } }),
+          deps: seamDeps,
+        });
 
         await pMap(
           runs,
@@ -253,7 +406,8 @@ export class BulkActionService extends BaseService {
             const [error, result] = await tryCatch(
               replayService.call(run, {
                 bulkActionId: bulkActionId,
-                triggerSource: "dashboard",
+                triggerSource,
+                region: replayRegion,
               })
             );
             if (error) {
@@ -367,6 +521,10 @@ export class BulkActionService extends BaseService {
     }
 
     // 6. If there are more runs to process, queue the next batch
+    if (options?.continueInline) {
+      return;
+    }
+
     await commonWorker.enqueue({
       id: `processBulkAction-${bulkActionId}`,
       job: "processBulkAction",
@@ -385,15 +543,15 @@ export class BulkActionService extends BaseService {
     });
 
     if (!group) {
-      throw new Error(`Bulk action not found: ${friendlyId}`);
+      throw new ServiceValidationError(`Bulk action not found: ${friendlyId}`, 404);
     }
 
     if (group.status === BulkActionStatus.COMPLETED) {
-      throw new Error(`Bulk action group already completed: ${friendlyId}`);
+      throw new ServiceValidationError(`Bulk action group already completed: ${friendlyId}`, 409);
     }
 
     if (group.status === BulkActionStatus.ABORTED) {
-      throw new Error(`Bulk action group already aborted: ${friendlyId}`);
+      throw new ServiceValidationError(`Bulk action group already aborted: ${friendlyId}`, 409);
     }
 
     //ack the job (this doesn't guarantee it won't run again)
@@ -410,24 +568,26 @@ export class BulkActionService extends BaseService {
   }
 }
 
-async function getFilters(
-  payload: CreateBulkActionPayload,
-  request: Request
-): Promise<RunListInputFilters> {
-  if (payload.mode === "selected") {
-    return {
-      runId: payload.selectedRunIds,
-    };
+export function freezeRunListFilters(filters: RunListInputFilters): RunListInputFilters {
+  const {
+    cursor: _cursor,
+    direction: _direction,
+    ...frozenFilters
+  } = filters as RunListInputFilters & {
+    cursor?: string;
+    direction?: "forward" | "backward";
+  };
+
+  // Explicit run-id selections target specific, already-existing runs, so we
+  // don't apply a time bound (which could otherwise exclude a selected run).
+  if (frozenFilters.runId?.length) {
+    return frozenFilters;
   }
 
-  const filters = await getRunFiltersFromRequest(request);
-  filters.cursor = undefined;
-  filters.direction = undefined;
-
-  const { period, from, to } = timeFilters({
-    period: filters.period,
-    from: filters.from,
-    to: filters.to,
+  const { period } = timeFilters({
+    period: frozenFilters.period,
+    from: frozenFilters.from,
+    to: frozenFilters.to,
   });
 
   // We fix the time period to a from/to date
@@ -439,18 +599,18 @@ async function getFilters(
 
     const to = new Date();
     const from = new Date(to.getTime() - periodMs);
-    filters.from = from.getTime();
-    filters.to = to.getTime();
-    filters.period = undefined;
-    return filters;
+    frozenFilters.from = from.getTime();
+    frozenFilters.to = to.getTime();
+    frozenFilters.period = undefined;
+    return frozenFilters;
   }
 
   // If no to date is set, we lock it to now
-  if (!filters.to) {
-    filters.to = Date.now();
+  if (!frozenFilters.to) {
+    frozenFilters.to = Date.now();
   }
 
-  filters.period = undefined;
+  frozenFilters.period = undefined;
 
-  return filters;
+  return frozenFilters;
 }

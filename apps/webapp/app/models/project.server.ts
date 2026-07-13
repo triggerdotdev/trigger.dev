@@ -1,10 +1,9 @@
-import { nanoid, customAlphabet } from "nanoid";
+import type { Prisma, Project } from "@trigger.dev/database";
+import { customAlphabet, nanoid } from "nanoid";
 import slug from "slug";
 import { $replica, prisma } from "~/db.server";
-import type { Prisma, Project } from "@trigger.dev/database";
-import { type Organization, createEnvironment } from "./organization.server";
-import { env } from "~/env.server";
 import { projectCreated } from "~/services/projectCreated.server";
+import { type Organization, createEnvironment } from "./organization.server";
 export type { Project } from "@trigger.dev/database";
 
 const externalRefGenerator = customAlphabet("abcdefghijklmnopqrstuvwxyz", 20);
@@ -33,7 +32,7 @@ export async function createProject(
     select: {
       id: true,
       slug: true,
-      v3Enabled: true,
+      isActivated: true,
       maximumConcurrencyLimit: true,
       maximumProjectCount: true,
     },
@@ -50,7 +49,7 @@ export async function createProject(
   }
 
   if (version === "v3") {
-    if (!organization.v3Enabled) {
+    if (!organization.isActivated) {
       throw new Error(`Organization can't create v3 projects.`);
     }
   }
@@ -102,6 +101,10 @@ export async function createProject(
       },
       externalRef: `proj_${externalRefGenerator()}`,
       version: version === "v3" ? "V3" : "V2",
+      // New projects run on the v2 engine. The Prisma column still defaults to V1
+      // for historical rows; the V1->V2 upgrade guards on worker-register / deploy
+      // stay in place to migrate existing legacy projects.
+      engine: "V2",
       onboardingData,
     },
     include: {
@@ -126,7 +129,9 @@ export async function createProject(
       organization,
       project,
       type: "DEVELOPMENT",
-      isBranchableEnvironment: false,
+      // We set this true but no backfill (yet!?) so never used
+      // for dev environments
+      isBranchableEnvironment: true,
       member,
     });
   }

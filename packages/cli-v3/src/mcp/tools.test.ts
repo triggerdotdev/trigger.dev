@@ -56,10 +56,7 @@ async function main() {
     stderr: "pipe",
   });
 
-  const client = new Client(
-    { name: "mcp-test-cli", version: "1.0.0" },
-    { capabilities: {} }
-  );
+  const client = new Client({ name: "mcp-test-cli", version: "1.0.0" }, { capabilities: {} });
 
   await client.connect(transport);
 

@@ -7,6 +7,7 @@ export type EnvironmentVariablesEnvironment = {
   type: RuntimeEnvironmentType;
   isBranchableEnvironment: boolean;
   branchName: string | null;
+  parentEnvironmentId: string | null;
 };
 
 export type EnvironmentVariablesEnvironmentsResult = {
@@ -47,6 +48,7 @@ export async function loadEnvironmentVariablesEnvironments(
       type: true,
       isBranchableEnvironment: true,
       branchName: true,
+      parentEnvironmentId: true,
       orgMember: {
         select: {
           userId: true,
@@ -69,6 +71,7 @@ export async function loadEnvironmentVariablesEnvironments(
       type: environment.type,
       isBranchableEnvironment: environment.isBranchableEnvironment,
       branchName: environment.branchName,
+      parentEnvironmentId: environment.parentEnvironmentId,
     })),
     hasStaging: environments.some((environment) => environment.type === "STAGING"),
   };

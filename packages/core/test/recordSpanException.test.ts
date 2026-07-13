@@ -6,7 +6,10 @@ function createMockSpan() {
   return {
     recordException: vi.fn(),
     setStatus: vi.fn(),
-  } as unknown as Span & { recordException: ReturnType<typeof vi.fn>; setStatus: ReturnType<typeof vi.fn> };
+  } as unknown as Span & {
+    recordException: ReturnType<typeof vi.fn>;
+    setStatus: ReturnType<typeof vi.fn>;
+  };
 }
 
 describe("recordSpanException", () => {

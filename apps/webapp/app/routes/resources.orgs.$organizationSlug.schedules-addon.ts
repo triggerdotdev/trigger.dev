@@ -1,4 +1,4 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
@@ -14,10 +14,7 @@ export const PurchaseSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("quota-increase"),
-    amount: z.coerce
-      .number()
-      .int("Must be a whole number")
-      .min(1, "Amount must be greater than 0"),
+    amount: z.coerce.number().int("Must be a whole number").min(1, "Amount must be greater than 0"),
   }),
 ]);
 
@@ -44,17 +41,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
   if (purchaseBlockReason === "managed_billing") {
-    return json(
-      { ok: false, error: "Contact us to request more schedules." } as const,
-      { status: 403 }
-    );
+    return json({ ok: false, error: "Contact us to request more schedules." } as const, {
+      status: 403,
+    });
   }
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: PurchaseSchema });
+  const submission = parseWithZod(formData, { schema: PurchaseSchema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const service = new SetSchedulesAddOnService();
@@ -68,13 +64,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
   );
 
   if (error) {
-    submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
-    return json(submission);
+    return json(
+      submission.reply({
+        fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
+      })
+    );
   }
 
   if (!result.success) {
-    submission.error.amount = [result.error];
-    return json(submission);
+    return json(submission.reply({ fieldErrors: { amount: [result.error] } }));
   }
 
   return json({ ok: true } as const);

@@ -162,13 +162,7 @@ function ChartRootInner({
   const enableZoom = zoom !== null;
 
   return (
-    <div
-      className={cn(
-        "relative flex w-full flex-col",
-        fillContainer && "h-full",
-        className
-      )}
-    >
+    <div className={cn("relative flex w-full flex-col", fillContainer && "h-full", className)}>
       <div
         className={cn(
           fillContainer ? "min-h-0 flex-1" : "h-full w-full",
@@ -180,9 +174,9 @@ function ChartRootInner({
           config={config}
           className={cn(
             "h-full w-full",
-            fillContainer && "!aspect-auto",
+            fillContainer && "aspect-auto!",
             enableZoom &&
-            "[&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
+              "[&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
           )}
           style={fillContainer ? undefined : minHeight ? { minHeight } : undefined}
         >
@@ -212,7 +206,7 @@ function ChartRootInner({
  * Useful for rendering "no data" states.
  */
 export function useHasNoData(): boolean {
-  const { data, dataKey, dataKeys } = useChartContext();
+  const { data, dataKey: _dataKey, dataKeys } = useChartContext();
 
   return useMemo(() => {
     if (data.length === 0) return true;

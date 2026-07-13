@@ -1,8 +1,4 @@
-import {
-  type ActionFunctionArgs,
-  type LoaderFunctionArgs,
-  json,
-} from "@remix-run/server-runtime";
+import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { type Project, WorkerInstanceGroupType, WorkloadType } from "@trigger.dev/database";
 import { z } from "zod";
@@ -174,9 +170,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 }
 
-async function createWorkerGroup(
-  options: Parameters<WorkerGroupService["createWorkerGroup"]>[0]
-) {
+async function createWorkerGroup(options: Parameters<WorkerGroupService["createWorkerGroup"]>[0]) {
   const service = new WorkerGroupService();
   return await service.createWorkerGroup(options);
 }

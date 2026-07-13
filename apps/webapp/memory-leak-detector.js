@@ -9,7 +9,7 @@
  * Usage: node memory-leak-detector.js [options]
  */
 
-const { spawn, exec } = require("child_process");
+const { spawn, exec: _exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");

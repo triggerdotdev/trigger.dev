@@ -7,15 +7,19 @@ import {
   type WebAPIRequestError,
 } from "@slack/web-api";
 import {
+  type RunStatus,
   createJsonErrorObject,
   type DeploymentFailedWebhook,
   type DeploymentSuccessWebhook,
   isOOMRunError,
   type RunFailedWebhook,
-  RunStatus,
   TaskRunError,
 } from "@trigger.dev/core/v3";
-import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";
+import {
+  type ProjectAlertChannelType,
+  type ProjectAlertType,
+  type RuntimeEnvironmentType,
+} from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
 import { environmentTitle } from "~/components/environments/EnvironmentLabel";
@@ -33,10 +37,7 @@ import {
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
-import {
-  processGitMetadata,
-  type GitMetaLinks,
-} from "~/presenters/v3/BranchesPresenter.server";
+import { processGitMetadata, type GitMetaLinks } from "~/presenters/v3/BranchesPresenter.server";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
 import { sendAlertEmail } from "~/services/email.server";
 import { VercelProjectIntegrationDataSchema } from "~/v3/vercel/vercelProjectIntegrationSchema";
@@ -48,7 +49,46 @@ import { alertsWorker } from "~/v3/alertsWorker.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { fromPromise } from "neverthrow";
 import { BaseService } from "../baseService.server";
+import { safeWebhookFetch } from "./safeWebhookFetch.server";
 import { CURRENT_API_VERSION } from "~/api/versions";
+import type { RunStore } from "@internal/run-store";
+import type { ControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { controlPlaneResolver as defaultControlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+
+// Run-ops scalars read off `alert.taskRun` downstream. The control-plane fields (env type/branch,
+// lockedBy file/export, lockedToVersion version) are resolved via the resolver and stitched on
+// below, so the run-ops findRun selects scalars only.
+const taskRunAlertSelect = {
+  id: true,
+  friendlyId: true,
+  taskIdentifier: true,
+  taskVersion: true,
+  sdkVersion: true,
+  cliVersion: true,
+  status: true,
+  number: true,
+  isTest: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true,
+  idempotencyKey: true,
+  runTags: true,
+  machinePreset: true,
+  error: true,
+  runtimeEnvironmentId: true,
+  lockedById: true,
+  lockedToVersionId: true,
+} satisfies Prisma.TaskRunSelect;
+
+type ResolvedAlertTaskRun = Prisma.Result<
+  typeof prisma.taskRun,
+  { select: typeof taskRunAlertSelect },
+  "findUniqueOrThrow"
+> & {
+  runtimeEnvironment: { type: RuntimeEnvironmentType; branchName: string | null };
+  lockedBy: { filePath: string; exportName: string | null } | null;
+  lockedToVersion: { version: string } | null;
+};
 
 type FoundAlert = Prisma.Result<
   typeof prisma.projectAlert,
@@ -61,18 +101,6 @@ type FoundAlert = Prisma.Result<
         };
       };
       environment: true;
-      taskRun: {
-        include: {
-          lockedBy: true;
-          lockedToVersion: true;
-          runtimeEnvironment: {
-            select: {
-              type: true;
-              branchName: true;
-            };
-          };
-        };
-      };
       workerDeployment: {
         include: {
           worker: {
@@ -91,7 +119,9 @@ type FoundAlert = Prisma.Result<
     };
   },
   "findUniqueOrThrow"
->;
+> & {
+  taskRun: ResolvedAlertTaskRun | null;
+};
 
 class SkipRetryError extends Error {}
 
@@ -101,6 +131,20 @@ type DeploymentIntegrationMetadata = {
 };
 
 export class DeliverAlertService extends BaseService {
+  #controlPlaneResolver: ControlPlaneResolver;
+
+  constructor(
+    opts: {
+      prisma?: PrismaClientOrTransaction;
+      replica?: PrismaClientOrTransaction;
+      runStore?: RunStore;
+      controlPlaneResolver?: ControlPlaneResolver;
+    } = {}
+  ) {
+    super(opts.prisma, opts.replica, opts.runStore);
+    this.#controlPlaneResolver = opts.controlPlaneResolver ?? defaultControlPlaneResolver;
+  }
+
   public async call(alertId: string) {
     const alertWithoutRun = await this._prisma.projectAlert.findFirst({
       where: { id: alertId },
@@ -136,22 +180,42 @@ export class DeliverAlertService extends BaseService {
 
     let taskRun: FoundAlert["taskRun"] = null;
     if (alertWithoutRun.taskRunId) {
-      taskRun = await this.runStore.findRun(
+      const resolvedTaskRun = await this.runStore.findRun(
         { id: alertWithoutRun.taskRunId },
-        {
-          include: {
-            lockedBy: true,
-            lockedToVersion: true,
-            runtimeEnvironment: {
-              select: {
-                type: true,
-                branchName: true,
-              },
-            },
-          },
-        },
+        { select: taskRunAlertSelect },
         this._prisma
       );
+
+      if (resolvedTaskRun) {
+        const env = await this.#controlPlaneResolver.resolveAuthenticatedEnv(
+          resolvedTaskRun.runtimeEnvironmentId
+        );
+
+        if (!env) {
+          throw new Error(
+            `Could not resolve environment ${resolvedTaskRun.runtimeEnvironmentId} for alert ${alertId}`
+          );
+        }
+
+        const lockedWorker = await this.#controlPlaneResolver.resolveRunLockedWorker({
+          lockedById: resolvedTaskRun.lockedById,
+          lockedToVersionId: resolvedTaskRun.lockedToVersionId,
+        });
+
+        taskRun = {
+          ...resolvedTaskRun,
+          runtimeEnvironment: { type: env.type, branchName: env.branchName },
+          lockedBy: lockedWorker?.lockedBy
+            ? {
+                filePath: lockedWorker.lockedBy.filePath,
+                exportName: lockedWorker.lockedBy.exportName,
+              }
+            : null,
+          lockedToVersion: lockedWorker?.lockedToVersion
+            ? { version: lockedWorker.lockedToVersion.version }
+            : null,
+        };
+      }
     }
 
     const alert: FoundAlert = { ...alertWithoutRun, taskRun };
@@ -164,9 +228,7 @@ export class DeliverAlertService extends BaseService {
 
     const deploymentMeta =
       alert.type === "DEPLOYMENT_SUCCESS" || alert.type === "DEPLOYMENT_FAILURE"
-        ? (
-            await fromPromise(this.#resolveDeploymentMetadata(alert), (e) => e)
-          ).unwrapOr(emptyMeta)
+        ? (await fromPromise(this.#resolveDeploymentMetadata(alert), (e) => e)).unwrapOr(emptyMeta)
         : emptyMeta;
 
     try {
@@ -691,7 +753,6 @@ export class DeliverAlertService extends BaseService {
       return;
     }
 
-    // Get the org integration
     const integration = slackProperties.data.integrationId
       ? await this._prisma.organizationIntegration.findFirst({
           where: {
@@ -774,7 +835,14 @@ export class DeliverAlertService extends BaseService {
                   text: this.#wrapInCodeBlock(error.stackTrace ?? error.message),
                 },
               },
-              this.#buildRunQuoteBlock(taskIdentifier, version, environment, runId, alert.project.name, timestamp),
+              this.#buildRunQuoteBlock(
+                taskIdentifier,
+                version,
+                environment,
+                runId,
+                alert.project.name,
+                timestamp
+              ),
               {
                 type: "actions",
                 elements: [
@@ -791,7 +859,6 @@ export class DeliverAlertService extends BaseService {
             ],
           });
 
-          // Upsert the storage
           if (message.ts) {
             if (storage) {
               await this._prisma.projectAlertStorage.update({
@@ -862,7 +929,13 @@ export class DeliverAlertService extends BaseService {
                   text: this.#wrapInCodeBlock(preparedError.stack ?? preparedError.message),
                 },
               },
-              this.#buildDeploymentQuoteBlock(alert, deploymentMeta, version, environment, timestamp),
+              this.#buildDeploymentQuoteBlock(
+                alert,
+                deploymentMeta,
+                version,
+                environment,
+                timestamp
+              ),
               {
                 type: "actions",
                 elements: [
@@ -903,7 +976,13 @@ export class DeliverAlertService extends BaseService {
                   text: `:rocket: Deployed *${version}.${environment}* successfully`,
                 },
               },
-              this.#buildDeploymentQuoteBlock(alert, deploymentMeta, version, environment, timestamp),
+              this.#buildDeploymentQuoteBlock(
+                alert,
+                deploymentMeta,
+                version,
+                environment,
+                timestamp
+              ),
               {
                 type: "actions",
                 elements: [
@@ -955,8 +1034,8 @@ export class DeliverAlertService extends BaseService {
     const signature = await subtle.sign("HMAC", key, hashPayload);
     const signatureHex = Buffer.from(signature).toString("hex");
 
-    // Send the webhook to the URL specified in webhook.url
-    const response = await fetch(webhook.url, {
+    // Deliver via the SSRF-safe wrapper (see safeWebhookFetch.server.ts).
+    const response = await safeWebhookFetch(webhook.url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -1057,9 +1136,7 @@ export class DeliverAlertService extends BaseService {
     }
   }
 
-  async #resolveDeploymentMetadata(
-    alert: FoundAlert
-  ): Promise<DeploymentIntegrationMetadata> {
+  async #resolveDeploymentMetadata(alert: FoundAlert): Promise<DeploymentIntegrationMetadata> {
     const deployment = alert.workerDeployment;
     if (!deployment) {
       return { git: null, vercelDeploymentUrl: undefined };
@@ -1078,20 +1155,19 @@ export class DeliverAlertService extends BaseService {
     projectId: string,
     deploymentId: string
   ): Promise<string | undefined> {
-    const vercelProjectIntegration =
-      await this._prisma.organizationProjectIntegration.findFirst({
-        where: {
-          projectId,
+    const vercelProjectIntegration = await this._prisma.organizationProjectIntegration.findFirst({
+      where: {
+        projectId,
+        deletedAt: null,
+        organizationIntegration: {
+          service: "VERCEL",
           deletedAt: null,
-          organizationIntegration: {
-            service: "VERCEL",
-            deletedAt: null,
-          },
         },
-        select: {
-          integrationData: true,
-        },
-      });
+      },
+      select: {
+        integrationData: true,
+      },
+    });
 
     if (!vercelProjectIntegration) {
       return undefined;
@@ -1105,19 +1181,18 @@ export class DeliverAlertService extends BaseService {
       return undefined;
     }
 
-    const integrationDeployment =
-      await this._prisma.integrationDeployment.findFirst({
-        where: {
-          deploymentId,
-          integrationName: "vercel",
-        },
-        select: {
-          integrationDeploymentId: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
+    const integrationDeployment = await this._prisma.integrationDeployment.findFirst({
+      where: {
+        deploymentId,
+        integrationName: "vercel",
+      },
+      select: {
+        integrationDeploymentId: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
     if (!integrationDeployment) {
       return undefined;

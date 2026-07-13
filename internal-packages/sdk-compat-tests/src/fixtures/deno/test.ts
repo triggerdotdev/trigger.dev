@@ -6,7 +6,18 @@
  */
 
 // Use bare specifier - resolved via node_modules when nodeModulesDir is enabled
-import { task, logger, schedules, runs, configure, queue, retry, wait, metadata, tags } from "@trigger.dev/sdk";
+import {
+  task,
+  logger,
+  schedules,
+  runs,
+  configure,
+  queue,
+  retry,
+  wait,
+  metadata,
+  tags,
+} from "@trigger.dev/sdk";
 
 // Validate exports exist
 const checks: [string, boolean][] = [

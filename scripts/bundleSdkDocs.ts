@@ -114,7 +114,9 @@ async function bundleSdkDocs() {
 
   if (copied === 0) {
     // Every nav page was missing on disk; refuse to ship the SDK with an empty docs bundle.
-    throw new Error(`[bundleSdkDocs] 0 docs copied from the "${DROPDOWN}" nav; refusing empty docs bundle`);
+    throw new Error(
+      `[bundleSdkDocs] 0 docs copied from the "${DROPDOWN}" nav; refusing empty docs bundle`
+    );
   }
 
   console.log(

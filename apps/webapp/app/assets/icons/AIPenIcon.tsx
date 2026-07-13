@@ -19,13 +19,7 @@ export function AIPenIcon({ className }: { className?: string }) {
         stroke="currentColor"
         strokeWidth="2"
       />
-      <line
-        x1="17.6464"
-        y1="10.3536"
-        x2="13.6464"
-        y2="6.35355"
-        stroke="currentColor"
-      />
+      <line x1="17.6464" y1="10.3536" x2="13.6464" y2="6.35355" stroke="currentColor" />
     </svg>
   );
 }

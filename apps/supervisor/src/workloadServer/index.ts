@@ -1,8 +1,8 @@
-import { type Namespace, Server, type Socket } from "socket.io";
+import { SnapshotCallbackPayloadSchema } from "@internal/compute";
+import { type CheckpointClient, HttpServer } from "@trigger.dev/core/v3/serverOnly";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import EventEmitter from "node:events";
-import { z } from "zod";
 import {
+  type WorkloadRunSnapshotsSinceResponseBody,
   type SupervisorHttpClient,
   WORKLOAD_HEADERS,
   type WorkloadClientSocketData,
@@ -16,22 +16,20 @@ import {
   type WorkloadRunAttemptCompleteResponseBody,
   WorkloadRunAttemptStartRequestBody,
   type WorkloadRunAttemptStartResponseBody,
-  WorkloadRunSnapshotsSinceResponseBody,
   type WorkloadServerToClientEvents,
   type WorkloadSuspendRunResponseBody,
 } from "@trigger.dev/core/v3/workers";
-import { HttpServer, type CheckpointClient } from "@trigger.dev/core/v3/serverOnly";
-import { type IncomingMessage } from "node:http";
-import { register } from "../metrics.js";
+import EventEmitter from "node:events";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { type Namespace, Server, type Socket } from "socket.io";
+import { z } from "zod";
 import { env } from "../env.js";
-import { SnapshotCallbackPayloadSchema } from "@internal/compute";
+import { register } from "../metrics.js";
 import {
   ComputeSnapshotService,
   type RunTraceContext,
 } from "../services/computeSnapshotService.js";
-import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 import type { OtlpTraceService } from "../services/otlpTraceService.js";
-import type { ServerResponse } from "node:http";
 import {
   emitOneShot,
   runWideEvent,
@@ -39,6 +37,7 @@ import {
   type State,
   type WideEventOptions,
 } from "../wideEvents/index.js";
+import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -317,9 +316,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   return;
                 }
 
-                reply.json(
-                  completeResponse.data satisfies WorkloadRunAttemptCompleteResponseBody
-                );
+                reply.json(completeResponse.data satisfies WorkloadRunAttemptCompleteResponseBody);
                 return;
               }
             ),
@@ -566,7 +563,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               }
 
               reply.json(
-                dequeueResponse.data.map(legacifyCheckpointType) satisfies WorkloadDequeueFromVersionResponseBody
+                dequeueResponse.data.map(
+                  legacifyCheckpointType
+                ) satisfies WorkloadDequeueFromVersionResponseBody
               );
             }
           ),
@@ -613,16 +612,22 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     httpServer.route("/api/v1/compute/snapshot-complete", "POST", {
       bodySchema: SnapshotCallbackPayloadSchema,
       handler: async (ctx) =>
-        this.wideRoute(ctx, "snapshot.callback", "/api/v1/compute/snapshot-complete", "POST", async () => {
-          const { reply, body } = ctx;
-          if (!this.snapshotService) {
-            reply.empty(404);
-            return;
-          }
+        this.wideRoute(
+          ctx,
+          "snapshot.callback",
+          "/api/v1/compute/snapshot-complete",
+          "POST",
+          async () => {
+            const { reply, body } = ctx;
+            if (!this.snapshotService) {
+              reply.empty(404);
+              return;
+            }
 
-          const result = await this.snapshotService.handleCallback(body);
-          reply.empty(result.status);
-        }),
+            const result = await this.snapshotService.handleCallback(body);
+            reply.empty(result.status);
+          }
+        ),
     });
 
     return httpServer;

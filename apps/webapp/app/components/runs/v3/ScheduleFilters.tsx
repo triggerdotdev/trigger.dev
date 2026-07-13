@@ -113,7 +113,7 @@ function PermanentTypeFilter() {
                 variant="secondary/small"
               />
             </Ariakit.TooltipAnchor>
-            <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+            <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
               <div className="flex items-center gap-2">
                 <span>Filter by type</span>
                 <ShortcutKey className="size-4 flex-none" shortcut={typeShortcut} variant="small" />
@@ -203,7 +203,7 @@ function PermanentTaskFilter({ possibleTasks }: { possibleTasks: string[] }) {
                 variant="secondary/small"
               />
             </Ariakit.TooltipAnchor>
-            <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+            <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
               <div className="flex items-center gap-2">
                 <span>Filter by task</span>
                 <ShortcutKey className="size-4 flex-none" shortcut={taskShortcut} variant="small" />

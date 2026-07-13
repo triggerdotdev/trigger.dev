@@ -26,9 +26,7 @@ export function searchParamsEqualIgnoringBulkInspectorUiState(
   current: URLSearchParams,
   next: URLSearchParams
 ) {
-  return (
-    canonicalRunsListDataSearchParams(current) === canonicalRunsListDataSearchParams(next)
-  );
+  return canonicalRunsListDataSearchParams(current) === canonicalRunsListDataSearchParams(next);
 }
 
 /** True when navigation should show the runs table loading state (excludes bulk-inspector UI toggles). */

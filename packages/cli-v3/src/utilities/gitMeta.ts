@@ -3,7 +3,7 @@ import { join } from "path";
 import ini from "ini";
 import git from "git-last-commit";
 import { x } from "tinyexec";
-import { GitMeta } from "@trigger.dev/core/v3";
+import type { GitMeta } from "@trigger.dev/core/v3";
 
 export async function createGitMeta(directory: string): Promise<GitMeta | undefined> {
   if (isGitHubApp()) {
@@ -70,6 +70,7 @@ async function isDirty(directory: string): Promise<boolean> {
     // Example output (when dirty):
     //    M ../fs-detectors/src/index.ts
     return result.stdout.trim().length > 0;
+    // eslint-disable-next-line no-useless-catch
   } catch (error) {
     throw error;
   }
@@ -78,7 +79,7 @@ async function isDirty(directory: string): Promise<boolean> {
 async function parseGitConfig(configPath: string) {
   try {
     return ini.parse(await fs.readFile(configPath, "utf8"));
-  } catch (err: unknown) {
+  } catch (_err: unknown) {
     return;
   }
 }
@@ -241,7 +242,7 @@ async function getCommitMessage(
 
     if (!message && prNumber) {
       // If that didn't work, try fetching the PR branch
-      const branchResult = await x(
+      const _branchResult = await x(
         "git",
         ["fetch", "origin", `pull/${prNumber}/head:pr-${prNumber}`],
         {

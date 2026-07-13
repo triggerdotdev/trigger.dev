@@ -52,9 +52,7 @@ export function ScheduleLimitActions({
         maxQuota={maxScheduleQuota}
         planScheduleLimit={planScheduleLimit}
         triggerButton={
-          variant === "dialog" ? (
-            <Button variant="primary/small">Purchase more…</Button>
-          ) : undefined
+          variant === "dialog" ? <Button variant="primary/small">Purchase more…</Button> : undefined
         }
       />
     );

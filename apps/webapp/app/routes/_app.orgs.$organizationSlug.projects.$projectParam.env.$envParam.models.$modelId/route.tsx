@@ -4,7 +4,9 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
@@ -13,38 +15,24 @@ import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import * as Property from "~/components/primitives/PropertyTable";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { InlineCode } from "~/components/code/InlineCode";
-import { MetricWidget } from "~/routes/resources.metric";
-import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
+import { useEnvironment } from "~/hooks/useEnvironment";
+import { useOrganization } from "~/hooks/useOrganizations";
+import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ModelRegistryPresenter } from "~/presenters/v3/ModelRegistryPresenter.server";
+import { MetricWidget } from "~/routes/resources.metric";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
-import { useEnvironment } from "~/hooks/useEnvironment";
 import {
-  EnvironmentParamSchema,
-  v3ModelComparePath,
-  v3ModelsPath,
-} from "~/utils/pathBuilder";
-import {
-  formatModelPrice,
-  formatTokenCount,
-  formatModelCost,
   formatFeature,
+  formatModelCost,
+  formatModelPrice,
   formatProviderName,
+  formatTokenCount,
 } from "~/utils/modelFormatters";
+import { EnvironmentParamSchema, v3ModelComparePath, v3ModelsPath } from "~/utils/pathBuilder";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   modelId: z.string(),
@@ -68,7 +56,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
   const presenter = new ModelRegistryPresenter(clickhouse);
   const model = await presenter.getModelDetail(modelId);
 
@@ -101,12 +92,36 @@ function escapeTSQL(value: string): string {
   return value.replace(/'/g, "''");
 }
 
-function bignumberConfig(column: string, opts?: { aggregation?: "sum" | "avg" | "first"; suffix?: string; abbreviate?: boolean }): QueryWidgetConfig {
-  return { type: "bignumber", column, aggregation: opts?.aggregation ?? "sum", abbreviate: opts?.abbreviate ?? false, suffix: opts?.suffix };
+function bignumberConfig(
+  column: string,
+  opts?: { aggregation?: "sum" | "avg" | "first"; suffix?: string; abbreviate?: boolean }
+): QueryWidgetConfig {
+  return {
+    type: "bignumber",
+    column,
+    aggregation: opts?.aggregation ?? "sum",
+    abbreviate: opts?.abbreviate ?? false,
+    suffix: opts?.suffix,
+  };
 }
 
-function chartConfig(opts: { chartType: "bar" | "line"; xAxisColumn: string; yAxisColumns: string[]; aggregation?: "sum" | "avg" }): QueryWidgetConfig {
-  return { type: "chart", chartType: opts.chartType, xAxisColumn: opts.xAxisColumn, yAxisColumns: opts.yAxisColumns, groupByColumn: null, stacked: false, sortByColumn: null, sortDirection: "asc", aggregation: opts.aggregation ?? "sum" };
+function chartConfig(opts: {
+  chartType: "bar" | "line";
+  xAxisColumn: string;
+  yAxisColumns: string[];
+  aggregation?: "sum" | "avg";
+}): QueryWidgetConfig {
+  return {
+    type: "chart",
+    chartType: opts.chartType,
+    xAxisColumn: opts.xAxisColumn,
+    yAxisColumns: opts.yAxisColumns,
+    groupByColumn: null,
+    stacked: false,
+    sortByColumn: null,
+    sortDirection: "asc",
+    aggregation: opts.aggregation ?? "sum",
+  };
 }
 
 type Tab = "overview" | "global" | "usage";
@@ -251,8 +266,8 @@ function CostEstimator({
           </div>
           <div className="mt-1 space-y-0.5 text-xs tabular-nums text-text-dimmed">
             <div>
-              Input: {formatModelCost(inputCost)} ({formatTokenCount(inputTokens * numCalls)}{" "}
-              tokens x {formatModelPrice(inputPrice)}/1M)
+              Input: {formatModelCost(inputCost)} ({formatTokenCount(inputTokens * numCalls)} tokens
+              x {formatModelPrice(inputPrice)}/1M)
             </div>
             <div>
               Output: {formatModelCost(outputCost)} ({formatTokenCount(outputTokens * numCalls)}{" "}
@@ -300,17 +315,13 @@ function OverviewTab({
             {model.contextWindow && (
               <Property.Item>
                 <Property.Label>Context Window</Property.Label>
-                <Property.Value>
-                  {formatTokenCount(model.contextWindow)} tokens
-                </Property.Value>
+                <Property.Value>{formatTokenCount(model.contextWindow)} tokens</Property.Value>
               </Property.Item>
             )}
             {model.maxOutputTokens && (
               <Property.Item>
                 <Property.Label>Max Output</Property.Label>
-                <Property.Value>
-                  {formatTokenCount(model.maxOutputTokens)} tokens
-                </Property.Value>
+                <Property.Value>{formatTokenCount(model.maxOutputTokens)} tokens</Property.Value>
               </Property.Item>
             )}
             {model.features.length > 0 && (
@@ -342,25 +353,18 @@ function OverviewTab({
           <Property.Table>
             <Property.Item>
               <Property.Label>Input</Property.Label>
-              <Property.Value>
-                {formatModelPrice(model.inputPrice)} / 1M tokens
-              </Property.Value>
+              <Property.Value>{formatModelPrice(model.inputPrice)} / 1M tokens</Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Output</Property.Label>
-              <Property.Value>
-                {formatModelPrice(model.outputPrice)} / 1M tokens
-              </Property.Value>
+              <Property.Value>{formatModelPrice(model.outputPrice)} / 1M tokens</Property.Value>
             </Property.Item>
           </Property.Table>
           {model.pricingTiers.length > 1 && (
             <div className="mt-4">
               <p className="mb-2 text-xs font-medium text-text-dimmed">All pricing tiers</p>
               {model.pricingTiers.map((tier) => (
-                <div
-                  key={tier.name}
-                  className="mb-2 rounded border border-grid-dimmed p-2 text-xs"
-                >
+                <div key={tier.name} className="mb-2 rounded border border-grid-dimmed p-2 text-xs">
                   <span className="font-medium text-text-bright">{tier.name}</span>
                   {tier.isDefault && (
                     <Badge variant="outline-rounded" className="ml-2">
@@ -462,7 +466,12 @@ function GlobalMetricsTab({
           widgetKey={`${modelName}-ttfc-time`}
           title="TTFC over time"
           query={`SELECT timeBucket(), round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50, round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
-          config={chartConfig({ chartType: "line", xAxisColumn: "timebucket", yAxisColumns: ["ttfc_p50", "ttfc_p90"], aggregation: "avg" })}
+          config={chartConfig({
+            chartType: "line",
+            xAxisColumn: "timebucket",
+            yAxisColumns: ["ttfc_p50", "ttfc_p90"],
+            aggregation: "avg",
+          })}
           {...widgetProps}
         />
       </div>
@@ -546,7 +555,11 @@ function YourUsageTab({
             widgetKey={`${modelName}-user-cost-time`}
             title="Cost over time"
             query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["cost"] })}
+            config={chartConfig({
+              chartType: "bar",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["cost"],
+            })}
             {...widgetProps}
           />
         </div>
@@ -555,7 +568,11 @@ function YourUsageTab({
             widgetKey={`${modelName}-user-tokens-time`}
             title="Tokens over time"
             query={`SELECT timeBucket(), sum(input_tokens) AS input_tokens, sum(output_tokens) AS output_tokens FROM llm_metrics WHERE response_model = '${escapeTSQL(modelName)}' GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["input_tokens", "output_tokens"] })}
+            config={chartConfig({
+              chartType: "bar",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["input_tokens", "output_tokens"],
+            })}
             {...widgetProps}
           />
         </div>

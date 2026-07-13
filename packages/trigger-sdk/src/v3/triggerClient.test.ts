@@ -15,7 +15,7 @@ function installFetchSpy() {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = (async (input: any, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input?.url ?? String(input);
+    const url = typeof input === "string" ? input : (input?.url ?? String(input));
     const headers = new Headers(init?.headers);
     captured.push({
       url,

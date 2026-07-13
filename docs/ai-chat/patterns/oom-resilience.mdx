@@ -4,10 +4,6 @@ sidebarTitle: "OOM resilience"
 description: "Recover from out-of-memory errors mid-turn by automatically retrying the failed turn on a larger machine — without losing the in-flight user message or re-processing completed turns."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 When a `chat.agent` turn runs out of memory, the worker process dies and everything in it is gone: the in-flight LLM call, the accumulator, any tool execution mid-flight. By default, Trigger.dev surfaces the OOM as a run failure.
 
 Setting `oomMachine` opts the agent into automatic recovery: the failed turn re-runs on a larger machine, picks up the user message that triggered the OOM (without re-processing earlier completed turns), and produces a normal response.

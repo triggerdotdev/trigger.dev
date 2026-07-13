@@ -16,7 +16,7 @@ import type {
   DateTimeType,
 } from "./ast";
 import type { TSQLContext } from "./context";
-import type { BooleanDatabaseField, DateTimeDatabaseField, Table } from "./models";
+import type { BooleanDatabaseField, DateTimeDatabaseField } from "./models";
 
 // Helper function to escape TSQL identifiers
 function escapeTSQLIdentifier(identifier: string | number): string {

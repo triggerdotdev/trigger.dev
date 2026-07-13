@@ -1,12 +1,6 @@
 import { z } from "zod";
 import { ConfigManifest } from "./config.js";
-import {
-  PromptManifest,
-  QueueManifest,
-  SkillManifest,
-  TaskFile,
-  TaskManifest,
-} from "./schemas.js";
+import { PromptManifest, QueueManifest, SkillManifest, TaskFile, TaskManifest } from "./schemas.js";
 
 export const BuildExternal = z.object({
   name: z.string(),
@@ -59,6 +53,8 @@ export const BuildManifest = z.object({
       .object({
         env: z.record(z.string()).optional(),
         parentEnv: z.record(z.string()).optional(),
+        secretEnv: z.record(z.string()).optional(),
+        secretParentEnv: z.record(z.string()).optional(),
       })
       .optional(),
   }),

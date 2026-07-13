@@ -255,9 +255,7 @@ export interface ResourceLogs {
    * The resource for the logs in this message.
    * If this field is not set then resource info is unknown.
    */
-  resource:
-    | Resource
-    | undefined;
+  resource: Resource | undefined;
   /** A list of ScopeLogs that originate from a resource. */
   scopeLogs: ScopeLogs[];
   /**
@@ -277,9 +275,7 @@ export interface ScopeLogs {
    * Semantically when InstrumentationScope isn't set, it is equivalent with
    * an empty instrumentation scope name (unknown).
    */
-  scope:
-    | InstrumentationScope
-    | undefined;
+  scope: InstrumentationScope | undefined;
   /** A list of log records. */
   logRecords: LogRecord[];
   /**
@@ -335,9 +331,7 @@ export interface LogRecord {
    * string message (including multi-line) describing the event in a free form or it can
    * be a structured data composed of arrays and maps of other values. [Optional].
    */
-  body:
-    | AnyValue
-    | undefined;
+  body: AnyValue | undefined;
   /**
    * Additional attributes that describe the specific event occurrence. [Optional].
    * Attribute keys MUST be unique (it is not allowed to have more than one
@@ -529,9 +523,10 @@ export const ResourceLogs = {
   },
   fromPartial<I extends Exact<DeepPartial<ResourceLogs>, I>>(object: I): ResourceLogs {
     const message = createBaseResourceLogs();
-    message.resource = (object.resource !== undefined && object.resource !== null)
-      ? Resource.fromPartial(object.resource)
-      : undefined;
+    message.resource =
+      object.resource !== undefined && object.resource !== null
+        ? Resource.fromPartial(object.resource)
+        : undefined;
     message.scopeLogs = object.scopeLogs?.map((e) => ScopeLogs.fromPartial(e)) || [];
     message.schemaUrl = object.schemaUrl ?? "";
     return message;
@@ -622,9 +617,10 @@ export const ScopeLogs = {
   },
   fromPartial<I extends Exact<DeepPartial<ScopeLogs>, I>>(object: I): ScopeLogs {
     const message = createBaseScopeLogs();
-    message.scope = (object.scope !== undefined && object.scope !== null)
-      ? InstrumentationScope.fromPartial(object.scope)
-      : undefined;
+    message.scope =
+      object.scope !== undefined && object.scope !== null
+        ? InstrumentationScope.fromPartial(object.scope)
+        : undefined;
     message.logRecords = object.logRecords?.map((e) => LogRecord.fromPartial(e)) || [];
     message.schemaUrl = object.schemaUrl ?? "";
     return message;
@@ -650,13 +646,17 @@ export const LogRecord = {
   encode(message: LogRecord, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     if (message.timeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.timeUnixNano) !== message.timeUnixNano) {
-        throw new globalThis.Error("value provided for field message.timeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.timeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(9).fixed64(message.timeUnixNano.toString());
     }
     if (message.observedTimeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.observedTimeUnixNano) !== message.observedTimeUnixNano) {
-        throw new globalThis.Error("value provided for field message.observedTimeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.observedTimeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(89).fixed64(message.observedTimeUnixNano.toString());
     }
@@ -776,8 +776,12 @@ export const LogRecord = {
   fromJSON(object: any): LogRecord {
     return {
       timeUnixNano: isSet(object.timeUnixNano) ? BigInt(object.timeUnixNano) : BigInt("0"),
-      observedTimeUnixNano: isSet(object.observedTimeUnixNano) ? BigInt(object.observedTimeUnixNano) : BigInt("0"),
-      severityNumber: isSet(object.severityNumber) ? severityNumberFromJSON(object.severityNumber) : 0,
+      observedTimeUnixNano: isSet(object.observedTimeUnixNano)
+        ? BigInt(object.observedTimeUnixNano)
+        : BigInt("0"),
+      severityNumber: isSet(object.severityNumber)
+        ? severityNumberFromJSON(object.severityNumber)
+        : 0,
       severityText: isSet(object.severityText) ? globalThis.String(object.severityText) : "",
       body: isSet(object.body) ? AnyValue.fromJSON(object.body) : undefined,
       attributes: globalThis.Array.isArray(object?.attributes)
@@ -787,7 +791,9 @@ export const LogRecord = {
         ? globalThis.Number(object.droppedAttributesCount)
         : 0,
       flags: isSet(object.flags) ? globalThis.Number(object.flags) : 0,
-      traceId: isSet(object.traceId) ? Buffer.from(bytesFromBase64(object.traceId)) : Buffer.alloc(0),
+      traceId: isSet(object.traceId)
+        ? Buffer.from(bytesFromBase64(object.traceId))
+        : Buffer.alloc(0),
       spanId: isSet(object.spanId) ? Buffer.from(bytesFromBase64(object.spanId)) : Buffer.alloc(0),
     };
   },
@@ -836,7 +842,10 @@ export const LogRecord = {
     message.observedTimeUnixNano = object.observedTimeUnixNano ?? BigInt("0");
     message.severityNumber = object.severityNumber ?? 0;
     message.severityText = object.severityText ?? "";
-    message.body = (object.body !== undefined && object.body !== null) ? AnyValue.fromPartial(object.body) : undefined;
+    message.body =
+      object.body !== undefined && object.body !== null
+        ? AnyValue.fromPartial(object.body)
+        : undefined;
     message.attributes = object.attributes?.map((e) => KeyValue.fromPartial(e)) || [];
     message.droppedAttributesCount = object.droppedAttributesCount ?? 0;
     message.flags = object.flags ?? 0;
@@ -873,14 +882,19 @@ function base64FromBytes(arr: Uint8Array): string {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin ? T
-  : T extends globalThis.Array<infer U> ? globalThis.Array<DeepPartial<U>>
-  : T extends ReadonlyArray<infer U> ? ReadonlyArray<DeepPartial<U>>
-  : T extends {} ? { [K in keyof T]?: DeepPartial<T[K]> }
-  : Partial<T>;
+export type DeepPartial<T> = T extends Builtin
+  ? T
+  : T extends globalThis.Array<infer U>
+    ? globalThis.Array<DeepPartial<U>>
+    : T extends ReadonlyArray<infer U>
+      ? ReadonlyArray<DeepPartial<U>>
+      : T extends {}
+        ? { [K in keyof T]?: DeepPartial<T[K]> }
+        : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin ? P
+export type Exact<P, I extends P> = P extends Builtin
+  ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {

@@ -49,14 +49,17 @@ describe("RedisBackpressureSignalSource", () => {
     }
   });
 
-  redisTest("returns null for valid JSON of the wrong shape (fail-open)", async ({ redisOptions }) => {
-    const redis = new Redis(redisOptions);
-    try {
-      await redis.set(KEY, JSON.stringify({ foo: "bar" }));
-      const source = new RedisBackpressureSignalSource(redis, KEY);
-      expect(await source.read()).toBeNull();
-    } finally {
-      await redis.quit();
+  redisTest(
+    "returns null for valid JSON of the wrong shape (fail-open)",
+    async ({ redisOptions }) => {
+      const redis = new Redis(redisOptions);
+      try {
+        await redis.set(KEY, JSON.stringify({ foo: "bar" }));
+        const source = new RedisBackpressureSignalSource(redis, KEY);
+        expect(await source.read()).toBeNull();
+      } finally {
+        await redis.quit();
+      }
     }
-  });
+  );
 });

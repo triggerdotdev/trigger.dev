@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
@@ -46,16 +46,17 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { Select, SelectItem, SelectLinkItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
-import { removeTeamMember } from "~/models/member.server";
+import { removeTeamMember } from "~/models/removeTeamMember.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
+import { ssoController } from "~/services/sso.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
@@ -113,7 +114,13 @@ export const loader = dashboardLoader(
     const canManageMembers = ability.can("manage", { type: "members" });
     const canManageBilling = ability.can("manage", { type: "billing" });
 
-    return typedjson({ ...result, canManageMembers, canManageBilling });
+    // When Directory Sync is the authority (allowManualMembership off + a
+    // directory active), manual invite/remove/leave are disabled. Fail-open to
+    // "allowed" so a plugin hiccup never strands the team page.
+    const policy = await ssoController.getMembershipPolicy(orgId);
+    const manualMembershipAllowed = policy.isOk() ? policy.value.manualMembershipAllowed : true;
+
+    return typedjson({ ...result, canManageMembers, canManageBilling, manualMembershipAllowed });
   }
 );
 
@@ -169,9 +176,9 @@ export const action = dashboardAction(
       if (!orgId) {
         return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
       }
-      const submission = parse(formData, { schema: SetRoleSchema });
-      if (!submission.value || submission.intent !== "submit") {
-        return json(submission);
+      const submission = parseWithZod(formData, { schema: SetRoleSchema });
+      if (submission.status !== "success") {
+        return json(submission.reply());
       }
       const result = await rbac.setUserRole({
         userId: submission.value.userId,
@@ -218,10 +225,10 @@ export const action = dashboardAction(
         });
       }
 
-      const submission = parse(formData, { schema: PurchaseSchema });
+      const submission = parseWithZod(formData, { schema: PurchaseSchema });
 
-      if (!submission.value || submission.intent !== "submit") {
-        return json(submission);
+      if (submission.status !== "success") {
+        return json(submission.reply());
       }
 
       const service = new SetSeatsAddOnService();
@@ -235,30 +242,29 @@ export const action = dashboardAction(
       );
 
       if (error) {
-        submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
-        return json(submission);
+        return json(
+          submission.reply({
+            fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
+          })
+        );
       }
 
       if (!result.success) {
-        submission.error.amount = [result.error];
-        return json(submission);
+        return json(submission.reply({ fieldErrors: { amount: [result.error] } }));
       }
 
       return json({ ok: true } as const);
     }
 
-    const submission = parse(formData, { schema });
+    const submission = parseWithZod(formData, { schema });
 
-    if (!submission.value || submission.intent !== "submit") {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
-    // Default intent: remove a member or leave the org. Scope the target to
-    // the actor's organization: an orgMember id is a globally unique key, so an
-    // unscoped lookup (plus an unscoped delete in the model) would let a
-    // manager in one org remove members of another by submitting a foreign id.
-    // Self-leave is always allowed; removing someone else requires
-    // manage:members.
+    // Default intent: remove a member or leave the org, with the target scoped
+    // to the actor's organization. Self-leave is always allowed; removing
+    // someone else requires manage:members.
     const orgId = context.organizationId;
     if (!orgId) {
       return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
@@ -275,12 +281,35 @@ export const action = dashboardAction(
       return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
     }
 
-    try {
-      const deletedMember = await removeTeamMember({
-        userId,
-        memberId: submission.value.memberId,
-        slug: organizationSlug,
+    // Directory-managed membership: manual removal + self-leave are disabled
+    // (membership is driven by the directory). Enforced here, not just in the
+    // UI. Fail-open on a plugin error.
+    const removePolicy = await ssoController.getMembershipPolicy(orgId);
+    if (removePolicy.isOk() && !removePolicy.value.manualMembershipAllowed) {
+      return json({ ok: false, error: "Membership is managed by Directory Sync" } as const, {
+        status: 403,
       });
+    }
+
+    try {
+      const deletedMember = await removeTeamMember(
+        {
+          userId,
+          memberId: submission.value.memberId,
+          slug: organizationSlug,
+        },
+        prisma
+      );
+
+      // Sticky removal: record a tombstone so passive SSO-JIT won't re-add
+      // them on next login (best-effort; no-op without the SSO plugin).
+      await ssoController
+        .recordMembershipRemoval({
+          organizationId: orgId,
+          userId: deletedMember.userId,
+          reason: isSelfLeave ? "self_leave" : "manual_removal",
+        })
+        .unwrapOr(undefined);
 
       if (deletedMember.userId === userId) {
         return redirectWithSuccessMessage("/", request, `You left the organization`);
@@ -316,6 +345,7 @@ export default function Page() {
     memberRoles,
     canManageMembers,
     canManageBilling,
+    manualMembershipAllowed,
   } = useTypedLoaderData<typeof loader>();
   // Build a userId → roleId map so the dropdown's defaultValue matches
   // each member's current assignment without re-querying.
@@ -359,7 +389,23 @@ export default function Page() {
               ))}
             </Property.Table>
           </AdminDebugTooltip>
-          {!canManageMembers ? (
+          {!manualMembershipAllowed ? (
+            // Directory Sync is the membership authority — manual invites are
+            // disabled. The invite action + acceptInvite enforce this too.
+            <SimpleTooltip
+              button={
+                <ButtonContent
+                  variant="primary/small"
+                  LeadingIcon={UserPlusIcon}
+                  className="cursor-not-allowed opacity-50"
+                >
+                  Invite a team member
+                </ButtonContent>
+              }
+              content="Membership is managed by Directory Sync"
+              disableHoverableContent
+            />
+          ) : !canManageMembers ? (
             // Gate the invite affordance on manage:members. The action
             // route enforces this independently — hiding it here just
             // avoids dead UI for non-managers.
@@ -403,7 +449,7 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid max-h-full min-h-full grid-rows-[1fr_auto]">
-          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <div className="mx-auto max-w-3xl px-4 pb-4 pt-20">
               {invites.length > 0 && (
                 <>
@@ -411,7 +457,7 @@ export default function Page() {
                   <ul className="divide-ui-border mb-6 flex w-full flex-col divide-y border-y">
                     {invites.map((invite) => (
                       <li key={invite.id} className="flex items-center gap-4 py-4">
-                        <div className="rounded-md border border-charcoal-750 bg-charcoal-800 p-1.5">
+                        <div className="rounded-md border border-grid-dimmed bg-background-bright p-1.5">
                           <EnvelopeIcon className="size-7 text-text-dimmed" />
                         </div>
                         <div className="flex flex-col gap-0.5">
@@ -475,6 +521,7 @@ export default function Page() {
                         member={member}
                         memberCount={members.length}
                         canManageMembers={canManageMembers}
+                        manualMembershipAllowed={manualMembershipAllowed}
                       />
                     </div>
                   </div>
@@ -557,13 +604,35 @@ function LeaveRemoveButton({
   member,
   memberCount,
   canManageMembers,
+  manualMembershipAllowed,
 }: {
   userId: string;
   member: Member;
   memberCount: number;
   canManageMembers: boolean;
+  manualMembershipAllowed: boolean;
 }) {
   const organization = useOrganization();
+
+  // Directory-managed membership: neither removing others nor leaving is
+  // allowed — the directory drives membership. Enforced server-side too.
+  if (!manualMembershipAllowed) {
+    const isSelf = userId === member.user.id;
+    return (
+      <SimpleTooltip
+        button={
+          <ButtonContent
+            variant={isSelf ? "minimal/small" : "secondary/small"}
+            className="cursor-not-allowed opacity-50"
+          >
+            {isSelf ? "Leave team" : "Remove from team"}
+          </ButtonContent>
+        }
+        disableHoverableContent
+        content="Membership is managed by Directory Sync"
+      />
+    );
+  }
 
   if (userId === member.user.id) {
     if (memberCount === 1) {
@@ -728,12 +797,12 @@ function LeaveTeamModal({
   const [open, setOpen] = useState(false);
   const lastSubmission = useActionData();
 
-  const [form, { memberId }] = useForm({
+  const [form, _fields] = useForm({
     id: "remove-member",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
   });
 
@@ -751,9 +820,9 @@ function LeaveTeamModal({
           <AlertCancel asChild>
             <Button variant="secondary/small">Cancel</Button>
           </AlertCancel>
-          <Form method="post" {...form.props} onSubmit={() => setOpen(false)}>
+          <Form method="post" {...getFormProps(form)} onSubmit={() => setOpen(false)}>
             <input type="hidden" value={member.id} name="memberId" />
-            <Button type="submit" variant="danger/small" form={form.props.id}>
+            <Button type="submit" variant="danger/small" form={form.id}>
               {actionText}
             </Button>
           </Form>
@@ -880,17 +949,18 @@ export function PurchaseSeatsModal({
   const fetcher = useFetcher();
   const organization = useOrganization();
   const lastSubmission =
-    fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
+    fetcher.data && typeof fetcher.data === "object" && "status" in fetcher.data
       ? fetcher.data
       : undefined;
-  const [form, { amount }] = useForm({
+  const [form, fields] = useForm({
     id: "purchase-seats",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: PurchaseSchema });
+      return parseWithZod(formData, { schema: PurchaseSchema });
     },
     shouldRevalidate: "onSubmit",
   });
+  const amount = fields.amount;
 
   const [amountValue, setAmountValue] = useState(extraSeats);
   useEffect(() => {
@@ -938,11 +1008,11 @@ export function PurchaseSeatsModal({
   // when the role can't manage billing. The action enforces it independently.
   const noBillingTooltip = "You don't have permission to manage billing";
   const trigger = canManageBilling ? (
-    triggerButton ?? (
+    (triggerButton ?? (
       <Button variant="primary/small" onClick={() => setOpen(true)}>
         {title}
       </Button>
-    )
+    ))
   ) : triggerButton ? (
     cloneElement(triggerButton, { disabled: true, tooltip: noBillingTooltip })
   ) : (
@@ -960,7 +1030,11 @@ export function PurchaseSeatsModal({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <fetcher.Form method="post" action={organizationTeamPath(organization)} {...form.props}>
+        <fetcher.Form
+          method="post"
+          action={organizationTeamPath(organization)}
+          {...getFormProps(form)}
+        >
           <input type="hidden" name="_formType" value="purchase-seats" />
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
@@ -976,7 +1050,7 @@ export function PurchaseSeatsModal({
                   Total extra seats
                 </Label>
                 <InputNumberStepper
-                  {...conform.input(amount, { type: "number" })}
+                  {...getInputProps(amount, { type: "number" })}
                   step={seatPricing.stepSize}
                   min={0}
                   max={undefined}
@@ -984,10 +1058,8 @@ export function PurchaseSeatsModal({
                   onChange={(e) => setAmountValue(Number(e.target.value))}
                   disabled={isLoading}
                 />
-                <FormError id={amount.errorId}>
-                  {amount.error ?? amount.initialError?.[""]?.[0]}
-                </FormError>
-                <FormError>{form.error}</FormError>
+                <FormError id={amount.errorId}>{amount.errors}</FormError>
+                <FormError>{form.errors}</FormError>
               </InputGroup>
             </Fieldset>
             {state === "need_to_remove_members" ? (

@@ -1,10 +1,10 @@
 // Import the test harness FIRST so the resource catalog is installed
 import { mockChatAgent } from "../src/v3/test/index.js";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { MockLanguageModelV3 } from "ai/test";
 import { simulateReadableStream, streamText } from "ai";
+import { MockLanguageModelV3 } from "ai/test";
+import { describe, expect, it } from "vitest";
 import { chat } from "../src/v3/ai.js";
 
 function userMessage(text: string, id?: string) {
@@ -126,7 +126,9 @@ describe("chat prompt caching — system providerOptions", () => {
           messages,
           abortSignal: signal,
           ...chat.toStreamTextOptions({
-            systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } } },
+            systemProviderOptions: {
+              anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } },
+            },
           }),
         }),
     });
@@ -186,7 +188,9 @@ describe("chat prompt caching — system providerOptions", () => {
           messages,
           abortSignal: signal,
           ...chat.toStreamTextOptions({
-            systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } } },
+            systemProviderOptions: {
+              anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } },
+            },
           }),
         }),
     });

@@ -1,5 +1,5 @@
 import { QueueManifest } from "@trigger.dev/core/v3/schemas";
-import { TaskQueue } from "@trigger.dev/database";
+import type { TaskQueue } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 
 export async function findQueueInEnvironment(
@@ -24,12 +24,12 @@ export async function findQueueInEnvironment(
   const task = backgroundTask
     ? backgroundTask
     : backgroundWorkerTaskId
-    ? await prisma.backgroundWorkerTask.findFirst({
-        where: {
-          id: backgroundWorkerTaskId,
-        },
-      })
-    : undefined;
+      ? await prisma.backgroundWorkerTask.findFirst({
+          where: {
+            id: backgroundWorkerTaskId,
+          },
+        })
+      : undefined;
 
   if (!task) {
     return;
@@ -59,5 +59,5 @@ export async function findQueueInEnvironment(
 
 // Only allow alphanumeric characters, underscores, hyphens, and slashes (and only the first 128 characters)
 export function sanitizeQueueName(queueName: string) {
-  return queueName.replace(/[^a-zA-Z0-9_\-\/]/g, "").substring(0, 128);
+  return queueName.replace(/[^a-zA-Z0-9_\-/]/g, "").substring(0, 128);
 }

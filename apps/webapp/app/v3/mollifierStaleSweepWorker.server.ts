@@ -60,7 +60,7 @@ export function initMollifierStaleSweepWorker(): void {
       maxEntriesPerEnv: env.TRIGGER_MOLLIFIER_STALE_SWEEP_MAX_ENTRIES_PER_ENV,
       maxOrgsPerPass: env.TRIGGER_MOLLIFIER_STALE_SWEEP_MAX_ORGS_PER_PASS,
     },
-    { state },
+    { state }
   );
 
   // `handle.stop` is now async (it closes the Redis client). The signals

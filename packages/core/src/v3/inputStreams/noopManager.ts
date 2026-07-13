@@ -1,5 +1,6 @@
-import { InputStreamManager, InputStreamOncePromise } from "./types.js";
-import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
+import type { InputStreamManager } from "./types.js";
+import { InputStreamOncePromise } from "./types.js";
+import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 export class NoopInputStreamManager implements InputStreamManager {
   setRunId(_runId: string, _streamsVersion?: string): void {}
@@ -24,7 +25,9 @@ export class NoopInputStreamManager implements InputStreamManager {
 
   setLastSeqNum(_streamId: string, _seqNum: number): void {}
 
-  shiftBuffer(_streamId: string): boolean { return false; }
+  shiftBuffer(_streamId: string): boolean {
+    return false;
+  }
 
   disconnectStream(_streamId: string): void {}
 

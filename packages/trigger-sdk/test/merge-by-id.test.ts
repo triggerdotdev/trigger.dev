@@ -62,10 +62,7 @@ describe("mergeByIdReplaceWins", () => {
   });
 
   it("replaces by id when `b` has a colliding entry — replay wins", () => {
-    const a = [
-      userMessage("u-1", "hi"),
-      assistantMessage("a-1", "stale-version"),
-    ];
+    const a = [userMessage("u-1", "hi"), assistantMessage("a-1", "stale-version")];
     const b = [assistantMessage("a-1", "fresh-version")];
     const result = mergeByIdReplaceWins(a, b);
     expect(result).toHaveLength(2);
@@ -80,10 +77,7 @@ describe("mergeByIdReplaceWins", () => {
       userMessage("u-2", "second"),
       assistantMessage("a-2", "also-stale"),
     ];
-    const b = [
-      assistantMessage("a-1", "fresh-1"),
-      assistantMessage("a-2", "fresh-2"),
-    ];
+    const b = [assistantMessage("a-1", "fresh-1"), assistantMessage("a-2", "fresh-2")];
     const result = mergeByIdReplaceWins(a, b);
     expect(result.map((m) => m.id)).toEqual(["u-1", "a-1", "u-2", "a-2"]);
     expect((result[1]!.parts[0] as { text: string }).text).toBe("fresh-1");
@@ -105,10 +99,18 @@ describe("mergeByIdReplaceWins", () => {
     const a = [
       userMessage("u-1", "first"),
       // Synthetic message missing the id field — should append, never replace.
-      { id: "" as string, role: "assistant", parts: [{ type: "text", text: "no-id-a" }] } as UIMessage,
+      {
+        id: "" as string,
+        role: "assistant",
+        parts: [{ type: "text", text: "no-id-a" }],
+      } as UIMessage,
     ];
     const b = [
-      { id: "" as string, role: "assistant", parts: [{ type: "text", text: "no-id-b" }] } as UIMessage,
+      {
+        id: "" as string,
+        role: "assistant",
+        parts: [{ type: "text", text: "no-id-b" }],
+      } as UIMessage,
     ];
     const result = mergeByIdReplaceWins(a, b);
     expect(result).toHaveLength(3);

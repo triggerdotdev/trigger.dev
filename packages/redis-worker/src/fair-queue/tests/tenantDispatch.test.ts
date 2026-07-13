@@ -375,7 +375,7 @@ describe("Two-Level Tenant Dispatch", () => {
         await waitFor(() => processed.length >= 1, 5000);
 
         // Tenant should still be in dispatch (has remaining queue)
-        const dispatchMembers = await redis.zrange(keys.dispatchKey(0), 0, -1);
+        const _dispatchMembers = await redis.zrange(keys.dispatchKey(0), 0, -1);
         // After first complete, tenant may still be in dispatch due to second queue
         // (exact timing depends on consumer loop)
 
@@ -715,7 +715,7 @@ describe("Two-Level Tenant Dispatch", () => {
       async ({ redisOptions }) => {
         const keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
         const processed: Array<{ tenantId: string; value: string }> = [];
-        let blockT1 = true;
+        let _blockT1 = true;
 
         const scheduler = new DRRScheduler({
           redis: redisOptions,
@@ -801,10 +801,7 @@ describe("Two-Level Tenant Dispatch", () => {
         })();
 
         // Wait for t2's messages to be processed (they shouldn't be blocked by t1)
-        await waitFor(
-          () => processed.filter((p) => p.tenantId === "t2").length === 3,
-          10000
-        );
+        await waitFor(() => processed.filter((p) => p.tenantId === "t2").length === 3, 10000);
 
         const t2ProcessedCount = processed.filter((p) => p.tenantId === "t2").length;
         expect(t2ProcessedCount).toBe(3);
@@ -973,8 +970,8 @@ describe("Two-Level Tenant Dispatch", () => {
         expect(processed[0]).toBe("legacy-reclaim");
 
         // After completion, both old and new indexes should be clean
-        const masterAfter = await redis.zcard(masterQueueKey);
-        const dispatchAfter = await redis.zcard(keys.dispatchKey(0));
+        const _masterAfter = await redis.zcard(masterQueueKey);
+        const _dispatchAfter = await redis.zcard(keys.dispatchKey(0));
         const tenantQueuesAfter = await redis.zcard(keys.tenantQueueIndexKey("t1"));
 
         // Old master queue should still be empty (drain removed it)

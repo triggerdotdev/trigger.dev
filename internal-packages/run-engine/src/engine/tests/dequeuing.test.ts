@@ -1,11 +1,11 @@
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { DequeuedMessage } from "@trigger.dev/core/v3";
+import type { DequeuedMessage } from "@trigger.dev/core/v3";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
-import { PrismaClientOrTransaction } from "@trigger.dev/database";
+import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { expect } from "vitest";
 import { setTimeout } from "node:timers/promises";
-import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
@@ -160,9 +160,8 @@ describe("RunEngine dequeuing", () => {
         expect(executionDataBefore.snapshot.executionStatus).toBe("PENDING_EXECUTING");
 
         // Verify run is in concurrency
-        const envConcurrencyBefore = await engine.runQueue.currentConcurrencyOfEnvironment(
-          authenticatedEnvironment
-        );
+        const envConcurrencyBefore =
+          await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
         expect(envConcurrencyBefore).toBe(1);
 
         // Simulate DB failure fallback: call nackMessage directly via Redis
@@ -174,9 +173,8 @@ describe("RunEngine dequeuing", () => {
 
         // Verify concurrency is cleared - this is the key fix!
         // Without this fix, the run would stay in concurrency sets forever
-        const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
-          authenticatedEnvironment
-        );
+        const envConcurrencyAfter =
+          await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
         expect(envConcurrencyAfter).toBe(0);
 
         // Verify the message is back in the queue

@@ -1,6 +1,6 @@
 import { env } from "~/env.server";
 import { authorizationRateLimitMiddleware } from "./authorizationRateLimitMiddleware.server";
-import { Duration } from "./rateLimiter.server";
+import type { Duration } from "./rateLimiter.server";
 
 export const engineRateLimiter = authorizationRateLimitMiddleware({
   redis: {

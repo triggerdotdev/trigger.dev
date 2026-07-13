@@ -195,7 +195,12 @@ const Verdict = z.object({
     .min(1)
     .max(5)
     .describe("Does the answer directly address the user's question? 5 = fully, 1 = not at all."),
-  concise: z.number().int().min(1).max(5).describe("Direct and free of padding. Do not reward length."),
+  concise: z
+    .number()
+    .int()
+    .min(1)
+    .max(5)
+    .describe("Direct and free of padding. Do not reward length."),
 });
 
 const JUDGE_SYSTEM = [
@@ -246,48 +251,43 @@ const TOOL_CASES: Array<{ question: string; expect: string }> = [
 const TOOL_SELECTION_THRESHOLD = 0.83; // tolerate ~2/12 misses; a trend reds the suite
 
 describe.skipIf(!HAS_KEY)("dashboardAgent evals (real model)", () => {
-  it(
-    "tool selection: picks the right tool for the question",
-    async () => {
-      const results: Array<{ question: string; expected: string; got: string; ok: boolean }> = [];
-      for (const c of TOOL_CASES) {
-        const { calls } = await runCase(c.question);
-        const got = calls[0]?.tool ?? "(none)";
-        results.push({ question: c.question, expected: c.expect, got, ok: got === c.expect });
-      }
+  it("tool selection: picks the right tool for the question", async () => {
+    const results: Array<{ question: string; expected: string; got: string; ok: boolean }> = [];
+    for (const c of TOOL_CASES) {
+      const { calls } = await runCase(c.question);
+      const got = calls[0]?.tool ?? "(none)";
+      results.push({ question: c.question, expected: c.expect, got, ok: got === c.expect });
+    }
 
-      const passed = results.filter((r) => r.ok).length;
-      const rate = passed / results.length;
-      // Surface the full table so a failing case is diagnosable, not just a number.
-      // process.stdout.write (not console.log) so it survives vitest's console intercept.
-      process.stdout.write(
-        `\ntool selection: ${passed}/${results.length} (${(rate * 100).toFixed(0)}%)\n` +
-          results
-            .map((r) => `  ${r.ok ? "PASS" : "FAIL"}  ${r.got.padEnd(18)} (want ${r.expected})  ${r.question}`)
-            .join("\n") +
-          "\n"
-      );
+    const passed = results.filter((r) => r.ok).length;
+    const rate = passed / results.length;
+    // Surface the full table so a failing case is diagnosable, not just a number.
+    // process.stdout.write (not console.log) so it survives vitest's console intercept.
+    process.stdout.write(
+      `\ntool selection: ${passed}/${results.length} (${(rate * 100).toFixed(0)}%)\n` +
+        results
+          .map(
+            (r) =>
+              `  ${r.ok ? "PASS" : "FAIL"}  ${r.got.padEnd(18)} (want ${r.expected})  ${r.question}`
+          )
+          .join("\n") +
+        "\n"
+    );
 
-      expect(rate).toBeGreaterThanOrEqual(TOOL_SELECTION_THRESHOLD);
-    },
-    180_000
-  );
+    expect(rate).toBeGreaterThanOrEqual(TOOL_SELECTION_THRESHOLD);
+  }, 180_000);
 
-  it(
-    "answer quality: grounded and on-question (LLM judge)",
-    async () => {
-      const question = "What errors are happening in this environment? Summarize the top ones.";
-      const { calls, answer } = await runCase(question);
+  it("answer quality: grounded and on-question (LLM judge)", async () => {
+    const question = "What errors are happening in this environment? Summarize the top ones.";
+    const { calls, answer } = await runCase(question);
 
-      expect(calls[0]?.tool).toBe("list_errors");
-      expect(answer.length).toBeGreaterThan(0);
+    expect(calls[0]?.tool).toBe("list_errors");
+    expect(answer.length).toBeGreaterThan(0);
 
-      const verdict = await judge({ question, toolData: FIXTURES.list_errors, answer });
-      process.stdout.write(`\nanswer:\n${answer}\n\njudge: ${JSON.stringify(verdict)}\n`);
+    const verdict = await judge({ question, toolData: FIXTURES.list_errors, answer });
+    process.stdout.write(`\nanswer:\n${answer}\n\njudge: ${JSON.stringify(verdict)}\n`);
 
-      expect(verdict.grounded).toBeGreaterThanOrEqual(4);
-      expect(verdict.answersQuestion).toBeGreaterThanOrEqual(4);
-    },
-    120_000
-  );
+    expect(verdict.grounded).toBeGreaterThanOrEqual(4);
+    expect(verdict.answersQuestion).toBeGreaterThanOrEqual(4);
+  }, 120_000);
 });

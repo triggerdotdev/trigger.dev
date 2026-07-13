@@ -1,14 +1,11 @@
 import { intro, isCancel, log, multiselect, outro, select, text } from "@clack/prompts";
 import { context, trace } from "@opentelemetry/api";
-import {
-  GetProjectResponseBody,
-  LogLevel,
-  flattenAttributes,
-  tryCatch,
-} from "@trigger.dev/core/v3";
+import type { GetProjectResponseBody, LogLevel } from "@trigger.dev/core/v3";
+import { flattenAttributes, tryCatch } from "@trigger.dev/core/v3";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
 import chalk from "chalk";
-import { Command, Option as CommandOption } from "commander";
+import type { Command } from "commander";
+import { Option as CommandOption } from "commander";
 import { applyEdits, findNodeAtLocation, getNodeValue, modify, parseTree } from "jsonc-parser";
 import { writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
@@ -107,7 +104,10 @@ Examples:
         "Additional arguments to pass to the package manager, accepts CSV for multiple args"
       )
       .option("-y, --yes", "Skip all prompts and use defaults (requires --project-ref)")
-      .option("--no-browser", "Don't automatically open the browser during login; print the URL only")
+      .option(
+        "--no-browser",
+        "Don't automatically open the browser during login; print the URL only"
+      )
   )
     .addOption(
       new CommandOption(
@@ -291,7 +291,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
         return;
       }
-    } catch (e) {
+    } catch (_e) {
       // continue
     }
   }
@@ -819,7 +819,7 @@ async function tryResolveTsConfig(cwd: string) {
   try {
     const tsconfigPath = await resolveTSConfig(cwd);
     return tsconfigPath;
-  } catch (e) {
+  } catch (_e) {
     return;
   }
 }

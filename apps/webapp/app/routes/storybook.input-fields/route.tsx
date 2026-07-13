@@ -1,5 +1,4 @@
 import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { Input } from "~/components/primitives/Input";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 

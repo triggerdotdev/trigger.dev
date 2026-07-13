@@ -1,7 +1,5 @@
 import { SpanStatusCode } from "@opentelemetry/api";
-import {
-  accessoryAttributes,
-  apiClientManager,
+import type {
   ApiPromise,
   ApiRequestOptions,
   CompleteWaitpointTokenResponseBody,
@@ -9,17 +7,21 @@ import {
   CreateWaitpointTokenResponse,
   CreateWaitpointTokenResponseBody,
   CursorPagePromise,
-  flattenAttributes,
   ListWaitpointTokensQueryParams,
+  WaitpointListTokenItem,
+  WaitpointRetrieveTokenResponse,
+  WaitpointTokenStatus,
+  WaitpointTokenTypedResult,
+} from "@trigger.dev/core/v3";
+import {
+  accessoryAttributes,
+  apiClientManager,
+  flattenAttributes,
   ManualWaitpointPromise,
   mergeRequestOptions,
   runtime,
   SemanticInternalAttributes,
   taskContext,
-  WaitpointListTokenItem,
-  WaitpointRetrieveTokenResponse,
-  WaitpointTokenStatus,
-  WaitpointTokenTypedResult,
   WaitpointTimeoutError,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";

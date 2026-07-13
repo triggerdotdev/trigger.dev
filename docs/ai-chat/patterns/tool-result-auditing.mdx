@@ -4,10 +4,6 @@ sidebarTitle: "Tool result auditing"
 description: "Fire side effects exactly once per resolved tool call — audit logs, billing, notifications — using extractNewToolResults inside hydrateMessages or onTurnComplete."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 When a chat agent uses [tools](/ai-chat/tools) (especially [human-in-the-loop](/ai-chat/patterns/human-in-the-loop) tools that wait on `addToolOutput` from the frontend), you often need to fire side effects exactly once per resolved tool call:
 
 - **Audit logs** — record every tool result for compliance.

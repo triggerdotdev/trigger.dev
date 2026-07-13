@@ -1,8 +1,5 @@
 import { json } from "@remix-run/server-runtime";
-import {
-  CloseSessionRequestBody,
-  type RetrieveSessionResponseBody,
-} from "@trigger.dev/core/v3";
+import { CloseSessionRequestBody, type RetrieveSessionResponseBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import {
@@ -42,9 +39,7 @@ const { action, loader } = createActionApiRoute(
     // Idempotent: if already closed, return the current row without clobbering
     // the original closedAt / closedReason.
     if (existing.closedAt) {
-      return json<RetrieveSessionResponseBody>(
-        await serializeSessionWithFriendlyRunId(existing)
-      );
+      return json<RetrieveSessionResponseBody>(await serializeSessionWithFriendlyRunId(existing));
     }
 
     // `closedAt: null` on the where clause makes the update conditional at
@@ -62,16 +57,12 @@ const { action, loader } = createActionApiRoute(
     if (count === 0) {
       const final = await prisma.session.findFirst({ where: { id: existing.id } });
       if (!final) return json({ error: "Session not found" }, { status: 404 });
-      return json<RetrieveSessionResponseBody>(
-        await serializeSessionWithFriendlyRunId(final)
-      );
+      return json<RetrieveSessionResponseBody>(await serializeSessionWithFriendlyRunId(final));
     }
 
     const updated = await prisma.session.findFirst({ where: { id: existing.id } });
     if (!updated) return json({ error: "Session not found" }, { status: 404 });
-    return json<RetrieveSessionResponseBody>(
-      await serializeSessionWithFriendlyRunId(updated)
-    );
+    return json<RetrieveSessionResponseBody>(await serializeSessionWithFriendlyRunId(updated));
   }
 );
 

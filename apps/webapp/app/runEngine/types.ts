@@ -37,13 +37,13 @@ export type TriggerTaskResult = {
 
 export type QueueValidationResult =
   | {
-    ok: true;
-  }
+      ok: true;
+    }
   | {
-    ok: false;
-    maximumSize: number;
-    queueSize: number;
-  };
+      ok: false;
+      maximumSize: number;
+      queueSize: number;
+    };
 
 export type QueueProperties = {
   queueName: string;
@@ -99,22 +99,22 @@ export interface ParentRunValidationParams {
 
 export type ValidationResult =
   | {
-    ok: true;
-  }
+      ok: true;
+    }
   | {
-    ok: false;
-    error: Error;
-  };
+      ok: false;
+      error: Error;
+    };
 
 export type EntitlementValidationResult =
   | {
-    ok: true;
-    plan?: ReportUsagePlan;
-  }
+      ok: true;
+      plan?: ReportUsagePlan;
+    }
   | {
-    ok: false;
-    error: Error;
-  };
+      ok: false;
+      error: Error;
+    };
 
 export interface TriggerTaskValidator {
   validateTags(params: TagValidationParams): ValidationResult;

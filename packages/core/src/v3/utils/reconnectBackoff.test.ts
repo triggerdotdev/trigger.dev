@@ -48,9 +48,7 @@ describe("computeReconnectDelayMs", () => {
   it("never exceeds RECONNECT_BACKOFF_MAX_MS + 1000ms (cap + jitter ceiling)", () => {
     withFixedRandom(0.999, () => {
       for (let attempt = 0; attempt < 100; attempt++) {
-        expect(computeReconnectDelayMs(attempt)).toBeLessThan(
-          RECONNECT_BACKOFF_MAX_MS + 1000
-        );
+        expect(computeReconnectDelayMs(attempt)).toBeLessThan(RECONNECT_BACKOFF_MAX_MS + 1000);
       }
     });
   });

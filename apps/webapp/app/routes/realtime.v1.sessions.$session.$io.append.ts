@@ -15,10 +15,7 @@ import {
   drainSessionStreamWaitpoints,
   releaseSessionStreamPart,
 } from "~/services/sessionStreamWaitpointCache.server";
-import {
-  anyResource,
-  createActionApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
@@ -82,17 +79,11 @@ const { action, loader } = createActionApiRoute(
     }
 
     if (session.closedAt) {
-      return json(
-        { ok: false, error: "Cannot append to a closed session" },
-        { status: 400 }
-      );
+      return json({ ok: false, error: "Cannot append to a closed session" }, { status: 400 });
     }
 
     if (session.expiresAt && session.expiresAt.getTime() < Date.now()) {
-      return json(
-        { ok: false, error: "Cannot append to an expired session" },
-        { status: 400 }
-      );
+      return json({ ok: false, error: "Cannot append to an expired session" }, { status: 400 });
     }
 
     // `.out` is the agent→client channel. Only PRIVATE (secret key) auth —
@@ -165,10 +156,12 @@ const { action, loader } = createActionApiRoute(
         )
       : true;
 
+    let appendSeq: number | undefined;
     if (wonClaim) {
-      const [appendError] = await tryCatch(
+      const [appendError, seq] = await tryCatch(
         realtimeStream.appendPartToSessionStream(part, partId, addressingKey, params.io)
       );
+      appendSeq = seq ?? undefined;
 
       if (appendError) {
         if (clientPartId) {
@@ -237,7 +230,8 @@ const { action, loader } = createActionApiRoute(
       );
     }
 
-    return json({ ok: true }, { status: 200 });
+    // `seq` lets the client correlate this send to the turn that consumes it.
+    return json({ ok: true, seq: appendSeq }, { status: 200 });
   }
 );
 

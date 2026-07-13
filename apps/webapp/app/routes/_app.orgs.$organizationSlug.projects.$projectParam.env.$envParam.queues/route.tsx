@@ -2,26 +2,24 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowUpCircleIcon,
   BookOpenIcon,
-  ChatBubbleLeftEllipsisIcon,
   PauseIcon,
   PlayIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useNavigation, useSearchParams, type MetaFunction } from "@remix-run/react";
+import { Form, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
-import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Badge } from "~/components/primitives/Badge";
@@ -31,11 +29,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
-import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -54,6 +52,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { QueueName } from "~/components/runs/v3/QueueName";
 import { env } from "~/env.server";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -67,6 +66,7 @@ import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePrese
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT } from "~/utils/environmentPauseSource";
 import {
   concurrencyPath,
   docsPath,
@@ -78,8 +78,6 @@ import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.serve
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
-import { QueueName } from "~/components/runs/v3/QueueName";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -182,14 +180,22 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   switch (action) {
-    case "environment-pause":
+    case "environment-pause": {
       const pauseService = new PauseEnvironmentService();
-      await pauseService.call(environment, "paused");
+      const result = await pauseService.call(environment, "paused");
+      if (!result.success) {
+        return redirectWithErrorMessage(redirectPath, request, result.error);
+      }
       return redirectWithSuccessMessage(redirectPath, request, "Environment paused");
-    case "environment-resume":
+    }
+    case "environment-resume": {
       const resumeService = new PauseEnvironmentService();
-      await resumeService.call(environment, "resumed");
+      const result = await resumeService.call(environment, "resumed");
+      if (!result.success) {
+        return redirectWithErrorMessage(redirectPath, request, result.error);
+      }
       return redirectWithSuccessMessage(redirectPath, request, "Environment resumed");
+    }
     case "queue-pause":
     case "queue-resume": {
       const friendlyId = formData.get("friendlyId");
@@ -315,8 +321,8 @@ export default function Page() {
     environment.running === environment.concurrencyLimit * environment.burstFactor
       ? "limit"
       : environment.running > environment.concurrencyLimit
-      ? "burst"
-      : "within";
+        ? "burst"
+        : "within";
 
   const limitClassName =
     limitStatus === "burst" ? "text-warning" : limitStatus === "limit" ? "text-error" : undefined;
@@ -346,7 +352,10 @@ export default function Page() {
               animate
               accessory={
                 <div className="flex items-start gap-1">
-                  {environment.runsEnabled ? <EnvironmentPauseResumeButton env={env} /> : null}
+                  {environment.runsEnabled &&
+                  env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
+                    <EnvironmentPauseResumeButton env={env} />
+                  ) : null}
                   <LinkButton
                     variant="secondary/small"
                     LeadingIcon={RunsIcon}
@@ -441,9 +450,7 @@ export default function Page() {
                 <PaginationControls
                   currentPage={pagination.currentPage}
                   totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
-                  hasNextPage={
-                    pagination.mode === "filtered" ? pagination.hasMore : undefined
-                  }
+                  hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
                   showPageNumbers={false}
                 />
               </div>
@@ -462,7 +469,7 @@ export default function Page() {
                             <Header3>Environment</Header3>
                             <Paragraph
                               variant="small"
-                              className="!text-wrap text-text-dimmed"
+                              className="text-wrap! text-text-dimmed"
                               spacing
                             >
                               This queue is limited by your environment's concurrency limit of{" "}
@@ -473,7 +480,7 @@ export default function Page() {
                             <Header3>User</Header3>
                             <Paragraph
                               variant="small"
-                              className="!text-wrap text-text-dimmed"
+                              className="text-wrap! text-text-dimmed"
                               spacing
                             >
                               This queue is limited by a concurrency limit set in your code.
@@ -483,7 +490,7 @@ export default function Page() {
                             <Header3>Override</Header3>
                             <Paragraph
                               variant="small"
-                              className="!text-wrap text-text-dimmed"
+                              className="text-wrap! text-text-dimmed"
                               spacing
                             >
                               This queue's concurrency limit has been manually overridden from the
@@ -676,7 +683,6 @@ export default function Page() {
                   )}
                 </TableBody>
               </Table>
-
             </div>
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
@@ -907,7 +913,7 @@ function QueueOverrideConcurrencyButton({
 
   const isLoading = Boolean(
     navigation.formData?.get("action") === "queue-override" ||
-      navigation.formData?.get("action") === "queue-remove-override"
+    navigation.formData?.get("action") === "queue-remove-override"
   );
 
   return (

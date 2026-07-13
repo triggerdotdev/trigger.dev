@@ -24,11 +24,7 @@ export { Redis, type Callback, type RedisOptions, type Result, type RedisCommand
  */
 export function defaultReconnectOnError(err: Error): boolean | 1 | 2 {
   const msg = err.message ?? "";
-  if (
-    msg.startsWith("READONLY") ||
-    msg.startsWith("LOADING") ||
-    msg.startsWith("UNBLOCKED")
-  ) {
+  if (msg.startsWith("READONLY") || msg.startsWith("LOADING") || msg.startsWith("UNBLOCKED")) {
     return 2;
   }
   return false;

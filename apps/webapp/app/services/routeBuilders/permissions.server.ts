@@ -19,6 +19,10 @@ export type PermissionCheck =
  * returned booleans are display-only: the route builder's `authorization`
  * block is the real security boundary.
  */
+export function canManageBillingLimits(ability: RbacAbility): boolean {
+  return ability.can("manage", { type: "billing-limits" });
+}
+
 export function checkPermissions<K extends string>(
   ability: RbacAbility,
   checks: Record<K, PermissionCheck>

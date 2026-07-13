@@ -186,19 +186,18 @@ export class DeploymentPresenter {
       );
 
       if (parsed.success && parsed.data.vercelTeamSlug) {
-        const integrationDeployment =
-          await this.#prismaClient.integrationDeployment.findFirst({
-            where: {
-              deploymentId: deployment.id,
-              integrationName: "vercel",
-            },
-            select: {
-              integrationDeploymentId: true,
-            },
-            orderBy: {
-              createdAt: "desc",
-            },
-          });
+        const integrationDeployment = await this.#prismaClient.integrationDeployment.findFirst({
+          where: {
+            deploymentId: deployment.id,
+            integrationName: "vercel",
+          },
+          select: {
+            integrationDeploymentId: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        });
 
         if (integrationDeployment) {
           const vercelId = integrationDeployment.integrationDeploymentId;
@@ -217,7 +216,9 @@ export class DeploymentPresenter {
     let eventStream = undefined;
     if (
       env.S2_ENABLED === "1" &&
-      (buildServerMetadata || gitMetadata?.source === "trigger_github_app" || env.S2_DEPLOYMENT_STREAMS_LOCAL === "1")
+      (buildServerMetadata ||
+        gitMetadata?.source === "trigger_github_app" ||
+        env.S2_DEPLOYMENT_STREAMS_LOCAL === "1")
     ) {
       const [error, accessToken] = await tryCatch(this.getS2AccessToken(project.externalRef));
 

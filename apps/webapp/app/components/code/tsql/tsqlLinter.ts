@@ -31,11 +31,7 @@ function parseErrorPosition(message: string): { line: number; column: number } |
 /**
  * Convert line/column to a document position
  */
-function positionToOffset(
-  doc: string,
-  line: number,
-  column: number
-): number {
+function positionToOffset(doc: string, line: number, column: number): number {
   const lines = doc.split("\n");
 
   // line is 1-indexed
@@ -210,4 +206,3 @@ export function getTSQLError(query: string): string | null {
     return "Unknown error";
   }
 }
-

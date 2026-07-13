@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Schema as AISchema } from "ai";
-import { Schema } from "./schemas.js";
+import type { Schema } from "./schemas.js";
 
 export type ToolTaskParameters = z.ZodTypeAny | AISchema<any>;
 
@@ -8,8 +8,8 @@ export type inferToolParameters<PARAMETERS extends ToolTaskParameters> =
   PARAMETERS extends AISchema<any>
     ? PARAMETERS["_type"]
     : PARAMETERS extends z.ZodTypeAny
-    ? z.infer<PARAMETERS>
-    : never;
+      ? z.infer<PARAMETERS>
+      : never;
 
 export function convertToolParametersToSchema<TToolParameters extends ToolTaskParameters>(
   toolParameters: TToolParameters

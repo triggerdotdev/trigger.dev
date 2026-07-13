@@ -54,7 +54,9 @@ export const CommonProjectsInput = z.object({
     .default("dev"),
   branch: z
     .string()
-    .describe("The branch to get tasks for, only used for preview environments")
+    .describe(
+      "The branch to get tasks for, only used for preview environments and branchable development environments"
+    )
     .optional(),
 });
 
@@ -240,17 +242,9 @@ export const QueryInput = CommonProjectsInput.extend({
   period: z
     .string()
     .optional()
-    .describe(
-      "Time period shorthand, e.g. '1h', '7d', '30d'. Mutually exclusive with from/to."
-    ),
-  from: z
-    .string()
-    .optional()
-    .describe("Start of time range (ISO 8601). Must be paired with 'to'."),
-  to: z
-    .string()
-    .optional()
-    .describe("End of time range (ISO 8601). Must be paired with 'from'."),
+    .describe("Time period shorthand, e.g. '1h', '7d', '30d'. Mutually exclusive with from/to."),
+  from: z.string().optional().describe("Start of time range (ISO 8601). Must be paired with 'to'."),
+  to: z.string().optional().describe("End of time range (ISO 8601). Must be paired with 'from'."),
 });
 
 export type QueryInput = z.output<typeof QueryInput>;
@@ -263,9 +257,7 @@ export const QuerySchemaInput = CommonProjectsInput.pick({
 }).extend({
   table: z
     .string()
-    .describe(
-      "The table name to get the schema for (e.g. 'runs', 'metrics', 'llm_metrics')."
-    ),
+    .describe("The table name to get the schema for (e.g. 'runs', 'metrics', 'llm_metrics')."),
 });
 
 export type QuerySchemaInput = z.output<typeof QuerySchemaInput>;
@@ -294,14 +286,8 @@ export const RunDashboardQueryInput = CommonProjectsInput.extend({
     .string()
     .optional()
     .describe("Time period shorthand, e.g. '1h', '7d', '30d'. Defaults to 1d."),
-  from: z
-    .string()
-    .optional()
-    .describe("Start of time range (ISO 8601). Must be paired with 'to'."),
-  to: z
-    .string()
-    .optional()
-    .describe("End of time range (ISO 8601). Must be paired with 'from'."),
+  from: z.string().optional().describe("Start of time range (ISO 8601). Must be paired with 'to'."),
+  to: z.string().optional().describe("End of time range (ISO 8601). Must be paired with 'from'."),
   scope: z
     .enum(["environment", "project", "organization"])
     .default("environment")

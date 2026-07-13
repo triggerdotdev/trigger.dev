@@ -1,7 +1,8 @@
 "use client";
 
-import { AnyTask, RetrieveRunResult } from "@trigger.dev/core/v3";
-import { CommonTriggerHookOptions, useSWR } from "../utils/trigger-swr.js";
+import type { AnyTask, RetrieveRunResult } from "@trigger.dev/core/v3";
+import type { CommonTriggerHookOptions } from "../utils/trigger-swr.js";
+import { useSWR } from "../utils/trigger-swr.js";
 import { useApiClient } from "./useApiClient.js";
 
 /**

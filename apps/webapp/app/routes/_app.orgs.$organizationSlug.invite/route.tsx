@@ -1,5 +1,5 @@
-import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import {
   ArrowUpCircleIcon,
   EnvelopeIcon,
@@ -33,8 +33,10 @@ import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
 import { rbac } from "~/services/rbac.server";
+import { ssoController } from "~/services/sso.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
+import { isAtOrBelow } from "~/utils/inviteRoleLadder";
 import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
 
 const Params = z.object({
@@ -108,43 +110,6 @@ export const loader = dashboardLoader(
 // dropdown is hidden) or as a defensive default.
 const NO_RBAC_ROLE = "__no_rbac_role__";
 
-// An inviter can only assign a role at or below their own. The
-// plugin's systemRoles array is in canonical order (highest authority
-// first), so array index drives the ladder — earlier index = higher
-// rank. Plan-tier filtering happens separately via assignableRoleIds;
-// the ladder is the absolute hierarchy. Custom roles aren't in the
-// ladder yet, so they're refused for now.
-type LadderRole = { id: string };
-
-function buildRoleLevel(roles: ReadonlyArray<LadderRole>): Record<string, number> {
-  const level: Record<string, number> = {};
-  roles.forEach((r, i) => {
-    // Top of the array = highest level. Subtract from length so larger
-    // numbers always mean "more authority" — no off-by-one when a role
-    // is added or removed.
-    level[r.id] = roles.length - i;
-  });
-  return level;
-}
-
-function isAtOrBelow(
-  roles: ReadonlyArray<LadderRole>,
-  inviterRoleId: string | null,
-  invitedRoleId: string
-): boolean {
-  // No resolvable role for the inviter → fail closed: we can't confirm a
-  // target role is at or below an unknown level, so refuse it. The invite
-  // itself still proceeds (it's gated by manage:members); only assigning an
-  // explicit role is refused, and the picker offers nothing in this case.
-  if (!inviterRoleId) return false;
-  const level = buildRoleLevel(roles);
-  const inviter = level[inviterRoleId];
-  const invited = level[invitedRoleId];
-  // Custom roles aren't in the level table — refuse.
-  if (inviter === undefined || invited === undefined) return false;
-  return invited <= inviter;
-}
-
 const schema = z.object({
   emails: z.preprocess((i) => {
     if (typeof i === "string") return [i];
@@ -171,15 +136,27 @@ export const action = dashboardAction(
     },
     authorization: { action: "manage", resource: { type: "members" } },
   },
-  async ({ request, params, user }) => {
+  async ({ request, params, user, context }) => {
     const userId = user.id;
     const { organizationSlug } = params;
 
     const formData = await request.formData();
-    const submission = parse(formData, { schema });
+    const submission = parseWithZod(formData, { schema });
 
-    if (!submission.value || submission.intent !== "submit") {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
+    }
+
+    // Directory-managed membership: inviting is disabled (the directory is the
+    // authority). Enforced here; the Team page also hides the invite button.
+    if (context.organizationId) {
+      const policy = await ssoController.getMembershipPolicy(context.organizationId);
+      if (policy.isOk() && !policy.value.manualMembershipAllowed) {
+        return json(
+          { errors: { body: "Membership is managed by Directory Sync" } },
+          { status: 403 }
+        );
+      }
     }
 
     // Resolve the RBAC role choice. NO_RBAC_ROLE / undefined / unknown
@@ -287,23 +264,24 @@ export default function Page() {
   const defaultRoleId = showRolePicker ? offerable[offerable.length - 1].id : NO_RBAC_ROLE;
   const [selectedRoleId, setSelectedRoleId] = useState(defaultRoleId);
 
-  const [form, { emails }] = useForm({
+  const [form, fields] = useForm<z.infer<typeof schema>>({
     id: "invite-members",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     defaultValue: {
       emails: [""],
     },
   });
+  const { emails } = fields;
 
   const fieldValues = useRef<string[]>([""]);
-  const emailFields = useFieldList(form.ref, emails);
+  const emailFields = emails.getFieldList();
 
   return (
-    <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+    <MainCenteredContainer className="max-w-104 rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
       <div>
         <FormTitle
           LeadingIcon={<UserPlusIcon className="size-6 text-indigo-500" />}
@@ -359,14 +337,14 @@ export default function Page() {
               </Paragraph>
             </InfoPanel>
           ))}
-        <Form method="post" {...form.props}>
+        <Form method="post" {...getFormProps(form)}>
           <Fieldset>
             <InputGroup>
               <Label htmlFor={emails.id}>Email addresses</Label>
               {emailFields.map((email, index) => (
                 <Fragment key={email.key}>
                   <Input
-                    {...conform.input(email, { type: "email" })}
+                    {...getInputProps(email, { type: "email" })}
                     placeholder={index === 0 ? "Enter an email address" : "Add another email"}
                     icon={EnvelopeIcon}
                     autoFocus={index === 0}
@@ -378,11 +356,11 @@ export default function Page() {
                         emailFields.length === fieldValues.current.length &&
                         fieldValues.current.every((v) => v !== "")
                       ) {
-                        requestIntent(form.ref.current ?? undefined, list.append(emails.name));
+                        form.insert({ name: emails.name });
                       }
                     }}
                   />
-                  <FormError id={email.errorId}>{email.error}</FormError>
+                  <FormError id={email.errorId}>{email.errors}</FormError>
                 </Fragment>
               ))}
             </InputGroup>

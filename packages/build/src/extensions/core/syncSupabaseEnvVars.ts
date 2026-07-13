@@ -133,9 +133,7 @@ export function syncSupabaseEnvVars(options?: {
 
     // Step 1: List branches
     const branchesUrl = `https://api.supabase.com/v1/projects/${projectId}/branches`;
-    const [branchesFetchError, branchesResponse] = await tryCatch(
-      fetch(branchesUrl, { headers })
-    );
+    const [branchesFetchError, branchesResponse] = await tryCatch(fetch(branchesUrl, { headers }));
 
     if (branchesFetchError) {
       throw new Error(
@@ -170,9 +168,7 @@ export function syncSupabaseEnvVars(options?: {
       targetBranch = branches.find((b) => b.is_default);
 
       if (!targetBranch) {
-        throw new Error(
-          "syncSupabaseEnvVars: no default Supabase branch found for the project."
-        );
+        throw new Error("syncSupabaseEnvVars: no default Supabase branch found for the project.");
       }
     } else {
       if (!branch) {
@@ -218,9 +214,7 @@ export function syncSupabaseEnvVars(options?: {
 
     // Step 4: Get API keys for the branch project
     const apiKeysUrl = `https://api.supabase.com/v1/projects/${branchDetail.ref}/api-keys`;
-    const [apiKeysFetchError, apiKeysResponse] = await tryCatch(
-      fetch(apiKeysUrl, { headers })
-    );
+    const [apiKeysFetchError, apiKeysResponse] = await tryCatch(fetch(apiKeysUrl, { headers }));
 
     let anonKey: string | undefined;
     let serviceRoleKey: string | undefined;

@@ -12,7 +12,7 @@ import type {
 } from "./index.js";
 import type { LogLevel } from "./logger/taskLogger.js";
 import type { MachinePresetName } from "./schemas/common.js";
-import { LogRecordExporter } from "@opentelemetry/sdk-logs";
+import type { LogRecordExporter } from "@opentelemetry/sdk-logs";
 import type { Resource } from "@opentelemetry/resources";
 
 export type CompatibilityFlag = "run_engine_v2";

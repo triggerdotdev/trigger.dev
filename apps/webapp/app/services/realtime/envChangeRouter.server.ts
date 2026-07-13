@@ -588,9 +588,7 @@ export class EnvChangeRouter {
         staleRunIds.clear();
       }
       const echoHorizonMs = gate.maxDelayMs * 10;
-      const newestWatermarkMs = Math.max(
-        ...staleRecords.map((record) => record.updatedAtMs ?? 0)
-      );
+      const newestWatermarkMs = Math.max(...staleRecords.map((record) => record.updatedAtMs ?? 0));
       const withinEchoHorizon = Date.now() - newestWatermarkMs < echoHorizonMs;
       if (attempt < gate.staleRetries || withinEchoHorizon) {
         const retryDelayMs = Math.max(
@@ -685,7 +683,10 @@ export class EnvChangeRouter {
   /** Authoritative re-check for tag feeds: the hydrated row carries ALL the filter's tags
    * (Electric's `runTags @> ARRAY[...]` semantics) and its createdAt is within the window. */
   #tagRowMatches(row: RealtimeRunRow, filter: Extract<FeedFilter, { kind: "tag" }>): boolean {
-    if (filter.createdAtFloorMs !== undefined && row.createdAt.getTime() < filter.createdAtFloorMs) {
+    if (
+      filter.createdAtFloorMs !== undefined &&
+      row.createdAt.getTime() < filter.createdAtFloorMs
+    ) {
       return false;
     }
     const rowTags = row.runTags ?? [];

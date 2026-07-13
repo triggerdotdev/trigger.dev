@@ -1,12 +1,12 @@
 import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
+import type { DequeuedMessage } from "@trigger.dev/core/v3";
 import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { setTimeout } from "node:timers/promises";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
-import { setTimeout } from "node:timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
-import { DequeuedMessage } from "@trigger.dev/core/v3";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -50,7 +50,7 @@ describe("RunEngine batchTrigger", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      const backgroundWorker = await setupBackgroundWorker(
+      const _backgroundWorker = await setupBackgroundWorker(
         engine,
         authenticatedEnvironment,
         taskIdentifier
@@ -141,7 +141,7 @@ describe("RunEngine batchTrigger", () => {
       });
 
       //complete the runs
-      const result1 = await engine.completeRunAttempt({
+      const _result1 = await engine.completeRunAttempt({
         runId: attempt1.run.id,
         snapshotId: attempt1.snapshot.id,
         completion: {
@@ -151,7 +151,7 @@ describe("RunEngine batchTrigger", () => {
           outputType: "application/json",
         },
       });
-      const result2 = await engine.completeRunAttempt({
+      const _result2 = await engine.completeRunAttempt({
         runId: attempt2.run.id,
         snapshotId: attempt2.snapshot.id,
         completion: {

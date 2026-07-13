@@ -11,6 +11,7 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { parseDuration } from "./duration.server";
 
 export function isPerOrgBasinsEnabled(): boolean {
@@ -76,6 +77,9 @@ export async function provisionBasinForOrg(
     data: { streamBasinName: basin },
   });
 
+  // streamBasinName is embedded in every env of the org; drop all its cached env rows.
+  controlPlaneResolver.invalidateOrganization(org.id);
+
   logger.info("[streamBasinProvisioner] provisioned basin for org", {
     orgId: org.id,
     basin,
@@ -85,10 +89,7 @@ export async function provisionBasinForOrg(
   return { kind: "provisioned", basin, retention };
 }
 
-export async function reconfigureBasinForOrg(
-  orgId: string,
-  retention: string
-): Promise<void> {
+export async function reconfigureBasinForOrg(orgId: string, retention: string): Promise<void> {
   if (!isPerOrgBasinsEnabled()) return;
 
   const accessToken = env.REALTIME_STREAMS_S2_ACCESS_TOKEN;
@@ -121,10 +122,7 @@ type EnsureResult =
 // Idempotent: provisions if the org has no basin, PATCHes retention if
 // it does. The single entrypoint the cloud billing app drives — both
 // for the live plan-change path and the bulk backfill.
-export async function ensureBasinForOrg(
-  orgId: string,
-  retention: string
-): Promise<EnsureResult> {
+export async function ensureBasinForOrg(orgId: string, retention: string): Promise<EnsureResult> {
   if (!isPerOrgBasinsEnabled()) {
     return { kind: "skipped", reason: "feature-disabled" };
   }
@@ -136,9 +134,7 @@ export async function ensureBasinForOrg(
   if (!org) return { kind: "skipped", reason: "org-not-found" };
 
   if (!org.streamBasinName) {
-    const result = await provisionBasinForOrg(
-      { id: org.id, streamBasinName: null, retention }
-    );
+    const result = await provisionBasinForOrg({ id: org.id, streamBasinName: null, retention });
     if (result.kind === "provisioned") {
       return { kind: "provisioned", basin: result.basin, retention: result.retention };
     }
@@ -165,6 +161,9 @@ export async function deprovisionBasinForOrg(
     where: { id: org.id },
     data: { streamBasinName: null },
   });
+
+  // streamBasinName is embedded in every env of the org; drop all its cached env rows.
+  controlPlaneResolver.invalidateOrganization(org.id);
 
   logger.info("[streamBasinProvisioner] deprovisioned basin for org", {
     orgId,
@@ -245,4 +244,3 @@ async function s2ReconfigureBasin(name: string, opts: ReconfigureBasinOptions): 
   const text = await res.text().catch(() => "");
   throw new Error(`S2 reconfigureBasin failed: ${res.status} ${res.statusText} ${text}`);
 }
-

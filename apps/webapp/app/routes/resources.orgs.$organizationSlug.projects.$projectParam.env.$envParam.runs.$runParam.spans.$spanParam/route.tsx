@@ -19,10 +19,10 @@ import {
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
+import { toast } from "sonner";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { RegionLabel } from "~/components/runs/v3/RegionLabel";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -42,8 +42,6 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "~/components/primitives/Popover";
-import { ToastUI } from "~/components/primitives/Toast";
-import { toast } from "sonner";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
@@ -55,18 +53,19 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { TextLink } from "~/components/primitives/TextLink";
+import { ToastUI } from "~/components/primitives/Toast";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
-import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
+import { AIEmbedSpanDetails, AISpanDetails, AIToolCallSpanDetails } from "~/components/runs/v3/ai";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
+import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
+import { RegionLabel } from "~/components/runs/v3/RegionLabel";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
-import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
-import { AISpanDetails, AIToolCallSpanDetails, AIEmbedSpanDetails } from "~/components/runs/v3/ai";
-import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
+import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import {
@@ -75,6 +74,7 @@ import {
 } from "~/components/runs/v3/TaskRunStatus";
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
+import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { WarmStartCombo } from "~/components/WarmStarts";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -90,7 +90,6 @@ import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   docsPath,
   v3BatchPath,
-  v3SessionPath,
   v3DeploymentVersionPath,
   v3RunDownloadLogsPath,
   v3RunIdempotencyKeyResetPath,
@@ -99,6 +98,7 @@ import {
   v3RunSpanPath,
   v3RunsPath,
   v3SchedulePath,
+  v3SessionPath,
   v3SpanParamsSchema,
 } from "~/utils/pathBuilder";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
@@ -266,10 +266,10 @@ function SpanBody({
   runParam?: string;
   closePanel?: () => void;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const { value, replace } = useSearchParams();
+  const _organization = useOrganization();
+  const _project = useProject();
+  const _environment = useEnvironment();
+  const { value, replace: _replace } = useSearchParams();
   let tab = value("tab");
 
   if (tab === "context") {
@@ -319,23 +319,13 @@ function SpanBody({
       {isAiInspector ? (
         <SpanEntity span={span} />
       ) : (
-        <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="scrollbar-gutter-stable overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <SpanEntity span={span} />
         </div>
       )}
     </div>
   );
 }
-
-function formatSpanDuration(nanoseconds: number): string {
-  const ms = nanoseconds / 1_000_000;
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const mins = Math.floor(ms / 60_000);
-  const secs = ((ms % 60_000) / 1000).toFixed(0);
-  return `${mins}m ${secs}s`;
-}
-
 function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
   if (!spanOverrides) {
     return span;
@@ -392,14 +382,22 @@ function RunBody({
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
-            name={run.isAgentRun ? "agent" : run.isCached ? "task-cached" : "task"}
+            name={
+              run.isAgentRun
+                ? "agent"
+                : run.isScheduled
+                  ? "scheduled"
+                  : run.isCached
+                    ? "task-cached"
+                    : "task"
+            }
             spanName={run.taskIdentifier}
             className="size-5 min-h-5 min-w-5"
           />
           <Header2
             className={cn(
               "overflow-x-hidden",
-              run.isAgentRun ? "text-agents" : "text-blue-500"
+              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-blue-500"
             )}
           >
             <span className="truncate">
@@ -419,7 +417,7 @@ function RunBody({
           />
         )}
       </div>
-      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="h-fit overflow-x-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <TabContainer>
           <TabButton
             isActive={!tab || tab === "overview"}
@@ -464,7 +462,7 @@ function RunBody({
           </TabButton>
         </TabContainer>
       </div>
-      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div>
           {tab === "detail" ? (
             <div className="flex flex-col gap-4 py-3">
@@ -683,7 +681,7 @@ function RunBody({
                                   <KeyIcon className="size-4 text-text-dimmed" />
                                   <Header3>Idempotency keys</Header3>
                                 </div>
-                                <Paragraph variant="small" className="!text-wrap text-text-dimmed">
+                                <Paragraph variant="small" className="text-wrap! text-text-dimmed">
                                   Prevent duplicate task runs. If you trigger a task with the same
                                   key twice, the second request returns the original run.
                                 </Paragraph>
@@ -1266,36 +1264,6 @@ function RunError({ error }: { error: TaskRunError }) {
     }
   }
 }
-
-function CollapsibleProperties({ code }: { code: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-t border-grid-bright pt-2">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1 text-xs font-medium text-text-dimmed hover:text-text-bright"
-      >
-        <ChevronUpIcon
-          className={cn("size-3.5 transition-transform", open ? "rotate-180" : "rotate-90")}
-        />
-        Raw properties
-      </button>
-      {open && (
-        <div className="mt-1.5">
-          <CodeBlock
-            code={code}
-            maxLines={20}
-            showLineNumbers={false}
-            showCopyButton
-            showTextWrapping
-            showOpenInModal
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SpanEntity({ span }: { span: Span }) {
   const isAdmin = useHasAdminAccess();
 
@@ -1315,10 +1283,10 @@ function SpanEntity({ span }: { span: Span }) {
                   span.isCancelled
                     ? "CANCELED"
                     : span.isError
-                    ? "FAILED"
-                    : span.isPartial
-                    ? "EXECUTING"
-                    : "COMPLETED"
+                      ? "FAILED"
+                      : span.isPartial
+                        ? "EXECUTING"
+                        : "COMPLETED"
                 }
                 className="text-sm"
               />
@@ -1346,7 +1314,7 @@ function SpanEntity({ span }: { span: Span }) {
               <span>Message</span>
               <CopyTextLink value={span.message} />
             </Property.Label>
-            <Property.Value className="whitespace-pre-wrap [overflow-wrap:break-word]">
+            <Property.Value className="whitespace-pre-wrap wrap-break-word">
               {span.message}
             </Property.Value>
           </Property.Item>
@@ -1377,7 +1345,7 @@ function SpanEntity({ span }: { span: Span }) {
         {span.triggeredRuns.length > 0 && (
           <div className="flex flex-col gap-1.5">
             <Header3>Runs</Header3>
-            <Table containerClassName="max-h-[12.5rem]">
+            <Table containerClassName="max-h-50">
               <TableHeader className="bg-background-bright">
                 <TableRow>
                   <TableHeaderCell>ID</TableHeaderCell>
@@ -1430,10 +1398,10 @@ function SpanEntity({ span }: { span: Span }) {
                 span.isCancelled
                   ? "CANCELED"
                   : span.isError
-                  ? "FAILED"
-                  : span.isPartial
-                  ? "EXECUTING"
-                  : "COMPLETED"
+                    ? "FAILED"
+                    : span.isPartial
+                      ? "EXECUTING"
+                      : "COMPLETED"
               }
               className="text-sm"
             />
@@ -1470,7 +1438,7 @@ function SpanEntity({ span }: { span: Span }) {
     case "waitpoint": {
       return (
         <div className="grid h-full grid-rows-[1fr_auto]">
-          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="flex flex-col gap-4 overflow-y-auto px-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
             <div>
               <Header2>Waitpoint</Header2>
               <Paragraph variant="small">
@@ -1508,8 +1476,8 @@ function SpanEntity({ span }: { span: Span }) {
             typeof span.properties === "string"
               ? span.properties
               : span.properties != null
-              ? JSON.stringify(span.properties, null, 2)
-              : undefined
+                ? JSON.stringify(span.properties, null, 2)
+                : undefined
           }
           startTime={span.startTime}
           duration={span.duration}
@@ -1518,7 +1486,7 @@ function SpanEntity({ span }: { span: Span }) {
     }
     case "ai-tool-call": {
       return (
-        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="px-3">
             <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
           </div>
@@ -1528,7 +1496,7 @@ function SpanEntity({ span }: { span: Span }) {
     }
     case "ai-embed": {
       return (
-        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <div className="px-3">
             <SpanHorizontalTimeline startTime={span.startTime} duration={span.duration} />
           </div>

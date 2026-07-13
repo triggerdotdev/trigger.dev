@@ -27,6 +27,7 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunStreamParamsSchema } from "~/utils/pathBuilder";
 import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 type ViewMode = "list" | "compact";
 
@@ -60,44 +61,44 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const run = await runStore.findRun(
+    { friendlyId: runParam, projectId: project.id },
     {
-      friendlyId: runParam,
-      projectId: project.id,
-    },
-    {
-      include: {
-        runtimeEnvironment: {
-          include: {
-            project: true,
-            organization: true,
-            orgMember: true,
-          },
-        },
+      select: {
+        id: true,
+        friendlyId: true,
+        realtimeStreamsVersion: true,
+        streamBasinName: true,
+        runtimeEnvironmentId: true,
       },
-    },
-    $replica
+    }
   );
 
   if (!run) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  if (run.runtimeEnvironment.slug !== envParam) {
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+  if (!environment || environment.slug !== envParam) {
     throw new Response("Not Found", { status: 404 });
   }
 
   // Get Last-Event-ID header for resuming from a specific position
   const lastEventId = request.headers.get("Last-Event-ID") || undefined;
 
-  const realtimeStream = getRealtimeStreamInstance(
-    run.runtimeEnvironment,
-    run.realtimeStreamsVersion,
-    { run }
-  );
-
-  return realtimeStream.streamResponse(request, run.friendlyId, streamKey, getRequestAbortSignal(), {
-    lastEventId,
+  const realtimeStream = getRealtimeStreamInstance(environment, run.realtimeStreamsVersion, {
+    run: { streamBasinName: run.streamBasinName },
   });
+
+  return realtimeStream.streamResponse(
+    request,
+    run.friendlyId,
+    streamKey,
+    getRequestAbortSignal(),
+    {
+      lastEventId,
+    }
+  );
 };
 
 export function RealtimeStreamViewer({
@@ -205,7 +206,6 @@ export function RealtimeStreamViewer({
     const handleScroll = () => {
       if (!scrollElement || !bottomElement) return;
 
-      // Clear any existing timeout
       if (scrollTimeout) {
         clearTimeout(scrollTimeout);
       }
@@ -338,8 +338,8 @@ export function RealtimeStreamViewer({
                       chunks.length === 0
                         ? "cursor-not-allowed opacity-50"
                         : copied
-                        ? "text-success hover:cursor-pointer"
-                        : "text-text-dimmed hover:cursor-pointer hover:text-text-bright"
+                          ? "text-success hover:cursor-pointer"
+                          : "text-text-dimmed hover:cursor-pointer hover:text-text-bright"
                     )}
                   >
                     {copied ? (
@@ -391,7 +391,7 @@ export function RealtimeStreamViewer({
       {/* Content */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-x-auto overflow-y-auto bg-charcoal-900 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="flex-1 overflow-x-auto overflow-y-auto bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
       >
         {error && (
           <div className="border-b border-error/20 bg-error/10 p-3">
@@ -503,7 +503,7 @@ function StreamChunkLine({
 
   return (
     <div
-      className="group flex gap-3 py-1 hover:bg-charcoal-800"
+      className="group flex gap-3 py-1 hover:bg-background-bright"
       style={{
         position: "absolute",
         top: 0,
@@ -514,14 +514,14 @@ function StreamChunkLine({
     >
       {/* Line number */}
       <div
-        className="flex-none select-none pl-2 text-right text-charcoal-500"
+        className="flex-none select-none pl-2 text-right text-text-faint"
         style={{ width: `${Math.max(maxLineNumberWidth, 3)}ch` }}
       >
         {lineNumber}
       </div>
 
       {/* Timestamp */}
-      <div className="flex-none select-none pl-1 text-charcoal-500">{timestamp}</div>
+      <div className="flex-none select-none pl-1 text-text-faint">{timestamp}</div>
 
       {/* Content */}
       <div className="whitespace-nowrap text-text-bright">{formattedData}</div>
@@ -554,7 +554,6 @@ export function useRealtimeStream(resourcePath: string, startIndex?: number) {
 
         reader = stream.getReader();
 
-        // Read from the stream
         while (true) {
           const { done, value } = await reader.read();
 

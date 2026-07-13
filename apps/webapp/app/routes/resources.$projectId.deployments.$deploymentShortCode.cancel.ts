@@ -1,4 +1,4 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { json } from "@remix-run/node";
 import { errAsync, fromPromise, okAsync } from "neverthrow";
 import { z } from "zod";
@@ -39,10 +39,10 @@ export const action = dashboardAction(
     const userId = user.id;
 
     const formData = await request.formData();
-    const submission = parse(formData, { schema: cancelSchema });
+    const submission = parseWithZod(formData, { schema: cancelSchema });
 
-    if (!submission.value) {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
     const verifyProjectMembership = () =>

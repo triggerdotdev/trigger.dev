@@ -1,6 +1,5 @@
-import "reflect-metadata";
 import { task } from "@trigger.dev/sdk/v3";
-import { setTimeout } from "node:timers/promises";
+import "reflect-metadata";
 
 class Point {
   constructor(

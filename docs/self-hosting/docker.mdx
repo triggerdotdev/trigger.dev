@@ -339,8 +339,10 @@ There are several reasons to lock the version of your Docker images:
 By default, the images will point at the latest versioned release via the `latest` tag. You can override this by specifying a different tag in your `.env` file. For example:
 
 ```bash
-TRIGGER_IMAGE_TAG=v4.0.0
+TRIGGER_IMAGE_TAG=v4.5.0
 ```
+
+We patch the latest released version line only, so keep an eye on new releases to receive security fixes. See [Security & vulnerability reporting](/self-hosting/security).
 
 ## Task events
 
@@ -354,6 +356,27 @@ EVENT_REPOSITORY_DEFAULT_STORE=clickhouse_v2
 
 This only affects new runs; existing runs continue to read from wherever their events were originally stored.
 
+## Realtime streams
+
+Realtime streams power AI-agent token streaming and run streams. They default to **v2**, backed by the bundled `s2` service — [s2-lite](https://s2.dev), the open-source, self-hostable S2 server. It stores stream data in a persistent volume and is preconfigured in the webapp compose file, so no setup is required.
+
+To fall back to the Redis-backed **v1** streams, set on the webapp in your `.env`:
+
+```bash
+REALTIME_STREAMS_DEFAULT_VERSION=v1
+```
+
+To use a hosted S2 at [s2.dev](https://s2.dev) instead of the bundled s2-lite, point the endpoint at your basin and supply an access token:
+
+```bash
+REALTIME_STREAMS_S2_BASIN=your-basin
+REALTIME_STREAMS_S2_ENDPOINT=https://your-basin.b.aws.s2.dev/v1
+REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS=false
+REALTIME_STREAMS_S2_ACCESS_TOKEN=your-access-token
+```
+
+See the [webapp environment variables](/self-hosting/env/webapp) for the full list of realtime stream settings.
+
 ## Troubleshooting
 
 - **Deployment fails at the push step.** The machine running `deploy` needs registry access. See the [registry setup](#registry-setup) section for more details.
@@ -366,8 +389,6 @@ This only affects new runs; existing runs continue to read from wherever their e
   # Run this from the /hosting/docker/webapp directory
   docker compose logs -f webapp
   ```
-
-- **Deploy fails with `ERROR: schema "graphile_worker" does not exist`.** This error occurs when Graphile Worker migrations fail to run during webapp startup. Check the webapp logs for certificate-related errors like `self-signed certificate in certificate chain`. This is often caused by PostgreSQL SSL certificate issues when using an external PostgreSQL instance with SSL enabled. Ensure that both the webapp and supervisor containers have access to the same CA certificate used by your PostgreSQL instance. You can configure this by mounting the certificate file and setting the `NODE_EXTRA_CA_CERTS` environment variable to point to the certificate path. Once the certificate issue is resolved, the migrations will complete and create the required `graphile_worker` schema.
 
 - **ClickHouse migrations say "no migrations to run" but schema is missing.** The goose migration tracker is out of sync. Exec into the webapp container, set the GOOSE env vars (from webapp startup logs), and run `goose reset && goose up`.
 

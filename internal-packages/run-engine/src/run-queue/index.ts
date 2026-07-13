@@ -5,44 +5,45 @@ import {
   type RedisOptions,
   type Result,
 } from "@internal/redis";
-import {
+import type {
   Attributes,
-  context,
-  getMeter,
   Meter,
   ObservableResult,
+  Span,
+  SpanOptions,
+  Tracer,
+} from "@internal/tracing";
+import {
+  context,
+  getMeter,
   propagation,
   SEMATTRS_MESSAGE_ID,
   SEMATTRS_MESSAGING_OPERATION,
   SEMATTRS_MESSAGING_SYSTEM,
-  Span,
   SpanKind,
-  SpanOptions,
-  Tracer,
   ValueType,
 } from "@internal/tracing";
 import { promiseWithResolvers, tryCatch } from "@trigger.dev/core";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import type { LogLevel } from "@trigger.dev/core/logger";
+import { Logger } from "@trigger.dev/core/logger";
 import { calculateNextRetryDelay, flattenAttributes } from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
 import { Decimal } from "@trigger.dev/database";
 import { CronSchema, Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import { nanoid } from "nanoid";
-import { Readable } from "node:stream";
+import type { Readable } from "node:stream";
 import { setInterval, setTimeout } from "node:timers/promises";
 import { z } from "zod";
-import {
-  attributesFromAuthenticatedEnv,
-  MinimalAuthenticatedEnvironment,
-} from "../shared/index.js";
-import {
+import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { attributesFromAuthenticatedEnv } from "../shared/index.js";
+import type {
   InputPayload,
-  OutputPayload,
   OutputPayloadV2,
   RunQueueKeyProducer,
   RunQueueKeyProducerEnvironment,
   RunQueueSelectionStrategy,
 } from "./types.js";
+import { OutputPayload } from "./types.js";
 import { WorkerQueueResolver } from "./workerQueueResolver.js";
 
 const SemanticAttributes = {
@@ -387,7 +388,7 @@ export class RunQueue {
 
     const burstFactor = result
       ? Number(result)
-      : this.options.defaultEnvConcurrencyBurstFactor ?? 1;
+      : (this.options.defaultEnvConcurrencyBurstFactor ?? 1);
 
     const limit = await this.getEnvConcurrencyLimit(env);
 
@@ -399,7 +400,7 @@ export class RunQueue {
 
     const burstFactor = result
       ? Number(result)
-      : this.options.defaultEnvConcurrencyBurstFactor ?? 1;
+      : (this.options.defaultEnvConcurrencyBurstFactor ?? 1);
 
     return burstFactor;
   }
@@ -1389,9 +1390,7 @@ export class RunQueue {
       })) {
         const now = Date.now();
 
-        const [error, expiredRuns] = await tryCatch(
-          this.#expireTtlRuns(shard, now, batchSize)
-        );
+        const [error, expiredRuns] = await tryCatch(this.#expireTtlRuns(shard, now, batchSize));
 
         if (error) {
           this.logger.error(`Failed to expire TTL runs for shard ${shard}`, {
@@ -1858,8 +1857,9 @@ export class RunQueue {
     const workerQueueKey = this.keys.workerQueueKey(message.workerQueue);
     const queueConcurrencyLimitKey = this.keys.queueConcurrencyLimitKeyFromQueue(message.queue);
     const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(message.queue);
-    const envConcurrencyLimitBurstFactorKey =
-      this.keys.envConcurrencyLimitBurstFactorKeyFromQueue(message.queue);
+    const envConcurrencyLimitBurstFactorKey = this.keys.envConcurrencyLimitBurstFactorKeyFromQueue(
+      message.queue
+    );
     // The value stored in the worker queue list — used to look up the message payload on dequeue
     const messageKeyValue = messageKey;
 
@@ -2064,9 +2064,7 @@ export class RunQueue {
         this.keys.envIdFromQueue(messageQueue),
         ttlShardCount
       );
-      const ttlQueueKey = this.options.ttlSystem
-        ? this.keys.ttlQueueKeyForShard(ttlShard)
-        : "";
+      const ttlQueueKey = this.options.ttlSystem ? this.keys.ttlQueueKeyForShard(ttlShard) : "";
 
       this.logger.debug("#callDequeueMessagesFromQueue", {
         messageQueue,
@@ -2172,13 +2170,11 @@ export class RunQueue {
       });
 
       const ckIndexKey = this.keys.ckIndexKeyFromQueue(ckWildcardQueue);
-      const queueConcurrencyLimitKey =
-        this.keys.queueConcurrencyLimitKeyFromQueue(ckWildcardQueue);
+      const queueConcurrencyLimitKey = this.keys.queueConcurrencyLimitKeyFromQueue(ckWildcardQueue);
       const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKeyFromQueue(ckWildcardQueue);
       const envConcurrencyLimitBurstFactorKey =
         this.keys.envConcurrencyLimitBurstFactorKeyFromQueue(ckWildcardQueue);
-      const envCurrentConcurrencyKey =
-        this.keys.envCurrentConcurrencyKeyFromQueue(ckWildcardQueue);
+      const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(ckWildcardQueue);
       const messageKeyPrefix = this.keys.messageKeyPrefixFromQueue(ckWildcardQueue);
       const envQueueKey = this.keys.envQueueKeyFromQueue(ckWildcardQueue);
       const masterQueueKey = this.keys.masterQueueKeyForShard(shard);
@@ -2189,9 +2185,7 @@ export class RunQueue {
         this.keys.envIdFromQueue(ckWildcardQueue),
         ttlShardCount
       );
-      const ttlQueueKey = this.options.ttlSystem
-        ? this.keys.ttlQueueKeyForShard(ttlShard)
-        : "";
+      const ttlQueueKey = this.options.ttlSystem ? this.keys.ttlQueueKeyForShard(ttlShard) : "";
 
       this.logger.debug("#callDequeueMessagesFromCkQueue", {
         ckWildcardQueue,
@@ -5174,7 +5168,7 @@ end
 function safeJsonParse(rawMessage: string): unknown {
   try {
     return JSON.parse(rawMessage);
-  } catch (e) {
+  } catch (_e) {
     return undefined;
   }
 }

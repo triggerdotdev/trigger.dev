@@ -337,7 +337,13 @@ function EditButton({ name, organizationIds }: { name: string; organizationIds: 
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-text-dimmed">Key</label>
-              <Input name="_key_display" value={name} readOnly variant="medium" className="font-mono opacity-60" />
+              <Input
+                name="_key_display"
+                value={name}
+                readOnly
+                variant="medium"
+                className="font-mono opacity-60"
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -357,7 +363,12 @@ function EditButton({ name, organizationIds }: { name: string; organizationIds: 
             {fetcher.data?.error && <p className="text-xs text-rose-400">{fetcher.data.error}</p>}
 
             <DialogFooter>
-              <Button variant="tertiary/small" type="button" onClick={() => setOpen(false)} disabled={isSubmitting}>
+              <Button
+                variant="tertiary/small"
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={isSubmitting}
+              >
                 Cancel
               </Button>
               <Button type="submit" variant="primary/small" disabled={isSubmitting}>

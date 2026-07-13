@@ -4,10 +4,6 @@ sidebarTitle: "Version upgrades"
 description: "Gracefully migrate suspended chat agents to a new deployment using chat.requestUpgrade() and the continuation mechanism."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 Chat agent runs are pinned to the worker version they started on. When you deploy a new version, suspended runs resume on the **old** code. If your deploy includes breaking changes (new tools, changed schemas, updated API contracts), this can cause issues.
 
 `chat.requestUpgrade()` lets the agent opt out of the current run so the transport triggers a new one on the latest version.

@@ -31,7 +31,7 @@ export const whoamiTool = {
       return {
         content: [{ type: "text" as const, text: content.join("\n") }],
       };
-    } catch (error) {
+    } catch (_error) {
       return respondWithError("Not authenticated. Use an authenticated tool to trigger login.");
     }
   }),
@@ -71,9 +71,7 @@ export const listProfilesTool = {
     }
 
     content.push("");
-    content.push(
-      "Use `switch_profile` to change the active profile for this session."
-    );
+    content.push("Use `switch_profile` to change the active profile for this session.");
 
     return {
       content: [{ type: "text" as const, text: content.join("\n") }],
@@ -131,7 +129,7 @@ export const switchProfileTool = {
       return {
         content: [{ type: "text" as const, text: content.join("\n") }],
       };
-    } catch (error) {
+    } catch (_error) {
       // Revert in-memory only (nothing was persisted)
       ctx.switchProfile(previousProfile);
       return respondWithError(

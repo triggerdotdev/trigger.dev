@@ -17,7 +17,6 @@ import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { DateTimePicker } from "~/components/primitives/DateTimePicker";
 import { FormError } from "~/components/primitives/FormError";
-import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -329,8 +328,8 @@ export function timeFilterRenderValues({
     rangeType === "range" || rangeType === "period"
       ? labelName
       : rangeType === "from"
-      ? `${labelName} after`
-      : `${labelName} before`;
+        ? `${labelName} after`
+        : `${labelName} before`;
 
   return { label, valueLabel, rangeType };
 }
@@ -379,9 +378,9 @@ export function TimeFilter({
   // state, so don't fall back to the URL — otherwise selecting a custom date range (which
   // sets period to undefined) would read the page-level URL period and override the range.
   const controlled = onValueChange !== undefined;
-  const periodValue = controlled ? period : period ?? value("period");
-  const fromValue = controlled ? from : from ?? value("from");
-  const toValue = controlled ? to : to ?? value("to");
+  const periodValue = controlled ? period : (period ?? value("period"));
+  const fromValue = controlled ? from : (from ?? value("from"));
+  const toValue = controlled ? to : (to ?? value("to"));
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   useShortcutKeys({
@@ -425,7 +424,7 @@ export function TimeFilter({
                 />
               </Ariakit.TooltipAnchor>
               {shortcut && (
-                <Ariakit.Tooltip className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs">
+                <Ariakit.Tooltip className="z-40 cursor-default rounded border border-grid-bright bg-background-bright px-2 py-1.5 text-xs">
                   <div className="flex items-center gap-2">
                     <span>Filter by time period</span>
                     <ShortcutKey className="size-4 flex-none" shortcut={shortcut} variant="small" />
@@ -503,7 +502,7 @@ export function TimeDropdown({
   const isInitialCustom =
     period && !timePeriods.some((p) => p.value === period) && initialCustom.value !== "";
   const [selectedPeriod, setSelectedPeriod] = useState<string>(
-    isInitialCustom ? "custom" : period ?? defaultPeriod
+    isInitialCustom ? "custom" : (period ?? defaultPeriod)
   );
 
   // Custom duration state
@@ -517,7 +516,7 @@ export function TimeDropdown({
     setCustomUnit(parsed.unit);
 
     const isCustom = period && !timePeriods.some((p) => p.value === period) && parsed.value !== "";
-    setSelectedPeriod(isCustom ? "custom" : period ?? defaultPeriod);
+    setSelectedPeriod(isCustom ? "custom" : (period ?? defaultPeriod));
     setActiveSection(from || to ? "dateRange" : "duration");
   }, [period, from, to, defaultPeriod]);
 
@@ -681,10 +680,10 @@ export function TimeDropdown({
                 {/* Custom duration row */}
                 <div
                   className={cn(
-                    "col-span-4 flex h-[1.8rem] w-full items-center gap-2 rounded border bg-charcoal-750 py-0.5 pl-0 pr-2 transition-colors",
+                    "col-span-4 flex h-[1.8rem] w-full items-center gap-2 rounded border bg-background-hover py-0.5 pl-0 pr-2 transition-colors",
                     activeSection === "duration" && selectedPeriod === "custom"
                       ? "border-indigo-500 "
-                      : "border-charcoal-650 hover:border-charcoal-600",
+                      : "border-border-bright hover:border-border-bright",
                     validationError &&
                       activeSection === "duration" &&
                       selectedPeriod === "custom" &&
@@ -710,7 +709,7 @@ export function TimeDropdown({
                       setActiveSection("duration");
                       setValidationError(null);
                     }}
-                    className="h-full w-full translate-y-px border-none bg-transparent py-0 pl-2 pr-0 text-xs leading-none text-text-bright outline-none placeholder:text-text-dimmed focus:outline-none focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    className="h-full w-full translate-y-px border-none bg-transparent py-0 pl-2 pr-0 text-xs leading-none text-text-bright outline-hidden placeholder:text-text-dimmed focus:outline-hidden focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                   <div className="flex items-center gap-2">
                     {timeUnits.map((unit) => (

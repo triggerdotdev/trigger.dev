@@ -1,4 +1,4 @@
-import { IOPacket } from "@trigger.dev/core/v3/utils/ioSerialization";
+import type { IOPacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
 export class MetadataTooLargeError extends ServiceValidationError {

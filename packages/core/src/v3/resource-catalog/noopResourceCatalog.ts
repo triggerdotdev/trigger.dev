@@ -1,4 +1,4 @@
-import {
+import type {
   PromptManifest,
   QueueManifest,
   SkillManifest,
@@ -6,8 +6,12 @@ import {
   TaskManifest,
   WorkerManifest,
 } from "../schemas/index.js";
-import { type PromptMetadataWithFunctions, type TaskMetadataWithFunctions, type TaskSchema } from "../types/index.js";
-import { ResourceCatalog } from "./catalog.js";
+import {
+  type PromptMetadataWithFunctions,
+  type TaskMetadataWithFunctions,
+  type TaskSchema,
+} from "../types/index.js";
+import type { ResourceCatalog } from "./catalog.js";
 
 export class NoopResourceCatalog implements ResourceCatalog {
   registerTaskMetadata(task: TaskMetadataWithFunctions): void {

@@ -56,18 +56,16 @@ function getImpersonationTokenSecret(): Uint8Array {
 }
 
 function getImpersonationTokenRedisClient(): RedisClient {
-  return singleton(
-    "impersonationTokenRedis",
-    () =>
-      createRedisClient("impersonation:token", {
-        host: env.CACHE_REDIS_HOST,
-        port: env.CACHE_REDIS_PORT,
-        username: env.CACHE_REDIS_USERNAME,
-        password: env.CACHE_REDIS_PASSWORD,
-        tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
-        clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
-        keyPrefix: "impersonation:token:",
-      })
+  return singleton("impersonationTokenRedis", () =>
+    createRedisClient("impersonation:token", {
+      host: env.CACHE_REDIS_HOST,
+      port: env.CACHE_REDIS_PORT,
+      username: env.CACHE_REDIS_USERNAME,
+      password: env.CACHE_REDIS_PASSWORD,
+      tlsDisabled: env.CACHE_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.CACHE_REDIS_CLUSTER_MODE_ENABLED === "1",
+      keyPrefix: "impersonation:token:",
+    })
   );
 }
 
@@ -134,9 +132,12 @@ export async function validateAndConsumeImpersonationToken(
           return undefined;
         }
       } catch (redisError) {
-        logger.warn("Redis unavailable for impersonation token tracking, relying on JWT expiry only", {
-          error: redisError instanceof Error ? redisError.message : String(redisError),
-        });
+        logger.warn(
+          "Redis unavailable for impersonation token tracking, relying on JWT expiry only",
+          {
+            error: redisError instanceof Error ? redisError.message : String(redisError),
+          }
+        );
       }
     }
 

@@ -12,6 +12,13 @@ export type {
   PendingVersionRunIdLookupResult,
 } from "./engine/services/pendingVersionLookup.js";
 export { NoopPendingVersionRunIdLookup } from "./engine/services/pendingVersionLookup.js";
+export { PassthroughControlPlaneResolver } from "./engine/controlPlaneResolver.js";
+export type {
+  ControlPlaneResolver,
+  ResolvedEngineEnv,
+  ResolvedAuthenticatedEnv,
+  ResolvedWorkerVersion,
+} from "./engine/controlPlaneResolver.js";
 
 // Batch Queue exports
 export { BatchQueue, BatchCompletionTracker } from "./batch-queue/index.js";

@@ -1,7 +1,4 @@
-import {
-  type PrismaClientOrTransaction,
-  type RuntimeEnvironmentType,
-} from "@trigger.dev/database";
+import { type PrismaClientOrTransaction, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { type ClickHouse } from "@internal/clickhouse";
 import { z } from "zod";
 import { $replica } from "~/db.server";

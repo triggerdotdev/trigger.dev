@@ -1,5 +1,5 @@
 import {
-  BuildServerMetadata,
+  type BuildServerMetadata,
   type InitializeDeploymentRequestBody,
   type ExternalBuildData,
 } from "@trigger.dev/core/v3";

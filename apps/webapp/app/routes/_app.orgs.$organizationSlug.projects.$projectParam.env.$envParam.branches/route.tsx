@@ -1,11 +1,11 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { ArrowUpCircleIcon, CheckIcon, EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useFetcher, useLocation, useSearchParams } from "@remix-run/react";
+import { useFetcher, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { GitMeta, tryCatch } from "@trigger.dev/core/v3";
+import { tryCatch } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useState } from "react";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -16,7 +16,6 @@ import { Feedback } from "~/components/Feedback";
 import { GitMetadata } from "~/components/GitMetadata";
 import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { InlineCode } from "~/components/code/InlineCode";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -33,8 +32,6 @@ import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Header3 } from "~/components/primitives/Headers";
-import { Hint } from "~/components/primitives/Hint";
-import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { InputNumberStepper } from "~/components/primitives/InputNumberStepper";
 import { Label } from "~/components/primitives/Label";
@@ -62,12 +59,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 
 import { findProjectBySlug } from "~/models/project.server";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { BranchesPresenter } from "~/presenters/v3/BranchesPresenter.server";
 import { logger } from "~/services/logger.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
-import { UpsertBranchService } from "~/services/upsertBranch.server";
 import { cn } from "~/utils/cn";
 import {
   branchesPath,
@@ -80,13 +76,20 @@ import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import { SetBranchesAddOnService } from "~/v3/services/setBranchesAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArchiveButton } from "../resources.branches.archive";
+import { NewBranchPanel } from "~/routes/resources.branches.create";
+import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
 
-export const BranchesOptions = z.object({
-  search: z.string().optional(),
-  showArchived: z.preprocess((val) => val === "true" || val === true, z.boolean()).optional(),
-  page: z.preprocess((val) => Number(val), z.number()).optional(),
-});
+const PurchaseSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("purchase"),
+    amount: z.coerce.number().int("Must be a whole number").min(0, "Amount must be 0 or more"),
+  }),
+  z.object({
+    action: z.literal("quota-increase"),
+    amount: z.coerce.number().int("Must be a whole number").min(1, "Amount must be greater than 0"),
+  }),
+]);
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -101,6 +104,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const result = await presenter.call({
       userId,
       projectSlug: projectParam,
+      env: "preview",
       ...options,
     });
 
@@ -113,31 +117,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 };
-
-export const CreateBranchOptions = z.object({
-  parentEnvironmentId: z.string(),
-  branchName: z.string().min(1),
-  git: GitMeta.optional(),
-});
-
-export type CreateBranchOptions = z.infer<typeof CreateBranchOptions>;
-
-export const schema = CreateBranchOptions.and(
-  z.object({
-    failurePath: z.string(),
-  })
-);
-
-const PurchaseSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("purchase"),
-    amount: z.coerce.number().int("Must be a whole number").min(0, "Amount must be 0 or more"),
-  }),
-  z.object({
-    action: z.literal("quota-increase"),
-    amount: z.coerce.number().int("Must be a whole number").min(1, "Amount must be greater than 0"),
-  }),
-]);
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
@@ -155,7 +134,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
 
     if (!project) {
-      throw redirectWithErrorMessage(redirectPath, request, "Project not found");
+      throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
     }
 
     const currentPlan = await getCurrentPlan(project.organizationId);
@@ -167,16 +146,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
       );
     }
     if (purchaseBlockReason === "managed_billing") {
-      return json(
-        { ok: false, error: "Contact us to request more branches." } as const,
-        { status: 403 }
-      );
+      return json({ ok: false, error: "Contact us to request more branches." } as const, {
+        status: 403,
+      });
     }
 
-    const submission = parse(formData, { schema: PurchaseSchema });
+    const submission = parseWithZod(formData, { schema: PurchaseSchema });
 
-    if (!submission.value || submission.intent !== "submit") {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
     const service = new SetBranchesAddOnService();
@@ -190,56 +168,30 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
 
     if (error) {
-      submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
-      return json(submission);
+      return json(
+        submission.reply({
+          fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
+        })
+      );
     }
 
     if (!result.success) {
-      submission.error.amount = [result.error];
-      return json(submission);
+      return json(submission.reply({ fieldErrors: { amount: [result.error] } }));
     }
 
     return json({ ok: true } as const);
   }
 
-  const submission = parse(formData, { schema });
-
-  if (!submission.value) {
-    return redirectWithErrorMessage("/", request, "Invalid form data");
-  }
-
-  const upsertBranchService = new UpsertBranchService();
-  const result = await upsertBranchService.call(
-    { type: "userMembership", userId },
-    submission.value
-  );
-
-  if (result.success) {
-    if (result.alreadyExisted) {
-      submission.error = {
-        branchName: [
-          `Branch "${result.branch.branchName}" already exists. You can archive it and create a new one with the same name.`,
-        ],
-      };
-      return json(submission);
-    }
-
-    return redirectWithSuccessMessage(
-      `${branchesPath(result.organization, result.project, result.branch)}?dialogClosed=true`,
-      request,
-      `Branch "${result.branch.branchName}" created`
-    );
-  }
-
-  submission.error = { branchName: [result.error] };
-  return json(submission);
+  // Branch creation is handled by the `resources.branches.create` resource
+  // route; this action only services the purchase flow above.
+  return json({ ok: false, error: "Unsupported action" } as const, { status: 400 });
 }
 
 export default function Page() {
   const {
     branchableEnvironment,
     branches,
-    hasFilters,
+    hasFilters: _hasFilters,
     limits,
     currentPage,
     totalPages,
@@ -328,7 +280,7 @@ export default function Page() {
                   New branch…
                 </Button>
               }
-              parentEnvironment={branchableEnvironment}
+              env="preview"
             />
           )}
         </PageAccessories>
@@ -338,7 +290,7 @@ export default function Page() {
           {!hasBranches ? (
             <MainCenteredContainer className="max-w-md">
               <BranchesNoBranches
-                parentEnvironment={branchableEnvironment}
+                env="preview"
                 limits={limits}
                 canUpgrade={canUpgrade ?? false}
                 showSelfServe={showSelfServe}
@@ -403,7 +355,7 @@ export default function Page() {
                             </TableCell>
                             <TableCell className={cellClass}>
                               {branch.archivedAt ? (
-                                <CheckIcon className="size-4 text-charcoal-400" />
+                                <CheckIcon className="size-4 text-text-dimmed" />
                               ) : (
                                 "–"
                               )}
@@ -670,14 +622,14 @@ function PurchaseBranchesModal({
   const showSelfServe = useShowSelfServe();
   const fetcher = useFetcher();
   const lastSubmission =
-    fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
+    fetcher.data && typeof fetcher.data === "object" && "status" in fetcher.data
       ? fetcher.data
       : undefined;
   const [form, { amount }] = useForm({
     id: "purchase-branches",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: PurchaseSchema });
+      return parseWithZod(formData, { schema: PurchaseSchema });
     },
     shouldRevalidate: "onSubmit",
   });
@@ -735,7 +687,7 @@ function PurchaseBranchesModal({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <fetcher.Form method="post" {...form.props}>
+        <fetcher.Form method="post" {...getFormProps(form)}>
           <input type="hidden" name="_formType" value="purchase-branches" />
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
@@ -751,7 +703,7 @@ function PurchaseBranchesModal({
                   Total extra branches
                 </Label>
                 <InputNumberStepper
-                  {...conform.input(amount, { type: "number" })}
+                  {...getInputProps(amount, { type: "number" })}
                   step={branchPricing.stepSize}
                   min={0}
                   max={undefined}
@@ -759,10 +711,8 @@ function PurchaseBranchesModal({
                   onChange={(e) => setAmountValue(Number(e.target.value))}
                   disabled={isLoading}
                 />
-                <FormError id={amount.errorId}>
-                  {amount.error ?? amount.initialError?.[""]?.[0]}
-                </FormError>
-                <FormError>{form.error}</FormError>
+                <FormError id={amount.errorId}>{amount.errors}</FormError>
+                <FormError>{form.errors}</FormError>
               </InputGroup>
             </Fieldset>
             {state === "need_to_archive" ? (
@@ -920,90 +870,4 @@ function updateBranchState({
   }
   if (value > quota) return "above_quota";
   return "increase";
-}
-
-export function NewBranchPanel({
-  button,
-  parentEnvironment,
-}: {
-  button: React.ReactNode;
-  parentEnvironment: { id: string };
-}) {
-  const lastSubmission = useActionData<typeof action>();
-  const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [isOpen, setIsOpen] = useState(false);
-
-  const [form, { parentEnvironmentId, branchName, failurePath }] = useForm({
-    id: "create-branch",
-    lastSubmission: lastSubmission as any,
-    onValidate({ formData }) {
-      return parse(formData, { schema });
-    },
-    shouldRevalidate: "onInput",
-  });
-
-  useEffect(() => {
-    if (searchParams.has("dialogClosed")) {
-      setSearchParams((s) => {
-        s.delete("dialogClosed");
-        return s;
-      });
-      setIsOpen(false);
-    }
-  }, [searchParams, setSearchParams]);
-
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>{button}</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>New branch</DialogHeader>
-        <div className="mt-2 flex flex-col gap-4">
-          <Form method="post" {...form.props} className="w-full">
-            <Fieldset className="max-w-full gap-y-3">
-              <input
-                value={parentEnvironment.id}
-                {...conform.input(parentEnvironmentId, { type: "hidden" })}
-              />
-              <input
-                value={location.pathname}
-                {...conform.input(failurePath, { type: "hidden" })}
-              />
-              <InputGroup className="max-w-full">
-                <Label>Branch name</Label>
-                <Input {...conform.input(branchName)} />
-                <Hint>
-                  Must not contain: spaces <InlineCode variant="extra-small">~</InlineCode>{" "}
-                  <InlineCode variant="extra-small">^</InlineCode>{" "}
-                  <InlineCode variant="extra-small">:</InlineCode>{" "}
-                  <InlineCode variant="extra-small">?</InlineCode>{" "}
-                  <InlineCode variant="extra-small">*</InlineCode>{" "}
-                  <InlineCode variant="extra-small">{"["}</InlineCode>{" "}
-                  <InlineCode variant="extra-small">\</InlineCode>{" "}
-                  <InlineCode variant="extra-small">//</InlineCode>{" "}
-                  <InlineCode variant="extra-small">..</InlineCode>{" "}
-                  <InlineCode variant="extra-small">{"@{"}</InlineCode>{" "}
-                  <InlineCode variant="extra-small">.lock</InlineCode>
-                </Hint>
-                <FormError id={branchName.errorId}>{branchName.error}</FormError>
-              </InputGroup>
-              <FormError>{form.error}</FormError>
-              <FormButtons
-                confirmButton={
-                  <Button type="submit" variant="primary/medium">
-                    Create branch
-                  </Button>
-                }
-                cancelButton={
-                  <DialogClose asChild>
-                    <Button variant="tertiary/medium">Cancel</Button>
-                  </DialogClose>
-                }
-              />
-            </Fieldset>
-          </Form>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
 }

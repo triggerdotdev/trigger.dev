@@ -202,6 +202,6 @@ export function convertSessionListInputOptionsToFilterOptions(
 ): FilterSessionsOptions {
   return {
     ...options,
-    period: options.period ? parseDuration(options.period) ?? undefined : undefined,
+    period: options.period ? (parseDuration(options.period) ?? undefined) : undefined,
   };
 }

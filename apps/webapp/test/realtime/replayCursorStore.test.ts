@@ -42,24 +42,25 @@ describe("RedisReplayCursorStore", () => {
     }
   });
 
-  redisTest("a second store instance reads the first's cursor (fleet sharing)", async ({
-    redisOptions,
-  }) => {
-    const a = new RedisReplayCursorStore({
-      redis: { ...redisOptions, tlsDisabled: true },
-      ttlMs: 60_000,
-    });
-    const b = new RedisReplayCursorStore({
-      redis: { ...redisOptions, tlsDisabled: true },
-      ttlMs: 60_000,
-    });
-    try {
-      a.set("env_1:h2", 42_000);
-      await vi.waitFor(async () => expect(await b.get("env_1:h2")).toBe(42_000));
-    } finally {
-      await Promise.all([a.quit(), b.quit()]);
+  redisTest(
+    "a second store instance reads the first's cursor (fleet sharing)",
+    async ({ redisOptions }) => {
+      const a = new RedisReplayCursorStore({
+        redis: { ...redisOptions, tlsDisabled: true },
+        ttlMs: 60_000,
+      });
+      const b = new RedisReplayCursorStore({
+        redis: { ...redisOptions, tlsDisabled: true },
+        ttlMs: 60_000,
+      });
+      try {
+        a.set("env_1:h2", 42_000);
+        await vi.waitFor(async () => expect(await b.get("env_1:h2")).toBe(42_000));
+      } finally {
+        await Promise.all([a.quit(), b.quit()]);
+      }
     }
-  });
+  );
 
   it("degrades to undefined within the read deadline when Redis is unreachable", async () => {
     const results: Array<[string, boolean]> = [];
@@ -79,7 +80,11 @@ describe("RedisReplayCursorStore", () => {
 });
 
 describe("NativeRealtimeClient replay-cursor threading", () => {
-  const ENV: RealtimeListEnvironment = { id: "env_1", organizationId: "org_1", projectId: "proj_1" };
+  const ENV: RealtimeListEnvironment = {
+    id: "env_1",
+    organizationId: "org_1",
+    projectId: "proj_1",
+  };
   const FLOOR_MS = Date.UTC(2026, 5, 7, 12, 0, 0);
 
   it("passes the stored cursor to register and stamps the store after responding", async () => {

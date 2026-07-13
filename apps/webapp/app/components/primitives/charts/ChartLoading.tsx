@@ -123,65 +123,66 @@ function ChartBarLoadingBackground() {
       transition={{ duration: 0.5 }}
     >
       <ClientOnly fallback={<div />}>
-      {() => (<>
-        <motion.div
-        className="flex flex-1 items-end gap-1"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-      >
-        {Array.from({ length: 30 }).map((_, i) => {
-          const height = Math.max(15, Math.floor(Math.random() * 100));
-          return (
+        {() => (
+          <>
             <motion.div
-              key={i}
-              className="flex-1 rounded-sm bg-charcoal-750/50"
-              style={{ height: `${height}%` }}
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: `${height}%`, opacity: 1 }}
+              className="flex flex-1 items-end gap-1"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+            >
+              {Array.from({ length: 30 }).map((_, i) => {
+                const height = Math.max(15, Math.floor(Math.random() * 100));
+                return (
+                  <motion.div
+                    key={i}
+                    className="flex-1 rounded-sm bg-background-hover/50"
+                    style={{ height: `${height}%` }}
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: `${height}%`, opacity: 1 }}
+                    transition={{
+                      type: "spring",
+                      stiffness: 120,
+                      damping: 14,
+                      mass: 1,
+                      delay: 0.1 + i * 0.02,
+                    }}
+                  />
+                );
+              })}
+            </motion.div>
+            <motion.div
+              className="mt-2 flex flex-col justify-center gap-1"
+              initial={{ y: 10, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
               transition={{
                 type: "spring",
-                stiffness: 120,
-                damping: 14,
-                mass: 1,
-                delay: 0.1 + i * 0.02,
+                stiffness: 100,
+                damping: 15,
+                delay: 0.2,
               }}
-            />
-          );
-        })}
-      </motion.div>
-      <motion.div
-        className="mt-2 flex flex-col justify-center gap-1"
-        initial={{ y: 10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{
-          type: "spring",
-          stiffness: 100,
-          damping: 15,
-          delay: 0.2,
-        }}
-      >
-        {Array.from({ length: 5 }).map((_, i) => (
-          <motion.div
-            className="flex items-center gap-1"
-            key={i}
-            initial={{ x: -10, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{
-              type: "spring",
-              stiffness: 100,
-              damping: 12,
-              delay: 0.3 + i * 0.08,
-            }}
-          >
-            <div className="h-5 w-2 rounded-sm bg-charcoal-750/50" />
-            <div className="h-5 w-full rounded-sm bg-charcoal-750/50" />
-          </motion.div>
-        ))}
-      </motion.div>
-      </>)}
-    </ClientOnly>
-      
+            >
+              {Array.from({ length: 5 }).map((_, i) => (
+                <motion.div
+                  className="flex items-center gap-1"
+                  key={i}
+                  initial={{ x: -10, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 100,
+                    damping: 12,
+                    delay: 0.3 + i * 0.08,
+                  }}
+                >
+                  <div className="h-5 w-2 rounded-sm bg-background-hover/50" />
+                  <div className="h-5 w-full rounded-sm bg-background-hover/50" />
+                </motion.div>
+              ))}
+            </motion.div>
+          </>
+        )}
+      </ClientOnly>
     </motion.div>
   );
 }
@@ -262,7 +263,7 @@ function ChartLineLoadingBackground() {
       />
       <motion.path
         d={generateSmoothPath(points)}
-        stroke="#212327"
+        stroke="var(--color-background-hover)"
         strokeWidth="1"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -290,12 +291,12 @@ function ChartLineLoadingBackground() {
         >
           <defs>
             <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#212327" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="#212327" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--color-background-hover)" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="var(--color-background-hover)" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="secondAreaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#212327" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="#212327" stopOpacity={0} />
+              <stop offset="0%" stopColor="var(--color-background-hover)" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="var(--color-background-hover)" stopOpacity={0} />
             </linearGradient>
           </defs>
 
@@ -330,8 +331,8 @@ function ChartLineLoadingBackground() {
               delay: 0.3 + i * 0.08,
             }}
           >
-            <div className="h-5 w-2 rounded-sm bg-charcoal-750/50" />
-            <div className="h-5 w-full rounded-sm bg-charcoal-750/50" />
+            <div className="h-5 w-2 rounded-sm bg-background-hover/50" />
+            <div className="h-5 w-full rounded-sm bg-background-hover/50" />
           </motion.div>
         ))}
       </motion.div>

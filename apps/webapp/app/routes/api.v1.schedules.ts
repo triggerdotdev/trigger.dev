@@ -1,11 +1,12 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { CreateScheduleOptions, ScheduleObject } from "@trigger.dev/core/v3";
+import type { ScheduleObject } from "@trigger.dev/core/v3";
+import { CreateScheduleOptions } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { UpsertSchedule } from "~/v3/schedules";
+import type { UpsertSchedule } from "~/v3/schedules";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 

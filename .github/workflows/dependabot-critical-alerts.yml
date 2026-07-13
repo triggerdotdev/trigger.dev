@@ -2,7 +2,7 @@ name: Dependabot Critical Alerts
 
 on:
   schedule:
-    - cron: "0 8 * * *"  # Daily 08:00 UTC
+    - cron: "0 8 * * *" # Daily 08:00 UTC
   workflow_dispatch:
     inputs:
       severity:
@@ -29,7 +29,7 @@ jobs:
     # the Dependabot alert/summary notifiers — e.g. forks/mirrors that lack the
     # DEPENDABOT_ALERTS_TOKEN / SLACK_BOT_TOKEN secrets. Defaults to enabled.
     if: ${{ vars.ENABLE_DEPENDABOT_ALERTS != 'false' }}
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-2x
     environment: dependabot-summary
     env:
       SEVERITY: ${{ inputs.severity || 'critical' }}

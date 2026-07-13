@@ -49,7 +49,7 @@ export const MessageBubble = memo(function MessageBubble({ message }: { message:
     return (
       <div className="flex min-w-0 justify-end">
         <div className="max-w-[80%] rounded-lg bg-indigo-600 px-4 py-2.5 text-sm text-white">
-          <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{text}</div>
+          <div className="whitespace-pre-wrap wrap-anywhere">{text}</div>
         </div>
       </div>
     );
@@ -253,7 +253,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
           key={i}
           src={safeSrc}
           alt={p.filename ?? "file"}
-          className="max-h-64 rounded border border-charcoal-650"
+          className="max-h-64 rounded border border-border-bright"
         />
       );
     }
@@ -284,9 +284,9 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
   if (type === "step-start") {
     return (
       <div key={i} className="flex items-center gap-2 py-0.5">
-        <div className="flex-1 border-t border-dashed border-charcoal-650" />
-        <span className="text-[10px] text-charcoal-500">step</span>
-        <div className="flex-1 border-t border-dashed border-charcoal-650" />
+        <div className="flex-1 border-t border-dashed border-border-bright" />
+        <span className="text-[10px] text-text-faint">step</span>
+        <div className="flex-1 border-t border-dashed border-border-bright" />
       </div>
     );
   }
@@ -308,17 +308,17 @@ function DataPartPopover({ name, data }: { name: string; data: unknown }) {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded border border-charcoal-650 bg-charcoal-800 px-1.5 py-0.5 font-mono text-[10px] text-text-dimmed transition-colors hover:border-charcoal-500 hover:text-text-bright"
+          className="inline-flex items-center gap-1 rounded border border-border-bright bg-background-bright px-1.5 py-0.5 font-mono text-[10px] text-text-dimmed transition-colors hover:border-border-brightest hover:text-text-bright"
         >
           <span className="text-purple-400">{name}</span>
-          <span className="text-charcoal-500">{"{}"}</span>
+          <span className="text-text-faint">{"{}"}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-auto max-w-md p-0" align="start" sideOffset={4}>
-        <div className="flex items-center justify-between border-b border-charcoal-650 px-2.5 py-1.5">
+        <div className="flex items-center justify-between border-b border-border-bright px-2.5 py-1.5">
           <span className="text-[10px] font-medium text-text-dimmed">data-{name}</span>
         </div>
-        <div className="max-h-60 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <div className="max-h-60 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
           <pre className="p-2.5 text-[11px] leading-relaxed text-text-bright">{formatted}</pre>
         </div>
       </PopoverContent>

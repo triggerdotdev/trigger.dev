@@ -1,11 +1,5 @@
-import {
-  DiagConsoleLogger,
-  DiagLogLevel,
-  TraceFlags,
-  TracerProvider,
-  diag,
-  metrics,
-} from "@opentelemetry/api";
+import type { TracerProvider } from "@opentelemetry/api";
+import { DiagConsoleLogger, DiagLogLevel, TraceFlags, diag, metrics } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { TraceState } from "@opentelemetry/core";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
@@ -13,18 +7,16 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { HostMetrics } from "@opentelemetry/host-metrics";
 import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
-import {
-  detectResources,
-  processDetector,
-  Resource,
-  resourceFromAttributes,
-} from "@opentelemetry/resources";
-import {
-  BatchLogRecordProcessor,
+import type { Resource } from "@opentelemetry/resources";
+import { detectResources, processDetector, resourceFromAttributes } from "@opentelemetry/resources";
+import type {
   LogRecordExporter,
   LogRecordProcessor,
-  LoggerProvider,
   ReadableLogRecord,
+} from "@opentelemetry/sdk-logs";
+import {
+  BatchLogRecordProcessor,
+  LoggerProvider,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
 import {
@@ -34,13 +26,13 @@ import {
   type MetricReader,
   type PushMetricExporter,
 } from "@opentelemetry/sdk-metrics";
-import { RandomIdGenerator, SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import type { SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
+import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-node";
 import {
   BatchSpanProcessor,
   NodeTracerProvider,
-  ReadableSpan,
   SimpleSpanProcessor,
-  SpanExporter,
 } from "@opentelemetry/sdk-trace-node";
 import { VERSION } from "../../version.js";
 import {
@@ -175,24 +167,19 @@ export class TracingSDK {
     for (const exporter of config.exporters ?? []) {
       spanProcessors.push(
         getEnvVar("TRIGGER_OTEL_BATCH_PROCESSING_ENABLED") === "1"
-          ? new BatchSpanProcessor(
-              new ExternalSpanExporterWrapper(exporter, externalTraceId),
-              {
-                maxExportBatchSize: parseInt(
-                  getEnvVar("TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"
-                ),
-                scheduledDelayMillis: parseInt(
-                  getEnvVar("TRIGGER_OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
-                ),
-                exportTimeoutMillis: parseInt(
-                  getEnvVar("TRIGGER_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
-                ),
-                maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
-              }
-            )
-          : new SimpleSpanProcessor(
-              new ExternalSpanExporterWrapper(exporter, externalTraceId)
-            )
+          ? new BatchSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId), {
+              maxExportBatchSize: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_MAX_EXPORT_BATCH_SIZE") ?? "64"
+              ),
+              scheduledDelayMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_SCHEDULED_DELAY_MILLIS") ?? "200"
+              ),
+              exportTimeoutMillis: parseInt(
+                getEnvVar("TRIGGER_OTEL_SPAN_EXPORT_TIMEOUT_MILLIS") ?? "30000"
+              ),
+              maxQueueSize: parseInt(getEnvVar("TRIGGER_OTEL_SPAN_MAX_QUEUE_SIZE") ?? "512"),
+            })
+          : new SimpleSpanProcessor(new ExternalSpanExporterWrapper(exporter, externalTraceId))
       );
     }
 
@@ -282,9 +269,7 @@ export class TracingSDK {
 
     // Metrics setup
     const metricsUrl =
-      config.metricsUrl ??
-      getEnvVar("TRIGGER_OTEL_METRICS_ENDPOINT") ??
-      `${config.url}/v1/metrics`;
+      config.metricsUrl ?? getEnvVar("TRIGGER_OTEL_METRICS_ENDPOINT") ?? `${config.url}/v1/metrics`;
 
     const rawMetricExporter = new OTLPMetricExporter({
       url: metricsUrl,
@@ -511,9 +496,7 @@ class ExternalLogRecordExporterWrapper {
       return;
     }
 
-    const modifiedLogs = logs.map((log) =>
-      this.transformLogRecord(log, externalTraceContext)
-    );
+    const modifiedLogs = logs.map((log) => this.transformLogRecord(log, externalTraceContext));
 
     this.underlyingExporter.export(modifiedLogs, resultCallback);
   }
@@ -527,9 +510,7 @@ class ExternalLogRecordExporterWrapper {
       forceFlush?: () => Promise<void>;
     };
 
-    return underlyingExporter.forceFlush
-      ? underlyingExporter.forceFlush()
-      : Promise.resolve();
+    return underlyingExporter.forceFlush ? underlyingExporter.forceFlush() : Promise.resolve();
   }
 
   transformLogRecord(
@@ -612,7 +593,7 @@ function safeParseUrl(url: unknown): URL | undefined {
 
   try {
     return new URL(url);
-  } catch (e) {
+  } catch (_e) {
     return undefined;
   }
 }

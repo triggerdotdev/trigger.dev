@@ -20,7 +20,7 @@ import {
   organizationTeamPath,
   organizationVercelIntegrationPath,
   rootPath,
-  v3BillingAlertsPath,
+  v3BillingLimitsPath,
   v3BillingPath,
   v3PrivateConnectionsPath,
   v3UsagePath,
@@ -79,7 +79,7 @@ export function OrganizationSettingsSideMenu({
           <span className="text-text-bright">Back to app</span>
         </LinkButton>
       </div>
-      <div className="mb-6 flex grow flex-col gap-4 overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="mb-6 flex grow flex-col gap-4 overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="flex flex-col">
           <div className="mb-1">
             <SideMenuHeader title="Organization" />
@@ -109,12 +109,12 @@ export function OrganizationSettingsSideMenu({
               />
               {showSelfServe ? (
                 <SideMenuItem
-                  name="Billing alerts"
+                  name="Billing limits"
                   icon={BellIcon}
                   activeIconColor="text-text-bright"
                   inactiveIconColor="text-text-dimmed"
-                  to={v3BillingAlertsPath(organization)}
-                  data-action="billing-alerts"
+                  to={v3BillingLimitsPath(organization)}
+                  data-action="billing-limits"
                 />
               ) : null}
             </>
@@ -149,7 +149,7 @@ export function OrganizationSettingsSideMenu({
           )}
           {isSsoUsingPlugin && (
             <SideMenuItem
-              name="SSO"
+              name="SSO & Directory Sync"
               icon={PadlockIcon}
               activeIconColor="text-text-bright"
               inactiveIconColor="text-text-dimmed"

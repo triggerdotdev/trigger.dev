@@ -24,7 +24,10 @@ export class CreateBulkActionPresenter extends BasePresenter {
       Object.fromEntries(new URL(request.url).searchParams)
     );
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,

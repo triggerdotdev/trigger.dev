@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "react"],
+  "jsPlugins": ["./oxlint-plugins/no-thrown-unawaited-redirect.mjs"],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/build/**",
+    "**/*.d.ts",
+    "**/seed.js",
+    "**/seedCloud.ts",
+    "**/populate.js",
+    "internal-packages/tsql/src/grammar/"
+  ],
+  "rules": {
+    "no-unused-vars": [
+      "error",
+      {
+        "args": "none",
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrors": "all",
+        "caughtErrorsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ],
+    "no-empty-pattern": "off",
+    "no-control-regex": "off",
+    "typescript/no-non-null-asserted-optional-chain": "off",
+    "no-unused-expressions": ["warn", { "allowShortCircuit": true, "allowTernary": true }],
+    "typescript/consistent-type-imports": "error",
+    "import/no-duplicates": "error",
+    "import/namespace": "off",
+    "react-hooks/exhaustive-deps": "off",
+    "react-hooks/rules-of-hooks": "off",
+    "trigger/no-thrown-unawaited-redirect": "error"
+  }
+}

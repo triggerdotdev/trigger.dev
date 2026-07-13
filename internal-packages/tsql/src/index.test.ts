@@ -36,7 +36,7 @@ const taskRunsSchema: TableSchema = {
 /**
  * Test table schema with tenant columns (lookup table with tenant isolation)
  */
-const lookupTableSchema: TableSchema = {
+const _lookupTableSchema: TableSchema = {
   name: "lookup_table",
   clickhouseName: "trigger_dev.lookup_table",
   tenantColumns: {
@@ -113,9 +113,7 @@ describe("isColumnReferencedInExpression", () => {
   });
 
   it("should detect column in qualified reference (table.column)", () => {
-    const ast = parseTSQLSelect(
-      "SELECT * FROM task_runs WHERE task_runs.time > '2024-01-01'"
-    );
+    const ast = parseTSQLSelect("SELECT * FROM task_runs WHERE task_runs.time > '2024-01-01'");
     if (ast.expression_type === "select_query") {
       expect(isColumnReferencedInExpression(ast.where, "time")).toBe(true);
     }
@@ -408,15 +406,12 @@ describe("compileTSQL with whereClauseFallback", () => {
     });
 
     it("should NOT apply fallback when column is in qualified reference", () => {
-      const { sql } = compileTSQL(
-        "SELECT * FROM task_runs WHERE task_runs.time > '2024-06-01'",
-        {
-          ...baseOptions,
-          whereClauseFallback: {
-            time: { op: "gte", value: "2024-01-01" },
-          },
-        }
-      );
+      const { sql } = compileTSQL("SELECT * FROM task_runs WHERE task_runs.time > '2024-06-01'", {
+        ...baseOptions,
+        whereClauseFallback: {
+          time: { op: "gte", value: "2024-01-01" },
+        },
+      });
 
       // Fallback should not be applied
       const timeGreaterMatches = sql.match(/greater.*time/g) || [];
@@ -588,16 +583,13 @@ describe("compileTSQL with enforcedWhereClause", () => {
     });
 
     it("should apply enforced condition even when user filters on same field", () => {
-      const { sql } = compileTSQL(
-        "SELECT id FROM task_runs WHERE triggered_at > '2025-01-01'",
-        {
-          tableSchema: [taskRunsSchema],
-          enforcedWhereClause: {
-            organization_id: { op: "eq", value: "org_123" },
-            triggered_at: { op: "gte", value: "2024-01-01" },
-          },
-        }
-      );
+      const { sql } = compileTSQL("SELECT id FROM task_runs WHERE triggered_at > '2025-01-01'", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          triggered_at: { op: "gte", value: "2024-01-01" },
+        },
+      });
 
       // Should have BOTH the user's condition AND the enforced condition
       // User's condition: greater(triggered_at, '2025-01-01')
@@ -649,7 +641,7 @@ describe("compileTSQL with enforcedWhereClause", () => {
 
     it("should handle Date values in enforced conditions", () => {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const { sql, params } = compileTSQL("SELECT id FROM task_runs", {
+      const { sql, params: _params } = compileTSQL("SELECT id FROM task_runs", {
         tableSchema: [taskRunsSchema],
         enforcedWhereClause: {
           organization_id: { op: "eq", value: "org_123" },
@@ -681,19 +673,16 @@ describe("compileTSQL with enforcedWhereClause", () => {
     });
 
     it("should apply enforced but not fallback when user filters on fallback column", () => {
-      const { sql, params } = compileTSQL(
-        "SELECT id FROM task_runs WHERE status = 'failed'",
-        {
-          tableSchema: [taskRunsSchema],
-          enforcedWhereClause: {
-            organization_id: { op: "eq", value: "org_123" },
-            triggered_at: { op: "gte", value: "2024-01-01" },
-          },
-          whereClauseFallback: {
-            status: { op: "eq", value: "completed" },
-          },
-        }
-      );
+      const { sql, params } = compileTSQL("SELECT id FROM task_runs WHERE status = 'failed'", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          triggered_at: { op: "gte", value: "2024-01-01" },
+        },
+        whereClauseFallback: {
+          status: { op: "eq", value: "completed" },
+        },
+      });
 
       // Enforced triggered_at should be applied
       expect(sql).toContain("triggered_at");
@@ -722,19 +711,16 @@ describe("compileTSQL with enforcedWhereClause", () => {
     });
 
     it("should skip fallback but keep enforced when user filters on same field", () => {
-      const { sql } = compileTSQL(
-        "SELECT id FROM task_runs WHERE triggered_at > '2025-01-01'",
-        {
-          tableSchema: [taskRunsSchema],
-          enforcedWhereClause: {
-            organization_id: { op: "eq", value: "org_123" },
-            triggered_at: { op: "gte", value: "2024-06-01" }, // Enforced: always applied
-          },
-          whereClauseFallback: {
-            triggered_at: { op: "gte", value: "2024-01-01" }, // Fallback: skipped since user filtered
-          },
-        }
-      );
+      const { sql } = compileTSQL("SELECT id FROM task_runs WHERE triggered_at > '2025-01-01'", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          triggered_at: { op: "gte", value: "2024-06-01" }, // Enforced: always applied
+        },
+        whereClauseFallback: {
+          triggered_at: { op: "gte", value: "2024-01-01" }, // Fallback: skipped since user filtered
+        },
+      });
 
       // User's condition + enforced should be present
       // Fallback should NOT be applied since user filtered on triggered_at
@@ -767,16 +753,13 @@ describe("compileTSQL with enforcedWhereClause", () => {
     });
 
     it("should NOT be bypassable via OR clause", () => {
-      const { sql } = compileTSQL(
-        "SELECT id FROM task_runs WHERE status = 'completed' OR 1=1",
-        {
-          tableSchema: [taskRunsSchema],
-          enforcedWhereClause: {
-            organization_id: { op: "eq", value: "org_123" },
-            triggered_at: { op: "gte", value: "2024-01-01" },
-          },
-        }
-      );
+      const { sql } = compileTSQL("SELECT id FROM task_runs WHERE status = 'completed' OR 1=1", {
+        tableSchema: [taskRunsSchema],
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_123" },
+          triggered_at: { op: "gte", value: "2024-01-01" },
+        },
+      });
 
       // The enforced conditions should be ANDed with the entire user WHERE clause
       // So the structure should be: (enforced AND enforced AND ...) AND (user_where)
@@ -825,4 +808,3 @@ describe("compileTSQL with enforcedWhereClause", () => {
     });
   });
 });
-

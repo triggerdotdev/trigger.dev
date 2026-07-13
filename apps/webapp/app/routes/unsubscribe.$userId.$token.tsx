@@ -1,5 +1,5 @@
 import { EnvelopeIcon } from "@heroicons/react/24/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import crypto from "node:crypto";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -61,7 +61,7 @@ export default function Page() {
 
   return (
     <AppContainer>
-      <MainCenteredContainer className="max-w-[22rem]">
+      <MainCenteredContainer className="max-w-88">
         {result.success ? (
           <div>
             <FormTitle

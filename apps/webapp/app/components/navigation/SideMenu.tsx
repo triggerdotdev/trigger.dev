@@ -5,7 +5,6 @@ import {
   PencilSquareIcon,
 } from "@heroicons/react/24/outline";
 import { Link, useFetcher, useNavigation } from "@remix-run/react";
-import { BugIcon } from "~/assets/icons/BugIcon";
 import { LayoutGroup, motion } from "framer-motion";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
@@ -14,31 +13,31 @@ import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { ArrowLeftRightIcon } from "~/assets/icons/ArrowLeftRightIcon";
 import { ArrowRightSquareIcon } from "~/assets/icons/ArrowRightSquareIcon";
 import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
-import { HomeIcon } from "~/assets/icons/HomeIcon";
-import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BatchesIcon } from "~/assets/icons/BatchesIcon";
+import { BellIcon } from "~/assets/icons/BellIcon";
 import { Box3DIcon } from "~/assets/icons/Box3DIcon";
+import { BugIcon } from "~/assets/icons/BugIcon";
 import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
+import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
+import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
-import { FolderClosedIcon } from "~/assets/icons/FolderClosedIcon";
-import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
-import { IDIcon } from "~/assets/icons/IDIcon";
 import { DialIcon } from "~/assets/icons/DialIcon";
-import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
-import { IntegrationsIcon } from "~/assets/icons/IntegrationsIcon";
-import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { FolderClosedIcon } from "~/assets/icons/FolderClosedIcon";
+import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
+import { HomeIcon } from "~/assets/icons/HomeIcon";
+import { IDIcon } from "~/assets/icons/IDIcon";
+import { IntegrationsIcon } from "~/assets/icons/IntegrationsIcon";
+import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
-import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
-import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { TasksIcon } from "~/assets/icons/TasksIcon";
-import { BellIcon } from "~/assets/icons/BellIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
@@ -53,7 +52,6 @@ import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel, useIncidentStatus } from "~/routes/resources.incidents";
-import { NotificationPanel } from "./NotificationPanel";
 import { cn } from "~/utils/cn";
 import {
   accountPath,
@@ -72,29 +70,29 @@ import {
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
-  v3DashboardsLandingPath,
   v3BulkActionsPath,
+  v3DashboardsLandingPath,
   v3DeploymentsPath,
   v3EnvironmentPath,
   v3EnvironmentVariablesPath,
   v3ErrorsPath,
   v3LogsPath,
-  v3PromptsPath,
   v3ModelsPath,
   v3ProjectAlertsPath,
   v3ProjectPath,
   v3ProjectSettingsGeneralPath,
   v3ProjectSettingsIntegrationsPath,
+  v3PromptsPath,
   v3QueuesPath,
   v3RunsPath,
   v3SessionsPath,
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import { AlphaBadge, NewBadge } from "../FeatureBadges";
 import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
+import { AlphaBadge, NewBadge } from "../FeatureBadges";
 import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
@@ -114,10 +112,10 @@ import { CreateDashboardButton } from "./DashboardDialogs";
 import { DashboardList } from "./DashboardList";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
+import { NotificationPanel } from "./NotificationPanel";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { TreeConnectorBranch, TreeConnectorEnd } from "./TreeConnectors";
 import { type SideMenuSectionId } from "./sideMenuTypes";
 
 /** Get the collapsed state for a specific side menu section from user preferences */
@@ -285,7 +283,7 @@ export function SideMenu({
     <div
       className={cn(
         "relative h-full border-r border-grid-bright bg-background-bright transition-all duration-200",
-        isCollapsed ? "w-[2.75rem]" : "w-56"
+        isCollapsed ? "w-11" : "w-56"
       )}
     >
       <CollapseToggle isCollapsed={isCollapsed} onToggle={handleToggleCollapsed} />
@@ -335,7 +333,7 @@ export function SideMenu({
             "min-h-0 overflow-y-auto pt-2",
             isCollapsed
               ? "scrollbar-none"
-              : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+              : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           )}
           ref={borderRef}
         >
@@ -374,8 +372,8 @@ export function SideMenu({
                             {isConnected === undefined
                               ? "Checking connection…"
                               : isConnected
-                              ? "Your dev server is connected"
-                              : "Your dev server is not connected"}
+                                ? "Your dev server is connected"
+                                : "Your dev server is not connected"}
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -764,7 +762,7 @@ function V3DeprecationPanel({
         >
           <SimpleTooltip
             button={
-              <PopoverTrigger className="flex !h-8 w-full items-center justify-center rounded border border-amber-500/30 bg-amber-500/15 transition-colors hover:border-amber-500/50 hover:bg-amber-500/25">
+              <PopoverTrigger className="flex h-8! w-full items-center justify-center rounded border border-amber-500/30 bg-amber-500/15 transition-colors hover:border-amber-500/50 hover:bg-amber-500/25">
                 <ExclamationTriangleIcon className="size-5 text-amber-400" />
               </PopoverTrigger>
             }
@@ -776,7 +774,7 @@ function V3DeprecationPanel({
           />
         </motion.div>
       </div>
-      <PopoverContent side="right" sideOffset={8} align="start" className="w-52 !min-w-0 p-0">
+      <PopoverContent side="right" sideOffset={8} align="start" className="w-52 min-w-0! p-0">
         <V3DeprecationContent />
       </PopoverContent>
     </Popover>
@@ -803,7 +801,7 @@ function V3DeprecationContent() {
         fullWidth
         TrailingIcon={ArrowTopRightOnSquareIcon}
         trailingIconClassName="text-amber-300"
-        className="border-amber-500/30 bg-amber-500/15 hover:!border-amber-500/50 hover:!bg-amber-500/25"
+        className="border-amber-500/30 bg-amber-500/15 hover:border-amber-500/50! hover:bg-amber-500/25!"
       >
         <span className="text-amber-300">View migration guide</span>
       </LinkButton>
@@ -846,7 +844,7 @@ function ProjectSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded pl-1.75 transition-colors hover:bg-background-hover",
               isCollapsed ? "justify-center pr-0.5" : "w-full justify-between pr-1"
             )}
           >
@@ -878,22 +876,22 @@ function ProjectSelector({
         side="right"
         sideOffset={8}
         hidden={!isCollapsed}
-        buttonClassName="!h-8"
+        buttonClassName="h-8!"
         asChild
         disableHoverableContent
       />
       <PopoverContent
-        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
         side={isCollapsed ? "right" : "bottom"}
         sideOffset={isCollapsed ? 8 : 4}
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
-        <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
+        <div className="flex flex-col gap-2 bg-background-hover p-2">
           <div className="flex items-center gap-2.5">
             <Link
               to={organizationSettingsPath(organization)}
-              className="group relative box-content size-10 overflow-clip rounded-sm bg-charcoal-800"
+              className="group relative box-content size-10 overflow-clip rounded-sm bg-background-bright"
             >
               <Avatar avatar={organization.avatar} size={2.5} orgName={organization.title} />
               <div className="absolute inset-0 z-10 grid h-full w-full place-items-center bg-black/50 opacity-0 transition group-hover:opacity-100">
@@ -926,7 +924,7 @@ function ProjectSelector({
               to={organizationSettingsPath(organization)}
               fullWidth
               iconSpacing="gap-1.5"
-              className="group-hover/button:border-charcoal-500"
+              className="group-hover/button:border-border-brightest"
             >
               <SlidersIcon className="size-4 text-text-dimmed" />
               <span className="text-text-bright">Settings</span>
@@ -937,7 +935,7 @@ function ProjectSelector({
                 to={v3UsagePath(organization)}
                 fullWidth
                 iconSpacing="gap-1.5"
-                className="group-hover/button:border-charcoal-500"
+                className="group-hover/button:border-border-brightest"
               >
                 <UsageIcon className="size-4 text-text-dimmed" />
                 <span className="text-text-bright">Usage</span>
@@ -965,7 +963,7 @@ function ProjectSelector({
           })}
           <PopoverMenuItem to={newProjectPath(organization)} title="New project" icon={PlusIcon} />
         </div>
-        <div className="border-t border-charcoal-700 p-1">
+        <div className="border-t border-grid-bright p-1">
           {organizations.length > 1 ? (
             <SwitchOrganizations organizations={organizations} organization={organization} />
           ) : (
@@ -977,7 +975,7 @@ function ProjectSelector({
             />
           )}
         </div>
-        <div className="border-t border-charcoal-700 p-1">
+        <div className="border-t border-grid-bright p-1">
           <PopoverMenuItem
             to={accountPath()}
             title="Account"
@@ -985,7 +983,7 @@ function ProjectSelector({
             leadingIconClassName="text-text-dimmed"
           />
         </div>
-        <div className="border-t border-charcoal-700 p-1">
+        <div className="border-t border-grid-bright p-1">
           <PopoverMenuItem
             to={logoutPath()}
             title="Logout"
@@ -1043,7 +1041,7 @@ function SwitchOrganizations({
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
-            className="hover:bg-charcoal-750"
+            className="hover:bg-background-hover"
             LeadingIcon={ArrowLeftRightIcon}
             leadingIconClassName="text-text-dimmed"
             TrailingIcon={ChevronRightIcon}
@@ -1055,7 +1053,7 @@ function SwitchOrganizations({
           </ButtonContent>
         </PopoverTrigger>
         <PopoverContent
-          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-64 overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
           align="start"
           style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
           side="right"
@@ -1076,7 +1074,7 @@ function SwitchOrganizations({
               />
             ))}
           </div>
-          <div className="border-t border-charcoal-700 p-1">
+          <div className="border-t border-grid-bright p-1">
             <PopoverMenuItem
               to={newOrganizationPath()}
               title="New organization"
@@ -1098,7 +1096,7 @@ function SelectorDivider() {
         y1="0.606339"
         x2="0.606339"
         y2="19.6362"
-        stroke="#3B3E45"
+        stroke="var(--color-border-bright)"
         strokeLinecap="round"
       />
     </svg>
@@ -1271,7 +1269,7 @@ function CollapseToggle({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
       <div
         className={cn(
           "pointer-events-none absolute left-1/2 top-1/2 h-10 w-px -translate-y-1/2 transition-colors duration-200",
-          isHovering ? "bg-charcoal-750" : "bg-background-bright"
+          isHovering ? "bg-background-hover" : "bg-background-bright"
         )}
       />
       <TooltipProvider disableHoverableContent>
@@ -1286,7 +1284,7 @@ function CollapseToggle({ isCollapsed, onToggle }: { isCollapsed: boolean; onTog
               className={cn(
                 "group flex h-12 w-6 items-center justify-center rounded-md text-text-dimmed transition-all duration-200 focus-custom",
                 isHovering
-                  ? "border border-grid-bright bg-background-bright shadow-md hover:bg-charcoal-750 hover:text-text-bright"
+                  ? "border border-grid-bright bg-background-bright shadow-md hover:bg-background-hover hover:text-text-bright"
                   : "border border-transparent bg-transparent"
               )}
             >

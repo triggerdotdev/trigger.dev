@@ -1,4 +1,5 @@
-import { z, ZodType } from "zod";
+import type { ZodType } from "zod";
+import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 
 /**
@@ -54,7 +55,10 @@ export function objectToSearchParams(
 }
 
 class SearchParams<TParams extends ParamType> {
-  constructor(private params: TParams, readonly schema: ZodType<TParams>) {}
+  constructor(
+    private params: TParams,
+    readonly schema: ZodType<TParams>
+  ) {}
 
   get(key: keyof TParams) {
     return this.params[key];

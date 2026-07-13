@@ -1,8 +1,9 @@
-import { TaskQueue } from "@trigger.dev/database";
-import { Gauge, Registry } from "prom-client";
+import type { TaskQueue } from "@trigger.dev/database";
+import type { Registry } from "prom-client";
+import { Gauge } from "prom-client";
 import { prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { marqs } from "~/v3/marqs/index.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { engine } from "~/v3/runEngine.server";
 
 export async function registerProjectMetrics(
   registry: Registry,
@@ -43,7 +44,7 @@ async function registerEnvironmentMetrics(
     help: `The number of tasks currently being executed in the dev environment queue`,
     registers: [registry],
     async collect() {
-      const length = await marqs?.currentConcurrencyOfEnvironment(env);
+      const length = await engine.runQueue.currentConcurrencyOfEnvironment(env);
 
       if (length) {
         this.set(length);
@@ -56,7 +57,7 @@ async function registerEnvironmentMetrics(
     help: `The concurrency limit for the dev environment queue`,
     registers: [registry],
     async collect() {
-      const length = await marqs?.getEnvConcurrencyLimit(env);
+      const length = await engine.runQueue.getEnvConcurrencyLimit(env);
 
       if (length) {
         this.set(length);
@@ -69,8 +70,8 @@ async function registerEnvironmentMetrics(
     help: `The capacity of the dev environment queue`,
     registers: [registry],
     async collect() {
-      const concurrencyLimit = await marqs?.getEnvConcurrencyLimit(env);
-      const currentConcurrency = await marqs?.currentConcurrencyOfEnvironment(env);
+      const concurrencyLimit = await engine.runQueue.getEnvConcurrencyLimit(env);
+      const currentConcurrency = await engine.runQueue.currentConcurrencyOfEnvironment(env);
 
       if (typeof concurrencyLimit === "number" && typeof currentConcurrency === "number") {
         this.set(concurrencyLimit - currentConcurrency);
@@ -93,7 +94,7 @@ function registerTaskQueueMetrics(
     help: `The number of tasks in the ${queue.name} queue`,
     registers: [registry],
     async collect() {
-      const length = await marqs?.lengthOfQueue(env, queue.name);
+      const length = await engine.runQueue.lengthOfQueue(env, queue.name);
 
       if (length) {
         this.set(length);
@@ -106,7 +107,7 @@ function registerTaskQueueMetrics(
     help: `The number of tasks currently being executed in the ${queue.name} queue`,
     registers: [registry],
     async collect() {
-      const length = await marqs?.currentConcurrencyOfQueue(env, queue.name);
+      const length = await engine.runQueue.currentConcurrencyOfQueue(env, queue.name);
 
       if (length) {
         this.set(length);
@@ -119,7 +120,7 @@ function registerTaskQueueMetrics(
     help: `The concurrency limit for the ${queue.name} queue`,
     registers: [registry],
     async collect() {
-      const length = await marqs?.getQueueConcurrencyLimit(env, queue.name);
+      const length = await engine.runQueue.getQueueConcurrencyLimit(env, queue.name);
 
       if (length) {
         this.set(length);
@@ -132,8 +133,8 @@ function registerTaskQueueMetrics(
     help: `The capacity of the ${queue.name} queue`,
     registers: [registry],
     async collect() {
-      const concurrencyLimit = await marqs?.getQueueConcurrencyLimit(env, queue.name);
-      const currentConcurrency = await marqs?.currentConcurrencyOfQueue(env, queue.name);
+      const concurrencyLimit = await engine.runQueue.getQueueConcurrencyLimit(env, queue.name);
+      const currentConcurrency = await engine.runQueue.currentConcurrencyOfQueue(env, queue.name);
 
       if (typeof concurrencyLimit === "number" && typeof currentConcurrency === "number") {
         this.set(concurrencyLimit - currentConcurrency);
@@ -146,7 +147,7 @@ function registerTaskQueueMetrics(
     help: `The age of the oldest message in the ${queue.name} queue`,
     registers: [registry],
     async collect() {
-      const oldestMessage = await marqs?.oldestMessageInQueue(env, queue.name);
+      const oldestMessage = await engine.runQueue.oldestMessageInQueue(env, queue.name);
 
       if (oldestMessage) {
         this.set(oldestMessage);

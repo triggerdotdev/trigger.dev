@@ -1,6 +1,6 @@
 "use client";
 
-import {
+import type {
   AnyTask,
   ApiClient,
   InferRunTypes,
@@ -10,8 +10,10 @@ import {
   RealtimeRunSkipColumns,
 } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { KeyedMutator, useSWR } from "../utils/trigger-swr.js";
-import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
+import type { KeyedMutator } from "../utils/trigger-swr.js";
+import { useSWR } from "../utils/trigger-swr.js";
+import type { UseApiClientOptions } from "./useApiClient.js";
+import { useApiClient } from "./useApiClient.js";
 import { createThrottledQueue } from "../utils/throttle.js";
 
 export type UseRealtimeRunOptions = UseApiClientOptions & {
@@ -803,7 +805,7 @@ function useRealtimeStreamImplementation<TPart>(
   }, [parts]);
 
   // Add state to track when the subscription is complete
-  const { data: isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
+  const { data: _isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
     [idKey, runId, streamKey, "complete"],
     null
   );

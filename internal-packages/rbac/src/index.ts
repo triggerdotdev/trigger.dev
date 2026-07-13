@@ -1,6 +1,7 @@
 import type {
   Permission,
   RbacAbility,
+  RbacDatabaseConfig,
   Role,
   RbacResource,
   RoleAssignmentResult,
@@ -33,6 +34,11 @@ export type RbacCreateOptions = {
   // Platform secret used to verify delegated user-actor tokens (tr_uat_).
   // Threaded through to the plugin / fallback's authenticateUserActor.
   userActorSecret?: string;
+  // Writer/reader connection URLs + pool sizes for a plugin that owns its
+  // own database client, resolved by the host from its env so the plugin
+  // follows the host's writer/replica topology. The fallback ignores this —
+  // it queries through the Prisma clients passed as `RbacPrismaInput`.
+  database?: RbacDatabaseConfig;
 };
 
 // Route actions that historically authorised via the legacy checkAuthorization's
@@ -88,7 +94,10 @@ class LazyController implements RoleBaseAccessController {
       const module = await import(moduleName);
       const plugin: RoleBasedAccessControlPlugin = module.default;
       console.log("RBAC: using plugin implementation");
-      return plugin.create({ userActorSecret: options?.userActorSecret });
+      return plugin.create({
+        userActorSecret: options?.userActorSecret,
+        database: options?.database,
+      });
     } catch (err) {
       // The dynamic import either succeeded or failed for one of two
       // distinct reasons. Distinguishing them is critical for debugging
@@ -108,10 +117,8 @@ class LazyController implements RoleBaseAccessController {
       // specifier in the error message is the plugin's own moduleName.
       const code = (err as NodeJS.ErrnoException | undefined)?.code;
       const message = err instanceof Error ? err.message : String(err);
-      const isModuleNotFound =
-        code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
-      const isPluginItselfMissing =
-        isModuleNotFound && message.includes(moduleName);
+      const isModuleNotFound = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
+      const isPluginItselfMissing = isModuleNotFound && message.includes(moduleName);
 
       if (!isPluginItselfMissing) {
         // Either the error wasn't a missing-module error at all, or the
@@ -122,9 +129,7 @@ class LazyController implements RoleBaseAccessController {
           err
         );
       } else if (process.env.RBAC_LOG_FALLBACK === "1") {
-        console.log(
-          "RBAC: no plugin installed (ERR_MODULE_NOT_FOUND); using fallback"
-        );
+        console.log("RBAC: no plugin installed (ERR_MODULE_NOT_FOUND); using fallback");
       }
 
       // Fail-fast for deployments that require plugins to be present. Set
@@ -135,9 +140,7 @@ class LazyController implements RoleBaseAccessController {
       // rolled back. Self-hosters leave REQUIRE_PLUGINS unset and continue
       // to use the fallback when no plugin is installed.
       if (process.env.REQUIRE_PLUGINS === "1") {
-        throw new Error(
-          `REQUIRE_PLUGINS=1 but plugin "${moduleName}" did not load: ${message}`
-        );
+        throw new Error(`REQUIRE_PLUGINS=1 but plugin "${moduleName}" did not load: ${message}`);
       }
 
       return new RoleBaseAccessFallback(prisma, {
@@ -289,10 +292,7 @@ class LazyController implements RoleBaseAccessController {
 class RoleBaseAccess {
   // Synchronous — returns a lazy controller that resolves any installed
   // plugin on first call.
-  create(
-    prisma: RbacPrismaInput,
-    options?: RbacCreateOptions
-  ): RoleBaseAccessController {
+  create(prisma: RbacPrismaInput, options?: RbacCreateOptions): RoleBaseAccessController {
     return new LazyController(prisma, options);
   }
 }
