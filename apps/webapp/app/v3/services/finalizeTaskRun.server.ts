@@ -1,4 +1,5 @@
 import { type FlushedRunMetadata, type TaskRunError, sanitizeError } from "@trigger.dev/core/v3";
+import { ownerEngine } from "@trigger.dev/core/v3/isomorphic";
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import { runOpsLegacyPrisma } from "~/db.server";
 import { findQueueInEnvironment } from "~/models/taskQueue.server";
@@ -313,6 +314,17 @@ export class FinalizeTaskRunService extends BaseService {
       attemptStatus,
       error,
     });
+
+    // TaskRunAttempt is V1-residual, minted only for legacy (cuid) runs on the legacy client below.
+    // A NEW-resident run reaching here (via CompleteAttemptService's fan-out lookup) is already
+    // finalized on its owning store above, so skip the orphan legacy attempt.
+    if (ownerEngine(run.id) === "NEW") {
+      logger.error(
+        "FinalizeTaskRunService: reached no-attempt branch for a run-ops (NEW-resident) run; skipping legacy attempt-create",
+        { runId: run.id, status: run.status }
+      );
+      return;
+    }
 
     if (!run.lockedById) {
       // This happens when a run is expired or was cancelled before an attempt, it's not a problem

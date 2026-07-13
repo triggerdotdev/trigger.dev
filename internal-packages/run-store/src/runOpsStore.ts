@@ -1362,15 +1362,9 @@ export class RoutingRunStore implements RunStore {
     args: Prisma.TaskRunWaitpointDeleteManyArgs,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.BatchPayload> {
-    const where = args.where as { waitpointId?: unknown } | undefined;
-    const waitpointId = typeof where?.waitpointId === "string" ? where.waitpointId : undefined;
-    if (waitpointId !== undefined) {
-      const store = await this.#resolveWaitpointStore(waitpointId);
-      return store.deleteManyTaskRunWaitpoints(args, undefined);
-    }
-    // Keyed by taskRunId (or other): a run's edges may straddle DBs mid-drain, so delete from both.
-    // The caller's `tx` is never forwarded — each leg deletes on its own store's client, so neither
-    // leg is tied to a caller-supplied transaction.
+    // Edges co-locate with their RUN, not their waitpoint, so a waitpointId/taskRunId predicate may
+    // match edges on either store; delete from both so no cross-DB edge keeps a run blocked. The
+    // caller's `tx` is never forwarded — each leg deletes on its own store's client.
     const [fromNew, fromLegacy] = await Promise.all([
       this.#new.deleteManyTaskRunWaitpoints(args),
       this.#legacy.deleteManyTaskRunWaitpoints(args),

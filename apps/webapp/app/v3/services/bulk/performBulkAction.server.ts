@@ -27,7 +27,8 @@ export class PerformBulkActionService extends BaseService {
     }
 
     // Fetch the source run through the store (it may reside in a different DB than the item).
-    const sourceRun = await this.runStore.findRunOrThrow({ id: item.sourceRunId }, this._prisma);
+    // No client: routing keys off the run id, and this pre-existing run needs no read-your-writes.
+    const sourceRun = await this.runStore.findRunOrThrow({ id: item.sourceRunId });
 
     switch (item.type) {
       case "REPLAY": {

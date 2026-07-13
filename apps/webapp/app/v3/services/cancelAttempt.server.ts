@@ -71,7 +71,7 @@ export class CancelAttemptService extends BaseService {
 
       const finalizeService = new FinalizeTaskRunService();
       await finalizeService.call({
-        id: taskRunId,
+        id: taskRunAttempt.taskRun.id,
         status: isCancellable ? "INTERRUPTED" : undefined,
         completedAt: isCancellable ? cancelledAt : undefined,
         attemptStatus: isCancellable ? "CANCELED" : undefined,

@@ -55,11 +55,14 @@ type Dependency = NonNullable<RunWithDependency["dependency"]>;
 export class ResumeDependentParentsService extends BaseService {
   public async call({ id }: { id: string }): Promise<Output> {
     try {
+      // Read-your-writes: the caller just committed this run's final status, so read the owning
+      // primary (writer) — a lagging replica could show a non-final status and skip resumption.
       const run = await this.runStore.findRun(
         { id },
         {
           select: runWithDependencySelect,
-        }
+        },
+        this._prisma
       );
 
       const dependency = run?.dependency ?? null;
@@ -83,7 +86,21 @@ export class ResumeDependentParentsService extends BaseService {
 
       const environment = await findEnvironmentById(run.runtimeEnvironmentId);
 
-      if (environment?.type === "DEVELOPMENT") {
+      if (!environment) {
+        // Bail rather than fall through: an unresolved env would otherwise be treated as
+        // production and mutate dependency state.
+        logger.error("ResumeDependentParentsService: environment not found", {
+          runId: id,
+          runtimeEnvironmentId: run.runtimeEnvironmentId,
+        });
+
+        return {
+          success: false,
+          error: `Environment not found for run ${id}`,
+        };
+      }
+
+      if (environment.type === "DEVELOPMENT") {
         return {
           success: true,
           action: "dev",
@@ -137,18 +154,22 @@ export class ResumeDependentParentsService extends BaseService {
       }
     );
 
-    const lastAttempt = await this.runStore.findTaskRunAttempt({
-      select: {
-        id: true,
-        status: true,
+    // Read-your-writes: the just-finalized attempt was written by the same finalize operation.
+    const lastAttempt = await this.runStore.findTaskRunAttempt(
+      {
+        select: {
+          id: true,
+          status: true,
+        },
+        where: {
+          taskRunId: dependency.taskRunId,
+        },
+        orderBy: {
+          id: "desc",
+        },
       },
-      where: {
-        taskRunId: dependency.taskRunId,
-      },
-      orderBy: {
-        id: "desc",
-      },
-    });
+      this._prisma
+    );
 
     if (!lastAttempt) {
       logger.error(
@@ -210,18 +231,22 @@ export class ResumeDependentParentsService extends BaseService {
       };
     }
 
-    const lastAttempt = await this.runStore.findTaskRunAttempt({
-      select: {
-        id: true,
-        status: true,
+    // Read-your-writes: the just-finalized attempt was written by the same finalize operation.
+    const lastAttempt = await this.runStore.findTaskRunAttempt(
+      {
+        select: {
+          id: true,
+          status: true,
+        },
+        where: {
+          taskRunId: dependency.taskRunId,
+        },
+        orderBy: {
+          id: "desc",
+        },
       },
-      where: {
-        taskRunId: dependency.taskRunId,
-      },
-      orderBy: {
-        id: "desc",
-      },
-    });
+      this._prisma
+    );
 
     if (!lastAttempt) {
       logger.error(
