@@ -4,8 +4,11 @@ import {
   isPaidPlan,
   isCustomerSupportChannel,
   pickExternalTeamId,
+  proposeOrgMatches,
   provisionOrganizationSupportChannel,
   supportChannelName,
+  type ChannelCandidate,
+  type OrgCandidate,
   type SupportSlackClient,
 } from "~/services/supportSlackChannel.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
@@ -173,5 +176,104 @@ describe("provisionOrganizationSupportChannel", () => {
     });
     expect(result).toEqual({ status: "exists", channelId: "C777" });
     expect(client.created).toEqual([]);
+  });
+});
+
+function chan(overrides: Partial<ChannelCandidate> = {}): ChannelCandidate {
+  return {
+    channelId: "C1",
+    channelName: "cus-acme",
+    ...overrides,
+  };
+}
+
+function org(overrides: Partial<OrgCandidate> = {}): OrgCandidate {
+  return {
+    organizationId: "org_1",
+    slug: "acme-9dfd",
+    title: "Acme",
+    alreadyLinked: false,
+    ...overrides,
+  };
+}
+
+describe("proposeOrgMatches", () => {
+  it("name exact match scores medium with a name reason", () => {
+    const result = proposeOrgMatches(
+      [chan({ channelName: "cus-acme" })],
+      [org({ slug: "acme-9dfd" })]
+    );
+    expect(result).toEqual([
+      { channelId: "C1", organizationId: "org_1", confidence: "medium", reasons: ["name"] },
+    ]);
+  });
+
+  it("domain match only scores medium with a domain reason", () => {
+    const result = proposeOrgMatches(
+      [chan({ channelName: "cus-zzzqqq", externalTeamEmailDomain: "acme.com" })],
+      [org({ slug: "widget-5555", title: "Widget Co", ownerEmailDomain: "acme.com" })]
+    );
+    expect(result).toEqual([
+      { channelId: "C1", organizationId: "org_1", confidence: "medium", reasons: ["domain"] },
+    ]);
+  });
+
+  it("name and domain match together score high", () => {
+    const result = proposeOrgMatches(
+      [chan({ channelName: "cus-acme", externalTeamEmailDomain: "acme.com" })],
+      [org({ slug: "acme-9dfd", ownerEmailDomain: "acme.com" })]
+    );
+    expect(result).toEqual([
+      {
+        channelId: "C1",
+        organizationId: "org_1",
+        confidence: "high",
+        reasons: ["name", "domain"],
+      },
+    ]);
+  });
+
+  it("contains-only match scores low", () => {
+    const result = proposeOrgMatches(
+      [chan({ channelName: "cus-acme-corp" })],
+      [org({ slug: "acme-corp-holdings-9dfd", title: "Acme" })]
+    );
+    expect(result).toEqual([
+      { channelId: "C1", organizationId: "org_1", confidence: "low", reasons: ["name"] },
+    ]);
+  });
+
+  it("excludes already-linked orgs", () => {
+    const result = proposeOrgMatches(
+      [chan({ channelName: "cus-acme" })],
+      [org({ slug: "acme-9dfd", alreadyLinked: true })]
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("caps confidence to low and flags ambiguous on a tied top score", () => {
+    const result = proposeOrgMatches(
+      [chan({ channelName: "cus-acme" })],
+      [
+        org({ organizationId: "org_1", slug: "acme-1111", title: "Acme One" }),
+        org({ organizationId: "org_2", slug: "acme-2222", title: "Acme Two" }),
+      ]
+    );
+    expect(result).toEqual([
+      {
+        channelId: "C1",
+        organizationId: "org_1",
+        confidence: "low",
+        reasons: ["name", "ambiguous"],
+      },
+    ]);
+  });
+
+  it("returns no proposal when nothing matches", () => {
+    const result = proposeOrgMatches(
+      [chan({ channelName: "cus-zzz" })],
+      [org({ slug: "acme-9dfd", title: "Acme" })]
+    );
+    expect(result).toEqual([]);
   });
 });

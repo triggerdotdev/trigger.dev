@@ -264,6 +264,125 @@ export async function provisionOrganizationSupportChannel({
   }
 }
 
+export type ChannelCandidate = {
+  channelId: string;
+  channelName: string;
+  externalTeamDomain?: string;
+  externalTeamEmailDomain?: string;
+};
+
+export type OrgCandidate = {
+  organizationId: string;
+  slug: string;
+  title: string;
+  ownerEmailDomain?: string;
+  alreadyLinked: boolean;
+};
+
+export type MatchProposal = {
+  channelId: string;
+  organizationId: string;
+  confidence: "high" | "medium" | "low";
+  reasons: string[];
+};
+
+function normalize(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function channelKey(channelName: string): string {
+  return normalize(channelName.replace(/^cus-/, ""));
+}
+
+function orgSlugKey(slug: string): string {
+  return normalize(slug.replace(/-[a-z0-9]{4}$/, ""));
+}
+
+function scoreOrgAgainstChannel(
+  channel: ChannelCandidate,
+  candidate: OrgCandidate
+): { score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  let score = 0;
+
+  const chKey = channelKey(channel.channelName);
+  const slugKey = orgSlugKey(candidate.slug);
+  const titleKey = normalize(candidate.title);
+
+  const nameExact = chKey.length > 0 && (chKey === slugKey || chKey === titleKey);
+  const nameContains =
+    !nameExact &&
+    chKey.length > 0 &&
+    ((slugKey.length > 0 && (chKey.includes(slugKey) || slugKey.includes(chKey))) ||
+      (titleKey.length > 0 && (chKey.includes(titleKey) || titleKey.includes(chKey))));
+
+  if (nameExact) {
+    score += 2;
+    reasons.push("name");
+  } else if (nameContains) {
+    score += 1;
+    reasons.push("name");
+  }
+
+  if (candidate.ownerEmailDomain) {
+    const domain = candidate.ownerEmailDomain.toLowerCase();
+    const channelDomains = [channel.externalTeamDomain, channel.externalTeamEmailDomain]
+      .filter((d): d is string => Boolean(d))
+      .map((d) => d.toLowerCase());
+    if (channelDomains.includes(domain)) {
+      score += 2;
+      reasons.push("domain");
+    }
+  }
+
+  return { score, reasons };
+}
+
+function confidenceForScore(score: number): "high" | "medium" | "low" {
+  if (score >= 4) return "high";
+  if (score >= 2) return "medium";
+  return "low";
+}
+
+export function proposeOrgMatches(
+  channels: ChannelCandidate[],
+  orgs: OrgCandidate[]
+): MatchProposal[] {
+  const eligibleOrgs = orgs.filter((o) => !o.alreadyLinked);
+  const proposals: MatchProposal[] = [];
+
+  for (const channel of channels) {
+    let best: { org: OrgCandidate; score: number; reasons: string[] } | undefined;
+    let tie = false;
+
+    for (const candidate of eligibleOrgs) {
+      const { score, reasons } = scoreOrgAgainstChannel(channel, candidate);
+      if (score <= 0) continue;
+
+      if (!best || score > best.score) {
+        best = { org: candidate, score, reasons };
+        tie = false;
+      } else if (score === best.score) {
+        tie = true;
+      }
+    }
+
+    if (!best) continue;
+
+    const confidence = tie ? "low" : confidenceForScore(best.score);
+    const reasons = tie ? [...best.reasons, "ambiguous"] : best.reasons;
+
+    proposals.push({
+      channelId: channel.channelId,
+      organizationId: best.org.organizationId,
+      confidence,
+      reasons,
+    });
+  }
+
+  return proposals;
+}
+
 export async function enqueueProvisionSupportChannel(
   payload: OrganizationSupportChannelPayload
 ) {
