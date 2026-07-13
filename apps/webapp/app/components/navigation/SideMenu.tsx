@@ -210,6 +210,14 @@ const DRAG_CLICK_THRESHOLD = 4;
 /** Left/right padding of the pinned top section + scroll body, interpolated 10px → 4px by --sm-collapse. */
 const SIDE_MENU_PAD_X = `calc(0.625rem - 0.375rem * var(--sm-collapse, 0))`;
 /**
+ * Right padding of the scroll body DURING a collapse/expand transition. When settled-open the
+ * reserved scrollbar gutter provides the right-side space (padding 0); during a transition the
+ * gutter is dropped and this takes over, interpolating from the gutter's measured width (so the
+ * handoff has no seam) down to 4px collapsed. `--sm-sb-gutter` is measured on mount; the 12px
+ * fallback only applies for the first paint before that runs.
+ */
+const SIDE_MENU_SCROLL_PAD_RIGHT = `calc(var(--sm-sb-gutter, 12px) - (var(--sm-sb-gutter, 12px) - 0.25rem) * var(--sm-collapse, 0))`;
+/**
  * The selector rows' hover chevron: its 16px of layout width follows --sm-label-opacity so an
  * invisible chevron can never hold width mid-drag and push the row's overflow clip edge into the
  * icon on the left (it would read as the icon being "masked"). Opacity stays class-driven — the
@@ -310,6 +318,10 @@ export function SideMenu({
     user.dashboardPreferences.sideMenu?.isCollapsed ?? false
   );
   const [isDragging, setIsDragging] = useState(false);
+  // True while a click/⌘B/release-snap width animation is running. Together with isDragging it marks
+  // any in-flight transition, so the scrollbar gutter is only reserved once the menu is fully
+  // settled (see `showReservedGutter` in the render).
+  const [isAnimating, setIsAnimating] = useState(false);
 
   // --- Resize state (see the module constants above) ---
   const rootRef = useRef<HTMLDivElement>(null);
@@ -444,6 +456,24 @@ export function SideMenu({
     return () => flushPendingPreferencesRef.current?.();
   }, []);
 
+  // Measure the width the scroll body's reserved scrollbar gutter takes, once, and expose it as
+  // `--sm-sb-gutter`. The collapse padding hands off from the reserved gutter to animated padding at
+  // exactly this width so there's no seam, and it's platform-dependent so it must be measured rather
+  // than hardcoded. A probe carrying the same scrollbar classes as the real container is measured so
+  // the value matches whatever that styling reserves.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const probe = document.createElement("div");
+    probe.className = "scrollbar-gutter-stable scrollbar-thin";
+    probe.style.cssText =
+      "position:absolute;top:-9999px;left:-9999px;width:100px;height:100px;overflow-y:auto;visibility:hidden;";
+    document.body.appendChild(probe);
+    const gutter = probe.offsetWidth - probe.clientWidth;
+    document.body.removeChild(probe);
+    if (gutter > 0) el.style.setProperty("--sm-sb-gutter", `${gutter}px`);
+  }, []);
+
   // Write the width + collapse variables straight to the DOM (no React re-render) so a drag stays
   // smooth. Everything width-driven (labels, headers, padding, dividers) reads these variables.
   const writeVisual = useCallback((width: number, progress: number) => {
@@ -463,7 +493,11 @@ export function SideMenu({
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       const startWidth = widthRef.current;
       const startProgress = progressRef.current;
-      if (startWidth === targetWidth && startProgress === targetProgress) return;
+      if (startWidth === targetWidth && startProgress === targetProgress) {
+        setIsAnimating(false);
+        return;
+      }
+      setIsAnimating(true);
       const startTime = performance.now();
       const step = (now: number) => {
         const t = clamp((now - startTime) / COLLAPSE_ANIM_MS, 0, 1);
@@ -477,6 +511,7 @@ export function SideMenu({
         } else {
           rafRef.current = null;
           writeVisual(targetWidth, targetProgress);
+          setIsAnimating(false);
         }
       };
       rafRef.current = requestAnimationFrame(step);
@@ -636,6 +671,12 @@ export function SideMenu({
     action: handleToggleCollapsed,
   });
 
+  // Only reserve the scrollbar gutter when the menu is fully settled open — never mid-transition.
+  // Reserving it keeps the scroll body from shifting when the list starts/stops overflowing; during
+  // a drag or animation it's dropped so the right padding can animate the spacing instead of a fixed
+  // gutter snapping away (see SIDE_MENU_SCROLL_PAD_RIGHT).
+  const showReservedGutter = !isCollapsed && !isDragging && !isAnimating;
+
   return (
     <div
       ref={rootRef}
@@ -731,19 +772,21 @@ export function SideMenu({
         <div
           className={cn(
             "min-h-0 overflow-y-auto pt-2.5",
-            // No `scrollbar-gutter-stable`: a reserved gutter is a fixed width that can't animate and
-            // is dropped abruptly when `scrollbar-none` kicks in on collapse, so the right-hand
-            // spacing jumped instead of following the drag. Without it the right padding below drives
-            // the spacing and animates symmetrically with the left; the thin scrollbar still appears
-            // when the list overflows, it just no longer reserves space when it isn't scrolling.
-            isCollapsed
-              ? "scrollbar-none"
-              : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+            // Reserve the scrollbar gutter (so the list never shifts when it starts/stops
+            // overflowing) only when settled open. During any transition the gutter would be a fixed
+            // width that can't animate and snaps away on collapse, so it's dropped and the right
+            // padding below drives the spacing instead — handed off seamlessly at the gutter's width.
+            showReservedGutter
+              ? "scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+              : "scrollbar-none"
           )}
         >
           <div
             className="mb-6 flex w-full flex-col gap-4 overflow-hidden"
-            style={{ paddingLeft: SIDE_MENU_PAD_X, paddingRight: SIDE_MENU_PAD_X }}
+            style={{
+              paddingLeft: SIDE_MENU_PAD_X,
+              paddingRight: showReservedGutter ? "0px" : SIDE_MENU_SCROLL_PAD_RIGHT,
+            }}
           >
             <div className="w-full space-y-0">
               <SideMenuItem
