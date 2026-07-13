@@ -120,11 +120,7 @@ export class EventRepository implements IEventRepository {
     this._tracer = _config.tracer ?? trace.getTracer("eventRepo", "0.0.1");
 
     // Instantiate the store using the partitioning flag.
-    this.taskEventStore = new TaskEventStore(
-      db,
-      readReplica,
-      env.EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED
-    );
+    this.taskEventStore = new TaskEventStore(db, readReplica);
   }
 
   #createableEventToPrismaEvent(event: CreateEventInput): Prisma.TaskEventCreateManyInput {
@@ -161,14 +157,23 @@ export class EventRepository implements IEventRepository {
   }
 
   private async insertImmediate(event: CreateEventInput) {
+    if (env.EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED) {
+      return;
+    }
     await this.#flushBatch(nanoid(), [this.#createableEventToPrismaEvent(event)]);
   }
 
   insertMany(events: CreateEventInput[]) {
+    if (env.EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED) {
+      return;
+    }
     this._flushScheduler.addToBatch(events.map(this.#createableEventToPrismaEvent));
   }
 
   async insertManyImmediate(events: CreateEventInput[]) {
+    if (env.EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED) {
+      return;
+    }
     await this.#flushBatchWithReturn(nanoid(), events.map(this.#createableEventToPrismaEvent));
   }
 

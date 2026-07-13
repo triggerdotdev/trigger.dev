@@ -59,17 +59,13 @@ export function getTaskEventStore(): TaskEventStoreTable {
 export class TaskEventStore {
   constructor(
     private db: PrismaClient,
-    private readReplica: PrismaReplicaClient,
-    private writesDisabled: boolean = false
+    private readReplica: PrismaReplicaClient
   ) {}
 
   /**
    * Insert one record.
    */
   async create(table: TaskEventStoreTable, data: Prisma.TaskEventCreateInput) {
-    if (this.writesDisabled) {
-      return;
-    }
     if (table === "taskEventPartitioned") {
       return await this.db.taskEventPartitioned.create({ data });
     } else {
@@ -81,9 +77,6 @@ export class TaskEventStore {
    * Insert many records.
    */
   async createMany(table: TaskEventStoreTable, data: Prisma.TaskEventCreateManyInput[]) {
-    if (this.writesDisabled) {
-      return { count: 0 };
-    }
     if (table === "taskEventPartitioned") {
       return await this.db.taskEventPartitioned.createMany({ data });
     } else {
