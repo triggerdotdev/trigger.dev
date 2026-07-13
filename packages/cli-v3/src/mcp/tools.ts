@@ -48,6 +48,9 @@ const WRITE_TOOLS = new Set([
   startAgentChatTool.name,
   sendAgentMessageTool.name,
   closeAgentChatTool.name,
+  switchProfileTool.name,
+  startDevServerTool.name,
+  stopDevServerTool.name,
 ]);
 
 export function registerTools(context: McpContext) {
