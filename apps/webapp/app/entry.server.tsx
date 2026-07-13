@@ -18,7 +18,6 @@ import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
 import { eventLoopMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
-import { resourceMonitor } from "./services/resourceMonitor.server";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
 import {
@@ -308,8 +307,4 @@ if (remoteBuildsEnabled()) {
   console.log("🏗️  Remote builds enabled");
 } else {
   console.log("🏗️  Local builds enabled");
-}
-
-if (env.RESOURCE_MONITOR_ENABLED === "1") {
-  resourceMonitor.startMonitoring(1000);
 }
