@@ -7,6 +7,7 @@ import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
+import { GlobalShortcuts } from "./components/GlobalShortcuts";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { ShortcutsProvider } from "./components/primitives/ShortcutsProvider";
 import { Toast } from "./components/primitives/Toast";
@@ -131,6 +132,7 @@ export default function App() {
         <body className="h-full overflow-hidden bg-background-dimmed antialiased">
           <ShortcutsProvider>
             <TimezoneSetter />
+            <GlobalShortcuts />
             <Outlet />
             <Toast />
           </ShortcutsProvider>

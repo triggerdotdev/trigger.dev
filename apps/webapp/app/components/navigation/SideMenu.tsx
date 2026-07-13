@@ -3,7 +3,7 @@ import {
   ChevronRightIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
-import { useFetcher, useNavigate, useNavigation, useSubmit } from "@remix-run/react";
+import { useFetcher, useNavigation, useSubmit } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
 import {
   type CSSProperties,
@@ -1490,29 +1490,13 @@ function AccountMenuItems({
 function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImpersonating: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const navigation = useNavigation();
-  const navigate = useNavigate();
-  const submit = useSubmit();
 
   useEffect(() => {
     setIsOpen(false);
   }, [navigation.location?.pathname]);
 
-  const stopImpersonating = () =>
-    submit(null, { action: "/resources/impersonation", method: "delete" });
-
-  useShortcutKeys({
-    shortcut: isAdmin
-      ? { modifiers: ["mod"], key: "esc", enabledOnInputElements: true }
-      : undefined,
-    action: () => {
-      if (isImpersonating) {
-        stopImpersonating();
-      } else {
-        navigate(adminPath());
-      }
-    },
-  });
-
+  // The ⌘/Ctrl+Esc admin shortcut lives in <GlobalShortcuts> so it works everywhere, not only where
+  // this menu is mounted.
   return (
     <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen}>
       <SimpleTooltip
