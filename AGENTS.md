@@ -142,7 +142,7 @@ User API call -> Webapp routes -> Services -> RunEngine -> Redis Queue -> Superv
 
 ### v3 (engine V1) removed
 
-v3 (engine V1: MarQS + Graphile worker) is end-of-life and its execution code has been removed. The `apps/webapp/app/v3/` directory name is historical - everything there now serves V2 (Run Engine 2.0, `@internal/run-engine` + redis-worker). There is no V1 execution path: a `RunEngineVersion` `V1` branch only rejects gracefully so v3 clients get a clean 4xx, never a 5xx. Do not reintroduce V1. See `apps/webapp/CLAUDE.md` and `.claude/rules/legacy-v3-code.md`.
+v3 (engine V1: MarQS + Graphile worker) is end-of-life and its execution code has been removed. The `apps/webapp/app/v3/` directory name is historical - everything there now serves V2 (Run Engine 2.0, `@internal/run-engine` + redis-worker). There is no V1 execution path: a `RunEngineVersion` `V1` branch only rejects or finalizes gracefully so v3 clients get a clean 4xx, never a 5xx. Do not reintroduce V1. See `apps/webapp/CLAUDE.md` and `.claude/rules/legacy-v3-code.md`.
 
 ### Documentation
 

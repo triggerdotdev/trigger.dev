@@ -173,7 +173,6 @@ export class ChangeCurrentDeploymentService extends BaseService {
         error: scheduleSyncError,
       });
     }
-
   }
 
   async #syncSchedulesForDeployment(deployment: WorkerDeployment) {

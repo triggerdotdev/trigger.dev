@@ -7,7 +7,7 @@ paths:
 
 The v3 engine (RunEngineVersion `V1`: MarQS queue + Graphile worker) is end-of-life and its execution code has been removed from the webapp. The `app/v3/` directory name is historical: everything under it now serves the current V2 engine (`@internal/run-engine` + `@trigger.dev/redis-worker`).
 
-There is no `V1` execution path anymore. If you find a `RunEngineVersion` branch, the `V1` arm should only ever produce a graceful rejection, never run work. Do not reintroduce MarQS, the graphile worker, or the v3 socket.io namespaces.
+There is no `V1` execution path anymore. If you find a `RunEngineVersion` branch, the `V1` arm should only reject or finalize gracefully (for example, mark a historical run cancelled in the DB), never run V1 work. Do not reintroduce MarQS, the graphile worker, or the v3 socket.io namespaces.
 
 ## The deprecation boundary (keep this)
 

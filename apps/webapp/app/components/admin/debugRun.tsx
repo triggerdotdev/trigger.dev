@@ -74,11 +74,7 @@ function DebugRunData(props: UseDataFunctionReturn<typeof loader>) {
   return <DebugRunDataEngineV2 {...props} />;
 }
 
-function DebugRunDataEngineV1({
-  run,
-}: {
-  run: UseDataFunctionReturn<typeof loader>["run"];
-}) {
+function DebugRunDataEngineV1({ run }: { run: UseDataFunctionReturn<typeof loader>["run"] }) {
   return (
     <Property.Table>
       <Property.Item>
