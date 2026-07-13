@@ -120,7 +120,11 @@ export class EventRepository implements IEventRepository {
     this._tracer = _config.tracer ?? trace.getTracer("eventRepo", "0.0.1");
 
     // Instantiate the store using the partitioning flag.
-    this.taskEventStore = new TaskEventStore(db, readReplica);
+    this.taskEventStore = new TaskEventStore(
+      db,
+      readReplica,
+      env.EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED
+    );
   }
 
   #createableEventToPrismaEvent(event: CreateEventInput): Prisma.TaskEventCreateManyInput {

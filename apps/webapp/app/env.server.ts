@@ -1828,6 +1828,7 @@ const EnvironmentSchema = z
       .enum(["postgres", "clickhouse", "clickhouse_v2"])
       .default("postgres"),
     EVENT_REPOSITORY_DEBUG_LOGS_DISABLED: BoolEnv.default(false),
+    EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED: BoolEnv.default(false),
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
