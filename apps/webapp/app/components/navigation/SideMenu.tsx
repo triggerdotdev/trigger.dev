@@ -1420,10 +1420,10 @@ function AccountMenuItems({
               title={
                 <div className="flex w-full items-center justify-between">
                   <span className={IMPERSONATION_ACCENT.text}>Stop impersonating</span>
-                  <span className="flex items-center gap-1">
-                    <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
-                    <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
-                  </span>
+                  <ShortcutKey
+                    shortcut={{ modifiers: ["mod", "alt"], key: "a" }}
+                    variant="medium/bright"
+                  />
                 </div>
               }
               icon={UserCrossIcon}
@@ -1437,10 +1437,10 @@ function AccountMenuItems({
               title={
                 <div className="flex w-full items-center justify-between">
                   <span>Admin dashboard</span>
-                  <span className="flex items-center gap-1">
-                    <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
-                    <ShortcutKey shortcut={{ key: "esc" }} variant="medium/bright" />
-                  </span>
+                  <ShortcutKey
+                    shortcut={{ modifiers: ["mod", "alt"], key: "a" }}
+                    variant="medium/bright"
+                  />
                 </div>
               }
               icon={HomeIcon}
