@@ -192,10 +192,7 @@ export type SelectRunOpsTopologyConfig = {
   legacyReplicaUrl?: string;
   newUrl?: string;
   newReplicaUrl?: string;
-  // When the legacy DSN targets the same physical DB as the control plane (the pre-cutover reality),
-  // reuse the control-plane client by reference instead of opening a second, redundant pool against
-  // the same server. The env-bound singleton computes this via sameDatabaseTarget(). Defaults to false
-  // (build an independent legacy client — the post-cutover / distinct-DB behaviour).
+  // When true, legacy reuses the control-plane client instead of opening its own pool. Defaults to false.
   legacySharesControlPlane?: boolean;
 };
 export type RunOpsClientBuilders = {
@@ -231,15 +228,12 @@ export function selectRunOpsTopology(
     return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane };
   }
 
-  // When the legacy DSN targets the same physical DB as the control plane (true pre-cutover), reuse
-  // the control-plane client by reference — no second pool against the same server, so split-on can't
-  // double RDS connections. buildLegacy* runs only once the DSNs diverge (post control-plane cutover).
+  // Same-DB legacy reuses the control-plane pool; only build a separate pool once the DSNs diverge.
   let legacyRunOps: RunOpsClients;
   if (config.legacySharesControlPlane) {
     legacyRunOps = controlPlane;
   } else {
     const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "run-ops-legacy-writer");
-    // Brand a real replica (in the builder), otherwise fall back to the legacy WRITER — unbranded.
     const legacyReplica: PrismaReplicaClient = config.legacyReplicaUrl
       ? builders.buildLegacyReplica(config.legacyReplicaUrl, "run-ops-legacy-reader")
       : legacyWriter;
@@ -270,8 +264,8 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
   // Gate on the opt-in flag too: the distinct-DB sentinel only runs when the flag is on.
   const splitEnabled = env.RUN_OPS_SPLIT_ENABLED && !!newUrl && !!env.RUN_OPS_LEGACY_DATABASE_URL;
 
-  // Reuse the control-plane pool for legacy when both roles target the same physical DB (compare the
-  // effective URLs, applying the same writer fallback each replica uses when its own URL is unset).
+  // Alias legacy onto the control-plane pool when both roles resolve to the same DB (replica URLs
+  // fall back to their writer, matching how the clients themselves fall back).
   const cpWriterUrl = env.CONTROL_PLANE_DATABASE_URL ?? env.DATABASE_URL;
   const cpReplicaUrl = env.CONTROL_PLANE_DATABASE_READ_REPLICA_URL ?? env.DATABASE_READ_REPLICA_URL;
   const legacySharesControlPlane =
@@ -281,8 +275,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       cpReplicaUrl ?? cpWriterUrl
     );
 
-  // Only meaningful for an INDEPENDENT legacy pool: without its own replica URL, legacy reads fall
-  // back to the legacy primary. A shared pool routes through $replica instead, so the warning is moot.
+  // Only meaningful for an independent legacy pool; a shared pool routes reads through $replica.
   if (splitEnabled && !legacySharesControlPlane && !env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL) {
     logger.warn(
       "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is unset while split is enabled; legacy reads will hit the legacy primary"
@@ -731,8 +724,7 @@ function buildRunOpsReplicaClient({
   clientType: string;
 }): RunOpsPrismaClient {
   const replicaUrl = extendQueryParams(url, {
-    // The new run-ops replica is UNPOOLED (direct to the replica host), so it draws raw backend
-    // connections. Cap it independently when set; otherwise behave exactly as before.
+    // The new run-ops replica connects unpooled, so allow capping it independently of the writer.
     connection_limit: (
       env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
     ).toString(),
@@ -778,10 +770,8 @@ function buildRunOpsReplicaClient({
   return client;
 }
 
-// True when two DSNs point at the same physical database (host/port/dbname/user), ignoring query
-// params (connection_limit etc. differ) and password. Parse failure -> false: don't alias, just build
-// independently (no correctness risk, only a missed dedup). Used to decide whether the legacy run-ops
-// client can share the control-plane pool instead of opening a redundant one against the same server.
+// True when two DSNs point at the same database (host/port/dbname/user), ignoring query params and
+// password. Parse failure or a missing URL returns false, so an unrecognized DSN just isn't aliased.
 export function sameDatabaseTarget(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
   try {

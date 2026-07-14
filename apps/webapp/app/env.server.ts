@@ -159,10 +159,7 @@ const EnvironmentSchema = z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is invalid")
       .optional(),
-    // Optional per-pool cap for the NEW run-ops read-replica client only. The new replica connects
-    // direct (unpooled) to the run-ops replica host, so unlike the pooled writer it draws raw backend
-    // connections against that host's max_connections. Unset -> falls back to DATABASE_CONNECTION_LIMIT
-    // (behaviour identical to today), letting ops throttle just the unpooled replica without a redeploy.
+    // Optional cap for the unpooled new run-ops read replica. Unset falls back to DATABASE_CONNECTION_LIMIT.
     RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT: z.coerce.number().int().optional(),
     // Direct DSN for applying the full @trigger.dev/database migrations to the LEGACY run-ops DB, keeping
     // its schema current after the control plane moves off it. Direct, not pooled — migrations never run
