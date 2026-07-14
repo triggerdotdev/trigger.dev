@@ -5,9 +5,7 @@ import { type PrismaClientOrTransaction } from "~/db.server";
 export const OrganizationSupportChannelSchema = z.object({
   organizationId: z.string(),
 });
-export type OrganizationSupportChannelPayload = z.infer<
-  typeof OrganizationSupportChannelSchema
->;
+export type OrganizationSupportChannelPayload = z.infer<typeof OrganizationSupportChannelSchema>;
 
 export interface SupportSlackClient {
   createPrivateChannel(name: string): Promise<{ channelId: string; channelName: string }>;
@@ -15,6 +13,21 @@ export interface SupportSlackClient {
     channelId: string,
     email: string
   ): Promise<{ inviteId: string; url?: string }>;
+  archiveChannel(channelId: string): Promise<void>;
+  unarchiveChannel(channelId: string): Promise<void>;
+}
+
+// Slack surfaces "already in that state" as a platform error rather than success.
+// Both archive and unarchive treat their respective already-there error as a no-op success.
+function isSlackErrorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "data" in error &&
+    typeof (error as { data?: unknown }).data === "object" &&
+    (error as { data?: { error?: unknown } }).data !== null &&
+    (error as { data?: { error?: unknown } }).data?.error === code
+  );
 }
 
 export interface SupportSlackDiscoveryClient {
@@ -149,6 +162,28 @@ export class SupportSlackClientLive implements SupportSlackClient, SupportSlackD
     }
     return { inviteId: res.invite_id, url: res.url };
   }
+
+  async archiveChannel(channelId: string): Promise<void> {
+    try {
+      await this.client.conversations.archive({ channel: channelId });
+    } catch (error) {
+      if (isSlackErrorCode(error, "already_archived")) {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async unarchiveChannel(channelId: string): Promise<void> {
+    try {
+      await this.client.conversations.unarchive({ channel: channelId });
+    } catch (error) {
+      if (isSlackErrorCode(error, "not_archived")) {
+        return;
+      }
+      throw error;
+    }
+  }
 }
 
 /**
@@ -188,7 +223,7 @@ async function getOrganizationOwnerEmail(
 async function setStatus(
   prisma: PrismaClientOrTransaction,
   organizationId: string,
-  status: "PENDING" | "PROVISIONING" | "INVITED" | "FAILED",
+  status: "PENDING" | "PROVISIONING" | "INVITED" | "FAILED" | "ARCHIVED",
   data: {
     slackChannelId?: string | null;
     slackChannelName?: string | null;
@@ -226,6 +261,41 @@ export async function provisionOrganizationSupportChannel({
       lastError: "No organization owner email found",
     });
     return { status: "failed" };
+  }
+
+  // A re-upgrade after an unlink (archive) reuses the existing channel: recreating the
+  // same `cus-<slug>` name would fail with Slack `name_taken`, so unarchive it instead.
+  if (existing?.status === "ARCHIVED" && existing.slackChannelId) {
+    const channelId = existing.slackChannelId;
+    const channelName = existing.slackChannelName ?? undefined;
+    await setStatus(prisma, organizationId, "PROVISIONING", {
+      slackChannelId: channelId,
+      slackChannelName: channelName,
+      invitedEmail: ownerEmail,
+    });
+
+    try {
+      await slackClient.unarchiveChannel(channelId);
+      const { url } = await slackClient.inviteSharedByEmail(channelId, ownerEmail);
+      await prisma.organizationSupportChannel.update({
+        where: { organizationId },
+        data: {
+          status: "INVITED",
+          slackChannelId: channelId,
+          slackChannelName: channelName,
+          inviteUrl: url ?? null,
+          lastError: null,
+        },
+      });
+      return { status: "invited", channelId };
+    } catch (error) {
+      await setStatus(prisma, organizationId, "FAILED", {
+        slackChannelId: channelId,
+        slackChannelName: channelName,
+        lastError: error instanceof Error ? error.message : String(error),
+      });
+      return { status: "failed" };
+    }
   }
 
   // A previous attempt may have already created the Slack channel but died (or failed)
@@ -292,6 +362,31 @@ export async function provisionOrganizationSupportChannel({
     });
     return { status: "failed" };
   }
+}
+
+export async function unlinkSupportChannel({
+  organizationId,
+  prisma,
+  slackClient,
+}: {
+  organizationId: string;
+  prisma: PrismaClientOrTransaction;
+  slackClient: SupportSlackClient;
+}): Promise<{ status: "archived" } | { status: "not_found" }> {
+  const existing = await prisma.organizationSupportChannel.findFirst({
+    where: { organizationId },
+  });
+  if (!existing?.slackChannelId) {
+    return { status: "not_found" };
+  }
+
+  await slackClient.archiveChannel(existing.slackChannelId);
+  // Keep slackChannelId/slackChannelName for history; a later re-provision reuses them.
+  await setStatus(prisma, organizationId, "ARCHIVED", {
+    slackChannelId: existing.slackChannelId,
+    slackChannelName: existing.slackChannelName,
+  });
+  return { status: "archived" };
 }
 
 export async function linkSupportChannel({
@@ -477,9 +572,7 @@ export function proposeOrgMatches(
   return proposals;
 }
 
-export async function enqueueProvisionSupportChannel(
-  payload: OrganizationSupportChannelPayload
-) {
+export async function enqueueProvisionSupportChannel(payload: OrganizationSupportChannelPayload) {
   // Lazy import to avoid a circular dependency with commonWorker (which imports this module's schema).
   const { commonWorker } = await import("~/v3/commonWorker.server");
   await commonWorker.enqueue({

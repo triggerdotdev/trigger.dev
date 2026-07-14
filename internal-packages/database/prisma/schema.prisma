@@ -3202,6 +3202,7 @@ enum OrganizationSupportChannelStatus {
   INVITED
   FAILED
   LINKED
+  ARCHIVED
 }
 
 model OrganizationSupportChannel {

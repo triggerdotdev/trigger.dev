@@ -8,6 +8,7 @@ import {
   proposeOrgMatches,
   provisionOrganizationSupportChannel,
   supportChannelName,
+  unlinkSupportChannel,
   type ChannelCandidate,
   type OrgCandidate,
   type SupportSlackClient,
@@ -55,6 +56,8 @@ describe("pickExternalTeamId", () => {
 class FakeSupportSlackClient implements SupportSlackClient {
   public created: string[] = [];
   public invited: Array<{ channelId: string; email: string }> = [];
+  public archived: string[] = [];
+  public unarchived: string[] = [];
   constructor(private opts: { failInvite?: boolean } = {}) {}
   setFailInvite(failInvite: boolean) {
     this.opts = { ...this.opts, failInvite };
@@ -67,6 +70,12 @@ class FakeSupportSlackClient implements SupportSlackClient {
     this.invited.push({ channelId, email });
     if (this.opts.failInvite) throw new Error("no_external_invite_permission");
     return { inviteId: "I123", url: "https://join.slack.com/share/abc" };
+  }
+  async archiveChannel(channelId: string) {
+    this.archived.push(channelId);
+  }
+  async unarchiveChannel(channelId: string) {
+    this.unarchived.push(channelId);
   }
 }
 
@@ -227,6 +236,88 @@ describe("provisionOrganizationSupportChannel", () => {
     expect(result).toEqual({ status: "exists", channelId: "C777" });
     expect(client.created).toEqual([]);
   });
+
+  postgresTest(
+    "ARCHIVED row is unarchived and reused instead of creating a new channel",
+    async ({ prisma }) => {
+      const { org } = await seedOrg(prisma);
+      await prisma.organizationSupportChannel.create({
+        data: {
+          organizationId: org.id,
+          status: "ARCHIVED",
+          slackChannelId: "C555",
+          slackChannelName: "cus-acme",
+        },
+      });
+      const client = new FakeSupportSlackClient();
+
+      const result = await provisionOrganizationSupportChannel({
+        organizationId: org.id,
+        prisma,
+        slackClient: client,
+      });
+
+      expect(result).toEqual({ status: "invited", channelId: "C555" });
+      expect(client.created).toEqual([]);
+      expect(client.unarchived).toEqual(["C555"]);
+      expect(client.invited).toEqual([{ channelId: "C555", email: "owner@acme.com" }]);
+
+      const row = await prisma.organizationSupportChannel.findFirst({
+        where: { organizationId: org.id },
+      });
+      expect(row?.status).toBe("INVITED");
+      expect(row?.slackChannelId).toBe("C555");
+      expect(row?.slackChannelName).toBe("cus-acme");
+    }
+  );
+});
+
+describe("unlinkSupportChannel", () => {
+  postgresTest("archives a LINKED row and keeps the channel id for history", async ({ prisma }) => {
+    const { org } = await seedOrg(prisma);
+    await prisma.organizationSupportChannel.create({
+      data: {
+        organizationId: org.id,
+        status: "LINKED",
+        slackChannelId: "C1",
+        slackChannelName: "cus-acme",
+      },
+    });
+    const client = new FakeSupportSlackClient();
+
+    const result = await unlinkSupportChannel({
+      organizationId: org.id,
+      prisma,
+      slackClient: client,
+    });
+
+    expect(result).toEqual({ status: "archived" });
+    expect(client.archived).toEqual(["C1"]);
+
+    const row = await prisma.organizationSupportChannel.findFirst({
+      where: { organizationId: org.id },
+    });
+    expect(row?.status).toBe("ARCHIVED");
+    expect(row?.slackChannelId).toBe("C1");
+    expect(row?.slackChannelName).toBe("cus-acme");
+  });
+
+  postgresTest(
+    "no row or no channel id returns not_found without calling Slack",
+    async ({ prisma }) => {
+      const { org } = await seedOrg(prisma);
+      const client = new FakeSupportSlackClient();
+
+      const result = await unlinkSupportChannel({
+        organizationId: org.id,
+        prisma,
+        slackClient: client,
+      });
+
+      expect(result).toEqual({ status: "not_found" });
+      expect(client.archived).toEqual([]);
+    }
+  );
 });
 
 function chan(overrides: Partial<ChannelCandidate> = {}): ChannelCandidate {
