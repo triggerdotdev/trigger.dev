@@ -65,6 +65,18 @@ export function isPaidPlan(
   return plan?.v3Subscription?.isPaying === true;
 }
 
+// An org is "downgraded" when it still has a support channel linked but is no
+// longer on a paying plan, e.g. it downgraded after the channel was created.
+export function isDowngradedLink({
+  hasChannel,
+  isPaying,
+}: {
+  hasChannel: boolean;
+  isPaying: boolean;
+}): boolean {
+  return hasChannel && !isPaying;
+}
+
 // Slack channel names: lowercase, only [a-z0-9-], <= 80 chars.
 export function supportChannelName(orgSlug: string): string {
   const cleaned = orgSlug

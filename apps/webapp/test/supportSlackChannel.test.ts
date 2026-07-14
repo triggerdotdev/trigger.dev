@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { postgresTest } from "@internal/testcontainers";
 import {
+  isDowngradedLink,
   isPaidPlan,
   isCustomerSupportChannel,
   linkSupportChannel,
@@ -21,6 +22,19 @@ describe("isPaidPlan", () => {
     expect(isPaidPlan({})).toBe(false);
     expect(isPaidPlan({ v3Subscription: { isPaying: false } })).toBe(false);
     expect(isPaidPlan({ v3Subscription: { isPaying: true } })).toBe(true);
+  });
+});
+
+describe("isDowngradedLink", () => {
+  it("flags a linked channel on a non-paying org as downgraded", () => {
+    expect(isDowngradedLink({ hasChannel: true, isPaying: false })).toBe(true);
+  });
+  it("does not flag a linked channel on a paying org", () => {
+    expect(isDowngradedLink({ hasChannel: true, isPaying: true })).toBe(false);
+  });
+  it("does not flag an org with no channel regardless of plan", () => {
+    expect(isDowngradedLink({ hasChannel: false, isPaying: false })).toBe(false);
+    expect(isDowngradedLink({ hasChannel: false, isPaying: true })).toBe(false);
   });
 });
 

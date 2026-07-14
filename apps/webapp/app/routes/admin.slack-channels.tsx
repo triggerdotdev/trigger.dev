@@ -1,4 +1,5 @@
 import { useFetcher } from "@remix-run/react";
+import type { OrganizationSupportChannelStatus } from "@trigger.dev/database";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { Button } from "~/components/primitives/Buttons";
@@ -15,15 +16,27 @@ import {
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { getCurrentPlan } from "~/services/platform.v3.server";
 import {
+  createSupportSlackClient,
   createSupportSlackDiscoveryClient,
+  isDowngradedLink,
+  isPaidPlan,
   linkSupportChannel,
   pickExternalTeamId,
   proposeOrgMatches,
+  unlinkSupportChannel,
   type ChannelCandidate,
   type MatchProposal,
   type OrgCandidate,
 } from "~/services/supportSlackChannel.server";
+
+type LinkedChannelInfo = {
+  organizationId: string;
+  title: string;
+  status: OrganizationSupportChannelStatus;
+  downgraded: boolean;
+};
 
 export const loader = dashboardLoader({ authorization: { requireSuper: true } }, async () => {
   const client = createSupportSlackDiscoveryClient(env.SLACK_BOT_TOKEN);
@@ -33,7 +46,7 @@ export const loader = dashboardLoader({ authorization: { requireSuper: true } },
       channels: [],
       proposals: [],
       orgs: [],
-      linkedOrgTitleByChannelId: {} as Record<string, string>,
+      linkedChannelInfoByChannelId: {} as Record<string, LinkedChannelInfo>,
     });
   }
 
@@ -69,7 +82,7 @@ export const loader = dashboardLoader({ authorization: { requireSuper: true } },
       slug: true,
       title: true,
       supportChannel: {
-        select: { slackChannelId: true, slackChannelName: true },
+        select: { slackChannelId: true, slackChannelName: true, status: true },
       },
       members: {
         where: { role: "ADMIN" },
@@ -92,14 +105,36 @@ export const loader = dashboardLoader({ authorization: { requireSuper: true } },
     };
   });
 
-  // Maps a Slack channel id to the org title it's already linked to, so the
-  // table can show per-channel link status. Built separately from
+  // Maps a Slack channel id to its linked org + status, so the table can show
+  // per-channel link status and a downgraded flag. Built separately from
   // `OrgCandidate` since that type only carries a boolean for matching.
-  const linkedOrgTitleByChannelId: Record<string, string> = {};
-  for (const organization of organizations) {
-    if (organization.supportChannel?.slackChannelId) {
-      linkedOrgTitleByChannelId[organization.supportChannel.slackChannelId] = organization.title;
+  // Plan lookups are cached per org since the same org can only appear once
+  // here, but this keeps the pattern safe if that ever changes.
+  const planCache = new Map<string, boolean>();
+  async function isOrgPaying(organizationId: string): Promise<boolean> {
+    const cached = planCache.get(organizationId);
+    if (cached !== undefined) {
+      return cached;
     }
+    const plan = await getCurrentPlan(organizationId);
+    const paying = isPaidPlan(plan);
+    planCache.set(organizationId, paying);
+    return paying;
+  }
+
+  const linkedChannelInfoByChannelId: Record<string, LinkedChannelInfo> = {};
+  for (const organization of organizations) {
+    const supportChannel = organization.supportChannel;
+    if (!supportChannel?.slackChannelId) {
+      continue;
+    }
+    const isPaying = await isOrgPaying(organization.id);
+    linkedChannelInfoByChannelId[supportChannel.slackChannelId] = {
+      organizationId: organization.id,
+      title: organization.title,
+      status: supportChannel.status,
+      downgraded: isDowngradedLink({ hasChannel: true, isPaying }),
+    };
   }
 
   const proposals = proposeOrgMatches(channels, orgs);
@@ -109,16 +144,23 @@ export const loader = dashboardLoader({ authorization: { requireSuper: true } },
     channels,
     proposals,
     orgs,
-    linkedOrgTitleByChannelId,
+    linkedChannelInfoByChannelId,
   });
 });
 
-const ActionBody = z.object({
+const LinkActionBody = z.object({
   _action: z.enum(["link", "reassign"]),
   channelId: z.string(),
   channelName: z.string(),
   organizationId: z.string(),
 });
+
+const UnlinkActionBody = z.object({
+  _action: z.literal("unlink"),
+  organizationId: z.string(),
+});
+
+const ActionBody = z.union([LinkActionBody, UnlinkActionBody]);
 
 export const action = dashboardAction(
   { authorization: { requireSuper: true } },
@@ -127,6 +169,24 @@ export const action = dashboardAction(
     const parsed = ActionBody.safeParse(Object.fromEntries(formData));
     if (!parsed.success) {
       return typedjson({ error: "Invalid form submission" }, { status: 400 });
+    }
+
+    if (parsed.data._action === "unlink") {
+      const { organizationId } = parsed.data;
+      const slackClient = createSupportSlackClient(env.SLACK_BOT_TOKEN);
+      if (!slackClient) {
+        return typedjson({ error: "Slack is not configured" }, { status: 400 });
+      }
+
+      const result = await unlinkSupportChannel({ organizationId, prisma, slackClient });
+      if (result.status === "not_found") {
+        return typedjson(
+          { error: "No linked channel found for this organization" },
+          { status: 404 }
+        );
+      }
+
+      return typedjson({ success: true as const });
     }
 
     const { _action, channelId, channelName, organizationId } = parsed.data;
@@ -150,7 +210,7 @@ type LoaderChannel = ChannelCandidate;
 type LoaderOrg = OrgCandidate & { organizationId: string };
 
 export default function AdminSlackChannelsRoute() {
-  const { notConfigured, channels, proposals, orgs, linkedOrgTitleByChannelId } =
+  const { notConfigured, channels, proposals, orgs, linkedChannelInfoByChannelId } =
     useTypedLoaderData<typeof loader>();
 
   if (notConfigured) {
@@ -197,7 +257,7 @@ export default function AdminSlackChannelsRoute() {
                   channel={channel}
                   proposal={proposalByChannelId.get(channel.channelId)}
                   orgs={orgs}
-                  linkedOrgTitle={linkedOrgTitleByChannelId[channel.channelId]}
+                  linkedInfo={linkedChannelInfoByChannelId[channel.channelId]}
                 />
               ))
             )}
@@ -212,16 +272,18 @@ function ChannelRow({
   channel,
   proposal,
   orgs,
-  linkedOrgTitle,
+  linkedInfo,
 }: {
   channel: LoaderChannel;
   proposal: MatchProposal | undefined;
   orgs: LoaderOrg[];
-  linkedOrgTitle: string | undefined;
+  linkedInfo: LinkedChannelInfo | undefined;
 }) {
   const fetcher = useFetcher<{ error?: string; success?: boolean }>();
+  const unlinkFetcher = useFetcher<{ error?: string; success?: boolean }>();
   const defaultOrganizationId = proposal?.organizationId ?? orgs[0]?.organizationId ?? "";
   const isBusy = fetcher.state !== "idle";
+  const isUnlinking = unlinkFetcher.state !== "idle";
 
   return (
     <TableRow>
@@ -229,8 +291,17 @@ function ChannelRow({
         <span className="font-mono text-xs text-text-bright">{channel.channelName}</span>
       </TableCell>
       <TableCell>
-        {linkedOrgTitle ? (
-          <span className="text-xs text-text-dimmed">Linked: {linkedOrgTitle}</span>
+        {linkedInfo ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-dimmed">
+              Linked: {linkedInfo.title} ({linkedInfo.status})
+            </span>
+            {linkedInfo.downgraded && (
+              <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs font-medium text-amber-400">
+                Downgraded
+              </span>
+            )}
+          </div>
         ) : (
           <span className="text-xs text-text-dimmed">Unlinked</span>
         )}
@@ -284,7 +355,27 @@ function ChannelRow({
           <span className="text-xs text-text-dimmed">—</span>
         )}
       </TableCell>
-      <TableCell />
+      <TableCell>
+        {linkedInfo && (
+          <unlinkFetcher.Form method="post">
+            <input type="hidden" name="organizationId" value={linkedInfo.organizationId} />
+            <Button
+              type="submit"
+              name="_action"
+              value="unlink"
+              variant="danger/small"
+              disabled={isUnlinking}
+            >
+              Unlink
+            </Button>
+          </unlinkFetcher.Form>
+        )}
+        {unlinkFetcher.data?.error && (
+          <Paragraph variant="extra-small" className="mt-1 text-red-400">
+            {unlinkFetcher.data.error}
+          </Paragraph>
+        )}
+      </TableCell>
     </TableRow>
   );
 }
