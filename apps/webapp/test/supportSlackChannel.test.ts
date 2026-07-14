@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { postgresTest } from "@internal/testcontainers";
 import {
+  hasPrivateSlackSupport,
   isDowngradedLink,
   isPaidPlan,
   isCustomerSupportChannel,
@@ -15,6 +16,19 @@ import {
   type SupportSlackClient,
 } from "~/services/supportSlackChannel.server";
 import type { PrismaClientOrTransaction } from "~/db.server";
+
+describe("hasPrivateSlackSupport", () => {
+  it("gates on the supportChannel plan limit", () => {
+    expect(hasPrivateSlackSupport(undefined)).toBe(false);
+    expect(hasPrivateSlackSupport({})).toBe(false);
+    expect(
+      hasPrivateSlackSupport({ v3Subscription: { plan: { limits: { supportChannel: false } } } })
+    ).toBe(false);
+    expect(
+      hasPrivateSlackSupport({ v3Subscription: { plan: { limits: { supportChannel: true } } } })
+    ).toBe(true);
+  });
+});
 
 describe("isPaidPlan", () => {
   it("gates on isPaying", () => {

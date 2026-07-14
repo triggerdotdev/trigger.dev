@@ -59,6 +59,19 @@ export function pickExternalTeamId(
   return connectedTeamIds?.find((teamId) => teamId !== ownTeamId);
 }
 
+export function hasPrivateSlackSupport(
+  plan:
+    | {
+        v3Subscription?: {
+          plan?: { limits?: { supportChannel?: boolean; [key: string]: unknown } };
+        };
+      }
+    | null
+    | undefined
+): boolean {
+  return plan?.v3Subscription?.plan?.limits?.supportChannel === true;
+}
+
 export function isPaidPlan(
   plan: { v3Subscription?: { isPaying?: boolean } } | null | undefined
 ): boolean {

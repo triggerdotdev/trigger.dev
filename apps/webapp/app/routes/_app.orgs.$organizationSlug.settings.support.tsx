@@ -18,9 +18,13 @@ import { requireOrganization } from "~/services/org.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import {
   enqueueProvisionSupportChannel,
-  isPaidPlan,
+  hasPrivateSlackSupport,
 } from "~/services/supportSlackChannel.server";
-import { OrganizationParamsSchema, organizationSupportPath, v3BillingPath } from "~/utils/pathBuilder";
+import {
+  OrganizationParamsSchema,
+  organizationSupportPath,
+  v3BillingPath,
+} from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
@@ -35,7 +39,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({
     organization,
     supportChannel,
-    isPaying: isPaidPlan(plan),
+    hasSupportAccess: hasPrivateSlackSupport(plan),
   });
 };
 
@@ -54,7 +58,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const plan = await getCurrentPlan(organization.id);
-  if (!isPaidPlan(plan)) {
+  if (!hasPrivateSlackSupport(plan)) {
     return json({ error: "Upgrade required" }, { status: 403 });
   }
 
@@ -74,7 +78,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { supportChannel, isPaying } = useTypedLoaderData<typeof loader>();
+  const { supportChannel, hasSupportAccess } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const showSelfServe = useShowSelfServe();
   const navigation = useNavigation();
@@ -92,10 +96,10 @@ export default function Page() {
             Get a private Slack channel shared with the Trigger.dev team for direct support.
           </Paragraph>
 
-          {!isPaying ? (
+          {!hasSupportAccess ? (
             <div className="flex flex-col gap-3">
               <Paragraph variant="small" className="text-text-dimmed">
-                A private Slack support channel is available on paid plans.
+                A private Slack support channel is available on Pro and Enterprise plans.
               </Paragraph>
               {showSelfServe ? (
                 <LinkButton variant="primary/medium" to={v3BillingPath(organization)}>
