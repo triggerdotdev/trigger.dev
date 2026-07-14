@@ -468,14 +468,13 @@ export class RoutingRunStore implements RunStore {
     if (args.idempotencyKeys.length === 0) {
       return [];
     }
-    const newRows = await this.#new.findRunsByIdempotencyKeys(
-      args,
-      RoutingRunStore.#ownPrimary(this.#new, client)
-    );
-    const legacyRows = await this.#legacy.findRunsByIdempotencyKeys(
-      args,
-      RoutingRunStore.#ownPrimary(this.#legacy, client)
-    );
+    const [newRows, legacyRows] = await Promise.all([
+      this.#new.findRunsByIdempotencyKeys(args, RoutingRunStore.#ownPrimary(this.#new, client)),
+      this.#legacy.findRunsByIdempotencyKeys(
+        args,
+        RoutingRunStore.#ownPrimary(this.#legacy, client)
+      ),
+    ]);
     const byKey = new Map<string, IdempotencyKeyRunMatch>();
     for (const row of legacyRows) {
       if (row.idempotencyKey != null) byKey.set(row.idempotencyKey, row);

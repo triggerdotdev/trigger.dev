@@ -34,7 +34,7 @@ import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server"
 
 const PROCESSING_BATCH_SIZE = 50;
 const IDEMPOTENCY_KEY_LOOKUP_CHUNK_SIZE = 50;
-const IDEMPOTENCY_KEY_LOOKUP_CONCURRENCY = 10;
+const IDEMPOTENCY_KEY_LOOKUP_CONCURRENCY = 5;
 
 function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
