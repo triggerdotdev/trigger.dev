@@ -1,8 +1,7 @@
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Popover, PopoverContent, PopoverCustomTrigger } from "../primitives/Popover";
-import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
+import { Popover, PopoverContent, PopoverEllipseTrigger } from "../primitives/Popover";
 
 export function SideMenuHeader({
   title,
@@ -30,7 +29,7 @@ export function SideMenuHeader({
 
   return (
     <motion.div
-      className="group flex h-4 items-center justify-between overflow-hidden pl-1.5"
+      className="group/side-header flex h-4 items-center justify-between overflow-hidden pl-1.5"
       initial={false}
       animate={{
         opacity: hasCollapsedTitle ? 1 : isCollapsed ? 0 : 1,
@@ -53,9 +52,12 @@ export function SideMenuHeader({
       </h2>
       {children !== undefined ? (
         <Popover onOpenChange={(open) => setHeaderMenuOpen(open)} open={isHeaderMenuOpen}>
-          <PopoverCustomTrigger className="p-1">
-            <EllipsisHorizontalIcon className="h-4 w-4 text-text-faint transition group-hover:text-text-bright" />
-          </PopoverCustomTrigger>
+          <PopoverEllipseTrigger
+            isOpen={isHeaderMenuOpen}
+            variant="ghost"
+            orientation="horizontal"
+            className="group-hover/side-header:text-text-bright"
+          />
           <PopoverContent
             className="min-w-max overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
             align="start"

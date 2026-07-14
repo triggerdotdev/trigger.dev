@@ -759,7 +759,7 @@ export function TierEnterprise() {
           <Feedback
             defaultValue="enterprise"
             button={
-              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded border border-border-bright/50 hover:border-border-bright dark:border-border-bright dark:hover:border-border-brighter bg-tertiary px-8 text-base font-medium transition hover:bg-surface-control">
+              <div className="flex h-10 w-full cursor-pointer items-center justify-center rounded border border-border-bright/50 bg-secondary px-8 text-base font-medium shadow-xs transition hover:bg-background-raised dark:border-border-bright dark:hover:border-border-brighter">
                 <span className="text-center text-text-bright">Contact us</span>
               </div>
             }

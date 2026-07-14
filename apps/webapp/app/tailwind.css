@@ -765,3 +765,10 @@
     text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
   }
 }
+
+/* The table row-hover menu wraps the always-visible "Suggest a region" button
+   in a ring container; on light that ring doubles up with the button's own
+   border, so drop it here. */
+[data-theme="light"] .suggest-region-cell > div > div {
+  box-shadow: none;
+}
