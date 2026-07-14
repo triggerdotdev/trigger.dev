@@ -192,6 +192,11 @@ export type SelectRunOpsTopologyConfig = {
   legacyReplicaUrl?: string;
   newUrl?: string;
   newReplicaUrl?: string;
+  // When the legacy DSN targets the same physical DB as the control plane (the pre-cutover reality),
+  // reuse the control-plane client by reference instead of opening a second, redundant pool against
+  // the same server. The env-bound singleton computes this via sameDatabaseTarget(). Defaults to false
+  // (build an independent legacy client — the post-cutover / distinct-DB behaviour).
+  legacySharesControlPlane?: boolean;
 };
 export type RunOpsClientBuilders = {
   controlPlane: RunOpsClients;
@@ -226,15 +231,20 @@ export function selectRunOpsTopology(
     return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane };
   }
 
-  // Track 2: build an INDEPENDENT legacy client from its own DSN instead of aliasing the control
-  // plane. legacyUrl is guaranteed present (the missing-URL branch above aliases and returns).
-  const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "run-ops-legacy-writer");
-  // Mirror the NEW replica + control-plane $replica fallback: brand a real replica (in the builder),
-  // otherwise reuse the legacy WRITER so replica reads fall back to the legacy primary — unbranded.
-  const legacyReplica: PrismaReplicaClient = config.legacyReplicaUrl
-    ? builders.buildLegacyReplica(config.legacyReplicaUrl, "run-ops-legacy-reader")
-    : legacyWriter;
-  const legacyRunOps: RunOpsClients = { writer: legacyWriter, replica: legacyReplica };
+  // When the legacy DSN targets the same physical DB as the control plane (true pre-cutover), reuse
+  // the control-plane client by reference — no second pool against the same server, so split-on can't
+  // double RDS connections. buildLegacy* runs only once the DSNs diverge (post control-plane cutover).
+  let legacyRunOps: RunOpsClients;
+  if (config.legacySharesControlPlane) {
+    legacyRunOps = controlPlane;
+  } else {
+    const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "run-ops-legacy-writer");
+    // Brand a real replica (in the builder), otherwise fall back to the legacy WRITER — unbranded.
+    const legacyReplica: PrismaReplicaClient = config.legacyReplicaUrl
+      ? builders.buildLegacyReplica(config.legacyReplicaUrl, "run-ops-legacy-reader")
+      : legacyWriter;
+    legacyRunOps = { writer: legacyWriter, replica: legacyReplica };
+  }
 
   const newWriter = builders.buildNewWriter(config.newUrl, "run-ops-new-writer");
   const newReplica: RunOpsPrismaClient = config.newReplicaUrl
@@ -260,9 +270,20 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
   // Gate on the opt-in flag too: the distinct-DB sentinel only runs when the flag is on.
   const splitEnabled = env.RUN_OPS_SPLIT_ENABLED && !!newUrl && !!env.RUN_OPS_LEGACY_DATABASE_URL;
 
-  // Without a dedicated legacy replica URL, legacy reads fall back to the legacy WRITER (primary).
-  // Surface that so a prod misdeploy is observable instead of a silent load shift onto the primary.
-  if (splitEnabled && !env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL) {
+  // Reuse the control-plane pool for legacy when both roles target the same physical DB (compare the
+  // effective URLs, applying the same writer fallback each replica uses when its own URL is unset).
+  const cpWriterUrl = env.CONTROL_PLANE_DATABASE_URL ?? env.DATABASE_URL;
+  const cpReplicaUrl = env.CONTROL_PLANE_DATABASE_READ_REPLICA_URL ?? env.DATABASE_READ_REPLICA_URL;
+  const legacySharesControlPlane =
+    sameDatabaseTarget(env.RUN_OPS_LEGACY_DATABASE_URL, cpWriterUrl) &&
+    sameDatabaseTarget(
+      env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL ?? env.RUN_OPS_LEGACY_DATABASE_URL,
+      cpReplicaUrl ?? cpWriterUrl
+    );
+
+  // Only meaningful for an INDEPENDENT legacy pool: without its own replica URL, legacy reads fall
+  // back to the legacy primary. A shared pool routes through $replica instead, so the warning is moot.
+  if (splitEnabled && !legacySharesControlPlane && !env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL) {
     logger.warn(
       "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is unset while split is enabled; legacy reads will hit the legacy primary"
     );
@@ -275,6 +296,7 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
       legacyReplicaUrl: env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL,
       newUrl,
       newReplicaUrl: env.RUN_OPS_DATABASE_READ_REPLICA_URL,
+      legacySharesControlPlane,
     },
     {
       controlPlane: { writer: prisma, replica: $replica },
@@ -709,7 +731,11 @@ function buildRunOpsReplicaClient({
   clientType: string;
 }): RunOpsPrismaClient {
   const replicaUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    // The new run-ops replica is UNPOOLED (direct to the replica host), so it draws raw backend
+    // connections. Cap it independently when set; otherwise behave exactly as before.
+    connection_limit: (
+      env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
+    ).toString(),
     pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
     connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
     application_name: env.SERVICE_NAME,
@@ -750,6 +776,27 @@ function buildRunOpsReplicaClient({
   console.log(`🔌 run-ops read replica connected`);
 
   return client;
+}
+
+// True when two DSNs point at the same physical database (host/port/dbname/user), ignoring query
+// params (connection_limit etc. differ) and password. Parse failure -> false: don't alias, just build
+// independently (no correctness risk, only a missed dedup). Used to decide whether the legacy run-ops
+// client can share the control-plane pool instead of opening a redundant one against the same server.
+export function sameDatabaseTarget(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  try {
+    const ua = new URL(a);
+    const ub = new URL(b);
+    const port = (u: URL) => u.port || "5432";
+    return (
+      ua.hostname.toLowerCase() === ub.hostname.toLowerCase() &&
+      port(ua) === port(ub) &&
+      ua.pathname === ub.pathname &&
+      ua.username === ub.username
+    );
+  } catch {
+    return false;
+  }
 }
 
 function extendQueryParams(hrefOrUrl: string | URL, queryParams: Record<string, string>) {
