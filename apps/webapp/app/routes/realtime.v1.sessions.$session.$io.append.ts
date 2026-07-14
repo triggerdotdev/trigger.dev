@@ -156,10 +156,12 @@ const { action, loader } = createActionApiRoute(
         )
       : true;
 
+    let appendSeq: number | undefined;
     if (wonClaim) {
-      const [appendError] = await tryCatch(
+      const [appendError, seq] = await tryCatch(
         realtimeStream.appendPartToSessionStream(part, partId, addressingKey, params.io)
       );
+      appendSeq = seq ?? undefined;
 
       if (appendError) {
         if (clientPartId) {
@@ -228,7 +230,8 @@ const { action, loader } = createActionApiRoute(
       );
     }
 
-    return json({ ok: true }, { status: 200 });
+    // `seq` lets the client correlate this send to the turn that consumes it.
+    return json({ ok: true, seq: appendSeq }, { status: 200 });
   }
 );
 

@@ -127,11 +127,11 @@ export const secondScheduledTask = schedules.task({
 });
 ```
 
-When you run the [dev](/cli-dev-commands) or [deploy](/cli-deploy-commands) commands, declarative schedules will be synced. If you add, delete or edit the `cron` property it will be updated when you run these commands. You can view your schedules on the Schedules page in the dashboard.
+When you run the [dev](/cli-dev-commands) or [deploy](/cli-deploy-commands) commands, declarative schedules will be synced. If you add, delete or edit the `cron` property it will be updated when you run these commands. You can view your synced schedules in the dashboard: open the task on the Tasks page and check its "Schedules" tab.
 
 ### Imperative schedules
 
-Alternatively you can explicitly attach schedules to a `schedules.task`. You can do this in the Schedules page in the dashboard by just pressing the "New schedule" button, or you can use the SDK to create schedules.
+Alternatively you can explicitly attach schedules to a `schedules.task`. You can do this in the dashboard from the scheduled task's page by pressing the "Create schedule" button, or you can use the SDK to create schedules.
 
 The advantage of imperative schedules is that they can be created dynamically, for example, you could create a schedule for each user in your database. They can also be activated, disabled, edited, and deleted without deploying new code by using the SDK or dashboard.
 
@@ -166,26 +166,37 @@ There are two situations when a scheduled task won't trigger:
 
 ## Attaching schedules in the dashboard
 
-You need to attach a schedule to a task before it will run on a schedule. You can attach static schedules in the dashboard:
+You need to attach a schedule to a task before it will run on a schedule. You can attach imperative schedules in the dashboard:
+
+<Note>
+  **The Schedules page has moved.** There is no longer a standalone "Schedules" page in the
+  sidebar. Schedules now live on the Tasks page: open a scheduled task to create, view, edit,
+  enable/disable, and delete its schedules. The old `/schedules` URL redirects to the Tasks page.
+
+  The scheduled task must already exist first — define it in your code with `schedules.task()` and
+  sync it to the environment by running the [dev](/cli-dev-commands) or
+  [deploy](/cli-deploy-commands) command so it appears on the Tasks page. A project with no tasks
+  yet will only show the deploy onboarding.
+</Note>
 
 <Steps>
 
-<Step title="Go to the Schedules page">
-  In the sidebar select the "Schedules" page, then press the "New schedule" button. Or you can
-  follow the onboarding and press the create in dashboard button. ![Blank schedules
-  page](/images/schedules-blank.png)
+<Step title="Open the scheduled task">
+  In the sidebar select the "Tasks" page, then select the scheduled task you want to attach a
+  schedule to (scheduled tasks have a clock icon, and you can filter the list to Scheduled).
+  ![Scheduled task page](/images/schedules-blank.png)
 </Step>
 
 <Step title="Create your schedule">
-  Fill in the form and press "Create schedule" when you're done. ![Environment variables
-  page](/images/schedules-create.png)
+  Press the "Create schedule" button, fill in the form, and press "Create schedule" when you're
+  done. ![Create schedule form](/images/schedules-create.png)
 
 These are the options when creating a schedule:
 
 | Name              | Description                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------- |
 | Task              | The id of the task you want to attach to.                                                     |
-| Cron pattern      | The schedule in cron format.                                                                  |
+| Cron pattern      | The schedule in cron format. You can also describe it in natural language and press "Generate" to fill this in. |
 | Timezone          | The timezone the schedule will run in. Defaults to "UTC"                                      |
 | External id       | An optional external id, usually you'd use a userId.                                          |
 | Deduplication key | An optional deduplication key. If you pass the same value, it will update rather than create. Scoped per project, not per environment. |
@@ -194,6 +205,12 @@ These are the options when creating a schedule:
 </Step>
 
 </Steps>
+
+## Managing schedules in the dashboard
+
+Open the scheduled task and switch to the "Schedules" tab to see every schedule attached to it — both declarative and imperative — with its type, cron pattern, external id, next and last run, and status.
+
+Click a schedule to open the inspector, where you can **enable/disable**, **edit**, or **delete** imperative schedules without deploying new code. Declarative schedules are managed in your code, so they can't be edited or deleted from here.
 
 ## Attaching schedules with the SDK
 
@@ -302,14 +319,19 @@ You can also retrieve, list, delete, deactivate and re-activate schedules using 
 
 You can test a scheduled task in the dashboard. Note that the `scheduleId` will always come through as `sched_1234` to the run.
 
+<Note>
+  There is no longer a standalone "Test" page in the sidebar. You test a task from the task itself —
+  open it on the Tasks page and press the "Test schedule" button.
+</Note>
+
 <Steps>
 
-<Step title="Go to the Test page">
-  In the sidebar select the "Test" page, then select a scheduled task from the list (they have a
-  clock icon on them) ![Test page](/images/schedules-test.png)
+<Step title="Open the test page for your task">
+  On the "Tasks" page, open your scheduled task and press the "Test schedule" button.
+  ![Scheduled task page](/images/schedules-test.png)
 </Step>
 
-<Step title="Create your schedule">
+<Step title="Run the test">
   Fill in the form [1]. You can select from a recent run [2] to pre-populate the fields. Press "Run
   test" when you're ready ![Schedule test form](/images/schedules-test-form.png)
 </Step>

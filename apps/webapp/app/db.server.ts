@@ -25,6 +25,7 @@ import {
   assertSplitRealtimeInterlock,
 } from "./v3/runOpsMigration/splitMode.server";
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
+import { assertControlPlaneCoresidencyAdvisory } from "./v3/runOpsMigration/controlPlaneCoresidencySentinel.server";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
@@ -188,13 +189,20 @@ export type RunOpsTopology = {
 export type SelectRunOpsTopologyConfig = {
   splitEnabled: boolean;
   legacyUrl?: string;
+  legacyReplicaUrl?: string;
   newUrl?: string;
   newReplicaUrl?: string;
+  // When true, legacy reuses the control-plane client instead of opening its own pool. Defaults to false.
+  legacySharesControlPlane?: boolean;
 };
 export type RunOpsClientBuilders = {
   controlPlane: RunOpsClients;
   buildNewWriter: (url: string, clientType: string) => RunOpsPrismaClient;
   buildNewReplica: (url: string, clientType: string) => RunOpsPrismaClient;
+  // Legacy builders return the same PrismaClient/PrismaReplicaClient types as the control plane (no
+  // RunOpsPrismaClient double-cast needed): the legacy DB carries the full control-plane schema.
+  buildLegacyWriter: (url: string, clientType: string) => PrismaClient;
+  buildLegacyReplica: (url: string, clientType: string) => PrismaReplicaClient;
 };
 
 // Pure run-ops client selector. No env, no isSplitEnabled() — those
@@ -220,7 +228,17 @@ export function selectRunOpsTopology(
     return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane };
   }
 
-  const legacyRunOps = controlPlane;
+  // Same-DB legacy reuses the control-plane pool; only build a separate pool once the DSNs diverge.
+  let legacyRunOps: RunOpsClients;
+  if (config.legacySharesControlPlane) {
+    legacyRunOps = controlPlane;
+  } else {
+    const legacyWriter = builders.buildLegacyWriter(config.legacyUrl, "run-ops-legacy-writer");
+    const legacyReplica: PrismaReplicaClient = config.legacyReplicaUrl
+      ? builders.buildLegacyReplica(config.legacyReplicaUrl, "run-ops-legacy-reader")
+      : legacyWriter;
+    legacyRunOps = { writer: legacyWriter, replica: legacyReplica };
+  }
 
   const newWriter = builders.buildNewWriter(config.newUrl, "run-ops-new-writer");
   const newReplica: RunOpsPrismaClient = config.newReplicaUrl
@@ -246,12 +264,32 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
   // Gate on the opt-in flag too: the distinct-DB sentinel only runs when the flag is on.
   const splitEnabled = env.RUN_OPS_SPLIT_ENABLED && !!newUrl && !!env.RUN_OPS_LEGACY_DATABASE_URL;
 
+  // Alias legacy onto the control-plane pool when both roles resolve to the same DB (replica URLs
+  // fall back to their writer, matching how the clients themselves fall back).
+  const cpWriterUrl = env.CONTROL_PLANE_DATABASE_URL ?? env.DATABASE_URL;
+  const cpReplicaUrl = env.CONTROL_PLANE_DATABASE_READ_REPLICA_URL ?? env.DATABASE_READ_REPLICA_URL;
+  const legacySharesControlPlane =
+    sameDatabaseTarget(env.RUN_OPS_LEGACY_DATABASE_URL, cpWriterUrl) &&
+    sameDatabaseTarget(
+      env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL ?? env.RUN_OPS_LEGACY_DATABASE_URL,
+      cpReplicaUrl ?? cpWriterUrl
+    );
+
+  // Only meaningful for an independent legacy pool; a shared pool routes reads through $replica.
+  if (splitEnabled && !legacySharesControlPlane && !env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL) {
+    logger.warn(
+      "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is unset while split is enabled; legacy reads will hit the legacy primary"
+    );
+  }
+
   return selectRunOpsTopology(
     {
       splitEnabled,
       legacyUrl: env.RUN_OPS_LEGACY_DATABASE_URL,
+      legacyReplicaUrl: env.RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL,
       newUrl,
       newReplicaUrl: env.RUN_OPS_DATABASE_READ_REPLICA_URL,
+      legacySharesControlPlane,
     },
     {
       controlPlane: { writer: prisma, replica: $replica },
@@ -268,6 +306,18 @@ const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
             tagDatasourceRunOps("replica", buildRunOpsReplicaClient({ url, clientType }))
           )
         ),
+      // Legacy client shares the exact control-plane wrapper stack (the legacy DB carries the full
+      // control-plane schema); markReadReplicaClient only on a real replica URL, as with the NEW replica.
+      buildLegacyWriter: (url, clientType) =>
+        captureInfrastructureErrors(
+          tagDatasource("writer", buildWriterClient({ url, clientType }))
+        ),
+      buildLegacyReplica: (url, clientType) =>
+        markReadReplicaClient(
+          captureInfrastructureErrors(
+            tagDatasource("replica", buildReplicaClient({ url, clientType }))
+          )
+        ),
     }
   );
 });
@@ -281,8 +331,17 @@ export const runOpsNewPrisma: PrismaClient = runOpsTopology.newRunOps
   .writer as unknown as PrismaClient;
 export const runOpsNewReplica: PrismaReplicaClient = runOpsTopology.newRunOps
   .replica as unknown as PrismaReplicaClient;
+// Track 2: under split-on these point at the INDEPENDENT legacy client (its own DSN); under split-off
+// or missing URLs they still alias the control-plane client, so single-DB installs are unchanged.
 export const runOpsLegacyPrisma: PrismaClient = runOpsTopology.legacyRunOps.writer;
 export const runOpsLegacyReplica: PrismaReplicaClient = runOpsTopology.legacyRunOps.replica;
+// Branded legacy handles typed as RunOpsPrismaClient for the run-store boundary — same underlying
+// legacy writer/replica as runOpsLegacyPrisma/runOpsLegacyReplica above, but carrying the run-ops
+// brand so the guard classifies provably-legacy access as `runops`, not `cp`.
+export const runOpsLegacyPrismaClient: RunOpsPrismaClient = runOpsTopology.legacyRunOps
+  .writer as unknown as RunOpsPrismaClient;
+export const runOpsLegacyReplicaClient: RunOpsPrismaClient = runOpsTopology.legacyRunOps
+  .replica as unknown as RunOpsPrismaClient;
 
 export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
   newReplica: runOpsNewReplicaClient,
@@ -295,8 +354,8 @@ export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
 
 // Boot-time interlock: if the flag is on but the distinct-DB sentinel does not
 // confirm two physically-distinct run-ops DBs, refuse to enable split (data-loss
-// interlock). Async, so it cannot live in the synchronous singleton factory —
-// call it from the eager-boot path before any run-ops routing is wired.
+// interlock). Async, so it cannot live in the synchronous singleton factory — called
+// fire-and-forget from the eager-boot path (routing is wired synchronously at module load).
 export async function assertRunOpsSplitSentinel(): Promise<void> {
   if (!env.RUN_OPS_SPLIT_ENABLED) return;
   // Realtime interlock (synchronous): Electric replicates only from the control-plane
@@ -312,6 +371,9 @@ export async function assertRunOpsSplitSentinel(): Promise<void> {
       "RUN_OPS_SPLIT_ENABLED is on but the distinct-DB sentinel did not confirm two physically-distinct run-ops DBs; refusing to enable split (data-loss interlock)."
     );
   }
+  // Advisory-only (T2.3): observe legacy vs control-plane co-residency. Emits a metric + log and only
+  // throws when RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT is on AND co-residency is positively confirmed.
+  await assertControlPlaneCoresidencyAdvisory();
 }
 
 function getClient() {
@@ -662,7 +724,10 @@ function buildRunOpsReplicaClient({
   clientType: string;
 }): RunOpsPrismaClient {
   const replicaUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    // The new run-ops replica connects unpooled, so allow capping it independently of the writer.
+    connection_limit: (
+      env.RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT
+    ).toString(),
     pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
     connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
     application_name: env.SERVICE_NAME,
@@ -703,6 +768,25 @@ function buildRunOpsReplicaClient({
   console.log(`🔌 run-ops read replica connected`);
 
   return client;
+}
+
+// True when two DSNs point at the same database (host/port/dbname/user), ignoring query params and
+// password. Parse failure or a missing URL returns false, so an unrecognized DSN just isn't aliased.
+export function sameDatabaseTarget(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  try {
+    const ua = new URL(a);
+    const ub = new URL(b);
+    const port = (u: URL) => u.port || "5432";
+    return (
+      ua.hostname.toLowerCase() === ub.hostname.toLowerCase() &&
+      port(ua) === port(ub) &&
+      ua.pathname === ub.pathname &&
+      ua.username === ub.username
+    );
+  } catch {
+    return false;
+  }
 }
 
 function extendQueryParams(hrefOrUrl: string | URL, queryParams: Record<string, string>) {

@@ -4827,9 +4827,11 @@ components:
           type: string
     CreateBulkActionRequestBody:
       oneOf:
-        - type: object
+        - title: Cancel by filter
+          type: object
           required:
             - action
+            - filter
           properties:
             action:
               type: string
@@ -4837,6 +4839,19 @@ components:
                 - cancel
             filter:
               $ref: "#/components/schemas/BulkActionFilter"
+            name:
+              type: string
+              maxLength: 255
+        - title: Cancel by run IDs
+          type: object
+          required:
+            - action
+            - runIds
+          properties:
+            action:
+              type: string
+              enum:
+                - cancel
             runIds:
               type: array
               minItems: 1
@@ -4846,14 +4861,11 @@ components:
             name:
               type: string
               maxLength: 255
-          oneOf:
-            - required:
-                - filter
-            - required:
-                - runIds
-        - type: object
+        - title: Replay by filter
+          type: object
           required:
             - action
+            - filter
           properties:
             action:
               type: string
@@ -4861,6 +4873,22 @@ components:
                 - replay
             filter:
               $ref: "#/components/schemas/BulkActionFilter"
+            name:
+              type: string
+              maxLength: 255
+            targetRegion:
+              type: string
+              description: Region identifier to replay runs in. When omitted, each replay keeps the original run's region.
+        - title: Replay by run IDs
+          type: object
+          required:
+            - action
+            - runIds
+          properties:
+            action:
+              type: string
+              enum:
+                - replay
             runIds:
               type: array
               minItems: 1
@@ -4873,11 +4901,6 @@ components:
             targetRegion:
               type: string
               description: Region identifier to replay runs in. When omitted, each replay keeps the original run's region.
-          oneOf:
-            - required:
-                - filter
-            - required:
-                - runIds
     BulkActionObject:
       type: object
       required:

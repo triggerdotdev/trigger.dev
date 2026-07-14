@@ -63,10 +63,11 @@ export async function determineEngineVersion({
     return worker.engine;
   }
 
-  // Dev: use the latest BackgroundWorker
+  // Dev: use the latest BackgroundWorker. Default to V2 when there is no current
+  // worker: v3 (engine V1) is retired, so a fresh/idle dev env must resolve to V2.
   if (environment.type === "DEVELOPMENT") {
     const backgroundWorker = await findCurrentWorkerFromEnvironment(environment);
-    return backgroundWorker?.engine ?? "V1";
+    return backgroundWorker?.engine ?? "V2";
   }
 
   // Deployed: use the latest deployed BackgroundWorker

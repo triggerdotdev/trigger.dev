@@ -33,13 +33,10 @@ function createWorkerStub() {
 
 vi.mock("~/v3/commonWorker.server", () => ({ commonWorker: createWorkerStub() }));
 vi.mock("~/v3/batchTriggerWorker.server", () => ({ batchTriggerWorker: createWorkerStub() }));
-vi.mock("~/v3/legacyRunEngineWorker.server", () => ({
-  legacyRunEngineWorker: createWorkerStub(),
-}));
 vi.mock("~/v3/alertsWorker.server", () => ({ alertsWorker: createWorkerStub() }));
 
-// RunEngine, MarQS, devPubSub and the socket.io server are further singletons
-// that open eager ioredis connections at import via the same pattern. No test
+// RunEngine and the socket.io server are further singletons that open eager
+// ioredis connections at import via the same pattern. No test
 // uses these app-level singletons directly (store-routing tests build their own
 // engine and run store), so stub them to no-op proxies.
 // Recursive no-op proxy: property access at any depth returns another callable
@@ -157,8 +154,6 @@ vi.mock("~/services/dataStores/organizationDataStoresRegistryInstance.server", (
 }));
 
 vi.mock("~/v3/runEngine.server", () => ({ engine: noopProxy() }));
-vi.mock("~/v3/marqs/index.server", () => ({ marqs: noopProxy(), MarQS: class {} }));
-vi.mock("~/v3/marqs/devPubSub.server", () => ({ devPubSub: noopProxy() }));
 vi.mock("~/v3/handleSocketIo.server", () => ({
   socketIo: noopProxy(),
   roomFromFriendlyRunId: (id: string) => `room:${id}`,

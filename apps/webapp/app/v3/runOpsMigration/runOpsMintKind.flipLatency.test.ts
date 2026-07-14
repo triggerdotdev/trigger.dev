@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoundedTtlCache } from "~/services/realtime/boundedTtlCache";
 import { computeRunIdMintKind, type RunIdMintKind } from "./runOpsMintKind.server";
 
-// LOCK of the CURRENT (intentional) flip-latency behavior, NOT a change request.
-// resolveRunIdMintKind caches the per-org mint kind in a process-singleton
-// BoundedTtlCache (TTL RUN_OPS_MINT_FLAG_CACHE_TTL_MS, 30000ms default) with get/set
-// and NO invalidation hook (runOpsMintKind.server.ts:38-45,56-81). So after a flag
-// flip a process keeps minting the stale kind until its cached entry expires; in
-// multi-instance prod each process expires independently. This suite reconstructs the
-// same flag fn over a real cache and pins both edges of that window.
+// LOCK of the raw per-process cache's flip-latency behavior in isolation, NOT a change
+// request. Production resolveRunIdMintKind now wraps this same staleness in a deterministic
+// wall-clock grace window (mintFlipGrace.ts) so every process resolves to the SAME effective
+// kind for the whole window, then all cross together. This raw staleness is now an
+// intentional, safe input to that resolution. computeRunIdMintKind is unaffected, so this
+// suite's assertions stand as-is.
 
-// Mirror of resolveRunIdMintKind's flag fn (runOpsMintKind.server.ts:56-81).
+// Bare cached-flag closure — deliberately NOT the production flag fn, which now layers
+// grace resolution on top (see runOpsMintKind.server.ts).
 function makeCachedFlag(
   cache: BoundedTtlCache<RunIdMintKind>,
   liveFlag: () => RunIdMintKind

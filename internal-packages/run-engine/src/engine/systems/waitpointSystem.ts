@@ -60,8 +60,8 @@ export class WaitpointSystem {
     tx?: PrismaClientOrTransaction;
   }) {
     // Route the delete: a run's edges may live on #new and/or #legacy (mid-drain), so it must fan
-    // across both stores. The caller's control-plane tx would only clear #legacy, orphaning #new
-    // edges that then re-block the run after a retry. The router applies tx to the #legacy leg only.
+    // across both stores. The caller's `tx` is not forwarded into either leg — each store's delete
+    // runs on its own client (the router never threads a control-plane tx into a routed write).
     const deleted = await this.$.runStore.deleteManyTaskRunWaitpoints(
       { where: { taskRunId: runId } },
       tx

@@ -14,7 +14,7 @@ on:
 jobs:
   e2eTests:
     name: "🧪 E2E Tests: Webapp"
-    runs-on: warp-ubuntu-latest-x64-8x
+    runs-on: warp-ubuntu-latest-x64-16x
     timeout-minutes: 20
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

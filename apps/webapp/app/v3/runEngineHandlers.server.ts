@@ -6,10 +6,11 @@ import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import {
   $replica,
   prisma,
-  runOpsLegacyPrisma,
-  runOpsNewPrisma,
   runOpsNewReplica,
   runOpsLegacyReplica,
+  runOpsNewPrismaClient,
+  runOpsNewReplicaClient,
+  runOpsLegacyPrismaClient,
 } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById, findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
@@ -1056,9 +1057,9 @@ export function setupBatchQueueCallbacks() {
   engine.setBatchCompletionCallback(async (result: CompleteBatchResult) => {
     await handleBatchCompletion(result, {
       splitEnabled: await splitEnabledPromise,
-      newReplica: runOpsNewReplica,
-      newWriter: runOpsNewPrisma,
-      legacyWriter: runOpsLegacyPrisma,
+      newReplica: runOpsNewReplicaClient,
+      newWriter: runOpsNewPrismaClient,
+      legacyWriter: runOpsLegacyPrismaClient,
       tryCompleteBatch: (batchId) => engine.tryCompleteBatch({ batchId }),
     });
   });

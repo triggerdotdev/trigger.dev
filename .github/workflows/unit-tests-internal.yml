@@ -14,17 +14,14 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests: Internal"
-    runs-on: warp-ubuntu-latest-x64-8x
-    strategy:
-      # one flaky shard shouldn't cancel its siblings - lets us re-run only the failed shard
-      fail-fast: false
-      matrix:
-        shardIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-        shardTotal: [12]
+    # Single big machine instead of a 12-job matrix: the internal suites are serial
+    # (fileParallelism: false) and container-wait-bound, so 12 in-machine shard processes
+    # fit comfortably in 32 vCPUs while paying the setup cost (install, prisma generate,
+    # image pulls) once instead of 12 times.
+    runs-on: warp-ubuntu-latest-x64-32x
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      SHARD_INDEX: ${{ matrix.shardIndex }}
-      SHARD_TOTAL: ${{ matrix.shardTotal }}
+      SHARD_TOTAL: 12
     steps:
       - name: 🔧 Disable IPv6
         run: |
@@ -108,8 +105,34 @@ jobs:
       - name: 📀 Generate Prisma Client
         run: pnpm run generate
 
-      - name: 🧪 Run Internal Unit Tests
-        run: pnpm run test:internal --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }} --passWithNoTests
+      - name: 🏗️ Build test dependencies
+        # Build once up-front so the parallel shard runs below (turbo --only) never race
+        # to build or cache-restore the same outputs concurrently.
+        run: pnpm exec turbo run build --filter "@internal/*..."
+
+      - name: 🧪 Run Internal Unit Tests (${{ env.SHARD_TOTAL }} in-machine shards)
+        run: |
+          # Same shard partitioning as the old 12-job matrix (DurationShardingSequencer
+          # keys off --shard=i/N), but as parallel local processes. --only skips the
+          # ^build dependency handled by the step above.
+          status=0
+          declare -a pids
+          for i in $(seq 1 "$SHARD_TOTAL"); do
+            pnpm exec turbo run test --only --concurrency=1 --filter "@internal/*" -- \
+              --run --reporter=default --reporter=blob --shard="$i/$SHARD_TOTAL" --passWithNoTests \
+              > "/tmp/internal-shard-$i.log" 2>&1 &
+            pids[i]=$!
+          done
+          for i in $(seq 1 "$SHARD_TOTAL"); do
+            if ! wait "${pids[i]}"; then
+              status=1
+              echo "::error::internal unit test shard $i/$SHARD_TOTAL failed"
+            fi
+            echo "::group::🧪 shard $i/$SHARD_TOTAL"
+            cat "/tmp/internal-shard-$i.log"
+            echo "::endgroup::"
+          done
+          exit "$status"
 
       - name: Gather all reports
         if: ${{ !cancelled() }}
@@ -118,44 +141,6 @@ jobs:
           find . -type f -path '*/.vitest-reports/blob-*.json' \
             -exec bash -c 'src="$1"; basename=$(basename "$src"); pkg=$(dirname "$src" | sed "s|^\./||;s|/\.vitest-reports$||;s|/|_|g"); cp "$src" ".vitest-reports/${pkg}-${basename}"' _ {} \;
 
-      - name: Upload blob reports to GitHub Actions Artifacts
+      - name: 📊 Merge reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: internal-blob-report-${{ matrix.shardIndex }}
-          path: .vitest-reports/*
-          include-hidden-files: true
-          retention-days: 1
-
-  merge-reports:
-    name: "📊 Merge Reports"
-    if: ${{ !cancelled() }}
-    needs: [unitTests]
-    runs-on: warp-ubuntu-latest-x64-2x
-    steps:
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
-        with:
-          version: 10.33.2
-
-      - name: ⎔ Setup node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: 22.23.1
-          # no cache enabled, we're not installing deps
-
-      - name: Download blob reports from GitHub Actions Artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          path: .vitest-reports
-          pattern: internal-blob-report-*
-          merge-multiple: true
-
-      - name: Merge reports
         run: pnpm dlx vitest@4.1.7 run --merge-reports --pass-with-no-tests

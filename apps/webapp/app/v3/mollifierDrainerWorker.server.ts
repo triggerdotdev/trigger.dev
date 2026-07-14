@@ -26,12 +26,9 @@ declare global {
  *      factory) guarantees a signal landing during boot can never find
  *      the polling loop running without a graceful-stop path.
  *
- * The drainer is intentionally NOT wired through `~/services/worker.server`
- * — that file is the legacy ZodWorker / graphile-worker setup. The
- * mollifier drainer is a custom polling loop over `MollifierBuffer`, not
- * a graphile-worker job, so it gets its own lifecycle file alongside the
- * redis-worker workers (`commonWorker`, `alertsWorker`,
- * `batchTriggerWorker`).
+ * The mollifier drainer is a custom polling loop over `MollifierBuffer`, not a
+ * redis-worker job, so it gets its own lifecycle file alongside the redis-worker
+ * workers (`commonWorker`, `alertsWorker`, `batchTriggerWorker`).
  *
  * Gating order:
  *   - `TRIGGER_MOLLIFIER_DRAINER_ENABLED !== "1"`  → early return. Unset defaults

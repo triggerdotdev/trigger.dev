@@ -7,7 +7,6 @@ import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 import { PassThrough } from "stream";
-import * as Worker from "~/services/worker.server";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
 import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
@@ -19,7 +18,6 @@ import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
 import { eventLoopMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
-import { resourceMonitor } from "./services/resourceMonitor.server";
 import { singleton } from "./utils/singleton";
 import { remoteBuildsEnabled } from "./v3/remoteImageBuilder.server";
 import {
@@ -227,10 +225,6 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
   }
 });
 
-Worker.init().catch((error) => {
-  logError(error);
-});
-
 initMollifierDrainerWorker();
 initMollifierStaleSweepWorker();
 initBillingLimitWorker();
@@ -241,10 +235,6 @@ bootstrap().catch((error) => {
 
 function logError(error: unknown, request?: Request) {
   console.error(error);
-
-  if (error instanceof Error && error.message.startsWith("There are locked jobs present")) {
-    console.log("⚠️  graphile-worker migration issue detected!");
-  }
 }
 
 process.on("uncaughtException", (error, origin) => {
@@ -317,8 +307,4 @@ if (remoteBuildsEnabled()) {
   console.log("🏗️  Remote builds enabled");
 } else {
   console.log("🏗️  Local builds enabled");
-}
-
-if (env.RESOURCE_MONITOR_ENABLED === "1") {
-  resourceMonitor.startMonitoring(1000);
 }

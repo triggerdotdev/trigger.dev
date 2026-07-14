@@ -23,6 +23,14 @@ export async function action({ request }: ActionFunctionArgs) {
     return new Response(null, { status: 405 });
   }
 
+  const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
+  if (
+    !contentType.includes("application/x-www-form-urlencoded") &&
+    !contentType.includes("multipart/form-data")
+  ) {
+    return new Response(null, { status: 415 });
+  }
+
   const form = await request.formData();
   const rawEmail = form.get("email");
   if (typeof rawEmail !== "string" || rawEmail.trim().length === 0) {
