@@ -93,11 +93,14 @@ COPY --from=production-deps --chown=node:node /triggerdotdev .
 COPY --from=dev-deps --chown=node:node /triggerdotdev/internal-packages/database/generated ./internal-packages/database/generated
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build/server.js ./apps/webapp/build/server.js
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build ./apps/webapp/build
-# Previous assets first, current build on top; prune >14d (COPY keeps mtimes).
+# Previous assets, pruned to a 14-day window (COPY keeps mtimes), then the
+# current build on top. Pruning BEFORE the overlay means the current build's
+# assets can never be deleted, whatever mtimes the builder produces — a
+# broken prune can only mean slow image growth, never a broken image.
 COPY --from=prev-assets --chown=node:node /triggerdotdev/apps/webapp/public/build ./apps/webapp/public/build
-COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/public ./apps/webapp/public
 RUN find ./apps/webapp/public/build -type f -mtime +14 -delete \
     && find ./apps/webapp/public/build -type d -empty -delete
+COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/public ./apps/webapp/public
 COPY --from=builder --chown=node:node /triggerdotdev/scripts ./scripts
 
 # Goose and schemas
