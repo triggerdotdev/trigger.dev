@@ -1,4 +1,7 @@
 ARG NODE_IMAGE=node:22.23.1-bookworm-slim@sha256:813a7480f28fdadac1f7f5c824bcdad435b5bc1322a5968bbbdef8d058f9dff4
+# Previously published image whose /build assets are carried forward so
+# stale clients survive a rolling deploy. Default (builder) is a no-op.
+ARG PREV_IMAGE=builder
 
 FROM golang:1.26-alpine AS goose_builder
 RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.1
@@ -74,6 +77,9 @@ RUN --mount=type=secret,id=sentry_auth_token \
     SENTRY_AUTH_TOKEN=$(cat /run/secrets/sentry_auth_token) \
     pnpm run build --filter=webapp...
 
+# Previous release's hashed browser assets (see PREV_IMAGE above).
+FROM ${PREV_IMAGE} AS prev-assets
+
 # Runner
 FROM ${NODE_IMAGE} AS runner
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl netcat-openbsd ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -87,7 +93,11 @@ COPY --from=production-deps --chown=node:node /triggerdotdev .
 COPY --from=dev-deps --chown=node:node /triggerdotdev/internal-packages/database/generated ./internal-packages/database/generated
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build/server.js ./apps/webapp/build/server.js
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/build ./apps/webapp/build
+# Previous assets first, current build on top; prune >14d (COPY keeps mtimes).
+COPY --from=prev-assets --chown=node:node /triggerdotdev/apps/webapp/public/build ./apps/webapp/public/build
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/public ./apps/webapp/public
+RUN find ./apps/webapp/public/build -type f -mtime +14 -delete \
+    && find ./apps/webapp/public/build -type d -empty -delete
 COPY --from=builder --chown=node:node /triggerdotdev/scripts ./scripts
 
 # Goose and schemas

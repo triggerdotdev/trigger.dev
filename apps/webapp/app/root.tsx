@@ -7,6 +7,7 @@ import type { ToastMessage } from "~/models/message.server";
 import { commitSession, getSession } from "~/models/message.server";
 import tailwindStylesheetUrl from "~/tailwind.css";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
+import { StaleAssetRecovery } from "./components/StaleAssetRecovery";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { ShortcutsProvider } from "./components/primitives/ShortcutsProvider";
 import { Toast } from "./components/primitives/Toast";
@@ -97,6 +98,7 @@ export function ErrorBoundary() {
         <head>
           <meta charSet="utf-8" />
 
+          <StaleAssetRecovery />
           <Meta />
           <Links />
         </head>
@@ -123,6 +125,7 @@ export default function App() {
     <>
       <html lang="en" className="h-full">
         <head>
+          <StaleAssetRecovery />
           <Meta />
           <Links />
         </head>
