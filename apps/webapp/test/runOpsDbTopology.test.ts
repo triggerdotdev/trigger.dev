@@ -1,6 +1,11 @@
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { describe, expect, it, vi } from "vitest";
-import { buildReplicaClient, buildWriterClient, selectRunOpsTopology } from "~/db.server";
+import {
+  buildReplicaClient,
+  buildWriterClient,
+  sameDatabaseTarget,
+  selectRunOpsTopology,
+} from "~/db.server";
 
 const cp = { writer: {} as any, replica: {} as any };
 
@@ -44,7 +49,34 @@ describe("selectRunOpsTopology (pure)", () => {
     expect(buildLegacyWriter).not.toHaveBeenCalled();
   });
 
-  it("split ON: legacy builds its OWN writer + replica (Track 2: no longer aliased to control-plane)", () => {
+  it("split ON + legacySharesControlPlane: aliases legacy to control-plane and builds NO legacy client", () => {
+    const newWriter = { tag: "nw" } as any;
+    const newReplica = { tag: "nr" } as any;
+    const buildNewWriter = vi.fn().mockReturnValue(newWriter);
+    const buildNewReplica = vi.fn().mockReturnValue(newReplica);
+    const buildLegacyWriter = vi.fn();
+    const buildLegacyReplica = vi.fn();
+    const topo = selectRunOpsTopology(
+      {
+        splitEnabled: true,
+        legacyUrl: "postgres://same",
+        legacyReplicaUrl: "postgres://same-r",
+        newUrl: "postgres://new",
+        newReplicaUrl: "postgres://new-r",
+        legacySharesControlPlane: true,
+      },
+      { controlPlane: cp, buildNewWriter, buildNewReplica, buildLegacyWriter, buildLegacyReplica }
+    );
+    // Legacy reuses the control-plane pair by reference — no second pool against the same server.
+    expect(topo.legacyRunOps).toBe(cp);
+    expect(buildLegacyWriter).not.toHaveBeenCalled();
+    expect(buildLegacyReplica).not.toHaveBeenCalled();
+    // New run-ops still builds its own (independent) client.
+    expect(topo.newRunOps.writer).toBe(newWriter);
+    expect(topo.newRunOps.replica).toBe(newReplica);
+  });
+
+  it("split ON (flag off): legacy builds its OWN writer + replica (independent, not aliased)", () => {
     const newWriter = { tag: "nw" } as any;
     const newReplica = { tag: "nr" } as any;
     const legacyWriter = { tag: "lw" } as any;
@@ -112,6 +144,49 @@ describe("selectRunOpsTopology (pure)", () => {
   });
 });
 
+describe("sameDatabaseTarget", () => {
+  it("same host/port/db/user is a match despite differing query params and password", () => {
+    expect(
+      sameDatabaseTarget(
+        "postgresql://user:secret1@db.internal:5432/trigger?connection_limit=10&application_name=api",
+        "postgresql://user:secret2@db.internal:5432/trigger?connection_limit=55"
+      )
+    ).toBe(true);
+  });
+
+  it("treats a missing port as the default 5432", () => {
+    expect(
+      sameDatabaseTarget(
+        "postgresql://user@db.internal/trigger",
+        "postgresql://user@db.internal:5432/trigger"
+      )
+    ).toBe(true);
+  });
+
+  it("differs on host, port, dbname, or user", () => {
+    const base = "postgresql://user@db.internal:5432/trigger";
+    expect(sameDatabaseTarget(base, "postgresql://user@other.internal:5432/trigger")).toBe(false);
+    expect(sameDatabaseTarget(base, "postgresql://user@db.internal:6432/trigger")).toBe(false);
+    expect(sameDatabaseTarget(base, "postgresql://user@db.internal:5432/other")).toBe(false);
+    expect(sameDatabaseTarget(base, "postgresql://other@db.internal:5432/trigger")).toBe(false);
+  });
+
+  it("returns false for undefined or unparseable input", () => {
+    expect(sameDatabaseTarget(undefined, "postgresql://user@db/trigger")).toBe(false);
+    expect(sameDatabaseTarget("postgresql://user@db/trigger", undefined)).toBe(false);
+    expect(sameDatabaseTarget("not a url", "also not a url")).toBe(false);
+  });
+
+  it("matches the prod-shaped legacy-vs-cp writer pair, not the new replica", () => {
+    const cpWriter = "postgresql://master:pw@rds-writer.internal:5432/pgtrigger";
+    const legacyWriter =
+      "postgresql://master:pw@rds-writer.internal:5432/pgtrigger?connection_limit=25";
+    const newReplica = "postgresql://master%7Creplica:pw@ps-host.internal:5432/pgtrigger";
+    expect(sameDatabaseTarget(cpWriter, legacyWriter)).toBe(true);
+    expect(sameDatabaseTarget(cpWriter, newReplica)).toBe(false);
+  });
+});
+
 describe("selectRunOpsTopology (integration, real containers)", () => {
   it("split OFF: opens exactly one DB; all run-ops handles share the control-plane client", async () => {
     const pg = await new PostgreSqlContainer("docker.io/postgres:14").start();
@@ -152,7 +227,7 @@ describe("selectRunOpsTopology (integration, real containers)", () => {
     }
   }, 60_000);
 
-  it("split ON: constructs CP + INDEPENDENT legacy-run-ops + new-run-ops + replicas", async () => {
+  it("split ON (flag off): constructs CP + INDEPENDENT legacy-run-ops + new-run-ops + replicas", async () => {
     const rds = await new PostgreSqlContainer("docker.io/postgres:14").start();
     const ps = await new PostgreSqlContainer("docker.io/postgres:17").start();
     try {
@@ -161,8 +236,8 @@ describe("selectRunOpsTopology (integration, real containers)", () => {
       const topo = selectRunOpsTopology(
         {
           splitEnabled: true,
-          // Same-DSN stage: legacy points at the same physical DB as the control plane, but the
-          // client is an INDEPENDENT instance (its own pool) — never the cp object.
+          // Divergent-DB stage (legacySharesControlPlane omitted): legacy builds an INDEPENDENT
+          // client with its own pool — never the cp object.
           legacyUrl: rds.getConnectionUri(),
           legacyReplicaUrl: rds.getConnectionUri(),
           newUrl: ps.getConnectionUri(),
@@ -189,6 +264,49 @@ describe("selectRunOpsTopology (integration, real containers)", () => {
       expect(ver[0].v.startsWith("17")).toBe(true); // new run-ops really is the dedicated box
       await cpWriter.$disconnect();
       await topo.legacyRunOps.writer.$disconnect();
+      await topo.newRunOps.writer.$disconnect();
+    } finally {
+      await rds.stop();
+      await ps.stop();
+    }
+  }, 120_000);
+
+  it("split ON + legacySharesControlPlane: legacy reuses the CP pool, only the new DB opens a client", async () => {
+    const rds = await new PostgreSqlContainer("docker.io/postgres:14").start();
+    const ps = await new PostgreSqlContainer("docker.io/postgres:17").start();
+    try {
+      const cpWriter = buildWriterClient({ url: rds.getConnectionUri(), clientType: "cp" });
+      const cp = { writer: cpWriter, replica: cpWriter };
+      const legacyBuilds: string[] = [];
+      const topo = selectRunOpsTopology(
+        {
+          splitEnabled: true,
+          legacyUrl: rds.getConnectionUri(),
+          legacyReplicaUrl: rds.getConnectionUri(),
+          newUrl: ps.getConnectionUri(),
+          legacySharesControlPlane: true,
+        },
+        {
+          controlPlane: cp,
+          buildNewWriter: (url, ct) => buildWriterClient({ url, clientType: ct }) as any,
+          buildNewReplica: (url, ct) => buildReplicaClient({ url, clientType: ct }) as any,
+          buildLegacyWriter: (url, ct) => {
+            legacyBuilds.push(url);
+            return buildWriterClient({ url, clientType: ct });
+          },
+          buildLegacyReplica: (url, ct) => {
+            legacyBuilds.push(url);
+            return buildReplicaClient({ url, clientType: ct });
+          },
+        }
+      );
+      expect(legacyBuilds).toHaveLength(0); // no redundant legacy pool against the shared server
+      expect(topo.legacyRunOps).toBe(cp);
+      expect(topo.legacyRunOps.writer).toBe(cpWriter);
+      expect(topo.newRunOps.writer).not.toBe(cpWriter);
+      await topo.legacyRunOps.writer.$queryRawUnsafe("SELECT 1"); // legacy queries run on the CP pool
+      await topo.newRunOps.writer.$queryRawUnsafe("SELECT 1");
+      await cpWriter.$disconnect();
       await topo.newRunOps.writer.$disconnect();
     } finally {
       await rds.stop();

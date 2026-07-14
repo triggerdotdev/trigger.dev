@@ -157,14 +157,23 @@ export class EventRepository implements IEventRepository {
   }
 
   private async insertImmediate(event: CreateEventInput) {
+    if (env.EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED) {
+      return;
+    }
     await this.#flushBatch(nanoid(), [this.#createableEventToPrismaEvent(event)]);
   }
 
   insertMany(events: CreateEventInput[]) {
+    if (env.EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED) {
+      return;
+    }
     this._flushScheduler.addToBatch(events.map(this.#createableEventToPrismaEvent));
   }
 
   async insertManyImmediate(events: CreateEventInput[]) {
+    if (env.EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED) {
+      return;
+    }
     await this.#flushBatchWithReturn(nanoid(), events.map(this.#createableEventToPrismaEvent));
   }
 
@@ -1018,7 +1027,7 @@ export class EventRepository implements IEventRepository {
     if (options.immediate) {
       await this.insertImmediate(event);
     } else {
-      this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
+      this.insertMany([event]);
     }
   }
 
@@ -1152,7 +1161,7 @@ export class EventRepository implements IEventRepository {
     if (options.immediate) {
       await this.insertImmediate(event);
     } else {
-      this._flushScheduler.addToBatch([this.#createableEventToPrismaEvent(event)]);
+      this.insertMany([event]);
     }
 
     return result;

@@ -159,6 +159,8 @@ const EnvironmentSchema = z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is invalid")
       .optional(),
+    // Optional cap for the unpooled new run-ops read replica. Unset falls back to DATABASE_CONNECTION_LIMIT.
+    RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT: z.coerce.number().int().optional(),
     // Direct DSN for applying the full @trigger.dev/database migrations to the LEGACY run-ops DB, keeping
     // its schema current after the control plane moves off it. Direct, not pooled — migrations never run
     // over a pooler. Optional; unset -> the entrypoint's legacy migrate step is skipped.
@@ -792,7 +794,6 @@ const EnvironmentSchema = z
     CENTS_PER_RUN: z.coerce.number().default(0),
 
     EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
-    RESOURCE_MONITOR_ENABLED: z.string().default("0"),
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
@@ -1860,6 +1861,7 @@ const EnvironmentSchema = z
       .enum(["postgres", "clickhouse", "clickhouse_v2"])
       .default("postgres"),
     EVENT_REPOSITORY_DEBUG_LOGS_DISABLED: BoolEnv.default(false),
+    EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED: BoolEnv.default(false),
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),

@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.5.4
+
+### Patch Changes
+
+- Remove the legacy `--mcp` and `--mcp-port` options from the `dev` command. Run the dedicated `trigger mcp` command to start the Trigger.dev MCP server. ([#4246](https://github.com/triggerdotdev/trigger.dev/pull/4246))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.4`
+  - `@trigger.dev/build@4.5.4`
+  - `@trigger.dev/schema-to-json@4.5.4`
+
 ## 4.5.3
 
 ### Patch Changes

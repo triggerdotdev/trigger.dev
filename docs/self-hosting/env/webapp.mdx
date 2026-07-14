@@ -135,6 +135,7 @@ mode: "wide"
 | `SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT`  | No       | 8192                  | OTel span attribute value length limit.                                                                            |
 | **Task events**                                  |          |                       |                                                                                                                    |
 | `EVENT_REPOSITORY_DEFAULT_STORE`                 | No       | postgres              | Where to store task events. Set to `clickhouse_v2` to store in ClickHouse (recommended for production).            |
+| `EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED`      | No       | 0                     | Skip all PostgreSQL task-event writes (set to `1`). Only enable when `EVENT_REPOSITORY_DEFAULT_STORE` is `clickhouse_v2`, otherwise task events are lost. |
 | **Realtime**                                     |          |                       |                                                                                                                    |
 | `REALTIME_STREAM_VERSION`                        | No       | v1                    | Stream version exposed to tasks via the `TRIGGER_REALTIME_STREAM_VERSION` variable. Distinct from `REALTIME_STREAMS_DEFAULT_VERSION`. One of `v1`, `v2`. |
 | `REALTIME_STREAM_MAX_LENGTH`                     | No       | 1000                  | Realtime stream max length.                                                                                        |
