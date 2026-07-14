@@ -108,7 +108,7 @@ const script = `(function () {
       if (el.type === "checkbox" || el.type === "radio") {
         // click() keeps React state in sync with the DOM
         if (el.checked !== field.checked) el.click();
-      } else if (field.value && el.value !== field.value) {
+      } else if (field.value != null && el.value !== field.value) {
         setNativeValue(el, field.value);
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
