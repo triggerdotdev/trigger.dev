@@ -422,9 +422,9 @@ ClickHouse hostname
 {{/*
 ClickHouse URL for application (with secure parameter)
 
-Note on the external+existingSecret branch: the password is expanded via
-Kubernetes' `$(VAR)` syntax, not shell `${VAR}`. Kubelet substitutes
-`$(CLICKHOUSE_PASSWORD)` at container-creation time from the
+Note on the deploy and external+existingSecret branches: the password is
+expanded via Kubernetes' `$(VAR)` syntax, not shell `${VAR}`. Kubelet
+substitutes `$(CLICKHOUSE_PASSWORD)` at container-creation time from the
 CLICKHOUSE_PASSWORD env var declared just before CLICKHOUSE_URL in
 webapp.yaml. Shell-style `${...}` does not work here because
 `docker/scripts/entrypoint.sh` assigns CLICKHOUSE_URL to GOOSE_DBSTRING
@@ -432,21 +432,27 @@ with a single-pass expansion (`export GOOSE_DBSTRING="$CLICKHOUSE_URL"`),
 so any inner `${...}` reaches goose verbatim and fails URL parsing.
 
 CLICKHOUSE_PASSWORD must contain only URL-userinfo-safe characters — the
-value is substituted verbatim, so `@ : / ? # [ ] %` break the URL. Use a
-hex-encoded password or percent-encode before storing in the Secret.
+value is substituted verbatim, so `@ : / ? # [ ] %` break the URL. The
+chart-generated datastore password is hex, which is safe; a pinned
+auth.password or external Secret value must be URL-safe too.
+
+Inline credentials (usernames and the external plain password) are
+percent-encoded via urlquery, so special characters are safe there —
+except spaces, which urlquery encodes as `+` and userinfo decoding keeps
+literal.
 */}}
 {{- define "trigger-v4.clickhouse.url" -}}
 {{- if .Values.clickhouse.deploy -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.secure -}}
 {{- $secure := ternary "true" "false" .Values.clickhouse.secure -}}
-{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:$(CLICKHOUSE_PASSWORD)@{{ include "trigger-v4.clickhouse.hostname" . }}:{{ .Values.clickhouse.service.ports.http }}?secure={{ $secure }}
+{{ $protocol }}://{{ .Values.clickhouse.auth.username | urlquery }}:$(CLICKHOUSE_PASSWORD)@{{ include "trigger-v4.clickhouse.hostname" . }}:{{ .Values.clickhouse.service.ports.http }}?secure={{ $secure }}
 {{- else if .Values.clickhouse.external.host -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
 {{- $secure := ternary "true" "false" .Values.clickhouse.external.secure -}}
 {{- if .Values.clickhouse.external.existingSecret -}}
-{{ $protocol }}://{{ .Values.clickhouse.external.username }}:$(CLICKHOUSE_PASSWORD)@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}?secure={{ $secure }}
+{{ $protocol }}://{{ .Values.clickhouse.external.username | urlquery }}:$(CLICKHOUSE_PASSWORD)@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}?secure={{ $secure }}
 {{- else -}}
-{{ $protocol }}://{{ .Values.clickhouse.external.username }}:{{ .Values.clickhouse.external.password }}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}?secure={{ $secure }}
+{{ $protocol }}://{{ .Values.clickhouse.external.username | urlquery }}:{{ .Values.clickhouse.external.password | urlquery }}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}?secure={{ $secure }}
 {{- end -}}
 {{- end -}}
 {{- end }}
@@ -460,13 +466,13 @@ applies to the replication URL.
 {{- define "trigger-v4.clickhouse.replication.url" -}}
 {{- if .Values.clickhouse.deploy -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.secure -}}
-{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:$(CLICKHOUSE_PASSWORD)@{{ include "trigger-v4.clickhouse.hostname" . }}:{{ .Values.clickhouse.service.ports.http }}
+{{ $protocol }}://{{ .Values.clickhouse.auth.username | urlquery }}:$(CLICKHOUSE_PASSWORD)@{{ include "trigger-v4.clickhouse.hostname" . }}:{{ .Values.clickhouse.service.ports.http }}
 {{- else if .Values.clickhouse.external.host -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
 {{- if .Values.clickhouse.external.existingSecret -}}
-{{ $protocol }}://{{ .Values.clickhouse.external.username }}:$(CLICKHOUSE_PASSWORD)@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
+{{ $protocol }}://{{ .Values.clickhouse.external.username | urlquery }}:$(CLICKHOUSE_PASSWORD)@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
 {{- else -}}
-{{ $protocol }}://{{ .Values.clickhouse.external.username }}:{{ .Values.clickhouse.external.password }}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
+{{ $protocol }}://{{ .Values.clickhouse.external.username | urlquery }}:{{ .Values.clickhouse.external.password | urlquery }}@{{ .Values.clickhouse.external.host }}:{{ .Values.clickhouse.external.httpPort | default 8123 }}
 {{- end -}}
 {{- end -}}
 {{- end }}

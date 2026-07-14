@@ -63,6 +63,7 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ .Values.clickhouse.configdFiles | toYaml | sha256sum }}
+        checksum/secret: {{ .Values.clickhouse.auth.password | sha256sum }}
         {{- with .Values.clickhouse.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
