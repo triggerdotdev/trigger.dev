@@ -101,6 +101,14 @@ COPY --from=prev-assets --chown=node:node /triggerdotdev/apps/webapp/public/buil
 RUN find ./apps/webapp/public/build -type f -mtime +14 -delete \
     && find ./apps/webapp/public/build -type d -empty -delete
 COPY --from=builder --chown=node:node /triggerdotdev/apps/webapp/public ./apps/webapp/public
+# Guard against silent retention failure (e.g. a builder that stops
+# preserving mtimes, making the prune a no-op): fail the build loudly if the
+# carried-forward window grows past a size no healthy 14-day window can reach.
+RUN size_mb=$(du -sm ./apps/webapp/public/build | cut -f1) \
+    && if [ "$size_mb" -gt 1024 ]; then \
+         echo "public/build is ${size_mb}MB (>1024MB): asset carry-forward is not being pruned" >&2; \
+         exit 1; \
+       fi
 COPY --from=builder --chown=node:node /triggerdotdev/scripts ./scripts
 
 # Goose and schemas

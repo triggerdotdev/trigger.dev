@@ -117,10 +117,12 @@ jobs:
         id: prev_image
         # Previous image whose /build assets the Dockerfile carries forward.
         # Prefer the tag being published (mutable tags still point at the
-        # previous build here), fall back to `main`; if neither exists the
-        # Dockerfile default makes the carry-forward a no-op.
+        # previous build here); for fresh immutable/semver tags fall back to
+        # `latest` (the previous release — its users hold the stale HTML),
+        # then `main`. If nothing exists the Dockerfile default makes the
+        # carry-forward a no-op.
         run: |
-          for candidate in "${IMAGE_REPO}:${TAG}" "${IMAGE_REPO}:main"; do
+          for candidate in "${IMAGE_REPO}:${TAG}" "${IMAGE_REPO}:latest" "${IMAGE_REPO}:main"; do
             if docker manifest inspect "$candidate" >/dev/null 2>&1; then
               echo "prev_image=${candidate}" >> "$GITHUB_OUTPUT"
               echo "Using previous image: ${candidate}"
