@@ -1,15 +1,16 @@
 import { useNavigate, useSubmit } from "@remix-run/react";
 import { useEffect } from "react";
+import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
 import { adminPath } from "~/utils/pathBuilder";
 
 /** App-wide keyboard shortcuts, mounted once at the root so they work everywhere. Renders nothing. */
 export function GlobalShortcuts() {
   const user = useOptionalUser();
+  const isImpersonating = useIsImpersonating();
   const navigate = useNavigate();
   const submit = useSubmit();
 
-  const isImpersonating = Boolean(user?.isImpersonating);
   const isAdmin = Boolean(user?.admin) || isImpersonating;
 
   useEffect(() => {
