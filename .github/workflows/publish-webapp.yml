@@ -113,27 +113,6 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🔎 Resolve previous image for asset carry-forward
-        id: prev_image
-        # Previous image whose /build assets the Dockerfile carries forward.
-        # Prefer the tag being published (mutable tags still point at the
-        # previous build here); for fresh immutable/semver tags fall back to
-        # `latest` (the previous release — its users hold the stale HTML),
-        # then `main`. If nothing exists the Dockerfile default makes the
-        # carry-forward a no-op.
-        run: |
-          for candidate in "${IMAGE_REPO}:${TAG}" "${IMAGE_REPO}:latest" "${IMAGE_REPO}:main"; do
-            if docker manifest inspect "$candidate" >/dev/null 2>&1; then
-              echo "prev_image=${candidate}" >> "$GITHUB_OUTPUT"
-              echo "Using previous image: ${candidate}"
-              exit 0
-            fi
-          done
-          echo "No previous image found; asset carry-forward will be a no-op"
-        env:
-          IMAGE_REPO: ${{ steps.set_tags.outputs.image_repo }}
-          TAG: ${{ steps.get_tag.outputs.tag }}
-
       - name: 🐳 Build image and push to GitHub Container Registry
         id: build_push
         uses: depot/build-push-action@98e78adca7817480b8185f474a400b451d74e287 # v1.18.0
@@ -151,7 +130,6 @@ jobs:
             SENTRY_RELEASE=${{ steps.set_build_info.outputs.BUILD_GIT_SHA }}
             SENTRY_ORG=triggerdev
             SENTRY_PROJECT=trigger-cloud
-            PREV_IMAGE=${{ steps.prev_image.outputs.prev_image || 'builder' }}
           secrets: |
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
