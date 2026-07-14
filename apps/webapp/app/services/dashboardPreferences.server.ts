@@ -5,7 +5,7 @@ import { type UserFromSession } from "./session.server";
 
 const SideMenuPreferences = z.object({
   isCollapsed: z.boolean().default(false),
-  /** The expanded (non-collapsed) width of the side menu in pixels, set by dragging the resize handle. */
+  /** Expanded side menu width in px, set by the resize handle. */
   width: z.number().optional(),
   // Map for section collapsed states - keys are section identifiers
   collapsedSections: z.record(z.string(), z.boolean()).optional(),
@@ -131,7 +131,7 @@ export async function updateSideMenuPreferences({
 }: {
   user: UserFromSession;
   isCollapsed?: boolean;
-  /** The expanded width of the side menu in pixels (from the resize handle) */
+  /** Expanded side menu width in px (from the resize handle) */
   width?: number;
   /** Update a specific section's collapsed state */
   sectionCollapsed?: { sectionId: SideMenuSectionId; collapsed: boolean };

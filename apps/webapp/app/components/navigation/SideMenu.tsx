@@ -156,31 +156,23 @@ function getSectionCollapsed(
   return sideMenu?.collapsedSections?.[sectionId] ?? false;
 }
 
-// Size the side menu popover items (org menu + project picker) to match the side
-// menu items: a 20px leading icon and a 0.90625rem label (vs the smaller
-// small-menu-item defaults). The icon class overrides the variant icon size; the
-// label class lands on the button element and overrides its text-2sm via
-// tailwind-merge. The icon constant also carries the default dimmed color; items
-// that need a different icon color (e.g. the indigo project folders) set their own.
+// Size popover items (org/project menus) to match the side-menu items, overriding the smaller
+// small-menu-item defaults via tailwind-merge; icon carries the default dimmed color.
 const SIDE_MENU_POPOVER_ITEM_ICON = "h-5 w-5 text-text-dimmed";
 const SIDE_MENU_POPOVER_ITEM_LABEL = "text-[0.90625rem] font-medium tracking-[-0.01em]";
 
-// Accent used to signal impersonation mode across the UI (the side menu border and the
-// "Stop impersonating" action). Full class strings per Tailwind's static scanning — change
-// the shade here to update everywhere.
+// Impersonation accent (menu border + "Stop impersonating"). Full class strings so Tailwind's
+// static scanner picks them up.
 const IMPERSONATION_ACCENT = {
   border: "border-yellow-500/80",
   text: "text-yellow-500/80",
 };
 
 // --- Resizable side menu -----------------------------------------------------
-// The menu can be dragged wider/narrower from a handle on its right edge. All of the
-// width-driven visuals (label opacity, section headers, padding, "Project" → "Proj") are driven
-// off two CSS variables set on the root during a drag/animation:
-//   --sm-collapse:        0 (at/above the default width) → 1 (fully collapsed)
-//   --sm-label-opacity:   1 (labels visible) → 0 (labels faded), a faster curve of --sm-collapse
-// Keeping these on the root (rather than in React state) means a drag only writes two properties
-// to one element per frame — no React re-render — so it stays smooth.
+// A drag handle on the right edge resizes the menu. Width-driven visuals read two CSS variables
+// written to the root each frame (no React re-render, so drags stay smooth):
+//   --sm-collapse:      0 (>= default width) → 1 (collapsed)
+//   --sm-label-opacity: 1 → 0, a faster fade curve of --sm-collapse
 
 /** Collapsed rail width in px (matches the previous `w-11`). */
 const COLLAPSED_WIDTH = 44;
@@ -190,18 +182,11 @@ const DEFAULT_WIDTH = 224;
 const MAX_WIDTH = 400;
 /** Duration of the collapse/expand/snap animation, in ms. */
 const COLLAPSE_ANIM_MS = 200;
-/**
- * Fraction of the collapse range (default → collapsed) over which the labels fade to 0. At 0.6 the
- * labels are fully transparent once the menu is 60% of the way to collapsed, i.e. before the rail
- * reaches its collapsed width. Tweak to taste.
- */
+/** Fraction of the collapse range over which labels fade to 0 (0.6 = fully faded at 60% collapsed). */
 const LABEL_FADE_FRACTION = 0.6;
 /**
- * Where a release in the sub-default zone snaps, measured as collapse progress (0 = default
- * width, 1 = collapsed): release at progress <= threshold and the menu springs open, past it and
- * it collapses. Each drag direction has its own threshold so letting go early usually continues
- * the gesture: dragging closed only collapses once past the first quarter of the range, while
- * dragging open re-opens once pulled just a tenth of the way out. Tweak to taste.
+ * Snap thresholds as collapse progress (0 = default, 1 = collapsed): release at <= threshold springs
+ * open, past it collapses. Separate per direction so releasing early continues the gesture.
  */
 const COLLAPSE_SNAP_THRESHOLD = 0.25;
 const EXPAND_SNAP_THRESHOLD = 0.9;
@@ -211,31 +196,22 @@ const DRAG_CLICK_THRESHOLD = 4;
 /** Left/right padding of the pinned top section + scroll body, interpolated 10px → 4px by --sm-collapse. */
 const SIDE_MENU_PAD_X = `calc(0.625rem - 0.375rem * var(--sm-collapse, 0))`;
 /**
- * Right padding of the scroll body DURING a collapse/expand transition. When settled-open the
- * reserved scrollbar gutter provides the right-side space (padding 0); during a transition the
- * gutter is dropped and this takes over, interpolating from the gutter's measured width (so the
- * handoff has no seam) down to 4px collapsed. `--sm-sb-gutter` is measured on mount; the 12px
- * fallback only applies for the first paint before that runs.
+ * Scroll-body right padding DURING a transition (settled-open uses the reserved gutter instead).
+ * Interpolates from the measured gutter width (seamless handoff) to 4px collapsed; the 12px fallback
+ * is only for the first paint before `--sm-sb-gutter` is measured.
  */
 const SIDE_MENU_SCROLL_PAD_RIGHT = `calc(var(--sm-sb-gutter, 12px) - (var(--sm-sb-gutter, 12px) - 0.25rem) * var(--sm-collapse, 0))`;
 /**
- * The selector rows' hover chevron: its 16px of layout width follows --sm-label-opacity so an
- * invisible chevron can never hold width mid-drag and push the row's overflow clip edge into the
- * icon on the left (it would read as the icon being "masked"). Opacity stays class-driven — the
- * chevron is a hover-only affordance.
+ * Hover chevron: its 16px width follows --sm-label-opacity so an invisible chevron never holds width
+ * mid-drag and pushes the row's clip edge into the icon. Opacity stays class-driven (hover-only).
  */
 const SIDE_MENU_CHEVRON_STYLE = {
   maxWidth: "calc(var(--sm-label-opacity, 1) * 16px)",
 } as const;
 /**
- * The selector rows' label container (org/project/environment): opacity follows --sm-label-opacity
- * so the label fades frame-by-frame in BOTH directions (gating on `isCollapsed`, which only flips on
- * release, made labels pop in after a drag-open instead of fading). The max-width cap is deliberately
- * generous (far wider than any label) so the visible fade is driven purely by opacity — the text
- * stays full and fades out in place rather than being truncated as the row narrows. Because the cap
- * still scales with the variable it reaches 0 exactly as the label finishes fading, so an invisible
- * label never holds layout width (which would push the row's clip edge into the icon). No isCollapsed
- * classes or CSS transitions are needed: the variable is 0/1 at the collapsed/expanded resting states.
+ * Selector row label (org/project/env): opacity follows --sm-label-opacity to fade both directions
+ * without popping in on drag-open. The generous max-width cap fades the text in place rather than
+ * truncating it, but still scales to 0 so an invisible label never holds width and clips the icon.
  */
 const SIDE_MENU_SELECTOR_LABEL_STYLE = {
   maxWidth: "calc(var(--sm-label-opacity, 1) * 1000px)",
@@ -256,10 +232,7 @@ function progressToLabelOpacity(progress: number) {
   return clamp((LABEL_FADE_FRACTION - progress) / LABEL_FADE_FRACTION, 0, 1);
 }
 
-/**
- * cubic-bezier(0.4, 0, 0.2, 1) — the standard easing, evaluated for the rAF width/progress tween so
- * it matches the feel of the CSS transitions used elsewhere in the side menu.
- */
+/** cubic-bezier(0.4, 0, 0.2, 1) — standard easing for the rAF tween, matching the CSS transitions. */
 function easeStandard(t: number) {
   // Solve the bezier for x = t, then return y. Control points: p1 = (0.4, 0), p2 = (0.2, 1).
   const x1 = 0.4;
@@ -319,23 +292,20 @@ export function SideMenu({
     user.dashboardPreferences.sideMenu?.isCollapsed ?? false
   );
   const [isDragging, setIsDragging] = useState(false);
-  // True while a click/⌘B/release-snap width animation is running. Together with isDragging it marks
-  // any in-flight transition, so the scrollbar gutter is only reserved once the menu is fully
-  // settled (see `showReservedGutter` in the render).
+  // True during a click/⌘B/release-snap animation. With isDragging, marks any in-flight transition
+  // (the gutter is only reserved once settled — see `showReservedGutter`).
   const [isAnimating, setIsAnimating] = useState(false);
 
   // --- Resize state (see the module constants above) ---
   const rootRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
-  // Mirror of `isCollapsed` for the drag handlers, which live outside React's render cycle and
-  // must never act on a stale closure.
+  // Mirror of `isCollapsed` for the drag handlers (outside React's render cycle; no stale closures).
   const isCollapsedRef = useRef(isCollapsed);
   // The last-committed expanded width; animation targets and re-expansion read from here.
   const expandedWidthRef = useRef(
     clamp(user.dashboardPreferences.sideMenu?.width ?? DEFAULT_WIDTH, DEFAULT_WIDTH, MAX_WIDTH)
   );
-  // Frozen initial width for the first paint. It never changes across renders, so React sets it
-  // once and never fights the imperative width writes that drive the drag/animation.
+  // Frozen first-paint width; never changes, so React never fights the imperative width writes.
   const initialWidthRef = useRef(
     (user.dashboardPreferences.sideMenu?.isCollapsed ?? false)
       ? COLLAPSED_WIDTH
@@ -343,16 +313,14 @@ export function SideMenu({
   );
   const widthRef = useRef(initialWidthRef.current);
   const progressRef = useRef((user.dashboardPreferences.sideMenu?.isCollapsed ?? false) ? 1 : 0);
-  // Frozen initial style, including the CSS variables, so the server-rendered HTML already carries
-  // the correct collapsed/expanded visuals (no expanded-state flash before hydration). The object
-  // identity never changes, so React never rewrites these after writeVisual takes over the DOM.
+  // Frozen initial style (incl. CSS vars) so the SSR HTML has the right collapsed/expanded visuals
+  // (no pre-hydration flash). Stable identity, so React never rewrites it after writeVisual.
   const initialStyleRef = useRef<CSSProperties>({
     width: initialWidthRef.current,
     "--sm-collapse": String(progressRef.current),
     "--sm-label-opacity": String(progressToLabelOpacity(progressRef.current)),
   } as CSSProperties);
-  // Removes the window-level listeners of an in-flight drag (set on pointerdown, cleared when the
-  // drag finishes or the component unmounts).
+  // Removes an in-flight drag's window listeners (set on pointerdown; cleared on finish/unmount).
   const dragCleanupRef = useRef<(() => void) | null>(null);
 
   const preferencesFetcher = useFetcher();
@@ -416,10 +384,9 @@ export function SideMenu({
     [user.isImpersonating, preferencesFetcher]
   );
 
-  // Always-current flush routine, held in a ref so the unmount effect below can depend on nothing
-  // and run its cleanup only on a real unmount. `useFetcher` returns a fresh object every render, so
-  // listing it as an effect dependency would fire the cleanup on every re-render — and a drag
-  // re-renders constantly — prematurely flushing the debounce each time instead of on unmount.
+  // Flush routine in a ref so the unmount effect can have empty deps. `useFetcher` returns a fresh
+  // object each render, so depending on it would fire the cleanup (flushing the debounce) every
+  // render — and drags re-render constantly — instead of only on unmount.
   const flushPendingPreferencesRef = useRef<() => void>();
   flushPendingPreferencesRef.current = () => {
     if (debounceTimeoutRef.current) {
@@ -451,17 +418,15 @@ export function SideMenu({
     pendingPreferencesRef.current = {};
   };
 
-  // Flush pending preferences on unmount to avoid losing the last toggle. Empty deps: cleanup must
-  // run only on a real unmount, not on every re-render (see flushPendingPreferencesRef above).
+  // Flush pending preferences on unmount. Empty deps so cleanup runs only on a real unmount
+  // (see flushPendingPreferencesRef).
   useEffect(() => {
     return () => flushPendingPreferencesRef.current?.();
   }, []);
 
-  // Measure the width the scroll body's reserved scrollbar gutter takes, once, and expose it as
-  // `--sm-sb-gutter`. The collapse padding hands off from the reserved gutter to animated padding at
-  // exactly this width so there's no seam, and it's platform-dependent so it must be measured rather
-  // than hardcoded. A probe carrying the same scrollbar classes as the real container is measured so
-  // the value matches whatever that styling reserves.
+  // Measure the reserved scrollbar-gutter width once and expose it as `--sm-sb-gutter` (the padding
+  // hands off to it seamlessly; platform-dependent, so it must be measured). A probe with the same
+  // scrollbar classes is measured so the value matches what that styling reserves.
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
@@ -475,8 +440,8 @@ export function SideMenu({
     if (gutter > 0) el.style.setProperty("--sm-sb-gutter", `${gutter}px`);
   }, []);
 
-  // Write the width + collapse variables straight to the DOM (no React re-render) so a drag stays
-  // smooth. Everything width-driven (labels, headers, padding, dividers) reads these variables.
+  // Write width + collapse vars straight to the DOM (no re-render) so drags stay smooth; all
+  // width-driven visuals (labels, headers, padding, dividers) read them.
   const writeVisual = useCallback((width: number, progress: number) => {
     widthRef.current = width;
     progressRef.current = progress;
@@ -487,8 +452,7 @@ export function SideMenu({
     el.style.setProperty("--sm-label-opacity", String(progressToLabelOpacity(progress)));
   }, []);
 
-  // Animate width + progress together over COLLAPSE_ANIM_MS with the standard easing (used for the
-  // toggle button, the ⌘B shortcut, and the release-snap).
+  // Animate width + progress over COLLAPSE_ANIM_MS (toggle button, ⌘B shortcut, release-snap).
   const animateTo = useCallback(
     (targetWidth: number, targetProgress: number) => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -535,16 +499,13 @@ export function SideMenu({
     applyCollapsed(!isCollapsedRef.current);
   }, [applyCollapsed]);
 
-  // The whole drag lives in window-level listeners installed here, so releasing the pointer
-  // anywhere — outside the handle, past the menu's min width, even outside the window — always
-  // finalizes the drag. (Pointer capture alone proved unreliable: if the browser drops it
-  // mid-drag, the release handler never fires and the menu is left stranded mid-resize.)
+  // Drag runs on window-level listeners so releasing anywhere finalizes it. (Pointer capture alone
+  // was unreliable: if the browser drops it mid-drag, the release never fires and the menu strands.)
   const onHandlePointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       e.preventDefault();
-      // Capture keeps hover states elsewhere quiet while dragging; the drag itself does not
-      // depend on it (and must not die if capture is unavailable for this pointer).
+      // Capture just quiets hover states while dragging; the drag doesn't depend on it.
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {}
@@ -597,8 +558,8 @@ export function SideMenu({
         }
 
         const width = widthRef.current;
-        // A drag that started collapsed is an opening gesture, so its snap zone is flipped:
-        // releasing early continues opening rather than falling back to collapsed.
+        // A drag that started collapsed is an opening gesture: flip the snap zone so an early
+        // release keeps opening.
         const snapThreshold = drag.startedCollapsed
           ? EXPAND_SNAP_THRESHOLD
           : COLLAPSE_SNAP_THRESHOLD;
@@ -618,8 +579,7 @@ export function SideMenu({
           persistSideMenuPreferences({ isCollapsed: false, width: DEFAULT_WIDTH });
           animateTo(DEFAULT_WIDTH, 0);
         } else {
-          // Released deeper in (including over-drags past the min width) — collapse the rest of
-          // the way.
+          // Released deeper in (or over-dragged past min width) — collapse the rest of the way.
           isCollapsedRef.current = true;
           setIsCollapsed(true);
           persistSideMenuPreferences({ isCollapsed: true });
@@ -647,8 +607,7 @@ export function SideMenu({
     [animateTo, applyCollapsed, persistSideMenuPreferences, writeVisual]
   );
 
-  // Keep the drag handlers' mirror of the collapsed state in sync, and tear down any in-flight
-  // animation/drag listeners on unmount.
+  // Keep the drag handlers' collapsed mirror in sync; tear down any in-flight animation/drag on unmount.
   useEffect(() => {
     isCollapsedRef.current = isCollapsed;
   }, [isCollapsed]);
@@ -672,9 +631,8 @@ export function SideMenu({
     action: handleToggleCollapsed,
   });
 
-  // Only reserve the scrollbar gutter when the menu is fully settled open — never mid-transition.
-  // Reserving it keeps the scroll body from shifting when the list starts/stops overflowing; during
-  // a drag or animation it's dropped so the right padding can animate the spacing instead of a fixed
+  // Reserve the scrollbar gutter only when fully settled open (stops the list shifting as it starts/
+  // stops overflowing). Dropped mid-transition so the right padding can animate instead of a fixed
   // gutter snapping away (see SIDE_MENU_SCROLL_PAD_RIGHT).
   const showReservedGutter = !isCollapsed && !isDragging && !isAnimating;
 
@@ -775,10 +733,8 @@ export function SideMenu({
         <div
           className={cn(
             "min-h-0 overflow-y-auto pt-2.5",
-            // Reserve the scrollbar gutter (so the list never shifts when it starts/stops
-            // overflowing) only when settled open. During any transition the gutter would be a fixed
-            // width that can't animate and snaps away on collapse, so it's dropped and the right
-            // padding below drives the spacing instead — handed off seamlessly at the gutter's width.
+            // Reserve the gutter only when settled open; during transitions it's dropped so the
+            // right padding below can animate the spacing seamlessly (see SIDE_MENU_SCROLL_PAD_RIGHT).
             showReservedGutter
               ? "scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
               : "scrollbar-none"
@@ -1249,8 +1205,7 @@ function OrgSelector({
           <PopoverTrigger
             className={cn(
               "group flex h-8 items-center rounded pl-1.75 hover:bg-background-hover focus-custom",
-              // The expanded row arrangement applies while dragging too — the resting classes only
-              // flip on release, and the label reveal mid-drag needs the expanded layout.
+              // Expanded arrangement also applies mid-drag (resting classes flip only on release).
               isDragging || !isCollapsed ? "w-full justify-between pr-1" : "justify-center pr-0.5"
             )}
           >
@@ -1378,10 +1333,8 @@ function OrgSelector({
             />
           )}
         </div>
-        {/*
-          When collapsed the standalone account button is hidden, so surface the account menu here
-          as a submenu at the bottom of the org popover (the only always-reachable menu on the rail).
-        */}
+        {/* Collapsed: the account button is hidden, so surface Account as a submenu here (the only
+            always-reachable menu on the rail). */}
         {isCollapsed && (
           <div className="border-t border-grid-bright p-1">
             <SideMenuPopoverSubMenu title="Account" icon={<UserProfilePhoto className="size-5" />}>
@@ -1395,10 +1348,8 @@ function OrgSelector({
 }
 
 /**
- * The account menu entries (admin/impersonation, Profile, Personal Access Tokens, Security, Logout).
- * Shared so they render identically in two places: the standalone account popover (expanded rail)
- * and the "Account" submenu inside the org popover (collapsed rail). Add new account entries here
- * and both surfaces pick them up.
+ * Account menu entries, shared by the standalone account popover (expanded rail) and the "Account"
+ * submenu in the org popover (collapsed rail).
  */
 function AccountMenuItems({
   isAdmin,
@@ -1495,8 +1446,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
     setIsOpen(false);
   }, [navigation.location?.pathname]);
 
-  // The ⌘/Ctrl+Esc admin shortcut lives in <GlobalShortcuts> so it works everywhere, not only where
-  // this menu is mounted.
+  // The admin shortcut lives in <GlobalShortcuts> so it works everywhere, not just where this menu is.
   return (
     <Popover onOpenChange={(open) => setIsOpen(open)} open={isOpen}>
       <SimpleTooltip
@@ -1555,8 +1505,7 @@ function ProjectSelector({
           <PopoverTrigger
             className={cn(
               "group flex h-8 items-center rounded border pl-1.75 transition-[border-color] duration-150 hover:bg-background-hover focus-custom",
-              // The expanded row arrangement applies while dragging too — the resting classes only
-              // flip on release, and the label reveal mid-drag needs the expanded layout.
+              // Expanded arrangement also applies mid-drag (resting classes flip only on release).
               isDragging || !isCollapsed
                 ? "justify-between border-grid-bright pr-1"
                 : "justify-center border-transparent pr-0.5",
@@ -1640,11 +1589,9 @@ function ProjectSelector({
 }
 
 /**
- * A hover-expandable submenu row inside a side-menu popover. The trigger looks like a normal menu
- * item with a trailing chevron; hovering it (or opening it with the keyboard) reveals `children` in
- * a popover to the right, with a short close delay so the pointer can travel across the gap. This is
- * the shared building block for the side menu's nested menus (Account, Switch organization,
- * Integrations) — add a new one by rendering this with the submenu entries as `children`.
+ * Hover-expandable submenu row for side-menu popovers (Account, Switch organization, Integrations):
+ * a menu item with a trailing chevron that reveals `children` in a popover to the right, with a
+ * short close delay so the pointer can cross the gap.
  */
 function SideMenuPopoverSubMenu({
   title,
@@ -1774,27 +1721,22 @@ function Integrations({ organization }: { organization: MatchedOrganization }) {
 }
 
 /**
- * Helper component that fades out but preserves width (collapses to 0 width). The fade is driven
- * by the menu's `--sm-label-opacity` variable so it tracks a drag in real time (only max-width
- * transitions via CSS — transitioning the opacity too would lag the per-frame variable writes).
+ * Fades out and collapses to 0 width via the menu's `--sm-label-opacity` variable, tracking a drag
+ * in real time (no CSS opacity transition — it would lag the per-frame variable writes).
  */
 function CollapsibleElement({
   isDragging = false,
   children,
   className,
 }: {
-  /** Only stops the fading button from swallowing clicks mid-drag; the hiding itself is width+opacity below. */
+  /** Only blocks clicks on the fading button mid-drag; the hiding is width+opacity below. */
   isDragging?: boolean;
   children: ReactNode;
   className?: string;
 }) {
-  // Width AND opacity follow the imperative `--sm-label-opacity` variable frame-by-frame. Opacity
-  // alone is not enough: an invisible button that still holds its 32px of row width pushes the
-  // primary item's overflow-hidden clip edge into its icon as the row narrows (the icon appears
-  // "masked" mid-drag). Shrinking the width in the same curve hands that space back to the primary
-  // item, keeping its icon fully visible at every width. The variable also animates during the
-  // click-toggle (rAF-driven), so no CSS transition is needed — one would only lag the per-frame
-  // writes. `isCollapsed` needs no explicit handling: the variable is 0 at rest-collapsed.
+  // Width AND opacity follow --sm-label-opacity: opacity alone would leave the invisible button
+  // holding 32px of row width, pushing the primary item's clip edge into its icon ("masked" mid-drag).
+  // Shrinking width on the same curve hands that space back. No CSS transition (it would lag the writes).
   return (
     <div
       className={cn("overflow-hidden", isDragging && "pointer-events-none", className)}
@@ -1880,13 +1822,9 @@ function CollapseMenuButton({
   const [isHovering, setIsHovering] = useState(false);
 
   return (
-    // Only shrink-and-fade while dragging the menu CLOSED (`!isCollapsed`), where this button sits to
-    // the right of Help & Feedback in a row and would otherwise overlap it as the row narrows; width
-    // and opacity follow `--sm-label-opacity` so the freed space is handed back frame-by-frame.
-    // While dragging OPEN it must stay put: when collapsed this IS the expand affordance, and the
-    // same variable runs 0->1, which would start it at zero width/opacity and only scale it in near
-    // the end of the drag (the icon appearing to grow from nothing). At rest the style is dropped
-    // entirely, so the button keeps its natural size in both states.
+    // Shrink-and-fade only while dragging CLOSED, where this sits beside Help & Feedback and would
+    // overlap it as the row narrows. Dragging OPEN it stays put: collapsed, this IS the expand
+    // affordance, and the 0->1 variable would make the icon grow from nothing. At rest: natural size.
     <div
       className={cn(isDragging && !isCollapsed && "pointer-events-none overflow-hidden")}
       style={
@@ -1946,13 +1884,9 @@ function CollapseMenuButton({
 }
 
 /**
- * The resize affordance straddling the side menu's right border. Hovering fades in a 3px indigo
- * line (matching the app's ResizableHandle, with soft gradient ends), dragging resizes the menu,
- * and a plain click toggles it collapsed/expanded. The tooltip follows the pointer's vertical
- * position and explains both gestures.
- *
- * The strip extends 4px past the menu's edge; the menu root deliberately has no overflow-hidden
- * (only its inner grid does), so nothing clips the outer half.
+ * Resize affordance straddling the menu's right border: hover reveals an indigo line, drag resizes,
+ * click toggles collapsed/expanded, and the tooltip follows the pointer's Y. The strip extends 4px
+ * past the edge, so the menu root deliberately has no overflow-hidden (only its inner grid does).
  */
 function ResizeHandle({
   isCollapsed,
@@ -1963,11 +1897,10 @@ function ResizeHandle({
   isDragging: boolean;
   onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => void;
 }) {
-  // Fully controlled so the open state never switches between controlled and uncontrolled
-  // mid-interaction; open requests made while dragging are dropped.
+  // Fully controlled so open never flips controlled/uncontrolled mid-interaction; open requests
+  // during a drag are dropped.
   const [isTooltipOpen, setTooltipOpen] = useState(false);
-  // The pointer's Y offset within the strip — anchors the tooltip beside the cursor instead of at
-  // the strip's vertical center.
+  // Pointer Y within the strip — anchors the tooltip beside the cursor, not the strip's center.
   const [anchorY, setAnchorY] = useState(0);
 
   return (

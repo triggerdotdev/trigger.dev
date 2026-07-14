@@ -53,10 +53,8 @@ export function HelpAndFeedback({
       transition={{ duration: 0.2, ease: "easeInOut" }}
       className={isCollapsed ? undefined : "min-w-0 flex-1"}
     >
-      {/*
-        AskAIRoot hosts the Ask AI dialog and its ⌘I shortcut outside the popover content, so
-        both keep working when the popover closes; the popover just renders the trigger item.
-      */}
+      {/* AskAIRoot hosts the Ask AI dialog + ⌘I shortcut outside the popover, so both survive the
+          popover closing; the popover just renders the trigger. */}
       <AskAIRoot>
         {(openAskAI) => (
           <Popover open={isHelpMenuOpen} onOpenChange={setHelpMenuOpen}>
@@ -71,12 +69,9 @@ export function HelpAndFeedback({
                   <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
                     <QuestionMarkIcon className="size-5 min-w-5 shrink-0 text-success" />
                     {/*
-                  Width and opacity follow the resizable side menu's `--sm-label-opacity` variable
-                  (falls back to fully visible when unset) so the label tracks a drag frame-by-frame
-                  in both directions, matching the nav items — gating the width on isCollapsed,
-                  which only flips on release, made the label pop in after a drag-open. No CSS
-                  transitions: they would lag the per-frame variable writes.
-                */}
+                      Width + opacity follow --sm-label-opacity so the label tracks a drag both
+                      directions (no CSS transition — it would lag the per-frame writes).
+                    */}
                     <span
                       className="min-w-0 overflow-hidden whitespace-nowrap text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed group-hover:text-text-bright"
                       style={{
@@ -88,11 +83,8 @@ export function HelpAndFeedback({
                     </span>
                   </span>
                   {/*
-                    Up/down chevron revealed on hover, matching the Project menu button. Only
-                    rendered when expanded (it is a hover affordance that has no meaning
-                    collapsed), and its 16px of width follows the SideMenu drag variable so an
-                    invisible chevron can never hold width mid-drag and push the row's clip edge
-                    into the help icon.
+                    Hover chevron, only when expanded. Its 16px width follows --sm-label-opacity so
+                    an invisible chevron never holds width mid-drag and clips the help icon.
                   */}
                   {!isCollapsed && (
                     <span

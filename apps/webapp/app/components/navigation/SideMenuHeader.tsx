@@ -40,8 +40,7 @@ export function SideMenuHeader({
       <h2 className="text-xs whitespace-nowrap">
         {visiblePart}
         {fadingPart && (
-          // Driven by the resizable SideMenu's `--sm-label-opacity` variable so "Project" morphs to
-          // "Proj" in real time as the menu is dragged narrower. Unset elsewhere → falls back to 1.
+          // --sm-label-opacity morphs "Project" → "Proj" as the menu narrows (unset elsewhere → 1).
           <span style={{ opacity: "var(--sm-label-opacity, 1)" }}>{fadingPart}</span>
         )}
       </h2>

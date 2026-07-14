@@ -35,9 +35,8 @@ import { V4Badge } from "../V4Badge";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 import { Badge } from "../primitives/Badge";
 
-// Size this Env popover's items to match the Project popover menu items
-// (SIDE_MENU_POPOVER_ITEM_* in SideMenu.tsx). Applied only at these call sites so the
-// shared EnvironmentLabel/EnvironmentCombo defaults used elsewhere in the app stay unchanged.
+// Size this Env popover's items to match the Project popover (SIDE_MENU_POPOVER_ITEM_* in
+// SideMenu.tsx). Only at these call sites, so shared EnvironmentLabel/EnvironmentCombo defaults stay.
 const ENV_POPOVER_ITEM_ICON = "size-5";
 const ENV_POPOVER_ITEM_LABEL = "text-[0.90625rem] font-medium tracking-[-0.01em]";
 
@@ -83,8 +82,7 @@ export function EnvironmentSelector({
           <PopoverTrigger
             className={cn(
               "group flex h-8 items-center rounded pl-1.75 hover:bg-background-hover focus-custom",
-              // The expanded row arrangement applies while dragging too — the resting classes only
-              // flip on release, and the label reveal mid-drag needs the expanded layout.
+              // Expanded arrangement also applies mid-drag (resting classes flip only on release).
               isDragging || !isCollapsed ? "justify-between pr-1" : "justify-center pr-0.5",
               className
             )}
@@ -92,14 +90,9 @@ export function EnvironmentSelector({
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
               {/*
-                Opacity is driven by the resizable SideMenu's `--sm-label-opacity` variable so the
-                label fades frame-by-frame in both directions (gating on isCollapsed, which only flips
-                on release, made the label pop in after a drag-open). The max-width cap is generous
-                (far wider than any env name) so the visible fade is driven purely by opacity — the
-                text stays full and fades out in place instead of truncating as the row narrows —
-                while still reaching 0 as the label finishes fading so it never holds layout width.
-                Unset in the other places this selector is used (blank-state panels, Limits page)
-                → falls back to fully visible.
+                Opacity follows --sm-label-opacity to fade both directions without popping in on
+                drag-open; the generous max-width cap fades the text in place (not truncated) but
+                scales to 0 so it never holds width. Unset elsewhere → fully visible.
               */}
               <span
                 className="flex min-w-0 items-center overflow-hidden"
@@ -117,9 +110,8 @@ export function EnvironmentSelector({
               </span>
             </span>
             {/*
-              The chevron's 16px of width follows the SideMenu drag variable (falls back to full
-              width elsewhere): an invisible span that holds its width mid-drag pushes the row's
-              clip edge into the environment icon.
+              Chevron's 16px width follows --sm-label-opacity so an invisible span never holds width
+              mid-drag and pushes the row's clip edge into the icon.
             */}
             <span
               className="overflow-hidden opacity-0 group-hover:opacity-100"
@@ -132,9 +124,8 @@ export function EnvironmentSelector({
         content={`${environmentFullTitle(environment)} environment`}
         side="right"
         sideOffset={8}
-        // Only surface the tooltip on the collapsed rail (instant), matching the Org and Project
-        // selectors: when expanded the label is already visible, and this selector is also reused
-        // outside the side menu (blank-state panels, Limits page) where a hover tooltip is unwanted.
+        // Tooltip only on the collapsed rail (expanded shows the label; this selector is also reused
+        // outside the side menu, where a hover tooltip is unwanted).
         hidden={!isCollapsed}
         delayDuration={0}
         buttonClassName="h-8!"
@@ -316,9 +307,8 @@ function Branches({
 }
 
 /**
- * The inner content of the branches popover (branch list, empty states, and the
- * "Manage branches" footer). Shared by the dropdown's hover submenu (`Branches`)
- * and the side-menu segmented control's Preview popover.
+ * Inner content of the branches popover (list, empty states, "Manage branches" footer). Shared by
+ * the `Branches` hover submenu and the side-menu Preview popover.
  */
 export function BranchesPopoverContent({
   parentEnvironment,
@@ -342,10 +332,8 @@ export function BranchesPopoverContent({
         ? "no-active-branches"
         : "has-branches";
 
-  // Only surface the active environment's archived-branch item in the submenu it
-  // actually belongs to. Both Development and Preview render this component, so
-  // without the parent check an archived dev branch would leak into the Preview
-  // submenu (and vice-versa).
+  // Show the archived-branch item only in the submenu it belongs to: both Development and Preview
+  // render this, so without the parent check an archived dev branch leaks into Preview (and vice-versa).
   const currentBranchIsArchived =
     environment.archivedAt !== null && environment.parentEnvironmentId === parentEnvironment.id;
 

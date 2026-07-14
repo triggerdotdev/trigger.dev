@@ -6,10 +6,7 @@ export function LeftSideMenuIcon({
   hovered: controlledHovered,
 }: {
   className?: string;
-  /**
-   * When provided, the shape animation is driven by this prop (e.g. from a
-   * parent button's hover). When omitted, the icon animates on its own hover.
-   */
+  /** Drives the animation when provided (e.g. parent hover); otherwise the icon uses its own hover. */
   hovered?: boolean;
 }) {
   const [internalHovered, setInternalHovered] = useState(false);
@@ -28,10 +25,8 @@ export function LeftSideMenuIcon({
       onMouseLeave={isControlled ? undefined : () => setInternalHovered(false)}
     >
       <rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
-      {/* Animate a transform (scaleX) rather than the SVG `width` attribute:
-          framer snaps the first animation of an SVG geometry attribute after it
-          has been idle, whereas transforms animate reliably. Anchoring the origin
-          to the left edge collapses the panel from right to left. */}
+      {/* Animate a transform (scaleX), not the SVG `width` attr — framer snaps the first animation
+          of an idle SVG geometry attribute. Left origin collapses the panel right-to-left. */}
       <motion.rect
         x="6"
         y="6"

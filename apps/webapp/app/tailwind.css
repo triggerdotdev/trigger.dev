@@ -342,9 +342,8 @@
 @utility focus-custom {
   &:focus-visible {
     outline: 1px solid var(--color-text-link);
-    /* Inset the ring so it is painted inside the element's box. At offset 0 the outline sits just
-       outside the border edge and gets clipped by any ancestor with overflow hidden/auto (scroll
-       areas, the side menu grid) or covered by an adjacent element's background. */
+    /* Inset the ring inside the box; at offset 0 the outline sits outside the border edge and gets
+       clipped by ancestors with overflow hidden/auto (scroll areas, the side menu grid). */
     outline-offset: -1px;
     border-radius: 5px;
   }

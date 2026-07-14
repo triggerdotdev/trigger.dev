@@ -14,9 +14,7 @@ type Props = {
   headerAction?: React.ReactNode;
 };
 
-/** A collapsible section for the side menu
- * The collapsed state is passed in as a prop, and there's a callback when it's toggled so we can save the state.
- */
+/** A collapsible section for the side menu. Collapsed state is controlled via props + a toggle callback. */
 export function SideMenuSection({
   title,
   initialCollapsed = false,
@@ -35,11 +33,9 @@ export function SideMenuSection({
     onCollapseToggle?.(newIsCollapsed);
   }, [isCollapsed, onCollapseToggle]);
 
-  // When the section is collapsed its items are visually hidden (height 0) but stay in the DOM for
-  // the animation, so remove them from the tab order and the accessibility tree with `inert` —
-  // otherwise keyboard/screen-reader users can focus invisible items. `inert` doesn't affect
-  // layout, so the height animation is unchanged. Set the DOM property directly since React 18's
-  // handling of the `inert` prop is unreliable.
+  // Collapsed items stay in the DOM (height 0) for the animation, so `inert` removes them from the
+  // tab order and a11y tree (it doesn't affect layout). Set the DOM property directly — React 18's
+  // `inert` prop handling is unreliable.
   useEffect(() => {
     if (contentRef.current) {
       contentRef.current.inert = isCollapsed;
@@ -51,16 +47,13 @@ export function SideMenuSection({
       {/* Header container - stays in DOM to preserve height */}
       <div className="relative w-full">
         {/*
-          Header - fades out as the side menu narrows. Opacity is driven by the resizable
-          SideMenu's `--sm-label-opacity` variable (falls back to 1 when unset) so it scrubs in
-          real time while dragging. The hover background and text color snap (no transition), to
-          match the nav items.
+          Header fades out as the menu narrows via --sm-label-opacity (falls back to 1 unset). Hover
+          background and text color snap (no transition), matching the nav items.
         */}
         <button
           type="button"
-          // A real button so it's keyboard-operable (Enter/Space toggle natively) and shows the
-          // focus-custom ring. Removed from the tab order when the side menu is collapsed, since
-          // the header is hidden (the divider takes its place) and can't be toggled then.
+          // A real button for native keyboard toggle + focus ring. Out of the tab order when the
+          // menu is collapsed (the header is hidden and can't be toggled).
           className="group/section flex w-full cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 hover:bg-background-hover focus-custom"
           onClick={isSideMenuCollapsed ? undefined : handleToggle}
           tabIndex={isSideMenuCollapsed ? -1 : undefined}
@@ -83,8 +76,7 @@ export function SideMenuSection({
           {headerAction && <div className="flex items-center">{headerAction}</div>}
         </button>
         {/*
-          Divider - absolutely positioned, fades in as the header fades out (driven by the
-          `--sm-collapse` progress variable, 0 → 1). Only shown while this section is expanded.
+          Divider fades in via --sm-collapse (0 → 1) as the header fades out. Only while expanded.
         */}
         <div
           className="absolute left-2 right-2 top-1 h-px bg-surface-control"

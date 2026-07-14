@@ -77,11 +77,10 @@ function useAskAIState() {
 }
 
 /**
- * Hosts Ask AI for a menu that renders its own trigger (the side menu's Help & Feedback popover):
- * the Kapa provider, the global ⌘I shortcut, and the dialog all live here, and `children`
- * receives the open function to render a trigger with. Wrap this around the popover rather than
- * inside its content so the dialog and shortcut survive the popover closing. `children` receives
- * undefined when Ask AI is unavailable (self-hosted, no Kapa website id, or during SSR).
+ * Hosts Ask AI (Kapa provider, ⌘I shortcut, dialog) for a menu that renders its own trigger. Wrap
+ * it around the popover, not inside, so the dialog and shortcut survive the popover closing.
+ * `children` receives the open function, or undefined when Ask AI is unavailable (self-hosted, no
+ * Kapa website id, or SSR).
  */
 export function AskAIRoot({
   children,

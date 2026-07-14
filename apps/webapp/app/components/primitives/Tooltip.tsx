@@ -79,11 +79,8 @@ function SimpleTooltip({
   buttonClassName?: string;
   buttonStyle?: React.CSSProperties;
   asChild?: boolean;
-  /**
-   * By default the trigger is removed from the tab order (`tabIndex={-1}`) so decorative tooltips
-   * don't add tab stops. Set this when the trigger wraps a genuinely interactive element (a link
-   * or button) that should stay keyboard-focusable.
-   */
+  /** Set when the trigger wraps an interactive element that should stay tabbable; default removes
+   * it from the tab order (decorative tooltips add no tab stops). */
   tabbable?: boolean;
   sideOffset?: number;
   open?: boolean;

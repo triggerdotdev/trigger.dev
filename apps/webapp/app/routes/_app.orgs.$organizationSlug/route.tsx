@@ -153,9 +153,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           .then(({ regions }) => regions)
           .catch(() => [] as Region[])
       : Promise.resolve([] as Region[]),
-    // Resolve which optional plugins are installed so the side menu can gate the
-    // Roles (RBAC) and SSO items the same way the org settings side menu does.
-    // Both calls are cheap and cached after the first resolution.
+    // Resolve which optional plugins (RBAC, SSO) are installed so the side menu can gate their
+    // items. Both calls are cheap and cached.
     rbac.isUsingPlugin().catch(() => false),
     ssoController.isUsingPlugin().catch(() => false),
   ]);

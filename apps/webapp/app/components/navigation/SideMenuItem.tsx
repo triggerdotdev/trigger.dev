@@ -43,12 +43,7 @@ export function SideMenuItem({
   isCollapsed?: boolean;
   action?: ReactNode;
   disableIconHover?: boolean;
-  /**
-   * Visually indented variant — same item, just pushed further from
-   * the left edge so it reads as a child of the row above. Used for
-   * grouped sub-items like the Tasks > (Agents / Standard / Scheduled)
-   * cluster. The indent is only applied when the side menu is expanded.
-   */
+  /** Indented variant for grouped sub-items; only applied when the menu is expanded. */
   indented?: boolean;
   "data-action"?: string;
 }) {
@@ -90,9 +85,8 @@ export function SideMenuItem({
         transition={{ duration: 0.2, ease: "easeOut" }}
       >
         {/*
-          Label opacity is driven by the side menu's `--sm-label-opacity` variable so it can
-          fade in real time as the menu is dragged narrower. The variable is only set inside the
-          resizable SideMenu; elsewhere it is unset and falls back to 1 (fully visible).
+          Label opacity follows --sm-label-opacity so it fades as the menu narrows (unset
+          elsewhere → 1, fully visible).
         */}
         <div
           className="flex w-full min-w-0 items-center justify-between"
@@ -144,8 +138,7 @@ export function SideMenuItem({
           disableHoverableContent
         />
         {!isCollapsed && (
-          // Fades with the labels via the resizable SideMenu's `--sm-label-opacity` variable
-          // (falls back to fully visible when the variable is unset).
+          // Fades with the labels via --sm-label-opacity (unset → fully visible).
           <div
             className={cn(
               "absolute bottom-1 right-1 top-1 flex aspect-square items-center justify-center rounded",
@@ -177,11 +170,7 @@ export function SideMenuItem({
   );
 }
 
-/**
- * A button styled to match {@link SideMenuItem}, for menu entries that open a
- * dialog/sheet rather than navigate. Forwards its ref and props so it can be
- * used as a Radix `asChild` trigger.
- */
+/** Button styled to match {@link SideMenuItem}, for entries that open a dialog rather than navigate. */
 export const SideMenuItemButton = forwardRef<
   HTMLButtonElement,
   { icon: RenderIcon; name: string; trailing?: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>

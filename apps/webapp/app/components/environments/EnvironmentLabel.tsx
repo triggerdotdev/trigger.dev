@@ -88,8 +88,7 @@ export function EnvironmentLabel({
   tooltipSideOffset?: number;
   tooltipSide?: "top" | "right" | "bottom" | "left";
   disableTooltip?: boolean;
-  /** When false, the label clips without an ellipsis (used by the resizable side menu so the label
-   * fades out in place while dragging instead of truncating). Defaults to true everywhere else. */
+  /** When false, the label clips without an ellipsis (side menu fades it in place). Defaults true. */
   truncate?: boolean;
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
