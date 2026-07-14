@@ -16,8 +16,6 @@ export type BuildTarget = z.infer<typeof BuildTarget>;
 export const ConfigRuntime = z.enum([
   "node",
   "node-22",
-  "node-24",
-  "node-26",
   "experimental-node-24",
   "experimental-node-26",
   "bun",

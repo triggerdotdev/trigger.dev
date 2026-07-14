@@ -35,8 +35,6 @@ describe("loadConfig runtime", () => {
   it.each([
     ["experimental-node-24", "node-24"],
     ["experimental-node-26", "node-26"],
-    ["node-24", "node-24"],
-    ["node-26", "node-26"],
   ] as const)("normalizes %s before returning the resolved config", async (runtime, expected) => {
     const cwd = await createProject(runtime);
 
@@ -49,11 +47,14 @@ describe("loadConfig runtime", () => {
     await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({ runtime: "node" });
   });
 
-  it("rejects unsupported runtimes while loading config", async () => {
-    const cwd = await createProject("node-23");
+  it.each(["node-24", "node-26", "node-23"])(
+    "rejects unsupported public runtime %s while loading config",
+    async (runtime) => {
+      const cwd = await createProject(runtime);
 
-    await expect(loadConfig({ cwd, warn: false })).rejects.toThrowError(
-      /Unsupported runtime "node-23" in trigger\.config/
-    );
-  });
+      await expect(loadConfig({ cwd, warn: false })).rejects.toThrowError(
+        new RegExp(`Unsupported runtime "${runtime}" in trigger\\.config`)
+      );
+    }
+  );
 });
