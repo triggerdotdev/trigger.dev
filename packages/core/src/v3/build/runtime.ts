@@ -1,10 +1,41 @@
 import { join } from "node:path";
 import { pathToFileURL } from "url";
-import { BuildRuntime } from "../schemas/build.js";
+import { BuildRuntime, ConfigRuntime } from "../schemas/build.js";
 import { dedupFlags } from "./flags.js";
 import { homedir } from "node:os";
 
 export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
+
+export type ExperimentalConfigRuntime = "experimental-node-24" | "experimental-node-26";
+
+export function isExperimentalConfigRuntime(
+  runtime: unknown
+): runtime is ExperimentalConfigRuntime {
+  return runtime === "experimental-node-24" || runtime === "experimental-node-26";
+}
+
+export function resolveBuildRuntime(runtime: unknown): BuildRuntime {
+  const parsedRuntime = ConfigRuntime.safeParse(runtime);
+
+  if (!parsedRuntime.success) {
+    const value = typeof runtime === "string" ? `"${runtime}"` : String(runtime);
+
+    throw new Error(
+      `Unsupported runtime ${value} in trigger.config. Supported runtimes: ${ConfigRuntime.options.join(
+        ", "
+      )}.`
+    );
+  }
+
+  switch (parsedRuntime.data) {
+    case "experimental-node-24":
+      return "node-24";
+    case "experimental-node-26":
+      return "node-26";
+    default:
+      return parsedRuntime.data;
+  }
+}
 
 export function binaryForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
