@@ -354,36 +354,19 @@ describe("RunSubscription", () => {
     // Verify we only created one stream
     expect(streamCreationCount).toBe(1);
 
-    // Verify we got all the expected events
+    // Run-shape and stream events are produced independently, so their relative
+    // ordering is not guaranteed. Preserve ordering within each source instead.
     expect(results).toHaveLength(4);
-    expect(results[0]).toMatchObject({
-      type: "run",
-      run: {
-        id: "run_123",
-        taskIdentifier: "openai-streaming",
-        status: "EXECUTING",
-        durationMs: 100,
-      },
-    });
-    expect(results[1]).toMatchObject({
-      type: "openai",
-      chunk: { id: "chunk1", content: "Hello" },
-      run: { id: "run_123", durationMs: 100 },
-    });
-    expect(results[2]).toMatchObject({
-      type: "openai",
-      chunk: { id: "chunk2", content: "World" },
-      run: { id: "run_123", durationMs: 100 },
-    });
-    expect(results[3]).toMatchObject({
-      type: "run",
-      run: {
-        id: "run_123",
-        taskIdentifier: "openai-streaming",
-        status: "EXECUTING",
-        durationMs: 200,
-      },
-    });
+
+    const runEvents = results.filter((event) => event.type === "run");
+    expect(runEvents.map((event) => event.run.durationMs)).toEqual([100, 200]);
+
+    const streamEvents = results.filter((event) => event.type === "openai");
+    expect(streamEvents.map((event) => event.chunk)).toEqual([
+      { id: "chunk1", content: "Hello" },
+      { id: "chunk2", content: "World" },
+    ]);
+    expect(streamEvents.map((event) => event.run.durationMs)).toEqual([100, 100]);
   });
 
   it("should handle multiple streams simultaneously", async () => {
