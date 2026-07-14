@@ -197,10 +197,10 @@ const DRAG_CLICK_THRESHOLD = 4;
 const SIDE_MENU_PAD_X = `calc(0.625rem - 0.375rem * var(--sm-collapse, 0))`;
 /**
  * Scroll-body right padding DURING a transition (settled-open uses the reserved gutter instead).
- * Interpolates from the measured gutter width (seamless handoff) to 4px collapsed; the 12px fallback
+ * Interpolates from the measured gutter width (seamless handoff) to 4px collapsed; the 8px fallback
  * is only for the first paint before `--sm-sb-gutter` is measured.
  */
-const SIDE_MENU_SCROLL_PAD_RIGHT = `calc(var(--sm-sb-gutter, 12px) - (var(--sm-sb-gutter, 12px) - 0.25rem) * var(--sm-collapse, 0))`;
+const SIDE_MENU_SCROLL_PAD_RIGHT = `calc(var(--sm-sb-gutter, 8px) - (var(--sm-sb-gutter, 8px) - 0.25rem) * var(--sm-collapse, 0))`;
 /**
  * Hover chevron: its 16px width follows --sm-label-opacity so an invisible chevron never holds width
  * mid-drag and pushes the row's clip edge into the icon. Opacity stays class-driven (hover-only).
@@ -431,7 +431,7 @@ export function SideMenu({
     const el = rootRef.current;
     if (!el) return;
     const probe = document.createElement("div");
-    probe.className = "scrollbar-gutter-stable scrollbar-thin";
+    probe.className = "scrollbar-gutter-stable scrollbar-thumb-on-hover";
     probe.style.cssText =
       "position:absolute;top:-9999px;left:-9999px;width:100px;height:100px;overflow-y:auto;visibility:hidden;";
     document.body.appendChild(probe);
@@ -736,7 +736,7 @@ export function SideMenu({
             // Reserve the gutter only when settled open; during transitions it's dropped so the
             // right padding below can animate the spacing seamlessly (see SIDE_MENU_SCROLL_PAD_RIGHT).
             showReservedGutter
-              ? "scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+              ? "scrollbar-gutter-stable scrollbar-thumb-on-hover"
               : "scrollbar-none"
           )}
         >
