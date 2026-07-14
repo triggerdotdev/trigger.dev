@@ -134,6 +134,14 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
   const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
   if (process.env.HTTP_SERVER_DISABLED !== "true") {
+    // Reports the build this replica is running. The client-side stale-asset
+    // recovery polls it after a /build 404 and reloads only once the server
+    // reports a different build than the one the page was rendered with.
+    app.get("/build-version", (_req, res) => {
+      res.set("Cache-Control", "no-store");
+      res.json({ version: build.assets.version });
+    });
+
     const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
     const wss: WebSocketServer | undefined = build.entry.module.wss;
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
