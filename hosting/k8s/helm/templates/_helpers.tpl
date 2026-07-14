@@ -419,6 +419,28 @@ rewritten to `%20`.
 {{- end }}
 
 {{/*
+ClickHouse data-paths config. Keeps the on-disk layout compatible with data
+volumes created by the Bitnami subchart this chart used previously, which
+stored everything under a data/ subdirectory of the volume. Fresh installs
+get the same layout. tmp lives outside data/ because old volumes contain a
+dangling tmp symlink there. Users can override by defining their own
+data-paths.xml in clickhouse.configdFiles.
+*/}}
+{{- define "trigger-v4.clickhouse.dataPathsConfig" -}}
+<clickhouse>
+  <path>/var/lib/clickhouse/data/</path>
+  <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
+  <user_files_path>/var/lib/clickhouse/data/user_files/</user_files_path>
+  <format_schema_path>/var/lib/clickhouse/data/format_schemas/</format_schema_path>
+  <user_directories>
+    <local_directory>
+      <path>/var/lib/clickhouse/data/access/</path>
+    </local_directory>
+  </user_directories>
+</clickhouse>
+{{- end }}
+
+{{/*
 ClickHouse hostname
 */}}
 {{- define "trigger-v4.clickhouse.hostname" -}}

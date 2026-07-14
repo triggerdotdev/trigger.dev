@@ -8,23 +8,8 @@ metadata:
     {{- include "trigger-v4.componentLabels" (dict "Chart" .Chart "Release" .Release "Values" .Values "component" $component) | nindent 4 }}
 data:
   {{- if not (hasKey .Values.clickhouse.configdFiles "data-paths.xml") }}
-  {{- /* Keeps the on-disk layout compatible with data volumes created by the
-         Bitnami subchart this chart used previously, which stored everything
-         under a data/ subdirectory of the volume. Fresh installs get the same
-         layout. tmp lives outside data/ because old volumes contain a
-         dangling tmp symlink there. */}}
   data-paths.xml: |
-    <clickhouse>
-      <path>/var/lib/clickhouse/data/</path>
-      <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
-      <user_files_path>/var/lib/clickhouse/data/user_files/</user_files_path>
-      <format_schema_path>/var/lib/clickhouse/data/format_schemas/</format_schema_path>
-      <user_directories>
-        <local_directory>
-          <path>/var/lib/clickhouse/data/access/</path>
-        </local_directory>
-      </user_directories>
-    </clickhouse>
+    {{- include "trigger-v4.clickhouse.dataPathsConfig" . | nindent 4 }}
   {{- end }}
   {{- range $filename, $content := .Values.clickhouse.configdFiles }}
   {{ $filename }}: |
@@ -62,7 +47,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ .Values.clickhouse.configdFiles | toYaml | sha256sum }}
+        checksum/config: {{ printf "%s\n%s" (include "trigger-v4.clickhouse.dataPathsConfig" .) (.Values.clickhouse.configdFiles | toYaml) | sha256sum }}
         checksum/secret: {{ .Values.clickhouse.auth.password | sha256sum }}
         {{- with .Values.clickhouse.podAnnotations }}
         {{- toYaml . | nindent 8 }}
