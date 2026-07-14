@@ -198,6 +198,7 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         const parsedItem = JSON.parse(serializedItem) as any;
         if (typeof parsedItem.job !== "string") {
           this.logger.error(`Invalid item in queue`, { queue: this.name, id, item: parsedItem });
+          await this.moveToDeadLetterQueue(id, "Invalid item in queue: 'job' is not a string");
           continue;
         }
 
@@ -214,6 +215,10 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             timestamp,
             availableJobs: Object.keys(this.schema),
           });
+          await this.moveToDeadLetterQueue(
+            id,
+            `Invalid item in queue: no schema found for job "${parsedItem.job}"`
+          );
           continue;
         }
 
@@ -228,6 +233,10 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
             attempt: parsedItem.attempt,
             timestamp,
           });
+          await this.moveToDeadLetterQueue(
+            id,
+            `Invalid item in queue: payload failed schema validation: ${validatedItem.error.message}`
+          );
           continue;
         }
 

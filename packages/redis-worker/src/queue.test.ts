@@ -484,6 +484,124 @@ describe("SimpleQueue", () => {
     }
   });
 
+  redisTest(
+    "dequeue moves items with an unknown job to the DLQ",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const redisOptions = {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      };
+
+      // Producer enqueues an item for the "test" job.
+      const producer = new SimpleQueue({
+        name: "test-invalid-job",
+        schema: {
+          test: z.object({
+            value: z.number(),
+          }),
+        },
+        redisOptions,
+        logger: new Logger("test", "log"),
+      });
+
+      // Consumer shares the same queue name but doesn't know about the "test" job.
+      const consumer = new SimpleQueue({
+        name: "test-invalid-job",
+        schema: {
+          other: z.object({
+            value: z.number(),
+          }),
+        },
+        redisOptions,
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await producer.enqueue({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+        });
+        expect(await consumer.size()).toBe(1);
+        expect(await consumer.sizeOfDeadLetterQueue()).toBe(0);
+
+        // Dequeue can't find a schema for the job, so it should be moved to the DLQ.
+        const dequeued = await consumer.dequeue(1);
+        expect(dequeued).toEqual([]);
+        expect(await consumer.size({ includeFuture: true })).toBe(0);
+        expect(await consumer.sizeOfDeadLetterQueue()).toBe(1);
+
+        // The item must not resurface on a subsequent dequeue.
+        expect(await consumer.dequeue(1)).toEqual([]);
+      } finally {
+        await producer.close();
+        await consumer.close();
+      }
+    }
+  );
+
+  redisTest(
+    "dequeue moves items with an unparseable payload to the DLQ",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const redisOptions = {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      };
+
+      // Producer enqueues a numeric payload.
+      const producer = new SimpleQueue({
+        name: "test-invalid-payload",
+        schema: {
+          test: z.object({
+            value: z.number(),
+          }),
+        },
+        redisOptions,
+        logger: new Logger("test", "log"),
+      });
+
+      // Consumer expects a string payload for the same job, so validation fails.
+      const consumer = new SimpleQueue({
+        name: "test-invalid-payload",
+        schema: {
+          test: z.object({
+            value: z.string(),
+          }),
+        },
+        redisOptions,
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await producer.enqueue({
+          id: "1",
+          job: "test",
+          item: { value: 1 },
+          visibilityTimeoutMs: 2000,
+        });
+        expect(await consumer.size()).toBe(1);
+        expect(await consumer.sizeOfDeadLetterQueue()).toBe(0);
+
+        // The payload fails schema validation, so it should be moved to the DLQ.
+        const dequeued = await consumer.dequeue(1);
+        expect(dequeued).toEqual([]);
+        expect(await consumer.size({ includeFuture: true })).toBe(0);
+        expect(await consumer.sizeOfDeadLetterQueue()).toBe(1);
+
+        // The item must not resurface on a subsequent dequeue.
+        expect(await consumer.dequeue(1)).toEqual([]);
+      } finally {
+        await producer.close();
+        await consumer.close();
+      }
+    }
+  );
+
   redisTest("cleanup orphaned queue entries", { timeout: 20_000 }, async ({ redisContainer }) => {
     const queue = new SimpleQueue({
       name: "test-orphaned",
