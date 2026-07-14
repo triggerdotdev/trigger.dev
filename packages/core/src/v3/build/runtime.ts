@@ -4,7 +4,7 @@ import { BuildRuntime } from "../schemas/build.js";
 import { dedupFlags } from "./flags.js";
 import { homedir } from "node:os";
 
-export const DEFAULT_RUNTIME = "node-24" satisfies BuildRuntime;
+export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 
 export function binaryForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
