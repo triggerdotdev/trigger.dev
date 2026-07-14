@@ -158,7 +158,9 @@ const script = `(function () {
       });
       return;
     }
-    var text = final ? "This page failed to load properly. Please reload." : "Loading…";
+    // ASCII only: documents are served without an explicit charset, so
+    // non-ASCII here can render as mojibake on a broken page.
+    var text = final ? "This page failed to load properly. Please reload." : "Loading...";
     var existing = document.getElementById("stale-asset-overlay-text");
     if (existing) {
       existing.textContent = text;
