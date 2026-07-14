@@ -158,12 +158,11 @@ const script = `(function () {
       });
       return;
     }
-    var text = final
-      ? "This page failed to load properly. Please reload."
-      : "An update is being deployed. This page will reload automatically.";
+    var text = final ? "This page failed to load properly. Please reload." : "Loading…";
     var existing = document.getElementById("stale-asset-overlay-text");
     if (existing) {
       existing.textContent = text;
+      if (final) document.getElementById("stale-asset-overlay-button").style.display = "";
       return;
     }
     var overlay = document.createElement("div");
@@ -174,9 +173,11 @@ const script = `(function () {
     message.id = "stale-asset-overlay-text";
     message.textContent = text;
     var button = document.createElement("button");
+    button.id = "stale-asset-overlay-button";
     button.textContent = "Reload";
     button.style.cssText =
-      "border:0;border-radius:4px;padding:7px 18px;background:#6366f1;color:#fff;font:inherit;cursor:pointer";
+      "border:0;border-radius:4px;padding:7px 18px;background:#6366f1;color:#fff;font:inherit;cursor:pointer" +
+      (final ? "" : ";display:none");
     button.onclick = doReload;
     overlay.appendChild(message);
     overlay.appendChild(button);
