@@ -3,8 +3,4 @@ area: webapp
 type: fix
 ---
 
-Fix intermittent unstyled/broken pages during rolling deploys. Documents are content-hash-coupled to the build baked into the image that rendered them, so a stale document requests `/build` asset URLs that 404 on the new image (unstyled page, dead buttons from partial hydration). Three changes:
-
-- Docker images now carry forward the previous published image's content-hashed `/build` assets (new `PREV_IMAGE` build arg, resolved in the publish workflow; no-op default for forks/local/self-hosted builds), pruned after 14 days — stale clients keep resolving their asset URLs across deploys.
-- Document responses default to `Cache-Control: no-cache` so browsers always revalidate HTML.
-- An inline recovery script in the document head force-reloads (at most twice, 30s apart) when a `/build` stylesheet/script fails to load or a dynamic chunk import rejects — covers rollbacks, retention-window overruns, and builds without a previous image.
+Fix intermittent unstyled/broken pages during rolling deploys, caused by stale HTML requesting `/build` asset hashes that 404 on the new image. Docker images now carry forward the previous image's `/build` assets (`PREV_IMAGE` build arg, no-op for forks/self-hosted, 14-day retention), documents default to `Cache-Control: no-cache`, and an inline script reloads the page (max twice) when a `/build` asset fails to load.
