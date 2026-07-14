@@ -54,9 +54,9 @@ describe("completeWaitpoint store-resolution error classification", () => {
     const classificationError = new UnclassifiableRunId(waitpointId);
     const waitpointSystem = createWaitpointSystem(() => Promise.reject(classificationError));
 
-    await expect(
-      waitpointSystem.completeWaitpoint({ id: waitpointId })
-    ).rejects.toBeInstanceOf(UnclassifiableWaitpointId);
+    await expect(waitpointSystem.completeWaitpoint({ id: waitpointId })).rejects.toBeInstanceOf(
+      UnclassifiableWaitpointId
+    );
 
     const caught = (await waitpointSystem
       .completeWaitpoint({ id: waitpointId })
