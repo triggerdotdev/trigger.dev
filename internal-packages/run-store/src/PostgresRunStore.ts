@@ -19,6 +19,7 @@ import type {
   ExpireSnapshotInput,
   FinalizeRunData,
   ForWaitpointCompletionContext,
+  IdempotencyKeyRunMatch,
   LockRunData,
   ReadClient,
   RescheduleSnapshotInput,
@@ -1680,6 +1681,21 @@ export class PostgresRunStore implements RunStore {
       byId.set(key, row);
     }
     return byId;
+  }
+
+  async findRunsByIdempotencyKeys(
+    args: { runtimeEnvironmentId: string; taskIdentifier: string; idempotencyKeys: string[] },
+    client?: ReadClient
+  ): Promise<IdempotencyKeyRunMatch[]> {
+    if (args.idempotencyKeys.length === 0) {
+      return [];
+    }
+    const prisma = (client ?? this.readOnlyPrisma) as RunOpsCapableClient;
+    const branches = args.idempotencyKeys.map(
+      (key) =>
+        Prisma.sql`SELECT "friendlyId", "idempotencyKey", "idempotencyKeyExpiresAt" FROM "TaskRun" WHERE "runtimeEnvironmentId" = ${args.runtimeEnvironmentId} AND "taskIdentifier" = ${args.taskIdentifier} AND "idempotencyKey" = ${key}`
+    );
+    return prisma.$queryRaw<IdempotencyKeyRunMatch[]>(Prisma.join(branches, " UNION ALL "));
   }
 
   // --- run-ops persistence ---

@@ -22,6 +22,12 @@ import type { Residency } from "@trigger.dev/core/v3/isomorphic";
  */
 export type ReadClient = PrismaClientOrTransaction | PrismaReplicaClient;
 
+export type IdempotencyKeyRunMatch = {
+  friendlyId: string;
+  idempotencyKey: string | null;
+  idempotencyKeyExpiresAt: Date | null;
+};
+
 export type CreateRunSnapshotInput = {
   engine: "V2";
   executionStatus: TaskRunExecutionStatus;
@@ -623,6 +629,17 @@ export interface RunStore {
     client?: ReadClient
   ): Promise<Map<string, Prisma.TaskRunGetPayload<{ include: I }>>>;
   findRunsByIds(ids: string[], client?: ReadClient): Promise<Map<string, TaskRun>>;
+
+  /**
+   * Point-lookup a set of idempotency keys within one (runtimeEnvironmentId, taskIdentifier).
+   * Each key is matched by full unique-key equality so the planner always does a per-key index
+   * probe and never falls back to scanning the whole (env, task) range and filtering in memory.
+   * Callers chunk large key sets; this resolves one chunk.
+   */
+  findRunsByIdempotencyKeys(
+    args: { runtimeEnvironmentId: string; taskIdentifier: string; idempotencyKeys: string[] },
+    client?: ReadClient
+  ): Promise<IdempotencyKeyRunMatch[]>;
 
   // --- run-ops persistence ---
   // Snapshots, waitpoints, implicit M:N joins, dependents, attempts and checkpoints. The

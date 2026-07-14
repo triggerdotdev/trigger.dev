@@ -20,6 +20,7 @@ import type {
   ExpireSnapshotInput,
   FinalizeRunData,
   ForWaitpointCompletionContext,
+  IdempotencyKeyRunMatch,
   LockRunData,
   ReadClient,
   RescheduleSnapshotInput,
@@ -458,6 +459,31 @@ export class RoutingRunStore implements RunStore {
       byId.set(key, row);
     }
     return byId;
+  }
+
+  async findRunsByIdempotencyKeys(
+    args: { runtimeEnvironmentId: string; taskIdentifier: string; idempotencyKeys: string[] },
+    client?: ReadClient
+  ): Promise<IdempotencyKeyRunMatch[]> {
+    if (args.idempotencyKeys.length === 0) {
+      return [];
+    }
+    const newRows = await this.#new.findRunsByIdempotencyKeys(
+      args,
+      RoutingRunStore.#ownPrimary(this.#new, client)
+    );
+    const legacyRows = await this.#legacy.findRunsByIdempotencyKeys(
+      args,
+      RoutingRunStore.#ownPrimary(this.#legacy, client)
+    );
+    const byKey = new Map<string, IdempotencyKeyRunMatch>();
+    for (const row of legacyRows) {
+      if (row.idempotencyKey != null) byKey.set(row.idempotencyKey, row);
+    }
+    for (const row of newRows) {
+      if (row.idempotencyKey != null) byKey.set(row.idempotencyKey, row);
+    }
+    return [...byKey.values()];
   }
 
   // ---------------------------------------------------------------------------
