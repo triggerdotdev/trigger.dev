@@ -19,6 +19,11 @@ import { getUser } from "./services/session.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";
 
+// Derived here (not inside StaleAssetRecovery) so the shared component takes
+// the flag as a prop. NODE_ENV is statically replaced in browser bundles, and
+// the ErrorBoundary can't rely on loader data.
+const isProduction = process.env.NODE_ENV === "production";
+
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
 };
@@ -98,7 +103,7 @@ export function ErrorBoundary() {
         <head>
           <meta charSet="utf-8" />
 
-          <StaleAssetRecovery />
+          <StaleAssetRecovery isProduction={isProduction} />
           <Meta />
           <Links />
         </head>
@@ -125,7 +130,7 @@ export default function App() {
     <>
       <html lang="en" className="h-full">
         <head>
-          <StaleAssetRecovery />
+          <StaleAssetRecovery isProduction={isProduction} />
           <Meta />
           <Links />
         </head>

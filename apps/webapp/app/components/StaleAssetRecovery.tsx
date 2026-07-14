@@ -47,8 +47,8 @@ const script = `(function () {
   });
 })();`;
 
-export function StaleAssetRecovery() {
-  if (process.env.NODE_ENV !== "production") {
+export function StaleAssetRecovery({ isProduction }: { isProduction: boolean }) {
+  if (!isProduction) {
     return null;
   }
 
