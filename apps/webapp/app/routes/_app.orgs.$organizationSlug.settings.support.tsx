@@ -137,7 +137,7 @@ export default function Page() {
             </div>
           ) : supportChannel?.status === "PROVISIONING" ? (
             <Paragraph variant="small" className="text-text-dimmed">
-              Setting up your channel — check your email shortly for the Slack Connect invite.
+              Setting up your channel. Check your email shortly for the Slack Connect invite.
             </Paragraph>
           ) : (
             <Form method="post" className="flex flex-col gap-3">

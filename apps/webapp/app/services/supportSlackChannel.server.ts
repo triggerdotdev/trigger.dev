@@ -148,6 +148,8 @@ export class SupportSlackClientLive implements SupportSlackClient, SupportSlackD
       const res = await this.client.team.info({ team: teamId });
       return { domain: res.team?.domain, emailDomain: res.team?.email_domain };
     } catch {
+      // Best-effort enrichment only: cross-org team.info can fail, and the domain is
+      // just a matching hint. Fall back to no domains rather than failing discovery.
       return {};
     }
   }

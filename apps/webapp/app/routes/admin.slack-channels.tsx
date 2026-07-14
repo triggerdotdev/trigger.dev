@@ -357,7 +357,18 @@ function ChannelRow({
       </TableCell>
       <TableCell>
         {linkedInfo && (
-          <unlinkFetcher.Form method="post">
+          <unlinkFetcher.Form
+            method="post"
+            onSubmit={(e) => {
+              if (
+                !window.confirm(
+                  "Archive this Slack support channel and unlink it from the organization? The customer will lose access."
+                )
+              ) {
+                e.preventDefault();
+              }
+            }}
+          >
             <input type="hidden" name="organizationId" value={linkedInfo.organizationId} />
             <Button
               type="submit"
