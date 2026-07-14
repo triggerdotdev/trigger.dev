@@ -215,16 +215,34 @@ export async function provisionMemberDevelopmentEnvironments({
       failedProjectId = project.id;
       failedProjectIndex = index;
 
-      await createEnvironment({
-        organization,
-        project,
-        type: "DEVELOPMENT",
-        // We set this true but no backfill (yet!?) so never used
-        // for dev environments
-        isBranchableEnvironment: true,
-        member,
-        maximumConcurrencyLimit,
-      });
+      try {
+        await createEnvironment({
+          organization,
+          project,
+          type: "DEVELOPMENT",
+          // We set this true but no backfill (yet!?) so never used
+          // for dev environments
+          isBranchableEnvironment: true,
+          member,
+          maximumConcurrencyLimit,
+        });
+      } catch (error) {
+        // A concurrent accept (double-clicked Accept, a retry, or the recovery
+        // path overlapping the normal path) can create this member's
+        // development environment first. The unique constraint on
+        // (projectId, slug, orgMemberId) then makes our create fail with P2002.
+        // The environment already exists, so treat the project as provisioned.
+        if (
+          error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        ) {
+          createdProjectIds.push(project.id);
+          failedProjectId = undefined;
+          failedProjectIndex = undefined;
+          continue;
+        }
+        throw error;
+      }
 
       createdProjectIds.push(project.id);
       failedProjectId = undefined;
