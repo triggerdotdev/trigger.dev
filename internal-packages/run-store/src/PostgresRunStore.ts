@@ -2094,7 +2094,7 @@ export class PostgresRunStore implements RunStore {
         WHERE id = ANY(${waitpointIds}::text[])
         AND status = 'PENDING'
       `;
-      return Number(pendingCheck.at(0)?.pending_count ?? 0);
+      return Number(pendingCheck[0]?.pending_count ?? 0);
     }
 
     const pendingCheck = await prisma.$queryRaw<{ pending_count: bigint }[]>`
@@ -2103,7 +2103,7 @@ export class PostgresRunStore implements RunStore {
       WHERE id IN (${Prisma.join(waitpointIds)})
       AND status = 'PENDING'
     `;
-    return Number(pendingCheck.at(0)?.pending_count ?? 0);
+    return Number(pendingCheck[0]?.pending_count ?? 0);
   }
 
   async createWaitpoint<T extends Prisma.WaitpointCreateArgs>(
