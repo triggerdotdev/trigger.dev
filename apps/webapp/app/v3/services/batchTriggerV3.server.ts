@@ -423,11 +423,13 @@ export class BatchTriggerV3Service extends BaseService {
     const cachedRuns = (
       await pMap(
         idempotencyKeyLookups,
-        ({ taskIdentifier, idempotencyKeys }) =>
-          this.runStore.findRunsByIdempotencyKeys(
+        async ({ taskIdentifier, idempotencyKeys }) => {
+          const rows = await this.runStore.findRunsByIdempotencyKeys(
             { runtimeEnvironmentId: environment.id, taskIdentifier, idempotencyKeys },
             this._prisma
-          ),
+          );
+          return rows.map((row) => ({ ...row, taskIdentifier }));
+        },
         { concurrency: IDEMPOTENCY_KEY_LOOKUP_CONCURRENCY }
       )
     ).flat();
@@ -438,7 +440,9 @@ export class BatchTriggerV3Service extends BaseService {
 
     const runs = await Promise.all(
       body.items.map(async (item) => {
-        const cachedRun = cachedRuns.find((r) => r.idempotencyKey === item.options?.idempotencyKey);
+        const cachedRun = cachedRuns.find(
+          (r) => r.taskIdentifier === item.task && r.idempotencyKey === item.options?.idempotencyKey
+        );
 
         if (cachedRun) {
           if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < new Date()) {
