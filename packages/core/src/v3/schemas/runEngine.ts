@@ -272,8 +272,7 @@ export const DequeuedMessage = z.object({
     id: z.string(),
     friendlyId: z.string(),
     version: z.string(),
-    // Canonical runtime identifier (e.g. "node", "node-22", "node-24", "bun").
-    // Consumed by orchestrators to decide per-runtime pod settings.
+    // Canonical runtime identifier (e.g. "node", "node-22", "node-24", "bun")
     runtime: z.string().optional(),
   }),
   deployment: z.object({

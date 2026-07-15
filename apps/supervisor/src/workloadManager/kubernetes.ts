@@ -14,10 +14,7 @@ import { PlacementTagProcessor } from "@trigger.dev/core/v3/serverOnly";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";
-import {
-  runtimeRequiresSeccompProfile,
-  withBlockIoUringSeccompProfile,
-} from "./kubernetesPodSpec.js";
+import { withBlockIoUringSeccompProfile } from "./kubernetesPodSpec.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
@@ -113,10 +110,9 @@ export class KubernetesWorkloadManager implements WorkloadManager {
       // The io_uring-blocking profile is only needed to keep pods checkpointable.
       // Skip it unless checkpointing is enabled - self-hosters don't have the
       // profile provisioned on their nodes, so applying it would fail pod creation.
-      const podSpec =
-        this.opts.checkpointsEnabled && runtimeRequiresSeccompProfile(opts.runtime)
-          ? withBlockIoUringSeccompProfile(basePodSpec)
-          : basePodSpec;
+      const podSpec = this.opts.checkpointsEnabled
+        ? withBlockIoUringSeccompProfile(basePodSpec, opts.runtime)
+        : basePodSpec;
 
       await this.k8s.core.createNamespacedPod({
         namespace: this.namespace,
