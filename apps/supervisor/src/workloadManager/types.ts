@@ -16,6 +16,11 @@ export interface WorkloadManagerOptions {
   snapshotPollIntervalSeconds?: number;
   additionalEnvVars?: Record<string, string>;
   dockerAutoremove?: boolean;
+  // Whether CRIU checkpoint/restore is enabled for this deployment. Only when
+  // checkpointing is enabled do node-24+ pods need the io_uring-blocking seccomp
+  // profile (io_uring FDs can't be checkpointed). Self-hosters without
+  // checkpointing don't need it - and don't have the profile on their nodes.
+  checkpointsEnabled?: boolean;
 }
 
 export interface WorkloadManager {

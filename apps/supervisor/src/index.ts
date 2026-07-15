@@ -120,6 +120,7 @@ class ManagedSupervisor {
       snapshotPollIntervalSeconds: env.RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS,
       additionalEnvVars: env.RUNNER_ADDITIONAL_ENV_VARS,
       dockerAutoremove: env.DOCKER_AUTOREMOVE_EXITED_CONTAINERS,
+      checkpointsEnabled: !!env.TRIGGER_CHECKPOINT_URL,
     } satisfies WorkloadManagerOptions;
 
     this.resourceMonitor = env.RESOURCE_MONITOR_ENABLED
