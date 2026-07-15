@@ -9,6 +9,14 @@ import {
 } from "~/v3/featureFlags";
 import { stampMintKindFlip } from "~/v3/runOpsMigration/mintFlipGrace";
 
+// The runOpsMintKind trio is managed only through applyGlobalMintKindFlip (grace-stamped under an
+// advisory lock), never a bare upsert or the replace sweep, so it stays out of both.
+const GLOBAL_MINT_KEYS: FeatureFlagKey[] = [
+  FEATURE_FLAG.runOpsMintKind,
+  FEATURE_FLAG.runOpsMintKindPrev,
+  FEATURE_FLAG.runOpsMintKindFlippedAt,
+];
+
 export type FlagsOptions<T extends FeatureFlagKey> = {
   key: T;
   defaultValue?: z.infer<(typeof FeatureFlagCatalog)[T]>;
@@ -190,4 +198,59 @@ export async function applyGlobalMintKindFlip(
 
     return makeSetMultipleFlags(tx)(stamped);
   });
+}
+
+// Replace-semantics write for the global admin flags page: upsert submitted catalog flags, delete
+// omitted ones (unless protected), and route any runOpsMintKind change through the graced flip path.
+export async function replaceGlobalFeatureFlags(
+  client: PrismaClient,
+  params: {
+    requestedFlags: Partial<z.infer<typeof FeatureFlagCatalogSchema>>;
+    catalogKeys: FeatureFlagKey[];
+    isProtected: (key: FeatureFlagKey) => boolean;
+    graceMs: number;
+  }
+): Promise<void> {
+  // Derived grace-stamp fields are computed server-side; never trust them from the body.
+  const {
+    runOpsMintKindPrev: _ignoredPrev,
+    runOpsMintKindFlippedAt: _ignoredFlippedAt,
+    ...requestedFlags
+  } = params.requestedFlags;
+
+  if (requestedFlags.runOpsMintKind !== undefined) {
+    await applyGlobalMintKindFlip(
+      client,
+      { [FEATURE_FLAG.runOpsMintKind]: requestedFlags.runOpsMintKind },
+      params.graceMs
+    );
+  }
+
+  const upsertOps: ReturnType<typeof client.featureFlag.upsert>[] = [];
+  const keysToDelete: string[] = [];
+
+  for (const key of params.catalogKeys) {
+    if (GLOBAL_MINT_KEYS.includes(key)) {
+      continue;
+    }
+    if (key in requestedFlags) {
+      const value = (requestedFlags as Record<string, unknown>)[key];
+      upsertOps.push(
+        client.featureFlag.upsert({
+          where: { key },
+          create: { key, value: value as any },
+          update: { value: value as any },
+        })
+      );
+    } else if (!params.isProtected(key)) {
+      keysToDelete.push(key);
+    }
+  }
+
+  await client.$transaction([
+    ...upsertOps,
+    ...(keysToDelete.length > 0
+      ? [client.featureFlag.deleteMany({ where: { key: { in: keysToDelete } } })]
+      : []),
+  ]);
 }
