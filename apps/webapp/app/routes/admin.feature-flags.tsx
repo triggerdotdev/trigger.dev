@@ -16,10 +16,7 @@ import {
   getAllFlagControlTypes,
   validatePartialFeatureFlags,
 } from "~/v3/featureFlags";
-import {
-  flags as getGlobalFlags,
-  replaceGlobalFeatureFlags,
-} from "~/v3/featureFlags.server";
+import { flags as getGlobalFlags, replaceGlobalFeatureFlags } from "~/v3/featureFlags.server";
 import { featuresForRequest } from "~/features.server";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
