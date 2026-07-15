@@ -214,6 +214,19 @@ pnpm exec trigger dev --log-level debug
 5. Commit the generated migration files as well as the changes to `schema.prisma`.
 6. If you're using VSCode you may need to restart the TypeScript server in the webapp to get updated type inference. Open a TypeScript file, then open the Command Palette (View > Command Palette) and run `TypeScript: Restart TS server`.
 
+## Git hooks (lefthook)
+
+We use [lefthook](https://lefthook.dev) for local git hooks, configured in `lefthook.yml` (the source of truth for what runs and when). Today that's a pre-push hook mirroring the CI `code-quality` checks; the set may grow, so check `lefthook.yml` rather than this guide.
+
+Hooks install automatically on `pnpm install`. A failing hook prints exactly what to run to fix it.
+
+**Opting out**
+
+- GitButler skips hooks on `but push` unless you enable **Run hooks** in the project settings (off by default).
+- Plain git: `LEFTHOOK=0 git push` / `--no-verify` to skip once; `pnpm exec lefthook uninstall` to remove.
+
+This never affects correctness — CI enforces the same checks on every PR; the hooks just give you faster feedback.
+
 ## Making a pull request
 
 **If you get errors, be sure to fix them before committing.**
