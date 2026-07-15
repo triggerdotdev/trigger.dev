@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { BLOCK_IO_URING_SECCOMP_PROFILE, withBlockIoUringSeccompProfile } from "./kubernetesPodSpec.js";
+import {
+  BLOCK_IO_URING_SECCOMP_PROFILE,
+  withBlockIoUringSeccompProfile,
+} from "./kubernetesPodSpec.js";
 
 const basePodSpec = {
   restartPolicy: "Never" as const,
