@@ -40,6 +40,13 @@ describe("TriggerClient surface — type-level guarantees", () => {
     // Zero-arg form (uses task context — still typeable at the call site)
     expectTypeOf(client.envvars.list).toBeCallableWith();
   });
+
+  it("preserves envvars.update overloads (out of task context form AND in-task form)", () => {
+    // Four-arg form (out-of-task context: projectRef, slug, name, params)
+    expectTypeOf(client.envvars.update).toBeCallableWith("proj_1234", "dev", "MY_VAR", { value: "secret" });
+    // Two-arg form (in-task context: name, params)
+    expectTypeOf(client.envvars.update).toBeCallableWith("MY_VAR", { value: "secret" });
+  });
 });
 
 describe("TriggerClient surface — curated subsets", () => {
