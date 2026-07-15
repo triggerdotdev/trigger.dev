@@ -107,9 +107,6 @@ export class KubernetesWorkloadManager implements WorkloadManager {
 
     try {
       const basePodSpec = this.addPlacementTags(this.#defaultPodSpec, opts.placementTags);
-      // The io_uring-blocking profile is only needed to keep pods checkpointable.
-      // Skip it unless checkpointing is enabled - self-hosters don't have the
-      // profile provisioned on their nodes, so applying it would fail pod creation.
       const podSpec = this.opts.checkpointsEnabled
         ? withBlockIoUringSeccompProfile(basePodSpec, opts.runtime)
         : basePodSpec;
