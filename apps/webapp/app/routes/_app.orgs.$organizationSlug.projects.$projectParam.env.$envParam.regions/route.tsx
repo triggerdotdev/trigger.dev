@@ -7,7 +7,7 @@ import {
   MapPinIcon,
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -51,9 +51,11 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -90,44 +92,60 @@ const FormSchema = z.object({
   regionId: z.string(),
 });
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const user = await requireUser(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return orgId ? { organizationId: orgId } : {};
+    },
+  },
+  async ({ user, ability, request, params }) => {
+    const { organizationSlug, projectParam, envParam } = params;
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    const redirectPath = regionsPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: envParam }
+    );
 
-  const redirectPath = regionsPath(
-    { slug: organizationSlug },
-    { slug: projectParam },
-    { slug: envParam }
-  );
+    if (!ability.can("manage", { type: "project" })) {
+      throw await redirectWithErrorMessage(
+        redirectPath,
+        request,
+        "You don't have permission to change the default region"
+      );
+    }
 
-  if (!project) {
-    throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+
+    if (!project) {
+      throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
+    }
+
+    const formData = await request.formData();
+    const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
+
+    if (!parsedFormData.success) {
+      throw await redirectWithErrorMessage(redirectPath, request, "No region specified");
+    }
+
+    const service = new SetDefaultRegionService();
+    const [error, result] = await tryCatch(
+      service.call({
+        projectId: project.id,
+        regionId: parsedFormData.data.regionId,
+        isAdmin: user.admin || user.isImpersonating,
+      })
+    );
+
+    if (error) {
+      return redirectWithErrorMessage(redirectPath, request, error.message);
+    }
+
+    return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
   }
-
-  const formData = await request.formData();
-  const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
-
-  if (!parsedFormData.success) {
-    throw await redirectWithErrorMessage(redirectPath, request, "No region specified");
-  }
-
-  const service = new SetDefaultRegionService();
-  const [error, result] = await tryCatch(
-    service.call({
-      projectId: project.id,
-      regionId: parsedFormData.data.regionId,
-      isAdmin: user.admin || user.isImpersonating,
-    })
-  );
-
-  if (error) {
-    return redirectWithErrorMessage(redirectPath, request, error.message);
-  }
-
-  return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
-};
+);
 
 export default function Page() {
   const { regions, isPaying: _isPaying } = useTypedLoaderData<typeof loader>();

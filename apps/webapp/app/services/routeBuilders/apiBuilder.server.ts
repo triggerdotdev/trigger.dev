@@ -637,6 +637,280 @@ export function createLoaderPATApiRoute<
   };
 }
 
+// The mutation counterpart to `createLoaderPATApiRoute`. Same PAT/user-actor
+// auth + `context` role-floor + `authorization` gating + `tenantContext`
+// user attribution, plus a method guard, body parsing, and — unlike the
+// loader — `ServiceValidationError` is mapped to its `.status` so services
+// can raise typed 4xx errors instead of the route string-matching messages.
+// Deliberately self-contained (not sharing internals with the loader) so
+// existing PAT loader routes are untouched.
+type PATActionMethod = "POST" | "PUT" | "DELETE" | "PATCH";
+
+type PATActionRouteBuilderOptions<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined,
+> = PATRouteBuilderOptions<TParamsSchema, TSearchParamsSchema, THeadersSchema> & {
+  // A single verb, or a list for multi-method routes (e.g. ["PATCH", "DELETE"]).
+  method?: PATActionMethod | PATActionMethod[];
+  body?: TBodySchema;
+};
+
+type PATActionHandlerFunction<
+  TParamsSchema extends AnyZodSchema | undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined,
+> = (args: {
+  params: TParamsSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TParamsSchema>
+    : undefined;
+  searchParams: TSearchParamsSchema extends
+    | z.ZodFirstPartySchemaTypes
+    | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TSearchParamsSchema>
+    : undefined;
+  headers: THeadersSchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<THeadersSchema>
+    : undefined;
+  body: TBodySchema extends z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>
+    ? z.infer<TBodySchema>
+    : undefined;
+  authentication: PersonalAccessTokenAuthenticationResult;
+  ability: RbacAbility;
+  request: Request;
+  apiVersion: API_VERSIONS;
+}) => Promise<Response>;
+
+export function createActionPATApiRoute<
+  TParamsSchema extends AnyZodSchema | undefined = undefined,
+  TSearchParamsSchema extends AnyZodSchema | undefined = undefined,
+  THeadersSchema extends AnyZodSchema | undefined = undefined,
+  TBodySchema extends AnyZodSchema | undefined = undefined,
+>(
+  options: PATActionRouteBuilderOptions<
+    TParamsSchema,
+    TSearchParamsSchema,
+    THeadersSchema,
+    TBodySchema
+  >,
+  handler: PATActionHandlerFunction<TParamsSchema, TSearchParamsSchema, THeadersSchema, TBodySchema>
+) {
+  return async function action({ request, params }: ActionFunctionArgs) {
+    const {
+      params: paramsSchema,
+      searchParams: searchParamsSchema,
+      headers: headersSchema,
+      body: bodySchema,
+      corsStrategy = "none",
+      context: contextFn,
+      authorization,
+      method,
+    } = options;
+
+    if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
+      return apiCors(request, json({}));
+    }
+
+    const allowedMethods = method ? (Array.isArray(method) ? method : [method]) : undefined;
+    if (allowedMethods && !(allowedMethods as string[]).includes(request.method.toUpperCase())) {
+      return await wrapResponse(
+        request,
+        json(
+          { error: "Method not allowed" },
+          { status: 405, headers: { Allow: allowedMethods.join(", ") } }
+        ),
+        corsStrategy !== "none"
+      );
+    }
+
+    try {
+      let parsedParams: any = undefined;
+      if (paramsSchema) {
+        const parsed = paramsSchema.safeParse(params);
+        if (!parsed.success) {
+          return await wrapResponse(
+            request,
+            json(
+              { error: "Params Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedParams = parsed.data;
+      }
+
+      let parsedSearchParams: any = undefined;
+      if (searchParamsSchema) {
+        const searchParams = Object.fromEntries(new URL(request.url).searchParams);
+        const parsed = searchParamsSchema.safeParse(searchParams);
+        if (!parsed.success) {
+          return await wrapResponse(
+            request,
+            json(
+              { error: "Query Error", details: fromZodError(parsed.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedSearchParams = parsed.data;
+      }
+
+      let parsedHeaders: any = undefined;
+      if (headersSchema) {
+        const rawHeaders = Object.fromEntries(request.headers);
+        const headers = headersSchema.safeParse(rawHeaders);
+        if (!headers.success) {
+          return await wrapResponse(
+            request,
+            json(
+              { error: "Headers Error", details: fromZodError(headers.error).details },
+              { status: 400 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+        parsedHeaders = headers.data;
+      }
+
+      let parsedBody: any = undefined;
+      if (bodySchema) {
+        const rawBody = await request.text();
+        if (rawBody.length === 0) {
+          return await wrapResponse(
+            request,
+            json({ error: "Request body is empty" }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        const rawParsedJson = safeJsonParse(rawBody);
+        if (!rawParsedJson) {
+          return await wrapResponse(
+            request,
+            json({ error: "Invalid JSON" }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        const body = bodySchema.safeParse(rawParsedJson);
+        if (!body.success) {
+          return await wrapResponse(
+            request,
+            json({ error: fromZodError(body.error).toString() }, { status: 400 }),
+            corsStrategy !== "none"
+          );
+        }
+        parsedBody = body.data;
+      }
+
+      const apiVersion = getApiVersion(request);
+
+      // `context` resolves the target org/project so the plugin can compute the
+      // caller's role floor for the cap intersection (see the loader builder).
+      const ctx = contextFn ? await contextFn(parsedParams, request) : {};
+
+      let authenticationResult: PersonalAccessTokenAuthenticationResult;
+      let ability: RbacAbility;
+
+      const bearer = request.headers
+        .get("Authorization")
+        ?.replace(/^Bearer /, "")
+        .trim();
+      if (bearer && isUserActorToken(bearer)) {
+        const uatAuth = await rbac.authenticateUserActor(request, ctx);
+        if (!uatAuth.ok) {
+          return await wrapResponse(
+            request,
+            json({ error: uatAuth.error }, { status: uatAuth.status }),
+            corsStrategy !== "none"
+          );
+        }
+        authenticationResult = { userId: uatAuth.userId };
+        ability = uatAuth.ability;
+      } else {
+        const patAuth = await rbac.authenticatePat(request, ctx);
+        if (!patAuth.ok) {
+          return await wrapResponse(
+            request,
+            json({ error: patAuth.error }, { status: patAuth.status }),
+            corsStrategy !== "none"
+          );
+        }
+        authenticationResult = { userId: patAuth.userId };
+        ability = patAuth.ability;
+        await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
+      }
+
+      if (authorization) {
+        const $resource = authorization.resource(parsedParams, parsedSearchParams, parsedHeaders);
+        if (!checkAuth(ability, authorization.action, $resource)) {
+          return await wrapResponse(
+            request,
+            json(
+              {
+                error: "Unauthorized",
+                code: "unauthorized",
+                param: "access_token",
+                type: "authorization",
+              },
+              { status: 403 }
+            ),
+            corsStrategy !== "none"
+          );
+        }
+      }
+
+      // PAT auth carries `userId` but no environment — enrich the scope the
+      // Express middleware established so Sentry events get user attribution.
+      tenantContext.enrich({ userId: authenticationResult.userId });
+
+      const result = await handler({
+        params: parsedParams,
+        searchParams: parsedSearchParams,
+        headers: parsedHeaders,
+        body: parsedBody,
+        authentication: authenticationResult,
+        ability,
+        request,
+        apiVersion,
+      });
+      return await wrapResponse(request, result, corsStrategy !== "none");
+    } catch (error) {
+      try {
+        if (error instanceof Response) {
+          return await wrapResponse(request, error, corsStrategy !== "none");
+        }
+
+        logBoundaryError("Error in action", error, request.url);
+
+        // Typed validation errors map to their own status (default 400);
+        // logBoundaryError already classified them as expected (no Sentry).
+        if (error instanceof ServiceValidationError) {
+          return await wrapResponse(
+            request,
+            json({ error: error.message }, { status: error.status ?? 400 }),
+            corsStrategy !== "none"
+          );
+        }
+
+        return await wrapResponse(
+          request,
+          json({ error: "Internal Server Error" }, { status: 500 }),
+          corsStrategy !== "none"
+        );
+      } catch (innerError) {
+        logger.error("[apiBuilder] Failed to handle error", { error, innerError });
+
+        return json({ error: "Internal Server Error" }, { status: 500 });
+      }
+    }
+  };
+}
+
 type ApiKeyActionRouteBuilderOptions<
   TParamsSchema extends AnyZodSchema | undefined = undefined,
   TSearchParamsSchema extends AnyZodSchema | undefined = undefined,

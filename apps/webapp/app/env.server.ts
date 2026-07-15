@@ -113,6 +113,8 @@ const EnvironmentSchema = z
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
     // (org featureFlags) win regardless.
     DASHBOARD_AGENT_ENABLED: z.string().default("0"),
+    // Gates the create-org management API endpoint (default off).
+    ORG_CREATION_API_ENABLED: z.string().default("0"),
     // "1" gives admins/impersonators an everywhere-preview (default off),
     // separate from the per-org rollout flag above.
     DASHBOARD_AGENT_ADMIN_PREVIEW: z.string().default("0"),

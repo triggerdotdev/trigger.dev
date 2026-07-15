@@ -100,35 +100,44 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
-  const invites = [...new Set(emails)].map(
-    (email) =>
-      ({
-        email,
-        token: tokenGenerator(),
-        organizationId: org.id,
-        inviterId: userId,
-        role: "MEMBER",
-        rbacRoleId: rbacRoleId ?? null,
-      }) satisfies Prisma.OrgMemberInviteCreateManyInput
-  );
+  // Create one invite per unique email and return ONLY the invites actually
+  // created by this call. A P2002 means the email is already invited to this org
+  // (unique org+email) — skip it so one duplicate can't fail the batch, and
+  // don't return it: callers email exactly what they created, and re-sending an
+  // already-pending invite is the dedicated resend flow's job (its own cooldown).
+  const created: Prisma.OrgMemberInviteGetPayload<{
+    include: { organization: true; inviter: true };
+  }>[] = [];
 
-  await prisma.orgMemberInvite.createMany({
-    data: invites,
-  });
+  for (const email of new Set(emails)) {
+    try {
+      const invite = await prisma.orgMemberInvite.create({
+        data: {
+          email,
+          token: tokenGenerator(),
+          organizationId: org.id,
+          inviterId: userId,
+          role: "MEMBER",
+          rbacRoleId: rbacRoleId ?? null,
+        },
+        include: {
+          organization: true,
+          inviter: true,
+        },
+      });
+      created.push(invite);
+    } catch (error) {
+      if (
+        error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        continue;
+      }
+      throw error;
+    }
+  }
 
-  return await prisma.orgMemberInvite.findMany({
-    where: {
-      organizationId: org.id,
-      inviterId: userId,
-      email: {
-        in: emails,
-      },
-    },
-    include: {
-      organization: true,
-      inviter: true,
-    },
-  });
+  return created;
 }
 
 export async function getInviteFromToken({ token }: { token: string }) {
