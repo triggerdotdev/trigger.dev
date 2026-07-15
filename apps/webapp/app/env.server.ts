@@ -1719,9 +1719,9 @@ const EnvironmentSchema = z
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
     // Optional read replica endpoint. Read-only clients (logs, query, admin, runsList,
-    // engine, realtime) and the events client's READ path default to this when their own
-    // URL is unset; writes always stay on CLICKHOUSE_URL. Set once to move all reads to a
-    // replica. Must share storage with the CLICKHOUSE_URL warehouse.
+    // engine, realtime) default to this when their own URL is unset; writes always stay on
+    // CLICKHOUSE_URL. Events reads opt in separately via EVENTS_READER_CLICKHOUSE_URL (no
+    // fallback here). Must share storage with the CLICKHOUSE_URL warehouse.
     CLICKHOUSE_READER_URL: z.string().optional(),
     CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
