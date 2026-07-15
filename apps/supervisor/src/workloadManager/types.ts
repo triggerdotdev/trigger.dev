@@ -41,7 +41,7 @@ export interface WorkloadManagerCreateOptions {
   deploymentFriendlyId: string;
   deploymentVersion: string;
   // Canonical runtime identifier (e.g. "node", "node-22", "node-24"). Used to
-  // scope the RuntimeDefault seccomp profile to runtimes that require it.
+  // scope the io_uring-blocking seccomp profile to runtimes that require it.
   runtime?: string;
   runId: string;
   runFriendlyId: string;

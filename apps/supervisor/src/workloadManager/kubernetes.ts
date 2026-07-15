@@ -16,7 +16,7 @@ import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";
 import {
   runtimeRequiresSeccompProfile,
-  withRuntimeDefaultSeccompProfile,
+  withBlockIoUringSeccompProfile,
 } from "./kubernetesPodSpec.js";
 
 type ResourceQuantities = {
@@ -111,7 +111,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     try {
       const basePodSpec = this.addPlacementTags(this.#defaultPodSpec, opts.placementTags);
       const podSpec = runtimeRequiresSeccompProfile(opts.runtime)
-        ? withRuntimeDefaultSeccompProfile(basePodSpec)
+        ? withBlockIoUringSeccompProfile(basePodSpec)
         : basePodSpec;
 
       await this.k8s.core.createNamespacedPod({
