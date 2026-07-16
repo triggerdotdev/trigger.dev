@@ -558,6 +558,9 @@ importers:
       emails:
         specifier: workspace:*
         version: link:../../internal-packages/emails
+      eventsource:
+        specifier: ^3.0.5
+        version: 3.0.5
       evt:
         specifier: ^2.4.13
         version: 2.4.13
@@ -25303,7 +25306,7 @@ snapshots:
 
   eventsource@3.0.5:
     dependencies:
-      eventsource-parser: 3.0.0
+      eventsource-parser: 3.1.0
 
   evt@2.4.13:
     dependencies:
