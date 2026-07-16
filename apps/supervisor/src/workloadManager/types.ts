@@ -16,6 +16,8 @@ export interface WorkloadManagerOptions {
   snapshotPollIntervalSeconds?: number;
   additionalEnvVars?: Record<string, string>;
   dockerAutoremove?: boolean;
+  // Whether CRIU checkpoint/restore is enabled for this deployment
+  checkpointsEnabled?: boolean;
 }
 
 export interface WorkloadManager {
@@ -40,6 +42,8 @@ export interface WorkloadManagerCreateOptions {
   projectId: string;
   deploymentFriendlyId: string;
   deploymentVersion: string;
+  // Canonical runtime identifier (e.g. "node", "node-22", "node-24")
+  runtime?: string;
   runId: string;
   runFriendlyId: string;
   snapshotId: string;
