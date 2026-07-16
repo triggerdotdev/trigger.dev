@@ -1,26 +1,30 @@
 import { type Defu } from "defu";
 import type { Prettify } from "ts-essentials";
-import { CompatibilityFlag, CompatibilityFlagFeatures, TriggerConfig } from "../config.js";
-import { BuildRuntime } from "../schemas/build.js";
-import { ResolveEnvironmentVariablesFunction } from "../types/index.js";
+import type { CompatibilityFlag, CompatibilityFlagFeatures, TriggerConfig } from "../config.js";
+import type { BuildRuntime } from "../schemas/build.js";
+import type { ResolveEnvironmentVariablesFunction } from "../types/index.js";
 
 export type ResolvedConfig = Prettify<
-  Defu<
-    TriggerConfig,
-    [
-      {},
-      {
-        runtime: BuildRuntime;
-        dirs: string[];
-        tsconfig: string;
-        build: {
-          jsx: { factory: string; fragment: string; automatic: true };
-        } & Omit<NonNullable<TriggerConfig["build"]>, "jsx">;
-        compatibilityFlags: CompatibilityFlag[];
-        features: CompatibilityFlagFeatures;
-      },
-    ]
+  Omit<
+    Defu<
+      TriggerConfig,
+      [
+        {},
+        {
+          runtime: BuildRuntime;
+          dirs: string[];
+          tsconfig: string;
+          build: {
+            jsx: { factory: string; fragment: string; automatic: true };
+          } & Omit<NonNullable<TriggerConfig["build"]>, "jsx">;
+          compatibilityFlags: CompatibilityFlag[];
+          features: CompatibilityFlagFeatures;
+        },
+      ]
+    >,
+    "runtime"
   > & {
+    runtime: BuildRuntime;
     workingDir: string;
     workspaceDir: string;
     packageJsonPath: string;
