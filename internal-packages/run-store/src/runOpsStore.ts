@@ -1279,9 +1279,7 @@ export class RoutingRunStore implements RunStore {
     runId: string | undefined
   ): Promise<Record<string, unknown>[]> {
     if (runId !== undefined) {
-      const requestedIds = idListFromWhere(
-        (scalarArgs.where ?? {}) as Prisma.TaskRunWhereInput
-      );
+      const requestedIds = idListFromWhere((scalarArgs.where ?? {}) as Prisma.TaskRunWhereInput);
       if (requestedIds !== undefined) {
         const runStore = this.#routeOrNew(runId);
         const fromRun = (await runStore.findManyWaitpoints(
@@ -2010,10 +2008,7 @@ function narrowToIds(args: FindRunsArgs, ids: string[]): FindRunsArgs {
 
 // Clone find-many args, replacing the `id` filter with `{ in: ids }` while keeping any other `where`
 // conditions and the projection/ordering intact. Used to re-query only the ids missing on the first leg.
-function narrowArgsToIds(
-  args: Record<string, unknown>,
-  ids: string[]
-): Record<string, unknown> {
+function narrowArgsToIds(args: Record<string, unknown>, ids: string[]): Record<string, unknown> {
   return {
     ...args,
     where: { ...((args.where as Record<string, unknown>) ?? {}), id: { in: ids } },

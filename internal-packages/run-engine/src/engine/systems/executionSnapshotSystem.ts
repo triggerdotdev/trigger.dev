@@ -378,7 +378,12 @@ export async function getExecutionSnapshotsSince(
   // poll even against a caught-up replica.
   const expectedCount = new Set(latestSnapshot.completedWaitpointOrder ?? []).size;
   if (repairClient && repairClient !== prisma && waitpointIds.length < expectedCount) {
-    const repaired = await getSnapshotWaitpointIds(repairClient, latestSnapshot.id, runStore, runId);
+    const repaired = await getSnapshotWaitpointIds(
+      repairClient,
+      latestSnapshot.id,
+      runStore,
+      runId
+    );
     if (repaired.length > waitpointIds.length) {
       waitpointIds = repaired;
       readClient = repairClient;

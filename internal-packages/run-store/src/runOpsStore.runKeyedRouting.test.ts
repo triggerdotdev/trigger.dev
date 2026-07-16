@@ -178,10 +178,9 @@ describe("RoutingRunStore.deleteManyTaskRunWaitpoints — route by taskRunId (no
 
   it("never threads a caller tx into the routed delete", async () => {
     const { router, legacyStore } = buildRouter();
-    await router.deleteManyTaskRunWaitpoints(
-      { where: { taskRunId: "legacy_run" } },
-      { $fake: "cp-tx" } as never
-    );
+    await router.deleteManyTaskRunWaitpoints({ where: { taskRunId: "legacy_run" } }, {
+      $fake: "cp-tx",
+    } as never);
     expect(legacyStore.calls[0]?.args[1]).toBeUndefined();
   });
 });
@@ -216,7 +215,7 @@ describe("RoutingRunStore.findSnapshotCompletedWaitpointIds — route by runId",
 
 describe("RoutingRunStore.findSnapshotCompletedWaitpointIdsWithPresence — route by runId", () => {
   it("routes to the run's store when a runId is threaded through", async () => {
-    const { router, newStore, legacyStore } = buildRouter(
+    const { router, newStore } = buildRouter(
       { snapshotWaitpointIds: ["waitpoint_n"], snapshotPresent: true },
       { snapshotWaitpointIds: ["waitpoint_l"], snapshotPresent: true }
     );
@@ -258,7 +257,7 @@ describe("RoutingRunStore.findManyWaitpoints — route by runId then fall back f
   });
 
   it("falls back to the other store for ONLY the ids missing on the run's store (cross-tree token)", async () => {
-    const { router, newStore, legacyStore } = buildRouter(
+    const { router, legacyStore } = buildRouter(
       { waitpoints: [{ id: "waitpoint_local", status: "COMPLETED" }] },
       { waitpoints: [{ id: "waitpoint_crosstree", status: "COMPLETED" }] }
     );
@@ -271,9 +270,8 @@ describe("RoutingRunStore.findManyWaitpoints — route by runId then fall back f
     // The fallback leg is queried with ONLY the missing id, never the whole set.
     const fallbackCall = legacyStore.calls[0];
     expect(fallbackCall?.method).toBe("findManyWaitpoints");
-    expect(idsFromWhere((fallbackCall?.args[0] as { where?: unknown }).where)).toEqual([
-      "waitpoint_crosstree",
-    ]);
+    const fallbackWhere = (fallbackCall!.args[0] as { where?: unknown }).where;
+    expect(idsFromWhere(fallbackWhere)).toEqual(["waitpoint_crosstree"]);
   });
 
   it("still fans out (NEW-wins dedup) when no runId is supplied", async () => {
@@ -311,7 +309,7 @@ describe("RoutingRunStore.countPendingWaitpoints — route by runId then partiti
 
   it("counts a cross-tree pending token via the fallback so a blocked run is not prematurely unblocked", async () => {
     // The classic crossDbTokenBlock shape: a LEGACY run blocks on a token resident on the NEW DB.
-    const { router, newStore, legacyStore } = buildRouter(
+    const { router, newStore } = buildRouter(
       { waitpoints: [{ id: "waitpoint_crosstree", status: "PENDING" }] },
       { waitpoints: [] }
     );
