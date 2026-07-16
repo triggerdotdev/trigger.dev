@@ -257,7 +257,15 @@ export type FinalizeRunData = {
 export type ClearIdempotencyKeyInput =
   | { byId: { runId: string; idempotencyKey: string }; byPredicate?: never; byFriendlyIds?: never }
   | {
-      byPredicate: { idempotencyKey: string; taskIdentifier: string; runtimeEnvironmentId: string };
+      byPredicate: {
+        idempotencyKey: string;
+        taskIdentifier: string;
+        runtimeEnvironmentId: string;
+        // A predicate has no run id to route by, so it fans out to both stores. When the env mints
+        // run-ops ids its matching runs live on NEW, so `residency: "NEW"` routes to NEW only and
+        // avoids a wrong-DB (0-row) write to the draining legacy DB. Omit to fan out (mixed residency).
+        residency?: Residency;
+      };
       byId?: never;
       byFriendlyIds?: never;
     }
@@ -874,7 +882,11 @@ export interface RunStore {
   // de-dupes by id in case tag ids ever become residency-aware.
   upsertWaitpointTag(
     data: { environmentId: string; name: string; projectId: string; id?: string },
-    tx?: PrismaClientOrTransaction
+    tx?: PrismaClientOrTransaction,
+    // A tag has no owning run to co-locate with; when no minted `id` pins it by id-shape, a
+    // minted-new env's tags read this residency (NEW) so they land with the env's tokens/runs
+    // instead of defaulting to LEGACY. Single-store impls ignore it.
+    residency?: Residency
   ): Promise<WaitpointTag>;
   findManyWaitpointTags(
     args: {

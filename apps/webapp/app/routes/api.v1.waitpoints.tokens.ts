@@ -59,6 +59,16 @@ const { action } = createActionApiRoute(
 
       const timeout = await parseDelay(body.timeout);
 
+      // A token (and its tags) has no owning run, so it can't co-locate. Resolve the env mint kind so a
+      // minted-new env creates them on the run-ops DB (NEW) instead of defaulting to the draining LEGACY
+      // DB by their cuid id-shape.
+      const mintKind = await resolveRunIdMintKind({
+        organizationId: authentication.environment.organizationId,
+        id: authentication.environment.id,
+        orgFeatureFlags: authentication.environment.organization.featureFlags,
+      });
+      const residency = mintKind === "runOpsId" ? "NEW" : "LEGACY";
+
       //upsert tags
       let tags: { id: string; name: string }[] = [];
       const bodyTags = typeof body.tags === "string" ? [body.tags] : body.tags;
@@ -75,21 +85,13 @@ const { action } = createActionApiRoute(
             tag,
             environmentId: authentication.environment.id,
             projectId: authentication.environment.projectId,
+            residency,
           });
           if (tagRecord) {
             tags.push(tagRecord);
           }
         }
       }
-
-      // A token has no owning run, so it can't co-locate. Resolve the env mint kind so a minted-new
-      // env creates the token on the run-ops DB (NEW) instead of defaulting to the draining LEGACY DB
-      // by its cuid id-shape.
-      const mintKind = await resolveRunIdMintKind({
-        organizationId: authentication.environment.organizationId,
-        id: authentication.environment.id,
-        orgFeatureFlags: authentication.environment.organization.featureFlags,
-      });
 
       const result = await engine.createManualWaitpoint({
         environmentId: authentication.environment.id,
@@ -98,7 +100,7 @@ const { action } = createActionApiRoute(
         idempotencyKeyExpiresAt,
         timeout,
         tags: bodyTags,
-        standaloneResidency: mintKind === "runOpsId" ? "NEW" : "LEGACY",
+        standaloneResidency: residency,
       });
 
       const $responseHeaders = await responseHeaders(authentication.environment);

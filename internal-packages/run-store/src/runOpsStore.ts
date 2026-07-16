@@ -513,7 +513,12 @@ export class RoutingRunStore implements RunStore {
       const store = this.#route(params.byId.runId);
       return store.clearIdempotencyKey(params, undefined);
     }
-    // `byFriendlyIds` / `byPredicate` can span mixed residency — fan out and sum.
+    // A `byPredicate` whose env mints run-ops ids has its matching runs on NEW, so route to NEW only
+    // and skip the wrong-DB (0-row) write to the draining legacy DB. Without that hint (or byFriendlyIds)
+    // the predicate can span mixed residency — fan out and sum.
+    if ("byPredicate" in params && params.byPredicate?.residency === "NEW") {
+      return this.#new.clearIdempotencyKey(params, undefined);
+    }
     return Promise.all([
       this.#new.clearIdempotencyKey(params),
       this.#legacy.clearIdempotencyKey(params),
@@ -1874,10 +1879,13 @@ export class RoutingRunStore implements RunStore {
   // residency-aware, findManyWaitpointTags must de-dupe by (environmentId, name) or names will duplicate.
   upsertWaitpointTag(
     data: { environmentId: string; name: string; projectId: string; id?: string },
-    tx?: PrismaClientOrTransaction
+    tx?: PrismaClientOrTransaction,
+    residency?: Residency
   ): Promise<WaitpointTag> {
-    const { store, tx: routedTx } = this.#routeWaitpointWrite(data.id, tx);
-    return store.upsertWaitpointTag(data, routedTx);
+    // No owning run; route by a minted id-shape when present, else the env's residency hint, else
+    // fall back to LEGACY (same precedence as a standalone waitpoint). Caller tx is never forwarded.
+    const store = this.#waitpointWriteStore(undefined, residency, data.id);
+    return store.upsertWaitpointTag(data, undefined);
   }
 
   // A tag keyed by (environmentId, name) can exist on BOTH DBs for one env (dual-resident, no

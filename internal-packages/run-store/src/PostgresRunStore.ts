@@ -2535,7 +2535,9 @@ export class PostgresRunStore implements RunStore {
 
   async upsertWaitpointTag(
     data: { environmentId: string; name: string; projectId: string; id?: string },
-    tx?: PrismaClientOrTransaction
+    tx?: PrismaClientOrTransaction,
+    // `residency` selects the store at the router; a single store has one client and ignores it.
+    _residency?: "NEW" | "LEGACY"
   ): Promise<WaitpointTag> {
     const prisma = tx ?? this.prisma;
 
