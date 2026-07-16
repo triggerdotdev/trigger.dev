@@ -9,7 +9,9 @@ import type { RunStore } from "./types.js";
 type Call = { method: string; args: unknown[] };
 type FakeStore = RunStore & { slot: "new" | "legacy"; calls: Call[] };
 
-function fakeStore(slot: "new" | "legacy"): FakeStore {
+// `clearCount` lets a test say "this store matched N rows for the reset", so the NEW-first-then-fallback
+// path can be exercised (NEW matches 0 → fall back to LEGACY).
+function fakeStore(slot: "new" | "legacy", clearCount = slot === "new" ? 1 : 0): FakeStore {
   const calls: Call[] = [];
   const rec =
     (method: string, result: unknown) =>
@@ -21,13 +23,13 @@ function fakeStore(slot: "new" | "legacy"): FakeStore {
     slot,
     calls,
     upsertWaitpointTag: rec("upsertWaitpointTag", { id: slot, slot }),
-    clearIdempotencyKey: rec("clearIdempotencyKey", { count: slot === "new" ? 1 : 0 }),
+    clearIdempotencyKey: rec("clearIdempotencyKey", { count: clearCount }),
   } as unknown as FakeStore;
 }
 
-function buildRouter() {
-  const newStore = fakeStore("new");
-  const legacyStore = fakeStore("legacy");
+function buildRouter(newClearCount?: number, legacyClearCount?: number) {
+  const newStore = fakeStore("new", newClearCount);
+  const legacyStore = fakeStore("legacy", legacyClearCount);
   const router = new RoutingRunStore({
     new: newStore,
     legacy: legacyStore,
@@ -52,9 +54,9 @@ describe("RoutingRunStore.upsertWaitpointTag — residency hint for a tag with n
   });
 });
 
-describe("RoutingRunStore.clearIdempotencyKey — predicate routes NEW when the env mints new", () => {
-  it("routes a byPredicate reset to NEW only when residency is NEW (no legacy fan-out)", async () => {
-    const { router, newStore, legacyStore } = buildRouter();
+describe("RoutingRunStore.clearIdempotencyKey — predicate routes NEW-first when the env mints new", () => {
+  it("clears on NEW and does NOT touch legacy when NEW matches (post-flip key)", async () => {
+    const { router, newStore, legacyStore } = buildRouter(1, 0);
     const result = await router.clearIdempotencyKey({
       byPredicate: {
         idempotencyKey: "k",
@@ -65,6 +67,23 @@ describe("RoutingRunStore.clearIdempotencyKey — predicate routes NEW when the 
     });
     expect(newStore.calls.map((c) => c.method)).toEqual(["clearIdempotencyKey"]);
     expect(legacyStore.calls).toHaveLength(0);
+    expect(result.count).toBe(1);
+  });
+
+  it("falls back to LEGACY when NEW matches 0 (a key held on a pre-flip legacy run)", async () => {
+    // The env mints new now, but this key was created before the flip → its run lives on LEGACY.
+    const { router, newStore, legacyStore } = buildRouter(0, 1);
+    const result = await router.clearIdempotencyKey({
+      byPredicate: {
+        idempotencyKey: "k",
+        taskIdentifier: "task",
+        runtimeEnvironmentId: "env",
+        residency: "NEW",
+      },
+    });
+    // NEW checked first (0 rows), then LEGACY cleared the stale key — so the reset actually works.
+    expect(newStore.calls).toHaveLength(1);
+    expect(legacyStore.calls).toHaveLength(1);
     expect(result.count).toBe(1);
   });
 

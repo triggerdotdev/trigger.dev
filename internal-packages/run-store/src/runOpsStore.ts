@@ -503,7 +503,7 @@ export class RoutingRunStore implements RunStore {
     return (await this.#routeOrNewForWrite(runId)).updateMetadata(runId, data, options);
   }
 
-  clearIdempotencyKey(
+  async clearIdempotencyKey(
     params: ClearIdempotencyKeyInput,
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
@@ -513,11 +513,17 @@ export class RoutingRunStore implements RunStore {
       const store = this.#route(params.byId.runId);
       return store.clearIdempotencyKey(params, undefined);
     }
-    // A `byPredicate` whose env mints run-ops ids has its matching runs on NEW, so route to NEW only
-    // and skip the wrong-DB (0-row) write to the draining legacy DB. Without that hint (or byFriendlyIds)
-    // the predicate can span mixed residency — fan out and sum.
+    // A `byPredicate` whose env mints run-ops ids has NEW-born runs, so check NEW first. But a key
+    // minted BEFORE the org flipped still lives on a LEGACY-resident run (idempotency TTL up to 30d),
+    // so fall back to LEGACY when NEW matched nothing — otherwise the reset 404s and the stale legacy
+    // key keeps deduping. In the steady (fully-drained) state NEW matches and legacy is never touched.
     if ("byPredicate" in params && params.byPredicate?.residency === "NEW") {
-      return this.#new.clearIdempotencyKey(params, undefined);
+      const fromNew = await this.#new.clearIdempotencyKey(params, undefined);
+      if (fromNew.count > 0) {
+        return fromNew;
+      }
+      const fromLegacy = await this.#legacy.clearIdempotencyKey(params);
+      return { count: fromNew.count + fromLegacy.count };
     }
     return Promise.all([
       this.#new.clearIdempotencyKey(params),
