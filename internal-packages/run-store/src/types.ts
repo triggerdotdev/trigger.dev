@@ -325,6 +325,15 @@ export interface ForWaitpointCompletionContext {
  */
 export interface WaitpointColocationOptions {
   coLocateWithRunId?: string;
+  /**
+   * Residency for a STANDALONE waitpoint that has no owning run to co-locate with (e.g. a
+   * `wait.createToken()` token created via the env-scoped API). Its minted id is always a cuid, so
+   * id-shape routing would always send it to LEGACY; a standalone token instead reads the env mint
+   * kind and pins here (NEW when the env mints run-ops ids), so a fully-minted-new deployment keeps
+   * its tokens off the draining legacy DB. Ignored when `coLocateWithRunId` (or an owner id) is set —
+   * a co-located waitpoint always inherits its run/batch residency, never the flag.
+   */
+  residency?: Residency;
 }
 
 export interface RunStore {

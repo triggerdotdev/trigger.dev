@@ -308,6 +308,7 @@ export class WaitpointSystem {
     idempotencyKeyExpiresAt,
     timeout,
     tags,
+    standaloneResidency,
   }: {
     runId?: string;
     environmentId: string;
@@ -316,13 +317,22 @@ export class WaitpointSystem {
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
     tags?: string[];
+    // For a STANDALONE token (no owning `runId`): the residency the env's mint kind resolves to, so
+    // the token lands on the run-ops DB (NEW) in a fully-minted-new deployment instead of defaulting
+    // to LEGACY by its cuid id-shape. Ignored when `runId` is set (co-location wins).
+    standaloneResidency?: "NEW" | "LEGACY";
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     // Co-location invariant (see createDateTimeWaitpoint): when a `runId` is supplied the waitpoint
     // co-locates with that run's DB and the (env,idempotencyKey) dedup is per-run (co-resident). A
     // standalone token (api.v1.waitpoints.tokens.ts) passes no run id — it is created without an
     // owner, blocked later by whichever run waits on it (possibly cross-DB, resolved by the
-    // run-co-resident block edge + completion fan-out), so it routes by id-shape and dedups cross-DB. No tx here.
-    const colocate = runId ? { coLocateWithRunId: runId } : undefined;
+    // run-co-resident block edge + completion fan-out). With no owner it reads the env mint kind via
+    // `standaloneResidency` so a minted-new env keeps its tokens on NEW; unset, it routes by id-shape. No tx here.
+    const colocate = runId
+      ? { coLocateWithRunId: runId }
+      : standaloneResidency
+        ? { residency: standaloneResidency }
+        : undefined;
     const existingWaitpoint = idempotencyKey
       ? await this.$.runStore.findWaitpoint(
           {

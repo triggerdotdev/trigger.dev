@@ -16,6 +16,7 @@ import {
   type PrismaClientOrTransaction,
 } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
 import { logger } from "~/services/logger.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import {
@@ -81,6 +82,15 @@ const { action } = createActionApiRoute(
         }
       }
 
+      // A token has no owning run, so it can't co-locate. Resolve the env mint kind so a minted-new
+      // env creates the token on the run-ops DB (NEW) instead of defaulting to the draining LEGACY DB
+      // by its cuid id-shape.
+      const mintKind = await resolveRunIdMintKind({
+        organizationId: authentication.environment.organizationId,
+        id: authentication.environment.id,
+        orgFeatureFlags: authentication.environment.organization.featureFlags,
+      });
+
       const result = await engine.createManualWaitpoint({
         environmentId: authentication.environment.id,
         projectId: authentication.environment.projectId,
@@ -88,6 +98,7 @@ const { action } = createActionApiRoute(
         idempotencyKeyExpiresAt,
         timeout,
         tags: bodyTags,
+        standaloneResidency: mintKind === "runOpsId" ? "NEW" : "LEGACY",
       });
 
       const $responseHeaders = await responseHeaders(authentication.environment);

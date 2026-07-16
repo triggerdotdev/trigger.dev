@@ -1171,10 +1171,34 @@ export class RoutingRunStore implements RunStore {
     const data = (args as { data?: unknown }).data;
     const ownerRunId = scalarStringField(data, "completedByTaskRunId");
     const ownerBatchId = scalarStringField(data, "completedByBatchId");
-    const routeId =
-      opts?.coLocateWithRunId ?? ownerRunId ?? ownerBatchId ?? RoutingRunStore.#waitpointId(data);
-    const { store, tx: routedTx } = this.#routeWaitpointWrite(routeId, tx);
-    return store.createWaitpoint(args, routedTx);
+    const store = this.#waitpointWriteStore(
+      opts?.coLocateWithRunId ?? ownerRunId ?? ownerBatchId,
+      opts?.residency,
+      RoutingRunStore.#waitpointId(data)
+    );
+    // Never forward the caller's tx into a routed write (matches #routeWaitpointWrite).
+    return store.createWaitpoint(args, undefined);
+  }
+
+  // Resolve the store a waitpoint WRITE lands on, in precedence order: an explicit OWNER id
+  // (coLocateWithRunId / completedBy run|batch) always wins — a co-located waitpoint inherits its
+  // owner's residency by id-shape. With no owner, a STANDALONE token reads the env mint kind via the
+  // `residency` hint (NEW when the env mints run-ops ids). Else fall back to the waitpoint's own
+  // id-shape (always cuid → LEGACY).
+  #waitpointWriteStore(
+    ownerId: string | undefined,
+    residency: Residency | undefined,
+    waitpointId: string | undefined
+  ): RunStore {
+    if (ownerId !== undefined) {
+      return this.#classifySafe(ownerId) === "NEW" ? this.#new : this.#legacy;
+    }
+    if (residency !== undefined) {
+      return residency === "NEW" ? this.#new : this.#legacy;
+    }
+    return typeof waitpointId === "string" && this.#classifySafe(waitpointId) === "NEW"
+      ? this.#new
+      : this.#legacy;
   }
 
   upsertWaitpoint<T extends Prisma.WaitpointUpsertArgs>(
@@ -1183,13 +1207,13 @@ export class RoutingRunStore implements RunStore {
     opts?: WaitpointColocationOptions
   ): Promise<Prisma.WaitpointGetPayload<T>> {
     // `coLocateWithRunId` (the owning run) wins so a DATETIME/MANUAL wait waitpoint lands on its
-    // run's DB; otherwise key by create.id (always the minted waitpoint id), then where.
-    const routeId =
-      opts?.coLocateWithRunId ??
+    // run's DB; else a standalone token reads the `residency` hint; else key by create.id (always the
+    // minted waitpoint id), then where.
+    const waitpointId =
       RoutingRunStore.#waitpointId((args as { create?: unknown }).create) ??
       RoutingRunStore.#waitpointId((args as { where?: unknown }).where);
-    const { store, tx: routedTx } = this.#routeWaitpointWrite(routeId, tx);
-    return store.upsertWaitpoint(args, routedTx);
+    const store = this.#waitpointWriteStore(opts?.coLocateWithRunId, opts?.residency, waitpointId);
+    return store.upsertWaitpoint(args, undefined);
   }
 
   // Probe by id (drain may have relocated it); an idempotency-key lookup with no id routes by
