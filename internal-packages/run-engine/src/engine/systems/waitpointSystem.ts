@@ -59,9 +59,10 @@ export class WaitpointSystem {
     runId: string;
     tx?: PrismaClientOrTransaction;
   }) {
-    // Route the delete: a run's edges may live on #new and/or #legacy (mid-drain), so it must fan
-    // across both stores. The caller's `tx` is not forwarded into either leg — each store's delete
-    // runs on its own client (the router never threads a control-plane tx into a routed write).
+    // A run's edges co-locate with the run (the edge write routes by runId), so the router routes this
+    // taskRunId-keyed delete to the run's store rather than fanning out. The caller's `tx` is not
+    // forwarded — the delete runs on the owning store's own client (the router never threads a
+    // control-plane tx into a routed write).
     const deleted = await this.$.runStore.deleteManyTaskRunWaitpoints(
       { where: { taskRunId: runId } },
       tx
@@ -493,7 +494,9 @@ export class WaitpointSystem {
 
       // Check if the run is actually blocked using a separate query (see above). Pass the writer so the
       // pending re-read is read-your-writes on the owning PRIMARY (a lagging replica can strand the run).
-      const pendingCount = await this.$.runStore.countPendingWaitpoints($waitpoints, prisma);
+      // Route by the blocked run id: its blocking waitpoints co-locate with the run, so the router
+      // counts on the run's store and only falls back to the other DB for a cross-tree token.
+      const pendingCount = await this.$.runStore.countPendingWaitpoints($waitpoints, prisma, runId);
 
       const isRunBlocked = pendingCount > 0;
 

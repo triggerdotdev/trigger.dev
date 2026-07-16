@@ -674,12 +674,19 @@ export interface RunStore {
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>>;
 
   // Implicit-join group
-  findSnapshotCompletedWaitpointIds(snapshotId: string, client?: ReadClient): Promise<string[]>;
+  /** `runId` (when known) routes to the run's store — the snapshot + its join co-locate with the run;
+   * omit it and the router fans out (the cuid snapshot id alone can't say which store holds the join). */
+  findSnapshotCompletedWaitpointIds(
+    snapshotId: string,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<string[]>;
   /** As above, but reports in the SAME read whether the snapshot is visible on the reader: `present=false`
    * means this reader lacks the snapshot, so its empty id list is not authoritative (repair from primary). */
   findSnapshotCompletedWaitpointIdsWithPresence(
     snapshotId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    runId?: string
   ): Promise<{ present: boolean; ids: string[] }>;
   /** Run ids connected to a waitpoint (WaitpointRunConnection / `_WaitpointRunConnections`), this DB only. */
   findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]>;
@@ -694,7 +701,20 @@ export interface RunStore {
     batchIndex?: number;
     tx?: PrismaClientOrTransaction;
   }): Promise<void>;
-  countPendingWaitpoints(waitpointIds: string[], client?: ReadClient): Promise<number>;
+  /** `runId` (when known) routes to the run's store and falls back to the other DB only for ids absent
+   * there (a rare cross-tree token), instead of fanning the count out to both DBs on every call. */
+  countPendingWaitpoints(
+    waitpointIds: string[],
+    client?: ReadClient,
+    runId?: string
+  ): Promise<number>;
+  /** Which of the given ids are PENDING and which exist on this store (any status), so the router can
+   * route by run id and only re-count the ids absent here on the other DB — without undercounting
+   * pending (which would prematurely unblock a run) or double-counting a drain-mirrored id. */
+  countPendingWaitpointsWithPresence(
+    waitpointIds: string[],
+    client?: ReadClient
+  ): Promise<{ pendingIds: string[]; presentIds: string[] }>;
 
   // Waitpoint group
   createWaitpoint<T extends Prisma.WaitpointCreateArgs>(
@@ -717,9 +737,12 @@ export interface RunStore {
   findWaitpointOnPrimary<T extends Prisma.WaitpointFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>
   ): Promise<Prisma.WaitpointGetPayload<T> | null>;
+  /** `runId` (when known) routes to the run's store and falls back to the other DB only for the ids
+   * missing there, instead of fanning every token read out to both DBs. */
   findManyWaitpoints<T extends Prisma.WaitpointFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindManyArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    runId?: string
   ): Promise<Prisma.WaitpointGetPayload<T>[]>;
   updateWaitpoint<T extends Prisma.WaitpointUpdateArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointUpdateArgs>,
