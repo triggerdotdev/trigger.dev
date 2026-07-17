@@ -75,7 +75,7 @@
     "write": 0,
     "read": 4,
     "files": 1,
-    "legacyAnnotations": 2
+    "legacyAnnotations": 0
   },
   "violations": [
     {
@@ -115,18 +115,5 @@
       "snippet": "const legacyRows = (await legacyReplica.taskRun.findMany({"
     }
   ],
-  "legacyAnnotations": [
-    {
-      "file": "apps/webapp/app/v3/services/cancelTaskRun.server.ts",
-      "line": 48,
-      "reason": "bulk-action tag on a historical V1 run (legacy-resident)",
-      "receiver": "runOpsLegacyPrisma"
-    },
-    {
-      "file": "apps/webapp/app/v3/services/cancelTaskRun.server.ts",
-      "line": 57,
-      "reason": "finalize (cancel) a historical V1 run (legacy-resident)",
-      "receiver": "runOpsLegacyPrisma"
-    }
-  ]
+  "legacyAnnotations": []
 }
