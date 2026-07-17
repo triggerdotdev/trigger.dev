@@ -151,9 +151,7 @@ export class LimitsPresenter extends BasePresenter {
       },
     });
 
-    // Get active preview branches count for this org (uses @@index([organizationId]))
-    // Mirror checkBranchLimit: only PREVIEW branches (exclude the branchable parent).
-    // DEVELOPMENT branches have a separate limit and must not be counted here.
+    // Get active branches count for this org (uses @@index([organizationId]))
     const activeBranchCount = await this._replica.runtimeEnvironment.count({
       where: {
         projectId,
