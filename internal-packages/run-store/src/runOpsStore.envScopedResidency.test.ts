@@ -41,7 +41,11 @@ function buildRouter(newClearCount?: number, legacyClearCount?: number) {
 describe("RoutingRunStore.upsertWaitpointTag — residency hint for a tag with no minted id", () => {
   it("routes to NEW when residency is NEW and no id is supplied", async () => {
     const { router, newStore, legacyStore } = buildRouter();
-    await router.upsertWaitpointTag({ environmentId: "env", name: "t", projectId: "p" }, undefined, "NEW");
+    await router.upsertWaitpointTag(
+      { environmentId: "env", name: "t", projectId: "p" },
+      undefined,
+      "NEW"
+    );
     expect(newStore.calls.map((c) => c.method)).toEqual(["upsertWaitpointTag"]);
     expect(legacyStore.calls).toHaveLength(0);
   });
