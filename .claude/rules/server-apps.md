@@ -14,12 +14,10 @@ area: webapp
 type: fix
 ---
 
-Fix pages occasionally loading unstyled during deploys. The dashboard now recovers automatically.
+Brief description of what changed and why.
 EOF
 ```
 
 - **area**: `webapp` | `supervisor`
 - **type**: `feature` | `fix` | `improvement` | `breaking`
 - If the PR also touches `packages/`, just the changeset is sufficient (no `.server-changes/` needed).
-
-The body ships **verbatim in user-facing release notes**. Keep it to 1–2 short sentences, non-technical, written for a dashboard user: describe what changed for them, never the implementation (no header names, endpoints, middleware, storage mechanisms, internal tools). See `.server-changes/README.md` for full guidance.
