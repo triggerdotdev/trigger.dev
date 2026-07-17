@@ -54,6 +54,12 @@ export default function handleRequest(
 ) {
   const url = new URL(request.url);
 
+  // Stale documents reference /build asset hashes that 404 after a deploy —
+  // always revalidate HTML. Route-set headers win.
+  if (!responseHeaders.has("Cache-Control")) {
+    responseHeaders.set("Cache-Control", "no-cache");
+  }
+
   if (url.pathname.startsWith("/login")) {
     responseHeaders.set("X-Frame-Options", "SAMEORIGIN");
     responseHeaders.set("Content-Security-Policy", "frame-ancestors 'self'");

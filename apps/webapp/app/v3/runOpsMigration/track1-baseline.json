@@ -68,46 +68,52 @@
     "WaitpointTag.project"
   ],
   "totals": {
-    "violations": 0,
-    "detectorI": 0,
+    "violations": 4,
+    "detectorI": 4,
     "detectorII": 0,
     "detectorIII": 0,
     "write": 0,
-    "read": 0,
-    "files": 0,
-    "legacyAnnotations": 5
+    "read": 4,
+    "files": 1,
+    "legacyAnnotations": 0
   },
-  "violations": [],
-  "legacyAnnotations": [
+  "violations": [
     {
-      "file": "apps/webapp/app/v3/services/completeAttempt.server.ts",
-      "line": 302,
-      "reason": "OOM machine bump on attempt-owning V1/cuid run",
-      "receiver": "runOpsLegacyPrisma"
+      "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
+      "line": 88,
+      "model": "BatchTaskRun",
+      "delegate": "batchTaskRun",
+      "callKind": "read",
+      "detector": "i",
+      "snippet": "const batchRun = await this._replica.batchTaskRun.findFirst({"
     },
     {
-      "file": "apps/webapp/app/v3/services/completeAttempt.server.ts",
-      "line": 360,
-      "reason": "error on attempt-owning V1/cuid run",
-      "receiver": "runOpsLegacyPrisma"
+      "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
+      "line": 149,
+      "model": "BatchTaskRun",
+      "delegate": "batchTaskRun",
+      "callKind": "read",
+      "detector": "i",
+      "snippet": "client.batchTaskRun.findFirst({"
     },
     {
-      "file": "apps/webapp/app/v3/services/completeAttempt.server.ts",
-      "line": 604,
-      "reason": "RETRYING status on attempt-owning V1/cuid run",
-      "receiver": "runOpsLegacyPrisma"
+      "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
+      "line": 183,
+      "model": "TaskRun",
+      "delegate": "taskRun",
+      "callKind": "read",
+      "detector": "i",
+      "snippet": "const newRows = (await newClient.taskRun.findMany({"
     },
     {
-      "file": "apps/webapp/app/v3/services/createTaskRunAttempt.server.ts",
-      "line": 168,
-      "reason": "run-bump inside legacy attempt-create tx (V1-only path)",
-      "receiver": "tx"
-    },
-    {
-      "file": "apps/webapp/app/v3/services/executeTasksWaitingForDeploy.ts",
-      "line": 92,
-      "reason": "post ownerEngine()!==\"NEW\" filter",
-      "receiver": "runOpsLegacyPrisma"
+      "file": "apps/webapp/app/presenters/v3/ApiBatchResultsPresenter.server.ts",
+      "line": 195,
+      "model": "TaskRun",
+      "delegate": "taskRun",
+      "callKind": "read",
+      "detector": "i",
+      "snippet": "const legacyRows = (await legacyReplica.taskRun.findMany({"
     }
-  ]
+  ],
+  "legacyAnnotations": []
 }

@@ -38,6 +38,10 @@ export const GetProjectResponseBody = z.object({
   name: z.string(),
   slug: z.string(),
   createdAt: z.coerce.date(),
+  // Worker-group name of the project's default region, or null when unset
+  // (the project falls back to the global platform default). Optional so a
+  // newer client still parses responses from an older server that omits it.
+  defaultRegion: z.string().nullable().optional(),
   organization: z.object({
     id: z.string(),
     title: z.string(),
@@ -62,6 +66,21 @@ export const GetOrgsResponseBody = z.array(
 );
 
 export type GetOrgsResponseBody = z.infer<typeof GetOrgsResponseBody>;
+
+export const CreateOrgRequestBody = z.object({
+  title: z.string().trim().min(3).max(50),
+  companySize: z.string().optional(),
+  companyUrl: z.string().optional(),
+});
+export type CreateOrgRequestBody = z.infer<typeof CreateOrgRequestBody>;
+
+export const CreateOrgResponseBody = z.object({
+  id: z.string(),
+  title: z.string(),
+  slug: z.string(),
+  createdAt: z.coerce.date(),
+});
+export type CreateOrgResponseBody = z.infer<typeof CreateOrgResponseBody>;
 
 export const CreateProjectRequestBody = z.object({
   name: z
@@ -1347,6 +1366,8 @@ export type ListBulkActionsResponseBody = z.infer<typeof ListBulkActionsResponse
 export const CreateEnvironmentVariableRequestBody = z.object({
   name: z.string(),
   value: z.string(),
+  // When omitted, the variable defaults to non-secret (the DB default is false).
+  isSecret: z.boolean().optional(),
 });
 
 export type CreateEnvironmentVariableRequestBody = z.infer<

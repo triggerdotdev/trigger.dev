@@ -7,6 +7,7 @@ import { packetRequiresOffloading, parsePacket } from "@trigger.dev/core/v3";
 import type { BatchTaskRun, TaskRunAttempt } from "@trigger.dev/database";
 import { isUniqueConstraintError, Prisma } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
+import pMap from "p-map";
 import { z } from "zod";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
@@ -32,6 +33,16 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
 
 const PROCESSING_BATCH_SIZE = 50;
+const IDEMPOTENCY_KEY_LOOKUP_CHUNK_SIZE = 50;
+const IDEMPOTENCY_KEY_LOOKUP_CONCURRENCY = 5;
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
 const MAX_ATTEMPTS = 10;
 
@@ -397,28 +408,31 @@ export class BatchTriggerV3Service extends BaseService {
       itemsByTask,
     });
 
-    // Fetch cached runs for each task identifier separately to make use of the index
-    const cachedRuns = await Promise.all(
-      Object.entries(itemsByTask).map(([taskIdentifier, items]) =>
-        this.runStore.findRuns(
-          {
-            where: {
-              runtimeEnvironmentId: environment.id,
-              taskIdentifier,
-              idempotencyKey: {
-                in: items.map((i) => i.options?.idempotencyKey).filter(Boolean),
-              },
-            },
-            select: {
-              friendlyId: true,
-              idempotencyKey: true,
-              idempotencyKeyExpiresAt: true,
-            },
-          },
-          this._prisma
+    const idempotencyKeyLookups = Object.entries(itemsByTask).flatMap(([taskIdentifier, items]) => {
+      const idempotencyKeys = Array.from(
+        new Set(
+          items.map((i) => i.options?.idempotencyKey).filter((key): key is string => Boolean(key))
         )
+      );
+      return chunkArray(idempotencyKeys, IDEMPOTENCY_KEY_LOOKUP_CHUNK_SIZE).map((chunk) => ({
+        taskIdentifier,
+        idempotencyKeys: chunk,
+      }));
+    });
+
+    const cachedRuns = (
+      await pMap(
+        idempotencyKeyLookups,
+        async ({ taskIdentifier, idempotencyKeys }) => {
+          const rows = await this.runStore.findRunsByIdempotencyKeys(
+            { runtimeEnvironmentId: environment.id, taskIdentifier, idempotencyKeys },
+            this._prisma
+          );
+          return rows.map((row) => ({ ...row, taskIdentifier }));
+        },
+        { concurrency: IDEMPOTENCY_KEY_LOOKUP_CONCURRENCY }
       )
-    ).then((results) => results.flat());
+    ).flat();
 
     // Build the run IDs in order: reuse an unexpired cached id, else mint a new id (and record any
     // expired cached id so its idempotency key can be cleared below).
@@ -426,7 +440,9 @@ export class BatchTriggerV3Service extends BaseService {
 
     const runs = await Promise.all(
       body.items.map(async (item) => {
-        const cachedRun = cachedRuns.find((r) => r.idempotencyKey === item.options?.idempotencyKey);
+        const cachedRun = cachedRuns.find(
+          (r) => r.taskIdentifier === item.task && r.idempotencyKey === item.options?.idempotencyKey
+        );
 
         if (cachedRun) {
           if (cachedRun.idempotencyKeyExpiresAt && cachedRun.idempotencyKeyExpiresAt < new Date()) {

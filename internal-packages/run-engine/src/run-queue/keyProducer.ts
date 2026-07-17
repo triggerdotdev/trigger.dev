@@ -352,7 +352,7 @@ export class RunQueueFullKeyProducer implements RunQueueKeyProducer {
       projectId: parts[3],
       envId: parts[5],
       queue: parts[7],
-      concurrencyKey: parts.at(9),
+      concurrencyKey: parts[9],
     };
   }
 
