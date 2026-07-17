@@ -7,7 +7,7 @@ import type {
   AnyOnInitHookFunction,
   AnyOnStartHookFunction,
   AnyOnSuccessHookFunction,
-  BuildRuntime,
+  ConfigRuntime,
   RetryOptions,
 } from "./index.js";
 import type { LogLevel } from "./logger/taskLogger.js";
@@ -44,7 +44,7 @@ export type TriggerConfig = {
   /**
    * @default "node"
    */
-  runtime?: BuildRuntime;
+  runtime?: ConfigRuntime;
 
   /**
    * Specify the project ref for your trigger.dev tasks. This is the project ref that you get when you create a new project in the trigger.dev dashboard.

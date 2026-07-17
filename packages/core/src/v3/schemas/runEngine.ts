@@ -272,6 +272,8 @@ export const DequeuedMessage = z.object({
     id: z.string(),
     friendlyId: z.string(),
     version: z.string(),
+    // Canonical runtime identifier (e.g. "node", "node-22", "node-24", "bun")
+    runtime: z.string().optional(),
   }),
   deployment: z.object({
     id: z.string().optional(),

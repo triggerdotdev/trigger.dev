@@ -72,6 +72,7 @@ export interface RunOpsCapableClient {
   // Standalone entity keyed by (environmentId, name); present on both schemas.
   waitpointTag: RunOpsDelegate<"upsert" | "findMany">;
   $queryRaw: PrismaClient["$queryRaw"];
+  $queryRawUnsafe: PrismaClient["$queryRawUnsafe"];
   $executeRaw: PrismaClient["$executeRaw"];
 }
 
@@ -1691,11 +1692,16 @@ export class PostgresRunStore implements RunStore {
       return [];
     }
     const prisma = (client ?? this.readOnlyPrisma) as RunOpsCapableClient;
-    const branches = args.idempotencyKeys.map(
-      (key) =>
-        Prisma.sql`SELECT "friendlyId", "idempotencyKey", "idempotencyKeyExpiresAt" FROM "TaskRun" WHERE "runtimeEnvironmentId" = ${args.runtimeEnvironmentId} AND "taskIdentifier" = ${args.taskIdentifier} AND "idempotencyKey" = ${key}`
+    const params: string[] = [];
+    const branches = args.idempotencyKeys.map((key) => {
+      const base = params.length;
+      params.push(args.runtimeEnvironmentId, args.taskIdentifier, key);
+      return `SELECT "friendlyId", "idempotencyKey", "idempotencyKeyExpiresAt" FROM "TaskRun" WHERE "runtimeEnvironmentId" = $${base + 1} AND "taskIdentifier" = $${base + 2} AND "idempotencyKey" = $${base + 3}`;
+    });
+    return prisma.$queryRawUnsafe<IdempotencyKeyRunMatch[]>(
+      branches.join(" UNION ALL "),
+      ...params
     );
-    return prisma.$queryRaw<IdempotencyKeyRunMatch[]>(Prisma.join(branches, " UNION ALL "));
   }
 
   // --- run-ops persistence ---
@@ -2110,7 +2116,7 @@ export class PostgresRunStore implements RunStore {
         WHERE id = ANY(${waitpointIds}::text[])
         AND status = 'PENDING'
       `;
-      return Number(pendingCheck.at(0)?.pending_count ?? 0);
+      return Number(pendingCheck[0]?.pending_count ?? 0);
     }
 
     const pendingCheck = await prisma.$queryRaw<{ pending_count: bigint }[]>`
@@ -2119,7 +2125,7 @@ export class PostgresRunStore implements RunStore {
       WHERE id IN (${Prisma.join(waitpointIds)})
       AND status = 'PENDING'
     `;
-    return Number(pendingCheck.at(0)?.pending_count ?? 0);
+    return Number(pendingCheck[0]?.pending_count ?? 0);
   }
 
   async createWaitpoint<T extends Prisma.WaitpointCreateArgs>(

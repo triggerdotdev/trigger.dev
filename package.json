@@ -58,7 +58,7 @@
     "@manypkg/cli": "^0.19.2",
     "@playwright/test": "^1.36.2",
     "@trigger.dev/database": "workspace:*",
-    "@types/node": "22.20.0",
+    "@types/node": "24.13.3",
     "@vitest/coverage-v8": "4.1.7",
     "autoprefixer": "^10.4.12",
     "knip": "6.25.0",
@@ -94,7 +94,7 @@
     },
     "overrides": {
       "typescript": "5.5.4",
-      "@types/node": "22.20.0",
+      "@types/node": "24.13.3",
       "react@^18": "18.3.1",
       "react-dom@^18": "18.3.1",
       "ai@^6": "6.0.116",
