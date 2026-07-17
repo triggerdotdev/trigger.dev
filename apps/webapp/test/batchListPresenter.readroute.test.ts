@@ -561,17 +561,13 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
         { id: "batch_ov_e", both: false, s: 5 },
       ];
       for (const r of rows) {
-        await createBatch(prisma14, ctx, {
-          id: r.id,
-          friendlyId: `fr_${r.id}`,
-          createdAt: at(r.s),
-        });
+        // A dup is a row COPY: identical (createdAt, id) on both DBs. Compute createdAt ONCE so both
+        // copies match exactly (two at(r.s) calls would drift by ms and the older copy would re-surface
+        // on the next page under the createdAt keyset).
+        const createdAt = at(r.s);
+        await createBatch(prisma14, ctx, { id: r.id, friendlyId: `fr_${r.id}`, createdAt });
         if (r.both) {
-          await createBatch(prisma17, ctx, {
-            id: r.id,
-            friendlyId: `fr_${r.id}`,
-            createdAt: at(r.s),
-          });
+          await createBatch(prisma17, ctx, { id: r.id, friendlyId: `fr_${r.id}`, createdAt });
         }
       }
 
