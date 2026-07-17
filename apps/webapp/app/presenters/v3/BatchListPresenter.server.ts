@@ -57,8 +57,12 @@ function decodeBatchCursor(cursor: string | undefined): BatchCursor | undefined 
   if (sep === -1) return undefined;
   const ms = Number(cursor.slice(0, sep));
   const id = cursor.slice(sep + 1);
-  if (!Number.isFinite(ms) || id.length === 0) return undefined;
-  return { createdAt: new Date(ms), id };
+  // Number.isFinite accepts e.g. 1e20, but new Date(1e20) is Invalid Date — reject it so a malformed
+  // URL cursor self-heals to page 1 instead of reaching Prisma with an invalid date.
+  const createdAt = new Date(ms);
+  if (!Number.isFinite(ms) || Number.isNaN(createdAt.getTime()) || id.length === 0)
+    return undefined;
+  return { createdAt, id };
 }
 
 export class BatchListPresenter extends BasePresenter {
