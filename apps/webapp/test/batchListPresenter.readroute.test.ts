@@ -309,9 +309,9 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
     }
   );
 
-  // Split scan merge serves new + legacy in one keyset-ordered page.
+  // Split scan merge serves new + legacy in one createdAt-ordered page; legacy is always read.
   heteroPostgresTest(
-    "split scan merges new (PG17) + legacy (PG14) rows under the keyset order; legacy read only when new does not fill the page",
+    "split scan merges new (PG17) + legacy (PG14) rows under the createdAt keyset order; legacy always read",
     async ({ prisma14, prisma17 }) => {
       const ctx14 = await seedParents(prisma14, "merge");
       await mirrorEnvParents(prisma17, ctx14, "merge");
@@ -323,7 +323,8 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
       await createBatch(prisma14, ctx14, { id: "batch_d", friendlyId: "fr_d", runCount: 4 });
       await createBatch(prisma17, ctx14, { id: "batch_e", friendlyId: "fr_e", runCount: 5 });
 
-      // Case A: small page fully served by new alone => legacy NOT read.
+      // Case A: always-merge — legacy is read even when new could fill the page (the old skip was
+      // unsound across the residency split). Page is the createdAt-ordered union of both DBs.
       const legacySpyA = spyClient(prisma14);
       const presenterA = new BatchListPresenter(prisma17, prisma17, {
         runOpsNew: prisma17,
@@ -332,9 +333,9 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
         splitEnabled: true,
       });
       const pageA = await presenterA.call(baseCall(ctx14, { pageSize: 2 }));
-      // new ids are e, c, a -> DESC: e, c (pageSize 2). pageSize+1 = 3 rows from new fills the page.
-      expect(pageA.batches.map((b) => b.id)).toEqual(["batch_e", "batch_c"]);
-      expect(legacySpyA.counts.findMany).toBe(0);
+      // union newest-first (createdAt, insertion order a<b<c<d<e): e, d, c, b, a -> page of 2 = e, d.
+      expect(pageA.batches.map((b) => b.id)).toEqual(["batch_e", "batch_d"]);
+      expect(legacySpyA.counts.findMany).toBeGreaterThan(0);
 
       // Case B: page needs legacy rows => legacy IS read and the merge is keyset-ordered union.
       const legacySpyB = spyClient(prisma14);
@@ -348,8 +349,8 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
       // union DESC of all 5: e, d, c, b, a -> first 4.
       expect(pageB.batches.map((b) => b.id)).toEqual(["batch_e", "batch_d", "batch_c", "batch_b"]);
       expect(legacySpyB.counts.findMany).toBeGreaterThan(0);
-      // cursor parity: next is the 4th id (pageSize-th), previous undefined (no input cursor).
-      expect(pageB.pagination.next).toBe("batch_b");
+      // cursor parity: next is the composite (createdAt, id) cursor of the 4th row, previous undefined.
+      expect(pageB.pagination.next?.endsWith("_batch_b")).toBe(true);
       expect(pageB.pagination.previous).toBeUndefined();
       expect(pageB.hasAnyBatches).toBe(true);
     }
@@ -436,7 +437,9 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
       const hasMore = direct.length > 2;
       const expectedPage = direct.slice(0, 2);
       expect(page.batches.map((b) => b.id)).toEqual(expectedPage.map((r) => r.id));
-      expect(page.pagination.next).toBe(hasMore ? expectedPage[1].id : undefined);
+      expect(
+        hasMore ? page.pagination.next?.endsWith(`_${expectedPage[1].id}`) : !page.pagination.next
+      ).toBe(true);
       expect(page.pagination.previous).toBeUndefined();
       expect(page.hasAnyBatches).toBe(true);
 
@@ -450,6 +453,87 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
       expect(page2.batches.map((b) => b.id)).toEqual(expectedPage.map((r) => r.id));
       expect(throwingLegacy.counts.findMany).toBe(0);
       expect(throwingLegacy.counts.findFirst).toBe(0);
+    }
+  );
+
+  // REGRESSION: a flipped org's real id mix. A cuid ("c"=0x63) sorts ABOVE a run-ops id ("0"=0x30)
+  // under `id DESC`, so pre-flip legacy batches belong at the top — but #scanBatchTaskRun reads new
+  // first, skips legacy once the page is full, and `id < cursor` can never reach a "c…" from a "0…"
+  // cursor. Net: pre-flip legacy batches become unreachable.
+  heteroPostgresTest(
+    "flipped org: pre-flip legacy (cuid) batches remain reachable alongside post-flip run-ops batches",
+    async ({ prisma14, prisma17 }) => {
+      const ctx = await seedParents(prisma14, "flip");
+      await mirrorEnvParents(prisma17, ctx, "flip");
+
+      // Pre-flip cuid batch on legacy (sorts highest); post-flip run-ops batches on new (sort below).
+      const LEGACY_CUID = "cm0preflipbatch0000000001";
+      await createBatch(prisma14, ctx, { id: LEGACY_CUID, friendlyId: "fr_preflip", runCount: 9 });
+
+      const NEW_RUNOPS = [
+        "06fnewbatch00000000000000a",
+        "06fnewbatch00000000000000b",
+        "06fnewbatch00000000000000c",
+      ];
+      for (const id of NEW_RUNOPS) {
+        await createBatch(prisma17, ctx, { id, friendlyId: `fr_${id.slice(-1)}`, runCount: 1 });
+      }
+
+      const presenter = new BatchListPresenter(prisma17, prisma17, {
+        runOpsNew: prisma17,
+        runOpsLegacyReplica: prisma14,
+        controlPlaneReplica: prisma14,
+        splitEnabled: true,
+      });
+
+      // The pre-flip cuid batch is the oldest, so under newest-first it lands on a later page — but it
+      // must be REACHABLE by paging forward, not stranded behind the run-ops ids (the skip + id-order
+      // bug dropped it entirely: `id < <run-ops cursor>` never matches a "c…" id).
+      const seen = new Set<string>();
+      let cursor: string | undefined = undefined;
+      for (let i = 0; i < 10; i++) {
+        const page = await presenter.call(
+          baseCall(ctx, { pageSize: 2, cursor, direction: "forward" })
+        );
+        page.batches.forEach((b) => seen.add(b.id));
+        if (!page.pagination.next) break;
+        cursor = page.pagination.next;
+      }
+      expect([...seen]).toContain(LEGACY_CUID);
+    }
+  );
+
+  // REGRESSION (ordering): even with an always-merge fix, keyset-by-id is chronologically wrong across
+  // the flip — a cuid ("c") sorts above a run-ops id ("0"), so an OLDER pre-flip batch outranks a NEWER
+  // post-flip batch. The list is "newest first", so the later-created run-ops batch must come first.
+  heteroPostgresTest(
+    "flipped org: batches list is newest-first across the flip boundary (by createdAt, not id)",
+    async ({ prisma14, prisma17 }) => {
+      const ctx = await seedParents(prisma14, "order");
+      await mirrorEnvParents(prisma17, ctx, "order");
+
+      const OLD_LEGACY = "cm0oldbatch00000000000001"; // cuid, created EARLIER
+      const NEW_RUNOPS = "06fnewbatch000000000000001"; // run-ops, created LATER
+      await createBatch(prisma14, ctx, {
+        id: OLD_LEGACY,
+        friendlyId: "fr_old",
+        createdAt: new Date(Date.now() - 3_600_000),
+      });
+      await createBatch(prisma17, ctx, {
+        id: NEW_RUNOPS,
+        friendlyId: "fr_new",
+        createdAt: new Date(),
+      });
+
+      const presenter = new BatchListPresenter(prisma17, prisma17, {
+        runOpsNew: prisma17,
+        runOpsLegacyReplica: prisma14,
+        controlPlaneReplica: prisma14,
+        splitEnabled: true,
+      });
+      const page = await presenter.call(baseCall(ctx, { pageSize: 10 }));
+      // Newest-first: the later-created run-ops batch outranks the older legacy one.
+      expect(page.batches.map((b) => b.id)).toEqual([NEW_RUNOPS, OLD_LEGACY]);
     }
   );
 
