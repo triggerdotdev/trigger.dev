@@ -1888,7 +1888,7 @@ export class RoutingRunStore implements RunStore {
     tx?: PrismaClientOrTransaction,
     residency?: Residency
   ): Promise<WaitpointTag> {
-    // No owning run; route by a minted id-shape when present, else the env's residency hint, else
+    // No owning run; route by the env's residency hint when present, else a minted id-shape, else
     // fall back to LEGACY (same precedence as a standalone waitpoint). Caller tx is never forwarded.
     const store = this.#waitpointWriteStore(undefined, residency, data.id);
     return store.upsertWaitpointTag(data, undefined);

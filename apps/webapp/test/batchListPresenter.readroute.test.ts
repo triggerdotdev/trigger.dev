@@ -349,8 +349,10 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
       // union DESC of all 5: e, d, c, b, a -> first 4.
       expect(pageB.batches.map((b) => b.id)).toEqual(["batch_e", "batch_d", "batch_c", "batch_b"]);
       expect(legacySpyB.counts.findMany).toBeGreaterThan(0);
-      // cursor parity: next is the composite (createdAt, id) cursor of the 4th row, previous undefined.
-      expect(pageB.pagination.next?.endsWith("_batch_b")).toBe(true);
+      // cursor parity: next is the FULL composite (createdAt, id) cursor of the 4th row (batch_b),
+      // previous undefined. Assert the complete value so a bad timestamp prefix can't pass.
+      const bRow = pageB.batches.find((b) => b.id === "batch_b")!;
+      expect(pageB.pagination.next).toBe(`${new Date(bRow.createdAt).getTime()}_batch_b`);
       expect(pageB.pagination.previous).toBeUndefined();
       expect(pageB.hasAnyBatches).toBe(true);
     }
@@ -438,7 +440,9 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
       const expectedPage = direct.slice(0, 2);
       expect(page.batches.map((b) => b.id)).toEqual(expectedPage.map((r) => r.id));
       expect(
-        hasMore ? page.pagination.next?.endsWith(`_${expectedPage[1].id}`) : !page.pagination.next
+        hasMore
+          ? page.pagination.next === `${expectedPage[1].createdAt.getTime()}_${expectedPage[1].id}`
+          : !page.pagination.next
       ).toBe(true);
       expect(page.pagination.previous).toBeUndefined();
       expect(page.hasAnyBatches).toBe(true);
@@ -534,6 +538,61 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
       const page = await presenter.call(baseCall(ctx, { pageSize: 10 }));
       // Newest-first: the later-created run-ops batch outranks the older legacy one.
       expect(page.batches.map((b) => b.id)).toEqual([NEW_RUNOPS, OLD_LEGACY]);
+    }
+  );
+
+  // Overlap regression: batches duplicated on BOTH stores (mid-migration copies) must de-dupe to one
+  // each without dropping rows or underfilling pages. Proves the merge needs no post-dedup refill:
+  // the union of each store's top-(pageSize+1) always contains the global top, and the next page
+  // re-queries both stores from the cursor.
+  heteroPostgresTest(
+    "flipped org: batches duplicated across both stores de-dupe without dropping rows across pagination",
+    async ({ prisma14, prisma17 }) => {
+      const ctx = await seedParents(prisma14, "ovl");
+      await mirrorEnvParents(prisma17, ctx, "ovl");
+
+      const at = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000);
+      // a..e newest->oldest. a,b,c live on BOTH DBs (dup); d,e only on legacy.
+      const rows = [
+        { id: "batch_ov_a", both: true, s: 1 },
+        { id: "batch_ov_b", both: true, s: 2 },
+        { id: "batch_ov_c", both: true, s: 3 },
+        { id: "batch_ov_d", both: false, s: 4 },
+        { id: "batch_ov_e", both: false, s: 5 },
+      ];
+      for (const r of rows) {
+        await createBatch(prisma14, ctx, {
+          id: r.id,
+          friendlyId: `fr_${r.id}`,
+          createdAt: at(r.s),
+        });
+        if (r.both) {
+          await createBatch(prisma17, ctx, {
+            id: r.id,
+            friendlyId: `fr_${r.id}`,
+            createdAt: at(r.s),
+          });
+        }
+      }
+
+      const seen: string[] = [];
+      let cursor: string | undefined = undefined;
+      for (let i = 0; i < 10; i++) {
+        const presenter = new BatchListPresenter(prisma17, prisma17, {
+          runOpsNew: prisma17,
+          runOpsLegacyReplica: prisma14,
+          controlPlaneReplica: prisma14,
+          splitEnabled: true,
+        });
+        const page = await presenter.call(
+          baseCall(ctx, { pageSize: 2, cursor, direction: "forward" })
+        );
+        seen.push(...page.batches.map((b) => b.id));
+        if (!page.pagination.next) break;
+        cursor = page.pagination.next;
+      }
+      // Every batch exactly once, newest-first; the three dups collapsed to one each.
+      expect(seen).toEqual(["batch_ov_a", "batch_ov_b", "batch_ov_c", "batch_ov_d", "batch_ov_e"]);
     }
   );
 
