@@ -12,20 +12,19 @@ export const action: ActionFunction = async ({ request, params }) => {
   const { projectParam, organizationSlug, envParam, runParam } = v3RunParamsSchema.parse(params);
 
   try {
-    const taskRun = await runStore.findRun(
-      {
-        friendlyId: runParam,
-      },
-      {
-        select: {
-          id: true,
-          idempotencyKey: true,
-          taskIdentifier: true,
-          projectId: true,
-          runtimeEnvironmentId: true,
-        },
-      }
-    );
+    const resetSelect = {
+      id: true,
+      idempotencyKey: true,
+      taskIdentifier: true,
+      projectId: true,
+      runtimeEnvironmentId: true,
+    };
+    let taskRun = await runStore.findRun({ friendlyId: runParam }, { select: resetSelect });
+    if (!taskRun) {
+      // Read-your-writes: a just-created run may not have replicated. Re-read the owning primary
+      // before 404ing — this null gates the reset mutation below (mirrors cancel/replay).
+      taskRun = await runStore.findRunOnPrimary({ friendlyId: runParam }, { select: resetSelect });
+    }
 
     if (!taskRun) {
       return jsonWithErrorMessage({}, request, "Run not found");

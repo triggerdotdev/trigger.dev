@@ -75,7 +75,7 @@ const { action, loader } = createActionApiRoute(
     // SDK exposes via `ctx.run.id`). Internally `Session.currentRunId`
     // stores the TaskRun.id cuid, so resolve before handing to the
     // optimistic-claim service.
-    const callingRun = await runStore.findRun(
+    let callingRun = await runStore.findRun(
       {
         friendlyId: body.callingRunId,
         runtimeEnvironmentId: authentication.environment.id,
@@ -83,6 +83,19 @@ const { action, loader } = createActionApiRoute(
       { select: { id: true } },
       $replica
     );
+    if (!callingRun) {
+      // Replica lag: `callingRunId` is the agent's own live run (it is executing this request), so it
+      // exists on the owning primary even when the read replica has not caught up. Re-read the primary
+      // before 404ing — otherwise a lagging replica turns a legitimate handoff into a spurious
+      // "callingRunId not found in this environment".
+      callingRun = await runStore.findRunOnPrimary(
+        {
+          friendlyId: body.callingRunId,
+          runtimeEnvironmentId: authentication.environment.id,
+        },
+        { select: { id: true } }
+      );
+    }
     if (!callingRun) {
       return json({ error: "callingRunId not found in this environment" }, { status: 404 });
     }

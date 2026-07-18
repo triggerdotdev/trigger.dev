@@ -195,18 +195,23 @@ export class BatchTriggerV3Service extends BaseService {
           span.setAttribute("batchId", batchId);
 
           const dependentAttempt = body?.dependentAttempt
-            ? await this.runStore.findTaskRunAttempt({
-                // Scope to the caller's environment (see dependentAttemptWhere).
-                where: dependentAttemptWhere(body.dependentAttempt, environment.id),
-                include: {
-                  taskRun: {
-                    select: {
-                      id: true,
-                      status: true,
+            ? await this.runStore.findTaskRunAttempt(
+                {
+                  // Scope to the caller's environment (see dependentAttemptWhere).
+                  where: dependentAttemptWhere(body.dependentAttempt, environment.id),
+                  include: {
+                    taskRun: {
+                      select: {
+                        id: true,
+                        status: true,
+                      },
                     },
                   },
                 },
-              })
+                // Read-your-writes: the dependent parent attempt's terminal state must be seen even
+                // when the read replica lags, so route this read to the owning primary.
+                this._prisma
+              )
             : undefined;
 
           if (

@@ -47,12 +47,24 @@ export class BatchPresenter extends BasePresenter {
     // The BatchTaskRun (run-ops) is read through the run store, which routes by residency. The
     // runtimeEnvironment (control-plane) is resolved separately because the cross-seam FK is
     // dropped, so the batch row cannot single-SQL join to control-plane RuntimeEnvironment.
-    const batch = await this.runStore.findBatchTaskRunByFriendlyId(
+    let batch = await this.runStore.findBatchTaskRunByFriendlyId(
       batchId,
       environmentId,
       { include: BATCH_INCLUDE },
       this._replica
     );
+
+    // Read-your-writes: findBatchTaskRunByFriendlyId defaults to (and here reads) the replica, so a
+    // batch created within the replica's apply window returns null under lag. Re-read from the owning
+    // primary on a miss so a live batch's detail page never spuriously 404s ("Batch not found").
+    if (!batch) {
+      batch = await this.runStore.findBatchTaskRunByFriendlyId(
+        batchId,
+        environmentId,
+        { include: BATCH_INCLUDE },
+        this._prisma
+      );
+    }
 
     if (!batch) {
       throw new Error("Batch not found");

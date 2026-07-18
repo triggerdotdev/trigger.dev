@@ -15,22 +15,24 @@ export const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, authentication) => {
-      return runStore.findRun(
-        {
-          friendlyId: params.runId,
-          runtimeEnvironmentId: authentication.environment.id,
-        },
-        {
-          include: {
-            batch: {
-              select: {
-                friendlyId: true,
-              },
+      const where = {
+        friendlyId: params.runId,
+        runtimeEnvironmentId: authentication.environment.id,
+      };
+      const args = {
+        include: {
+          batch: {
+            select: {
+              friendlyId: true,
             },
           },
         },
-        $replica
-      );
+      };
+      // Replica lag can null out a run that already exists on the owning primary. A spurious 404
+      // here permanently fails the client's realtime subscription (the SSE client treats 404 as
+      // "stream gone" — nonRetryableStatuses). Re-read the primary on a replica miss.
+      const run = await runStore.findRun(where, args, $replica);
+      return run ?? runStore.findRunOnPrimary(where, args);
     },
     authorization: {
       action: "read",

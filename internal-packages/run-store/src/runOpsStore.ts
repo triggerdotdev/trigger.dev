@@ -1244,6 +1244,11 @@ export class RoutingRunStore implements RunStore {
       args as Record<string, unknown>
     );
     const id = RoutingRunStore.#waitpointId((args as { where?: unknown }).where);
+    // A colocated lookup (no id, resolved via `coLocateWithRunId`) is the (env,idempotencyKey) dedup
+    // probe of createDateTimeWaitpoint/createManualWaitpoint: read-your-writes within the owning
+    // run/tree. On a retry it must observe attempt 1's just-written waitpoint to short-circuit, so it
+    // reads the owning store's PRIMARY — the replica can lag and miss it, re-arming/re-blocking the run.
+    const coLocatedDedup = id === undefined && opts?.coLocateWithRunId !== undefined;
     const store =
       id !== undefined
         ? await this.#resolveWaitpointStore(id, client !== undefined)
@@ -1254,7 +1259,7 @@ export class RoutingRunStore implements RunStore {
       store !== undefined
         ? ((await store.findWaitpoint(
             scalarArgs as typeof args,
-            RoutingRunStore.#ownPrimary(store, client)
+            coLocatedDedup ? store.primaryReadClient : RoutingRunStore.#ownPrimary(store, client)
           )) as Record<string, unknown> | null)
         : (((await this.#new.findWaitpoint(
             scalarArgs as typeof args,

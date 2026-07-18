@@ -81,7 +81,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     const waitpointId = WaitpointId.toId(waitpointFriendlyId);
 
-    const waitpoint = await runStore.findWaitpoint({
+    let waitpoint = await runStore.findWaitpoint({
       select: {
         projectId: true,
         environmentId: true,
@@ -90,6 +90,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         id: waitpointId,
       },
     });
+    if (!waitpoint) {
+      // Read-your-writes: a just-minted token may not have replicated. Re-read the owning primary
+      // before the auth guard / "No waitpoint found" (mirrors the token complete/callback routes).
+      waitpoint = await runStore.findWaitpointOnPrimary({
+        select: { projectId: true, environmentId: true },
+        where: { id: waitpointId },
+      });
+    }
 
     if (waitpoint?.projectId !== project.id) {
       return redirectWithErrorMessage(

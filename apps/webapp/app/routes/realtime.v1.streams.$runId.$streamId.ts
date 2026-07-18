@@ -16,29 +16,29 @@ export const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      const run = await runStore.findRun(
-        {
-          friendlyId: params.runId,
-          runtimeEnvironmentId: auth.environment.id,
-        },
-        {
-          select: {
-            id: true,
-            friendlyId: true,
-            taskIdentifier: true,
-            runTags: true,
-            realtimeStreamsVersion: true,
-            streamBasinName: true,
-            batch: {
-              select: {
-                friendlyId: true,
-              },
+      const where = {
+        friendlyId: params.runId,
+        runtimeEnvironmentId: auth.environment.id,
+      };
+      const args = {
+        select: {
+          id: true,
+          friendlyId: true,
+          taskIdentifier: true,
+          runTags: true,
+          realtimeStreamsVersion: true,
+          streamBasinName: true,
+          batch: {
+            select: {
+              friendlyId: true,
             },
           },
         },
-        $replica
-      );
-      return run;
+      };
+      // Replica lag can null out a live run; a spurious 404 permanently fails the SSE subscription
+      // (the client treats 404 as "stream gone"). Re-read the owning primary on a replica miss.
+      const run = await runStore.findRun(where, args, $replica);
+      return run ?? runStore.findRunOnPrimary(where, args);
     },
     authorization: {
       action: "read",

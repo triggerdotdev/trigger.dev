@@ -27,29 +27,31 @@ const { action } = createActionApiRoute(
     maxContentLength: MAX_APPEND_BODY_BYTES,
   },
   async ({ request, params, authentication }) => {
-    const run = await runStore.findRun(
-      {
-        friendlyId: params.runId,
-        runtimeEnvironmentId: authentication.environment.id,
-      },
-      {
-        select: {
-          id: true,
-          friendlyId: true,
-          parentTaskRun: {
-            select: {
-              friendlyId: true,
-            },
+    const where = {
+      friendlyId: params.runId,
+      runtimeEnvironmentId: authentication.environment.id,
+    };
+    const args = {
+      select: {
+        id: true,
+        friendlyId: true,
+        parentTaskRun: {
+          select: {
+            friendlyId: true,
           },
-          rootTaskRun: {
-            select: {
-              friendlyId: true,
-            },
+        },
+        rootTaskRun: {
+          select: {
+            friendlyId: true,
           },
         },
       },
-      $replica
-    );
+    };
+    // Replica lag can null out a live run; a spurious 404 permanently fails the append. Re-read the
+    // owning primary on a replica miss.
+    const run =
+      (await runStore.findRun(where, args, $replica)) ??
+      (await runStore.findRunOnPrimary(where, args));
 
     if (!run) {
       return new Response("Run not found", { status: 404 });
