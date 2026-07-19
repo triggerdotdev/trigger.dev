@@ -72,6 +72,10 @@ const stories: Story[] = [
     slug: "inline-code",
   },
   {
+    name: "Layout",
+    slug: "layout",
+  },
+  {
     name: "Loading bar divider",
     slug: "loading-bar-divider",
   },
