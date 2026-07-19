@@ -192,7 +192,9 @@ describe("run-ops split — cancel-route run lookup vs. a lagging replica (read-
 
       const seed = await seedEnvironment(prisma17, "dedicated", "cancel_new");
       const runId = NEW_RUN_ID; // v1 body → NEW
-      const friendlyId = "run_cancel_new";
+      // friendlyId classifies identically to the id, so a NEW run's friendlyId must be run-ops-shaped
+      // for the by-friendlyId read to route to NEW (single-store; no cross-store fan-out).
+      const friendlyId = `run_${generateRunOpsId()}`;
       await newStore.createRun(
         buildCreateRunInput({
           runId,

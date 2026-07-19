@@ -274,9 +274,11 @@ describe("routes-batch-get callers under a lagging replica", () => {
     }
   );
 
-  // ── realtime.v1.batches loader — findBatchTaskRunByFriendlyId (REPLICA) ─────────────
+  // ── realtime.v1.batches loader — replica miss recovered by the owning-primary re-read ─────────────
+  // The realtime loader re-reads the owning primary on a replica miss (the ShapeStream consumer ignores
+  // x-should-retry, so a 404 here would strand), so a stale-on-replica batch reaches streamBatch.
   heteroRunOpsPostgresTest(
-    "realtime.v1.batches loader: stale-null returns a retryable 404 at the resource gate before streamBatch",
+    "realtime.v1.batches loader: a batch stale on the replica is recovered via the owning-primary re-read (reaches streamBatch, no 404)",
     async ({ prisma14, prisma17 }) => {
       const { router, legacyStore, legacyReplica } = buildLaggingRouter(prisma14, prisma17);
       const suffix = `bget_rt_${seq++}`;
@@ -299,10 +301,11 @@ describe("routes-batch-get callers under a lagging replica", () => {
         context: {} as never,
       })) as Response;
 
+      // Replica was consulted first (the miss)…
       expect(legacyReplica.wasHit("batchTaskRun")).toBe(true);
-      // 404 at the resource gate — the subscription never starts (streamBatch would return a 200 body).
-      expect(res.status).toBe(404);
-      expect(res.headers.get("x-should-retry")).toBe("true");
+      // …then the owning-primary re-read found the live batch, so the subscription starts (streamBatch
+      // returns 200) instead of a resource-gate 404.
+      expect(res.status).toBe(200);
     }
   );
 

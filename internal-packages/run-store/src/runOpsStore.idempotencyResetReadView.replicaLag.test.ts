@@ -194,7 +194,9 @@ describe("run-ops split — idempotency-key reset source-run lookup vs. a laggin
 
       const seed = await seedEnvironment(prisma17, "dedicated", "idem_reset_new");
       const runId = NEW_RUN_ID; // v1 body → NEW
-      const friendlyId = "run_idem_reset_new";
+      // A NEW run's friendlyId must be run-ops-shaped so the by-friendlyId read routes to NEW
+      // (single-store; friendlyId classifies identically to the id).
+      const friendlyId = `run_${generateRunOpsId()}`;
       const idempotencyKey = "user-supplied-key-new";
       await newStore.createRun(
         buildCreateRunInput({
