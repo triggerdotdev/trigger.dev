@@ -768,7 +768,16 @@ async function ensureTaskQueues(
         projectId,
         type: "NAMED",
       },
-      update: { concurrencyLimit },
+      // Reset any dashboard override left from manual testing: re-seeding overwrites the
+      // materialized concurrencyLimit, so a surviving override percent/base would contradict it
+      // (e.g. "10 (77%)" with an env limit of 25).
+      update: {
+        concurrencyLimit,
+        concurrencyLimitBase: null,
+        concurrencyLimitOverridePercent: null,
+        concurrencyLimitOverriddenAt: null,
+        concurrencyLimitOverriddenBy: null,
+      },
     });
   }
 
