@@ -1,5 +1,12 @@
 # internal-platform
 
+## 4.5.5
+
+### Patch Changes
+
+- Add experimental Node.js 24 and 26 task runtimes. Set `runtime` to `experimental-node-24` or `experimental-node-26` in `trigger.config.ts`. ([#4085](https://github.com/triggerdotdev/trigger.dev/pull/4085))
+- Add `defaultRegion` to the project GET and list API responses; null when unset. ([#4146](https://github.com/triggerdotdev/trigger.dev/pull/4146))
+
 ## 4.5.4
 
 ### Patch Changes
