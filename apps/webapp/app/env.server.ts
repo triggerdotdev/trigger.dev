@@ -1311,6 +1311,9 @@ const EnvironmentSchema = z
     // claim TTL), how long a waiter blocks before timing out, and the
     // waiter poll interval.
     TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+    // Pipeline floor: the claim never shrinks below this even for a short customer key TTL, so it
+    // can't expire mid-pipeline and let a loser re-claim (cross-DB duplicate under the split).
+    TRIGGER_MOLLIFIER_CLAIM_MIN_TTL_SECONDS: z.coerce.number().int().positive().default(5),
     TRIGGER_MOLLIFIER_CLAIM_WAIT_MS: z.coerce.number().int().positive().default(5_000),
     TRIGGER_MOLLIFIER_CLAIM_POLL_MS: z.coerce.number().int().positive().default(25),
 

@@ -163,12 +163,14 @@ export async function publishClaim(input: {
   runId: string;
   ttlSeconds?: number;
   buffer?: MollifierBuffer | null;
-}): Promise<void> {
+}): Promise<boolean> {
   const buffer = input.buffer === undefined ? getMollifierBuffer() : input.buffer;
-  if (!buffer) return;
+  if (!buffer) return true;
   const ttlSeconds = input.ttlSeconds ?? DEFAULT_CLAIM_TTL_SECONDS;
   try {
-    await buffer.publishClaim({
+    // false = compare-and-set no-op: a stale claimant (our TTL expired) already moved in, so our
+    // publish did NOT set the winner. The caller decides how to converge.
+    return await buffer.publishClaim({
       envId: input.envId,
       taskIdentifier: input.taskIdentifier,
       idempotencyKey: input.idempotencyKey,
@@ -182,6 +184,8 @@ export async function publishClaim(input: {
       taskIdentifier: input.taskIdentifier,
       err: err instanceof Error ? err.message : String(err),
     });
+    // Unknown publish state (transient error) — the claim TTL is the safety net; don't signal a no-op.
+    return true;
   }
 }
 

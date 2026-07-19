@@ -181,13 +181,13 @@ describe("publishClaim", () => {
     expect(buffer.publishClaim).toHaveBeenCalledOnce();
   });
 
-  it("no-op when buffer is null", async () => {
+  it("no buffer → true (nothing to converge, not a no-op'd publish)", async () => {
     await expect(
       publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer: null })
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(true);
   });
 
-  it("swallows errors so trigger pipeline isn't broken by Redis hiccups", async () => {
+  it("swallows errors so trigger pipeline isn't broken by Redis hiccups (returns true, unknown state)", async () => {
     const buffer = {
       publishClaim: vi.fn(async () => {
         throw new Error("ECONNREFUSED");
@@ -195,7 +195,7 @@ describe("publishClaim", () => {
     } as unknown as MollifierBuffer;
     await expect(
       publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer })
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(true);
   });
 });
 

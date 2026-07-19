@@ -9,6 +9,7 @@ import { shouldIdempotencyKeyBeCleared } from "~/v3/taskStatus";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { claimOrAwait, resetResolvedClaim } from "~/v3/mollifier/idempotencyClaim.server";
+import { computeClaimTtlSeconds } from "~/v3/mollifier/claimTtl";
 import { makeResolveMollifierFlag } from "~/v3/mollifier/mollifierGate.server";
 import { runStore } from "~/v3/runStore.server";
 import { runOpsLegacyPrisma, runOpsNewPrisma } from "~/db.server";
@@ -180,6 +181,14 @@ export class IdempotencyKeyConcern {
       }
     );
 
+    // `global`-scope (or scope-absent) keys under the split have no per-run salt, so the Redis claim is
+    // their only cross-DB dedup mutex. Computed here (not just in the claim block below) because the
+    // expired/failed clear-and-recreate path must serialise through it too.
+    const idempotencyKeyScope = request.body.options?.idempotencyKeyOptions?.scope;
+    const globalUnderSplit =
+      (idempotencyKeyScope === "global" || idempotencyKeyScope === undefined) &&
+      (await isSplitEnabled());
+
     const existingRun = idempotencyKey
       ? await runStore.findRun(
           {
@@ -216,11 +225,37 @@ export class IdempotencyKeyConcern {
     }
 
     if (existingRun) {
-      return await this.handleExistingRun(request, parentStore, existingRun, {
+      const handled = await this.handleExistingRun(request, parentStore, existingRun, {
         idempotencyKey,
         idempotencyKeyExpiresAt,
         dedupClient,
       });
+      // A LIVE cached hit (or andWait waitpoint wiring) is terminal.
+      if (handled.isCached) {
+        return handled;
+      }
+      // isCached === false → the existing run was EXPIRED/FAILED, so handleExistingRun cleared its key
+      // and we must recreate. For a global-scope key under split that recreate has to be claim-
+      // serialised too — otherwise two concurrent cross-residency recreates each create a run the
+      // per-DB unique index can't dedup (the same hole reacquireClearedGlobalWinner closes on the
+      // claim-loser path). Non-split / non-global: the plain unserialised recreate is safe.
+      if (globalUnderSplit) {
+        return await this.reacquireClearedGlobalWinner(request, parentStore, {
+          idempotencyKey,
+          idempotencyKeyExpiresAt,
+          dedupClient,
+          ttlSeconds: computeClaimTtlSeconds({
+            keyExpiresAt: idempotencyKeyExpiresAt,
+            now: Date.now(),
+            minTtlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_MIN_TTL_SECONDS,
+            maxTtlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
+          }),
+          clearedRunId: existingRun.friendlyId,
+          safetyNetMs: env.TRIGGER_MOLLIFIER_CLAIM_WAIT_MS,
+          pollStepMs: env.TRIGGER_MOLLIFIER_CLAIM_POLL_MS,
+        });
+      }
+      return handled;
     }
 
     // Pre-gate claim — closes the PG+buffer race during gate transition.
@@ -247,11 +282,8 @@ export class IdempotencyKeyConcern {
     // older SDK) is treated conservatively as possibly-global — harmless for a
     // real run/attempt key, whose hash already embeds the parent id so two
     // parents mint DISTINCT keys that never share a claim slot.
-    const idempotencyKeyScope = request.body.options?.idempotencyKeyOptions?.scope;
-    const globalUnderSplit =
-      (idempotencyKeyScope === "global" || idempotencyKeyScope === undefined) &&
-      (await isSplitEnabled());
-
+    // (idempotencyKeyScope / globalUnderSplit are computed above — they also gate the expired/failed
+    // recreate serialisation.)
     const claimEligible =
       !request.body.options?.debounce &&
       !request.options?.oneTimeUseToken &&
@@ -268,13 +300,12 @@ export class IdempotencyKeyConcern {
                 | undefined) ?? null,
           }))));
     if (claimEligible) {
-      const ttlSeconds = Math.max(
-        1,
-        Math.min(
-          env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
-          Math.ceil((idempotencyKeyExpiresAt.getTime() - Date.now()) / 1000)
-        )
-      );
+      const ttlSeconds = computeClaimTtlSeconds({
+        keyExpiresAt: idempotencyKeyExpiresAt,
+        now: Date.now(),
+        minTtlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_MIN_TTL_SECONDS,
+        maxTtlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
+      });
       const outcome = await claimOrAwait({
         envId: request.environment.id,
         taskIdentifier: request.taskId,
@@ -519,8 +550,8 @@ export class IdempotencyKeyConcern {
   // (returning its claim to publish); the rest resolve to the fresh run. If a
   // re-claim resolves to ANOTHER cleared winner we advance and loop, bounded
   // by MAX_CLEARED_WINNER_REACQUIRES; on exhaustion (or an unfindable
-  // resolution) we fall open to the create, matching the initial claim's
-  // fail-open posture (PG unique index as backstop).
+  // resolution) we fail CLOSED with a retryable 503 so the SDK retry re-serialises,
+  // rather than fall open to an unserialised cross-DB create.
   private async reacquireClearedGlobalWinner(
     request: TriggerTaskRequest,
     parentStore: string | undefined,
@@ -584,7 +615,14 @@ export class IdempotencyKeyConcern {
       }
       staleRunId = outcome.runId;
     }
-    return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
+    // Exhausted the bounded reacquires (or the winner was unfindable). Rather than fall through to an
+    // UNSERIALISED create — which under global-scope-split can dual-create across DBs (the per-DB unique
+    // index can't dedup cross-residency) — fail closed with a retryable 503 so the SDK retry re-serialises
+    // through a fresh claim (mirrors the timed_out branch above).
+    throw new ServiceValidationError(
+      "Idempotency claim could not be re-serialised after repeated cleared winners",
+      503
+    );
   }
 
   // Resolve a claim winner (a run friendlyId) across both split DBs. Classify
