@@ -4,7 +4,8 @@ import { useMemo, type ReactNode } from "react";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { PageContainer } from "~/components/layout/AppLayout";
+import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
@@ -223,35 +224,36 @@ export default function Page() {
       <NavBar>
         <PageTitle title={queue.name} backButton={{ to: backPath, text: "Queues" }} />
       </NavBar>
-      <PageBody>
-        <div className="flex flex-col gap-4 p-3">
-          {/* Filters — search (concurrency keys) + time filter, above everything, like the
-              Queues list. The time filter scopes the tab charts; search filters the keys table. */}
-          <div className="flex items-center gap-2">
-            {showKeysTab ? (
-              <SearchInput placeholder="Search keys…" paramName="query" resetParams={["key"]} />
-            ) : null}
-            <TimeFilter
-              defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
-              labelName="Period"
-              hideLabel
-              maxPeriodDays={maxPeriodDays}
-              valueClassName="text-text-bright"
-              shortcut={{ key: "d" }}
-            />
-          </div>
-
-          {/* Live "right now" state of the whole queue — independent of the time filter above. */}
-          <QueueStats
-            queue={queue}
-            environmentConcurrencyLimit={environmentConcurrencyLimit}
-            queuedRunsPath={queuedRunsPath}
-            oldestWaitMs={wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt)}
-            ids={ids}
-            timeRange={timeRange}
-            queueName={fullName}
+      <MetricsLayout.Root className="flex flex-col gap-4 p-6">
+        {/* Filters — search (concurrency keys) + time filter, above everything, like the
+            Queues list. The time filter scopes the tab charts; search filters the keys table. */}
+        <MetricsLayout.Filters>
+          {showKeysTab ? (
+            <SearchInput placeholder="Search keys…" paramName="query" resetParams={["key"]} />
+          ) : null}
+          <TimeFilter
+            defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
+            labelName="Period"
+            hideLabel
+            maxPeriodDays={maxPeriodDays}
+            valueClassName="text-text-bright"
+            shortcut={{ key: "d" }}
           />
+        </MetricsLayout.Filters>
 
+        {/* Live "right now" state of the whole queue — independent of the time filter above.
+            QueueStats renders the stat-tile grid slot (see MetricsLayout.Grid inside it). */}
+        <QueueStats
+          queue={queue}
+          environmentConcurrencyLimit={environmentConcurrencyLimit}
+          queuedRunsPath={queuedRunsPath}
+          oldestWaitMs={wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt)}
+          ids={ids}
+          timeRange={timeRange}
+          queueName={fullName}
+        />
+
+        <MetricsLayout.Content className="flex flex-col gap-4">
           {showKeysTab ? (
             <TabContainer>
               <TabButton
@@ -282,8 +284,8 @@ export default function Page() {
           ) : (
             <OverviewCharts ids={ids} timeRange={timeRange} queueName={fullName} />
           )}
-        </div>
-      </PageBody>
+        </MetricsLayout.Content>
+      </MetricsLayout.Root>
     </PageContainer>
   );
 }
@@ -300,7 +302,7 @@ function OverviewCharts({
   const zoomToTimeFilter = useZoomToTimeFilter();
   return (
     <ChartSyncProvider onZoom={zoomToTimeFilter}>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <MetricsLayout.Grid columns={{ base: 1, sm: 2 }}>
         <QueueDetailChartCard
           title="Concurrency"
           info="Running (blue) against the queue's concurrency limit (grey). Yellow when at the limit."
@@ -371,7 +373,7 @@ function OverviewCharts({
           queueName={queueName}
           series={[{ key: "throttled", label: "Throttled", color: COLORS.throttled }]}
         />
-      </div>
+      </MetricsLayout.Grid>
     </ChartSyncProvider>
   );
 }
@@ -419,7 +421,7 @@ function ConcurrencyKeysView({
     <div className="flex flex-col gap-3">
       {/* Per-key breakdown: which keys hold the backlog / do the work. */}
       <ChartSyncProvider onZoom={zoomToTimeFilter}>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <MetricsLayout.Grid columns={{ base: 1, sm: 2 }}>
           <GroupedKeyChartCard
             title="Waiting runs by key"
             info="Runs waiting per key (top 8)."
@@ -476,7 +478,7 @@ function ConcurrencyKeysView({
             valueFormat={formatWaitMs}
             series={[{ key: "wait", label: "Max wait", color: COLORS.running }]}
           />
-        </div>
+        </MetricsLayout.Grid>
       </ChartSyncProvider>
       <KeyStatsTable
         breakdown={breakdown}
@@ -779,7 +781,7 @@ function KeyDrilldown({
   const zoomToTimeFilter = useZoomToTimeFilter();
   return (
     <ChartSyncProvider onZoom={zoomToTimeFilter}>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <MetricsLayout.Grid columns={{ base: 1, sm: 2 }}>
         <QueueDetailChartCard
           title={`Key ${keyName}: backlog and running`}
           info="This key: waiting (Queued, blue) vs running (grey)."
@@ -814,7 +816,7 @@ function KeyDrilldown({
           valueFormat={formatWaitMs}
           series={[{ key: "wait", label: "Mean delay", color: COLORS.running }]}
         />
-      </div>
+      </MetricsLayout.Grid>
     </ChartSyncProvider>
   );
 }
@@ -888,7 +890,7 @@ function QueueStats({
   const oldestWaitDisplayMs = ckWaitLive !== null && ckWaitLive > 0 ? ckWaitLive : oldestWaitMs;
 
   return (
-    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
+    <MetricsLayout.Grid className="w-full">
       <ConcurrencyBlock
         running={runningDisplay}
         limit={limitDisplay}
@@ -941,7 +943,7 @@ function QueueStats({
         suffix={worstWaitMs > 0 ? `worst ${formatWaitMs(worstWaitMs)}` : undefined}
         suffixClassName="text-text-dimmed"
       />
-    </div>
+    </MetricsLayout.Grid>
   );
 }
 
