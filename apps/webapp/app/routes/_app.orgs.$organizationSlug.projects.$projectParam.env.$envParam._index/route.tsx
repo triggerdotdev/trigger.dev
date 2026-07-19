@@ -6,7 +6,7 @@ import type { TaskRunStatus } from "@trigger.dev/database";
 import type { PanelHandle } from "@window-splitter/react";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClientOnly } from "remix-utils/client-only";
-import { Bar, BarChart, ReferenceLine, Tooltip, type TooltipProps, YAxis } from "recharts";
+import { Bar, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
@@ -51,6 +51,11 @@ import {
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
+import {
+  ActivityBarChart,
+  ACTIVITY_CHART_HEIGHT,
+  ACTIVITY_CHART_WIDTH,
+} from "~/components/metrics/ActivityBarChart";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
 import {
@@ -624,9 +629,6 @@ const STATUS_BARS: { status: TaskRunStatus; fill: string }[] = [
   { status: "TIMED_OUT", fill: "var(--color-run-timed-out)" },
 ];
 
-// Fixed px dims skip ResponsiveContainer's ResizeObserver — otherwise every panel resize re-renders all 25 charts.
-const ACTIVITY_CHART_WIDTH = 112;
-const ACTIVITY_CHART_HEIGHT = 24;
 // chart (112) + gap-1.5 (6) + count min-w (28). Reserved so the column stays put while the chart unmounts.
 const ACTIVITY_CELL_WIDTH = 146;
 const ACTIVITY_CHART_COUNT_CLASS =
@@ -636,52 +638,24 @@ function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] 
   const maxTotal = Math.max(...activity.map((d) => d.total));
 
   return (
-    <div className="flex items-start gap-1.5">
-      <div
-        className="rounded-sm"
-        style={{ width: ACTIVITY_CHART_WIDTH, height: ACTIVITY_CHART_HEIGHT }}
-      >
-        <BarChart
-          data={activity}
-          width={ACTIVITY_CHART_WIDTH}
-          height={ACTIVITY_CHART_HEIGHT}
-          margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-        >
-          <YAxis domain={[0, maxTotal || 1]} hide />
-          <Tooltip
-            cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
-            content={<TaskActivityTooltip />}
-            allowEscapeViewBox={{ x: true, y: true }}
-            wrapperStyle={{ zIndex: 1000 }}
-            animationDuration={0}
-          />
-          {STATUS_BARS.map(({ status, fill }) => (
-            <Bar
-              key={status}
-              dataKey={status}
-              stackId="a"
-              fill={fill}
-              strokeWidth={0}
-              isAnimationActive={false}
-            />
-          ))}
-          <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
-          {maxTotal > 0 && (
-            <ReferenceLine
-              y={maxTotal}
-              stroke="var(--color-border-brighter)"
-              strokeDasharray="4 4"
-              strokeWidth={1}
-            />
-          )}
-        </BarChart>
-      </div>
-      <SimpleTooltip
-        asChild
-        button={<span className={ACTIVITY_CHART_COUNT_CLASS}>{formatNumberCompact(maxTotal)}</span>}
-        content="Peak runs in a single hour"
-      />
-    </div>
+    <ActivityBarChart
+      data={activity}
+      max={maxTotal}
+      tooltip={<TaskActivityTooltip />}
+      peak={formatNumberCompact(maxTotal)}
+      peakTooltip="Peak runs in a single hour"
+    >
+      {STATUS_BARS.map(({ status, fill }) => (
+        <Bar
+          key={status}
+          dataKey={status}
+          stackId="a"
+          fill={fill}
+          strokeWidth={0}
+          isAnimationActive={false}
+        />
+      ))}
+    </ActivityBarChart>
   );
 }
 

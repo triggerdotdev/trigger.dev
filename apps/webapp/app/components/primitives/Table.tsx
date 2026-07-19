@@ -1,3 +1,4 @@
+import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
@@ -181,6 +182,15 @@ type TableHeaderCellProps = TableCellBasicProps & {
   hiddenLabel?: boolean;
   tooltip?: ReactNode;
   disableTooltipHoverableContent?: boolean;
+  /**
+   * When set (together with `onSort`), the header renders a sort indicator and becomes clickable.
+   * `"asc"`/`"desc"` show the active direction; `null` shows the neutral (unsorted) affordance.
+   * This cell is presentational and fully controlled — the parent owns the sort state (see
+   * `useTableSort`).
+   */
+  sortDirection?: "asc" | "desc" | null;
+  /** Invoked when the header is clicked or activated via keyboard. Enables sorting when provided. */
+  onSort?: () => void;
 };
 
 export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellProps>(
@@ -193,6 +203,8 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
       hiddenLabel = false,
       tooltip,
       disableTooltipHoverableContent = false,
+      sortDirection,
+      onSort,
     },
     ref
   ) => {
@@ -207,12 +219,48 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         break;
     }
 
-    const [isHovered, setIsHovered] = useState(false);
+    const sortable = typeof onSort === "function";
+
+    const label = hiddenLabel ? <span className="sr-only">{children}</span> : children;
+
+    const tooltipNode = tooltip ? (
+      <InfoIconTooltip
+        content={tooltip}
+        contentClassName="normal-case tracking-normal"
+        disableHoverableContent={disableTooltipHoverableContent}
+      />
+    ) : null;
+
+    const sortIndicator = sortable ? (
+      <span className="ml-1 flex items-center">
+        {sortDirection === "asc" ? (
+          <ChevronUpIcon className="size-4 text-text-bright" />
+        ) : sortDirection === "desc" ? (
+          <ChevronDownIcon className="size-4 text-text-bright" />
+        ) : (
+          <ChevronUpDownIcon className="size-4 text-text-dimmed transition-colors group-hover/sort:text-text-bright" />
+        )}
+      </span>
+    ) : null;
+
+    const rowClassName = cn("flex items-center gap-1", {
+      "justify-center": alignment === "center",
+      "justify-end": alignment === "right",
+    });
 
     return (
       <th
         ref={ref}
         scope="col"
+        aria-sort={
+          sortable
+            ? sortDirection === "asc"
+              ? "ascending"
+              : sortDirection === "desc"
+                ? "descending"
+                : "none"
+            : undefined
+        }
         className={cn(
           "align-middle font-medium text-text-bright",
           variants[variant].headerCell,
@@ -221,28 +269,27 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         )}
         colSpan={colSpan}
         tabIndex={-1}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
       >
-        {hiddenLabel ? (
-          <span className="sr-only">{children}</span>
-        ) : tooltip ? (
-          <div
-            className={cn("flex items-center gap-1", {
-              "justify-center": alignment === "center",
-              "justify-end": alignment === "right",
-            })}
+        {sortable ? (
+          <button
+            type="button"
+            onClick={onSort}
+            className={cn(
+              "group/sort w-full cursor-pointer select-none rounded-sm font-medium text-text-bright focus-custom",
+              rowClassName
+            )}
           >
-            {children}
-            <InfoIconTooltip
-              content={tooltip}
-              contentClassName="normal-case tracking-normal"
-              enabled={isHovered}
-              disableHoverableContent={disableTooltipHoverableContent}
-            />
+            {label}
+            {tooltipNode}
+            {sortIndicator}
+          </button>
+        ) : tooltip ? (
+          <div className={rowClassName}>
+            {label}
+            {tooltipNode}
           </div>
         ) : (
-          children
+          label
         )}
       </th>
     );

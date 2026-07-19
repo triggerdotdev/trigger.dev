@@ -1,10 +1,14 @@
 import { type MetaFunction } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useMemo } from "react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { useMemo, type ReactNode } from "react";
+import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { BigNumber } from "~/components/metrics/BigNumber";
+import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { Spinner } from "~/components/primitives/Spinner";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import {
   Chart,
@@ -12,11 +16,12 @@ import {
   type ChartState,
 } from "~/components/primitives/charts/ChartCompound";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
+import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import {
   QUEUE_METRIC_COLORS as COLORS,
   QUEUE_METRICS_DEFAULT_PERIOD,
   QueueMetricChartCard as QueueDetailChartCard,
-  QueueMetricStat as Stat,
   type QueueMetricIds as Ids,
   type QueueMetricTimeRange as TimeRangeParams,
   clickhouseTimeToMs,
@@ -29,6 +34,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueueRetrievePresenter } from "~/presenters/v3/QueueRetrievePresenter.server";
 import {
   Table,
+  TableBlankRow,
   TableBody,
   TableCell,
   TableHeader,
@@ -36,13 +42,26 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { engine } from "~/v3/runEngine.server";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useTableSort, type SortColumn } from "~/components/primitives/useTableSort";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
+import { formatNumberCompact } from "~/utils/numberFormatter";
+import { cn } from "~/utils/cn";
+import { redirectWithErrorMessage } from "~/models/message.server";
+import { handleQueueMutationAction } from "~/models/queueMutation.server";
+import {
+  QueueOverrideConcurrencyButton,
+  QueuePauseResumeButton,
+} from "~/components/queues/QueueControls";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 
 export const meta: MetaFunction = () => [{ title: `Queue metrics | Trigger.dev` }];
 
@@ -75,17 +94,32 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const queue = retrieve.queue;
   const fullName = queue.type === "task" ? `task/${queue.name}` : queue.name;
 
-  const ckBreakdown = await engine.concurrencyKeyBreakdown(environment, fullName, {
-    limit: CK_LIVE_LIMIT,
-  });
+  const [ckBreakdown, oldestQueuedAt] = await Promise.all([
+    engine.concurrencyKeyBreakdown(environment, fullName, { limit: CK_LIVE_LIMIT }),
+    // Enqueue time of the oldest run still waiting in the queue right now (any queue, keyed or
+    // not); undefined when the queue is empty. Drives the live "Oldest wait" block.
+    engine.oldestMessageInQueue(environment, fullName),
+  ]);
 
   // Charts + CH-derived stats are fetched client-side per card (see QueueDetailChartCard /
   // useQueueMetric) so the drill-down renders instantly. The loader only returns the live
   // "now" counts + identifiers the client fetches need.
+  // Link the Queued block to this queue's pending runs (same filter the list uses).
+  const queuedRunsPath = v3RunsPath(
+    { slug: organizationSlug },
+    { slug: projectParam },
+    { slug: envParam },
+    { queues: [fullName], statuses: ["PENDING"], period: "30d", rootOnly: false }
+  );
+
   return typedjson({
     queue,
     fullName,
+    queuedRunsPath,
+    // The override dialog caps at the environment's concurrency limit.
+    environmentConcurrencyLimit: environment.maximumConcurrencyLimit,
     ckBreakdown,
+    oldestQueuedAt: oldestQueuedAt ?? null,
     loadedAt: Date.now(),
     backPath: url.pathname.replace(/\/[^/]+$/, ""),
     ids: {
@@ -96,13 +130,73 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 };
 
+export const action = async ({ request, params }: ActionFunctionArgs) => {
+  const userId = await requireUserId(request);
+  const { organizationSlug, projectParam, envParam, queueParam } = ParamsSchema.parse(params);
+
+  const url = new URL(request.url);
+  const redirectPath = `/orgs/${organizationSlug}/projects/${projectParam}/env/${envParam}/queues/${queueParam}${url.search}`;
+
+  if (request.method.toLowerCase() !== "post") {
+    return redirectWithErrorMessage(redirectPath, request, "Wrong method");
+  }
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+  if (!project) throw new Response(undefined, { status: 404, statusText: "Project not found" });
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+  if (!environment)
+    throw new Response(undefined, { status: 404, statusText: "Environment not found" });
+
+  const formData = await request.formData();
+
+  // Pause/resume/override actions are shared with the Queues list route; here we redirect back to
+  // the detail page so the user stays put.
+  const result = await handleQueueMutationAction({
+    request,
+    environment,
+    userId,
+    formData,
+    redirectPath,
+  });
+  if (result) return result;
+
+  return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
+};
+
 const CK_LIVE_LIMIT = 50;
 
+// Whole-queue oldest wait right now: for keyed queues the per-key breakdown carries the oldest
+// enqueue time per key, so the queue's oldest is the max wait across keys; otherwise fall back to
+// the queue's oldest message directly. Returns null when nothing is waiting.
+function wholeQueueOldestWaitMs(
+  breakdown: CkBreakdown,
+  oldestQueuedAt: number | null,
+  now: number
+): number | null {
+  if (breakdown.keys.length > 0) {
+    return breakdown.keys.reduce((max, k) => Math.max(max, now - k.oldestEnqueuedAt), 0);
+  }
+  return oldestQueuedAt !== null ? Math.max(0, now - oldestQueuedAt) : null;
+}
+
 export default function Page() {
-  const { queue, fullName, ckBreakdown, loadedAt, backPath, ids } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    queue,
+    fullName,
+    queuedRunsPath,
+    environmentConcurrencyLimit,
+    ckBreakdown,
+    oldestQueuedAt,
+    loadedAt,
+    backPath,
+    ids,
+  } = useTypedLoaderData<typeof loader>();
   const plan = useCurrentPlan();
-  const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
+  // Queue metrics are retained for 30 days in ClickHouse, so cap the picker there even for
+  // plans whose query-period limit was raised above it — a longer window would render empty.
+  const planPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
+  const maxPeriodDays = Math.min(planPeriodDays ?? 30, 30);
 
   const { value, replace } = useSearchParams();
   const timeRange: TimeRangeParams = {
@@ -131,13 +225,12 @@ export default function Page() {
       </NavBar>
       <PageBody>
         <div className="flex flex-col gap-4 p-3">
-          <div className="flex items-start justify-between gap-2">
-            <QueueStats
-              queue={{ running: queue.running, queued: queue.queued }}
-              ids={ids}
-              timeRange={timeRange}
-              queueName={fullName}
-            />
+          {/* Filters — search (concurrency keys) + time filter, above everything, like the
+              Queues list. The time filter scopes the tab charts; search filters the keys table. */}
+          <div className="flex items-center gap-2">
+            {showKeysTab ? (
+              <SearchInput placeholder="Search keys…" paramName="query" resetParams={["key"]} />
+            ) : null}
             <TimeFilter
               defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
               labelName="Period"
@@ -148,7 +241,18 @@ export default function Page() {
             />
           </div>
 
-          {showKeysTab && (
+          {/* Live "right now" state of the whole queue — independent of the time filter above. */}
+          <QueueStats
+            queue={queue}
+            environmentConcurrencyLimit={environmentConcurrencyLimit}
+            queuedRunsPath={queuedRunsPath}
+            oldestWaitMs={wholeQueueOldestWaitMs(ckBreakdown, oldestQueuedAt, loadedAt)}
+            ids={ids}
+            timeRange={timeRange}
+            queueName={fullName}
+          />
+
+          {showKeysTab ? (
             <TabContainer>
               <TabButton
                 isActive={view === "overview"}
@@ -165,7 +269,7 @@ export default function Page() {
                 Concurrency keys
               </TabButton>
             </TabContainer>
-          )}
+          ) : null}
 
           {view === "keys" ? (
             <ConcurrencyKeysView
@@ -193,53 +297,82 @@ function OverviewCharts({
   timeRange: TimeRangeParams;
   queueName: string;
 }) {
+  const zoomToTimeFilter = useZoomToTimeFilter();
   return (
-    <>
-      <QueueDetailChartCard
-        title="Concurrency"
-        query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-        fillGaps
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-        series={[
-          { key: "running", label: "Running", color: COLORS.running },
-          { key: "limit", label: "Limit", color: COLORS.limit },
-        ]}
-      />
-      <QueueDetailChartCard
-        title="Queue depth (backlog)"
-        query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-        fillGaps
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-        series={[{ key: "queued", label: "Queued", color: COLORS.queued }]}
-      />
-      <QueueDetailChartCard
-        title="Scheduling delay"
-        query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-        fillGaps
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-        valueFormat={formatWaitMs}
-        series={[
-          { key: "p50", label: "p50", color: COLORS.p50 },
-          { key: "p95", label: "p95", color: COLORS.p95 },
-          { key: "p99", label: "p99", color: COLORS.p99 },
-        ]}
-      />
-      <QueueDetailChartCard
-        title="Throttled buckets"
-        query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-        fillGaps
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-        series={[{ key: "throttled", label: "Throttled", color: COLORS.throttled }]}
-      />
-    </>
+    <ChartSyncProvider onZoom={zoomToTimeFilter}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <QueueDetailChartCard
+          title="Concurrency"
+          info="Running (blue) against the queue's concurrency limit (grey). Yellow when at the limit."
+          className="aspect-[2/1]"
+          query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          series={[
+            // Limit first so the grey reference draws underneath; Running (blue) sits on top.
+            { key: "limit", label: "Limit", color: COLORS.limit },
+            { key: "running", label: "Running", color: COLORS.running },
+          ]}
+        />
+        <QueueDetailChartCard
+          title="Queue depth"
+          info="Runs waiting in this queue over time."
+          className="aspect-[2/1]"
+          query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          series={[{ key: "queued", label: "Queued", color: COLORS.queued }]}
+        />
+        <QueueDetailChartCard
+          title="Throughput"
+          info="Runs entering the queue (Enqueued, grey) versus leaving it (Started, blue). Yellow when Started falls behind."
+          className="aspect-[2/1]"
+          query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          series={[
+            // Enqueued is the neutral grey reference (same grey as the Limit line on Concurrency);
+            // Started is the accent — blue while keeping up, warning where it drops below Enqueued.
+            { key: "enqueued", label: "Enqueued", color: COLORS.limit },
+            { key: "started", label: "Started", color: COLORS.running },
+          ]}
+          warningOverlay={{ series: "started", below: "enqueued" }}
+        />
+        <QueueDetailChartCard
+          title="Scheduling delay"
+          info="Wait from eligible to dequeued (p50/p95/p99)."
+          className="aspect-[2/1]"
+          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          valueFormat={formatWaitMs}
+          series={[
+            { key: "p50", label: "p50", color: COLORS.p50 },
+            { key: "p95", label: "p95", color: COLORS.p95 },
+            { key: "p99", label: "p99", color: COLORS.p99 },
+          ]}
+        />
+        <QueueDetailChartCard
+          title="Throttled"
+          info="Times dequeuing was blocked by a limit."
+          className="aspect-[2/1]"
+          query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          series={[{ key: "throttled", label: "Throttled", color: COLORS.throttled }]}
+        />
+      </div>
+    </ChartSyncProvider>
   );
 }
 
@@ -266,44 +399,85 @@ function ConcurrencyKeysView({
   timeRange: TimeRangeParams;
   queueName: string;
 }) {
+  const zoomToTimeFilter = useZoomToTimeFilter();
+  const { replace } = useSearchParams();
+
+  // The live most-starved key: among keys with a live backlog, the one whose oldest waiting run
+  // has been waiting longest right now. Names the culprit on the "Worst key wait" card so the chart
+  // (which shows how bad, not who) points at a tenant you can click through to.
+  const worstKeyNow = useMemo(() => {
+    let worst: { key: string; waitMs: number } | null = null;
+    for (const k of breakdown.keys) {
+      if (k.queued <= 0) continue;
+      const waitMs = Math.max(0, loadedAt - k.oldestEnqueuedAt);
+      if (!worst || waitMs > worst.waitMs) worst = { key: k.concurrencyKey, waitMs };
+    }
+    return worst;
+  }, [breakdown, loadedAt]);
+
   return (
-    <>
-      <GroupedKeyChartCard
-        title="Backlog by key"
-        rankExpr="max(max_queued)"
-        seriesExpr="max(max_queued)"
-        fillGaps
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-      />
-      <GroupedKeyChartCard
-        title="Throughput by key (started)"
-        rankExpr="deltaSumTimestampMerge(started_delta)"
-        seriesExpr="deltaSumTimestampMerge(started_delta)"
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-      />
-      <QueueDetailChartCard
-        title="Keys with queued runs (count)"
-        query={`SELECT timeBucket() AS t, max(max_ck_backlogged) AS keys\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-        fillGaps
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-        series={[{ key: "keys", label: "Keys", color: COLORS.ckKeys }]}
-      />
-      <QueueDetailChartCard
-        title="Most-starved key wait (max across all keys)"
-        query={`SELECT timeBucket() AS t, max(max_ck_wait_ms) AS wait\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-        fillGaps
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-        valueFormat={formatWaitMs}
-        series={[{ key: "wait", label: "Max wait", color: COLORS.ckWait }]}
-      />
+    <div className="flex flex-col gap-3">
+      {/* Per-key breakdown: which keys hold the backlog / do the work. */}
+      <ChartSyncProvider onZoom={zoomToTimeFilter}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <GroupedKeyChartCard
+            title="Waiting runs by key"
+            info="Runs waiting per key (top 8)."
+            className="aspect-[2/1]"
+            rankExpr="max(max_queued)"
+            seriesExpr="max(max_queued)"
+            fillGaps
+            ids={ids}
+            timeRange={timeRange}
+            queueName={queueName}
+          />
+          <GroupedKeyChartCard
+            title="Throughput by key"
+            info="Runs started per key (top 8)."
+            className="aspect-[2/1]"
+            rankExpr="deltaSumTimestampMerge(started_delta)"
+            seriesExpr="deltaSumTimestampMerge(started_delta)"
+            ids={ids}
+            timeRange={timeRange}
+            queueName={queueName}
+          />
+          {/* Whole-queue health across keys (single series, tasks-blue). */}
+          <QueueDetailChartCard
+            title="Keys with backlog"
+            info="Keys with runs waiting at once."
+            className="aspect-[2/1]"
+            query={`SELECT timeBucket() AS t, max(max_ck_backlogged) AS keys\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+            fillGaps
+            ids={ids}
+            timeRange={timeRange}
+            queueName={queueName}
+            series={[{ key: "keys", label: "Keys", color: COLORS.running }]}
+          />
+          <QueueDetailChartCard
+            title="Worst key wait"
+            info="Longest wait across all keys."
+            titleAccessory={
+              worstKeyNow ? (
+                <button
+                  type="button"
+                  onClick={() => replace({ key: worstKeyNow.key })}
+                  className="cursor-pointer text-xs font-normal tabular-nums text-text-dimmed transition-colors hover:text-text-bright"
+                >
+                  {worstKeyNow.key} · {formatWaitMs(worstKeyNow.waitMs)} now
+                </button>
+              ) : null
+            }
+            className="aspect-[2/1]"
+            query={`SELECT timeBucket() AS t, max(max_ck_wait_ms) AS wait\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+            fillGaps
+            ids={ids}
+            timeRange={timeRange}
+            queueName={queueName}
+            valueFormat={formatWaitMs}
+            series={[{ key: "wait", label: "Max wait", color: COLORS.running }]}
+          />
+        </div>
+      </ChartSyncProvider>
       <KeyStatsTable
         breakdown={breakdown}
         loadedAt={loadedAt}
@@ -311,7 +485,7 @@ function ConcurrencyKeysView({
         timeRange={timeRange}
         queueName={queueName}
       />
-    </>
+    </div>
   );
 }
 
@@ -331,8 +505,21 @@ const KEY_SERIES_COLORS = [
   "#84CC16",
 ];
 
+// A card title with an info "i" tooltip, matching the Queues header charts. Used by the grouped
+// per-key charts (the plain single-series cards get the same treatment via QueueMetricChartCard).
+function chartTitleWithInfo(title: string, info: string) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {title}
+      <InfoIconTooltip content={info} contentClassName="max-w-xs" />
+    </span>
+  );
+}
+
 type GroupedKeyChartProps = {
   title: string;
+  info: string;
+  className?: string;
   /** Aggregate expression ranking keys over the whole range (top 8 charted). */
   rankExpr: string;
   /** Aggregate expression charted per (bucket, key). */
@@ -363,6 +550,8 @@ function GroupedKeyChartCard(props: GroupedKeyChartProps) {
 function GroupedKeySeries({
   keys,
   title,
+  info,
+  className,
   seriesExpr,
   fillGaps,
   valueFormat,
@@ -406,8 +595,8 @@ function GroupedKeySeries({
   const state: ChartState = showLoading ? "loading" : failed ? "invalid" : undefined;
 
   return (
-    <div className="h-64">
-      <ChartCard title={title}>
+    <div className={className ?? "h-64"}>
+      <ChartCard title={chartTitleWithInfo(title, info)}>
         <Chart.Root
           config={chartConfig}
           data={data}
@@ -484,35 +673,64 @@ function KeyStatsTable({
     return [...live, ...historyOnly].slice(0, 50);
   }, [rows, breakdown, loadedAt]);
 
+  // The top-bar search filters the key list by substring (case-insensitive), the same idea as the
+  // Queues page search over queue names.
+  const query = value("query")?.trim().toLowerCase();
+  const filtered = useMemo(
+    () => (query ? merged.filter((r) => r.key.toLowerCase().includes(query)) : merged),
+    [merged, query]
+  );
+
+  const sortColumns = useMemo<SortColumn<(typeof merged)[number]>[]>(
+    () => [
+      { key: "key", type: "alpha", value: (r) => r.key },
+      { key: "queued", type: "number", value: (r) => r.queued },
+      { key: "running", type: "number", value: (r) => r.running },
+      { key: "oldestWait", type: "number", value: (r) => r.oldestWaitMs },
+      { key: "started", type: "number", value: (r) => r.range?.started },
+      { key: "peakBacklog", type: "number", value: (r) => r.range?.peakBacklog },
+      { key: "meanWait", type: "number", value: (r) => r.range?.meanWaitMs },
+    ],
+    []
+  );
+  const { sortedRows, getSortProps } = useTableSort(filtered, sortColumns);
+
   if (merged.length === 0) return null;
 
   return (
     <>
       <div className="rounded-sm border border-grid-dimmed bg-background-bright">
-        <div className="flex items-baseline justify-between px-3 pt-2">
-          <div className="text-sm text-text-bright">Concurrency keys</div>
-          <div className="text-xs text-text-dimmed">
-            {breakdown.totalBackloggedKeys > 0
-              ? `${breakdown.totalBackloggedKeys.toLocaleString()} ${
-                  breakdown.totalBackloggedKeys === 1 ? "key" : "keys"
-                } with queued runs now`
-              : "No keys with queued runs right now"}
-          </div>
-        </div>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHeaderCell>Key</TableHeaderCell>
-              <TableHeaderCell alignment="right">Queued now</TableHeaderCell>
-              <TableHeaderCell alignment="right">Running now</TableHeaderCell>
-              <TableHeaderCell alignment="right">Oldest wait</TableHeaderCell>
-              <TableHeaderCell alignment="right">Started</TableHeaderCell>
-              <TableHeaderCell alignment="right">Peak backlog</TableHeaderCell>
-              <TableHeaderCell alignment="right">Mean delay</TableHeaderCell>
+              <TableHeaderCell {...getSortProps("key")}>Key</TableHeaderCell>
+              <TableHeaderCell alignment="right" {...getSortProps("queued")}>
+                Queued now
+              </TableHeaderCell>
+              <TableHeaderCell alignment="right" {...getSortProps("running")}>
+                Running now
+              </TableHeaderCell>
+              <TableHeaderCell alignment="right" {...getSortProps("oldestWait")}>
+                Oldest wait
+              </TableHeaderCell>
+              <TableHeaderCell alignment="right" {...getSortProps("started")}>
+                Started
+              </TableHeaderCell>
+              <TableHeaderCell alignment="right" {...getSortProps("peakBacklog")}>
+                Peak backlog
+              </TableHeaderCell>
+              <TableHeaderCell alignment="right" {...getSortProps("meanWait")}>
+                Mean delay
+              </TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {merged.map((row) => (
+            {sortedRows.length === 0 ? (
+              <TableBlankRow colSpan={7} className="text-text-dimmed">
+                No keys match “{query}”
+              </TableBlankRow>
+            ) : null}
+            {sortedRows.map((row) => (
               <TableRow
                 key={row.key}
                 isSelected={selectedKey === row.key}
@@ -558,85 +776,233 @@ function KeyDrilldown({
   queueName: string;
 }) {
   const pin = `concurrency_key = '${trqlString(keyName)}'`;
+  const zoomToTimeFilter = useZoomToTimeFilter();
   return (
-    <>
-      <QueueDetailChartCard
-        title={`Key ${keyName}: backlog and running`}
-        query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
-        fillGaps
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-        series={[
-          { key: "queued", label: "Queued", color: COLORS.queued },
-          { key: "running", label: "Running", color: COLORS.running },
-        ]}
-      />
-      <QueueDetailChartCard
-        title={`Key ${keyName}: throughput`}
-        query={`SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-        series={[{ key: "started", label: "Started", color: COLORS.ckKeys }]}
-      />
-      <QueueDetailChartCard
-        title={`Key ${keyName}: mean scheduling delay`}
-        query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-        valueFormat={formatWaitMs}
-        series={[{ key: "wait", label: "Mean delay", color: COLORS.p95 }]}
-      />
-    </>
+    <ChartSyncProvider onZoom={zoomToTimeFilter}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <QueueDetailChartCard
+          title={`Key ${keyName}: backlog and running`}
+          info="This key: waiting (Queued, blue) vs running (grey)."
+          className="aspect-[2/1]"
+          query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          series={[
+            // Running is the grey reference underneath; Queued (the backlog we care about) is the blue accent on top.
+            { key: "running", label: "Running", color: COLORS.limit },
+            { key: "queued", label: "Queued", color: COLORS.running },
+          ]}
+        />
+        <QueueDetailChartCard
+          title={`Key ${keyName}: throughput`}
+          className="aspect-[2/1]"
+          query={`SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          series={[{ key: "started", label: "Started", color: COLORS.running }]}
+        />
+        <QueueDetailChartCard
+          title={`Key ${keyName}: mean scheduling delay`}
+          className="aspect-[2/1]"
+          query={`SELECT timeBucket() AS t, if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS wait\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          valueFormat={formatWaitMs}
+          series={[{ key: "wait", label: "Mean delay", color: COLORS.running }]}
+        />
+      </div>
+    </ChartSyncProvider>
   );
 }
 
+// Live "right now" snapshot of the whole queue: a hybrid feed. The loader (Redis/PG) supplies the
+// first paint so these blocks render instantly; after that a tiny 15s ClickHouse poll keeps them
+// fresh, always reading the newest gauge row and falling back to the loader values until the first
+// poll lands (so we never flash 0). These blocks never change with the filter. Period trends
+// (backlog, throughput, delay over time) live in the charts below.
+// Oldest-wait threshold for the warning tint: the head of the queue sitting unstarted this long
+// signals the queue is stuck, not just busy.
+const OLDEST_WAIT_WARNING_MS = 5 * 60_000;
+
 function QueueStats({
   queue,
+  environmentConcurrencyLimit,
+  queuedRunsPath,
+  oldestWaitMs,
   ids,
   timeRange,
   queueName,
 }: {
-  queue: { running: number; queued: number };
+  queue: QueueItem;
+  environmentConcurrencyLimit: number;
+  queuedRunsPath: string;
+  oldestWaitMs: number | null;
   ids: Ids;
   timeRange: TimeRangeParams;
   queueName: string;
 }) {
-  // One scalar query feeds the CH-derived stats; the "now" counts come from the loader (live).
-  const { rows, showLoading } = useQueueMetric(
-    `SELECT max(max_limit) AS lim, max(max_queued) AS peak_queued, deltaSumTimestampMerge(started_delta) AS started,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS worst_p95\nFROM queue_metrics`,
+  // Live "now" is empty for a queue that just drained, so add the window peak/worst as a dimmed
+  // caption (styled like "bursts up to 50" on the Queues list) — a quiet queue still shows how
+  // backed up it got recently. "worst_wait" is the window's worst head-of-line wait (max of the
+  // oldest still-waiting run's age), the same metric as the live "Oldest wait" headline — not the
+  // scheduling-delay percentiles of runs that already started. Only concurrency-keyed queues record
+  // this (max_ck_wait_ms), so it's 0/absent for non-keyed queues.
+  const { rows } = useQueueMetric(
+    `SELECT max(max_queued) AS peak_queued,\n  max(max_ck_wait_ms) AS worst_wait\nFROM queue_metrics`,
     { ids, timeRange, queueName }
   );
-  const row = rows[0];
-  const worstP95 = row ? toNumber(row.worst_p95) : 0;
+  const peakQueued = rows[0] ? toNumber(rows[0].peak_queued) : 0;
+  const worstWaitMs = rows[0] ? toNumber(rows[0].worst_wait) : 0;
+
+  // Latest gauges from ClickHouse, polled every 15s so the live blocks keep ticking after first
+  // paint. Read the newest bucket (largest t); until the first poll lands liveRows is empty and the
+  // *Live values stay null, so the blocks show the loader values instead of flashing 0.
+  const { rows: liveRows } = useQueueMetric(
+    `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit, max(max_ck_wait_ms) AS ck_wait FROM queue_metrics GROUP BY t ORDER BY t`,
+    {
+      ids,
+      timeRange: { period: "15m", from: null, to: null },
+      defaultPeriod: "15m",
+      queueName,
+      refreshIntervalMs: 15_000,
+    }
+  );
+  const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
+  const runningLive = latest ? toNumber(latest.running) : null;
+  const queuedLive = latest ? toNumber(latest.queued) : null;
+  const limitLive = latest ? toNumber(latest.q_limit) : null;
+  const ckWaitLive = latest ? toNumber(latest.ck_wait) : null;
+
+  // Prefer CH once it has landed; loader values before that.
+  const runningDisplay = runningLive ?? queue.running;
+  const queuedDisplay = queuedLive ?? queue.queued;
+  // Limit is queue config, not a live signal: keep the loader's value. Only if the loader had none
+  // do we fall back to the CH gauge for display.
+  const limitDisplay = queue.concurrencyLimit ?? (limitLive || null);
+  // Keyed queues report head-of-line wait via CH (max_ck_wait_ms); use it as the live headline when
+  // present. Non-keyed queues have no CH signal, so they stay on the loader value.
+  const oldestWaitDisplayMs = ckWaitLive !== null && ckWaitLive > 0 ? ckWaitLive : oldestWaitMs;
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-      <Stat label="Running now" value={queue.running.toLocaleString()} />
-      <Stat label="Queued now" value={queue.queued.toLocaleString()} />
-      <Stat
-        label="Limit"
-        value={row ? toNumber(row.lim).toLocaleString() : "–"}
-        loading={showLoading}
+    <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
+      <ConcurrencyBlock
+        running={runningDisplay}
+        limit={limitDisplay}
+        paused={queue.paused}
+        accessory={
+          <div className="flex items-center gap-1">
+            <QueuePauseResumeButton
+              queue={{ id: queue.id, name: queue.name, paused: queue.paused }}
+              variant="secondary/small-icon"
+              iconOnly
+            />
+            <QueueOverrideConcurrencyButton
+              queue={{ ...queue, concurrencyLimitOverridePercent: null }}
+              environmentConcurrencyLimit={environmentConcurrencyLimit}
+              trigger="icon"
+            />
+          </div>
+        }
       />
-      <Stat
-        label="Peak queued"
-        value={row ? toNumber(row.peak_queued).toLocaleString() : "–"}
-        loading={showLoading}
+      <BigNumber
+        title="Queued"
+        value={queuedDisplay}
+        valueClassName="tabular-nums"
+        animate
+        suffix={peakQueued > 0 ? `peak ${formatNumberCompact(peakQueued)}` : undefined}
+        suffixClassName="text-text-dimmed"
+        accessory={
+          <LinkButton
+            variant="secondary/small-icon"
+            LeadingIcon={RunsIcon}
+            leadingIconClassName="text-runs"
+            to={queuedRunsPath}
+            tooltip="View queued runs"
+          />
+        }
       />
-      <Stat
-        label="Started"
-        value={row ? toNumber(row.started).toLocaleString() : "–"}
-        loading={showLoading}
+      <BigNumber
+        title="Oldest wait"
+        formattedValue={
+          oldestWaitDisplayMs !== null && oldestWaitDisplayMs > 0
+            ? formatWaitMs(oldestWaitDisplayMs)
+            : "0"
+        }
+        valueClassName={cn(
+          "tabular-nums",
+          oldestWaitDisplayMs !== null &&
+            oldestWaitDisplayMs >= OLDEST_WAIT_WARNING_MS &&
+            "text-warning"
+        )}
+        suffix={worstWaitMs > 0 ? `worst ${formatWaitMs(worstWaitMs)}` : undefined}
+        suffixClassName="text-text-dimmed"
       />
-      <Stat
-        label="Delay p95"
-        value={worstP95 > 0 ? formatWaitMs(worstP95) : "–"}
-        loading={showLoading}
-        className={worstP95 >= 60_000 ? "text-warning" : undefined}
-      />
+    </div>
+  );
+}
+
+/** Live concurrency as a single block: running vs limit with a utilization bar, so "how close to
+ * the ceiling" reads at a glance instead of two separate numbers. Warning-tinted at/over the limit. */
+function ConcurrencyBlock({
+  running,
+  limit,
+  paused = false,
+  loading,
+  accessory,
+}: {
+  running: number;
+  limit: number | null;
+  paused?: boolean;
+  loading?: boolean;
+  accessory?: ReactNode;
+}) {
+  const atLimit = limit !== null && limit > 0 && running >= limit;
+  const pct = limit && limit > 0 ? Math.min(100, Math.round((running / limit) * 100)) : 0;
+  return (
+    <div className="flex flex-col justify-between gap-4 rounded-sm border border-grid-dimmed bg-background-bright p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Header3 className="leading-6">Concurrency</Header3>
+          {paused ? <span className="text-xs text-warning">paused</span> : null}
+        </div>
+        {accessory ? <div className="shrink-0">{accessory}</div> : null}
+      </div>
+      {loading ? (
+        <Spinner className="size-6" />
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span
+              className={cn(
+                "text-[3.75rem] font-normal leading-none tabular-nums",
+                atLimit ? "text-warning" : "text-text-bright"
+              )}
+            >
+              {running.toLocaleString()}
+            </span>
+            <span className="text-xl tabular-nums text-text-dimmed">
+              / {limit !== null ? limit.toLocaleString() : "∞"}
+            </span>
+            {limit !== null && limit > 0 && (
+              <span className={cn("text-xs", atLimit ? "text-warning" : "text-text-dimmed")}>
+                {pct}% of limit
+              </span>
+            )}
+          </div>
+          {limit !== null && limit > 0 && (
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-charcoal-750">
+              <div
+                className={cn("h-full rounded-full", atLimit ? "bg-warning" : "bg-queues")}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

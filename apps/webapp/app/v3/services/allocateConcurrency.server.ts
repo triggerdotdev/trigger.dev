@@ -3,6 +3,7 @@ import { ManageConcurrencyPresenter } from "~/presenters/v3/ManageConcurrencyPre
 import { BaseService } from "./baseService.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { concurrencySystem } from "./concurrencySystemInstance.server";
 
 type Input = {
   userId: string;
@@ -89,6 +90,9 @@ export class AllocateConcurrencyService extends BaseService {
       if (!updatedEnvironment.paused) {
         await updateEnvConcurrencyLimits(updatedEnvironment);
       }
+
+      // Percent-based queue overrides follow the environment limit automatically.
+      await concurrencySystem.queues.recalculatePercentLimits(updatedEnvironment);
 
       // maximumConcurrencyLimit changed in the control-plane; drop any cached copy.
       controlPlaneResolver.invalidateEnvironment(environment.id);

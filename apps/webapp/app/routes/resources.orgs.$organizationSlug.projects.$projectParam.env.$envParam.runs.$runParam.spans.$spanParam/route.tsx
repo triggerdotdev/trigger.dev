@@ -1218,7 +1218,7 @@ function WaitingInQueueBlock({
           title="Backlog"
           headline={`${waiting.queued.toLocaleString()} queued`}
           query={`SELECT timeBucket() AS t, max(max_queued) AS v\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-          color="#A78BFA"
+          color="var(--color-tasks)"
           ids={waiting.ids}
           queueName={queueName}
         />

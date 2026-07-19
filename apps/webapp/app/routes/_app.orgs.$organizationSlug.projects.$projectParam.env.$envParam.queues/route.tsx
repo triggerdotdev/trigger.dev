@@ -1,7 +1,7 @@
 import {
-  AdjustmentsHorizontalIcon,
   ArrowUpCircleIcon,
   BookOpenIcon,
+  ExclamationTriangleIcon,
   PauseIcon,
   PlayIcon,
   RectangleStackIcon,
@@ -11,7 +11,7 @@ import { Form, Link, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
@@ -22,7 +22,7 @@ import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, LinkButton, type ButtonVariant } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -43,6 +43,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { useTableSort, type SortColumn } from "~/components/primitives/useTableSort";
 import {
   InfoIconTooltip,
   SimpleTooltip,
@@ -54,29 +55,27 @@ import {
 import { QueueName } from "~/components/runs/v3/QueueName";
 import { env } from "~/env.server";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
-import { LoadingBarDivider } from "~/components/primitives/LoadingBarDivider";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { getUserById } from "~/models/user.server";
 import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePresenter.server";
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import {
   QueueMetricsPresenter,
   type QueueListMetric,
 } from "~/presenters/v3/QueueMetricsPresenter.server";
-import * as Ariakit from "@ariakit/react";
-import { AppliedFilter } from "~/components/primitives/AppliedFilter";
-import { SelectItem, SelectPopover, SelectProvider } from "~/components/primitives/Select";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { parseFiniteInt } from "~/utils/searchParams";
-import { UsageSparkline } from "~/components/primitives/UsageSparkline";
+import { MiniLineChart } from "~/components/metrics/MiniLineChart";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
+import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import {
   useMetricResourceQuery,
   type MetricResourceTimeRange,
@@ -93,15 +92,16 @@ import {
   v3QueuePath,
   v3RunsPath,
 } from "~/utils/pathBuilder";
-import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
-import { PauseQueueService } from "~/v3/services/pauseQueue.server";
+import { handleQueueMutationAction } from "~/models/queueMutation.server";
+import {
+  QueueOverrideConcurrencyButton,
+  QueuePauseResumeButton,
+} from "~/components/queues/QueueControls";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { QueueAllocationPresenter } from "~/presenters/v3/QueueAllocationPresenter.server";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { AllocationView } from "./AllocationView";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -109,16 +109,18 @@ const SearchParamsSchema = z.object({
   period: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
-  view: z.string().optional(),
   sort: z.enum(["busiest", "queued", "name"]).optional(),
 });
 
-const AllocationChangesSchema = z
-  .array(z.object({ friendlyId: z.string(), limit: z.number().int().min(0) }))
-  .min(1)
-  .max(200);
-
 const QUEUE_METRICS_DEFAULT_PERIOD = "1d";
+
+// The live "Queued" / "Running" header blocks poll ClickHouse on a short cadence so they stay
+// current after first paint. They read the env-wide gauges from env_metrics (the env-level rollup
+// of queue_metrics, cheapest for a dimension-free query), always over a fixed 15m window regardless
+// of the chart/table period, and are NOT scoped to the visible queue set (the blocks are env-wide).
+const QUEUE_LIVE_BLOCKS_PERIOD = "15m";
+const QUEUE_LIVE_BLOCKS_QUERY =
+  "SELECT timeBucket() AS t, max(max_env_queued) AS env_queued, max(max_env_running) AS env_running FROM env_metrics GROUP BY t ORDER BY t";
 
 export const meta: MetaFunction = () => {
   return [
@@ -133,7 +135,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const url = new URL(request.url);
-  const { page, query, period, from, to, view, sort } = SearchParamsSchema.parse(
+  const { page, query, period, from, to, sort } = SearchParamsSchema.parse(
     Object.fromEntries(url.searchParams)
   );
 
@@ -172,7 +174,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const autoReloadPollIntervalMs = env.QUEUES_AUTORELOAD_POLL_INTERVAL_MS;
 
     // Per-queue list metrics (Delay p95 + backlog sparkline columns) are SSR'd with the table.
-    // The environment header tiles are fetched client-side per card (see QueueEnvMetricTile) so a
+    // The environment header tiles are fetched client-side per card (see QueueEnvMetricChart) so a
     // slow ClickHouse query never blocks the queues list from rendering.
     let metrics: {
       bucketStartMs: number;
@@ -180,9 +182,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       byQueue: Record<string, QueueListMetric>;
     } | null = null;
 
-    const allocationView = queueMetricsUiEnabled && view === "allocation";
-
-    if (queueMetricsUiEnabled && queues.success && !allocationView) {
+    if (queueMetricsUiEnabled && queues.success) {
       // Metrics are additive observability; a ClickHouse hiccup must not take down queue
       // management. Fail open to metrics: null instead of bubbling to the page-level 400.
       try {
@@ -217,10 +217,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       }
     }
 
-    const allocation =
-      allocationView && queues.success
-        ? await new QueueAllocationPresenter().call({ environment })
-        : null;
+    // Allocation summary (Environment limit + Allocated tiles) is additive; a presenter
+    // failure must not 400 the page, so fail open to null like the metrics block above.
+    let allocation: Awaited<ReturnType<QueueAllocationPresenter["call"]>> | null = null;
+    if (queueMetricsUiEnabled && queues.success) {
+      try {
+        allocation = await new QueueAllocationPresenter().call({ environment });
+      } catch (error) {
+        logger.warn("Queue allocation summary unavailable, rendering without it", { error });
+      }
+    }
 
     return typedjson({
       ...queues,
@@ -277,6 +283,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return redirectWithErrorMessage(redirectPath, request, "This branch is archived");
   }
 
+  // Per-queue actions (pause/resume/override/remove-override) are shared with the queue detail
+  // route, so they live in a helper that both routes call.
+  const queueMutation = await handleQueueMutationAction({
+    request,
+    environment,
+    userId,
+    formData,
+    redirectPath,
+  });
+  if (queueMutation) {
+    return queueMutation;
+  }
+
   switch (action) {
     case "environment-pause": {
       const pauseService = new PauseEnvironmentService();
@@ -294,149 +313,31 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
       return redirectWithSuccessMessage(redirectPath, request, "Environment resumed");
     }
-    case "queue-pause":
-    case "queue-resume": {
-      const friendlyId = formData.get("friendlyId");
-      if (!friendlyId) {
-        return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
-      }
-
-      const queueService = new PauseQueueService();
-      const result = await queueService.call(
-        environment,
-        friendlyId.toString(),
-        action === "queue-pause" ? "paused" : "resumed"
-      );
-
-      if (!result.success) {
-        return redirectWithErrorMessage(
-          redirectPath,
-          request,
-          result.error ?? `Failed to ${action === "queue-pause" ? "pause" : "resume"} queue`
-        );
-      }
-
-      return redirectWithSuccessMessage(
-        redirectPath,
-        request,
-        `Queue ${action === "queue-pause" ? "paused" : "resumed"}`
-      );
-    }
-    case "queue-override": {
-      const friendlyId = formData.get("friendlyId");
-      const concurrencyLimit = formData.get("concurrencyLimit");
-
-      if (!friendlyId) {
-        return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
-      }
-
-      if (!concurrencyLimit) {
-        return redirectWithErrorMessage(redirectPath, request, "Concurrency limit is required");
-      }
-
-      const limitNumber = parseInt(concurrencyLimit.toString(), 10);
-      if (isNaN(limitNumber) || limitNumber < 0) {
-        return redirectWithErrorMessage(
-          redirectPath,
-          request,
-          "Concurrency limit must be a valid number"
-        );
-      }
-
-      const user = await getUserById(userId);
-      if (!user) {
-        return redirectWithErrorMessage(redirectPath, request, "User not found");
-      }
-
-      const result = await concurrencySystem.queues.overrideQueueConcurrencyLimit(
-        environment,
-        friendlyId.toString(),
-        limitNumber,
-        user
-      );
-
-      if (!result.isOk()) {
-        return redirectWithErrorMessage(
-          redirectPath,
-          request,
-          "Failed to override queue concurrency limit"
-        );
-      }
-
-      return redirectWithSuccessMessage(
-        redirectPath,
-        request,
-        "Queue concurrency limit overridden"
-      );
-    }
-    case "queue-remove-override": {
-      const friendlyId = formData.get("friendlyId");
-
-      if (!friendlyId) {
-        return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
-      }
-
-      const result = await concurrencySystem.queues.resetConcurrencyLimit(
-        environment,
-        friendlyId.toString()
-      );
-
-      if (!result.isOk()) {
-        return redirectWithErrorMessage(
-          redirectPath,
-          request,
-          "Failed to reset queue concurrency limit"
-        );
-      }
-
-      return redirectWithSuccessMessage(redirectPath, request, "Queue concurrency limit reset");
-    }
-    case "allocation-apply": {
-      if (!(await canAccessQueueMetricsUi({ userId, organizationSlug }))) {
-        return redirectWithErrorMessage(redirectPath, request, "Not available");
-      }
-
-      let changes;
-      try {
-        changes = AllocationChangesSchema.parse(JSON.parse(String(formData.get("changes"))));
-      } catch {
-        return redirectWithErrorMessage(redirectPath, request, "Invalid changes");
-      }
-
-      const user = await getUserById(userId);
-      if (!user) {
-        return redirectWithErrorMessage(redirectPath, request, "User not found");
-      }
-
-      let failed = 0;
-      for (const change of changes) {
-        const result = await concurrencySystem.queues.overrideQueueConcurrencyLimit(
-          environment,
-          change.friendlyId,
-          change.limit,
-          user
-        );
-        if (!result.isOk()) failed++;
-      }
-
-      if (failed > 0) {
-        return redirectWithErrorMessage(
-          redirectPath,
-          request,
-          `Failed to update ${failed} of ${changes.length} queue limits`
-        );
-      }
-
-      return redirectWithSuccessMessage(
-        redirectPath,
-        request,
-        `Updated ${changes.length} queue limit${changes.length === 1 ? "" : "s"}`
-      );
-    }
     default:
       return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
   }
 };
+
+// Derives the environment concurrency status ("limit" | "burst" | "within") and the matching
+// text color from the current running count vs. the env limit and burst factor. Shared by both
+// the classic and metrics views so the "Running" tile styling stays in sync.
+function getEnvConcurrencyLimitStatus(environment: {
+  running: number;
+  concurrencyLimit: number;
+  burstFactor: number;
+}) {
+  const limitStatus =
+    environment.running === environment.concurrencyLimit * environment.burstFactor
+      ? "limit"
+      : environment.running > environment.concurrencyLimit
+        ? "burst"
+        : "within";
+
+  const limitClassName =
+    limitStatus === "burst" ? "text-warning" : limitStatus === "limit" ? "text-error" : undefined;
+
+  return { limitStatus, limitClassName };
+}
 
 export default function Page() {
   // Per-org flag decides which whole page renders. Off => the classic Queues page,
@@ -461,22 +362,114 @@ function QueuesWithMetricsView() {
 
   const metricsByQueue = metrics?.byQueue ?? {};
 
+  // The four header charts mirror exactly the queue set the table is showing (post-search,
+  // post-pagination). These are the `task/`-prefixed queue_name values the queue_metrics table
+  // stores, so the client-side tile queries scope to the same rows the loader listed.
+  const chartQueueNames = success
+    ? queues.map((q) => (q.type === "task" ? `task/${q.name}` : q.name))
+    : [];
+
   const organization = useOrganization();
   const project = useProject();
   const env = useEnvironment();
   const plan = useCurrentPlan();
-  const maxPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
+  // Queue metrics are retained for 30 days in ClickHouse, so cap the picker there even for
+  // plans whose query-period limit was raised above it — a longer window would render empty.
+  const planPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
+  const maxPeriodDays = Math.min(planPeriodDays ?? 30, 30);
 
   // The header tiles fetch client-side with the same period/from/to the TimeFilter writes.
-  const { value, replace } = useSearchParams();
+  const { value } = useSearchParams();
   const timeRange = {
     period: value("period") ?? null,
     from: value("from") ?? null,
     to: value("to") ?? null,
   };
-  const view = value("view") === "allocation" ? ("allocation" as const) : ("queues" as const);
 
   useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
+
+  // Drag-to-zoom on either chart narrows the page's from/to search params, which the
+  // TimeFilter and the client-side metric queries both read (same wiring as the Agent page).
+  const zoomToTimeFilter = useZoomToTimeFilter();
+
+  // Live env-wide Queued/Running blocks. First paint uses the loader's Redis-exact values; from the
+  // first poll on we prefer ClickHouse so the blocks stay current without a full page revalidate.
+  // Empty rows (quiet env, or the very first fetch still in flight) fall back to the loader values,
+  // so we never flash a stale 0. Fixed 15m window, env-wide (no queue filter), CH-only recurring
+  // load; pauses while the tab is hidden (handled inside the hook).
+  const { rows: liveBlockRows } = useMetricResourceQuery(QUEUE_LIVE_BLOCKS_QUERY, {
+    organizationId: organization.id,
+    projectId: project.id,
+    environmentId: env.id,
+    timeRange: { period: QUEUE_LIVE_BLOCKS_PERIOD, from: null, to: null },
+    defaultPeriod: QUEUE_LIVE_BLOCKS_PERIOD,
+    fillGaps: false,
+    refreshIntervalMs: 15_000,
+  });
+  const lastLiveBlockRow =
+    liveBlockRows.length > 0 ? liveBlockRows[liveBlockRows.length - 1] : null;
+  const envQueuedLive = lastLiveBlockRow
+    ? tileNumber(lastLiveBlockRow.env_queued)
+    : environment.queued;
+  const envRunningLive = lastLiveBlockRow
+    ? tileNumber(lastLiveBlockRow.env_running)
+    : environment.running;
+
+  // Allocation summary tiles. The presenter computes the env-wide allocated total (sum of
+  // each queue's explicit limit clamped to the env limit) in a single aggregate query.
+  const envLimit = environment.concurrencyLimit;
+  const burstLimit = Math.round(envLimit * environment.burstFactor);
+  const allocated = allocation?.allocated ?? 0;
+  const allocationPct = envLimit > 0 ? Math.round((allocated / envLimit) * 100) : 0;
+  const overAllocated = allocated > envLimit;
+
+  // Running-block tinting (burst/limit) tracks the live running value, not the loader snapshot.
+  const { limitStatus, limitClassName } = getEnvConcurrencyLimitStatus({
+    running: envRunningLive,
+    concurrencyLimit: environment.concurrencyLimit,
+    burstFactor: environment.burstFactor,
+  });
+
+  // Client-side, header-click sorting over the current page's rows. Server pagination and the
+  // default busiest order are unchanged; clearing a sort returns to that server order.
+  const queueRows = queues ?? [];
+  type QueueRow = (typeof queueRows)[number];
+  const sortColumns = useMemo<SortColumn<QueueRow>[]>(
+    () => [
+      { key: "name", type: "alpha", value: (q) => q.name },
+      { key: "queued", type: "number", value: (q) => q.queued },
+      { key: "running", type: "number", value: (q) => q.running },
+      {
+        key: "limit",
+        type: "number",
+        value: (q) => q.concurrencyLimit ?? environment.concurrencyLimit,
+      },
+      { key: "limitedBy", type: "alpha", value: (q) => queueLimitedByLabel(q) },
+      {
+        key: "health",
+        type: "alpha",
+        value: (q) =>
+          queueHealthLabel({
+            paused: q.paused,
+            running: q.running,
+            queued: q.queued,
+            limit: q.concurrencyLimit ?? environment.concurrencyLimit,
+          }),
+      },
+      {
+        key: "delayP95",
+        type: "number",
+        value: (q) => metricsByQueue[queueMetricsKey(q)]?.p95WaitMs ?? null,
+      },
+      {
+        key: "backlog",
+        type: "number",
+        value: (q) => metricsByQueue[queueMetricsKey(q)]?.peakQueued ?? null,
+      },
+    ],
+    [environment.concurrencyLimit, metricsByQueue]
+  );
+  const { sortedRows: sortedQueues, getSortProps } = useTableSort(queueRows, sortColumns);
 
   return (
     <PageContainer>
@@ -484,30 +477,6 @@ function QueuesWithMetricsView() {
         <PageTitle title="Queues" />
         <PageAccessories>
           <AdminDebugTooltip />
-          {plan ? (
-            plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
-              <LinkButton
-                to={concurrencyPath(organization, project, env)}
-                variant="tertiary/small"
-                LeadingIcon={ConcurrencyIcon}
-                leadingIconClassName="text-amber-500"
-              >
-                Increase limit
-              </LinkButton>
-            ) : (
-              <LinkButton
-                to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
-                variant="tertiary/small"
-                LeadingIcon={ArrowUpCircleIcon}
-                leadingIconClassName="text-indigo-500"
-              >
-                Increase limit
-              </LinkButton>
-            )
-          ) : null}
-          {environment.runsEnabled && env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
-            <EnvironmentPauseResumeButton env={env} />
-          ) : null}
           <LinkButton
             variant={"docs/small"}
             LeadingIcon={BookOpenIcon}
@@ -518,157 +487,270 @@ function QueuesWithMetricsView() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="grid max-h-full grid-rows-[auto_auto_1fr] overflow-hidden">
-          <div className="grid grid-cols-2 gap-3 p-3 lg:grid-cols-4">
-            {QUEUE_HEADER_TILES.map((tile) => (
-              <QueueEnvMetricTile
-                key={tile.id}
-                tile={tile}
-                timeRange={timeRange}
-                referenceLines={
-                  tile.id === "saturation"
-                    ? [
-                        { y: 100, label: `Limit ${environment.concurrencyLimit}` },
-                        ...(environment.burstFactor > 1
-                          ? [
-                              {
-                                y: Math.round(environment.burstFactor * 100),
-                                label: `Burst ${Math.round(
-                                  environment.concurrencyLimit * environment.burstFactor
-                                )}`,
-                              },
-                            ]
-                          : []),
-                      ]
-                    : undefined
-                }
-              />
-            ))}
-          </div>
-
+        {/* The whole page scrolls as one: filters, charts, summary tiles and the table share a
+            single vertical scroll context, so the charts scroll out of view with everything else
+            (not an inner table-only scroll). */}
+        <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          {/* Filters — top row, directly under the NavBar */}
           {success ? (
-            <TabContainer className="px-3">
-              <TabButton
-                isActive={view === "queues"}
-                layoutId="queues-view"
-                onClick={() => replace({ view: undefined })}
-              >
-                Queues
-              </TabButton>
-              <TabButton
-                isActive={view === "allocation"}
-                layoutId="queues-view"
-                onClick={() => replace({ view: "allocation", page: undefined })}
-              >
-                Allocation
-              </TabButton>
-            </TabContainer>
+            <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-3 pb-3 pt-1.5">
+              <div className="flex items-center gap-2">
+                <QueueFilters />
+                <TimeFilter
+                  defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
+                  labelName="Period"
+                  hideLabel
+                  maxPeriodDays={maxPeriodDays}
+                  valueClassName="text-text-bright"
+                  shortcut={{ key: "d" }}
+                />
+              </div>
+              <PaginationControls
+                currentPage={pagination.currentPage}
+                totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
+                hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
+                showPageNumbers={false}
+              />
+            </div>
           ) : (
             <div />
           )}
 
-          {success && view === "allocation" ? (
-            allocation ? (
-              <AllocationView allocation={allocation} environment={environment} />
-            ) : (
-              <div className="grid place-items-center py-16">
-                <Spinner className="size-6" />
-              </div>
-            )
-          ) : success ? (
-            <div className="grid max-h-full min-h-full grid-rows-[auto_1fr] overflow-x-auto">
-              <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-1.5 py-1.5">
-                <div className="flex items-center gap-2">
-                  <QueueFilters />
-                  <QueueSortFilter />
-                  <TimeFilter
-                    defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
-                    labelName="Period"
-                    hideLabel
-                    maxPeriodDays={maxPeriodDays}
-                    valueClassName="text-text-bright"
-                    shortcut={{ key: "d" }}
+          {/* Queued + Running + Allocated + Environment limit summary */}
+          {success && allocation ? (
+            <div className="grid grid-cols-2 gap-3 px-3 pb-3 lg:grid-cols-4">
+              <BigNumber
+                title="Queued"
+                value={envQueuedLive}
+                suffix={env.paused ? <span className="text-warning">paused</span> : undefined}
+                animate
+                accessory={
+                  <div className="flex items-start gap-1">
+                    {environment.runsEnabled &&
+                    env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
+                      <EnvironmentPauseResumeButton env={env} />
+                    ) : null}
+                    <LinkButton
+                      variant="secondary/small-icon"
+                      LeadingIcon={RunsIcon}
+                      leadingIconClassName="text-runs"
+                      to={v3RunsPath(organization, project, env, {
+                        statuses: ["PENDING"],
+                        period: "30d",
+                        rootOnly: false,
+                      })}
+                      tooltip="View queued runs"
+                    />
+                  </div>
+                }
+                valueClassName={env.paused ? "text-warning tabular-nums" : "tabular-nums"}
+                compactThreshold={1000000}
+              />
+              <BigNumber
+                title="Running"
+                value={envRunningLive}
+                animate
+                valueClassName={cn(limitClassName, "tabular-nums")}
+                suffix={
+                  limitStatus === "burst" ? (
+                    <span className={cn(limitClassName, "flex items-center gap-1")}>
+                      Including {envRunningLive - environment.concurrencyLimit} burst runs{" "}
+                      <BurstFactorTooltip environment={environment} />
+                    </span>
+                  ) : limitStatus === "limit" ? (
+                    "At concurrency limit"
+                  ) : undefined
+                }
+                accessory={
+                  <LinkButton
+                    variant="secondary/small-icon"
+                    LeadingIcon={RunsIcon}
+                    leadingIconClassName="text-runs"
+                    to={v3RunsPath(organization, project, env, {
+                      statuses: ["DEQUEUED", "EXECUTING"],
+                      period: "30d",
+                      rootOnly: false,
+                    })}
+                    tooltip="View in-progress runs"
                   />
-                </div>
-                <PaginationControls
-                  currentPage={pagination.currentPage}
-                  totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
-                  hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
-                  showPageNumbers={false}
-                />
+                }
+                compactThreshold={1000000}
+              />
+              <BigNumber
+                title={
+                  <span className="flex items-center gap-1.5">
+                    Allocated
+                    {overAllocated ? (
+                      <InfoIconTooltip
+                        content="The queue limits add up to more than the environment limit, so queues will compete for concurrency when the environment saturates."
+                        buttonClassName="text-warning"
+                      />
+                    ) : null}
+                  </span>
+                }
+                value={allocated}
+                valueClassName={cn(overAllocated && "text-warning")}
+                suffix={`${allocationPct}% of the environment limit`}
+                suffixClassName="text-text-bright"
+              />
+              <BigNumber
+                title="Environment limit"
+                value={envLimit}
+                suffix={environment.burstFactor > 1 ? `bursts up to ${burstLimit}` : undefined}
+                suffixClassName="text-text-dimmed"
+                accessory={
+                  plan ? (
+                    plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
+                      <LinkButton
+                        to={concurrencyPath(organization, project, env)}
+                        variant="secondary/small-icon"
+                        LeadingIcon={ConcurrencyIcon}
+                        leadingIconClassName="text-amber-500"
+                        tooltip="Increase limit"
+                      />
+                    ) : (
+                      <LinkButton
+                        to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
+                        variant="secondary/small-icon"
+                        LeadingIcon={ArrowUpCircleIcon}
+                        leadingIconClassName="text-indigo-500"
+                        tooltip="Increase limit"
+                      />
+                    )
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div />
+          )}
+
+          {/* Env saturation, Backlog, Scheduling delay p95, Throttled viz — full-size, synced,
+              drag-to-zoom line charts (Agent page pattern). 2x2 below lg, 4-up from lg. */}
+          <div className="h-[280px] px-3 pb-3">
+            <ChartSyncProvider onZoom={zoomToTimeFilter}>
+              <div className="grid h-full min-h-0 grid-cols-2 gap-3 lg:grid-cols-4">
+                {QUEUE_HEADER_TILES.map((tile) => (
+                  <QueueEnvMetricChart
+                    key={tile.id}
+                    tile={tile}
+                    timeRange={timeRange}
+                    queueNames={chartQueueNames}
+                    referenceLines={
+                      tile.id === "saturation"
+                        ? [
+                            {
+                              y: 100,
+                              label: `Limit ${environment.concurrencyLimit}`,
+                              labelPlacement: "outside" as const,
+                            },
+                            ...(environment.burstFactor > 1
+                              ? [
+                                  {
+                                    y: Math.round(environment.burstFactor * 100),
+                                    label: `Burst ${Math.round(
+                                      environment.concurrencyLimit * environment.burstFactor
+                                    )}`,
+                                    labelPlacement: "outside" as const,
+                                  },
+                                ]
+                              : []),
+                          ]
+                        : undefined
+                    }
+                    // Saturation and p95 "step over the line": a per-bucket overlay retraces only
+                    // the over-threshold stretches in warning colour, so under-threshold values stay
+                    // blue. (A gradient split can't do this reliably — an SVG objectBoundingBox
+                    // gradient tracks the line's own bbox, not the y-axis, so a low/flat line reads
+                    // as entirely warning-coloured.)
+                    // All thresholded lines colour warning where they step over the threshold: the
+                    // per-bucket overlay retraces only the over-threshold stretches, so the colour
+                    // change tracks the axis crossing.
+                    warningOverlay={
+                      tile.id === "saturation"
+                        ? { threshold: 100 }
+                        : tile.id === "p95"
+                          ? { threshold: 60_000 }
+                          : tile.id === "throttled"
+                            ? // Integer counts: threshold 0 warns once a bucket has ≥1 throttle.
+                              { threshold: 0 }
+                            : undefined
+                    }
+                  />
+                ))}
               </div>
+            </ChartSyncProvider>
+          </div>
+
+          {success ? (
+            <div>
+              {/* Default overflow-x-auto container so wide tables still scroll horizontally on
+                  narrow viewports; the page (not this region) owns vertical scrolling. */}
               <Table containerClassName="border-t">
                 <TableHeader>
                   <TableRow>
-                    <TableHeaderCell>Name</TableHeaderCell>
-                    <TableHeaderCell alignment="right">Queued</TableHeaderCell>
-                    <TableHeaderCell alignment="right">Running</TableHeaderCell>
-                    <TableHeaderCell alignment="right">Limit</TableHeaderCell>
+                    <TableHeaderCell {...getSortProps("name")}>Name</TableHeaderCell>
+                    <TableHeaderCell alignment="right" {...getSortProps("queued")}>
+                      Queued
+                    </TableHeaderCell>
+                    <TableHeaderCell alignment="right" {...getSortProps("running")}>
+                      Running
+                    </TableHeaderCell>
+                    <TableHeaderCell alignment="right" {...getSortProps("limit")}>
+                      Limit
+                    </TableHeaderCell>
                     <TableHeaderCell
                       alignment="right"
+                      {...getSortProps("limitedBy")}
                       tooltip={
-                        <div className="max-w-xs space-y-2 p-1 text-left">
-                          <div className="space-y-0.5">
-                            <Header3>Environment</Header3>
-                            <Paragraph
-                              variant="small"
-                              className="!text-wrap text-text-dimmed"
-                              spacing
-                            >
-                              This queue is limited by your environment's concurrency limit of{" "}
-                              {environment.concurrencyLimit}.
-                            </Paragraph>
-                          </div>
-                          <div className="space-y-0.5">
-                            <Header3>User</Header3>
-                            <Paragraph
-                              variant="small"
-                              className="!text-wrap text-text-dimmed"
-                              spacing
-                            >
-                              This queue is limited by a concurrency limit set in your code.
-                            </Paragraph>
-                          </div>
-                          <div className="space-y-0.5">
-                            <Header3>Override</Header3>
-                            <Paragraph
-                              variant="small"
-                              className="!text-wrap text-text-dimmed"
-                              spacing
-                            >
-                              This queue's concurrency limit has been manually overridden from the
-                              dashboard or API.
-                            </Paragraph>
-                          </div>
+                        <div className="max-w-xs space-y-1 p-1 text-left text-xs text-text-dimmed">
+                          <p>
+                            <span className="text-text-bright">Environment</span> — the
+                            environment's limit of {environment.concurrencyLimit}.
+                          </p>
+                          <p>
+                            <span className="text-text-bright">User</span> — a limit set in your
+                            code.
+                          </p>
+                          <p>
+                            <span className="text-text-bright">Override</span> — set manually from
+                            the dashboard or API.
+                          </p>
                         </div>
                       }
                     >
                       Limited by
                     </TableHeaderCell>
-                    <TableHeaderCell>Health</TableHeaderCell>
+                    <TableHeaderCell alignment="right" {...getSortProps("health")}>
+                      Health
+                    </TableHeaderCell>
                     <TableHeaderCell
                       alignment="right"
-                      tooltip="The 95th-percentile scheduling delay (time from when a run became eligible to when it was dequeued) over the selected window."
+                      {...getSortProps("delayP95")}
+                      tooltip="p95 wait from eligible to dequeued, over the selected window."
                     >
                       Delay p95
                     </TableHeaderCell>
-                    <TableHeaderCell>Backlog</TableHeaderCell>
+                    <TableHeaderCell
+                      {...getSortProps("backlog")}
+                      tooltip="Runs waiting over the selected window. Yellow where throttled."
+                    >
+                      Backlog
+                    </TableHeaderCell>
                     <TableHeaderCell className="w-[1%] pl-32">
                       <span className="sr-only">Pause/resume</span>
                     </TableHeaderCell>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {queues.length > 0 ? (
-                    queues.map((queue) => {
+                  {sortedQueues.length > 0 ? (
+                    sortedQueues.map((queue) => {
                       const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
                       const isAtConcurrencyLimit = queue.running >= limit;
                       const isAtQueueLimit =
                         environment.queueSizeLimit !== null &&
                         queue.queued >= environment.queueSizeLimit;
-                      const queueFilterableName = `${queue.type === "task" ? "task/" : ""}${
-                        queue.name
-                      }`;
+                      const queueFilterableName = queueMetricsKey(queue);
                       const queueMetric = metricsByQueue[queueFilterableName];
                       return (
                         <TableRow key={queue.name}>
@@ -683,15 +765,9 @@ function QueuesWithMetricsView() {
                                 <QueueName {...queue} />
                               </Link>
                               {queue.concurrency?.overriddenAt ? (
-                                <SimpleTooltip
-                                  button={
-                                    <Badge variant="extra-small" className="text-text-bright">
-                                      Concurrency limit overridden
-                                    </Badge>
-                                  }
+                                <InfoIconTooltip
                                   content="This queue's concurrency limit has been manually overridden from the dashboard or API."
-                                  className="max-w-xs"
-                                  disableHoverableContent
+                                  contentClassName="max-w-xs"
                                 />
                               ) : null}
                               {queue.paused ? (
@@ -705,9 +781,14 @@ function QueuesWithMetricsView() {
                                 </Badge>
                               ) : null}
                               {isAtConcurrencyLimit ? (
-                                <Badge variant="extra-small" className="text-warning">
-                                  At concurrency limit
-                                </Badge>
+                                <SimpleTooltip
+                                  button={
+                                    <ExclamationTriangleIcon className="size-4 text-warning" />
+                                  }
+                                  content="At concurrency limit: this queue is running as many runs as its limit allows; new runs wait in the backlog."
+                                  className="max-w-xs"
+                                  disableHoverableContent
+                                />
                               ) : null}
                             </span>
                           </TableCell>
@@ -726,8 +807,7 @@ function QueuesWithMetricsView() {
                             className={cn(
                               "w-[1%] pl-16 tabular-nums",
                               queue.paused ? "opacity-50" : undefined,
-                              queue.running > 0 && "text-text-bright",
-                              isAtConcurrencyLimit && "text-warning"
+                              queue.running > 0 && "text-text-bright"
                             )}
                           >
                             {queue.running}
@@ -740,26 +820,48 @@ function QueuesWithMetricsView() {
                               queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                             )}
                           >
-                            {limit}
+                            {queue.concurrencyLimitOverridePercent !== null ? (
+                              <>
+                                {limit}{" "}
+                                <span className="text-text-dimmed">
+                                  ({formatOverridePercent(queue.concurrencyLimitOverridePercent)}%)
+                                </span>
+                              </>
+                            ) : (
+                              limit
+                            )}
                           </TableCell>
                           <TableCell
                             alignment="right"
                             className={cn(
                               "w-[1%] pl-16",
                               queue.paused ? "opacity-50" : undefined,
-                              isAtConcurrencyLimit && "text-warning",
                               queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                             )}
                           >
                             {queue.concurrency?.overriddenAt ? (
-                              <span className="text-text-bright">Override</span>
+                              <SimpleTooltip
+                                button={<span className="text-text-bright">Override</span>}
+                                content={
+                                  queue.concurrencyLimitOverridePercent !== null
+                                    ? `Overridden at ${formatOverridePercent(
+                                        queue.concurrencyLimitOverridePercent
+                                      )}% of the environment limit.`
+                                    : `This queue's concurrency limit has been manually overridden to ${limit}.`
+                                }
+                                className="max-w-xs"
+                                disableHoverableContent
+                              />
                             ) : queue.concurrencyLimit ? (
                               "User"
                             ) : (
                               "Environment"
                             )}
                           </TableCell>
-                          <TableCell className={cn(queue.paused ? "opacity-50" : undefined)}>
+                          <TableCell
+                            alignment="right"
+                            className={cn(queue.paused ? "opacity-50" : undefined)}
+                          >
                             <QueueHealthBadge
                               paused={queue.paused}
                               running={queue.running}
@@ -767,15 +869,9 @@ function QueuesWithMetricsView() {
                               limit={limit}
                             />
                           </TableCell>
-                          <TableCell alignment="right" className="tabular-nums">
+                          <TableCell alignment="right" className="w-[1%] pl-16 tabular-nums">
                             {queueMetric && queueMetric.p95WaitMs !== null ? (
-                              <span
-                                className={cn(
-                                  queueMetric.p95WaitMs >= 60_000
-                                    ? "text-warning"
-                                    : "text-text-bright"
-                                )}
-                              >
+                              <span className="text-text-bright">
                                 {formatWaitMs(queueMetric.p95WaitMs)}
                               </span>
                             ) : (
@@ -783,15 +879,24 @@ function QueuesWithMetricsView() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <UsageSparkline
+                            <MiniLineChart
                               data={queueMetric?.depthSparkline}
-                              total={queueMetric?.peakQueued}
+                              throttled={queueMetric?.throttledSparkline}
+                              peak={queueMetric?.peakQueued}
                               bucketStartMs={metrics?.bucketStartMs}
                               bucketIntervalMs={metrics?.bucketIntervalMs}
-                              color="#A78BFA"
-                              totalClassName="text-text-dimmed"
+                              width={134}
+                              color="var(--color-queues)"
                               unitLabel={{ singular: "queued", plural: "queued" }}
-                              formatTotal={(v) => v.toLocaleString()}
+                              showPeak={false}
+                              formatPeak={(v) => v.toLocaleString()}
+                              peakTooltip={
+                                queueMetric && queueMetric.throttledTotal > 0
+                                  ? `Peak queued; this queue was throttled ${queueMetric.throttledTotal.toLocaleString()} ${
+                                      queueMetric.throttledTotal === 1 ? "time" : "times"
+                                    } in this period`
+                                  : "Peak queued in this period"
+                              }
                             />
                           </TableCell>
                           <TableCellMenu
@@ -844,7 +949,7 @@ function QueuesWithMetricsView() {
                                 <PopoverMenuItem
                                   icon={Spinner}
                                   leadingIconClassName="text-queues animate-none"
-                                  title="View running runs"
+                                  title="View in-progress runs"
                                   to={v3RunsPath(organization, project, env, {
                                     queues: [queueFilterableName],
                                     statuses: ["DEQUEUED", "EXECUTING"],
@@ -921,16 +1026,19 @@ function EnvironmentPauseResumeButton({
         <TooltipProvider disableHoverableContent={true}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div>
+              <div className="cursor-pointer [&_button]:cursor-pointer">
                 <DialogTrigger asChild>
                   <Button
                     type="button"
-                    variant="secondary/small"
+                    variant="secondary/small-icon"
                     LeadingIcon={env.paused ? PlayIcon : PauseIcon}
                     leadingIconClassName={env.paused ? "text-success" : "text-warning"}
-                  >
-                    {env.paused ? "Resume..." : "Pause environment..."}
-                  </Button>
+                    aria-label={
+                      env.paused
+                        ? `Resume processing runs in ${environmentFullTitle(env)}`
+                        : `Pause processing runs in ${environmentFullTitle(env)}`
+                    }
+                  />
                 </DialogTrigger>
               </div>
             </TooltipTrigger>
@@ -987,225 +1095,6 @@ function EnvironmentPauseResumeButton({
   );
 }
 
-function QueuePauseResumeButton({
-  queue,
-  variant = "tertiary/small",
-  fullWidth = false,
-  showTooltip = true,
-}: {
-  /** The "id" here is a friendlyId */
-  queue: { id: string; name: string; paused: boolean };
-  variant?: ButtonVariant;
-  fullWidth?: boolean;
-  showTooltip?: boolean;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const trigger = showTooltip ? (
-    <div>
-      <TooltipProvider disableHoverableContent={true}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div>
-              <DialogTrigger asChild>
-                <Button
-                  type="button"
-                  variant={variant}
-                  LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
-                  leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
-                  fullWidth={fullWidth}
-                  textAlignLeft={fullWidth}
-                >
-                  {queue.paused ? "Resume..." : "Pause..."}
-                </Button>
-              </DialogTrigger>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="right" className={"text-xs"}>
-            {queue.paused
-              ? `Resume processing runs in queue "${queue.name}"`
-              : `Pause processing runs in queue "${queue.name}"`}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    </div>
-  ) : (
-    <DialogTrigger asChild>
-      <PopoverMenuItem
-        icon={queue.paused ? PlayIcon : PauseIcon}
-        leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
-        title={queue.paused ? "Resume..." : "Pause..."}
-      />
-    </DialogTrigger>
-  );
-
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      {trigger}
-      <DialogContent>
-        <DialogHeader>{queue.paused ? "Resume queue?" : "Pause queue?"}</DialogHeader>
-        <div className="flex flex-col gap-3 pt-3">
-          <Paragraph>
-            {queue.paused
-              ? `This will allow runs to be dequeued in the "${queue.name}" queue again.`
-              : `This will pause all runs from being dequeued in the "${queue.name}" queue. Any executing runs will continue to run.`}
-          </Paragraph>
-          <Form method="post" onSubmit={() => setIsOpen(false)}>
-            <input
-              type="hidden"
-              name="action"
-              value={queue.paused ? "queue-resume" : "queue-pause"}
-            />
-            <input type="hidden" name="friendlyId" value={queue.id} />
-            <FormButtons
-              confirmButton={
-                <Button
-                  type="submit"
-                  shortcut={{ modifiers: ["mod"], key: "enter" }}
-                  variant={queue.paused ? "primary/medium" : "danger/medium"}
-                  LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
-                >
-                  {queue.paused ? "Resume queue" : "Pause queue"}
-                </Button>
-              }
-              cancelButton={
-                <DialogClose asChild>
-                  <Button type="button" variant="tertiary/medium">
-                    Cancel
-                  </Button>
-                </DialogClose>
-              }
-            />
-          </Form>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function QueueOverrideConcurrencyButton({
-  queue,
-  environmentConcurrencyLimit,
-}: {
-  queue: QueueItem;
-  environmentConcurrencyLimit: number;
-}) {
-  const navigation = useNavigation();
-  const [isOpen, setIsOpen] = useState(false);
-  const [concurrencyLimit, setConcurrencyLimit] = useState<string>(
-    queue.concurrencyLimit?.toString() ?? environmentConcurrencyLimit.toString()
-  );
-
-  const isOverridden = !!queue.concurrency?.overriddenAt;
-  const currentLimit = queue.concurrencyLimit ?? environmentConcurrencyLimit;
-
-  useEffect(() => {
-    if (navigation.state === "loading" || navigation.state === "idle") {
-      setIsOpen(false);
-    }
-  }, [navigation.state]);
-
-  const isLoading = Boolean(
-    navigation.formData?.get("action") === "queue-override" ||
-    navigation.formData?.get("action") === "queue-remove-override"
-  );
-
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <PopoverMenuItem
-          icon={AdjustmentsHorizontalIcon}
-          title={isOverridden ? "Edit override…" : "Override limit…"}
-        />
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          {isOverridden ? "Edit concurrency override" : "Override concurrency limit"}
-        </DialogHeader>
-        <div className="flex flex-col gap-3 pt-3">
-          {isOverridden ? (
-            <Paragraph>
-              This queue's concurrency limit is currently overridden to {currentLimit}.
-              {typeof queue.concurrency?.base === "number" &&
-                ` The original limit set in code was ${queue.concurrency.base}.`}{" "}
-              You can update the override or remove it to restore the{" "}
-              {typeof queue.concurrency?.base === "number"
-                ? "limit set in code"
-                : "environment concurrency limit"}
-              .
-            </Paragraph>
-          ) : (
-            <Paragraph>
-              Override this queue's concurrency limit. The current limit is {currentLimit}, which is
-              set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
-            </Paragraph>
-          )}
-          <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
-            <input type="hidden" name="friendlyId" value={queue.id} />
-            <div className="space-y-2">
-              <label htmlFor="concurrencyLimit" className="text-sm text-text-bright">
-                Concurrency limit
-              </label>
-              <Input
-                type="number"
-                name="concurrencyLimit"
-                id="concurrencyLimit"
-                min="0"
-                max={environmentConcurrencyLimit}
-                value={concurrencyLimit}
-                onChange={(e) => setConcurrencyLimit(e.target.value)}
-                placeholder={currentLimit.toString()}
-                autoFocus
-              />
-            </div>
-
-            <FormButtons
-              defaultAction={{
-                name: "action",
-                value: "queue-override",
-                disabled: isLoading || !concurrencyLimit,
-              }}
-              confirmButton={
-                <Button
-                  type="submit"
-                  name="action"
-                  value="queue-override"
-                  disabled={isLoading || !concurrencyLimit}
-                  variant="primary/medium"
-                  LeadingIcon={isLoading && <Spinner color="white" />}
-                  shortcut={{ modifiers: ["mod"], key: "enter" }}
-                >
-                  {isOverridden ? "Update override" : "Override limit"}
-                </Button>
-              }
-              cancelButton={
-                <div className="flex items-center justify-between gap-2">
-                  {isOverridden && (
-                    <Button
-                      type="submit"
-                      name="action"
-                      value="queue-remove-override"
-                      disabled={isLoading}
-                      variant="danger/medium"
-                    >
-                      Remove override
-                    </Button>
-                  )}
-                  <DialogClose asChild>
-                    <Button type="button" variant="tertiary/medium">
-                      Cancel
-                    </Button>
-                  </DialogClose>
-                </div>
-              }
-            />
-          </Form>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function EngineVersionUpgradeCallout() {
   return (
     <div className="mt-4 flex max-w-lg flex-col gap-4 rounded-sm border border-grid-bright bg-background-bright px-4">
@@ -1253,57 +1142,32 @@ export function QueueFilters() {
   return <SearchInput placeholder="Search queues…" paramName="query" resetParams={["page"]} />;
 }
 
-const QUEUE_SORT_OPTIONS = [
-  { value: "busiest", label: "Busiest" },
-  { value: "queued", label: "Backlog" },
-  { value: "name", label: "Name" },
-] as const;
-
-type QueueSortValue = (typeof QUEUE_SORT_OPTIONS)[number]["value"];
-
-function QueueSortFilter() {
-  const { value, replace } = useSearchParams();
-  const sort: QueueSortValue = (value("sort") as QueueSortValue) ?? "busiest";
-  const label = QUEUE_SORT_OPTIONS.find((option) => option.value === sort)?.label ?? "Busiest";
-
-  return (
-    <SelectProvider
-      value={sort}
-      setValue={(next) =>
-        replace({ sort: next === "busiest" ? undefined : (next as string), page: undefined })
-      }
-    >
-      <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
-        <AppliedFilter
-          label="Sort"
-          value={label}
-          removable={false}
-          variant="secondary/small"
-          valueClassName="text-text-bright"
-        />
-      </Ariakit.Select>
-      <SelectPopover className="min-w-0 max-w-[min(240px,var(--popover-available-width))]">
-        {QUEUE_SORT_OPTIONS.map((option) => (
-          <SelectItem key={option.value} value={option.value} className="gap-x-2 text-text-bright">
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectPopover>
-    </SelectProvider>
-  );
-}
-
 type MetricTileRow = Record<string, number | string | null>;
+
+/** One charted point per time bucket, already aggregated across the visible queue set. */
+type TilePoint = { bucket: number; value: number };
 
 type QueueHeaderTile = {
   id: string;
   label: string;
+  /** Info-icon copy explaining what the chart shows, rendered next to the card title. */
+  description: string;
   color: string;
   query: string;
   /** Formats a single bucket's value in the chart tooltip. */
   formatValue?: (value: number) => string;
+  /** Formats the y-axis tick labels. Without it the axis shows raw numbers (bad for durations
+   * in ms or percent scales). Passed through to Chart.Line's yAxisProps.tickFormatter. */
+  formatAxis?: (value: number) => string;
+  /** Hover tooltip explaining the headline readout next to the title (e.g. what "9% of window"
+   * means). Without it the readout has no tooltip. */
+  totalTooltip?: string;
+  // Rows can be one-per-bucket (p95, throttled: aggregated across the set in ClickHouse) or
+  // one-per-(bucket, queue) (saturation, backlog: summed across the set here, since summing a
+  // gauge across queues can't be a flat aggregate without double-counting sub-buckets). Either
+  // way derive returns the per-bucket points the chart draws.
   derive: (rows: MetricTileRow[]) => {
-    sparkline: number[];
+    points: TilePoint[];
     total: number;
     formatTotal?: (total: number) => string;
     totalClassName?: string;
@@ -1320,46 +1184,84 @@ function tileTimeToMs(value: number | string | null): number {
   return Date.parse(s.endsWith("Z") ? s : `${s}Z`);
 }
 
-// Header tiles fetch their own TRQL query client-side (resources.metric) with fillGaps, mirroring the
-// metrics dashboard widgets: the gauges (saturation inputs, backlog) carry, counters/p95 zero-fill.
+// Sums a per-(bucket, queue) row set into one value per bucket. `read` pulls the queue's
+// contribution; `envColumn`, when set, carries an env-wide column (identical across the set's
+// rows in a bucket) through as the max, so saturation can divide by the env limit.
+function sumByBucket(
+  rows: MetricTileRow[],
+  read: (row: MetricTileRow) => number,
+  envColumn?: string
+): Array<{ bucket: number; sum: number; env: number }> {
+  const byBucket = new Map<number, { sum: number; env: number }>();
+  for (const row of rows) {
+    const bucket = tileTimeToMs(row.t);
+    if (!Number.isFinite(bucket)) continue;
+    const entry = byBucket.get(bucket) ?? { sum: 0, env: 0 };
+    entry.sum += read(row);
+    if (envColumn) entry.env = Math.max(entry.env, tileNumber(row[envColumn]));
+    byBucket.set(bucket, entry);
+  }
+  return [...byBucket.entries()]
+    .map(([bucket, { sum, env }]) => ({ bucket, sum, env }))
+    .sort((a, b) => a.bucket - b.bucket);
+}
+
+// Header tiles fetch their own TRQL query client-side (resources.metric) with fillGaps, scoped to
+// the visible queue set (queue_metrics WHERE queue IN <set>). Saturation and backlog GROUP BY the
+// queue too and sum here; p95 merges quantile states and throttled sums counters in ClickHouse.
 const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
   {
     id: "saturation",
     label: "Env saturation",
-    color: "#6366F1",
-    query: `SELECT timeBucket() AS t,\n  max(max_env_running) AS used,\n  max(max_env_limit) AS env_limit\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
-    formatValue: (v) => `${v}%`,
+    description: "Running as a share of the environment limit. Yellow over 100% (burst headroom).",
+    color: "var(--color-queues)",
+    // Numerator: running summed across the visible set. Denominator: the env-wide limit (same for
+    // every queue in a bucket), so the line reads as the set's share of the environment capacity.
+    query: `SELECT timeBucket() AS t,\n  queue,\n  max(max_running) AS running,\n  max(max_env_limit) AS env_limit\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
+    formatValue: (v) => (v > 100 ? `${v}% — over the environment limit` : `${v}%`),
+    formatAxis: (v) => `${v}%`,
     derive: (rows) => {
-      const sparkline = rows.map((r) => {
-        const limit = tileNumber(r.env_limit);
-        return limit > 0 ? Math.round((tileNumber(r.used) / limit) * 100) : 0;
-      });
-      const peak = sparkline.reduce((max, v) => Math.max(max, v), 0);
-      return { sparkline, total: peak, formatTotal: (v) => `${v}% peak` };
+      const points = sumByBucket(rows, (r) => tileNumber(r.running), "env_limit").map(
+        ({ bucket, sum, env }) => ({
+          bucket,
+          value: env > 0 ? Math.round((sum / env) * 100) : 0,
+        })
+      );
+      const peak = points.reduce((max, p) => Math.max(max, p.value), 0);
+      return { points, total: peak, formatTotal: (v) => `${v}% peak` };
     },
   },
   {
     id: "backlog",
     label: "Backlog",
-    color: "#A78BFA",
-    query: `SELECT timeBucket() AS t,\n  max(max_env_queued) AS queued\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
+    description: "Runs waiting across these queues over time.",
+    color: "var(--color-queues)",
+    query: `SELECT timeBucket() AS t,\n  queue,\n  max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
     derive: (rows) => {
-      const sparkline = rows.map((r) => tileNumber(r.queued));
-      const peak = sparkline.reduce((max, v) => Math.max(max, v), 0);
-      return { sparkline, total: peak, formatTotal: (v) => `${v.toLocaleString()} peak` };
+      const points = sumByBucket(rows, (r) => tileNumber(r.queued)).map(({ bucket, sum }) => ({
+        bucket,
+        value: sum,
+      }));
+      const peak = points.reduce((max, p) => Math.max(max, p.value), 0);
+      return { points, total: peak, formatTotal: (v) => `${v.toLocaleString()} peak` };
     },
   },
   {
     id: "p95",
     label: "Scheduling delay p95",
-    color: "#F59E0B",
-    query: `SELECT timeBucket() AS t,\n  round(quantilesTDigestMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
+    description: "p95 wait from eligible to dequeued. Yellow over 1 min.",
+    totalTooltip: "The worst p95 in the selected window.",
+    color: "var(--color-queues)",
+    // quantilesMerge over the set's rows in a bucket is the true p95 across the union of samples
+    // (merging quantile states is valid; averaging per-queue percentiles would not be).
+    query: `SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
     formatValue: formatWaitMs,
+    formatAxis: formatWaitMs,
     derive: (rows) => {
-      const sparkline = rows.map((r) => tileNumber(r.p95));
-      const worst = sparkline.reduce((max, v) => Math.max(max, v), 0);
+      const points = rows.map((r) => ({ bucket: tileTimeToMs(r.t), value: tileNumber(r.p95) }));
+      const worst = points.reduce((max, p) => Math.max(max, p.value), 0);
       return {
-        sparkline,
+        points,
         total: worst,
         formatTotal: (v) => (v > 0 ? formatWaitMs(v) : "–"),
         totalClassName: worst >= 60_000 ? "text-warning" : undefined,
@@ -1369,177 +1271,247 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
   {
     id: "throttled",
     label: "Throttled",
-    color: "#F59E0B",
-    query: `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM env_metrics\nGROUP BY t\nORDER BY t`,
+    description: "Times dequeuing was blocked by a limit.",
+    totalTooltip: "The share of the selected window with at least one blocked dequeue.",
+    color: "var(--color-queues)",
+    query: `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
     derive: (rows) => {
-      const sparkline = rows.map((r) => tileNumber(r.throttled));
-      const total = sparkline.reduce((sum, v) => sum + v, 0);
+      const points = rows.map((r) => ({
+        bucket: tileTimeToMs(r.t),
+        value: tileNumber(r.throttled),
+      }));
+      // Share of the window that saw any throttling. A raw event sum isn't interpretable (it
+      // scales with poll rate and window length); the fraction of buckets with a throttle is.
+      // The data path fills gaps (zero-fill for this counter), so every bucket in the window is
+      // present and `points.length` is the honest denominator.
+      const nonzero = points.filter((p) => p.value > 0).length;
+      const pct = points.length > 0 ? Math.round((nonzero / points.length) * 100) : 0;
       return {
-        sparkline,
-        total,
-        totalClassName: total > 0 ? "text-warning" : undefined,
+        points,
+        total: pct,
+        formatTotal: (v) => `${v}% of window`,
+        totalClassName: pct > 0 ? "text-warning" : undefined,
       };
     },
   },
 ];
 
+// When a search matches no queues the set is empty. We still fetch (hooks can't be conditional),
+// but with a queue name that can't exist so the IN filter returns nothing and the tile falls
+// through to its "No activity" empty state instead of silently widening to the whole environment.
+const NO_QUEUES_SENTINEL = "__no_queues__";
+
 type TileTimeRange = MetricResourceTimeRange;
 
-function QueueEnvMetricTile({
+// Full-size env metric chart rendered inside a ChartCard. Same data path as before
+// (client-side TRQL via useMetricResourceQuery with fillGaps), drawn as a line that
+// participates in the shared hover + drag-to-zoom of the enclosing ChartSyncProvider.
+function QueueEnvMetricChart({
   tile,
   timeRange,
+  queueNames,
   referenceLines,
+  thresholdStroke,
+  warningOverlay,
+  solidWarning = false,
 }: {
   tile: QueueHeaderTile;
   timeRange: TileTimeRange;
-  referenceLines?: Array<{ y: number; label?: string }>;
+  /** The visible queue set (post-search, post-pagination) the chart scopes to. */
+  queueNames: string[];
+  referenceLines?: Array<{
+    y: number;
+    label?: string;
+    labelPlacement?: "inside" | "outside";
+  }>;
+  thresholdStroke?: { value: number; aboveColor: string };
+  warningOverlay?: { threshold: number };
+  /** When set, the ENTIRE line turns warning-coloured if the series is ever non-zero (used for
+   * throttling: any throttle in the window colours the whole line). Mutually exclusive with the
+   * per-bucket warningOverlay. */
+  solidWarning?: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
-  const { rows, isLoading, showLoading, failed } = useMetricResourceQuery(tile.query, {
+  // Scope to exactly the queues the table is showing. Empty set => sentinel that matches nothing,
+  // so the tile shows "No activity" rather than the whole environment. The hook re-fetches when
+  // this list changes (it keys on the joined names), so search/pagination reflow the charts.
+  const { rows, showLoading, failed } = useMetricResourceQuery(tile.query, {
     organizationId: organization.id,
     projectId: project.id,
     environmentId: environment.id,
     timeRange,
     defaultPeriod: QUEUE_METRICS_DEFAULT_PERIOD,
     fillGaps: true,
+    queues: queueNames.length > 0 ? queueNames : [NO_QUEUES_SENTINEL],
   });
 
-  const { sparkline, total, formatTotal, totalClassName } = tile.derive(rows);
+  const { points, total, formatTotal, totalClassName } = tile.derive(rows);
 
-  // Same point shape the full-size charts use so the shared axis/tooltip helpers apply.
-  const data = rows
-    .map((r, i) => ({ bucket: tileTimeToMs(r.t), [tile.id]: sparkline[i] ?? 0 }))
+  // Same point shape the shared axis/tooltip helpers expect.
+  const data = points
+    .map((p) => ({ bucket: p.bucket, [tile.id]: p.value }))
     .filter((p) => Number.isFinite(p.bucket));
 
+  // Whole-line warning colour when the series was ever non-zero (throttling: one throttle in the
+  // window colours the entire line). Otherwise the tile's normal colour.
+  const wholeLineWarning = solidWarning && total > 0;
+  const lineColor = wholeLineWarning ? "var(--color-warning)" : tile.color;
+
   const chartConfig = useMemo<ChartConfig>(
-    () => ({ [tile.id]: { label: tile.label, color: tile.color } }),
-    [tile.id, tile.label, tile.color]
+    () => ({ [tile.id]: { label: tile.label, color: lineColor } }),
+    [tile.id, tile.label, lineColor]
   );
 
-  const { tooltipLabelFormatter } = useMemo(() => buildActivityTimeAxis(data), [data]);
-  const hasData = data.length > 0 && sparkline.some((v) => v > 0);
+  const { tickFormatter, tooltipLabelFormatter } = useMemo(
+    () => buildActivityTimeAxis(data),
+    [data]
+  );
+  const hasData = data.length > 0 && data.some((p) => (p[tile.id] as number) > 0);
+
+  // Peak readout lives in the card title (ChartCard has no dedicated value slot). A zero/empty
+  // total renders no readout at all (skipping "0% peak", "0 peak", "0" and the p95 "–" placeholder)
+  // so the card title stands alone until there's a non-zero value to show.
+  const peak = showLoading ? (
+    <span className="inline-block h-3 w-12 animate-pulse rounded bg-grid-bright" />
+  ) : failed || total === 0 ? null : formatTotal ? (
+    formatTotal(total)
+  ) : (
+    total.toLocaleString()
+  );
 
   return (
-    <HeaderTile
-      label={tile.label}
-      value={
-        showLoading ? (
-          <span className="inline-block h-3 w-12 animate-pulse rounded bg-grid-bright" />
-        ) : failed ? undefined : formatTotal ? (
-          formatTotal(total)
-        ) : (
-          total.toLocaleString()
-        )
+    <ChartCard
+      title={
+        <span className="flex items-baseline gap-2">
+          <span className="flex items-center gap-1.5">
+            {tile.label}
+            <InfoIconTooltip content={tile.description} contentClassName="max-w-xs" />
+          </span>
+          {peak != null ? (
+            tile.totalTooltip && !showLoading ? (
+              <SimpleTooltip
+                button={
+                  <span
+                    className={cn(
+                      "text-xs font-normal tabular-nums text-text-dimmed",
+                      totalClassName
+                    )}
+                  >
+                    {peak}
+                  </span>
+                }
+                content={tile.totalTooltip}
+                className="max-w-xs"
+                disableHoverableContent
+              />
+            ) : (
+              <span
+                className={cn("text-xs font-normal tabular-nums text-text-dimmed", totalClassName)}
+              >
+                {peak}
+              </span>
+            )
+          ) : null}
+        </span>
       }
-      valueClassName={totalClassName}
     >
-      <LoadingBarDivider isLoading={isLoading} className="bg-transparent" />
       {showLoading ? (
-        <div className="h-16 w-full animate-pulse rounded bg-grid-bright/60" />
+        <QueueMetricChartSkeleton />
       ) : failed ? (
-        <div className="flex h-16 items-center text-xs text-text-dimmed">
+        <div className="flex h-full items-center justify-center text-xs text-text-dimmed">
           Unable to load metrics
         </div>
       ) : hasData ? (
-        <div className="h-16 w-full">
-          <Chart.Root
-            config={chartConfig}
-            data={data}
-            dataKey="bucket"
-            series={[tile.id]}
-            fillContainer
-          >
-            <Chart.Line
-              lineType="monotone"
-              showDots={false}
-              referenceLines={referenceLines}
-              xAxisProps={{ hide: true }}
-              yAxisProps={{ hide: true }}
-              tooltipLabelFormatter={tooltipLabelFormatter}
-              tooltipValueFormatter={tile.formatValue}
-            />
-          </Chart.Root>
-        </div>
+        <Chart.Root
+          config={chartConfig}
+          data={data}
+          dataKey="bucket"
+          series={[tile.id]}
+          fillContainer
+        >
+          <Chart.Line
+            showDots={false}
+            referenceLines={referenceLines}
+            thresholdStroke={thresholdStroke}
+            warningOverlay={warningOverlay}
+            xAxisProps={{ tickFormatter }}
+            yAxisProps={tile.formatAxis ? { tickFormatter: tile.formatAxis } : undefined}
+            tooltipLabelFormatter={tooltipLabelFormatter}
+            tooltipValueFormatter={tile.formatValue}
+          />
+        </Chart.Root>
       ) : (
-        <div className="flex h-16 items-center text-xs text-text-dimmed">No activity</div>
+        <div className="flex h-full items-center justify-center text-xs text-text-dimmed">
+          No activity
+        </div>
       )}
-    </HeaderTile>
+    </ChartCard>
   );
 }
 
-function HeaderTile({
-  label,
-  value,
-  valueClassName,
-  children,
-}: {
-  label: ReactNode;
-  value?: ReactNode;
-  valueClassName?: string;
-  children: ReactNode;
-}) {
+function QueueMetricChartSkeleton() {
   return (
-    <div className="flex flex-col gap-1.5 rounded-sm border border-grid-dimmed bg-background-bright px-3 py-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-xs text-text-dimmed">{label}</span>
-        {value !== undefined ? (
-          <span className={cn("shrink-0 text-sm tabular-nums text-text-bright", valueClassName)}>
-            {value}
-          </span>
-        ) : null}
-      </div>
-      {children}
+    <div className="flex h-full min-h-0 items-end gap-px rounded-sm">
+      {Array.from({ length: 42 }).map((_, i) => (
+        <div key={i} className="h-full flex-1 bg-background-dimmed" />
+      ))}
     </div>
   );
 }
 
-function QueueHealthBadge({
-  paused,
-  running,
-  queued,
-  limit,
-}: {
+/** Health as a stock Badge: color carries the state, w-fit keeps it content-width. */
+type QueueHealth = {
   paused: boolean;
   running: number;
   queued: number;
   limit: number;
-}) {
-  if (paused) {
-    return (
-      <Badge variant="extra-small" className="text-warning">
-        Paused
-      </Badge>
-    );
-  }
-  if (running >= limit && queued > 0) {
-    return (
-      <Badge variant="extra-small" className="text-warning">
-        At capacity
-      </Badge>
-    );
-  }
-  if (queued > 0) {
-    return (
-      <Badge variant="extra-small" className="text-blue-500">
-        Backlogged
-      </Badge>
-    );
-  }
-  if (running > 0) {
-    return (
-      <Badge variant="extra-small" className="text-success">
-        Active
-      </Badge>
-    );
-  }
+};
+
+type QueueHealthLabel = "Paused" | "At capacity" | "Backlogged" | "Active" | "Idle";
+
+// Single source of truth for the queue health decision, shared by the badge and the table's
+// health-column sort so the sorted order always matches the labels shown.
+function queueHealthLabel({ paused, running, queued, limit }: QueueHealth): QueueHealthLabel {
+  if (paused) return "Paused";
+  if (running >= limit && queued > 0) return "At capacity";
+  if (queued > 0) return "Backlogged";
+  if (running > 0) return "Active";
+  return "Idle";
+}
+
+const QUEUE_HEALTH_STYLES: Record<QueueHealthLabel, string> = {
+  Paused: "text-warning",
+  "At capacity": "text-warning",
+  Backlogged: "text-blue-500",
+  Active: "text-success",
+  Idle: "text-text-dimmed",
+};
+
+function QueueHealthBadge(health: QueueHealth) {
+  const label = queueHealthLabel(health);
   return (
-    <Badge variant="extra-small" className="text-text-dimmed">
-      Idle
+    <Badge variant="extra-small" className={cn("ml-auto w-fit", QUEUE_HEALTH_STYLES[label])}>
+      {label}
     </Badge>
   );
+}
+
+// The label rendered in the "Limited by" cell, also used to sort that column.
+function queueLimitedByLabel(queue: {
+  concurrency?: { overriddenAt?: Date | string | null } | null;
+  concurrencyLimit?: number | null;
+}): "Override" | "User" | "Environment" {
+  if (queue.concurrency?.overriddenAt) return "Override";
+  if (queue.concurrencyLimit) return "User";
+  return "Environment";
+}
+
+// The `queue_metrics`-prefixed key a queue is stored under (task queues are prefixed `task/`).
+function queueMetricsKey(queue: { type: string; name: string }): string {
+  return `${queue.type === "task" ? "task/" : ""}${queue.name}`;
 }
 
 function formatWaitMs(ms: number): string {
@@ -1547,6 +1519,11 @@ function formatWaitMs(ms: number): string {
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   if (ms < 3_600_000) return `${(ms / 60_000).toFixed(1)}m`;
   return `${(ms / 3_600_000).toFixed(1)}h`;
+}
+
+// Drop a trailing ".00" from whole percentages so "50.00" reads as "50" but "12.50" is preserved.
+function formatOverridePercent(percent: number): string {
+  return Number.isInteger(percent) ? percent.toString() : percent.toFixed(2).replace(/\.?0+$/, "");
 }
 
 // Classic Queues page, restored verbatim from before the Queue Metrics feature. Rendered
@@ -1570,15 +1547,7 @@ function ClassicQueuesView() {
 
   useAutoRevalidate({ interval: autoReloadPollIntervalMs, onFocus: true });
 
-  const limitStatus =
-    environment.running === environment.concurrencyLimit * environment.burstFactor
-      ? "limit"
-      : environment.running > environment.concurrencyLimit
-        ? "burst"
-        : "within";
-
-  const limitClassName =
-    limitStatus === "burst" ? "text-warning" : limitStatus === "limit" ? "text-error" : undefined;
+  const { limitStatus, limitClassName } = getEnvConcurrencyLimitStatus(environment);
 
   return (
     <PageContainer>

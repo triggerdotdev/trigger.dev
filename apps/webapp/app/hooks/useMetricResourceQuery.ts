@@ -103,7 +103,13 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
     return () => abortRef.current?.abort();
   }, [load]);
 
-  useInterval({ interval: refreshIntervalMs, onLoad: false, onFocus: true, callback: load });
+  useInterval({
+    interval: refreshIntervalMs,
+    onLoad: false,
+    onFocus: true,
+    pauseWhenHidden: true,
+    callback: load,
+  });
 
   return { rows: rows ?? [], isLoading, showLoading: isLoading && !rows, failed };
 }
