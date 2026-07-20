@@ -63,7 +63,7 @@ patchedDependencies:
     hash: 33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9
     path: patches/@remix-run__router@1.23.3.patch
   '@sentry/remix@9.46.0':
-    hash: 146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b
+    hash: 81622d55455fe21cad379bf42bce1536202b8858028aa312c228c7a59ffe41cf
     path: patches/@sentry__remix@9.46.0.patch
   '@upstash/ratelimit@1.1.3':
     hash: e5922e50fbefb7b2b24950c4b1c5c9ddc4cd25464439c9548d2298c432debe74
@@ -437,7 +437,7 @@ importers:
         version: 0.22.10(supports-color@10.0.0)
       '@sentry/remix':
         specifier: 9.46.0
-        version: 9.46.0(patch_hash=146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b)(@remix-run/node@2.17.5(typescript@5.5.4))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(encoding@0.1.13)(react@18.3.1)
+        version: 9.46.0(patch_hash=81622d55455fe21cad379bf42bce1536202b8858028aa312c228c7a59ffe41cf)(@remix-run/node@2.17.5(typescript@5.5.4))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(encoding@0.1.13)(react@18.3.1)
       '@slack/web-api':
         specifier: 7.16.0
         version: 7.16.0
@@ -21282,7 +21282,7 @@ snapshots:
       hoist-non-react-statics: 3.3.2
       react: 18.3.1
 
-  '@sentry/remix@9.46.0(patch_hash=146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b)(@remix-run/node@2.17.5(typescript@5.5.4))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(encoding@0.1.13)(react@18.3.1)':
+  '@sentry/remix@9.46.0(patch_hash=81622d55455fe21cad379bf42bce1536202b8858028aa312c228c7a59ffe41cf)(@remix-run/node@2.17.5(typescript@5.5.4))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(encoding@0.1.13)(react@18.3.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/instrumentation': 0.57.2(@opentelemetry/api@1.9.1)

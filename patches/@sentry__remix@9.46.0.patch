@@ -1,8 +1,24 @@
 diff --git a/build/cjs/vendor/instrumentation.js b/build/cjs/vendor/instrumentation.js
-index 84e18d1051f57d5807e65c8b8ce858ceee7d4557..640a5253d565650338fe33e0ea52c8dffc63e4e7 100644
+index 84e18d1051f57d5807e65c8b8ce858ceee7d4557..098a18992044ff4e52de986782bfb52761e50ab7 100644
 --- a/build/cjs/vendor/instrumentation.js
 +++ b/build/cjs/vendor/instrumentation.js
-@@ -238,7 +238,7 @@ class RemixInstrumentation extends instrumentation.InstrumentationBase {
+@@ -140,7 +140,14 @@ class RemixInstrumentation extends instrumentation.InstrumentationBase {
+ 
+         const route = (result || []).slice(-1)[0]?.route;
+ 
+-        const routePath = route?.path;
++        // Join every matched route segment so nested routes report their
++        // full URL pattern on http.route (and the span name), not just the
++        // leaf route's own path segment.
++        const routePath =
++          (result || [])
++            .map((match) => match?.route?.path)
++            .filter((segment) => typeof segment === 'string' && segment.length > 0)
++            .join('/') || route?.path;
+         if (span && routePath) {
+           span.setAttribute(semanticConventions.SemanticAttributes.HTTP_ROUTE, routePath);
+           span.updateName(`remix.request ${routePath}`);
+@@ -238,7 +245,7 @@ class RemixInstrumentation extends instrumentation.InstrumentationBase {
      return function callRouteAction(original) {
        return async function patchCallRouteAction( ...args) {
          const [params] = args;
@@ -11,7 +27,7 @@ index 84e18d1051f57d5807e65c8b8ce858ceee7d4557..640a5253d565650338fe33e0ea52c8df
          const span = plugin.tracer.startSpan(
            `ACTION ${params.routeId}`,
            { attributes: { [semanticConventions.SemanticAttributes.CODE_FUNCTION]: 'action' } },
-@@ -257,25 +257,6 @@ class RemixInstrumentation extends instrumentation.InstrumentationBase {
+@@ -257,25 +264,6 @@ class RemixInstrumentation extends instrumentation.InstrumentationBase {
                .then(async response => {
                  addResponseAttributesToSpan(span, response);
  
@@ -37,3 +53,23 @@ index 84e18d1051f57d5807e65c8b8ce858ceee7d4557..640a5253d565650338fe33e0ea52c8df
                  return response;
                })
                .catch(async error => {
+diff --git a/build/esm/vendor/instrumentation.js b/build/esm/vendor/instrumentation.js
+index e33b84eecdffe3b10a5e50f13bafaf90775747c5..652a89c9194ea1d0bb0d748fb8f7f060ca2cf5ba 100644
+--- a/build/esm/vendor/instrumentation.js
++++ b/build/esm/vendor/instrumentation.js
+@@ -138,7 +138,14 @@ class RemixInstrumentation extends InstrumentationBase {
+ 
+         const route = (result || []).slice(-1)[0]?.route;
+ 
+-        const routePath = route?.path;
++        // Join every matched route segment so nested routes report their
++        // full URL pattern on http.route (and the span name), not just the
++        // leaf route's own path segment.
++        const routePath =
++          (result || [])
++            .map((match) => match?.route?.path)
++            .filter((segment) => typeof segment === 'string' && segment.length > 0)
++            .join('/') || route?.path;
+         if (span && routePath) {
+           span.setAttribute(SemanticAttributes.HTTP_ROUTE, routePath);
+           span.updateName(`remix.request ${routePath}`);
