@@ -84,7 +84,7 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
@@ -108,7 +108,10 @@ import { RealtimeStreamViewer } from "../resources.orgs.$organizationSlug.projec
 import { CompleteWaitpointForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.$waitpointFriendlyId.complete/route";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  // Admin gate for the telemetry-backed "Cell" field — only admins trigger the
+  // extra event-store read (below), and only admins see the panel.
+  const isAdmin = user.admin || user.isImpersonating;
   const { projectParam, organizationSlug, envParam, runParam, spanParam } =
     v3SpanParamsSchema.parse(params);
 
@@ -123,7 +126,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       envSlug: envParam,
       spanId: spanParam,
       runFriendlyId: runParam,
-      userId,
+      userId: user.id,
+      isAdmin,
       linkedRunId,
     });
 
@@ -1043,6 +1047,10 @@ function RunBody({
                     <Property.Item>
                       <Property.Label>Task event store</Property.Label>
                       <Property.Value>{run.taskEventStore}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
+                      <Property.Label>Cell</Property.Label>
+                      <Property.Value>{run.cell ?? "-"}</Property.Value>
                     </Property.Item>
                   </div>
                 )}

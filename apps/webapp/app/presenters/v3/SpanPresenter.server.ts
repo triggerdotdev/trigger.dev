@@ -106,6 +106,7 @@ export class SpanPresenter extends BasePresenter {
     spanId,
     runFriendlyId,
     linkedRunId,
+    isAdmin,
   }: {
     userId: string;
     projectSlug: string;
@@ -117,6 +118,7 @@ export class SpanPresenter extends BasePresenter {
     spanId: string;
     runFriendlyId: string;
     linkedRunId?: string;
+    isAdmin?: boolean;
   }) {
     const project = await this._replica.project.findFirst({
       where: {
@@ -197,6 +199,7 @@ export class SpanPresenter extends BasePresenter {
       eventRepository: repository,
       spanId,
       linkedRunId,
+      isAdmin,
       createdAt: parentRun.createdAt,
       completedAt: parentRun.completedAt,
       environmentId: parentRun.runtimeEnvironmentId,
@@ -236,6 +239,7 @@ export class SpanPresenter extends BasePresenter {
     eventRepository,
     spanId,
     linkedRunId,
+    isAdmin,
     createdAt,
     completedAt,
   }: {
@@ -245,6 +249,7 @@ export class SpanPresenter extends BasePresenter {
     eventRepository: IEventRepository;
     spanId: string;
     linkedRunId?: string;
+    isAdmin?: boolean;
     createdAt: Date;
     completedAt: Date | null;
   }) {
@@ -382,6 +387,34 @@ export class SpanPresenter extends BasePresenter {
         }
       : undefined;
 
+    // Cell attribution is telemetry-only - a `trigger.cell` resource attribute
+    // on the run's span, never a DB field. Admin-only + best-effort: the span
+    // may not be in the event store yet (queued/buffered/ingestion lag) and the
+    // store may be unreachable, so any failure degrades to undefined rather than
+    // breaking the panel.
+    let cell: string | undefined;
+    if (isAdmin) {
+      try {
+        const rootSpan = await eventRepository.getSpan(
+          eventStore,
+          environmentId,
+          run.spanId,
+          traceId,
+          createdAt,
+          completedAt ?? undefined
+        );
+        const resource = rootSpan?.resourceProperties as Record<string, any> | undefined;
+        const value = resource?.trigger?.cell ?? resource?.["trigger.cell"];
+        cell = typeof value === "string" ? value : undefined;
+      } catch (error) {
+        logger.warn("Failed to resolve run cell from telemetry", {
+          runId: run.id,
+          spanId: run.spanId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     return {
       id: run.id,
       friendlyId: run.friendlyId,
@@ -453,6 +486,7 @@ export class SpanPresenter extends BasePresenter {
       isBuffered: false,
       machinePreset: machine?.name,
       taskEventStore: run.taskEventStore,
+      cell,
       externalTraceId,
     };
   }
