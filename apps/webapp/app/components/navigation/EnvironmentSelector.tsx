@@ -103,7 +103,7 @@ export function EnvironmentSelector({
               >
                 <EnvironmentLabel
                   environment={environment}
-                  className="text-[0.90625rem] font-medium tracking-[-0.01em]"
+                  className="text-ellipsis text-[0.90625rem] font-medium tracking-[-0.01em]"
                   disableTooltip
                   truncate={false}
                 />
