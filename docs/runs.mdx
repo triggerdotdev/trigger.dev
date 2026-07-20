@@ -45,6 +45,13 @@ currently being executed by a worker.
 <Icon icon="hourglass" iconType="solid" color="#878C99" size={17} /> **Waiting**: You have used a
 [triggerAndWait()](/triggering#yourtask-triggerandwait), [batchTriggerAndWait()](/triggering#yourtask-batchtriggerandwait) or a [wait function](/wait). When the wait is complete, the task will resume execution.
 
+<Note>
+  Older API versions may report this state as **`FROZEN`**. Current API versions map the same
+  internal paused/waiting-to-resume states to **`WAITING`**. If you branch on status strings from
+  the API, treat `FROZEN` as equivalent to `WAITING` for compatibility with clients that omit the
+  current API version header.
+</Note>
+
 ### Final states
 
 <Icon icon="circle-check" iconType="solid" color="#28BF5C" size={17} /> **Completed**: The task has successfully
