@@ -28,7 +28,7 @@ jobs:
       # `code` uses `every` semantics so the negation patterns actually subtract.
       # With the default `some` quantifier, `**` matches every file and the
       # subsequent `!...` patterns are no-ops (each pattern is OR'd, not AND'd).
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: code_filter
         with:
           predicate-quantifier: every
@@ -41,7 +41,7 @@ jobs:
               - '!.github/**'
               - '!**/*.md'
               - '!**/.env.example'
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: filter
         with:
           filters: |
