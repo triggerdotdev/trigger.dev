@@ -317,7 +317,9 @@ class PlaywrightExtension implements BuildExtension {
 
     Array.from(browsersToInstall).forEach((browser) => {
       instructions.push(
-        `RUN grep -A5 -m1 "browser: ${browser}" /tmp/browser-info.txt > /tmp/${browser}-info.txt`,
+        // Playwright ≤1.57: "browser: chromium version ..."
+        // Playwright ≥1.58: "Chrome for Testing ... (playwright chromium v...)"
+        `RUN grep -A5 -m1 -E "browser: ${browser}|playwright ${browser}" /tmp/browser-info.txt > /tmp/${browser}-info.txt`,
 
         `RUN INSTALL_DIR=$(grep "Install location:" /tmp/${browser}-info.txt | cut -d':' -f2- | xargs) && \
           DIR_NAME=$(basename "$INSTALL_DIR") && \
