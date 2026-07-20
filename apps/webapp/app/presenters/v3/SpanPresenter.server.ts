@@ -395,11 +395,16 @@ export class SpanPresenter extends BasePresenter {
     let cell: string | undefined;
     if (isAdmin) {
       try {
-        // Use the resolved run's own trace + time window (not the parent's) so
-        // the lookup is correct for cached/linked spans, where `run` is the
-        // original run rather than `parentRun`.
-        const rootSpan = await eventRepository.getSpan(
-          eventStore,
+        // Resolve the store + repository from the resolved run itself (not the
+        // parent) so cached/linked spans - where `run` is the original run and
+        // may live in a different event store - resolve correctly.
+        const runEventStore = getTaskEventStoreTableForRun(run);
+        const runEventRepository = await getEventRepositoryForStore(
+          run.taskEventStore,
+          environment.organization.id
+        );
+        const rootSpan = await runEventRepository.getSpan(
+          runEventStore,
           environmentId,
           run.spanId,
           run.traceId,
