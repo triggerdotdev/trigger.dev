@@ -133,15 +133,18 @@ function SidebarPanel({ resizable }: { resizable?: boolean }) {
   );
 }
 
-// The original overview demo: Filters row, count-adaptive Grids and a Content slot that toggles
-// between tabs and a table. The whole page scrolls as one via MetricsLayout.Root (scroll="page").
+// The overview demo. Every slot carries its baked chrome — no className is passed to Root,
+// Filters, Grid or Content. The pinned Filters bar spreads a left and right cluster; the Grids
+// bake the page gutter and adapt their columns (or take an explicit `columns` / `kind="charts"`);
+// Content toggles between a full-bleed table and an inset panel. The whole page scrolls as one.
 function OverviewDemo() {
-  const [tab, setTab] = useState<"tabs" | "table">("tabs");
+  const [tab, setTab] = useState<"panel" | "table">("panel");
 
   return (
     <MetricsLayout.Root>
-      {/* Filters slot — the row directly under the NavBar. */}
-      <MetricsLayout.Filters className="justify-between border-t border-grid-dimmed px-3 pb-3 pt-1.5">
+      {/* Filters slot — the pinned bar directly under the NavBar. Left + right clusters as child
+          divs; the slot bakes the 40px height, border and insets. */}
+      <MetricsLayout.Filters>
         <div className="flex items-center gap-2">
           <FilterChip>Search…</FilterChip>
           <FilterChip>Period: 7d</FilterChip>
@@ -151,36 +154,34 @@ function OverviewDemo() {
       </MetricsLayout.Filters>
 
       {/* Grid slot — 4 stat tiles. Columns are derived from the tile count: two-up, four-up
-            from lg. */}
-      <div className="px-3 pb-1 pt-2 text-xs uppercase text-text-dimmed">
+            from lg. The gutter + gap are baked. */}
+      <div className="px-3 text-xs uppercase text-text-dimmed">
         Grid — 4 tiles (auto: 2-up, 4-up from lg)
       </div>
-      <MetricsLayout.Grid className="px-3 pb-3">
+      <MetricsLayout.Grid>
         <StatTile label="Queued" value="83" />
         <StatTile label="Running" value="15" />
         <StatTile label="Allocated" value="29" />
         <StatTile label="Limit" value="25" />
       </MetricsLayout.Grid>
 
-      {/* Grid slot — 4 chart tiles at a fixed row height, same auto columns as the stats. */}
-      <div className="px-3 pb-1 text-xs uppercase text-text-dimmed">
-        Grid — 4 chart tiles (fixed 280px row)
+      {/* Grid slot — kind="charts" bakes the fixed chart-row height (no wrapper needed). */}
+      <div className="px-3 text-xs uppercase text-text-dimmed">
+        Grid — kind=&quot;charts&quot; (fixed row height, auto columns)
       </div>
-      <div className="h-[280px] px-3 pb-3">
-        <MetricsLayout.Grid className="h-full min-h-0">
-          <ChartTile label="Env saturation" />
-          <ChartTile label="Backlog" />
-          <ChartTile label="Scheduling delay p95" />
-          <ChartTile label="Throttled" />
-        </MetricsLayout.Grid>
-      </div>
+      <MetricsLayout.Grid kind="charts">
+        <ChartTile label="Env saturation" />
+        <ChartTile label="Backlog" />
+        <ChartTile label="Scheduling delay p95" />
+        <ChartTile label="Throttled" />
+      </MetricsLayout.Grid>
 
-      {/* Grid slot — 3 tiles. The same component now lays out one-up, three-up from sm, proving
-            the grid adapts to the child count. */}
-      <div className="px-3 pb-1 text-xs uppercase text-text-dimmed">
+      {/* Grid slot — 3 tiles. The same component lays out one-up, three-up from sm, proving the
+            grid adapts to the child count. */}
+      <div className="px-3 text-xs uppercase text-text-dimmed">
         Grid — 3 tiles (auto: 1-up, 3-up from sm)
       </div>
-      <MetricsLayout.Grid className="px-3 pb-3">
+      <MetricsLayout.Grid>
         <StatTile label="Concurrency" value="11" />
         <StatTile label="Queued" value="83" />
         <StatTile label="Oldest wait" value="34m" />
@@ -188,45 +189,46 @@ function OverviewDemo() {
 
       {/* Grid slot — explicit columns for a chart grid that should always be two-up regardless
             of tile count. */}
-      <div className="px-3 pb-1 text-xs uppercase text-text-dimmed">
+      <div className="px-3 text-xs uppercase text-text-dimmed">
         Grid — explicit columns=&#123;&#123; base: 1, sm: 2 &#125;&#125; (5 tiles)
       </div>
-      <div className="px-3 pb-3">
-        <MetricsLayout.Grid columns={{ base: 1, sm: 2 }}>
-          <ChartTile label="Concurrency" className="aspect-[2/1]" />
-          <ChartTile label="Queue depth" className="aspect-[2/1]" />
-          <ChartTile label="Throughput" className="aspect-[2/1]" />
-          <ChartTile label="Scheduling delay" className="aspect-[2/1]" />
-          <ChartTile label="Throttled" className="aspect-[2/1]" />
-        </MetricsLayout.Grid>
-      </div>
+      <MetricsLayout.Grid columns={{ base: 1, sm: 2 }}>
+        <ChartTile label="Concurrency" className="aspect-[2/1]" />
+        <ChartTile label="Queue depth" className="aspect-[2/1]" />
+        <ChartTile label="Throughput" className="aspect-[2/1]" />
+        <ChartTile label="Scheduling delay" className="aspect-[2/1]" />
+        <ChartTile label="Throttled" className="aspect-[2/1]" />
+      </MetricsLayout.Grid>
 
-      {/* Content slot — tabs vs. table. */}
-      <MetricsLayout.Content>
-        <TabContainer className="px-3">
+      {/* Content slot — a doubled separation above it is baked in, so the tiles read as their own
+          band. `inset` toggles between a padded column (panel) and full-bleed (edge-to-edge
+          table). */}
+      <MetricsLayout.Content inset={tab === "panel"}>
+        <TabContainer>
           <TabButton
-            isActive={tab === "tabs"}
+            isActive={tab === "panel"}
             layoutId="layout-story"
-            onClick={() => setTab("tabs")}
+            onClick={() => setTab("panel")}
           >
-            Tabs content
+            Panel (inset)
           </TabButton>
           <TabButton
             isActive={tab === "table"}
             layoutId="layout-story"
             onClick={() => setTab("table")}
           >
-            Table content
+            Table (full-bleed)
           </TabButton>
         </TabContainer>
         {tab === "table" ? (
           <PlaceholderTable />
         ) : (
-          <div className="border-t border-grid-dimmed p-3">
+          <div className="rounded-sm border border-grid-dimmed bg-background-bright p-3">
             <Paragraph variant="small">
-              The Content slot hosts whatever sits below the tiles — a TabContainer with panels, or
-              a full-width table. The whole page (filters, tiles and content) shares one vertical
-              scroll.
+              With <code>inset</code>, Content becomes a padded column: this panel and the tabs
+              above it sit on the standard page gutter. Switch to the table to see Content go
+              full-bleed — the table spans edge to edge with its own top border. Either way the
+              whole page (filters aside) shares one vertical scroll.
             </Paragraph>
           </div>
         )}
@@ -240,11 +242,13 @@ function OverviewDemo() {
 function SidebarFixedDemo() {
   return (
     <MetricsLayout.Root>
-      <MetricsLayout.Filters className="border-t border-grid-dimmed px-3 pb-3 pt-1.5">
-        <FilterChip>Search…</FilterChip>
-        <Badge variant="extra-small">main column</Badge>
+      <MetricsLayout.Filters>
+        <div className="flex items-center gap-2">
+          <FilterChip>Search…</FilterChip>
+          <Badge variant="extra-small">main column</Badge>
+        </div>
       </MetricsLayout.Filters>
-      <MetricsLayout.Grid className="px-3 pb-3">
+      <MetricsLayout.Grid>
         <StatTile label="Queued" value="83" />
         <StatTile label="Running" value="15" />
         <StatTile label="Allocated" value="29" />
@@ -266,11 +270,13 @@ function SidebarFixedDemo() {
 function SidebarResizableDemo() {
   return (
     <MetricsLayout.Root>
-      <MetricsLayout.Filters className="border-t border-grid-dimmed px-3 pb-3 pt-1.5">
-        <FilterChip>Search…</FilterChip>
-        <Badge variant="extra-small">drag the handle →</Badge>
+      <MetricsLayout.Filters>
+        <div className="flex items-center gap-2">
+          <FilterChip>Search…</FilterChip>
+          <Badge variant="extra-small">drag the handle →</Badge>
+        </div>
       </MetricsLayout.Filters>
-      <MetricsLayout.Grid className="px-3 pb-3">
+      <MetricsLayout.Grid>
         <StatTile label="Queued" value="83" />
         <StatTile label="Running" value="15" />
         <StatTile label="Allocated" value="29" />

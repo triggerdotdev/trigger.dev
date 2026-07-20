@@ -1,13 +1,28 @@
 /**
  * MetricsLayout — a compound layout for metric / dashboard pages.
  *
- * Every metrics page reads top-to-bottom as the same three slots:
+ * PHILOSOPHY — slots own their chrome. This family exists so that non-designers (and AI agents)
+ * can compose a beautiful, consistent metrics page purely by picking slots and setting closed,
+ * semantic props. There is deliberately NO freeform `className` on any slot: a page cannot restyle
+ * the spacing, borders or gutters of the layout, because that is exactly how metric pages drifted
+ * apart before. The slots bake ONE visual rhythm (a 12px grid gap, a 12px page gutter, a doubled
+ * separation before the content, a pinned 40px filter bar). If you find yourself wanting a class on
+ * a slot, you probably need a new semantic variant instead — talk to design and add a closed prop
+ * (like `kind` or `inset`) rather than reopening `className`.
  *
- *   1. `MetricsLayout.Filters` — the row under the NavBar (search, TimeFilter, pagination…).
- *   2. `MetricsLayout.Grid`    — one or more grids of tiles (stat BigNumbers, chart cards).
- *                                The grid adapts its column count to the number of tiles unless
- *                                you pass an explicit `columns` spec.
- *   3. `MetricsLayout.Content` — the tabs / table / list below the tiles.
+ * Every metrics page reads top-to-bottom as the same slots:
+ *
+ *   1. `MetricsLayout.Filters` — the pinned bar under the NavBar (search, TimeFilter, pagination…).
+ *      It is hoisted out of the scroll container so it stays put while the page scrolls. Baked
+ *      chrome: a 40px bar with a bottom border. Pages express left/right clusters as child divs
+ *      (e.g. left = search + TimeFilter, right = pagination); `justify-between` spreads them.
+ *   2. `MetricsLayout.Grid` — one or more grids of tiles (stat BigNumbers, chart cards). The grid
+ *      adapts its column count to the number of tiles unless you pass an explicit `columns` spec,
+ *      and bakes the page gutter + grid gap. `kind="charts"` bakes the fixed chart-row height.
+ *   3. `MetricsLayout.Content` — the tabs / table / list below the tiles. Full-bleed by default
+ *      (a list table spans edge to edge with its own top border); pass `inset` for a padded column.
+ *      Content always bakes a doubled separation (24px) above it, so the blocks read as a distinct
+ *      band from the content below.
  *
  * Two optional structural capabilities extend the basic top-to-bottom column:
  *
@@ -18,43 +33,44 @@
  *     `resizable` to make the split draggable via the shared Resizable primitives.
  *
  *   - `scroll` on Root — chooses who owns the vertical scroll:
- *       - `"page"` (default): Root owns a single `overflow-y-auto`; the WHOLE page (filters, tiles
- *         and content) scrolls as one. This is what every current metrics page wants.
- *       - `"regions"`: Root does NOT create a scroll container — it only bounds the height as a
- *         `flex` column. The page composes its own independently-scrolling areas inside the slots
- *         (e.g. a fixed toolbar over a scrolling table, or a vertical resizable split). Use this
- *         when a single page-level scroll would be wrong.
+ *       - `"page"` (default): Root owns a single `overflow-y-auto` and lays the slots out as a
+ *         `flex` column with the standard vertical rhythm; the WHOLE page (filters aside) scrolls
+ *         as one. This is what every current metrics page wants.
+ *       - `"regions"`: Root does NOT create a scroll container and does NOT impose the column
+ *         rhythm — it only bounds the height as a bare `flex` column. The page composes its own
+ *         independently-scrolling areas inside the slots (e.g. a fixed toolbar over a scrolling
+ *         table, or a vertical resizable split). Use this when a single page-level scroll would be
+ *         wrong.
  *
  * The family is purely presentational — slots, grids, a sidebar and scroll ownership only, no data
- * logic. It is meant to live inside a `PageContainer` right after the `NavBar`, mirroring how the
- * `Chart.Root` / `Chart.Line` compound composes.
+ * logic. It is meant to live inside a `PageContainer` right after the `NavBar`.
  *
- * @example List page (self-padded sections, count-derived grids)
+ * @example List page (full-bleed table, count-derived grids)
  * ```tsx
  * <PageContainer>
  *   <NavBar>…</NavBar>
  *   <MetricsLayout.Root>
- *     <MetricsLayout.Filters className="justify-between border-t border-grid-dimmed px-3 pb-3 pt-1.5">
+ *     <MetricsLayout.Filters>
  *       <div className="flex items-center gap-2">…search + TimeFilter…</div>
  *       <PaginationControls … />
  *     </MetricsLayout.Filters>
- *     <MetricsLayout.Grid className="px-3 pb-3">…4 stat tiles…</MetricsLayout.Grid>
- *     <div className="h-[280px] px-3 pb-3">
- *       <ChartSyncProvider>
- *         <MetricsLayout.Grid className="h-full min-h-0">…4 chart tiles…</MetricsLayout.Grid>
- *       </ChartSyncProvider>
- *     </div>
- *     <MetricsLayout.Content>…table…</MetricsLayout.Content>
+ *     <MetricsLayout.Grid>…4 stat tiles…</MetricsLayout.Grid>
+ *     <ChartSyncProvider>
+ *       <MetricsLayout.Grid kind="charts">…4 chart tiles…</MetricsLayout.Grid>
+ *     </ChartSyncProvider>
+ *     <MetricsLayout.Content>…full-width table…</MetricsLayout.Content>
  *   </MetricsLayout.Root>
  * </PageContainer>
  * ```
  *
- * @example Detail page (a single padded, gap-4 column)
+ * @example Detail page (a single padded column)
  * ```tsx
- * <MetricsLayout.Root className="flex flex-col gap-4 p-6">
- *   <MetricsLayout.Filters>…search + TimeFilter…</MetricsLayout.Filters>
- *   <MetricsLayout.Grid className="w-full">…3 stat tiles…</MetricsLayout.Grid>
- *   <MetricsLayout.Content className="flex flex-col gap-4">
+ * <MetricsLayout.Root>
+ *   <MetricsLayout.Filters>
+ *     <div className="flex items-center gap-2">…search + TimeFilter…</div>
+ *   </MetricsLayout.Filters>
+ *   <MetricsLayout.Grid>…3 stat tiles…</MetricsLayout.Grid>
+ *   <MetricsLayout.Content inset>
  *     <TabContainer>…</TabContainer>
  *     …active view (charts / keys)…
  *   </MetricsLayout.Content>
@@ -170,15 +186,15 @@ function columnsForCount(count: number): GridColumns {
 
 /**
  * Who owns the vertical scroll.
- *   - `"page"` (default): Root owns one `overflow-y-auto` — the whole page scrolls as one.
- *   - `"regions"`: Root only bounds the height (a `flex` column, no scroll); the page composes its
- *     own scrolling areas inside the slots.
+ *   - `"page"` (default): Root owns one `overflow-y-auto` and the column rhythm — the whole page
+ *     scrolls as one.
+ *   - `"regions"`: Root only bounds the height (a bare `flex` column, no scroll, no rhythm); the
+ *     page composes its own scrolling areas inside the slots.
  */
 export type MetricsScroll = "page" | "regions";
 
 type MetricsLayoutSidebarProps = {
   children: ReactNode;
-  className?: string;
   /**
    * Fixed sidebar width for the non-resizable default (any CSS length, e.g. `"380px"`, `"22rem"`).
    * Ignored when `resizable` is set. Defaults to `"380px"`.
@@ -208,7 +224,8 @@ type MetricsLayoutSidebarProps = {
 /**
  * Marker slot for the persistent side panel. Rendered/positioned entirely by `Root` (this
  * component is never mounted directly) — Root reads its props to build the `[main | sidebar]`
- * layout and drops the children into the panel.
+ * layout and drops the children into the panel. The panel itself owns its chrome (border, scroll);
+ * pass those as part of the children, not as a class on the slot.
  */
 function MetricsLayoutSidebar(_props: MetricsLayoutSidebarProps) {
   return null;
@@ -224,17 +241,10 @@ function isFiltersElement(child: ReactNode): child is ReactElement {
 
 // The main (left) column. The Filters slot is hoisted OUT of the scroll container so it stays
 // pinned while the tiles/content scroll underneath (the dashboards' `[auto | 1fr]` pattern —
-// sticky without z-index/backdrop bookkeeping). In `"page"` mode the rest scrolls as one; in
-// `"regions"` mode the page composes its own scrolling areas.
-function MetricsLayoutMain({
-  children,
-  className,
-  scroll,
-}: {
-  children: ReactNode;
-  className?: string;
-  scroll: MetricsScroll;
-}) {
+// sticky without z-index/backdrop bookkeeping). In `"page"` mode the rest scrolls as one and gets
+// the baked column rhythm (vertical gap + top/bottom padding); in `"regions"` mode the page
+// composes its own scrolling areas, so the container stays bare.
+function MetricsLayoutMain({ children, scroll }: { children: ReactNode; scroll: MetricsScroll }) {
   const arr = Children.toArray(children);
   const filters = arr.find(isFiltersElement);
   const rest = filters ? arr.filter((child) => !isFiltersElement(child)) : children;
@@ -243,12 +253,11 @@ function MetricsLayoutMain({
     <div className="flex h-full min-h-0 flex-col">
       {filters}
       <div
-        className={cn(
+        className={
           scroll === "page"
-            ? "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
-            : "flex min-h-0 flex-1 flex-col overflow-hidden",
-          className
-        )}
+            ? "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+            : "flex min-h-0 flex-1 flex-col overflow-hidden"
+        }
       >
         {rest}
       </div>
@@ -258,38 +267,26 @@ function MetricsLayoutMain({
 
 function MetricsLayoutRoot({
   children,
-  className,
-  pageBodyClassName,
   scroll = "page",
 }: {
   children: ReactNode;
-  /** Applied to the inner scroll container (e.g. `flex flex-col gap-4 p-6` for a single column). */
-  className?: string;
-  /** Applied to the outer, non-scrolling PageBody wrapper. */
-  pageBodyClassName?: string;
   /** Who owns the vertical scroll — see {@link MetricsScroll}. Defaults to `"page"`. */
   scroll?: MetricsScroll;
 }) {
   // A single optional Sidebar slot flips Root into a horizontal `[main | sidebar]` layout. When it
-  // is absent the output is exactly the original single-column markup (current pages don't pass
-  // either new prop, so they render unchanged).
+  // is absent the output is the plain single-column markup.
   const sidebar = Children.toArray(children).find(isSidebarElement);
   const mainChildren = sidebar
     ? Children.toArray(children).filter((child) => !isSidebarElement(child))
     : children;
 
-  const main = (
-    <MetricsLayoutMain scroll={scroll} className={className}>
-      {mainChildren}
-    </MetricsLayoutMain>
-  );
+  const main = <MetricsLayoutMain scroll={scroll}>{mainChildren}</MetricsLayoutMain>;
 
   if (!sidebar) {
     return (
-      <PageBody scrollable={false} className={pageBodyClassName}>
-        {/* The whole page scrolls as one: filters, tiles and content share a single vertical scroll
-            context, so the tiles scroll out of view with everything else (not an inner content-only
-            scroll). */}
+      <PageBody scrollable={false}>
+        {/* The whole page scrolls as one: filters (pinned) aside, the tiles and content share a
+            single vertical scroll context. */}
         {main}
       </PageBody>
     );
@@ -297,7 +294,6 @@ function MetricsLayoutRoot({
 
   const {
     children: sidebarChildren,
-    className: sidebarClassName,
     width = "380px",
     resizable,
     min = "280px",
@@ -312,7 +308,7 @@ function MetricsLayoutRoot({
     // Draggable split. `autosaveId`/`snapshot` wire up cookie persistence exactly as the run and
     // agent pages do (client writes the cookie, the loader hydrates via getResizableSnapshot).
     return (
-      <PageBody scrollable={false} className={pageBodyClassName}>
+      <PageBody scrollable={false}>
         <ResizablePanelGroup
           orientation="horizontal"
           className="h-full max-h-full"
@@ -329,7 +325,7 @@ function MetricsLayoutRoot({
             default={defaultSize}
             max={max}
             isStaticAtRest
-            className={cn("h-full overflow-hidden", sidebarClassName)}
+            className="h-full overflow-hidden"
           >
             {sidebarChildren}
           </ResizablePanel>
@@ -340,10 +336,10 @@ function MetricsLayoutRoot({
 
   // Fixed-width sidebar.
   return (
-    <PageBody scrollable={false} className={pageBodyClassName}>
+    <PageBody scrollable={false}>
       <div className="flex h-full w-full overflow-hidden">
         <div className="min-w-0 flex-1">{main}</div>
-        <div className={cn("h-full shrink-0 overflow-hidden", sidebarClassName)} style={{ width }}>
+        <div className="h-full shrink-0 overflow-hidden" style={{ width }}>
           {sidebarChildren}
         </div>
       </div>
@@ -351,36 +347,51 @@ function MetricsLayoutRoot({
   );
 }
 
-function MetricsLayoutFilters({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return <div className={cn("flex shrink-0 items-center gap-2", className)}>{children}</div>;
+/**
+ * The pinned bar under the NavBar. Baked chrome: a 40px-tall bar with a bottom border and the
+ * standard page insets. Compose left/right clusters as child divs — `justify-between` spreads them
+ * (a single child sits at the start).
+ */
+function MetricsLayoutFilters({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-dimmed pl-2.5 pr-3">
+      {children}
+    </div>
+  );
 }
 
+/** Whether a grid holds stat tiles (auto height) or charts (a fixed row height). */
+export type MetricsGridKind = "tiles" | "charts";
+
+/**
+ * A grid of tiles with the baked page gutter and grid gap. Columns are derived from the tile count
+ * unless you pass an explicit `columns` spec. Pass `kind="charts"` for a row of chart cards — it
+ * bakes the fixed chart-row height so the cards fill it (no wrapper needed).
+ */
 function MetricsLayoutGrid({
   children,
   columns,
-  className,
+  kind = "tiles",
 }: {
   children: ReactNode;
   /** Explicit responsive columns. Omit to derive the layout from the number of tiles. */
   columns?: GridColumns;
-  className?: string;
+  /** `"tiles"` (default) sizes to content; `"charts"` bakes the fixed chart-row height. */
+  kind?: MetricsGridKind;
 }) {
   const resolved = columns ?? columnsForCount(Children.toArray(children).length);
   return (
     <div
       className={cn(
-        "grid gap-3",
+        "grid gap-3 px-3",
+        // `shrink-0` is load-bearing: the grid sits in Root's flex-col scroll container, where the
+        // default flex-shrink would collapse a fixed-height row whose chart cards have ~no
+        // intrinsic height. Pin it so the charts keep their row height and the page scrolls past.
+        kind === "charts" && "h-[280px] shrink-0",
         resolved.base && BASE_COLS[resolved.base],
         resolved.sm && SM_COLS[resolved.sm],
         resolved.md && MD_COLS[resolved.md],
-        resolved.lg && LG_COLS[resolved.lg],
-        className
+        resolved.lg && LG_COLS[resolved.lg]
       )}
     >
       {children}
@@ -388,14 +399,21 @@ function MetricsLayoutGrid({
   );
 }
 
+/**
+ * The content region below the tiles (tabs / table / list). Full-bleed by default so a list table
+ * spans edge to edge with its own top border; pass `inset` for a padded column (the detail page's
+ * tabs + charts). Either way Content bakes a doubled separation above it, so the tile blocks read
+ * as a distinct band from the content below.
+ */
 function MetricsLayoutContent({
   children,
-  className,
+  inset = false,
 }: {
   children: ReactNode;
-  className?: string;
+  /** Pad the content into a column (page gutter) instead of letting it span edge to edge. */
+  inset?: boolean;
 }) {
-  return <div className={className}>{children}</div>;
+  return <div className={cn("mt-3 flex flex-col gap-3", inset && "px-3")}>{children}</div>;
 }
 
 export const MetricsLayout = {
