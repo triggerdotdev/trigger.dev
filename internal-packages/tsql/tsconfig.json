@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    // antlr4ts@0.5.0-alpha.4 uses deep-subpath imports + decorators that only
+    // resolve under legacy node10 module resolution; keep it until the parser is
+    // migrated (antlr4ng / regenerate). ignoreDeprecations keeps node10 working on TS 6.x.
+    "ignoreDeprecations": "6.0",
     "target": "ES2019",
     "lib": ["ES2019", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
     "module": "ESNext",
