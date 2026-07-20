@@ -395,13 +395,16 @@ export class SpanPresenter extends BasePresenter {
     let cell: string | undefined;
     if (isAdmin) {
       try {
+        // Use the resolved run's own trace + time window (not the parent's) so
+        // the lookup is correct for cached/linked spans, where `run` is the
+        // original run rather than `parentRun`.
         const rootSpan = await eventRepository.getSpan(
           eventStore,
           environmentId,
           run.spanId,
-          traceId,
-          createdAt,
-          completedAt ?? undefined
+          run.traceId,
+          run.createdAt,
+          run.completedAt ?? undefined
         );
         const resource = rootSpan?.resourceProperties as Record<string, any> | undefined;
         const value = resource?.trigger?.cell ?? resource?.["trigger.cell"];

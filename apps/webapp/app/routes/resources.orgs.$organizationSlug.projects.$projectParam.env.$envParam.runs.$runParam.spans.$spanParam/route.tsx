@@ -1050,7 +1050,7 @@ function RunBody({
                     </Property.Item>
                     <Property.Item>
                       <Property.Label>Cell</Property.Label>
-                      <Property.Value>{run.cell ?? "-"}</Property.Value>
+                      <Property.Value>{run.cell ?? "–"}</Property.Value>
                     </Property.Item>
                   </div>
                 )}
