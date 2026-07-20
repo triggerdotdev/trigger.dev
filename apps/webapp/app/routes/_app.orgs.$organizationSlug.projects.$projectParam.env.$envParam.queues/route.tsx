@@ -511,8 +511,11 @@ function QueuesWithMetricsView() {
         ) : null}
 
         {/* Queued + Running + Allocated + Environment limit summary. Four stat tiles: the grid
-            derives its columns from the tile count (two-up, four-up from lg). */}
-        {success && allocation ? (
+            derives its columns from the tile count (two-up, four-up from lg). The allocation
+            presenter fails open to null (a ClickHouse/PG hiccup mustn't take down the tiles), so
+            only the Allocated tile depends on it — the other three + controls always render, and
+            Allocated shows a "–" placeholder to keep the 4-tile grid shape stable. */}
+        {success ? (
           <MetricsLayout.Grid>
             <BigNumber
               title="Queued"
@@ -575,7 +578,7 @@ function QueuesWithMetricsView() {
               title={
                 <span className="flex items-center gap-1.5">
                   Allocated
-                  {overAllocated ? (
+                  {allocation && overAllocated ? (
                     <InfoIconTooltip
                       content="The queue limits add up to more than the environment limit, so queues will compete for concurrency when the environment saturates."
                       buttonClassName="text-warning"
@@ -583,9 +586,10 @@ function QueuesWithMetricsView() {
                   ) : null}
                 </span>
               }
-              value={allocated}
-              valueClassName={cn(overAllocated && "text-warning")}
-              suffix={`${allocationPct}% of the environment limit`}
+              value={allocation ? allocated : undefined}
+              formattedValue={allocation ? undefined : "–"}
+              valueClassName={cn(allocation && overAllocated && "text-warning")}
+              suffix={allocation ? `${allocationPct}% of the environment limit` : undefined}
               suffixClassName="text-text-bright"
             />
             <BigNumber
