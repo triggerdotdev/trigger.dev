@@ -10,12 +10,18 @@ import { ConcurrencySystem, materializePercentLimit } from "~/v3/services/concur
 // stub that satisfies the sync + stats calls the service makes. The engine sync
 // itself (RunQueue/Redis) is therefore NOT exercised here — see the note in the
 // verification report. Everything the service persists to Postgres IS real.
+// A controllable spy for the engine's queue-limit push so a test can simulate a push failure and
+// prove the next recalc self-heals the divergence.
+const { updateQueueConcurrencyLimitsMock } = vi.hoisted(() => ({
+  updateQueueConcurrencyLimitsMock: vi.fn(async (..._args: unknown[]) => undefined),
+}));
+
 vi.mock("~/v3/runEngine.server", () => ({
   engine: {
     lengthOfQueues: async () => ({}),
     currentConcurrencyOfQueues: async () => ({}),
     runQueue: {
-      updateQueueConcurrencyLimits: async () => undefined,
+      updateQueueConcurrencyLimits: updateQueueConcurrencyLimitsMock,
       removeQueueConcurrencyLimits: async () => undefined,
       updateEnvConcurrencyLimits: async () => undefined,
     },
@@ -302,6 +308,58 @@ describe("ConcurrencySystem percent overrides", () => {
 
       const row = await prisma.taskQueue.findUniqueOrThrow({ where: { id: queue.id } });
       expect(row.concurrencyLimit).toBe(5);
+    }
+  );
+
+  postgresTest(
+    "recalculatePercentLimits re-syncs the engine on a later recalc after an engine push failed, even when the DB limit is unchanged",
+    async ({ prisma }) => {
+      const { queue, authEnv } = await seedEnvAndQueue(prisma, {
+        maximumConcurrencyLimit: 10,
+        queueConcurrencyLimit: 8,
+      });
+
+      const system = new ConcurrencySystem({ db: prisma, reader: prisma });
+
+      const overridden = await system.queues.overrideQueueConcurrencyLimit(
+        authEnv,
+        queue.friendlyId,
+        { percent: 50 }
+      );
+      expect(overridden.isOk()).toBe(true);
+      {
+        const row = await prisma.taskQueue.findUniqueOrThrow({ where: { id: queue.id } });
+        expect(row.concurrencyLimit).toBe(5); // floor(10 * 0.5)
+      }
+
+      const bumpedEnv = {
+        id: authEnv.id,
+        maximumConcurrencyLimit: 20,
+      } as unknown as AuthenticatedEnvironment;
+
+      // The env-limit bump recalc writes the new DB limit (10) but the engine push fails and is
+      // swallowed by the per-queue catch: DB and engine are now diverged (DB=10, engine=5).
+      updateQueueConcurrencyLimitsMock.mockClear();
+      updateQueueConcurrencyLimitsMock.mockRejectedValueOnce(new Error("engine push failed"));
+
+      const first = await system.queues.recalculatePercentLimits(bumpedEnv);
+      expect(first.updated).toBe(1); // DB was written before the push threw
+      {
+        const row = await prisma.taskQueue.findUniqueOrThrow({ where: { id: queue.id } });
+        expect(row.concurrencyLimit).toBe(10);
+      }
+
+      // A later recalc at the SAME env limit makes no DB change, but MUST still push to the engine
+      // so the previously-failed sync self-heals. (Regression guard: the old code `continue`d when
+      // newLimit === concurrencyLimit and left the engine stuck at 5 forever.)
+      updateQueueConcurrencyLimitsMock.mockClear();
+      const second = await system.queues.recalculatePercentLimits(bumpedEnv);
+      expect(second.updated).toBe(0); // no DB write
+      expect(updateQueueConcurrencyLimitsMock).toHaveBeenCalledWith(
+        expect.anything(),
+        queue.name,
+        10
+      );
     }
   );
 });

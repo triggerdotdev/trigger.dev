@@ -84,19 +84,24 @@ export class ConcurrencySystem {
               environment.maximumConcurrencyLimit,
               percent.toNumber()
             );
-            if (newLimit === queue.concurrencyLimit) continue;
 
-            await this.db.taskQueue.update({
-              where: { id: queue.id },
-              data: { concurrencyLimit: newLimit },
-            });
-            // Paused queues keep their engine limit at 0 (the pause/resume flow re-syncs from the
-            // stored value on resume); only push the recomputed limit for active queues so a
-            // percent recalc never effectively un-pauses a queue.
+            // Only write the DB when the materialized value actually changed.
+            if (newLimit !== queue.concurrencyLimit) {
+              await this.db.taskQueue.update({
+                where: { id: queue.id },
+                data: { concurrencyLimit: newLimit },
+              });
+              updated++;
+            }
+
+            // Always attempt the engine push (it's idempotent) for active queues — even when the
+            // DB value was unchanged — so a previously-failed sync self-heals on the next recalc
+            // instead of leaving the DB and engine diverged forever. Paused queues keep their
+            // engine limit at 0 (the pause/resume flow re-syncs from the stored value on resume);
+            // push nothing for them so a percent recalc never effectively un-pauses a queue.
             if (!queue.paused) {
               await updateQueueConcurrencyLimits(environment, queue.name, newLimit);
             }
-            updated++;
           } catch (error) {
             logger.error("Failed to recalculate percent queue limit", {
               queueId: queue.id,

@@ -91,7 +91,12 @@ export class AllocateConcurrencyService extends BaseService {
         await updateEnvConcurrencyLimits(updatedEnvironment);
       }
 
-      // Percent-based queue overrides follow the environment limit automatically.
+      // Percent-based queue overrides follow the environment limit automatically. Note the
+      // deliberate asymmetry with the env-level push above: `updateEnvConcurrencyLimits` is gated
+      // on `!paused`, but we recalculate queue limits even for paused environments. Queue-level
+      // pushes on a paused env are inert (the env-level gate stops dequeueing regardless), and
+      // keeping the queue limits synced means resume needs no extra reconciliation — skipping
+      // them here would instead leave stale engine limits after the env resumes.
       await concurrencySystem.queues.recalculatePercentLimits(updatedEnvironment);
 
       // maximumConcurrencyLimit changed in the control-plane; drop any cached copy.
