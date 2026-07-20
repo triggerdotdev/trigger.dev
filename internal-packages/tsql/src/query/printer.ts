@@ -3127,8 +3127,16 @@ export class ClickHousePrinter {
   }
 
   private visitWindowFunction(node: WindowFunction): string {
+    // Validate the function name against the allowlist and resolve it to its
+    // safe ClickHouse name. Without this, an attacker-controlled name would be
+    // emitted raw into the query (mirrors the validation in visitCall).
+    const funcMeta = findTSQLFunction(node.name) ?? findTSQLAggregation(node.name);
+    if (!funcMeta) {
+      throw new QueryError(`Unknown function: ${node.name}`);
+    }
+
     const args = node.args ? node.args.map((a) => this.visit(a)) : [];
-    const funcCall = `${node.name}(${args.join(", ")})`;
+    const funcCall = `${funcMeta.clickhouseName}(${args.join(", ")})`;
 
     if (node.over_identifier) {
       return `${funcCall} OVER ${this.printIdentifier(node.over_identifier)}`;
