@@ -2,6 +2,11 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { getUserById } from "~/models/user.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
+import {
+  isValidQueueOverridePercent,
+  MAX_QUEUE_OVERRIDE_PERCENT,
+  MIN_QUEUE_OVERRIDE_PERCENT,
+} from "~/v3/services/concurrencySystem.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 
 /**
@@ -72,11 +77,11 @@ export async function handleQueueMutationAction({
           return redirectWithErrorMessage(redirectPath, request, "Percentage is required");
         }
         const percentNumber = Number(percentValue.toString());
-        if (!Number.isFinite(percentNumber) || percentNumber <= 0 || percentNumber > 100) {
+        if (!isValidQueueOverridePercent(percentNumber)) {
           return redirectWithErrorMessage(
             redirectPath,
             request,
-            "Percentage must be greater than 0 and less than or equal to 100"
+            `Percentage must be greater than ${MIN_QUEUE_OVERRIDE_PERCENT} and less than or equal to ${MAX_QUEUE_OVERRIDE_PERCENT}`
           );
         }
         override = { percent: percentNumber };

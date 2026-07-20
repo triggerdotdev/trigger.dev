@@ -27,6 +27,23 @@ export type ConcurrencyLimitOverride = number | { limit: number } | { percent: n
  * Clamped to `>= 1` so a percent-based override never produces a `0` (pause-like) limit, and
  * to `<= envLimit` so it can never exceed the environment maximum.
  */
+/**
+ * Valid range for a percent-based queue concurrency override: greater than 0 and up to 100% of
+ * the environment limit. Shared by every layer that validates the percent (the API zod schema,
+ * the dashboard mutation handler, and the override service) so the bound never drifts apart.
+ */
+export const MIN_QUEUE_OVERRIDE_PERCENT = 0;
+export const MAX_QUEUE_OVERRIDE_PERCENT = 100;
+
+/** Whether `percent` is a valid queue-override percentage (0 < percent <= 100). */
+export function isValidQueueOverridePercent(percent: number): boolean {
+  return (
+    Number.isFinite(percent) &&
+    percent > MIN_QUEUE_OVERRIDE_PERCENT &&
+    percent <= MAX_QUEUE_OVERRIDE_PERCENT
+  );
+}
+
 export function materializePercentLimit(envLimit: number, percent: number): number {
   const materialized = Math.floor((envLimit * percent) / 100);
   return Math.min(Math.max(materialized, 1), envLimit);
@@ -197,10 +214,10 @@ function overrideQueueConcurrencyLimit(
   if (typeof override === "object" && "percent" in override) {
     const percent = override.percent;
 
-    if (!Number.isFinite(percent) || percent <= 0 || percent > 100) {
+    if (!isValidQueueOverridePercent(percent)) {
       return errAsync({
         type: "invalid_override" as const,
-        message: "Percent must be greater than 0 and less than or equal to 100",
+        message: `Percent must be greater than ${MIN_QUEUE_OVERRIDE_PERCENT} and less than or equal to ${MAX_QUEUE_OVERRIDE_PERCENT}`,
       });
     }
 

@@ -54,6 +54,7 @@ import TooltipPortal from "~/components/primitives/TooltipPortal";
 import {
   ActivityBarChart,
   ACTIVITY_CHART_HEIGHT,
+  ACTIVITY_CHART_PEAK_CLASS,
   ACTIVITY_CHART_WIDTH,
 } from "~/components/metrics/ActivityBarChart";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
@@ -631,8 +632,6 @@ const STATUS_BARS: { status: TaskRunStatus; fill: string }[] = [
 
 // chart (112) + gap-1.5 (6) + count min-w (28). Reserved so the column stays put while the chart unmounts.
 const ACTIVITY_CELL_WIDTH = 146;
-const ACTIVITY_CHART_COUNT_CLASS =
-  "-mt-1 inline-block min-w-7 text-xxs tabular-nums text-text-dimmed";
 
 function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] }) {
   const maxTotal = Math.max(...activity.map((d) => d.total));
@@ -673,7 +672,7 @@ function TaskActivityBlankState() {
           strokeWidth={1}
         />
       </svg>
-      <span className={ACTIVITY_CHART_COUNT_CLASS}>0</span>
+      <span className={ACTIVITY_CHART_PEAK_CLASS}>0</span>
     </div>
   );
 }

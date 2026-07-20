@@ -4,6 +4,10 @@ import { z } from "zod";
 import { toQueueItem } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
+import {
+  MAX_QUEUE_OVERRIDE_PERCENT,
+  MIN_QUEUE_OVERRIDE_PERCENT,
+} from "~/v3/services/concurrencySystem.server";
 
 const BodySchema = z
   .object({
@@ -12,7 +16,7 @@ const BodySchema = z
     concurrencyLimit: z.number().int().min(0).max(100000).optional(),
     // Percentage of the environment's maximum concurrency limit (0 < percent <= 100).
     // Stored as the source of truth; the absolute limit is materialized from it.
-    percent: z.number().gt(0).max(100).optional(),
+    percent: z.number().gt(MIN_QUEUE_OVERRIDE_PERCENT).max(MAX_QUEUE_OVERRIDE_PERCENT).optional(),
   })
   .refine((body) => (body.concurrencyLimit === undefined) !== (body.percent === undefined), {
     message: "Provide exactly one of `concurrencyLimit` or `percent`",
