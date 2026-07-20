@@ -547,6 +547,22 @@ const EnvironmentSchema = z
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
+    // Per-IP rate limit for the unauthenticated OTLP ingestion endpoints
+    // (/otel/*). Bounds unauthenticated request rates. Opt-in
+    // (disabled by default): because it keys on the source IP, it is only
+    // safe to enable when each client presents a distinct IP through a proxy
+    // that appends the real client IP to X-Forwarded-For. Enabling it where
+    // many clients share one egress IP (e.g. behind NAT or a shared proxy)
+    // would collapse that traffic into a single bucket and could throttle
+    // legitimate telemetry. Set OTLP_RATE_LIMIT_ENABLED=1 to enable, then tune
+    // OTLP_RATE_LIMIT_MAX / OTLP_RATE_LIMIT_WINDOW for expected volume.
+    OTLP_RATE_LIMIT_ENABLED: z.string().default("0"),
+    OTLP_RATE_LIMIT_WINDOW: z
+      .string()
+      .regex(/^\d+ ?(?:ms|s|m|h|d)$/)
+      .default("1m"),
+    OTLP_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(3000),
+
     DEPOT_TOKEN: z.string().optional(),
     DEPOT_ORG_ID: z.string().optional(),
     DEPOT_REGION: z.string().default("us-east-1"),
