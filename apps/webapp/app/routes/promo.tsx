@@ -139,7 +139,7 @@ export default function PromoPage() {
       <div className="flex w-full flex-col">
         {data.view === "signed_in" ? (
           <>
-            <Header1 className="pb-4 leading-tight sm:text-2xl md:text-3xl lg:text-4xl">
+            <Header1 className="pb-4 leading-tight sm:text-2xl md:text-3xl md:leading-tight lg:text-4xl lg:leading-tight">
               Promo codes are for new accounts
             </Header1>
             <Paragraph variant="base" spacing>
@@ -151,7 +151,7 @@ export default function PromoPage() {
           </>
         ) : (
           <>
-            <Header1 className="pb-4 leading-tight sm:text-2xl md:text-3xl lg:text-4xl">
+            <Header1 className="pb-4 leading-tight sm:text-2xl md:text-3xl md:leading-tight lg:text-4xl lg:leading-tight">
               {data.view === "valid"
                 ? `Claim ${formatDollars(data.amountInCents)} credits`
                 : "Create your account"}
