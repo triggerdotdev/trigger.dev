@@ -58,25 +58,31 @@ export async function linkGitHubAppInstallation(
 }
 
 /**
- * Links a GitHub App installation to a Trigger organization
+ * Updates a GitHub App installation owned by the given Trigger organization
  */
-export async function updateGitHubAppInstallation(installationId: number): Promise<void> {
+export async function updateGitHubAppInstallation(
+  installationId: number,
+  organizationId: string
+): Promise<void> {
   if (!githubApp) {
     throw new Error("GitHub App is not enabled");
+  }
+
+  // Scope the lookup to the caller's organization so a cross-tenant
+  // installation_id cannot update another org's record. Resolve ownership
+  // before calling GitHub to avoid burning the victim's API rate limit.
+  const existingInstallation = await prisma.githubAppInstallation.findFirst({
+    where: { appInstallationId: installationId, organizationId },
+  });
+
+  if (!existingInstallation) {
+    throw new Error("GitHub App installation not found");
   }
 
   const octokit = await githubApp.getInstallationOctokit(installationId);
   const { data: installation } = await octokit.rest.apps.getInstallation({
     installation_id: installationId,
   });
-
-  const existingInstallation = await prisma.githubAppInstallation.findFirst({
-    where: { appInstallationId: installationId },
-  });
-
-  if (!existingInstallation) {
-    throw new Error("GitHub App installation not found");
-  }
 
   const repositorySelection = installation.repository_selection === "all" ? "ALL" : "SELECTED";
 
