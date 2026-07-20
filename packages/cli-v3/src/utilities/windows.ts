@@ -19,22 +19,55 @@ function getVisibleLength(str: string): number {
 }
 
 function truncateMessage(msg: string, maxLength?: number): string {
+  // Non-TTY (CI): no spinner width to honor — skip truncation entirely.
+  // Character-by-character truncation is O(n²) and hangs deploys on large graphs.
+  if (maxLength === undefined && (!process.stdout.isTTY || !process.stdout.columns)) {
+    return msg;
+  }
+
   const terminalWidth = maxLength ?? process.stdout.columns ?? 80;
   const availableWidth = terminalWidth - 5; // Reserve some space for the spinner and padding
+  const targetWidth = availableWidth - 3; // room for "..."
   const visibleLength = getVisibleLength(msg);
 
   if (visibleLength <= availableWidth) {
     return msg;
   }
 
-  // We need to truncate based on visible characters, but preserve ANSI sequences
-  // Simple approach: truncate character by character until we fit
-  let truncated = msg;
-  while (getVisibleLength(truncated) > availableWidth - 3) {
-    truncated = truncated.slice(0, -1);
+  // Walk once, counting visible characters, and cut at the first overflow.
+  // Preserve ANSI sequences so colors/links remain valid.
+  let visible = 0;
+  let i = 0;
+  while (i < msg.length) {
+    // OSC 8 hyperlinks: \u001b]8;;URL\u0007TEXT\u001b]8;;\u0007
+    if (msg.startsWith("\u001b]8;;", i)) {
+      const end = msg.indexOf("\u0007", i);
+      if (end === -1) {
+        break;
+      }
+      i = end + 1;
+      continue;
+    }
+    // CSI sequences: \x1b[...X
+    if (msg[i] === "\x1b" && msg[i + 1] === "[") {
+      i += 2;
+      while (i < msg.length && !/[a-zA-Z]/.test(msg[i]!)) {
+        i++;
+      }
+      if (i < msg.length) {
+        i++;
+      }
+      continue;
+    }
+
+    if (visible >= targetWidth) {
+      return msg.slice(0, i) + "...";
+    }
+    visible++;
+    i++;
   }
 
-  return truncated + "...";
+  return msg.slice(0, i) + "...";
 }
 
 const wrappedClackSpinner = () => {
