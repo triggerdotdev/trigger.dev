@@ -4,7 +4,7 @@ import { useMemo, type ReactNode } from "react";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { PageContainer } from "~/components/layout/AppLayout";
+import { MainCenteredContainer, PageContainer } from "~/components/layout/AppLayout";
 import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
@@ -52,7 +52,7 @@ import { useTableSort, type SortColumn } from "~/components/primitives/useTableS
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { cn } from "~/utils/cn";
 import { redirectWithErrorMessage } from "~/models/message.server";
@@ -63,6 +63,11 @@ import {
 } from "~/components/queues/QueueControls";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { TextLink } from "~/components/primitives/TextLink";
+import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 
 export const meta: MetaFunction = () => [{ title: `Queue metrics | Trigger.dev` }];
 
@@ -223,8 +228,12 @@ export default function Page() {
   const hasHistory = gateRow
     ? toNumber(gateRow.peak_keys) > 0 || toNumber(gateRow.peak_wait) > 0
     : false;
-  const showKeysTab = ckBreakdown.keys.length > 0 || (!gateLoading && hasHistory);
-  const view = value("view") === "keys" && showKeysTab ? "keys" : "overview";
+  // Whether this queue has any concurrency-key activity to show (live keys in the ckIndex, or
+  // nonzero CK history in the range). Both tabs always render; when a queue has no keys the
+  // Concurrency keys tab shows an empty state instead of blank charts/table.
+  const hasKeys = ckBreakdown.keys.length > 0 || (!gateLoading && hasHistory);
+  const view = value("view") === "keys" ? "keys" : "overview";
+  const selectedKey = value("key");
 
   return (
     <PageContainer>
@@ -237,7 +246,7 @@ export default function Page() {
             the keys table. The bar is pinned by the layout while the page scrolls. */}
         <MetricsLayout.Filters>
           <div className="flex items-center gap-2">
-            {showKeysTab ? (
+            {view === "keys" && hasKeys ? (
               <SearchInput placeholder="Search keys…" paramName="query" resetParams={["key"]} />
             ) : null}
             <TimeFilter
@@ -263,38 +272,69 @@ export default function Page() {
           queueName={fullName}
         />
 
+        {/* Tabs + charts share the padded (inset) column. Both tabs always render; the keys tab
+            shows an empty state when the queue has no concurrency keys. */}
         <MetricsLayout.Content inset>
-          {showKeysTab ? (
-            <TabContainer>
-              <TabButton
-                isActive={view === "overview"}
-                layoutId="queue-detail-view"
-                onClick={() => replace({ view: undefined, key: undefined })}
-              >
-                Overview
-              </TabButton>
-              <TabButton
-                isActive={view === "keys"}
-                layoutId="queue-detail-view"
-                onClick={() => replace({ view: "keys" })}
-              >
-                Concurrency keys
-              </TabButton>
-            </TabContainer>
-          ) : null}
+          <TabContainer>
+            <TabButton
+              isActive={view === "overview"}
+              layoutId="queue-detail-view"
+              onClick={() => replace({ view: undefined, key: undefined })}
+            >
+              Overview
+            </TabButton>
+            <TabButton
+              isActive={view === "keys"}
+              layoutId="queue-detail-view"
+              onClick={() => replace({ view: "keys" })}
+            >
+              Concurrency keys
+            </TabButton>
+          </TabContainer>
 
           {view === "keys" ? (
-            <ConcurrencyKeysView
-              breakdown={ckBreakdown}
-              loadedAt={loadedAt}
-              ids={ids}
-              timeRange={timeRange}
-              queueName={fullName}
-            />
+            hasKeys ? (
+              <ConcurrencyKeyCharts
+                breakdown={ckBreakdown}
+                loadedAt={loadedAt}
+                ids={ids}
+                timeRange={timeRange}
+                queueName={fullName}
+              />
+            ) : (
+              <ConcurrencyKeysBlankState />
+            )
           ) : (
             <OverviewCharts ids={ids} timeRange={timeRange} queueName={fullName} />
           )}
         </MetricsLayout.Content>
+
+        {/* The per-key table is full-bleed (no inset), matching the Queues list table, so it spans
+            edge to edge. The drill-down that opens under it is charts, so it stays in the padded
+            column. */}
+        {view === "keys" && hasKeys ? (
+          <>
+            <MetricsLayout.Content>
+              <KeyStatsTable
+                breakdown={ckBreakdown}
+                loadedAt={loadedAt}
+                ids={ids}
+                timeRange={timeRange}
+                queueName={fullName}
+              />
+            </MetricsLayout.Content>
+            {selectedKey ? (
+              <MetricsLayout.Content inset>
+                <KeyDrilldown
+                  keyName={selectedKey}
+                  ids={ids}
+                  timeRange={timeRange}
+                  queueName={fullName}
+                />
+              </MetricsLayout.Content>
+            ) : null}
+          </>
+        ) : null}
       </MetricsLayout.Root>
     </PageContainer>
   );
@@ -398,7 +438,37 @@ type CkBreakdown = {
   }>;
 };
 
-function ConcurrencyKeysView({
+// Standard empty state for a queue that has no concurrency keys (no live keys and no CK history).
+// Small, centered panel — same pattern as the runs page's "Create your first task" state.
+function ConcurrencyKeysBlankState() {
+  return (
+    <MainCenteredContainer className="max-w-md">
+      <InfoPanel
+        icon={ConcurrencyIcon}
+        iconClassName="text-text-dimmed"
+        panelClassName="max-full"
+        title="No concurrency keys configured"
+        accessory={
+          <LinkButton
+            to={docsPath("/queue-concurrency")}
+            variant="secondary/small"
+            LeadingIcon={BookOpenIcon}
+          >
+            Concurrency docs
+          </LinkButton>
+        }
+      >
+        <Paragraph variant="small">
+          This queue doesn't use concurrency keys. Add a concurrencyKey to your task to shard the
+          queue per tenant/user. See the{" "}
+          <TextLink to={docsPath("/queue-concurrency")}>concurrency docs</TextLink>.
+        </Paragraph>
+      </InfoPanel>
+    </MainCenteredContainer>
+  );
+}
+
+function ConcurrencyKeyCharts({
   breakdown,
   loadedAt,
   ids,
@@ -430,78 +500,69 @@ function ConcurrencyKeysView({
   }, [breakdown, loadedAt]);
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Per-key breakdown: which keys hold the backlog / do the work. */}
-      <ChartSyncProvider onZoom={zoomToTimeFilter}>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <GroupedKeyChartCard
-            title="Waiting runs by key"
-            info="Runs waiting per key (top 8)."
-            className="aspect-[2/1]"
-            rankExpr="max(max_queued)"
-            seriesExpr="max(max_queued)"
-            fillGaps
-            keyFilter={keyFilter}
-            ids={ids}
-            timeRange={timeRange}
-            queueName={queueName}
-          />
-          <GroupedKeyChartCard
-            title="Throughput by key"
-            info="Runs started per key (top 8)."
-            className="aspect-[2/1]"
-            rankExpr="deltaSumTimestampMerge(started_delta)"
-            seriesExpr="deltaSumTimestampMerge(started_delta)"
-            keyFilter={keyFilter}
-            ids={ids}
-            timeRange={timeRange}
-            queueName={queueName}
-          />
-          {/* Whole-queue health across keys (single series, tasks-blue). */}
-          <QueueDetailChartCard
-            title="Keys with backlog"
-            info="Keys with runs waiting at once."
-            className="aspect-[2/1]"
-            query={`SELECT timeBucket() AS t, max(max_ck_backlogged) AS keys\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-            fillGaps
-            ids={ids}
-            timeRange={timeRange}
-            queueName={queueName}
-            series={[{ key: "keys", label: "Keys", color: COLORS.running }]}
-          />
-          <QueueDetailChartCard
-            title="Worst key wait"
-            info="Longest wait across all keys."
-            titleAccessory={
-              worstKeyNow ? (
-                <button
-                  type="button"
-                  onClick={() => replace({ key: worstKeyNow.key })}
-                  className="cursor-pointer text-xs font-normal tabular-nums text-text-dimmed transition-colors hover:text-text-bright"
-                >
-                  {worstKeyNow.key} · {formatWaitMs(worstKeyNow.waitMs)} now
-                </button>
-              ) : null
-            }
-            className="aspect-[2/1]"
-            query={`SELECT timeBucket() AS t, max(max_ck_wait_ms) AS wait\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-            fillGaps
-            ids={ids}
-            timeRange={timeRange}
-            queueName={queueName}
-            valueFormat={formatWaitMs}
-            series={[{ key: "wait", label: "Max wait", color: COLORS.running }]}
-          />
-        </div>
-      </ChartSyncProvider>
-      <KeyStatsTable
-        breakdown={breakdown}
-        loadedAt={loadedAt}
-        ids={ids}
-        timeRange={timeRange}
-        queueName={queueName}
-      />
-    </div>
+    /* Per-key breakdown: which keys hold the backlog / do the work. */
+    <ChartSyncProvider onZoom={zoomToTimeFilter}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <GroupedKeyChartCard
+          title="Waiting runs by key"
+          info="Runs waiting per key (top 8)."
+          className="aspect-[2/1]"
+          rankExpr="max(max_queued)"
+          seriesExpr="max(max_queued)"
+          fillGaps
+          keyFilter={keyFilter}
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+        />
+        <GroupedKeyChartCard
+          title="Throughput by key"
+          info="Runs started per key (top 8)."
+          className="aspect-[2/1]"
+          rankExpr="deltaSumTimestampMerge(started_delta)"
+          seriesExpr="deltaSumTimestampMerge(started_delta)"
+          keyFilter={keyFilter}
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+        />
+        {/* Whole-queue health across keys (single series, tasks-blue). */}
+        <QueueDetailChartCard
+          title="Keys with backlog"
+          info="Keys with runs waiting at once."
+          className="aspect-[2/1]"
+          query={`SELECT timeBucket() AS t, max(max_ck_backlogged) AS keys\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          series={[{ key: "keys", label: "Keys", color: COLORS.running }]}
+        />
+        <QueueDetailChartCard
+          title="Worst key wait"
+          info="Longest wait across all keys."
+          titleAccessory={
+            worstKeyNow ? (
+              <button
+                type="button"
+                onClick={() => replace({ key: worstKeyNow.key })}
+                className="cursor-pointer text-xs font-normal tabular-nums text-text-dimmed transition-colors hover:text-text-bright"
+              >
+                {worstKeyNow.key} · {formatWaitMs(worstKeyNow.waitMs)} now
+              </button>
+            ) : null
+          }
+          className="aspect-[2/1]"
+          query={`SELECT timeBucket() AS t, max(max_ck_wait_ms) AS wait\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+          fillGaps
+          ids={ids}
+          timeRange={timeRange}
+          queueName={queueName}
+          valueFormat={formatWaitMs}
+          series={[{ key: "wait", label: "Max wait", color: COLORS.running }]}
+        />
+      </div>
+    </ChartSyncProvider>
   );
 }
 
@@ -719,69 +780,63 @@ function KeyStatsTable({
   if (merged.length === 0) return null;
 
   return (
-    <>
-      <div className="rounded-sm border border-grid-dimmed bg-background-bright">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHeaderCell {...getSortProps("key")}>Key</TableHeaderCell>
-              <TableHeaderCell alignment="right" {...getSortProps("queued")}>
-                Queued now
-              </TableHeaderCell>
-              <TableHeaderCell alignment="right" {...getSortProps("running")}>
-                Running now
-              </TableHeaderCell>
-              <TableHeaderCell alignment="right" {...getSortProps("oldestWait")}>
-                Oldest wait
-              </TableHeaderCell>
-              <TableHeaderCell alignment="right" {...getSortProps("started")}>
-                Started
-              </TableHeaderCell>
-              <TableHeaderCell alignment="right" {...getSortProps("peakBacklog")}>
-                Peak backlog
-              </TableHeaderCell>
-              <TableHeaderCell alignment="right" {...getSortProps("meanWait")}>
-                Mean delay
-              </TableHeaderCell>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sortedRows.length === 0 ? (
-              <TableBlankRow colSpan={7} className="text-text-dimmed">
-                No keys match “{query}”
-              </TableBlankRow>
-            ) : null}
-            {sortedRows.map((row) => (
-              <TableRow
-                key={row.key}
-                isSelected={selectedKey === row.key}
-                className="cursor-pointer"
-                onClick={() => (selectedKey === row.key ? del("key") : replace({ key: row.key }))}
-              >
-                <TableCell>{row.key}</TableCell>
-                <TableCell alignment="right">{row.queued.toLocaleString()}</TableCell>
-                <TableCell alignment="right">{row.running.toLocaleString()}</TableCell>
-                <TableCell alignment="right">
-                  {row.oldestWaitMs === null ? "–" : formatWaitMs(row.oldestWaitMs)}
-                </TableCell>
-                <TableCell alignment="right">
-                  {row.range ? row.range.started.toLocaleString() : showLoading ? "…" : "–"}
-                </TableCell>
-                <TableCell alignment="right">
-                  {row.range ? row.range.peakBacklog.toLocaleString() : showLoading ? "…" : "–"}
-                </TableCell>
-                <TableCell alignment="right">
-                  {row.range && row.range.meanWaitMs > 0 ? formatWaitMs(row.range.meanWaitMs) : "–"}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      {selectedKey && (
-        <KeyDrilldown keyName={selectedKey} ids={ids} timeRange={timeRange} queueName={queueName} />
-      )}
-    </>
+    // Full-bleed, edge-to-edge like the Queues list table: a top border, no rounded side box.
+    <Table containerClassName="border-t">
+      <TableHeader>
+        <TableRow>
+          <TableHeaderCell {...getSortProps("key")}>Key</TableHeaderCell>
+          <TableHeaderCell alignment="right" {...getSortProps("queued")}>
+            Queued now
+          </TableHeaderCell>
+          <TableHeaderCell alignment="right" {...getSortProps("running")}>
+            Running now
+          </TableHeaderCell>
+          <TableHeaderCell alignment="right" {...getSortProps("oldestWait")}>
+            Oldest wait
+          </TableHeaderCell>
+          <TableHeaderCell alignment="right" {...getSortProps("started")}>
+            Started
+          </TableHeaderCell>
+          <TableHeaderCell alignment="right" {...getSortProps("peakBacklog")}>
+            Peak backlog
+          </TableHeaderCell>
+          <TableHeaderCell alignment="right" {...getSortProps("meanWait")}>
+            Mean delay
+          </TableHeaderCell>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {sortedRows.length === 0 ? (
+          <TableBlankRow colSpan={7} className="text-text-dimmed">
+            No keys match “{query}”
+          </TableBlankRow>
+        ) : null}
+        {sortedRows.map((row) => (
+          <TableRow
+            key={row.key}
+            isSelected={selectedKey === row.key}
+            className="cursor-pointer"
+            onClick={() => (selectedKey === row.key ? del("key") : replace({ key: row.key }))}
+          >
+            <TableCell>{row.key}</TableCell>
+            <TableCell alignment="right">{row.queued.toLocaleString()}</TableCell>
+            <TableCell alignment="right">{row.running.toLocaleString()}</TableCell>
+            <TableCell alignment="right">
+              {row.oldestWaitMs === null ? "–" : formatWaitMs(row.oldestWaitMs)}
+            </TableCell>
+            <TableCell alignment="right">
+              {row.range ? row.range.started.toLocaleString() : showLoading ? "…" : "–"}
+            </TableCell>
+            <TableCell alignment="right">
+              {row.range ? row.range.peakBacklog.toLocaleString() : showLoading ? "…" : "–"}
+            </TableCell>
+            <TableCell alignment="right">
+              {row.range && row.range.meanWaitMs > 0 ? formatWaitMs(row.range.meanWaitMs) : "–"}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
