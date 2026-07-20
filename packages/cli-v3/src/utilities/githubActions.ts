@@ -7,11 +7,12 @@ export function setGithubActionsOutputAndEnvVars({
   envVars: Record<string, string>;
   outputs: Record<string, string>;
 }) {
-  // Set environment variables
+  // Set environment variables. Terminate each entry with a newline so a
+  // subsequent append cannot concatenate onto the last KEY=value line.
   if (process.env.GITHUB_ENV) {
     const contents = Object.entries(envVars)
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\n");
+      .map(([key, value]) => `${key}=${value}\n`)
+      .join("");
 
     appendFileSync(process.env.GITHUB_ENV, contents);
   }
@@ -19,8 +20,8 @@ export function setGithubActionsOutputAndEnvVars({
   // Set outputs
   if (process.env.GITHUB_OUTPUT) {
     const contents = Object.entries(outputs)
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\n");
+      .map(([key, value]) => `${key}=${value}\n`)
+      .join("");
 
     appendFileSync(process.env.GITHUB_OUTPUT, contents);
   }
