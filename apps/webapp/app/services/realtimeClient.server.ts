@@ -171,7 +171,10 @@ export class RealtimeClient {
     const whereClauses: string[] = [`"runtimeEnvironmentId"='${environment.id}'`];
 
     if (params.tags) {
-      whereClauses.push(`"runTags" @> ARRAY[${params.tags.map((t) => `'${t}'`).join(",")}]`);
+      // Escape single quotes so user-provided tags cannot break out of the
+      // ARRAY literal (Electric WHERE clause is string-interpolated).
+      const escapedTags = params.tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(",");
+      whereClauses.push(`"runTags" @> ARRAY[${escapedTags}]`);
     }
 
     const createdAtFilter = await this.#calculateCreatedAtFilter(url, params.createdAt);
