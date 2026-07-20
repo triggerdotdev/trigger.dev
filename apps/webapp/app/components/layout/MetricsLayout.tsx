@@ -9,12 +9,25 @@
  *                                you pass an explicit `columns` spec.
  *   3. `MetricsLayout.Content` — the tabs / table / list below the tiles.
  *
- * `MetricsLayout.Root` owns the single, page-level scroll: the WHOLE page (filters, tiles and
- * content) scrolls as one, rather than an inner table-only scroll.
+ * Two optional structural capabilities extend the basic top-to-bottom column:
  *
- * The family is purely presentational — slots, grids and scroll only, no data logic. It is meant
- * to live inside a `PageContainer` right after the `NavBar`, mirroring how the `Chart.Root` /
- * `Chart.Line` compound composes.
+ *   - `MetricsLayout.Sidebar` — a persistent side panel rendered to the RIGHT of the main column
+ *     (main content left, sidebar right, full height). Drop a single `<MetricsLayout.Sidebar>`
+ *     anywhere among Root's children and Root switches to a `[main | sidebar]` horizontal layout;
+ *     omit it and nothing changes. The sidebar is fixed-width by default (`width`), or set
+ *     `resizable` to make the split draggable via the shared Resizable primitives.
+ *
+ *   - `scroll` on Root — chooses who owns the vertical scroll:
+ *       - `"page"` (default): Root owns a single `overflow-y-auto`; the WHOLE page (filters, tiles
+ *         and content) scrolls as one. This is what every current metrics page wants.
+ *       - `"regions"`: Root does NOT create a scroll container — it only bounds the height as a
+ *         `flex` column. The page composes its own independently-scrolling areas inside the slots
+ *         (e.g. a fixed toolbar over a scrolling table, or a vertical resizable split). Use this
+ *         when a single page-level scroll would be wrong.
+ *
+ * The family is purely presentational — slots, grids, a sidebar and scroll ownership only, no data
+ * logic. It is meant to live inside a `PageContainer` right after the `NavBar`, mirroring how the
+ * `Chart.Root` / `Chart.Line` compound composes.
  *
  * @example List page (self-padded sections, count-derived grids)
  * ```tsx
@@ -47,9 +60,45 @@
  *   </MetricsLayout.Content>
  * </MetricsLayout.Root>
  * ```
+ *
+ * @example Page with a persistent config sidebar (fixed-width)
+ * ```tsx
+ * <MetricsLayout.Root>
+ *   <MetricsLayout.Filters>…</MetricsLayout.Filters>
+ *   <MetricsLayout.Content>…</MetricsLayout.Content>
+ *   <MetricsLayout.Sidebar width="380px">…config panel…</MetricsLayout.Sidebar>
+ * </MetricsLayout.Root>
+ * ```
+ *
+ * @example Resizable sidebar + independently-scrolling regions
+ * ```tsx
+ * // In the loader, hydrate the persisted split from a cookie:
+ * const sidebarSnapshot = await getResizableSnapshot(request, "my-page-sidebar");
+ *
+ * <MetricsLayout.Root scroll="regions">
+ *   <div className="flex h-10 shrink-0 items-center …">…toolbar…</div>
+ *   <div className="min-h-0 flex-1 overflow-y-auto">…scrolling body…</div>
+ *   <MetricsLayout.Sidebar
+ *     resizable
+ *     autosaveId="my-page-sidebar"
+ *     snapshot={sidebarSnapshot}
+ *     min="280px"
+ *     defaultSize="380px"
+ *     max="500px"
+ *   >
+ *     …config panel…
+ *   </MetricsLayout.Sidebar>
+ * </MetricsLayout.Root>
+ * ```
  */
-import { Children, type ReactNode } from "react";
+import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import { PageBody } from "~/components/layout/AppLayout";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  type ResizableSnapshot,
+} from "~/components/primitives/Resizable";
 import { cn } from "~/utils/cn";
 
 type ColumnCount = 1 | 2 | 3 | 4 | 5 | 6;
@@ -119,29 +168,172 @@ function columnsForCount(count: number): GridColumns {
   }
 }
 
+/**
+ * Who owns the vertical scroll.
+ *   - `"page"` (default): Root owns one `overflow-y-auto` — the whole page scrolls as one.
+ *   - `"regions"`: Root only bounds the height (a `flex` column, no scroll); the page composes its
+ *     own scrolling areas inside the slots.
+ */
+export type MetricsScroll = "page" | "regions";
+
+type MetricsLayoutSidebarProps = {
+  children: ReactNode;
+  className?: string;
+  /**
+   * Fixed sidebar width for the non-resizable default (any CSS length, e.g. `"380px"`, `"22rem"`).
+   * Ignored when `resizable` is set. Defaults to `"380px"`.
+   */
+  width?: string;
+  /**
+   * When true, the `[main | sidebar]` split becomes draggable using the shared Resizable
+   * primitives. Persist the split by passing a stable `autosaveId` (the primitive writes the
+   * split to a cookie of that name) together with a `snapshot` read back from that cookie in the
+   * loader via `getResizableSnapshot(request, autosaveId)`.
+   */
+  resizable?: boolean;
+  /** Resizable only: min width of the sidebar panel. Defaults to `"280px"`. */
+  min?: string;
+  /** Resizable only: initial width of the sidebar panel. Defaults to `"380px"`. */
+  defaultSize?: string;
+  /** Resizable only: max width of the sidebar panel. */
+  max?: string;
+  /** Resizable only: min width of the main panel. Defaults to `"300px"`. */
+  mainMin?: string;
+  /** Resizable only: cookie name the split is persisted under (also the panel-group id). */
+  autosaveId?: string;
+  /** Resizable only: server-loaded split snapshot to hydrate from (see `getResizableSnapshot`). */
+  snapshot?: ResizableSnapshot;
+};
+
+/**
+ * Marker slot for the persistent side panel. Rendered/positioned entirely by `Root` (this
+ * component is never mounted directly) — Root reads its props to build the `[main | sidebar]`
+ * layout and drops the children into the panel.
+ */
+function MetricsLayoutSidebar(_props: MetricsLayoutSidebarProps) {
+  return null;
+}
+
+function isSidebarElement(child: ReactNode): child is ReactElement<MetricsLayoutSidebarProps> {
+  return isValidElement(child) && child.type === MetricsLayoutSidebar;
+}
+
+// The main (left) column. In `"page"` mode it is the single page-level scroll container — byte
+// identical to the pre-sidebar layout. In `"regions"` mode it only bounds the height as a flex
+// column so the page's own slots own their scroll.
+function MetricsLayoutMain({
+  children,
+  className,
+  scroll,
+}: {
+  children: ReactNode;
+  className?: string;
+  scroll: MetricsScroll;
+}) {
+  return (
+    <div
+      className={cn(
+        scroll === "page"
+          ? "h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+          : "flex h-full min-h-0 flex-col overflow-hidden",
+        className
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 function MetricsLayoutRoot({
   children,
   className,
   pageBodyClassName,
+  scroll = "page",
 }: {
   children: ReactNode;
   /** Applied to the inner scroll container (e.g. `flex flex-col gap-4 p-6` for a single column). */
   className?: string;
   /** Applied to the outer, non-scrolling PageBody wrapper. */
   pageBodyClassName?: string;
+  /** Who owns the vertical scroll — see {@link MetricsScroll}. Defaults to `"page"`. */
+  scroll?: MetricsScroll;
 }) {
+  // A single optional Sidebar slot flips Root into a horizontal `[main | sidebar]` layout. When it
+  // is absent the output is exactly the original single-column markup (current pages don't pass
+  // either new prop, so they render unchanged).
+  const sidebar = Children.toArray(children).find(isSidebarElement);
+  const mainChildren = sidebar
+    ? Children.toArray(children).filter((child) => !isSidebarElement(child))
+    : children;
+
+  const main = (
+    <MetricsLayoutMain scroll={scroll} className={className}>
+      {mainChildren}
+    </MetricsLayoutMain>
+  );
+
+  if (!sidebar) {
+    return (
+      <PageBody scrollable={false} className={pageBodyClassName}>
+        {/* The whole page scrolls as one: filters, tiles and content share a single vertical scroll
+            context, so the tiles scroll out of view with everything else (not an inner content-only
+            scroll). */}
+        {main}
+      </PageBody>
+    );
+  }
+
+  const {
+    children: sidebarChildren,
+    className: sidebarClassName,
+    width = "380px",
+    resizable,
+    min = "280px",
+    defaultSize = "380px",
+    max,
+    mainMin = "300px",
+    autosaveId,
+    snapshot,
+  } = sidebar.props;
+
+  if (resizable) {
+    // Draggable split. `autosaveId`/`snapshot` wire up cookie persistence exactly as the run and
+    // agent pages do (client writes the cookie, the loader hydrates via getResizableSnapshot).
+    return (
+      <PageBody scrollable={false} className={pageBodyClassName}>
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="h-full max-h-full"
+          autosaveId={autosaveId}
+          snapshot={snapshot}
+        >
+          <ResizablePanel id="metrics-main" min={mainMin}>
+            {main}
+          </ResizablePanel>
+          <ResizableHandle id={`${autosaveId ?? "metrics"}-sidebar-handle`} />
+          <ResizablePanel
+            id="metrics-sidebar"
+            min={min}
+            default={defaultSize}
+            max={max}
+            isStaticAtRest
+            className={cn("h-full overflow-hidden", sidebarClassName)}
+          >
+            {sidebarChildren}
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </PageBody>
+    );
+  }
+
+  // Fixed-width sidebar.
   return (
     <PageBody scrollable={false} className={pageBodyClassName}>
-      {/* The whole page scrolls as one: filters, tiles and content share a single vertical scroll
-          context, so the tiles scroll out of view with everything else (not an inner content-only
-          scroll). */}
-      <div
-        className={cn(
-          "h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control",
-          className
-        )}
-      >
-        {children}
+      <div className="flex h-full w-full overflow-hidden">
+        <div className="min-w-0 flex-1">{main}</div>
+        <div className={cn("h-full shrink-0 overflow-hidden", sidebarClassName)} style={{ width }}>
+          {sidebarChildren}
+        </div>
       </div>
     </PageBody>
   );
@@ -199,6 +391,13 @@ export const MetricsLayout = {
   Filters: MetricsLayoutFilters,
   Grid: MetricsLayoutGrid,
   Content: MetricsLayoutContent,
+  Sidebar: MetricsLayoutSidebar,
 };
 
-export { MetricsLayoutRoot, MetricsLayoutFilters, MetricsLayoutGrid, MetricsLayoutContent };
+export {
+  MetricsLayoutRoot,
+  MetricsLayoutFilters,
+  MetricsLayoutGrid,
+  MetricsLayoutContent,
+  MetricsLayoutSidebar,
+};
