@@ -1,7 +1,7 @@
-name: Trivy Image Scan (webapp)
+name: Trivy Image Scan
 
-# OS-level CVE scan of a published webapp image. Called by the publish pipeline
-# (publish.yml) to scan each build right after it's pushed to GHCR — so every
+# OS-level CVE scan of a published image. Called by the publish pipeline
+# (publish.yml) to scan each image right after it's pushed to GHCR — so every
 # main build and every release is scanned, not rebuilt. Also runnable ad-hoc
 # via workflow_dispatch against any image ref.
 #
@@ -27,7 +27,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: trivy-image-webapp-${{ inputs.image-ref }}
+  group: trivy-image-${{ inputs.image-ref }}
   cancel-in-progress: true
 
 jobs:
@@ -59,7 +59,7 @@ jobs:
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           format: table
-          output: trivy-image-webapp.txt
+          output: trivy-image.txt
 
       - name: Job summary
         if: always()
@@ -67,9 +67,9 @@ jobs:
           IMAGE_REF: ${{ inputs.image-ref }}
         run: |
           {
-            echo "## Trivy Image Scan (webapp) — \`${IMAGE_REF}\`"
+            echo "## Trivy Image Scan — \`${IMAGE_REF}\`"
             echo '```'
             # GitHub step summary is capped at 1 MiB; truncate large reports.
-            head -c 900000 trivy-image-webapp.txt 2>/dev/null || echo "(no report produced)"
+            head -c 900000 trivy-image.txt 2>/dev/null || echo "(no report produced)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
