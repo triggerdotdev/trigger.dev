@@ -193,6 +193,9 @@ function columnsForCount(count: number): GridColumns {
  */
 export type MetricsScroll = "page" | "regions";
 
+/** A length the resizable panels accept: pixels or percent (the panel library's `Unit`). */
+type PanelLength = `${number}px` | `${number}%`;
+
 type MetricsLayoutSidebarProps = {
   children: ReactNode;
   /**
@@ -208,13 +211,13 @@ type MetricsLayoutSidebarProps = {
    */
   resizable?: boolean;
   /** Resizable only: min width of the sidebar panel. Defaults to `"280px"`. */
-  min?: string;
+  min?: PanelLength;
   /** Resizable only: initial width of the sidebar panel. Defaults to `"380px"`. */
-  defaultSize?: string;
+  defaultSize?: PanelLength;
   /** Resizable only: max width of the sidebar panel. */
-  max?: string;
+  max?: PanelLength;
   /** Resizable only: min width of the main panel. Defaults to `"300px"`. */
-  mainMin?: string;
+  mainMin?: PanelLength;
   /** Resizable only: cookie name the split is persisted under (also the panel-group id). */
   autosaveId?: string;
   /** Resizable only: server-loaded split snapshot to hydrate from (see `getResizableSnapshot`). */
