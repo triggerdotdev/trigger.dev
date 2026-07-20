@@ -7,10 +7,10 @@ import {
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, Link, useNavigation, type MetaFunction } from "@remix-run/react";
+import { Form, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
@@ -336,6 +336,14 @@ function getEnvConcurrencyLimitStatus(environment: {
     limitStatus === "burst" ? "text-warning" : limitStatus === "limit" ? "text-error" : undefined;
 
   return { limitStatus, limitClassName };
+}
+
+// The whole queue row is a link to the queue detail page (each data cell carries `to`). In-cell
+// controls that live inside a `to` cell (info-icon/status tooltips) call this so a click acts on
+// the control instead of following the row link — mirrors CopyableTableCell in the Table primitive.
+function punchThroughRowLink(event: MouseEvent) {
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 export default function Page() {
@@ -727,6 +735,7 @@ function QueuesWithMetricsView() {
                     Delay p95
                   </TableHeaderCell>
                   <TableHeaderCell
+                    alignment="right"
                     {...getSortProps("backlog")}
                     tooltip="Runs waiting over the selected window. Yellow where throttled."
                   >
@@ -747,23 +756,21 @@ function QueuesWithMetricsView() {
                       queue.queued >= environment.queueSizeLimit;
                     const queueFilterableName = queueMetricsKey(queue);
                     const queueMetric = metricsByQueue[queueFilterableName];
+                    const queueDetailPath = v3QueuePath(organization, project, env, {
+                      friendlyId: queue.id,
+                    });
                     return (
                       <TableRow key={queue.name}>
-                        <TableCell>
+                        <TableCell to={queueDetailPath} isTabbableCell>
                           <span className="flex items-center gap-2">
-                            <Link
-                              to={v3QueuePath(organization, project, env, {
-                                friendlyId: queue.id,
-                              })}
-                              className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-charcoal-500"
-                            >
-                              <QueueName {...queue} />
-                            </Link>
+                            <QueueName {...queue} />
                             {queue.concurrency?.overriddenAt ? (
-                              <InfoIconTooltip
-                                content="This queue's concurrency limit has been manually overridden from the dashboard or API."
-                                contentClassName="max-w-xs"
-                              />
+                              <span onClick={punchThroughRowLink}>
+                                <InfoIconTooltip
+                                  content="This queue's concurrency limit has been manually overridden from the dashboard or API."
+                                  contentClassName="max-w-xs"
+                                />
+                              </span>
                             ) : null}
                             {queue.paused ? (
                               <Badge variant="extra-small" className="text-warning">
@@ -776,19 +783,25 @@ function QueuesWithMetricsView() {
                               </Badge>
                             ) : null}
                             {isAtConcurrencyLimit ? (
-                              <SimpleTooltip
-                                button={<ExclamationTriangleIcon className="size-4 text-warning" />}
-                                content="At concurrency limit: this queue is running as many runs as its limit allows; new runs wait in the backlog."
-                                className="max-w-xs"
-                                disableHoverableContent
-                              />
+                              <span onClick={punchThroughRowLink}>
+                                <SimpleTooltip
+                                  button={
+                                    <ExclamationTriangleIcon className="size-4 text-warning" />
+                                  }
+                                  content="At concurrency limit: this queue is running as many runs as its limit allows; new runs wait in the backlog."
+                                  className="max-w-xs"
+                                  disableHoverableContent
+                                />
+                              </span>
                             ) : null}
                           </span>
                         </TableCell>
                         <TableCell
+                          to={queueDetailPath}
                           alignment="right"
+                          actionClassName="pl-16 tabular-nums"
                           className={cn(
-                            "w-[1%] pl-16 tabular-nums",
+                            "w-[1%]",
                             queue.paused ? "opacity-50" : undefined,
                             isAtQueueLimit && "text-error"
                           )}
@@ -796,9 +809,11 @@ function QueuesWithMetricsView() {
                           {queue.queued}
                         </TableCell>
                         <TableCell
+                          to={queueDetailPath}
                           alignment="right"
+                          actionClassName="pl-16 tabular-nums"
                           className={cn(
-                            "w-[1%] pl-16 tabular-nums",
+                            "w-[1%]",
                             queue.paused ? "opacity-50" : undefined,
                             queue.running > 0 && "text-text-bright"
                           )}
@@ -806,9 +821,11 @@ function QueuesWithMetricsView() {
                           {queue.running}
                         </TableCell>
                         <TableCell
+                          to={queueDetailPath}
                           alignment="right"
+                          actionClassName="pl-16 tabular-nums"
                           className={cn(
-                            "w-[1%] pl-16 tabular-nums",
+                            "w-[1%]",
                             queue.paused ? "opacity-50" : undefined,
                             queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                           )}
@@ -825,26 +842,30 @@ function QueuesWithMetricsView() {
                           )}
                         </TableCell>
                         <TableCell
+                          to={queueDetailPath}
                           alignment="right"
+                          actionClassName="pl-16"
                           className={cn(
-                            "w-[1%] pl-16",
+                            "w-[1%]",
                             queue.paused ? "opacity-50" : undefined,
                             queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                           )}
                         >
                           {queue.concurrency?.overriddenAt ? (
-                            <SimpleTooltip
-                              button={<span className="text-text-bright">Override</span>}
-                              content={
-                                queue.concurrencyLimitOverridePercent !== null
-                                  ? `Overridden at ${formatOverridePercent(
-                                      queue.concurrencyLimitOverridePercent
-                                    )}% of the environment limit.`
-                                  : `This queue's concurrency limit has been manually overridden to ${limit}.`
-                              }
-                              className="max-w-xs"
-                              disableHoverableContent
-                            />
+                            <span onClick={punchThroughRowLink}>
+                              <SimpleTooltip
+                                button={<span className="text-text-bright">Override</span>}
+                                content={
+                                  queue.concurrencyLimitOverridePercent !== null
+                                    ? `Overridden at ${formatOverridePercent(
+                                        queue.concurrencyLimitOverridePercent
+                                      )}% of the environment limit.`
+                                    : `This queue's concurrency limit has been manually overridden to ${limit}.`
+                                }
+                                className="max-w-xs"
+                                disableHoverableContent
+                              />
+                            </span>
                           ) : queue.concurrencyLimit ? (
                             "User"
                           ) : (
@@ -852,6 +873,7 @@ function QueuesWithMetricsView() {
                           )}
                         </TableCell>
                         <TableCell
+                          to={queueDetailPath}
                           alignment="right"
                           className={cn(queue.paused ? "opacity-50" : undefined)}
                         >
@@ -862,7 +884,12 @@ function QueuesWithMetricsView() {
                             limit={limit}
                           />
                         </TableCell>
-                        <TableCell alignment="right" className="w-[1%] pl-16 tabular-nums">
+                        <TableCell
+                          to={queueDetailPath}
+                          alignment="right"
+                          actionClassName="pl-16 tabular-nums"
+                          className="w-[1%]"
+                        >
                           {queueMetric && queueMetric.p95WaitMs !== null ? (
                             <span className="text-text-bright">
                               {formatWaitMs(queueMetric.p95WaitMs)}
@@ -871,7 +898,7 @@ function QueuesWithMetricsView() {
                             <span className="text-text-dimmed">–</span>
                           )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell to={queueDetailPath}>
                           <MiniLineChart
                             data={queueMetric?.depthSparkline}
                             throttled={queueMetric?.throttledSparkline}
