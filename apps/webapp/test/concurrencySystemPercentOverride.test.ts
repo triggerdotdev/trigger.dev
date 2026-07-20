@@ -12,6 +12,11 @@ import { ConcurrencySystem, materializePercentLimit } from "~/v3/services/concur
 // verification report. Everything the service persists to Postgres IS real.
 // A controllable spy for the engine's queue-limit push so a test can simulate a push failure and
 // prove the next recalc self-heals the divergence.
+// This mocks the ENGINE method (`engine.runQueue.updateQueueConcurrencyLimits`). The service calls
+// the top-level `updateQueueConcurrencyLimits` from `~/v3/runQueue.server`, which forwards straight
+// to this engine method with the same `(environment, queueName, concurrency)` argument order (no
+// transformation) — so mocking the engine method genuinely exercises the recalc's sync path and the
+// `(env, queueName, 10)` assertion below is exact.
 const { updateQueueConcurrencyLimitsMock } = vi.hoisted(() => ({
   updateQueueConcurrencyLimitsMock: vi.fn(async (..._args: unknown[]) => undefined),
 }));
