@@ -234,81 +234,84 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <MetricsLayout.Root>
-        {/* Filters — top row, directly under the NavBar: the TimeFilter and pagination that used
-            to be fused with the tabs now live here, above the charts (Queues list pattern). */}
-        <MetricsLayout.Filters className="justify-between border-t border-grid-dimmed px-3 pb-3 pt-1.5">
-          <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
-          {tab === "sessions" ? (
-            <Suspense fallback={null}>
-              <TypedAwait resolve={sessionList} errorElement={null}>
-                {(list) => (list ? <ListPagination list={list} /> : null)}
-              </TypedAwait>
-            </Suspense>
-          ) : (
-            <Suspense fallback={null}>
-              <TypedAwait resolve={runList} errorElement={null}>
-                {(list) => (list ? <ListPagination list={list} /> : null)}
-              </TypedAwait>
-            </Suspense>
-          )}
+        {/* Filters — the pinned bar under the NavBar: the TimeFilter and pagination that used to
+            be fused with the tabs now live here, above the charts (Queues list pattern). Left and
+            right clusters are child divs; the slot's baked justify-between spreads them. */}
+        <MetricsLayout.Filters>
+          <div className="flex items-center gap-2">
+            <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
+          </div>
+          <div className="flex items-center gap-2">
+            {tab === "sessions" ? (
+              <Suspense fallback={null}>
+                <TypedAwait resolve={sessionList} errorElement={null}>
+                  {(list) => (list ? <ListPagination list={list} /> : null)}
+                </TypedAwait>
+              </Suspense>
+            ) : (
+              <Suspense fallback={null}>
+                <TypedAwait resolve={runList} errorElement={null}>
+                  {(list) => (list ? <ListPagination list={list} /> : null)}
+                </TypedAwait>
+              </Suspense>
+            )}
+          </div>
         </MetricsLayout.Filters>
 
-        {/* Activity / LLM spend / Token charts as a fixed-height tile row (three-up), synced +
+        {/* Activity / LLM spend / Token charts as a fixed-height chart row (three-up), synced +
             drag-to-zoom. The old draggable charts/table split is intentionally dropped — the
             charts get a fixed row and the table flows below in the page scroll. */}
-        <div className="h-[280px] px-3 pb-3">
-          <ChartSyncProvider onZoom={zoomToTimeFilter}>
-            <MetricsLayout.Grid columns={{ base: 1, sm: 3 }} className="h-full min-h-0">
-              <ChartCard title={tabLabel}>
-                {tab === "sessions" ? (
-                  <Suspense fallback={<ActivityChartSkeleton />}>
-                    <TypedAwait resolve={sessionActivity} errorElement={<ActivityChartSkeleton />}>
-                      {(result) => <ActivityChart activity={result} />}
-                    </TypedAwait>
-                  </Suspense>
-                ) : (
-                  <Suspense fallback={<ActivityChartSkeleton />}>
-                    <TypedAwait resolve={runActivity} errorElement={<ActivityChartSkeleton />}>
-                      {(result) => <ActivityChart activity={result} />}
-                    </TypedAwait>
-                  </Suspense>
-                )}
-              </ChartCard>
-
-              <ChartCard title="LLM spend ($)">
+        <ChartSyncProvider onZoom={zoomToTimeFilter}>
+          <MetricsLayout.Grid kind="charts" columns={{ base: 1, sm: 3 }}>
+            <ChartCard title={tabLabel}>
+              {tab === "sessions" ? (
                 <Suspense fallback={<ActivityChartSkeleton />}>
-                  <TypedAwait resolve={llmCostActivity} errorElement={<ActivityChartSkeleton />}>
-                    {(result) => (
-                      <ScalarActivityChart
-                        activity={result}
-                        seriesKey="cost"
-                        label="Spend"
-                        color="var(--color-agents)"
-                        valueFormatter={formatCurrency}
-                      />
-                    )}
+                  <TypedAwait resolve={sessionActivity} errorElement={<ActivityChartSkeleton />}>
+                    {(result) => <ActivityChart activity={result} />}
                   </TypedAwait>
                 </Suspense>
-              </ChartCard>
-
-              <ChartCard title="Tokens">
+              ) : (
                 <Suspense fallback={<ActivityChartSkeleton />}>
-                  <TypedAwait resolve={llmTokenActivity} errorElement={<ActivityChartSkeleton />}>
-                    {(result) => (
-                      <ScalarActivityChart
-                        activity={result}
-                        seriesKey="tokens"
-                        label="Tokens"
-                        color="#14B8A6"
-                        valueFormatter={formatTokens}
-                      />
-                    )}
+                  <TypedAwait resolve={runActivity} errorElement={<ActivityChartSkeleton />}>
+                    {(result) => <ActivityChart activity={result} />}
                   </TypedAwait>
                 </Suspense>
-              </ChartCard>
-            </MetricsLayout.Grid>
-          </ChartSyncProvider>
-        </div>
+              )}
+            </ChartCard>
+
+            <ChartCard title="LLM spend ($)">
+              <Suspense fallback={<ActivityChartSkeleton />}>
+                <TypedAwait resolve={llmCostActivity} errorElement={<ActivityChartSkeleton />}>
+                  {(result) => (
+                    <ScalarActivityChart
+                      activity={result}
+                      seriesKey="cost"
+                      label="Spend"
+                      color="var(--color-agents)"
+                      valueFormatter={formatCurrency}
+                    />
+                  )}
+                </TypedAwait>
+              </Suspense>
+            </ChartCard>
+
+            <ChartCard title="Tokens">
+              <Suspense fallback={<ActivityChartSkeleton />}>
+                <TypedAwait resolve={llmTokenActivity} errorElement={<ActivityChartSkeleton />}>
+                  {(result) => (
+                    <ScalarActivityChart
+                      activity={result}
+                      seriesKey="tokens"
+                      label="Tokens"
+                      color="#14B8A6"
+                      valueFormatter={formatTokens}
+                    />
+                  )}
+                </TypedAwait>
+              </Suspense>
+            </ChartCard>
+          </MetricsLayout.Grid>
+        </ChartSyncProvider>
 
         {/* Tabs alone on their row (Queue detail pattern), then the table below them. */}
         <MetricsLayout.Content>
