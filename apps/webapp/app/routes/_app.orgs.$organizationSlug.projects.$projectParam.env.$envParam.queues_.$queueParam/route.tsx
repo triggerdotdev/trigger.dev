@@ -149,6 +149,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (!environment)
     throw new Response(undefined, { status: 404, statusText: "Environment not found" });
 
+  if (environment.archivedAt) {
+    return redirectWithErrorMessage(redirectPath, request, "This branch is archived");
+  }
+
   const formData = await request.formData();
 
   // Pause/resume/override actions are shared with the Queues list route; here we redirect back to
@@ -175,8 +179,11 @@ function wholeQueueOldestWaitMs(
   oldestQueuedAt: number | null,
   now: number
 ): number | null {
-  if (breakdown.keys.length > 0) {
-    return breakdown.keys.reduce((max, k) => Math.max(max, now - k.oldestEnqueuedAt), 0);
+  // Only keys with a live backlog (queued > 0) count — a lingering ckIndex entry whose subqueue
+  // has drained would otherwise over-report the oldest wait. Matches the worstKeyNow guard below.
+  const waitingKeys = breakdown.keys.filter((k) => k.queued > 0);
+  if (waitingKeys.length > 0) {
+    return waitingKeys.reduce((max, k) => Math.max(max, now - k.oldestEnqueuedAt), 0);
   }
   return oldestQueuedAt !== null ? Math.max(0, now - oldestQueuedAt) : null;
 }
@@ -842,7 +849,9 @@ function QueueStats({
   timeRange,
   queueName,
 }: {
-  queue: QueueItem;
+  // Carries the percent override source-of-truth (not part of the shared QueueItem contract) so the
+  // override dialog reopens in percent mode for percent-based overrides.
+  queue: QueueItem & { concurrencyLimitOverridePercent: number | null };
   environmentConcurrencyLimit: number;
   queuedRunsPath: string;
   oldestWaitMs: number | null;
@@ -906,7 +915,7 @@ function QueueStats({
               iconOnly
             />
             <QueueOverrideConcurrencyButton
-              queue={{ ...queue, concurrencyLimitOverridePercent: null }}
+              queue={queue}
               environmentConcurrencyLimit={environmentConcurrencyLimit}
               trigger="icon"
             />
