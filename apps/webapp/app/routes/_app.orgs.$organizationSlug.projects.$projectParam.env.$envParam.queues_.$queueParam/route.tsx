@@ -446,7 +446,7 @@ function ConcurrencyKeysBlankState() {
       <InfoPanel
         icon={ConcurrencyIcon}
         iconClassName="text-text-dimmed"
-        panelClassName="max-full"
+        panelClassName="max-w-full"
         title="No concurrency keys configured"
         accessory={
           <LinkButton
