@@ -1,8 +1,7 @@
 {
   "extends": "../../.configs/tsconfig.base.json",
   "compilerOptions": {
-    "sourceMap": true,
-    "ignoreDeprecations": "6.0"
+    "sourceMap": true
   },
   "include": ["./src/**/*.ts"]
 }
