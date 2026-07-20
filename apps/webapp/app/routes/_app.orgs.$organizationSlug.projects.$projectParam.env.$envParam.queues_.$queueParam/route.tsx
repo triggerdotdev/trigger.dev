@@ -412,7 +412,9 @@ function ConcurrencyKeysView({
   queueName: string;
 }) {
   const zoomToTimeFilter = useZoomToTimeFilter();
-  const { replace } = useSearchParams();
+  const { value, replace } = useSearchParams();
+  // Same key search as the table: narrows the per-key charts too.
+  const keyFilter = value("query")?.trim().toLowerCase() || undefined;
 
   // The live most-starved key: among keys with a live backlog, the one whose oldest waiting run
   // has been waiting longest right now. Names the culprit on the "Worst key wait" card so the chart
@@ -439,6 +441,7 @@ function ConcurrencyKeysView({
             rankExpr="max(max_queued)"
             seriesExpr="max(max_queued)"
             fillGaps
+            keyFilter={keyFilter}
             ids={ids}
             timeRange={timeRange}
             queueName={queueName}
@@ -449,6 +452,7 @@ function ConcurrencyKeysView({
             className="aspect-[2/1]"
             rankExpr="deltaSumTimestampMerge(started_delta)"
             seriesExpr="deltaSumTimestampMerge(started_delta)"
+            keyFilter={keyFilter}
             ids={ids}
             timeRange={timeRange}
             queueName={queueName}
@@ -538,22 +542,27 @@ type GroupedKeyChartProps = {
   seriesExpr: string;
   fillGaps?: boolean;
   valueFormat?: (value: number) => string;
+  /** Search substring (from the page's key search) — narrows the charted keys, like the table. */
+  keyFilter?: string;
   ids: Ids;
   timeRange: TimeRangeParams;
   queueName: string;
 };
 
 // Two-step top-N: rank keys over the range, then chart those keys as grouped series
-// (the per-key table is activity-bound, so ranking is a cheap scan).
+// (the per-key table is activity-bound, so ranking is a cheap scan). Rank wider than we chart so a
+// search can match keys outside the top 8; then filter by the search and keep the top 8 of those.
 function GroupedKeyChartCard(props: GroupedKeyChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(
-    `SELECT concurrency_key, ${props.rankExpr} AS peak\nFROM queue_metrics_by_key\nGROUP BY concurrency_key\nORDER BY peak DESC\nLIMIT 8`,
+    `SELECT concurrency_key, ${props.rankExpr} AS peak\nFROM queue_metrics_by_key\nGROUP BY concurrency_key\nORDER BY peak DESC\nLIMIT 50`,
     { ids: props.ids, timeRange: props.timeRange, queueName: props.queueName }
   );
-  const keys = useMemo(
-    () => rows.filter((r) => toNumber(r.peak) > 0).map((r) => String(r.concurrency_key)),
-    [rows]
-  );
+  const keyFilter = props.keyFilter;
+  const keys = useMemo(() => {
+    let names = rows.filter((r) => toNumber(r.peak) > 0).map((r) => String(r.concurrency_key));
+    if (keyFilter) names = names.filter((n) => n.toLowerCase().includes(keyFilter));
+    return names.slice(0, 8);
+  }, [rows, keyFilter]);
 
   if (showLoading || failed || keys.length === 0) return null;
   return <GroupedKeySeries keys={keys} {...props} />;
