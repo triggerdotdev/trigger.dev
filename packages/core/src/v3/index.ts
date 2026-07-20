@@ -30,6 +30,7 @@ export * from "./resource-catalog-api.js";
 export * from "./types/index.js";
 export { links } from "./links.js";
 export * from "./jwt.js";
+export * from "./workloadDeploymentToken.js";
 export * from "./idempotencyKeys.js";
 export * from "./streams/asyncIterableStream.js";
 export * from "./utils/getEnv.js";

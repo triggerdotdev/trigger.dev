@@ -151,7 +151,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_DEQUEUED_AT_MS: String(opts.dequeuedAt.getTime()),
       TRIGGER_POD_SCHEDULED_AT_MS: String(Date.now()),
       TRIGGER_ENV_ID: opts.envId,
-      TRIGGER_DEPLOYMENT_ID: opts.deploymentFriendlyId,
+      TRIGGER_DEPLOYMENT_ID: opts.deploymentToken ?? opts.deploymentFriendlyId,
       TRIGGER_DEPLOYMENT_VERSION: opts.deploymentVersion,
       TRIGGER_RUN_ID: opts.runFriendlyId,
       TRIGGER_SNAPSHOT_ID: opts.snapshotFriendlyId,

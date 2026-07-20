@@ -271,18 +271,25 @@ export class CheckpointSystem {
     snapshotId,
     workerId,
     runnerId,
+    environmentId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
     return await this.$.runLock.lock("continueRunExecution", [runId], async () => {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+      const snapshot = await getLatestExecutionSnapshot(
+        prisma,
+        runId,
+        this.$.runStore,
+        environmentId
+      );
 
       if (snapshot.id !== snapshotId) {
         throw new ServiceValidationError(

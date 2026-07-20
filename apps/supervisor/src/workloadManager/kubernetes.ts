@@ -158,7 +158,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   },
                   {
                     name: "TRIGGER_DEPLOYMENT_ID",
-                    value: opts.deploymentFriendlyId,
+                    value: opts.deploymentToken ?? opts.deploymentFriendlyId,
                   },
                   {
                     name: "TRIGGER_DEPLOYMENT_VERSION",

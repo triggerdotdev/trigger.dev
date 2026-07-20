@@ -841,14 +841,16 @@ export class RoutingRunStore implements RunStore {
   // OUTPUT is silently missing from the resume payload — re-resolve them across BOTH DBs.
   async findLatestExecutionSnapshot(
     runId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    environmentId?: string
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null> {
     const owningStore = this.#routeOrNew(runId);
     const snapshot = await owningStore.findLatestExecutionSnapshot(
       runId,
-      RoutingRunStore.#ownPrimary(owningStore, client)
+      RoutingRunStore.#ownPrimary(owningStore, client),
+      environmentId
     );
     if (snapshot) {
       await this.#reresolveCompletedWaitpointsCrossDb(

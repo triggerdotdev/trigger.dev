@@ -1537,6 +1537,7 @@ type WorkerLoaderHandlerFunction<
     ? z.infer<THeadersSchema>
     : undefined;
   runnerId?: string;
+  environmentId?: string;
 }) => Promise<Response>;
 
 export function createLoaderWorkerApiRoute<
@@ -1601,6 +1602,8 @@ export function createLoaderWorkerApiRoute<
       }
 
       const runnerId = request.headers.get(WORKER_HEADERS.RUNNER_ID) ?? undefined;
+      // `|| undefined` so a blank header can't become a zero-match snapshot filter (→ false reject).
+      const environmentId = request.headers.get(WORKER_HEADERS.ENVIRONMENT_ID) || undefined;
 
       const result = await handler({
         params: parsedParams,
@@ -1609,6 +1612,7 @@ export function createLoaderWorkerApiRoute<
         request,
         headers: parsedHeaders,
         runnerId,
+        environmentId,
       });
       return result;
     } catch (error) {
@@ -1660,6 +1664,7 @@ type WorkerActionHandlerFunction<
     ? z.infer<TBodySchema>
     : undefined;
   runnerId?: string;
+  environmentId?: string;
 }) => Promise<Response>;
 
 export function createActionWorkerApiRoute<
@@ -1758,6 +1763,8 @@ export function createActionWorkerApiRoute<
       }
 
       const runnerId = request.headers.get(WORKER_HEADERS.RUNNER_ID) ?? undefined;
+      // `|| undefined` so a blank header can't become a zero-match snapshot filter (→ false reject).
+      const environmentId = request.headers.get(WORKER_HEADERS.ENVIRONMENT_ID) || undefined;
 
       const result = await handler({
         params: parsedParams,
@@ -1767,6 +1774,7 @@ export function createActionWorkerApiRoute<
         body: parsedBody,
         headers: parsedHeaders,
         runnerId,
+        environmentId,
       });
       return result;
     } catch (error) {

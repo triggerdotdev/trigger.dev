@@ -670,6 +670,13 @@ const EnvironmentSchema = z
 
     MANAGED_WORKER_SECRET: z.string().default("managed-secret"),
 
+    // Tenant scoping on worker actions is header-driven (folded into the engine snapshot read) and
+    // needs no flag. This is only the no-header fallback: when "1", a worker action on a run created
+    // after WORKLOAD_TOKEN_CUTOFF without a verified env header is rejected; runs on or before the
+    // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
+    WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
+    WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
+
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
     DEV_OTEL_METRICS_ENDPOINT: z.string().optional(),

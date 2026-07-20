@@ -1708,15 +1708,17 @@ export class PostgresRunStore implements RunStore {
 
   async findLatestExecutionSnapshot(
     runId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    environmentId?: string
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null> {
     const prisma = client ?? this.readOnlyPrisma;
+    const where = { runId, isValid: true, ...(environmentId ? { environmentId } : {}) };
 
     if (this.schemaVariant === "dedicated") {
       const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-        where: { runId, isValid: true },
+        where,
         include: { checkpoint: true },
         orderBy: { createdAt: "desc" },
       });
@@ -1728,7 +1730,7 @@ export class PostgresRunStore implements RunStore {
     }
 
     return prisma.taskRunExecutionSnapshot.findFirst({
-      where: { runId, isValid: true },
+      where,
       include: {
         completedWaitpoints: true,
         checkpoint: true,

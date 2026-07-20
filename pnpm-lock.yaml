@@ -585,6 +585,15 @@ importers:
       json-stable-stringify:
         specifier: ^1.3.0
         version: 1.3.0
+      jsonpointer:
+        specifier: ^5.0.1
+        version: 5.0.1
+      lodash.omit:
+        specifier: ^4.5.0
+        version: 4.5.0
+      lru-cache:
+        specifier: ^11.2.4
+        version: 11.2.4
       lucide-react:
         specifier: ^0.229.0
         version: 0.229.0(react@18.3.1)
@@ -11390,6 +11399,10 @@ packages:
     resolution: {integrity: sha512-8TNmfeTCk2Le33A3vRRwtuworG/L5RrgMvdjhKZxvyShO+mBu2fP50OWUjRLNtvw344DdDarFh9buFAZs5ujeA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
+
+  jsonpointer@5.0.1:
+    resolution: {integrity: sha512-p/nXbhSEcu3pZRdkW1OfJhpsVtW1gd4Wa1fnQc9YLiTfAjn0312eMKimbdIQzuZl9aa9xUGaRlP9T/CJE/ditQ==}
+    engines: {node: '>=0.10.0'}
 
   jsonwebtoken@9.0.2:
     resolution: {integrity: sha512-PRp66vJ865SSqOlgqS8hujT5U4AOgMfhrwYIuIhfKaoSCZcirrmASQr8CX7cUg+RMih+hgznrjp99o+W4pJLHQ==}
@@ -26633,6 +26646,8 @@ snapshots:
       '@jsep-plugin/assignment': 1.3.0(jsep@1.4.0)
       '@jsep-plugin/regex': 1.0.4(jsep@1.4.0)
       jsep: 1.4.0
+
+  jsonpointer@5.0.1: {}
 
   jsonwebtoken@9.0.2:
     dependencies:
