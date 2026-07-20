@@ -218,9 +218,14 @@ function isSidebarElement(child: ReactNode): child is ReactElement<MetricsLayout
   return isValidElement(child) && child.type === MetricsLayoutSidebar;
 }
 
-// The main (left) column. In `"page"` mode it is the single page-level scroll container — byte
-// identical to the pre-sidebar layout. In `"regions"` mode it only bounds the height as a flex
-// column so the page's own slots own their scroll.
+function isFiltersElement(child: ReactNode): child is ReactElement {
+  return isValidElement(child) && child.type === MetricsLayoutFilters;
+}
+
+// The main (left) column. The Filters slot is hoisted OUT of the scroll container so it stays
+// pinned while the tiles/content scroll underneath (the dashboards' `[auto | 1fr]` pattern —
+// sticky without z-index/backdrop bookkeeping). In `"page"` mode the rest scrolls as one; in
+// `"regions"` mode the page composes its own scrolling areas.
 function MetricsLayoutMain({
   children,
   className,
@@ -230,16 +235,23 @@ function MetricsLayoutMain({
   className?: string;
   scroll: MetricsScroll;
 }) {
+  const arr = Children.toArray(children);
+  const filters = arr.find(isFiltersElement);
+  const rest = filters ? arr.filter((child) => !isFiltersElement(child)) : children;
+
   return (
-    <div
-      className={cn(
-        scroll === "page"
-          ? "h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
-          : "flex h-full min-h-0 flex-col overflow-hidden",
-        className
-      )}
-    >
-      {children}
+    <div className="flex h-full min-h-0 flex-col">
+      {filters}
+      <div
+        className={cn(
+          scroll === "page"
+            ? "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+            : "flex min-h-0 flex-1 flex-col overflow-hidden",
+          className
+        )}
+      >
+        {rest}
+      </div>
     </div>
   );
 }
@@ -346,7 +358,7 @@ function MetricsLayoutFilters({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={cn("flex items-center gap-2", className)}>{children}</div>;
+  return <div className={cn("flex shrink-0 items-center gap-2", className)}>{children}</div>;
 }
 
 function MetricsLayoutGrid({

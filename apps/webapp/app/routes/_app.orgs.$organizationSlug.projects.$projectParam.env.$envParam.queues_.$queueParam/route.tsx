@@ -224,10 +224,12 @@ export default function Page() {
       <NavBar>
         <PageTitle title={queue.name} backButton={{ to: backPath, text: "Queues" }} />
       </NavBar>
-      <MetricsLayout.Root className="flex flex-col gap-4 p-6">
+      {/* Filters are hoisted out of the scroll container by the layout (pinned on scroll), so they
+          carry the page inset themselves; the scrolling column keeps the rest. */}
+      <MetricsLayout.Root className="flex flex-col gap-4 p-6 pt-0">
         {/* Filters — search (concurrency keys) + time filter, above everything, like the
             Queues list. The time filter scopes the tab charts; search filters the keys table. */}
-        <MetricsLayout.Filters>
+        <MetricsLayout.Filters className="px-6 pb-4 pt-6">
           {showKeysTab ? (
             <SearchInput placeholder="Search keys…" paramName="query" resetParams={["key"]} />
           ) : null}
