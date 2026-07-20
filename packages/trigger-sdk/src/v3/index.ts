@@ -23,9 +23,9 @@ export type { Context };
 
 import type { Context } from "./shared.js";
 
-import type { ApiClientConfiguration, TaskRunContext } from "@trigger.dev/core/v3";
+import type { ApiClientConfiguration, RunStatus, TaskRunContext } from "@trigger.dev/core/v3";
 
-export type { ApiClientConfiguration, TaskRunContext };
+export type { ApiClientConfiguration, TaskRunContext, RunStatus };
 
 export {
   ApiError,
