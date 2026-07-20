@@ -1,109 +1,33 @@
 /**
  * MetricsLayout — a compound layout for metric / dashboard pages.
  *
- * PHILOSOPHY — slots own their chrome. This family exists so that non-designers (and AI agents)
- * can compose a beautiful, consistent metrics page purely by picking slots and setting closed,
- * semantic props. There is deliberately NO freeform `className` on any slot: a page cannot restyle
- * the spacing, borders or gutters of the layout, because that is exactly how metric pages drifted
- * apart before. The slots bake ONE visual rhythm (a 12px grid gap, a 12px page gutter, a doubled
- * separation before the content, a pinned 40px filter bar). If you find yourself wanting a class on
- * a slot, you probably need a new semantic variant instead — talk to design and add a closed prop
- * (like `kind` or `inset`) rather than reopening `className`.
+ * Slots bake all the chrome; there is no `className` on any slot, so pages can't drift apart on
+ * spacing. Need a variant? Add a closed prop (`kind`, `inset`), don't reopen `className`.
  *
- * Every metrics page reads top-to-bottom as the same slots:
+ * Slots, top to bottom:
+ *   - `Filters` — pinned 40px bar under the NavBar. Left/right clusters are child divs.
+ *   - `Grid` — tiles; columns derived from tile count unless `columns` is set. `kind="charts"`
+ *     bakes the fixed chart-row height.
+ *   - `Content` — table / tabs below the tiles. Full-bleed by default; `inset` for a padded column.
  *
- *   1. `MetricsLayout.Filters` — the pinned bar under the NavBar (search, TimeFilter, pagination…).
- *      It is hoisted out of the scroll container so it stays put while the page scrolls. Baked
- *      chrome: a 40px bar with a bottom border. Pages express left/right clusters as child divs
- *      (e.g. left = search + TimeFilter, right = pagination); `justify-between` spreads them.
- *   2. `MetricsLayout.Grid` — one or more grids of tiles (stat BigNumbers, chart cards). The grid
- *      adapts its column count to the number of tiles unless you pass an explicit `columns` spec,
- *      and bakes the page gutter + grid gap. `kind="charts"` bakes the fixed chart-row height.
- *   3. `MetricsLayout.Content` — the tabs / table / list below the tiles. Full-bleed by default
- *      (a list table spans edge to edge with its own top border); pass `inset` for a padded column.
- *      Content always bakes a doubled separation (24px) above it, so the blocks read as a distinct
- *      band from the content below.
+ * Optional:
+ *   - `Sidebar` — a persistent right-hand panel; fixed `width` or `resizable`. Present ⇒ Root
+ *     switches to `[main | sidebar]`; absent ⇒ single column.
+ *   - `scroll` on Root — `"page"` (default): the whole page scrolls as one. `"regions"`: Root owns
+ *     no scroll, the page composes its own scrolling areas.
  *
- * Two optional structural capabilities extend the basic top-to-bottom column:
+ * Purely presentational. Lives inside a `PageContainer` after the `NavBar`.
  *
- *   - `MetricsLayout.Sidebar` — a persistent side panel rendered to the RIGHT of the main column
- *     (main content left, sidebar right, full height). Drop a single `<MetricsLayout.Sidebar>`
- *     anywhere among Root's children and Root switches to a `[main | sidebar]` horizontal layout;
- *     omit it and nothing changes. The sidebar is fixed-width by default (`width`), or set
- *     `resizable` to make the split draggable via the shared Resizable primitives.
- *
- *   - `scroll` on Root — chooses who owns the vertical scroll:
- *       - `"page"` (default): Root owns a single `overflow-y-auto` and lays the slots out as a
- *         `flex` column with the standard vertical rhythm; the WHOLE page (filters aside) scrolls
- *         as one. This is what every current metrics page wants.
- *       - `"regions"`: Root does NOT create a scroll container and does NOT impose the column
- *         rhythm — it only bounds the height as a bare `flex` column. The page composes its own
- *         independently-scrolling areas inside the slots (e.g. a fixed toolbar over a scrolling
- *         table, or a vertical resizable split). Use this when a single page-level scroll would be
- *         wrong.
- *
- * The family is purely presentational — slots, grids, a sidebar and scroll ownership only, no data
- * logic. It is meant to live inside a `PageContainer` right after the `NavBar`.
- *
- * @example List page (full-bleed table, count-derived grids)
- * ```tsx
- * <PageContainer>
- *   <NavBar>…</NavBar>
- *   <MetricsLayout.Root>
- *     <MetricsLayout.Filters>
- *       <div className="flex items-center gap-2">…search + TimeFilter…</div>
- *       <PaginationControls … />
- *     </MetricsLayout.Filters>
- *     <MetricsLayout.Grid>…4 stat tiles…</MetricsLayout.Grid>
- *     <ChartSyncProvider>
- *       <MetricsLayout.Grid kind="charts">…4 chart tiles…</MetricsLayout.Grid>
- *     </ChartSyncProvider>
- *     <MetricsLayout.Content>…full-width table…</MetricsLayout.Content>
- *   </MetricsLayout.Root>
- * </PageContainer>
- * ```
- *
- * @example Detail page (a single padded column)
+ * @example
  * ```tsx
  * <MetricsLayout.Root>
  *   <MetricsLayout.Filters>
  *     <div className="flex items-center gap-2">…search + TimeFilter…</div>
+ *     <PaginationControls … />
  *   </MetricsLayout.Filters>
- *   <MetricsLayout.Grid>…3 stat tiles…</MetricsLayout.Grid>
- *   <MetricsLayout.Content inset>
- *     <TabContainer>…</TabContainer>
- *     …active view (charts / keys)…
- *   </MetricsLayout.Content>
- * </MetricsLayout.Root>
- * ```
- *
- * @example Page with a persistent config sidebar (fixed-width)
- * ```tsx
- * <MetricsLayout.Root>
- *   <MetricsLayout.Filters>…</MetricsLayout.Filters>
- *   <MetricsLayout.Content>…</MetricsLayout.Content>
- *   <MetricsLayout.Sidebar width="380px">…config panel…</MetricsLayout.Sidebar>
- * </MetricsLayout.Root>
- * ```
- *
- * @example Resizable sidebar + independently-scrolling regions
- * ```tsx
- * // In the loader, hydrate the persisted split from a cookie:
- * const sidebarSnapshot = await getResizableSnapshot(request, "my-page-sidebar");
- *
- * <MetricsLayout.Root scroll="regions">
- *   <div className="flex h-10 shrink-0 items-center …">…toolbar…</div>
- *   <div className="min-h-0 flex-1 overflow-y-auto">…scrolling body…</div>
- *   <MetricsLayout.Sidebar
- *     resizable
- *     autosaveId="my-page-sidebar"
- *     snapshot={sidebarSnapshot}
- *     min="280px"
- *     defaultSize="380px"
- *     max="500px"
- *   >
- *     …config panel…
- *   </MetricsLayout.Sidebar>
+ *   <MetricsLayout.Grid>…stat tiles…</MetricsLayout.Grid>
+ *   <MetricsLayout.Grid kind="charts">…chart tiles…</MetricsLayout.Grid>
+ *   <MetricsLayout.Content>…table…</MetricsLayout.Content>
  * </MetricsLayout.Root>
  * ```
  */
@@ -204,10 +128,8 @@ type MetricsLayoutSidebarProps = {
    */
   width?: string;
   /**
-   * When true, the `[main | sidebar]` split becomes draggable using the shared Resizable
-   * primitives. Persist the split by passing a stable `autosaveId` (the primitive writes the
-   * split to a cookie of that name) together with a `snapshot` read back from that cookie in the
-   * loader via `getResizableSnapshot(request, autosaveId)`.
+   * Makes the split draggable. To persist it, pass an `autosaveId` (written to a cookie) plus the
+   * `snapshot` read back in the loader via `getResizableSnapshot(request, autosaveId)`.
    */
   resizable?: boolean;
   /** Resizable only: min width of the sidebar panel. Defaults to `"280px"`. */
@@ -242,11 +164,9 @@ function isFiltersElement(child: ReactNode): child is ReactElement {
   return isValidElement(child) && child.type === MetricsLayoutFilters;
 }
 
-// The main (left) column. The Filters slot is hoisted OUT of the scroll container so it stays
-// pinned while the tiles/content scroll underneath (the dashboards' `[auto | 1fr]` pattern —
-// sticky without z-index/backdrop bookkeeping). In `"page"` mode the rest scrolls as one and gets
-// the baked column rhythm (vertical gap + top/bottom padding); in `"regions"` mode the page
-// composes its own scrolling areas, so the container stays bare.
+// The main (left) column. Filters is hoisted out of the scroll container so it stays pinned while
+// the rest scrolls. `"page"` scrolls as one with the baked column rhythm; `"regions"` stays bare so
+// the page owns its own scrolling.
 function MetricsLayoutMain({ children, scroll }: { children: ReactNode; scroll: MetricsScroll }) {
   const arr = Children.toArray(children);
   const filters = arr.find(isFiltersElement);
