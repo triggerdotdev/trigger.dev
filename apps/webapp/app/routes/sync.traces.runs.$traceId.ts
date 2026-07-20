@@ -5,17 +5,27 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { getUserId } from "~/services/session.server";
 import { longPollingFetch } from "~/utils/longPollingFetch";
-import { runStore } from "~/v3/runStore.server";
+import {
+  OtelTraceIdSchema,
+  RESERVED_ELECTRIC_SHAPE_PARAMS,
+  buildElectricTraceWhereClause,
+} from "~/v3/electricShape.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { runStore } from "~/v3/runStore.server";
 
 const Params = z.object({
-  traceId: z.string(),
+  traceId: OtelTraceIdSchema,
 });
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   try {
     const userId = await getUserId(request);
-    const { traceId } = Params.parse(params);
+
+    const parsedParams = Params.safeParse(params);
+    if (!parsedParams.success) {
+      return new Response("Not found", { status: 404 });
+    }
+    const { traceId } = parsedParams.data;
 
     logger.log(`/sync/runs/${traceId}`, { userId });
 
@@ -29,6 +39,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       },
       {
         select: {
+          projectId: true,
           runtimeEnvironmentId: true,
         },
       },
@@ -40,7 +51,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       // primary before 404ing so a live run's realtime trace feed isn't spuriously not-found.
       run = await runStore.findRunOnPrimary(
         { traceId },
-        { select: { runtimeEnvironmentId: true } }
+        { select: { projectId: true, runtimeEnvironmentId: true } }
       );
     }
 
@@ -67,11 +78,22 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
     const url = new URL(request.url);
     const originUrl = new URL(`${env.ELECTRIC_ORIGIN}/v1/shape/public."TaskRun"`);
+    // Strip params we set ourselves so the caller can't override them.
     url.searchParams.forEach((value, key) => {
+      if (RESERVED_ELECTRIC_SHAPE_PARAMS.has(key)) return;
       originUrl.searchParams.set(key, value);
     });
 
-    originUrl.searchParams.set("where", `"traceId"='${traceId}'`);
+    originUrl.searchParams.set(
+      "where",
+      // Scope by non-null projectId, not the nullable organizationId (legacy
+      // rows would vanish). Tenant-safe: membership was verified against this
+      // project's org and a trace's runs all live in one project.
+      buildElectricTraceWhereClause({
+        traceId,
+        scope: { column: "projectId", id: run.projectId },
+      })
+    );
 
     const finalUrl = originUrl.toString();
 
