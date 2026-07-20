@@ -7,6 +7,8 @@ secrets:
   magicLinkSecret: "YOUR_32_CHAR_HEX_SECRET_HERE_002"
   encryptionKey: "YOUR_32_CHAR_HEX_SECRET_HERE_003"
   managedWorkerSecret: "YOUR_32_CHAR_HEX_SECRET_HERE_004"
+  providerSecret: "YOUR_32_CHAR_HEX_SECRET_HERE_005"
+  coordinatorSecret: "YOUR_32_CHAR_HEX_SECRET_HERE_006"
 
 # Production webapp configuration
 webapp:
@@ -42,6 +44,10 @@ webapp:
 
 # Production PostgreSQL (or use external)
 postgres:
+  auth:
+    # Required — no built-in default. The webapp connection string uses postgres.auth.password.
+    postgresPassword: "your-strong-postgres-password"
+    password: "your-strong-postgres-password"
   primary:
     persistence:
       enabled: true
@@ -72,6 +78,9 @@ redis:
 
 # Production ClickHouse
 clickhouse:
+  auth:
+    # Required — no built-in default. The webapp connection string uses clickhouse.auth.password.
+    password: "your-strong-clickhouse-password"
   # Set to true to enable TLS/secure connections in production
   secure: true
   persistence:

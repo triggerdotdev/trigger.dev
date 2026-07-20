@@ -75,11 +75,22 @@ git clone --depth=1 https://github.com/triggerdotdev/trigger.dev
 cd trigger.dev/hosting/docker
 ```
 
-2. Create a `.env` file
+2. Create a `.env` file and generate secrets
 
 ```bash
 cp .env.example .env
+
+# Fills the required secrets in .env with strong, unique values.
+# Safe to re-run - it never overwrites a secret you've already set.
+./generate-secrets.sh
 ```
+
+<Note>
+  The stack ships no working default credentials. `generate-secrets.sh` fills the
+  application secrets and the bundled datastore passwords with strong, unique values.
+  Keep them safe - rotating the encryption key or session secret later will invalidate
+  existing sessions and encrypted data.
+</Note>
 
 3. Start the webapp
 
@@ -129,6 +140,13 @@ docker compose up -d
 ```
 
 4. Configure the supervisor using the [environment variables](/self-hosting/env/supervisor) in your `.env` file, including the [worker token](#worker-token).
+
+<Warning>
+  For a split webapp/worker setup, set `MANAGED_WORKER_SECRET` on the worker to
+  the **same** value as the webapp's `MANAGED_WORKER_SECRET`. Don't run
+  `generate-secrets.sh` on the worker host - it would create a mismatched value
+  and the worker would fail to authenticate.
+</Warning>
 
 5. Apply the changes:
 

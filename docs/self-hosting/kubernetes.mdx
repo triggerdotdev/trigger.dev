@@ -121,8 +121,10 @@ The default values are insecure and are only suitable for testing. You will need
 Create a `values-custom.yaml` file to override the defaults. For example:
 
 ```yaml
-# Generate new secrets with `openssl rand -hex 16`
-# WARNING: You should probably use an existingSecret instead
+# Leave these unset to have the chart auto-generate strong values on first
+# install (retained across upgrades). Set them explicitly only if you need to
+# control the value - e.g. sharing MANAGED_WORKER_SECRET with an external
+# supervisor - or use an existingSecret.
 secrets:
   enabled: true
   sessionSecret: "your-32-char-hex-secret-1"
@@ -133,6 +135,8 @@ secrets:
 # - SESSION_SECRET
 # - MAGIC_LINK_SECRET
 # - ENCRYPTION_KEY
+# - PROVIDER_SECRET
+# - COORDINATOR_SECRET
 # - MANAGED_WORKER_SECRET
 # - OBJECT_STORE_ACCESS_KEY_ID
 # - OBJECT_STORE_SECRET_ACCESS_KEY
@@ -175,6 +179,24 @@ helm upgrade -n trigger --install trigger \
   --create-namespace \
   -f values-custom.yaml
 ```
+
+### Secret generation and rotation
+
+Application, control-plane, and bundled-datastore secrets left unset are generated on
+first install and **retained across `helm upgrade`** - they are never rotated
+automatically, so sessions, encrypted data, and datastore volumes survive upgrades.
+
+<Warning>
+  GitOps tools that render with `helm template` (e.g. Argo CD) cannot read the existing
+  secret, so they regenerate these values on every sync - which rotates them. If you
+  deploy via GitOps, always supply your own `secrets.existingSecret` (and datastore
+  credentials) so nothing is generated in-cluster.
+</Warning>
+
+There is no clean migration for a compromised `ENCRYPTION_KEY`: changing it makes
+existing encrypted data unreadable. If a deployment is still running a previously
+published default and cannot rotate yet, set `ALLOW_INSECURE_DEFAULT_SECRETS=true` on
+the webapp to keep booting while you plan a migration.
 
 ### Extra env
 
