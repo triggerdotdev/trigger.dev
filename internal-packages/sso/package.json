@@ -17,7 +17,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit",
-    "build": "pnpm run clean && tsc --noEmit false --outDir dist --declaration",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc --noEmit false --outDir dist --declaration --watch",
     "test": "vitest run",
     "test:watch": "vitest"
