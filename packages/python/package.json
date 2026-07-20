@@ -55,7 +55,7 @@
     "typescript": "catalog:",
     "tsx": "4.17.0",
     "esbuild": "^0.23.0",
-    "@arethetypeswrong/cli": "^0.15.4",
+    "@arethetypeswrong/cli": "^0.18.5",
     "@trigger.dev/build": "workspace:4.5.6",
     "@trigger.dev/sdk": "workspace:4.5.6"
   },
