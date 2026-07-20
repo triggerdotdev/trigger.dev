@@ -55,6 +55,10 @@ export async function createFileWithStore(
     await fsModule.unlink(filePath);
   }
 
+  // Ensure store directory exists. Concurrent `trigger dev` sessions share this
+  // path; the previous session's exit cleanup can delete it mid-build.
+  await fsModule.mkdir(storeDir, { recursive: true });
+
   // Check if content already exists in store by hash
   if (fsSync.existsSync(storePath)) {
     // Create hardlink from build path to store path
