@@ -6,7 +6,11 @@ import type {
   TriggerConfig,
 } from "@trigger.dev/core/v3";
 import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { DEFAULT_RUNTIME } from "@trigger.dev/core/v3/build";
+import {
+  DEFAULT_RUNTIME,
+  isExperimentalConfigRuntime,
+  resolveBuildRuntime,
+} from "@trigger.dev/core/v3/build";
 import * as c12 from "c12";
 import { defu } from "defu";
 import type * as esbuild from "esbuild";
@@ -170,6 +174,24 @@ async function resolveConfig(
     );
   }
 
+  const config =
+    "config" in result.config ? (result.config.config as TriggerConfig) : result.config;
+
+  const features = featuresFromCompatibilityFlags(
+    ["run_engine_v2" as const].concat(config.compatibilityFlags ?? [])
+  );
+  const defaultRuntime: BuildRuntime = features.run_engine_v2 ? "node" : DEFAULT_RUNTIME;
+  const configuredRuntime = overrides?.runtime ?? config.runtime ?? defaultRuntime;
+  const runtime = resolveBuildRuntime(configuredRuntime);
+
+  if (warn && isExperimentalConfigRuntime(configuredRuntime)) {
+    prettyWarning(
+      `The "${configuredRuntime}" runtime is experimental and may change before general availability.`
+    );
+  }
+
+  validateConfig(config, warn);
+
   const packageJsonPath = await resolvePackageJSON(cwd);
   const tsconfigPath = await safeResolveTsConfig(cwd);
   const lockfilePath = await resolveLockfile(cwd);
@@ -181,24 +203,14 @@ async function resolveConfig(
       ? dirname(packageJsonPath)
       : cwd;
 
-  const config =
-    "config" in result.config ? (result.config.config as TriggerConfig) : result.config;
-
-  validateConfig(config, warn);
-
   let dirs = config.dirs ? config.dirs : await autoDetectDirs(workingDir);
 
   dirs = dirs.map((dir) => resolveTriggerDir(dir, workingDir));
 
-  const features = featuresFromCompatibilityFlags(
-    ["run_engine_v2" as const].concat(config.compatibilityFlags ?? [])
-  );
-
-  const defaultRuntime: BuildRuntime = features.run_engine_v2 ? "node" : DEFAULT_RUNTIME;
-
   const mergedConfig = defu(
     {
       workingDir,
+      runtime,
       configFile: result.configFile,
       packageJsonPath,
       tsconfigPath,
@@ -230,7 +242,7 @@ async function resolveConfig(
     ...mergedConfig,
     dirs: Array.from(new Set(dirs)),
     instrumentedPackageNames: getInstrumentedPackageNames(mergedConfig),
-    runtime: mergedConfig.runtime,
+    runtime,
   };
 }
 

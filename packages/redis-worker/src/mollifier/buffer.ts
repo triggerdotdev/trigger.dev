@@ -462,6 +462,23 @@ export class MollifierBuffer {
     await this.redis.releaseMollifierClaim(claimKey, `${PENDING_PREFIX}${input.token}`);
   }
 
+  // Reopen a RESOLVED claim slot whose winner was cleared, so the claim-loser
+  // reacquire path can re-serialise a cross-DB recreate through a fresh claim.
+  // Compare-and-delete on the observed `expectedRunId` (never an unconditional
+  // DEL) so a concurrent reacquirer that already re-published a NEW winner is
+  // never wiped. Reuses the lookup self-heal's compare-and-delete Lua. Returns
+  // true if the stale slot was cleared.
+  async resetResolvedClaim(
+    input: IdempotencyLookupInput & { expectedRunId: string }
+  ): Promise<boolean> {
+    const claimKey = makeIdempotencyClaimKey(input);
+    const deleted = (await this.redis.delMollifierKeyIfEquals(
+      claimKey,
+      input.expectedRunId
+    )) as number;
+    return deleted === 1;
+  }
+
   // Read the current claim value, used by the wait/poll loop on losers
   // to detect "pending" → "resolved" transitions and timeouts.
   async readClaim(input: IdempotencyLookupInput): Promise<IdempotencyClaimResult | null> {

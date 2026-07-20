@@ -597,6 +597,7 @@ export class DequeueSystem {
                   id: result.worker.id,
                   friendlyId: result.worker.friendlyId,
                   version: result.worker.version,
+                  runtime: result.worker.runtime ?? undefined,
                 },
                 // TODO: use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
                 // Would help make the typechecking stricter

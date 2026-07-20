@@ -126,10 +126,13 @@ function enhanceExecutionSnapshotWithWaitpoints(
 async function getSnapshotWaitpointIds(
   prisma: PrismaClientOrTransaction,
   snapshotId: string,
-  runStore?: RunStore
+  runStore?: RunStore,
+  // The owning run id, so the router can route to the run's store (the completed-waitpoint join
+  // co-locates with the snapshot/run) instead of fanning out to both run-ops DBs.
+  runId?: string
 ): Promise<string[]> {
   if (runStore) {
-    return runStore.findSnapshotCompletedWaitpointIds(snapshotId, prisma);
+    return runStore.findSnapshotCompletedWaitpointIds(snapshotId, prisma, runId);
   }
 
   const result = await prisma.$queryRaw<{ B: string }[]>`
@@ -144,10 +147,12 @@ async function getSnapshotWaitpointIds(
 async function getSnapshotWaitpointIdsWithPresence(
   prisma: PrismaClientOrTransaction,
   snapshotId: string,
-  runStore?: RunStore
+  runStore?: RunStore,
+  // The owning run id, so the router can route to the run's store instead of fanning out.
+  runId?: string
 ): Promise<{ present: boolean; ids: string[] }> {
   if (runStore) {
-    return runStore.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, prisma);
+    return runStore.findSnapshotCompletedWaitpointIdsWithPresence(snapshotId, prisma, runId);
   }
 
   const rows = await prisma.$queryRaw<{ id: string; B: string | null }[]>`
@@ -170,7 +175,10 @@ async function getSnapshotWaitpointIdsWithPresence(
 async function fetchWaitpointsInChunks(
   prisma: PrismaClientOrTransaction,
   waitpointIds: string[],
-  runStore?: RunStore
+  runStore?: RunStore,
+  // The owning run id, so the router routes to the run's store and only falls back to the other DB
+  // for the rare cross-tree token, instead of fanning every chunk out to both run-ops DBs.
+  runId?: string
 ): Promise<Waitpoint[]> {
   if (waitpointIds.length === 0) return [];
 
@@ -178,7 +186,7 @@ async function fetchWaitpointsInChunks(
   for (let i = 0; i < waitpointIds.length; i += WAITPOINT_CHUNK_SIZE) {
     const chunk = waitpointIds.slice(i, i + WAITPOINT_CHUNK_SIZE);
     const waitpoints = runStore
-      ? await runStore.findManyWaitpoints({ where: { id: { in: chunk } } }, prisma)
+      ? await runStore.findManyWaitpoints({ where: { id: { in: chunk } } }, prisma, runId)
       : await prisma.waitpoint.findMany({
           where: { id: { in: chunk } },
         });
@@ -347,7 +355,8 @@ export async function getExecutionSnapshotsSince(
   const { present, ids } = await getSnapshotWaitpointIdsWithPresence(
     prisma,
     latestSnapshot.id,
-    runStore
+    runStore,
+    runId
   );
   let waitpointIds = ids;
 
@@ -356,7 +365,7 @@ export async function getExecutionSnapshotsSince(
   // authoritative - re-read from the primary so the runner is not handed a waitpoint-less continue
   // (which it silently drops, hanging the run). Single-reader replicas never hit this (present stays true).
   if (repairClient && repairClient !== prisma && !present) {
-    waitpointIds = await getSnapshotWaitpointIds(repairClient, latestSnapshot.id, runStore);
+    waitpointIds = await getSnapshotWaitpointIds(repairClient, latestSnapshot.id, runStore, runId);
     readClient = repairClient;
   }
 
@@ -369,7 +378,12 @@ export async function getExecutionSnapshotsSince(
   // poll even against a caught-up replica.
   const expectedCount = new Set(latestSnapshot.completedWaitpointOrder ?? []).size;
   if (repairClient && repairClient !== prisma && waitpointIds.length < expectedCount) {
-    const repaired = await getSnapshotWaitpointIds(repairClient, latestSnapshot.id, runStore);
+    const repaired = await getSnapshotWaitpointIds(
+      repairClient,
+      latestSnapshot.id,
+      runStore,
+      runId
+    );
     if (repaired.length > waitpointIds.length) {
       waitpointIds = repaired;
       readClient = repairClient;
@@ -377,7 +391,7 @@ export async function getExecutionSnapshotsSince(
   }
 
   // Step 4: Fetch waitpoints in chunks to avoid NAPI string conversion limits
-  const waitpoints = await fetchWaitpointsInChunks(readClient, waitpointIds, runStore);
+  const waitpoints = await fetchWaitpointsInChunks(readClient, waitpointIds, runStore, runId);
 
   // Step 5: Build enhanced snapshots - only latest gets waitpoints, others get empty arrays
   // The runner only uses completedWaitpoints from the latest snapshot anyway

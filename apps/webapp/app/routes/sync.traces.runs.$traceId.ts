@@ -23,7 +23,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       return new Response("No user found in cookie", { status: 401 });
     }
 
-    const run = await runStore.findRun(
+    let run = await runStore.findRun(
       {
         traceId,
       },
@@ -34,6 +34,15 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       },
       $replica
     );
+
+    if (!run) {
+      // Read-your-writes: a just-created run may not have replicated yet. Re-read the owning
+      // primary before 404ing so a live run's realtime trace feed isn't spuriously not-found.
+      run = await runStore.findRunOnPrimary(
+        { traceId },
+        { select: { runtimeEnvironmentId: true } }
+      );
+    }
 
     if (!run) {
       return new Response("No run found", { status: 404 });

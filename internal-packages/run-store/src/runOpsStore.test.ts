@@ -1643,17 +1643,22 @@ describe("RoutingRunStore.findTaskRunAttempt residency routing", () => {
       status?: string;
     }
   ) {
-    await prisma.$executeRawUnsafe(`SET session_replication_role = replica`);
-    await prisma.$executeRawUnsafe(
-      `INSERT INTO "TaskRunAttempt" (id, number, "friendlyId", "taskRunId", "backgroundWorkerId", "backgroundWorkerTaskId", "runtimeEnvironmentId", "queueId", status, "createdAt", "updatedAt", "usageDurationMs", "outputType")
-       VALUES ($1, 1, $2, $3, 'synthetic-worker', 'synthetic-worker-task', $4, 'synthetic-queue', $5::"TaskRunAttemptStatus", NOW(), NOW(), 0, 'application/json')`,
-      opts.attemptId,
-      opts.friendlyId,
-      opts.runId,
-      opts.runtimeEnvironmentId,
-      opts.status ?? "COMPLETED"
-    );
-    await prisma.$executeRawUnsafe(`SET session_replication_role = DEFAULT`);
+    // `session_replication_role` is session-scoped, so the `SET` and the insert must share one
+    // connection — separate pooled calls can split across connections, leaving the insert with FK
+    // triggers on (the synthetic worker/queue ids have no backing rows). One transaction with
+    // `SET LOCAL` keeps them co-connected and auto-resets on commit.
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL session_replication_role = replica`);
+      await tx.$executeRawUnsafe(
+        `INSERT INTO "TaskRunAttempt" (id, number, "friendlyId", "taskRunId", "backgroundWorkerId", "backgroundWorkerTaskId", "runtimeEnvironmentId", "queueId", status, "createdAt", "updatedAt", "usageDurationMs", "outputType")
+         VALUES ($1, 1, $2, $3, 'synthetic-worker', 'synthetic-worker-task', $4, 'synthetic-queue', $5::"TaskRunAttemptStatus", NOW(), NOW(), 0, 'application/json')`,
+        opts.attemptId,
+        opts.friendlyId,
+        opts.runId,
+        opts.runtimeEnvironmentId,
+        opts.status ?? "COMPLETED"
+      );
+    });
   }
 
   heteroPostgresTest(
