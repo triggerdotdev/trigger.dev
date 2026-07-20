@@ -1,5 +1,6 @@
 {
   "extends": "../../.configs/tsconfig.base.json",
+  "compilerOptions": { "ignoreDeprecations": "6.0" },
   "references": [
     {
       "path": "./tsconfig.src.json"
