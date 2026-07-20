@@ -332,7 +332,7 @@ async function getTriggerDependencies(
         continue;
       }
 
-      if (version.startsWith("workspace")) {
+      if (version.startsWith("workspace") || version.startsWith("catalog:")) {
         continue;
       }
 
