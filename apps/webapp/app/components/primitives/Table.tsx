@@ -271,19 +271,16 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         tabIndex={-1}
       >
         {sortable ? (
-          // The tooltip trigger is itself a <button>, so it must NOT be nested inside the sort
-          // <button> (invalid DOM — triggers validateDOMNesting warnings). Keep label + sort
-          // indicator inside the sort button and render the tooltip as a sibling in a shared flex
-          // row beside it.
+          // Order is always title → info icon → sort arrows. The info trigger is itself a <button>,
+          // so it can't nest inside the sort <button> (invalid DOM). Without a tooltip the arrows
+          // ride inside the full-width label button (unchanged). With a tooltip, the info sits
+          // between the label and a separate arrows button — both buttons toggle the sort.
           <div className={rowClassName}>
             <button
               type="button"
               onClick={onSort}
               className={cn(
                 "group/sort flex cursor-pointer select-none items-center gap-1 rounded-sm font-medium text-text-bright focus-custom",
-                // Without a tooltip the sort button spans the full header width (unchanged
-                // behavior); with a tooltip it stays content-sized so the tooltip trigger sits
-                // beside it and the row's alignment classes position the group.
                 tooltip
                   ? undefined
                   : cn("w-full", {
@@ -293,9 +290,21 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
               )}
             >
               {label}
-              {sortIndicator}
+              {!tooltip && sortIndicator}
             </button>
-            {tooltipNode}
+            {tooltip ? (
+              <>
+                {tooltipNode}
+                <button
+                  type="button"
+                  onClick={onSort}
+                  aria-label="Toggle sort"
+                  className="group/sort flex cursor-pointer select-none items-center rounded-sm focus-custom"
+                >
+                  {sortIndicator}
+                </button>
+              </>
+            ) : null}
           </div>
         ) : tooltip ? (
           <div className={rowClassName}>
