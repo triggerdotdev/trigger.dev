@@ -25,7 +25,7 @@ export async function action({ request }: ActionFunctionArgs) {
         await exporter.exportMetricsRaw(new Uint8Array(buffer));
 
         return new Response(
-          ExportMetricsServiceResponse.encode(ExportMetricsServiceResponse.create()).finish(),
+          ExportMetricsServiceResponse.encode(ExportMetricsServiceResponse.create()).finish() as Uint8Array<ArrayBuffer>,
           { status: 200 }
         );
       }
@@ -34,7 +34,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
       const exportResponse = await exporter.exportMetrics(exportRequest);
 
-      return new Response(ExportMetricsServiceResponse.encode(exportResponse).finish(), {
+      return new Response(ExportMetricsServiceResponse.encode(exportResponse).finish() as Uint8Array<ArrayBuffer>, {
         status: 200,
       });
     } else {

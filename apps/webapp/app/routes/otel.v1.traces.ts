@@ -21,7 +21,7 @@ export async function action({ request }: ActionFunctionArgs) {
         await exporter.exportTracesRaw(new Uint8Array(buffer));
 
         return new Response(
-          ExportTraceServiceResponse.encode(ExportTraceServiceResponse.create()).finish(),
+          ExportTraceServiceResponse.encode(ExportTraceServiceResponse.create()).finish() as Uint8Array<ArrayBuffer>,
           { status: 200 }
         );
       }
@@ -30,7 +30,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
       const exportResponse = await exporter.exportTraces(exportRequest);
 
-      return new Response(ExportTraceServiceResponse.encode(exportResponse).finish(), {
+      return new Response(ExportTraceServiceResponse.encode(exportResponse).finish() as Uint8Array<ArrayBuffer>, {
         status: 200,
       });
     } else {

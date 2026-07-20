@@ -21,7 +21,7 @@ export async function action({ request }: ActionFunctionArgs) {
         await exporter.exportLogsRaw(new Uint8Array(buffer));
 
         return new Response(
-          ExportLogsServiceResponse.encode(ExportLogsServiceResponse.create()).finish(),
+          ExportLogsServiceResponse.encode(ExportLogsServiceResponse.create()).finish() as Uint8Array<ArrayBuffer>,
           { status: 200 }
         );
       }
@@ -30,7 +30,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
       const exportResponse = await exporter.exportLogs(exportRequest);
 
-      return new Response(ExportLogsServiceResponse.encode(exportResponse).finish(), {
+      return new Response(ExportLogsServiceResponse.encode(exportResponse).finish() as Uint8Array<ArrayBuffer>, {
         status: 200,
       });
     } else {
