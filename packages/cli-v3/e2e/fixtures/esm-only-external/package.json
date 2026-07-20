@@ -15,6 +15,6 @@
     "mupdf": "^0.3.0"
   },
   "devDependencies": {
-    "typescript": "5.5.4"
+    "typescript": "6.0.3"
   }
 }

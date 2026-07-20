@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  typescript: 5.5.4
+  typescript: 6.0.3
   '@types/node': 24.13.3
   react@^18: 18.3.1
   react-dom@^18: 18.3.1
@@ -141,11 +141,11 @@ importers:
         specifier: ^1.10.3
         version: 1.10.3
       typescript:
-        specifier: 5.5.4
-        version: 5.5.4
+        specifier: 6.0.3
+        version: 6.0.3
       vite-tsconfig-paths:
         specifier: ^4.0.5
-        version: 4.0.5(typescript@5.5.4)
+        version: 4.0.5(typescript@6.0.3)
       vitest:
         specifier: 4.1.7
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.7)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@3.12.2)(yaml@2.9.0))
@@ -419,25 +419,25 @@ importers:
         version: 3.7.1(react@18.3.1)
       '@remix-run/express':
         specifier: 2.17.5
-        version: 2.17.5(express@4.20.0)(typescript@5.5.4)
+        version: 2.17.5(express@4.20.0)(typescript@6.0.3)
       '@remix-run/node':
         specifier: 2.17.5
-        version: 2.17.5(typescript@5.5.4)
+        version: 2.17.5(typescript@6.0.3)
       '@remix-run/react':
         specifier: 2.17.5
-        version: 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4)
+        version: 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       '@remix-run/router':
         specifier: ^1.23.3
         version: 1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9)
       '@remix-run/server-runtime':
         specifier: 2.17.5
-        version: 2.17.5(typescript@5.5.4)
+        version: 2.17.5(typescript@6.0.3)
       '@s2-dev/streamstore':
         specifier: ^0.22.10
         version: 0.22.10(supports-color@10.0.0)
       '@sentry/remix':
         specifier: 9.46.0
-        version: 9.46.0(patch_hash=146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b)(@remix-run/node@2.17.5(typescript@5.5.4))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(encoding@0.1.13)(react@18.3.1)
+        version: 9.46.0(patch_hash=146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b)(@remix-run/node@2.17.5(typescript@6.0.3))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(encoding@0.1.13)(react@18.3.1)
       '@slack/web-api':
         specifier: 7.16.0
         version: 7.16.0
@@ -521,7 +521,7 @@ importers:
         version: 1.0.18
       class-variance-authority:
         specifier: ^0.5.2
-        version: 0.5.2(typescript@5.5.4)
+        version: 0.5.2(typescript@6.0.3)
       clsx:
         specifier: ^1.2.1
         version: 1.2.1
@@ -689,22 +689,22 @@ importers:
         version: 2.0.1
       remix-auth:
         specifier: ^3.6.0
-        version: 3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))
+        version: 3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))
       remix-auth-email-link:
         specifier: 2.0.2
-        version: 2.0.2(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4)))
+        version: 2.0.2(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3)))
       remix-auth-github:
         specifier: ^1.6.0
-        version: 1.6.0(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4)))
+        version: 1.6.0(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3)))
       remix-auth-google:
         specifier: ^2.0.0
-        version: 2.0.0(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4)))
+        version: 2.0.0(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3)))
       remix-typedjson:
         specifier: 0.3.1
-        version: 0.3.1(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(react@18.3.1)
+        version: 0.3.1(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(react@18.3.1)
       remix-utils:
         specifier: ^7.7.0
-        version: 7.7.0(@remix-run/node@2.17.5(typescript@5.5.4))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/router@1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.3.1)(zod@3.25.76)
+        version: 7.7.0(@remix-run/node@2.17.5(typescript@6.0.3))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/router@1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.3.1)(zod@3.25.76)
       simplur:
         specifier: ^3.0.1
         version: 3.0.1
@@ -768,10 +768,10 @@ importers:
         version: link:../../internal-packages/testcontainers
       '@remix-run/dev':
         specifier: 2.17.5
-        version: 2.17.5(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/serve@2.17.5(typescript@5.5.4))(@types/node@24.13.3)(bufferutil@4.0.9)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(typescript@5.5.4)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(yaml@2.9.0))(yaml@2.9.0)
+        version: 2.17.5(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/serve@2.17.5(typescript@6.0.3))(@types/node@24.13.3)(bufferutil@4.0.9)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(typescript@6.0.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(yaml@2.9.0))(yaml@2.9.0)
       '@remix-run/testing':
         specifier: ^2.17.5
-        version: 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4)
+        version: 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       '@sentry/cli':
         specifier: 2.50.2
         version: 2.50.2(encoding@0.1.13)
@@ -873,7 +873,7 @@ importers:
         version: 16.0.1(postcss@8.5.15)
       postcss-loader:
         specifier: ^8.1.1
-        version: 8.1.1(postcss@8.5.15)(typescript@5.5.4)(webpack@5.102.1(@swc/core@1.3.26)(esbuild@0.15.18))
+        version: 8.1.1(postcss@8.5.15)(typescript@6.0.3)(webpack@5.102.1(@swc/core@1.3.26)(esbuild@0.15.18))
       prop-types:
         specifier: ^15.8.1
         version: 15.8.1
@@ -900,7 +900,7 @@ importers:
         version: 4.20.6
       vite-tsconfig-paths:
         specifier: ^4.0.5
-        version: 4.0.5(typescript@5.5.4)
+        version: 4.0.5(typescript@6.0.3)
 
   docs: {}
 
@@ -998,7 +998,7 @@ importers:
     dependencies:
       drizzle-orm:
         specifier: ^0.45.0
-        version: 0.45.2(@opentelemetry/api@1.9.1)(@prisma/client@6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@5.5.4))(typescript@5.5.4))(@types/pg@8.11.14)(better-sqlite3@11.10.0)(pg@8.15.6)(postgres@3.4.9)(prisma@6.14.0(magicast@0.3.5)(typescript@5.5.4))
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@prisma/client@6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@6.0.3))(typescript@6.0.3))(@types/pg@8.11.14)(better-sqlite3@11.10.0)(pg@8.15.6)(postgres@3.4.9)(prisma@6.14.0(magicast@0.3.5)(typescript@6.0.3))
       postgres:
         specifier: ^3.4.0
         version: 3.4.9
@@ -1011,13 +1011,13 @@ importers:
     dependencies:
       '@prisma/client':
         specifier: 6.14.0
-        version: 6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@5.5.4))(typescript@5.5.4)
+        version: 6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@6.0.3))(typescript@6.0.3)
       decimal.js:
         specifier: ^10.6.0
         version: 10.6.0
       prisma:
         specifier: 6.14.0
-        version: 6.14.0(magicast@0.3.5)(typescript@5.5.4)
+        version: 6.14.0(magicast@0.3.5)(typescript@6.0.3)
     devDependencies:
       '@types/decimal.js':
         specifier: ^7.4.3
@@ -1219,10 +1219,10 @@ importers:
     dependencies:
       '@prisma/client':
         specifier: 6.14.0
-        version: 6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@5.5.4))(typescript@5.5.4)
+        version: 6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@6.0.3))(typescript@6.0.3)
       prisma:
         specifier: 6.14.0
-        version: 6.14.0(magicast@0.3.5)(typescript@5.5.4)
+        version: 6.14.0(magicast@0.3.5)(typescript@6.0.3)
     devDependencies:
       rimraf:
         specifier: 6.0.1
@@ -1300,8 +1300,8 @@ importers:
         specifier: ^9.3.0
         version: 9.6.1
       typescript:
-        specifier: 5.5.4
-        version: 5.5.4
+        specifier: 6.0.3
+        version: 6.0.3
       vitest:
         specifier: 4.1.7
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.7)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.22.4)(yaml@2.9.0))
@@ -1418,7 +1418,7 @@ importers:
         version: 0.2.2
       tsconfck:
         specifier: 3.1.3
-        version: 3.1.3(typescript@5.5.4)
+        version: 3.1.3(typescript@6.0.3)
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
@@ -1681,7 +1681,7 @@ importers:
         version: 6.0.1
       ts-essentials:
         specifier: 10.0.1
-        version: 10.0.1(typescript@5.5.4)
+        version: 10.0.1(typescript@6.0.3)
       tshy:
         specifier: ^3.0.2
         version: 3.0.2
@@ -1838,7 +1838,7 @@ importers:
         version: 2.2.1
       ts-essentials:
         specifier: 10.0.1
-        version: 10.0.1(typescript@5.5.4)
+        version: 10.0.1(typescript@6.0.3)
       tshy:
         specifier: ^3.0.2
         version: 3.0.2
@@ -1863,10 +1863,10 @@ importers:
         version: 6.0.1
       tsup:
         specifier: ^8.4.0
-        version: 8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.4)(typescript@5.5.4)(yaml@2.9.0)
+        version: 8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0)
       typescript:
-        specifier: 5.5.4
-        version: 5.5.4
+        specifier: 6.0.3
+        version: 6.0.3
 
   packages/python:
     dependencies:
@@ -1902,8 +1902,8 @@ importers:
         specifier: 4.17.0
         version: 4.17.0
       typescript:
-        specifier: 5.5.4
-        version: 5.5.4
+        specifier: 6.0.3
+        version: 6.0.3
 
   packages/react-hooks:
     dependencies:
@@ -1983,7 +1983,7 @@ importers:
         version: 6.0.1
       tsup:
         specifier: ^8.4.0
-        version: 8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.7.0)(postcss@8.5.15)(tsx@4.17.0)(typescript@5.5.4)(yaml@2.9.0)
+        version: 8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.7.0)(postcss@8.5.15)(tsx@4.17.0)(typescript@6.0.3)(yaml@2.9.0)
       tsx:
         specifier: 4.17.0
         version: 4.17.0
@@ -2069,7 +2069,7 @@ importers:
         version: 3.0.2
       valibot:
         specifier: ^1.1.0
-        version: 1.1.0(typescript@5.5.4)
+        version: 1.1.0(typescript@6.0.3)
       yup:
         specifier: ^1.7.0
         version: 1.7.0
@@ -5561,7 +5561,7 @@ packages:
     engines: {node: '>=18.18'}
     peerDependencies:
       prisma: '*'
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       prisma:
         optional: true
@@ -6504,7 +6504,7 @@ packages:
     peerDependencies:
       '@remix-run/react': ^2.17.0
       '@remix-run/serve': ^2.17.0
-      typescript: 5.5.4
+      typescript: 6.0.3
       vite: ^6.4.2
       wrangler: ^3.28.2
     peerDependenciesMeta:
@@ -6522,7 +6522,7 @@ packages:
     engines: {node: '>=18.0.0'}
     peerDependencies:
       express: ^4.20.0
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -6531,7 +6531,7 @@ packages:
     resolution: {integrity: sha512-CwOUCDJqh9o8r/n5N1l+vz4Jh7DFU52/jo7MN56+OL9gM+14aQKdq1aLAh+4V6GuI/qtki9PPk02GmULimmDkw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -6542,7 +6542,7 @@ packages:
     peerDependencies:
       react: 18.3.1
       react-dom: 18.3.1
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -6560,7 +6560,7 @@ packages:
     resolution: {integrity: sha512-SyJ5n2pQyo4ERGvjjLvL2PpRWBzlC2qzO5KkkOE2ygOiNcgOu9WQnnom9GI8KgsTRCO8JnIeLHFRcmxZnVBjfw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -6570,7 +6570,7 @@ packages:
     engines: {node: '>=18.0.0'}
     peerDependencies:
       react: 18.3.1
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -8907,7 +8907,7 @@ packages:
   class-variance-authority@0.5.2:
     resolution: {integrity: sha512-j7Qqw3NPbs4IpO80gvdACWmVvHiLLo5MECacUBLnJG17CrLpWaQ7/4OaWX6P0IO1j2nvZ7AuSfBS/ImtEUZJGA==}
     peerDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -9143,7 +9143,7 @@ packages:
     resolution: {integrity: sha512-itvL5h8RETACmOTFc4UfIyB2RfEHi71Ax6E/PivVxq9NseKbOWpeyHEOIbmAw1rs8Ak0VursQNww7lf7YtUwzg==}
     engines: {node: '>=14'}
     peerDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -13202,7 +13202,7 @@ packages:
     engines: {node: '>=18.18'}
     hasBin: true
     peerDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -14700,7 +14700,7 @@ packages:
   ts-essentials@10.0.1:
     resolution: {integrity: sha512-HPH+H2bkkO8FkMDau+hFvv7KYozzned9Zr1Urn7rRPXMF4mZmCKOq+u4AI1AAW+2bofIOXTuSdKo9drQuni2dQ==}
     peerDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -14733,7 +14733,7 @@ packages:
     deprecated: unmaintained
     hasBin: true
     peerDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -14744,7 +14744,7 @@ packages:
     deprecated: unmaintained
     hasBin: true
     peerDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -14781,7 +14781,7 @@ packages:
       '@microsoft/api-extractor': ^7.36.0
       '@swc/core': ^1
       postcss: ^8.5.10
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       '@microsoft/api-extractor':
         optional: true
@@ -14920,8 +14920,8 @@ packages:
   typed-emitter@2.1.0:
     resolution: {integrity: sha512-g/KzbYKbH5C2vPkaXGu8DJlHrGKHLsM25Zg9WuC9pMGfuvT+X25tZQWo5fK1BjBm8+UrVE9LDCvaY0CQk+fXDA==}
 
-  typescript@5.5.4:
-    resolution: {integrity: sha512-Mtq29sKDAEYP7aljRgtPOpTvOfbwRWlS6dPRzwjdE+C0R4brX/GUyhHSecbHMFLNBLcJIPt9nl9yG5TZ1weH+Q==}
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -15151,7 +15151,7 @@ packages:
   valibot@1.1.0:
     resolution: {integrity: sha512-Nk8lX30Qhu+9txPYTwM0cFlWLdPFsFr6LblzqIySfbZph9+BFsAHsNvHOymEviUepeIW6KFHzpX8TKhbptBXXw==}
     peerDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -15159,7 +15159,7 @@ packages:
   valibot@1.3.1:
     resolution: {integrity: sha512-sfdRir/QFM0JaF22hqTroPc5xy4DimuGQVKFrzF1YfGwaS1nJot3Y8VqMdLO2Lg27fMzat2yD3pY5PbAYO39Gg==}
     peerDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -15741,7 +15741,7 @@ snapshots:
       fflate: 0.8.2
       semver: 7.8.1
       ts-expose-internals-conditionally: 1.0.0-empty.0
-      typescript: 5.5.4
+      typescript: 6.0.3
       validate-npm-package-name: 5.0.0
 
   '@ariakit/core@0.4.6': {}
@@ -19820,10 +19820,10 @@ snapshots:
 
   '@posthog/types@1.376.4': {}
 
-  '@prisma/client@6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@5.5.4))(typescript@5.5.4)':
+  '@prisma/client@6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@6.0.3))(typescript@6.0.3)':
     optionalDependencies:
-      prisma: 6.14.0(magicast@0.3.5)(typescript@5.5.4)
-      typescript: 5.5.4
+      prisma: 6.14.0(magicast@0.3.5)(typescript@6.0.3)
+      typescript: 6.0.3
 
   '@prisma/config@6.14.0(magicast@0.3.5)':
     dependencies:
@@ -20881,7 +20881,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@remix-run/dev@2.17.5(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/serve@2.17.5(typescript@5.5.4))(@types/node@24.13.3)(bufferutil@4.0.9)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(typescript@5.5.4)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(yaml@2.9.0))(yaml@2.9.0)':
+  '@remix-run/dev@2.17.5(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/serve@2.17.5(typescript@6.0.3))(@types/node@24.13.3)(bufferutil@4.0.9)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(typescript@6.0.3)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(yaml@2.9.0))(yaml@2.9.0)':
     dependencies:
       '@babel/core': 7.22.17
       '@babel/generator': 7.29.7
@@ -20893,10 +20893,10 @@ snapshots:
       '@babel/types': 7.29.7
       '@mdx-js/mdx': 2.3.0
       '@npmcli/package-json': 4.0.1
-      '@remix-run/node': 2.17.5(typescript@5.5.4)
-      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4)
+      '@remix-run/node': 2.17.5(typescript@6.0.3)
+      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       '@remix-run/router': 1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9)
-      '@remix-run/server-runtime': 2.17.5(typescript@5.5.4)
+      '@remix-run/server-runtime': 2.17.5(typescript@6.0.3)
       '@types/mdx': 2.0.5
       '@vanilla-extract/integration': 6.2.1(@types/node@24.13.3)(lightningcss@1.32.0)(terser@5.46.1)
       arg: 5.0.2
@@ -20937,12 +20937,12 @@ snapshots:
       set-cookie-parser: 2.6.0
       tar-fs: 2.1.4
       tsconfig-paths: 4.2.0
-      valibot: 1.3.1(typescript@5.5.4)
+      valibot: 1.3.1(typescript@6.0.3)
       vite-node: 3.1.4(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(yaml@2.9.0)
       ws: 7.5.11(bufferutil@4.0.9)
     optionalDependencies:
-      '@remix-run/serve': 2.17.5(typescript@5.5.4)
-      typescript: 5.5.4
+      '@remix-run/serve': 2.17.5(typescript@6.0.3)
+      typescript: 6.0.3
       vite: 6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.20.6)(yaml@2.9.0)
     transitivePeerDependencies:
       - '@types/node'
@@ -20962,16 +20962,16 @@ snapshots:
       - utf-8-validate
       - yaml
 
-  '@remix-run/express@2.17.5(express@4.20.0)(typescript@5.5.4)':
+  '@remix-run/express@2.17.5(express@4.20.0)(typescript@6.0.3)':
     dependencies:
-      '@remix-run/node': 2.17.5(typescript@5.5.4)
+      '@remix-run/node': 2.17.5(typescript@6.0.3)
       express: 4.20.0
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
-  '@remix-run/node@2.17.5(typescript@5.5.4)':
+  '@remix-run/node@2.17.5(typescript@6.0.3)':
     dependencies:
-      '@remix-run/server-runtime': 2.17.5(typescript@5.5.4)
+      '@remix-run/server-runtime': 2.17.5(typescript@6.0.3)
       '@remix-run/web-fetch': 4.4.2
       '@web3-storage/multipart-parser': 1.0.0
       cookie-signature: 1.2.2
@@ -20979,26 +20979,26 @@ snapshots:
       stream-slice: 0.1.2
       undici: 6.27.0
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
-  '@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4)':
+  '@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3)':
     dependencies:
       '@remix-run/router': 1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9)
-      '@remix-run/server-runtime': 2.17.5(typescript@5.5.4)
+      '@remix-run/server-runtime': 2.17.5(typescript@6.0.3)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       react-router: 6.30.4(react@18.3.1)
       react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       turbo-stream: 2.4.1
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
   '@remix-run/router@1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9)': {}
 
-  '@remix-run/serve@2.17.5(typescript@5.5.4)':
+  '@remix-run/serve@2.17.5(typescript@6.0.3)':
     dependencies:
-      '@remix-run/express': 2.17.5(express@4.20.0)(typescript@5.5.4)
-      '@remix-run/node': 2.17.5(typescript@5.5.4)
+      '@remix-run/express': 2.17.5(express@4.20.0)(typescript@6.0.3)
+      '@remix-run/node': 2.17.5(typescript@6.0.3)
       chokidar: 3.6.0
       compression: 1.8.1
       express: 4.20.0
@@ -21010,7 +21010,7 @@ snapshots:
       - typescript
     optional: true
 
-  '@remix-run/server-runtime@2.17.5(typescript@5.5.4)':
+  '@remix-run/server-runtime@2.17.5(typescript@6.0.3)':
     dependencies:
       '@remix-run/router': 1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9)
       '@types/cookie': 0.6.0
@@ -21020,17 +21020,17 @@ snapshots:
       source-map: 0.7.4
       turbo-stream: 2.4.1
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
-  '@remix-run/testing@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4)':
+  '@remix-run/testing@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3)':
     dependencies:
-      '@remix-run/node': 2.17.5(typescript@5.5.4)
-      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4)
+      '@remix-run/node': 2.17.5(typescript@6.0.3)
+      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       '@remix-run/router': 1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9)
       react: 18.3.1
       react-router-dom: 6.30.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     transitivePeerDependencies:
       - react-dom
 
@@ -21295,15 +21295,15 @@ snapshots:
       hoist-non-react-statics: 3.3.2
       react: 18.3.1
 
-  '@sentry/remix@9.46.0(patch_hash=146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b)(@remix-run/node@2.17.5(typescript@5.5.4))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(encoding@0.1.13)(react@18.3.1)':
+  '@sentry/remix@9.46.0(patch_hash=146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b)(@remix-run/node@2.17.5(typescript@6.0.3))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(encoding@0.1.13)(react@18.3.1)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/instrumentation': 0.57.2(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.41.1
-      '@remix-run/node': 2.17.5(typescript@5.5.4)
-      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4)
+      '@remix-run/node': 2.17.5(typescript@6.0.3)
+      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       '@remix-run/router': 1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9)
-      '@remix-run/server-runtime': 2.17.5(typescript@5.5.4)
+      '@remix-run/server-runtime': 2.17.5(typescript@6.0.3)
       '@sentry/cli': 2.50.2(encoding@0.1.13)
       '@sentry/core': 9.46.0
       '@sentry/node': 9.46.0
@@ -23804,9 +23804,9 @@ snapshots:
 
   cjs-module-lexer@2.2.0: {}
 
-  class-variance-authority@0.5.2(typescript@5.5.4):
+  class-variance-authority@0.5.2(typescript@6.0.3):
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
   clean-stack@2.2.0: {}
 
@@ -24051,14 +24051,14 @@ snapshots:
     dependencies:
       layout-base: 2.0.1
 
-  cosmiconfig@9.0.0(typescript@5.5.4):
+  cosmiconfig@9.0.0(typescript@6.0.3):
     dependencies:
       env-paths: 2.2.1
       import-fresh: 3.3.0
       js-yaml: 4.1.1
       parse-json: 5.2.0
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
   cp-file@10.0.0:
     dependencies:
@@ -24640,15 +24640,15 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.22.4
 
-  drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@prisma/client@6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@5.5.4))(typescript@5.5.4))(@types/pg@8.11.14)(better-sqlite3@11.10.0)(pg@8.15.6)(postgres@3.4.9)(prisma@6.14.0(magicast@0.3.5)(typescript@5.5.4)):
+  drizzle-orm@0.45.2(@opentelemetry/api@1.9.1)(@prisma/client@6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@6.0.3))(typescript@6.0.3))(@types/pg@8.11.14)(better-sqlite3@11.10.0)(pg@8.15.6)(postgres@3.4.9)(prisma@6.14.0(magicast@0.3.5)(typescript@6.0.3)):
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
-      '@prisma/client': 6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@5.5.4))(typescript@5.5.4)
+      '@prisma/client': 6.14.0(prisma@6.14.0(magicast@0.3.5)(typescript@6.0.3))(typescript@6.0.3)
       '@types/pg': 8.11.14
       better-sqlite3: 11.10.0
       pg: 8.15.6
       postgres: 3.4.9
-      prisma: 6.14.0(magicast@0.3.5)(typescript@5.5.4)
+      prisma: 6.14.0(magicast@0.3.5)(typescript@6.0.3)
 
   dunder-proto@1.0.1:
     dependencies:
@@ -28702,9 +28702,9 @@ snapshots:
       tsx: 4.22.4
       yaml: 2.9.0
 
-  postcss-loader@8.1.1(postcss@8.5.15)(typescript@5.5.4)(webpack@5.102.1(@swc/core@1.3.26)(esbuild@0.15.18)):
+  postcss-loader@8.1.1(postcss@8.5.15)(typescript@6.0.3)(webpack@5.102.1(@swc/core@1.3.26)(esbuild@0.15.18)):
     dependencies:
-      cosmiconfig: 9.0.0(typescript@5.5.4)
+      cosmiconfig: 9.0.0(typescript@6.0.3)
       jiti: 1.21.0
       postcss: 8.5.15
       semver: 7.6.3
@@ -28853,12 +28853,12 @@ snapshots:
       clsx: 2.1.1
       react: 18.3.1
 
-  prisma@6.14.0(magicast@0.3.5)(typescript@5.5.4):
+  prisma@6.14.0(magicast@0.3.5)(typescript@6.0.3):
     dependencies:
       '@prisma/config': 6.14.0(magicast@0.3.5)
       '@prisma/engines': 6.14.0
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
     transitivePeerDependencies:
       - magicast
 
@@ -29494,54 +29494,54 @@ snapshots:
 
   remend@1.3.0: {}
 
-  remix-auth-email-link@2.0.2(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))):
+  remix-auth-email-link@2.0.2(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))):
     dependencies:
-      '@remix-run/server-runtime': 2.17.5(typescript@5.5.4)
+      '@remix-run/server-runtime': 2.17.5(typescript@6.0.3)
       crypto-js: 4.1.1
-      remix-auth: 3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))
+      remix-auth: 3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))
 
-  remix-auth-github@1.6.0(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))):
+  remix-auth-github@1.6.0(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))):
     dependencies:
-      '@remix-run/server-runtime': 2.17.5(typescript@5.5.4)
-      remix-auth: 3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))
-      remix-auth-oauth2: 1.11.0(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4)))
+      '@remix-run/server-runtime': 2.17.5(typescript@6.0.3)
+      remix-auth: 3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))
+      remix-auth-oauth2: 1.11.0(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3)))
     transitivePeerDependencies:
       - supports-color
 
-  remix-auth-google@2.0.0(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))):
+  remix-auth-google@2.0.0(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))):
     dependencies:
-      '@remix-run/server-runtime': 2.17.5(typescript@5.5.4)
-      remix-auth: 3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))
-      remix-auth-oauth2: 1.11.0(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4)))
+      '@remix-run/server-runtime': 2.17.5(typescript@6.0.3)
+      remix-auth: 3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))
+      remix-auth-oauth2: 1.11.0(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3)))
     transitivePeerDependencies:
       - supports-color
 
-  remix-auth-oauth2@1.11.0(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))):
+  remix-auth-oauth2@1.11.0(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))):
     dependencies:
-      '@remix-run/server-runtime': 2.17.5(typescript@5.5.4)
+      '@remix-run/server-runtime': 2.17.5(typescript@6.0.3)
       debug: 4.4.3(supports-color@10.0.0)
-      remix-auth: 3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))
+      remix-auth: 3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))
     transitivePeerDependencies:
       - supports-color
 
-  remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4)):
+  remix-auth@3.6.0(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3)):
     dependencies:
-      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4)
-      '@remix-run/server-runtime': 2.17.5(typescript@5.5.4)
+      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
+      '@remix-run/server-runtime': 2.17.5(typescript@6.0.3)
       uuid: 8.3.2
 
-  remix-typedjson@0.3.1(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.5(typescript@5.5.4))(react@18.3.1):
+  remix-typedjson@0.3.1(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/server-runtime@2.17.5(typescript@6.0.3))(react@18.3.1):
     dependencies:
-      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4)
-      '@remix-run/server-runtime': 2.17.5(typescript@5.5.4)
+      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
+      '@remix-run/server-runtime': 2.17.5(typescript@6.0.3)
       react: 18.3.1
 
-  remix-utils@7.7.0(@remix-run/node@2.17.5(typescript@5.5.4))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/router@1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.3.1)(zod@3.25.76):
+  remix-utils@7.7.0(@remix-run/node@2.17.5(typescript@6.0.3))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3))(@remix-run/router@1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.3.1)(zod@3.25.76):
     dependencies:
       type-fest: 4.33.0
     optionalDependencies:
-      '@remix-run/node': 2.17.5(typescript@5.5.4)
-      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4)
+      '@remix-run/node': 2.17.5(typescript@6.0.3)
+      '@remix-run/react': 2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@6.0.3)
       '@remix-run/router': 1.23.3(patch_hash=33e2966e9ef36aa09955cec9922c5063227b83429157a71ba226369a08627ac9)
       crypto-js: 4.2.0
       intl-parse-accept-language: 1.0.0
@@ -30673,9 +30673,9 @@ snapshots:
 
   ts-easing@0.2.0: {}
 
-  ts-essentials@10.0.1(typescript@5.5.4):
+  ts-essentials@10.0.1(typescript@6.0.3):
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
   ts-expose-internals-conditionally@1.0.0-empty.0: {}
 
@@ -30701,13 +30701,13 @@ snapshots:
 
   tsafe@1.4.1: {}
 
-  tsconfck@2.1.2(typescript@5.5.4):
+  tsconfck@2.1.2(typescript@6.0.3):
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
-  tsconfck@3.1.3(typescript@5.5.4):
+  tsconfck@3.1.3(typescript@6.0.3):
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
   tsconfig-paths@3.14.1:
     dependencies:
@@ -30733,7 +30733,7 @@ snapshots:
       resolve-import: 2.0.0
       rimraf: 6.0.1
       sync-content: 2.0.1
-      typescript: 5.5.4
+      typescript: 6.0.3
       walk-up-path: 4.0.0
 
   tslib@2.4.1: {}
@@ -30744,7 +30744,7 @@ snapshots:
 
   tslib@2.8.1: {}
 
-  tsup@8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.7.0)(postcss@8.5.15)(tsx@4.17.0)(typescript@5.5.4)(yaml@2.9.0):
+  tsup@8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.7.0)(postcss@8.5.15)(tsx@4.17.0)(typescript@6.0.3)(yaml@2.9.0):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.25.1)
       cac: 6.7.14
@@ -30765,14 +30765,14 @@ snapshots:
     optionalDependencies:
       '@swc/core': 1.3.101(@swc/helpers@0.5.15)
       postcss: 8.5.15
-      typescript: 5.5.4
+      typescript: 6.0.3
     transitivePeerDependencies:
       - jiti
       - supports-color
       - tsx
       - yaml
 
-  tsup@8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.4)(typescript@5.5.4)(yaml@2.9.0):
+  tsup@8.4.0(@swc/core@1.3.101(@swc/helpers@0.5.15))(jiti@2.7.0)(postcss@8.5.15)(tsx@4.22.4)(typescript@6.0.3)(yaml@2.9.0):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.25.1)
       cac: 6.7.14
@@ -30793,7 +30793,7 @@ snapshots:
     optionalDependencies:
       '@swc/core': 1.3.101(@swc/helpers@0.5.15)
       postcss: 8.5.15
-      typescript: 5.5.4
+      typescript: 6.0.3
     transitivePeerDependencies:
       - jiti
       - supports-color
@@ -30949,7 +30949,7 @@ snapshots:
     optionalDependencies:
       rxjs: 7.8.2
 
-  typescript@5.5.4: {}
+  typescript@6.0.3: {}
 
   ufo@1.5.4: {}
 
@@ -31160,13 +31160,13 @@ snapshots:
       kleur: 4.1.5
       sade: 1.8.1
 
-  valibot@1.1.0(typescript@5.5.4):
+  valibot@1.1.0(typescript@6.0.3):
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
-  valibot@1.3.1(typescript@5.5.4):
+  valibot@1.3.1(typescript@6.0.3):
     optionalDependencies:
-      typescript: 5.5.4
+      typescript: 6.0.3
 
   validate-npm-package-license@3.0.4:
     dependencies:
@@ -31277,11 +31277,11 @@ snapshots:
       - tsx
       - yaml
 
-  vite-tsconfig-paths@4.0.5(typescript@5.5.4):
+  vite-tsconfig-paths@4.0.5(typescript@6.0.3):
     dependencies:
       debug: 4.3.7(supports-color@10.0.0)
       globrex: 0.1.2
-      tsconfck: 2.1.2(typescript@5.5.4)
+      tsconfck: 2.1.2(typescript@6.0.3)
     transitivePeerDependencies:
       - supports-color
       - typescript
