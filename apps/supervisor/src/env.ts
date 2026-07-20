@@ -165,6 +165,14 @@ export const Env = z
     KUBERNETES_NAMESPACE: z.string().default("default"),
     KUBERNETES_WORKER_NODETYPE_LABEL: z.string().default("v4-worker"),
     KUBERNETES_IMAGE_PULL_SECRETS: z.string().optional(), // csv
+    // Mount an in-cluster ServiceAccount token/CA into run pods so workload code can reach the
+    // Kubernetes API (e.g. via @kubernetes/client-node or CLIs like velero/kubectl). Defaults to
+    // false to preserve the existing hardened behavior. Only enable when runs use a ServiceAccount
+    // with appropriately scoped RBAC.
+    KUBERNETES_WORKER_AUTOMOUNT_SERVICE_ACCOUNT_TOKEN: BoolEnv.default(false),
+    // ServiceAccount to run worker pods under. Only useful alongside
+    // KUBERNETES_WORKER_AUTOMOUNT_SERVICE_ACCOUNT_TOKEN=true; leaves the cluster default when unset.
+    KUBERNETES_WORKER_SERVICE_ACCOUNT_NAME: z.string().optional(),
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT: z.string().default("10Gi"),
     KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST: z.string().default("2Gi"),
     KUBERNETES_STRIP_IMAGE_DIGEST: BoolEnv.default(false),

@@ -48,6 +48,8 @@ mode: "wide"
 | `KUBERNETES_NAMESPACE`                      | No       | default     | The namespace that runs should be in.                       |
 | `KUBERNETES_WORKER_NODETYPE_LABEL`          | No       | v4-worker   | Nodes for runs need this label, e.g. `nodetype=v4-worker`.  |
 | `KUBERNETES_IMAGE_PULL_SECRETS`             | No       | —           | Image pull secrets (CSV).                                   |
+| `KUBERNETES_WORKER_AUTOMOUNT_SERVICE_ACCOUNT_TOKEN` | No | false | Mount an in-cluster ServiceAccount token/CA into run pods so workloads can reach the Kubernetes API. Enable only with scoped RBAC. |
+| `KUBERNETES_WORKER_SERVICE_ACCOUNT_NAME`    | No       | —           | ServiceAccount to run worker pods under. Pairs with the automount option above.        |
 | `KUBERNETES_EPHEMERAL_STORAGE_SIZE_LIMIT`   | No       | 10Gi        | Ephemeral storage size limit. Applies to all runs.          |
 | `KUBERNETES_EPHEMERAL_STORAGE_SIZE_REQUEST` | No       | 2Gi         | Ephemeral storage size request. Applies to all runs.        |
 | **Metrics**                                 |          |             |                                                             |

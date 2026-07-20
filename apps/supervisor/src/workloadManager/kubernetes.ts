@@ -317,8 +317,13 @@ export class KubernetesWorkloadManager implements WorkloadManager {
   get #defaultPodSpec(): Omit<k8s.V1PodSpec, "containers"> {
     return {
       restartPolicy: "Never",
-      automountServiceAccountToken: false,
+      automountServiceAccountToken: env.KUBERNETES_WORKER_AUTOMOUNT_SERVICE_ACCOUNT_TOKEN,
       imagePullSecrets: this.getImagePullSecrets(),
+      ...(env.KUBERNETES_WORKER_SERVICE_ACCOUNT_NAME
+        ? {
+            serviceAccountName: env.KUBERNETES_WORKER_SERVICE_ACCOUNT_NAME,
+          }
+        : {}),
       ...(env.KUBERNETES_SCHEDULER_NAME
         ? {
             schedulerName: env.KUBERNETES_SCHEDULER_NAME,
