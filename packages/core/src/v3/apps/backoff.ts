@@ -290,13 +290,25 @@ export class ExponentialBackoff {
   > {
     let elapsedMs = 0;
     let finalError: unknown = undefined;
+    // maxElapsed is in seconds (see class docs). Enforce wall-clock time for
+    // the whole execute() loop (sleeps + callbacks), not only sleep delays.
+    const maxElapsedMs = this.#maxElapsed * 1000;
+    const wallStart = Date.now();
 
     for await (const { delay, retry } of this) {
+      if (Date.now() - wallStart > maxElapsedMs) {
+        break;
+      }
+
       const start = Date.now();
 
       if (retry > 0) {
         console.log(`Retrying in ${delay.milliseconds}ms`);
         await timeout(delay.milliseconds);
+      }
+
+      if (Date.now() - wallStart > maxElapsedMs) {
+        break;
       }
 
       let attemptTimeout: NodeJS.Timeout | undefined = undefined;
