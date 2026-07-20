@@ -752,7 +752,7 @@ export class RunEngineTriggerTaskService {
       // Pipeline returned successfully — publish the claim if we held
       // one. Waiters polling for our key resolve to this runId.
       if (idempotencyClaim && result?.run?.friendlyId) {
-        await publishMollifierClaim({
+        const published = await publishMollifierClaim({
           envId: idempotencyClaim.envId,
           taskIdentifier: idempotencyClaim.taskIdentifier,
           idempotencyKey: idempotencyClaim.idempotencyKey,
@@ -760,6 +760,17 @@ export class RunEngineTriggerTaskService {
           runId: result.run.friendlyId,
           ttlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
         });
+        if (!published) {
+          // Our claim expired mid-pipeline and another claimant took it, so this publish no-op'd: a
+          // different run is now canonical for this key while we return ours (a cross-DB dup under the
+          // split). Rare now the claim TTL is floored (C1); surfaced for monitoring pending auto-
+          // convergence (re-resolve the current winner + cancel this orphan).
+          logger.warn("mollifier claim publish no-op'd; winner lost the claim mid-pipeline", {
+            envId: idempotencyClaim.envId,
+            taskIdentifier: idempotencyClaim.taskIdentifier,
+            runId: result.run.friendlyId,
+          });
+        }
       }
       return result;
     } catch (err) {

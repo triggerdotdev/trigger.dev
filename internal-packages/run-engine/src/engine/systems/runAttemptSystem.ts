@@ -170,7 +170,9 @@ export class RunAttemptSystem {
   }
 
   public async resolveTaskRunContext(runId: string): Promise<TaskRunContext> {
-    const run = await this.$.runStore.findRun(
+    // read-your-writes: a just-created/locked run may not be on a replica yet; read the owning primary
+    // so a live run's execution context resolves instead of throwing a spurious 404.
+    const run = await this.$.runStore.findRunOnPrimary(
       {
         id: runId,
       },
@@ -711,8 +713,8 @@ export class RunAttemptSystem {
 
           const completedAt = new Date();
 
-          // Read current usage values to calculate new totals (safe under runLock)
-          const currentRun = await this.$.runStore.findRun(
+          // Read current usage totals on the owning primary (read-your-writes; a replica lags)
+          const currentRun = await this.$.runStore.findRunOnPrimary(
             { id: runId },
             {
               select: {
@@ -904,7 +906,8 @@ export class RunAttemptSystem {
           const failedAt = new Date();
 
           const retryResult = await retryOutcomeFromCompletion(
-            this.$.readOnlyPrisma,
+            // read-your-writes: lock-time maxAttempts/lockedRetryConfig may not be on a replica yet
+            this.$.prisma,
             this.$.runStore,
             {
               runId,
@@ -917,7 +920,9 @@ export class RunAttemptSystem {
 
           // Force requeue means it was crashed so the attempt span needs to be closed
           if (forceRequeue) {
-            const minimalRun = await this.$.runStore.findRun(
+            // read-your-writes: the run was just written in this flow; read the owning primary so the
+            // requeue event re-read cannot false-miss on a lagging replica (mirrors the :906 read).
+            const minimalRun = await this.$.runStore.findRunOnPrimary(
               {
                 id: runId,
               },
@@ -1375,7 +1380,7 @@ export class RunAttemptSystem {
         // Calculate updated usage if we have attempt duration data
         let usageUpdate: { usageDurationMs: number; costInCents: number } | undefined;
         if (attemptDurationMs !== undefined) {
-          const currentRun = await this.$.runStore.findRun(
+          const currentRun = await this.$.runStore.findRunOnPrimary(
             { id: runId },
             {
               select: {
@@ -1589,8 +1594,8 @@ export class RunAttemptSystem {
 
       const truncatedError = this.#truncateTaskRunError(error);
 
-      // Read current usage values to calculate new totals
-      const currentRun = await this.$.runStore.findRun(
+      // Read current usage totals on the owning primary (read-your-writes; a replica lags)
+      const currentRun = await this.$.runStore.findRunOnPrimary(
         { id: runId },
         {
           select: {

@@ -257,7 +257,15 @@ export type FinalizeRunData = {
 export type ClearIdempotencyKeyInput =
   | { byId: { runId: string; idempotencyKey: string }; byPredicate?: never; byFriendlyIds?: never }
   | {
-      byPredicate: { idempotencyKey: string; taskIdentifier: string; runtimeEnvironmentId: string };
+      byPredicate: {
+        idempotencyKey: string;
+        taskIdentifier: string;
+        runtimeEnvironmentId: string;
+        // A predicate has no run id to route by, so it fans out to both stores. When the env mints
+        // run-ops ids its matching runs live on NEW, so `residency: "NEW"` routes to NEW only and
+        // avoids a wrong-DB (0-row) write to the draining legacy DB. Omit to fan out (mixed residency).
+        residency?: Residency;
+      };
       byId?: never;
       byFriendlyIds?: never;
     }
@@ -325,6 +333,15 @@ export interface ForWaitpointCompletionContext {
  */
 export interface WaitpointColocationOptions {
   coLocateWithRunId?: string;
+  /**
+   * Residency for a STANDALONE waitpoint that has no owning run to co-locate with (e.g. a
+   * `wait.createToken()` token created via the env-scoped API). Its minted id is always a cuid, so
+   * id-shape routing would always send it to LEGACY; a standalone token instead reads the env mint
+   * kind and pins here (NEW when the env mints run-ops ids), so a fully-minted-new deployment keeps
+   * its tokens off the draining legacy DB. Ignored when `coLocateWithRunId` (or an owner id) is set —
+   * a co-located waitpoint always inherits its run/batch residency, never the flag.
+   */
+  residency?: Residency;
 }
 
 export interface RunStore {
@@ -674,12 +691,19 @@ export interface RunStore {
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>>;
 
   // Implicit-join group
-  findSnapshotCompletedWaitpointIds(snapshotId: string, client?: ReadClient): Promise<string[]>;
+  /** `runId` (when known) routes to the run's store — the snapshot + its join co-locate with the run;
+   * omit it and the router fans out (the cuid snapshot id alone can't say which store holds the join). */
+  findSnapshotCompletedWaitpointIds(
+    snapshotId: string,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<string[]>;
   /** As above, but reports in the SAME read whether the snapshot is visible on the reader: `present=false`
    * means this reader lacks the snapshot, so its empty id list is not authoritative (repair from primary). */
   findSnapshotCompletedWaitpointIdsWithPresence(
     snapshotId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    runId?: string
   ): Promise<{ present: boolean; ids: string[] }>;
   /** Run ids connected to a waitpoint (WaitpointRunConnection / `_WaitpointRunConnections`), this DB only. */
   findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]>;
@@ -694,7 +718,20 @@ export interface RunStore {
     batchIndex?: number;
     tx?: PrismaClientOrTransaction;
   }): Promise<void>;
-  countPendingWaitpoints(waitpointIds: string[], client?: ReadClient): Promise<number>;
+  /** `runId` (when known) routes to the run's store and falls back to the other DB only for ids absent
+   * there (a rare cross-tree token), instead of fanning the count out to both DBs on every call. */
+  countPendingWaitpoints(
+    waitpointIds: string[],
+    client?: ReadClient,
+    runId?: string
+  ): Promise<number>;
+  /** Which of the given ids are PENDING and which exist on this store (any status), so the router can
+   * route by run id and only re-count the ids absent here on the other DB — without undercounting
+   * pending (which would prematurely unblock a run) or double-counting a drain-mirrored id. */
+  countPendingWaitpointsWithPresence(
+    waitpointIds: string[],
+    client?: ReadClient
+  ): Promise<{ pendingIds: string[]; presentIds: string[] }>;
 
   // Waitpoint group
   createWaitpoint<T extends Prisma.WaitpointCreateArgs>(
@@ -717,9 +754,12 @@ export interface RunStore {
   findWaitpointOnPrimary<T extends Prisma.WaitpointFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>
   ): Promise<Prisma.WaitpointGetPayload<T> | null>;
+  /** `runId` (when known) routes to the run's store and falls back to the other DB only for the ids
+   * missing there, instead of fanning every token read out to both DBs. */
   findManyWaitpoints<T extends Prisma.WaitpointFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindManyArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    runId?: string
   ): Promise<Prisma.WaitpointGetPayload<T>[]>;
   updateWaitpoint<T extends Prisma.WaitpointUpdateArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointUpdateArgs>,
@@ -842,7 +882,11 @@ export interface RunStore {
   // de-dupes by id in case tag ids ever become residency-aware.
   upsertWaitpointTag(
     data: { environmentId: string; name: string; projectId: string; id?: string },
-    tx?: PrismaClientOrTransaction
+    tx?: PrismaClientOrTransaction,
+    // A tag has no owning run to co-locate with; when no minted `id` pins it by id-shape, a
+    // minted-new env's tags read this residency (NEW) so they land with the env's tokens/runs
+    // instead of defaulting to LEGACY. Single-store impls ignore it.
+    residency?: Residency
   ): Promise<WaitpointTag>;
   findManyWaitpointTags(
     args: {

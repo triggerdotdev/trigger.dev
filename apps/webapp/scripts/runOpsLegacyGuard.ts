@@ -45,6 +45,41 @@ const RUNOPS_SCHEMA = path.join(
 );
 const BASELINE_PATH = path.join(WEBAPP_DIR, "app", "v3", "runOpsMigration", "track1-baseline.json");
 
+const CP_PACKAGE_DIR = path.dirname(path.dirname(CP_SCHEMA));
+const RUNOPS_PACKAGE_DIR = path.dirname(path.dirname(RUNOPS_SCHEMA));
+
+/** Absolute path of the generated Prisma client for a schema, from its generator `output = "..."`. */
+function generatedClientDir(schemaFile: string): string {
+  const m = /^\s*output\s*=\s*"([^"]+)"/m.exec(fs.readFileSync(schemaFile, "utf8"));
+  if (!m) {
+    console.error(`No generator output path found in ${schemaFile}`);
+    process.exit(2);
+  }
+  return path.resolve(path.dirname(schemaFile), m[1]);
+}
+
+const CP_GENERATED_DIR = generatedClientDir(CP_SCHEMA);
+const RUNOPS_GENERATED_DIR = generatedClientDir(RUNOPS_SCHEMA);
+
+function realpathIfExists(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+// Classification roots, realpath'd to match the checker's realpath'd file names.
+const RUNOPS_DECL_DIRS = [RUNOPS_GENERATED_DIR, RUNOPS_PACKAGE_DIR].map(realpathIfExists);
+const CP_DECL_DIRS = [CP_GENERATED_DIR, CP_PACKAGE_DIR].map(realpathIfExists);
+
+// Both client packages are force-resolved to SOURCE (src/ + generated client) when building the
+// program, so classification never depends on a built/fresh `dist/` in the running environment.
+const FORCED_TYPE_RESOLUTIONS = new Map<string, string>([
+  ["@trigger.dev/database", path.join(CP_PACKAGE_DIR, "src", "index.ts")],
+  ["@internal/run-ops-database", path.join(RUNOPS_PACKAGE_DIR, "src", "index.ts")],
+]);
+
 // Files excluded from the sweep. V1-only files come from .claude/rules/legacy-v3-code.md.
 const V1_FILES = new Set(
   [
@@ -254,7 +289,41 @@ function buildProgram(): ts.Program {
   };
   const parsed = ts.getParsedCommandLineOfConfigFile(TSCONFIG_PATH, undefined, host);
   if (!parsed) throw new Error(`Failed to parse ${TSCONFIG_PATH}`);
-  return ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options });
+  // Resolve workspace packages from source (tsconfig.check.json blanks this to target built dists,
+  // which may not exist here), and pin the two client packages to their src entrypoints —
+  // @trigger.dev/database has no exports map, so the condition alone cannot redirect it.
+  const options: ts.CompilerOptions = {
+    ...parsed.options,
+    customConditions: ["@triggerdotdev/source"],
+  };
+  const compilerHost = ts.createCompilerHost(options);
+  const resolutionCache = ts.createModuleResolutionCache(
+    compilerHost.getCurrentDirectory(),
+    (f) => compilerHost.getCanonicalFileName(f),
+    options
+  );
+  compilerHost.resolveModuleNameLiterals = (moduleLiterals, containingFile, redirected, opts) =>
+    moduleLiterals.map((lit) => {
+      const forced = FORCED_TYPE_RESOLUTIONS.get(lit.text);
+      if (forced) {
+        return {
+          resolvedModule: {
+            resolvedFileName: forced,
+            extension: ts.Extension.Ts,
+            isExternalLibraryImport: false,
+          },
+        };
+      }
+      return ts.resolveModuleName(
+        lit.text,
+        containingFile,
+        opts,
+        compilerHost,
+        resolutionCache,
+        redirected
+      );
+    });
+  return ts.createProgram({ rootNames: parsed.fileNames, options, host: compilerHost });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,7 +332,17 @@ function buildProgram(): ts.Program {
 
 type ClientKind = "cp" | "runops" | "other";
 
+function underDir(file: string, dir: string): boolean {
+  const rel = path.relative(dir, file);
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+// Absolute-dir match against the two packages first (environment-independent); substring match is
+// only a fallback for non-workspace layouts (pnpm store paths) and the virtual self-test files.
 function declFileKind(fileName: string): ClientKind | undefined {
+  const abs = path.resolve(fileName);
+  if (RUNOPS_DECL_DIRS.some((d) => underDir(abs, d))) return "runops";
+  if (CP_DECL_DIRS.some((d) => underDir(abs, d))) return "cp";
   const f = fileName.split(path.sep).join("/");
   if (f.includes("run-ops-database")) return "runops";
   if (f.includes("internal-packages/database")) return "cp";
@@ -629,9 +708,65 @@ function collectCrossSeamHits(
 // Scan
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Known-kind receivers in db.server.ts. If either fails to classify, the checker cannot see the
+// client types (e.g. generated clients missing) and every verdict would be a silent false-clean,
+// so the guard refuses to report instead of rubber-stamping.
+const CLASSIFICATION_ANCHORS: Array<{ name: string; expected: ClientKind }> = [
+  { name: "runOpsLegacyPrisma", expected: "cp" },
+  { name: "runOpsNewPrismaClient", expected: "runops" },
+];
+
+function assertClassificationAnchors(program: ts.Program, checker: ts.TypeChecker): void {
+  const anchorFile = path.join(WEBAPP_DIR, "app", "db.server.ts");
+  const sf = program.getSourceFile(anchorFile);
+  const problems: string[] = [];
+  if (!sf) {
+    problems.push(`${repoRel(anchorFile)} is not part of the program`);
+  } else {
+    for (const anchor of CLASSIFICATION_ANCHORS) {
+      let ident: ts.Identifier | undefined;
+      const find = (node: ts.Node): void => {
+        if (ident) return;
+        if (
+          ts.isVariableDeclaration(node) &&
+          ts.isIdentifier(node.name) &&
+          node.name.text === anchor.name
+        ) {
+          ident = node.name;
+          return;
+        }
+        ts.forEachChild(node, find);
+      };
+      find(sf);
+      if (!ident) {
+        problems.push(`anchor "${anchor.name}" not found in ${repoRel(anchorFile)}`);
+        continue;
+      }
+      const receiverType = checker.getTypeAtLocation(ident);
+      const delegateSym = receiverType.getProperty("taskRun");
+      const got = delegateSym
+        ? classifyType(checker, checker.getTypeOfSymbolAtLocation(delegateSym, ident))
+        : "unresolved";
+      if (got !== anchor.expected) {
+        problems.push(`${anchor.name}.taskRun classified "${got}", expected "${anchor.expected}"`);
+      }
+    }
+  }
+  if (problems.length) {
+    console.error(
+      `[runops-guard] CLASSIFICATION ANCHORS FAILED — the guard cannot distinguish the ` +
+        `control-plane and run-ops clients in this environment, so its verdicts would be ` +
+        `meaningless:\n  ${problems.join("\n  ")}\n` +
+        `Ensure the generated Prisma clients exist (pnpm run generate) and retry.`
+    );
+    process.exit(2);
+  }
+}
+
 function scan(): ScanResult {
   const program = buildProgram();
   const checker = program.getTypeChecker();
+  assertClassificationAnchors(program, checker);
   return scanProgram(program, checker, isInScope);
 }
 
@@ -1132,6 +1267,15 @@ function main(): void {
         `Update the guard if the run-graph model set changed.`
     );
     process.exit(2);
+  }
+
+  for (const dir of [CP_GENERATED_DIR, RUNOPS_GENERATED_DIR]) {
+    if (!fs.existsSync(path.join(dir, "index.d.ts"))) {
+      console.error(
+        `[runops-guard] generated Prisma client missing at ${repoRel(dir)} — run: pnpm run generate`
+      );
+      process.exit(2);
+    }
   }
 
   console.error(`[runops-guard] repo root: ${REPO_ROOT}`);
