@@ -65,7 +65,7 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { TextLink } from "~/components/primitives/TextLink";
+import { InlineCode } from "~/components/code/InlineCode";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
 
@@ -451,7 +451,7 @@ function ConcurrencyKeysBlankState() {
         accessory={
           <LinkButton
             to={docsPath("/queue-concurrency")}
-            variant="secondary/small"
+            variant="docs/small"
             LeadingIcon={BookOpenIcon}
           >
             Concurrency docs
@@ -459,9 +459,8 @@ function ConcurrencyKeysBlankState() {
         }
       >
         <Paragraph variant="small">
-          This queue doesn't use concurrency keys. Add a concurrencyKey to your task to shard the
-          queue per tenant/user. See the{" "}
-          <TextLink to={docsPath("/queue-concurrency")}>concurrency docs</TextLink>.
+          This queue doesn't use concurrency keys. Add <InlineCode>concurrencyKey</InlineCode> to
+          your task to shard the queue per tenant/user.
         </Paragraph>
       </InfoPanel>
     </MainCenteredContainer>
