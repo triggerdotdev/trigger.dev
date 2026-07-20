@@ -124,6 +124,7 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
   ): PipeStreamResult<T> {
     const state = this.state;
     const readChunks: T[] = [];
+    let pipeError: unknown;
     let resolveDone!: () => void;
     const done = new Promise<void>((resolve) => {
       resolveDone = resolve;
@@ -135,10 +136,15 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
       try {
         while (true) {
           const { done: d, value: v } = await reader.read();
-          if (d) return;
+          if (d) break;
           readChunks.push(v as T);
           notify(state, v);
         }
+      } catch (err) {
+        // Mirror production: a source-stream error rejects waitUntilComplete
+        // instead of being silently swallowed, so callers (e.g.
+        // chat.pipeAndCapture) can observe the failure.
+        pipeError = err;
       } finally {
         try {
           reader.releaseLock();
@@ -147,9 +153,7 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
         }
         resolveDone();
       }
-    })().catch(() => {
-      resolveDone();
-    });
+    })();
 
     const replayStream = new ReadableStream<T>({
       async start(controller) {
@@ -167,6 +171,7 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
       },
       waitUntilComplete: async () => {
         await done;
+        if (pipeError) throw pipeError;
         return emptyResult;
       },
     };
@@ -262,7 +267,11 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
       }
     }
     notify(this.state, synthetic);
-    return {};
+    // Project a synthetic monotonic seq_num as the ack's `lastEventId`,
+    // mirroring what S2 returns in production (there it's the control
+    // record's seq_num). Using the running `.out` record count lets
+    // `chat.writeTurnComplete()` surface a real resume cursor in tests.
+    return { lastEventId: String(this.state.chunks.length) };
   }
 
   /**
