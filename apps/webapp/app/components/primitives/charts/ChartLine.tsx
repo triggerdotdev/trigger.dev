@@ -72,6 +72,14 @@ function OverlayFilteredTooltip(props: any) {
   );
 }
 
+// Stable module-level tooltip for the stacked area chart: keeps the line-style indicator the
+// stacked view has always used (ChartTooltipContent otherwise defaults to a dot). Module-level for
+// the same reconcile-in-place reason as OverlayFilteredTooltip — an inline element would remount
+// the portaled tooltip on every hover re-render and flicker.
+function StackedAreaTooltip(props: any) {
+  return <ChartTooltipContent {...props} indicator="line" />;
+}
+
 // ============================================================================
 // COMPOUND COMPONENT API
 // ============================================================================
@@ -455,6 +463,16 @@ export function ChartLineRenderer({
 
   // Render stacked area chart if stacked prop is true
   if (stacked && visibleSeries.length > 1) {
+    // Same variants as the line chart's tooltipContent, but the default popup keeps the stacked
+    // view's line-style indicator (warning overlay never applies to stacked areas).
+    const stackedTooltipContent =
+      syncZoomSelection && zoomFrom != null && zoomTo != null ? (
+        <ZoomRangeTooltip from={zoomFrom} to={zoomTo} />
+      ) : showLegend ? (
+        () => null
+      ) : (
+        <StackedAreaTooltip valueFormatter={tooltipValueFormatter} />
+      );
     return (
       <AreaChart
         data={data}
@@ -470,7 +488,7 @@ export function ChartLineRenderer({
         {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
         <ChartTooltip
           cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
-          content={tooltipContent}
+          content={stackedTooltipContent}
           labelFormatter={tooltipLabelFormatter}
           isAnimationActive={false}
           allowEscapeViewBox={{ x: true, y: true }}
