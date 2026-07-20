@@ -3,8 +3,9 @@ import { PageContainer } from "~/components/layout/AppLayout";
 import { MetricsLayout } from "~/components/layout/MetricsLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Header3 } from "~/components/primitives/Headers";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import SegmentedControl from "~/components/primitives/SegmentedControl";
 import {
   Table,
   TableBody,
@@ -91,112 +92,276 @@ function PlaceholderTable() {
   );
 }
 
+// A tall filler so a scroll region visibly overflows its container.
+function ScrollFiller({ label, rows }: { label: string; rows: number }) {
+  return (
+    <div className="flex flex-col gap-2 p-3">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center justify-between rounded-sm border border-grid-dimmed bg-background-bright px-3 py-2 text-sm text-text-dimmed"
+        >
+          <span>
+            {label} row {i + 1}
+          </span>
+          <span className="tabular-nums">{Math.round(Math.abs(Math.sin(i)) * 1000)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The config panel dropped into MetricsLayout.Sidebar in the sidebar demos.
+function SidebarPanel({ resizable }: { resizable?: boolean }) {
+  return (
+    <div className="flex h-full flex-col border-l border-grid-dimmed bg-background-bright">
+      <div className="flex h-10 shrink-0 items-center border-b border-grid-dimmed px-3">
+        <Header3>Sidebar slot</Header3>
+      </div>
+      <div className="flex flex-col gap-3 overflow-y-auto p-3">
+        <Paragraph variant="small">
+          {resizable
+            ? "This sidebar is resizable — drag the handle on its left edge. Pass an autosaveId + a loader snapshot to persist the split across reloads."
+            : "This sidebar is fixed-width (width prop). The main column fills the rest and owns the page scroll."}
+        </Paragraph>
+        <Badge variant="extra-small">{resizable ? "resizable" : "fixed width"}</Badge>
+        {Array.from({ length: 6 }).map((_, i) => (
+          <FilterChip key={i}>Config option {i + 1}</FilterChip>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// The original overview demo: Filters row, count-adaptive Grids and a Content slot that toggles
+// between tabs and a table. The whole page scrolls as one via MetricsLayout.Root (scroll="page").
+function OverviewDemo() {
+  const [tab, setTab] = useState<"tabs" | "table">("tabs");
+
+  return (
+    <MetricsLayout.Root>
+      {/* Filters slot — the row directly under the NavBar. */}
+      <MetricsLayout.Filters className="justify-between border-t border-grid-dimmed px-3 pb-3 pt-1.5">
+        <div className="flex items-center gap-2">
+          <FilterChip>Search…</FilterChip>
+          <FilterChip>Period: 7d</FilterChip>
+          <Badge variant="extra-small">Filters slot</Badge>
+        </div>
+        <FilterChip>{"< 1 / 4 >"}</FilterChip>
+      </MetricsLayout.Filters>
+
+      {/* Grid slot — 4 stat tiles. Columns are derived from the tile count: two-up, four-up
+            from lg. */}
+      <div className="px-3 pb-1 pt-2 text-xs uppercase text-text-dimmed">
+        Grid — 4 tiles (auto: 2-up, 4-up from lg)
+      </div>
+      <MetricsLayout.Grid className="px-3 pb-3">
+        <StatTile label="Queued" value="83" />
+        <StatTile label="Running" value="15" />
+        <StatTile label="Allocated" value="29" />
+        <StatTile label="Limit" value="25" />
+      </MetricsLayout.Grid>
+
+      {/* Grid slot — 4 chart tiles at a fixed row height, same auto columns as the stats. */}
+      <div className="px-3 pb-1 text-xs uppercase text-text-dimmed">
+        Grid — 4 chart tiles (fixed 280px row)
+      </div>
+      <div className="h-[280px] px-3 pb-3">
+        <MetricsLayout.Grid className="h-full min-h-0">
+          <ChartTile label="Env saturation" />
+          <ChartTile label="Backlog" />
+          <ChartTile label="Scheduling delay p95" />
+          <ChartTile label="Throttled" />
+        </MetricsLayout.Grid>
+      </div>
+
+      {/* Grid slot — 3 tiles. The same component now lays out one-up, three-up from sm, proving
+            the grid adapts to the child count. */}
+      <div className="px-3 pb-1 text-xs uppercase text-text-dimmed">
+        Grid — 3 tiles (auto: 1-up, 3-up from sm)
+      </div>
+      <MetricsLayout.Grid className="px-3 pb-3">
+        <StatTile label="Concurrency" value="11" />
+        <StatTile label="Queued" value="83" />
+        <StatTile label="Oldest wait" value="34m" />
+      </MetricsLayout.Grid>
+
+      {/* Grid slot — explicit columns for a chart grid that should always be two-up regardless
+            of tile count. */}
+      <div className="px-3 pb-1 text-xs uppercase text-text-dimmed">
+        Grid — explicit columns=&#123;&#123; base: 1, sm: 2 &#125;&#125; (5 tiles)
+      </div>
+      <div className="px-3 pb-3">
+        <MetricsLayout.Grid columns={{ base: 1, sm: 2 }}>
+          <ChartTile label="Concurrency" className="aspect-[2/1]" />
+          <ChartTile label="Queue depth" className="aspect-[2/1]" />
+          <ChartTile label="Throughput" className="aspect-[2/1]" />
+          <ChartTile label="Scheduling delay" className="aspect-[2/1]" />
+          <ChartTile label="Throttled" className="aspect-[2/1]" />
+        </MetricsLayout.Grid>
+      </div>
+
+      {/* Content slot — tabs vs. table. */}
+      <MetricsLayout.Content>
+        <TabContainer className="px-3">
+          <TabButton
+            isActive={tab === "tabs"}
+            layoutId="layout-story"
+            onClick={() => setTab("tabs")}
+          >
+            Tabs content
+          </TabButton>
+          <TabButton
+            isActive={tab === "table"}
+            layoutId="layout-story"
+            onClick={() => setTab("table")}
+          >
+            Table content
+          </TabButton>
+        </TabContainer>
+        {tab === "table" ? (
+          <PlaceholderTable />
+        ) : (
+          <div className="border-t border-grid-dimmed p-3">
+            <Paragraph variant="small">
+              The Content slot hosts whatever sits below the tiles — a TabContainer with panels, or
+              a full-width table. The whole page (filters, tiles and content) shares one vertical
+              scroll.
+            </Paragraph>
+          </div>
+        )}
+      </MetricsLayout.Content>
+    </MetricsLayout.Root>
+  );
+}
+
+// Fixed-width sidebar: a <MetricsLayout.Sidebar> child flips Root into a [main | sidebar] layout.
+// The main column keeps its normal top-to-bottom slots and owns the page scroll.
+function SidebarFixedDemo() {
+  return (
+    <MetricsLayout.Root>
+      <MetricsLayout.Filters className="border-t border-grid-dimmed px-3 pb-3 pt-1.5">
+        <FilterChip>Search…</FilterChip>
+        <Badge variant="extra-small">main column</Badge>
+      </MetricsLayout.Filters>
+      <MetricsLayout.Grid className="px-3 pb-3">
+        <StatTile label="Queued" value="83" />
+        <StatTile label="Running" value="15" />
+        <StatTile label="Allocated" value="29" />
+      </MetricsLayout.Grid>
+      <MetricsLayout.Content>
+        <PlaceholderTable />
+      </MetricsLayout.Content>
+
+      <MetricsLayout.Sidebar width="320px">
+        <SidebarPanel />
+      </MetricsLayout.Sidebar>
+    </MetricsLayout.Root>
+  );
+}
+
+// Resizable sidebar: same [main | sidebar] layout, but the split is draggable via the shared
+// Resizable primitives. autosaveId persists the split to a cookie (in a real page the loader
+// hydrates it back through a snapshot); here it persists live within the session.
+function SidebarResizableDemo() {
+  return (
+    <MetricsLayout.Root>
+      <MetricsLayout.Filters className="border-t border-grid-dimmed px-3 pb-3 pt-1.5">
+        <FilterChip>Search…</FilterChip>
+        <Badge variant="extra-small">drag the handle →</Badge>
+      </MetricsLayout.Filters>
+      <MetricsLayout.Grid className="px-3 pb-3">
+        <StatTile label="Queued" value="83" />
+        <StatTile label="Running" value="15" />
+        <StatTile label="Allocated" value="29" />
+      </MetricsLayout.Grid>
+      <MetricsLayout.Content>
+        <PlaceholderTable />
+      </MetricsLayout.Content>
+
+      <MetricsLayout.Sidebar
+        resizable
+        autosaveId="storybook-metrics-sidebar"
+        min="260px"
+        defaultSize="360px"
+        max="520px"
+      >
+        <SidebarPanel resizable />
+      </MetricsLayout.Sidebar>
+    </MetricsLayout.Root>
+  );
+}
+
+// scroll="regions": Root does NOT create the page scroll. It only bounds the height as a flex
+// column, so the page composes its own independently-scrolling areas — here a fixed toolbar over
+// two side-by-side lists that each scroll on their own.
+function RegionsDemo() {
+  return (
+    <MetricsLayout.Root scroll="regions">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-t border-grid-dimmed px-3">
+        <Badge variant="extra-small">fixed toolbar (does not scroll)</Badge>
+        <FilterChip>Period: 7d</FilterChip>
+      </div>
+      <div className="grid min-h-0 flex-1 grid-cols-2 divide-x divide-grid-dimmed">
+        <div className="min-h-0 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          <div className="sticky top-0 z-1 border-b border-grid-dimmed bg-background px-3 py-1.5 text-xs uppercase text-text-dimmed">
+            Left region — scrolls independently
+          </div>
+          <ScrollFiller label="Left" rows={60} />
+        </div>
+        <div className="min-h-0 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          <div className="sticky top-0 z-1 border-b border-grid-dimmed bg-background px-3 py-1.5 text-xs uppercase text-text-dimmed">
+            Right region — scrolls independently
+          </div>
+          <ScrollFiller label="Right" rows={60} />
+        </div>
+      </div>
+    </MetricsLayout.Root>
+  );
+}
+
+type Demo = "overview" | "sidebar-fixed" | "sidebar-resizable" | "regions";
+
+const DEMO_OPTIONS: { label: string; value: Demo }[] = [
+  { label: "Overview", value: "overview" },
+  { label: "Sidebar (fixed)", value: "sidebar-fixed" },
+  { label: "Sidebar (resizable)", value: "sidebar-resizable" },
+  { label: "Scroll: regions", value: "regions" },
+];
+
 /**
- * Demonstrates the MetricsLayout compound: a Filters row, count-adaptive Grids (a 4-tile stat
- * grid + a 4-tile chart grid + a 3-tile grid, all with no hand-written grid-cols), and a Content
- * slot that toggles between tabs and a table. The whole page scrolls as one via MetricsLayout.Root.
+ * Storybook for the MetricsLayout compound. A segmented control swaps between demos, each filling
+ * the page:
+ *   - Overview            — the base Filters / count-adaptive Grid / Content slots, page scroll.
+ *   - Sidebar (fixed)     — a fixed-width MetricsLayout.Sidebar beside the main column.
+ *   - Sidebar (resizable) — the same, but with a draggable split (autosaveId persistence).
+ *   - Scroll: regions     — scroll="regions" with two independently-scrolling areas.
  */
 export default function Story() {
-  const [tab, setTab] = useState<"tabs" | "table">("tabs");
+  const [demo, setDemo] = useState<Demo>("overview");
 
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title="MetricsLayout" />
+        <PageAccessories>
+          <SegmentedControl
+            name="metrics-layout-demo"
+            value={demo}
+            options={DEMO_OPTIONS}
+            onChange={(value) => setDemo(value as Demo)}
+          />
+        </PageAccessories>
       </NavBar>
-      <MetricsLayout.Root>
-        {/* Filters slot — the row directly under the NavBar. */}
-        <MetricsLayout.Filters className="justify-between border-t border-grid-dimmed px-3 pb-3 pt-1.5">
-          <div className="flex items-center gap-2">
-            <FilterChip>Search…</FilterChip>
-            <FilterChip>Period: 7d</FilterChip>
-            <Badge variant="extra-small">Filters slot</Badge>
-          </div>
-          <FilterChip>{"< 1 / 4 >"}</FilterChip>
-        </MetricsLayout.Filters>
-
-        {/* Grid slot — 4 stat tiles. Columns are derived from the tile count: two-up, four-up
-            from lg. */}
-        <div className="px-3 pb-1 pt-2 text-xs uppercase text-text-dimmed">
-          Grid — 4 tiles (auto: 2-up, 4-up from lg)
-        </div>
-        <MetricsLayout.Grid className="px-3 pb-3">
-          <StatTile label="Queued" value="83" />
-          <StatTile label="Running" value="15" />
-          <StatTile label="Allocated" value="29" />
-          <StatTile label="Limit" value="25" />
-        </MetricsLayout.Grid>
-
-        {/* Grid slot — 4 chart tiles at a fixed row height, same auto columns as the stats. */}
-        <div className="px-3 pb-1 text-xs uppercase text-text-dimmed">
-          Grid — 4 chart tiles (fixed 280px row)
-        </div>
-        <div className="h-[280px] px-3 pb-3">
-          <MetricsLayout.Grid className="h-full min-h-0">
-            <ChartTile label="Env saturation" />
-            <ChartTile label="Backlog" />
-            <ChartTile label="Scheduling delay p95" />
-            <ChartTile label="Throttled" />
-          </MetricsLayout.Grid>
-        </div>
-
-        {/* Grid slot — 3 tiles. The same component now lays out one-up, three-up from sm, proving
-            the grid adapts to the child count. */}
-        <div className="px-3 pb-1 text-xs uppercase text-text-dimmed">
-          Grid — 3 tiles (auto: 1-up, 3-up from sm)
-        </div>
-        <MetricsLayout.Grid className="px-3 pb-3">
-          <StatTile label="Concurrency" value="11" />
-          <StatTile label="Queued" value="83" />
-          <StatTile label="Oldest wait" value="34m" />
-        </MetricsLayout.Grid>
-
-        {/* Grid slot — explicit columns for a chart grid that should always be two-up regardless
-            of tile count. */}
-        <div className="px-3 pb-1 text-xs uppercase text-text-dimmed">
-          Grid — explicit columns=&#123;&#123; base: 1, sm: 2 &#125;&#125; (5 tiles)
-        </div>
-        <div className="px-3 pb-3">
-          <MetricsLayout.Grid columns={{ base: 1, sm: 2 }}>
-            <ChartTile label="Concurrency" className="aspect-[2/1]" />
-            <ChartTile label="Queue depth" className="aspect-[2/1]" />
-            <ChartTile label="Throughput" className="aspect-[2/1]" />
-            <ChartTile label="Scheduling delay" className="aspect-[2/1]" />
-            <ChartTile label="Throttled" className="aspect-[2/1]" />
-          </MetricsLayout.Grid>
-        </div>
-
-        {/* Content slot — tabs vs. table. */}
-        <MetricsLayout.Content>
-          <TabContainer className="px-3">
-            <TabButton
-              isActive={tab === "tabs"}
-              layoutId="layout-story"
-              onClick={() => setTab("tabs")}
-            >
-              Tabs content
-            </TabButton>
-            <TabButton
-              isActive={tab === "table"}
-              layoutId="layout-story"
-              onClick={() => setTab("table")}
-            >
-              Table content
-            </TabButton>
-          </TabContainer>
-          {tab === "table" ? (
-            <PlaceholderTable />
-          ) : (
-            <div className="border-t border-grid-dimmed p-3">
-              <Paragraph variant="small">
-                The Content slot hosts whatever sits below the tiles — a TabContainer with panels,
-                or a full-width table. The whole page (filters, tiles and content) shares one
-                vertical scroll.
-              </Paragraph>
-            </div>
-          )}
-        </MetricsLayout.Content>
-      </MetricsLayout.Root>
+      {demo === "overview" ? (
+        <OverviewDemo />
+      ) : demo === "sidebar-fixed" ? (
+        <SidebarFixedDemo />
+      ) : demo === "sidebar-resizable" ? (
+        <SidebarResizableDemo />
+      ) : (
+        <RegionsDemo />
+      )}
     </PageContainer>
   );
 }
