@@ -519,6 +519,9 @@ export function SideMenu({
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
+      // Grabbing the handle interrupts any in-flight collapse/expand; clear the flag so a drag that
+      // rests via writeVisual (not animateTo) doesn't strand it true and keep the gutter hidden.
+      setIsAnimating(false);
       // Never allow two concurrent drags.
       dragCleanupRef.current?.();
 
