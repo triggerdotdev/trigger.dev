@@ -12,7 +12,7 @@ import type {
   DeploymentFinalizedEvent,
   DeploymentTriggeredVia,
 } from "@trigger.dev/core/v3/schemas";
-import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import { BuildManifest, DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
 import type { Command } from "commander";
 import { Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
@@ -24,8 +24,9 @@ import type { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
+import { createBundleArchive } from "../deploy/bundleArchive.js";
 import { S2 } from "@s2-dev/streamstore";
-import { mkdir, readFile, unlink } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import {
   CommonCommandOptions,
   commonOptions,
@@ -54,7 +55,7 @@ import {
   prettyWarning,
 } from "../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
-import { isDirectory } from "../utilities/fileSystem.js";
+import { isDirectory, writeJSONFile } from "../utilities/fileSystem.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
 import { createGitMeta, isGitHubActions } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
@@ -90,6 +91,8 @@ const DeployCommandOptions = CommonCommandOptions.extend({
   push: z.boolean().optional(),
   builder: z.string().default("trigger"),
   nativeBuildServer: z.boolean().default(false),
+  localBundle: z.boolean().default(false),
+  fromBundle: z.string().optional(),
   detach: z.boolean().default(false),
   plain: z.boolean().default(false),
   compression: z.enum(["zstd", "gzip"]).default("zstd"),
@@ -101,6 +104,13 @@ const DeployCommandOptions = CommonCommandOptions.extend({
 type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
 
 type Deployment = InitializeDeploymentResponseBody;
+
+// Carries the build-arg VALUES for the `ARG` lines in the generated Containerfile.
+// They only exist in the in-memory build manifest (build.json is deliberately scrubbed
+// because it gets COPY'd into the image), so --local-bundle writes them to this file
+// and --from-bundle reads them back. A .dockerignore entry keeps the file out of the
+// image COPY context so the values never land in image layers.
+const BUNDLE_BUILD_ARGS_FILE = "trigger-build-args.json";
 
 export function configureDeployCommand(program: Command) {
   return (
@@ -250,6 +260,23 @@ export function configureDeployCommand(program: Command) {
       )
       .addOption(
         new CommandOption(
+          "--local-bundle",
+          "Experimental: bundle the project locally and upload only the build output; the build server runs the container build. Useful when the remote install/bundle step doesn't work for your project setup. Implies using the native build server."
+        )
+          .implies({ nativeBuildServer: true })
+          .conflicts(["localBuild", "forceLocalBuild"])
+      )
+      .addOption(
+        new CommandOption(
+          "--from-bundle <dir>",
+          "Internal: build the deployment image from a pre-built bundle directory, skipping the bundling step. Implies a local build."
+        )
+          .implies({ localBuild: true })
+          .conflicts(["nativeBuildServer", "localBundle"])
+          .hideHelp()
+      )
+      .addOption(
+        new CommandOption(
           "--detach",
           "Return immediately after the deployment is queued, do not wait for the build to complete. Implies using the native build server."
         ).implies({ nativeBuildServer: true })
@@ -333,6 +360,21 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   if (envVars.TRIGGER_PROJECT_REF) {
     logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
+  }
+
+  if (options.fromBundle) {
+    // Builds the image from a pre-built bundle directory. The bundle carries no
+    // trigger.config.ts source, so this path skips config loading entirely and
+    // drives off the bundle's build.json + the deployment record.
+    await handleFromBundleDeploy({
+      bundleDir: options.fromBundle,
+      options,
+      dashboardUrl: authorization.dashboardUrl,
+      auth: authorization.auth,
+      existingDeploymentId: envVars.TRIGGER_EXISTING_DEPLOYMENT_ID,
+      projectRefOverride: options.projectRef ?? envVars.TRIGGER_PROJECT_REF,
+    });
+    return;
   }
 
   let resolvedConfig = await loadConfig({
@@ -421,6 +463,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       options,
       userId: userIdForDeploy(authorization),
       gitMeta,
+      branch,
     });
     return;
   }
@@ -535,8 +578,6 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   // which is used in self-hosted setups. There are a few subtle differences between local builds for the cloud
   // and local builds for self-hosted setups. We need to make the separation of the two paths clearer to avoid confusion.
   const isLocalBuild = options.localBuild || !deployment.externalBuildData;
-  const authenticateToTriggerRegistry = options.localBuild;
-  const skipServerSideRegistryPush = options.localBuild;
 
   // Fail fast if we know local builds will fail
   if (isLocalBuild) {
@@ -604,11 +645,56 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
+  await buildAndFinalizeDeployment({
+    apiClient: projectClient.client,
+    projectId: projectClient.id,
+    projectRef: resolvedConfig.project,
+    deployment,
+    options,
+    dashboardUrl: authorization.dashboardUrl,
+    authAccessToken: authorization.auth.accessToken,
+    compilationPath: destination.path,
+    buildEnvVars: buildManifest.build.env,
+    branch,
+    isLocalBuild,
+  });
+}
+
+// The shared "build the image and finalize the deployment" tail, used by the standard
+// deploy path (after bundling) and by --from-bundle (building from a pre-built bundle).
+async function buildAndFinalizeDeployment({
+  apiClient,
+  projectId,
+  projectRef,
+  deployment,
+  options,
+  dashboardUrl,
+  authAccessToken,
+  compilationPath,
+  buildEnvVars,
+  branch,
+  isLocalBuild,
+}: {
+  apiClient: CliApiClient;
+  projectId: string;
+  projectRef: string;
+  deployment: Deployment;
+  options: DeployCommandOptions;
+  dashboardUrl: string;
+  authAccessToken: string;
+  compilationPath: string;
+  buildEnvVars: Record<string, string | undefined> | undefined;
+  branch: string | undefined;
+  isLocalBuild: boolean;
+}) {
+  const authenticateToTriggerRegistry = options.localBuild;
+  const skipServerSideRegistryPush = options.localBuild;
+
   const version = deployment.version;
 
   const { rawDeploymentLink, rawTestLink } = buildDeploymentLinks({
-    dashboardUrl: authorization.dashboardUrl,
-    projectRef: resolvedConfig.project,
+    dashboardUrl,
+    projectRef,
     env: options.env,
     shortCode: deployment.shortCode,
   });
@@ -648,15 +734,15 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     externalBuildId: deployment.externalBuildData?.buildId,
     externalBuildToken: deployment.externalBuildData?.buildToken,
     externalBuildProjectId: deployment.externalBuildData?.projectId,
-    projectId: projectClient.id,
-    projectRef: resolvedConfig.project,
-    apiUrl: projectClient.client.apiURL,
-    apiKey: projectClient.client.accessToken!,
-    apiClient: projectClient.client,
+    projectId,
+    projectRef,
+    apiUrl: apiClient.apiURL,
+    apiKey: apiClient.accessToken!,
+    apiClient,
     branchName: branch,
-    authAccessToken: authorization.auth.accessToken,
-    compilationPath: destination.path,
-    buildEnvVars: buildManifest.build.env,
+    authAccessToken,
+    compilationPath,
+    buildEnvVars,
     compression: options.compression,
     cacheCompression: options.cacheCompression,
     compressionLevel: options.compressionLevel,
@@ -691,7 +777,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const buildFailed = !warnings.ok || !buildResult.ok;
 
   if (buildFailed && canShowLocalBuildHint) {
-    const providerStatus = await projectClient.client.getRemoteBuildProviderStatus();
+    const providerStatus = await apiClient.getRemoteBuildProviderStatus();
 
     if (providerStatus.success && providerStatus.data.status === "degraded") {
       prettyWarning(providerStatus.data.message + "\n");
@@ -700,7 +786,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   if (!warnings.ok) {
     await failDeploy(
-      projectClient.client,
+      apiClient,
       deployment,
       { name: "BuildError", message: warnings.summary },
       buildResult.logs,
@@ -714,7 +800,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   if (!buildResult.ok) {
     await failDeploy(
-      projectClient.client,
+      apiClient,
       deployment,
       { name: "BuildError", message: buildResult.error },
       buildResult.logs,
@@ -725,11 +811,11 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     throw new SkipLoggingError("Failed to build image");
   }
 
-  const getDeploymentResponse = await projectClient.client.getDeployment(deployment.id);
+  const getDeploymentResponse = await apiClient.getDeployment(deployment.id);
 
   if (!getDeploymentResponse.success) {
     await failDeploy(
-      projectClient.client,
+      apiClient,
       deployment,
       { name: "DeploymentError", message: getDeploymentResponse.error },
       buildResult.logs,
@@ -747,7 +833,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       : undefined;
 
     await failDeploy(
-      projectClient.client,
+      apiClient,
       deployment,
       {
         name: "DeploymentError",
@@ -772,7 +858,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
     }
   }
 
-  const finalizeResponse = await projectClient.client.finalizeDeployment(
+  const finalizeResponse = await apiClient.finalizeDeployment(
     deployment.id,
     {
       imageDigest: buildResult.digest,
@@ -797,7 +883,7 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
 
   if (!finalizeResponse.success) {
     await failDeploy(
-      projectClient.client,
+      apiClient,
       deployment,
       { name: "FinalizeError", message: finalizeResponse.error },
       buildResult.logs,
@@ -1199,6 +1285,7 @@ async function handleNativeBuildServerDeploy({
   dashboardUrl,
   userId,
   gitMeta,
+  branch,
 }: {
   apiClient: CliApiClient;
   config: Awaited<ReturnType<typeof loadConfig>>;
@@ -1206,23 +1293,85 @@ async function handleNativeBuildServerDeploy({
   options: DeployCommandOptions;
   userId?: string;
   gitMeta?: GitMeta;
+  branch?: string;
 }) {
   const tmpDir = join(config.workingDir, ".trigger", "tmp");
   await mkdir(tmpDir, { recursive: true });
 
   const archivePath = join(tmpDir, `deploy-${Date.now()}.tar.gz`);
 
+  // In --local-bundle mode, install + bundling happen locally (same as the classic
+  // non-native path) and only the resulting build context is uploaded; the build
+  // server then runs just the container build from it.
+  let bundleManifest: BuildManifest | undefined;
+  let bundleOutputPath: string | undefined;
+
+  if (options.localBundle) {
+    const serverEnvVars = await apiClient.getEnvironmentVariables(config.project);
+    loadDotEnvVars(config.workingDir, options.envFile);
+
+    const destination = getTmpDir(config.workingDir, "build", false);
+    const forcedExternals = await resolveAlwaysExternal(apiClient);
+
+    const $buildSpinner = spinner({ plain: options.plain });
+
+    const [buildError, buildManifest] = await tryCatch(
+      buildWorker({
+        target: "deploy",
+        environment: options.env,
+        branch,
+        destination: destination.path,
+        resolvedConfig: config,
+        rewritePaths: true,
+        envVars: serverEnvVars.success ? serverEnvVars.data.variables : {},
+        forcedExternals,
+        plain: options.plain,
+        listener: {
+          onBundleStart() {
+            $buildSpinner.start("Building trigger code");
+          },
+          onBundleComplete(result) {
+            $buildSpinner.stop("Successfully built code");
+            logger.debug("Bundle result", result);
+          },
+        },
+      })
+    );
+
+    if (buildError) {
+      $buildSpinner.stop("Failed to build code");
+      throw buildError;
+    }
+
+    bundleManifest = buildManifest;
+    bundleOutputPath = destination.path;
+
+    // Persist the build-arg values (scrubbed from build.json) for the build server's
+    // --from-bundle step, and keep them out of the image via .dockerignore.
+    await writeJSONFile(join(destination.path, BUNDLE_BUILD_ARGS_FILE), {
+      env: buildManifest.build.env ?? {},
+    });
+    await writeFile(
+      join(destination.path, ".dockerignore"),
+      `${BUNDLE_BUILD_ARGS_FILE}\n.dockerignore\n`
+    );
+  }
+
   const $deploymentSpinner = spinner();
   $deploymentSpinner.start("Preparing deployment files");
 
-  await createContextArchive(config.workspaceDir, archivePath);
+  if (bundleOutputPath) {
+    await createBundleArchive(bundleOutputPath, archivePath);
+  } else {
+    await createContextArchive(config.workspaceDir, archivePath);
+  }
 
   const archiveSize = await getArchiveSize(archivePath);
   const sizeMB = (archiveSize / 1024 / 1024).toFixed(2);
   $deploymentSpinner.message(`Deployment files ready (${sizeMB} MB)`);
 
   const artifactResult = await apiClient.createArtifact({
-    type: "deployment_context",
+    type: options.localBundle ? "deployment_bundle" : "deployment_context",
     contentType: "application/gzip",
     contentLength: archiveSize,
   });
@@ -1288,11 +1437,11 @@ async function handleNativeBuildServerDeploy({
       : undefined;
 
   const initializeDeploymentResult = await apiClient.initializeDeployment({
-    contentHash: "-",
+    contentHash: bundleManifest?.contentHash ?? "-",
     userId,
     gitMeta,
     type: config.features.run_engine_v2 ? "MANAGED" : "V1",
-    runtime: config.runtime,
+    runtime: bundleManifest?.runtime ?? config.runtime,
     isNativeBuild: true,
     artifactKey,
     skipPromotion: options.skipPromotion,
@@ -1300,6 +1449,7 @@ async function handleNativeBuildServerDeploy({
     triggeredVia: getTriggeredVia(),
     externalId: options.externalId,
     force: options.force,
+    fromBundle: options.localBundle ? true : undefined,
   });
 
   if (!initializeDeploymentResult.success) {
@@ -1309,6 +1459,50 @@ async function handleNativeBuildServerDeploy({
   }
 
   const deployment = initializeDeploymentResult.data;
+
+  // In --local-bundle mode the build server never runs install/bundle, so the env-var
+  // sync that extensions rely on (syncEnvVars) must happen here on the client, using
+  // the unscrubbed in-memory manifest — same semantics as the classic local path.
+  if (bundleManifest && !options.skipSyncEnvVars) {
+    const childVars = bundleManifest.deploy.sync?.env ?? {};
+    const parentVars = bundleManifest.deploy.sync?.parentEnv ?? {};
+    const secretChildVars = bundleManifest.deploy.sync?.secretEnv ?? {};
+    const secretParentVars = bundleManifest.deploy.sync?.secretParentEnv ?? {};
+
+    const hasVarsToSync =
+      Object.keys(childVars).length > 0 ||
+      Object.keys(secretChildVars).length > 0 ||
+      // Only sync parent variables if this is a branch environment
+      (branch && (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
+
+    if (hasVarsToSync) {
+      const uploadResult = await syncEnvVarsWithServer(
+        apiClient,
+        config.project,
+        options.env,
+        childVars,
+        parentVars,
+        secretChildVars,
+        secretParentVars
+      );
+
+      if (!uploadResult.success) {
+        $deploymentSpinner.stop("Failed to sync env vars");
+        log.error(chalk.bold(chalkError(`Failed to sync env vars: ${uploadResult.error}`)));
+
+        await apiClient.failDeployment(deployment.id, {
+          error: {
+            name: "SyncEnvVarsError",
+            message: `Failed to sync env vars with the server: ${uploadResult.error}`,
+          },
+        });
+
+        throw new OutroCommandError(`Deployment failed`);
+      }
+
+      logger.debug("Synced env vars with the server");
+    }
+  }
 
   const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
   const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
@@ -1634,4 +1828,128 @@ export function verifyDirectory(dir: string, projectPath: string) {
 
     throw new Error(`Directory "${dir}" not found at ${projectPath}`);
   }
+}
+
+// Builds and finalizes a deployment from a pre-built bundle directory (the output of
+// the bundling step, as produced by --local-bundle / a dry-run build). Used primarily
+// by the build server to run ONLY the container build for pre-bundled artifacts, but
+// also works standalone for local testing. Skips config loading entirely — the bundle
+// has no trigger.config.ts source; everything needed comes from the bundle's build.json,
+// the build-args file, and the deployment record.
+async function handleFromBundleDeploy({
+  bundleDir,
+  options,
+  dashboardUrl,
+  auth,
+  existingDeploymentId,
+  projectRefOverride,
+}: {
+  bundleDir: string;
+  options: DeployCommandOptions;
+  dashboardUrl: string;
+  auth: { accessToken: string; apiUrl: string };
+  existingDeploymentId?: string;
+  projectRefOverride?: string;
+}) {
+  const bundlePath = resolve(process.cwd(), bundleDir);
+
+  if (!isDirectory(bundlePath)) {
+    throw new Error(`Bundle directory not found at ${bundlePath}`);
+  }
+
+  const [manifestReadError, manifestRaw] = await tryCatch(
+    readFile(join(bundlePath, "build.json"), "utf-8")
+  );
+
+  if (manifestReadError) {
+    throw new Error(
+      `Failed to read build.json in the bundle directory: ${manifestReadError.message}`
+    );
+  }
+
+  const manifestResult = BuildManifest.safeParse(JSON.parse(manifestRaw));
+
+  if (!manifestResult.success) {
+    throw new Error(`Invalid build.json in the bundle directory: ${manifestResult.error.message}`);
+  }
+
+  const bundleManifest = manifestResult.data;
+
+  // Recover the build-arg values scrubbed from build.json (written by --local-bundle).
+  // Optional: bundles without build-time env vars may not carry the file.
+  let buildEnvVars: Record<string, string> | undefined;
+  const [buildArgsError, buildArgsRaw] = await tryCatch(
+    readFile(join(bundlePath, BUNDLE_BUILD_ARGS_FILE), "utf-8")
+  );
+
+  if (!buildArgsError) {
+    const [parseError, parsed] = await tryCatch(Promise.resolve(JSON.parse(buildArgsRaw)));
+    if (parseError) {
+      throw new Error(`Invalid ${BUNDLE_BUILD_ARGS_FILE} in the bundle directory`);
+    }
+    buildEnvVars = parsed.env ?? {};
+  } else if (bundleManifest.build.env && Object.keys(bundleManifest.build.env).length > 0) {
+    // The scrubbed manifest can't carry values, but if a manifest somehow has them, use them.
+    buildEnvVars = bundleManifest.build.env;
+  }
+
+  const projectRef = projectRefOverride ?? bundleManifest.config.project;
+
+  const branch = options.env === "preview" ? getBranch({ specified: options.branch }) : undefined;
+
+  if (options.env === "preview" && !branch) {
+    throw new Error(
+      "Preview deploys from a bundle require an explicit branch. Pass --branch <branch>."
+    );
+  }
+
+  const projectClient = await getProjectClient({
+    accessToken: auth.accessToken,
+    apiUrl: auth.apiUrl,
+    projectRef,
+    env: options.env,
+    branch,
+    profile: options.profile,
+  });
+
+  if (!projectClient) {
+    throw new Error("Failed to get project client");
+  }
+
+  const deployment = await initializeOrAttachDeployment(
+    projectClient.client,
+    {
+      contentHash: bundleManifest.contentHash,
+      type: "MANAGED",
+      runtime: bundleManifest.runtime,
+      isLocalBuild: true,
+      isNativeBuild: false,
+      triggeredVia: getTriggeredVia(),
+    },
+    existingDeploymentId
+  );
+
+  // Fail fast if we know local builds will fail
+  const buildxResult = await x("docker", ["buildx", "version"]);
+
+  if (buildxResult.exitCode !== 0) {
+    logger.debug(`"docker buildx version" failed (${buildxResult.exitCode}):`, buildxResult);
+    throw new Error(
+      "Failed to find docker buildx. Please install it: https://github.com/docker/buildx#installing."
+    );
+  }
+
+  await buildAndFinalizeDeployment({
+    apiClient: projectClient.client,
+    projectId: projectClient.id,
+    projectRef,
+    deployment,
+    options,
+    dashboardUrl,
+    authAccessToken: auth.accessToken,
+    compilationPath: bundlePath,
+    buildEnvVars,
+    branch,
+    isLocalBuild: true,
+  });
 }
