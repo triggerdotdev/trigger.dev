@@ -10,7 +10,7 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
@@ -51,6 +51,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { QueueName } from "~/components/runs/v3/QueueName";
 import { env } from "~/env.server";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
@@ -336,14 +337,6 @@ function getEnvConcurrencyLimitStatus(environment: {
     limitStatus === "burst" ? "text-warning" : limitStatus === "limit" ? "text-error" : undefined;
 
   return { limitStatus, limitClassName };
-}
-
-// The whole queue row is a link to the queue detail page (each data cell carries `to`). In-cell
-// controls that live inside a `to` cell (info-icon/status tooltips) call this so a click acts on
-// the control instead of following the row link — mirrors CopyableTableCell in the Table primitive.
-function punchThroughRowLink(event: MouseEvent) {
-  event.preventDefault();
-  event.stopPropagation();
 }
 
 export default function Page() {
@@ -761,17 +754,65 @@ function QueuesWithMetricsView() {
                     });
                     return (
                       <TableRow key={queue.name}>
-                        <TableCell to={queueDetailPath} isTabbableCell>
-                          <span className="flex items-center gap-2">
-                            <QueueName {...queue} />
-                            {queue.concurrency?.overriddenAt ? (
-                              <span onClick={punchThroughRowLink}>
-                                <InfoIconTooltip
-                                  content="This queue's concurrency limit has been manually overridden from the dashboard or API."
-                                  contentClassName="max-w-xs"
-                                />
+                        <TableCell
+                          to={queueDetailPath}
+                          isTabbableCell
+                          // The queue-type icon and the status tooltips are real <button>s, so they
+                          // render beside the link (leading/trailing), never inside it — otherwise
+                          // the cell is invalid <a><button> nesting. The name stays the link.
+                          leadingContent={
+                            <SimpleTooltip
+                              button={
+                                queue.type === "task" ? (
+                                  <TasksIcon
+                                    className={cn(
+                                      "size-[1.125rem] text-blue-500",
+                                      queue.paused && "opacity-50"
+                                    )}
+                                  />
+                                ) : (
+                                  <RectangleStackIcon
+                                    className={cn(
+                                      "size-[1.125rem] text-purple-500",
+                                      queue.paused && "opacity-50"
+                                    )}
+                                  />
+                                )
+                              }
+                              content={
+                                queue.type === "task"
+                                  ? `This queue was automatically created from your "${queue.name}" task`
+                                  : "This is a custom queue you added in your code."
+                              }
+                            />
+                          }
+                          trailingContent={
+                            queue.concurrency?.overriddenAt || isAtConcurrencyLimit ? (
+                              <span className="flex items-center gap-2">
+                                {queue.concurrency?.overriddenAt ? (
+                                  <InfoIconTooltip
+                                    content="This queue's concurrency limit has been manually overridden from the dashboard or API."
+                                    contentClassName="max-w-xs"
+                                  />
+                                ) : null}
+                                {isAtConcurrencyLimit ? (
+                                  <SimpleTooltip
+                                    button={
+                                      <ExclamationTriangleIcon className="size-4 text-warning" />
+                                    }
+                                    content="At concurrency limit: this queue is running as many runs as its limit allows; new runs wait in the backlog."
+                                    className="max-w-xs"
+                                    disableHoverableContent
+                                  />
+                                ) : null}
                               </span>
-                            ) : null}
+                            ) : null
+                          }
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className={queue.paused ? "opacity-50" : undefined}>
+                              {queue.name}
+                            </span>
                             {queue.paused ? (
                               <Badge variant="extra-small" className="text-warning">
                                 Paused
@@ -781,18 +822,6 @@ function QueuesWithMetricsView() {
                               <Badge variant="extra-small" className="text-error">
                                 At queue limit
                               </Badge>
-                            ) : null}
-                            {isAtConcurrencyLimit ? (
-                              <span onClick={punchThroughRowLink}>
-                                <SimpleTooltip
-                                  button={
-                                    <ExclamationTriangleIcon className="size-4 text-warning" />
-                                  }
-                                  content="At concurrency limit: this queue is running as many runs as its limit allows; new runs wait in the backlog."
-                                  className="max-w-xs"
-                                  disableHoverableContent
-                                />
-                              </span>
                             ) : null}
                           </span>
                         </TableCell>
@@ -842,30 +871,26 @@ function QueuesWithMetricsView() {
                           )}
                         </TableCell>
                         <TableCell
-                          to={queueDetailPath}
                           alignment="right"
-                          actionClassName="pl-16"
                           className={cn(
-                            "w-[1%]",
+                            "w-[1%] pl-16",
                             queue.paused ? "opacity-50" : undefined,
                             queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                           )}
                         >
                           {queue.concurrency?.overriddenAt ? (
-                            <span onClick={punchThroughRowLink}>
-                              <SimpleTooltip
-                                button={<span className="text-text-bright">Override</span>}
-                                content={
-                                  queue.concurrencyLimitOverridePercent !== null
-                                    ? `Overridden at ${formatOverridePercent(
-                                        queue.concurrencyLimitOverridePercent
-                                      )}% of the environment limit.`
-                                    : `This queue's concurrency limit has been manually overridden to ${limit}.`
-                                }
-                                className="max-w-xs"
-                                disableHoverableContent
-                              />
-                            </span>
+                            <SimpleTooltip
+                              button={<span className="text-text-bright">Override</span>}
+                              content={
+                                queue.concurrencyLimitOverridePercent !== null
+                                  ? `Overridden at ${formatOverridePercent(
+                                      queue.concurrencyLimitOverridePercent
+                                    )}% of the environment limit.`
+                                  : `This queue's concurrency limit has been manually overridden to ${limit}.`
+                              }
+                              className="max-w-xs"
+                              disableHoverableContent
+                            />
                           ) : queue.concurrencyLimit ? (
                             "User"
                           ) : (

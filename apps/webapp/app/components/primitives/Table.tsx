@@ -329,6 +329,14 @@ type TableCellProps = TableCellBasicProps & {
   isSelected?: boolean;
   isTabbableCell?: boolean;
   children?: ReactNode;
+  /**
+   * Content rendered beside the cell's link/button but OUTSIDE it, so interactive adornments
+   * (tooltip triggers, badges that are themselves buttons) don't nest inside the `<a>`/`<button>`
+   * — invalid DOM that fails a11y audits. Use for a `to`/`onClick` cell that also shows a tooltip.
+   * `leadingContent` renders before the link, `trailingContent` after.
+   */
+  leadingContent?: ReactNode;
+  trailingContent?: ReactNode;
   style?: React.CSSProperties;
 };
 
@@ -346,6 +354,8 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       isSticky = false,
       isSelected,
       isTabbableCell = false,
+      leadingContent,
+      trailingContent,
       style,
     },
     ref
@@ -394,13 +404,32 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         style={style}
       >
         {to ? (
-          <Link
-            to={to}
-            className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
-            tabIndex={isTabbableCell ? 0 : -1}
-          >
-            {children}
-          </Link>
+          // With leading/trailing content, the link is content-sized and the adornments sit beside
+          // it (still inside the td) so interactive triggers never nest inside the <a>.
+          leadingContent || trailingContent ? (
+            <div className={flexClasses}>
+              {leadingContent}
+              <Link
+                to={to}
+                className={cn(
+                  "inline-flex items-center gap-2 focus:outline-hidden",
+                  actionClassName
+                )}
+                tabIndex={isTabbableCell ? 0 : -1}
+              >
+                {children}
+              </Link>
+              {trailingContent}
+            </div>
+          ) : (
+            <Link
+              to={to}
+              className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
+              tabIndex={isTabbableCell ? 0 : -1}
+            >
+              {children}
+            </Link>
+          )
         ) : onClick ? (
           <button
             onClick={onClick}
