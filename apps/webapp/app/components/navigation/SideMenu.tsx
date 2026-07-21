@@ -1253,7 +1253,7 @@ function OrgSelector({
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
-        <PopoverSectionHeader title="Organization" />
+        {!isCollapsed && <PopoverSectionHeader title="Organization" />}
         <div className="flex flex-col gap-1 p-1">
           <PopoverMenuItem
             to={organizationSettingsPath(organization)}
