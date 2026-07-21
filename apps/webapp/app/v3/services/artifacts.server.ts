@@ -24,7 +24,10 @@ const objectStoreClient =
 
 const artifactKeyPrefixByType = {
   deployment_context: "deployments",
-  deployment_bundle: "deployments",
+  // Distinct prefix on purpose: the artifact key is the one signal that survives
+  // any schema skew, so the build server can recognize a bundle even if the
+  // fromBundle flag gets stripped somewhere along the enqueue chain.
+  deployment_bundle: "bundles",
 } as const;
 const artifactBytesSizeLimitByType = {
   deployment_context: 100 * 1024 * 1024, // 100MB
