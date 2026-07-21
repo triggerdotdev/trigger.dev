@@ -8828,23 +8828,35 @@ function createStopSignal(): {
  * The `TriggerChatTransport` intercepts this to close the ReadableStream
  * for the current turn. Call after piping the response stream.
  *
- * Returns the `lastEventId` of the turn-complete control record on
- * `session.out` — the resume cursor for the start of the next turn. Save it
- * from the task (e.g. to your DB) instead of round-tripping it back from the
- * client after the turn ends. `undefined` if the write returned no ack.
+ * Returns two resume cursors for the turn boundary, both saveable from the
+ * task instead of round-tripping them back from the client:
+ * - `lastEventId` — the turn-complete control record's seq_num on
+ *   `session.out`; where the next turn's output stream resumes.
+ * - `sessionInEventId` — the committed-consume cursor on `session.in` as of
+ *   this turn-complete, letting a raw loop correlate the boundary with the
+ *   exact input record it acknowledged. Trigger owns input-cursor recovery,
+ *   so this is for correlation / out-of-sync detection, not required.
+ *
+ * Either is `undefined` when the corresponding cursor isn't available.
  *
  * @example
  * ```ts
  * await chat.pipe(result);
- * const { lastEventId } = await chat.writeTurnComplete();
- * await db.chats.update(chatId, { lastEventId });
+ * const { lastEventId, sessionInEventId } = await chat.writeTurnComplete();
+ * await db.chats.update(chatId, { lastEventId, sessionInEventId });
  * ```
  */
 async function chatWriteTurnComplete(options?: {
   publicAccessToken?: string;
-}): Promise<{ lastEventId?: string }> {
+}): Promise<{ lastEventId?: string; sessionInEventId?: string }> {
   const result = await writeTurnCompleteChunk(undefined, options?.publicAccessToken);
-  return { lastEventId: result?.lastEventId };
+  // Same cursor written to the `session-in-event-id` header inside
+  // `writeTurnCompleteChunk`; surfaced here so the caller can persist it.
+  const inCursor = getChatSession().in.lastDispatchedSeqNum();
+  return {
+    lastEventId: result?.lastEventId,
+    ...(inCursor !== undefined ? { sessionInEventId: String(inCursor) } : {}),
+  };
 }
 
 /**
@@ -8868,6 +8880,66 @@ export type PipeAndCaptureResult = {
   /** What the stream threw, present only when `status === "error"`. */
   error?: unknown;
 };
+
+/**
+ * Pass every chunk through untouched while recording it in `buffer`. Handles
+ * both the `AsyncIterable` and `ReadableStream` shapes `toUIMessageStream()`
+ * can return, and propagates a source error to the consumer after buffering
+ * whatever streamed first. See {@link pipeChatAndCapture} for why.
+ */
+async function* tapUIMessageChunks(
+  source: AsyncIterable<unknown> | ReadableStream<unknown>,
+  buffer: UIMessageChunk[]
+): AsyncGenerator<unknown> {
+  if (isReadableStream(source)) {
+    const reader = source.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer.push(value as UIMessageChunk);
+        yield value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  } else {
+    for await (const chunk of source) {
+      buffer.push(chunk as UIMessageChunk);
+      yield chunk;
+    }
+  }
+}
+
+/**
+ * Reconstruct a partial assistant `UIMessage` from the raw chunks that
+ * streamed before a failure — the fallback for {@link pipeChatAndCapture}
+ * when a transport error abandons the stream before `onFinish` runs. Uses the
+ * same `readUIMessageStream` reducer as the boot-time replay path. Returns
+ * `undefined` if there's nothing to assemble or the reducer throws.
+ */
+async function assemblePartialFromChunks(chunks: UIMessageChunk[]): Promise<UIMessage | undefined> {
+  const relevant = chunks.filter((c) => {
+    const type = (c as { type?: unknown }).type;
+    return typeof type === "string" && !type.startsWith("trigger:");
+  });
+  if (relevant.length === 0) return undefined;
+  try {
+    const stream = new ReadableStream<UIMessageChunk>({
+      start(controller) {
+        for (const chunk of relevant) controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+    let last: UIMessage | undefined;
+    for await (const message of readUIMessageStream({ stream })) {
+      last = message;
+    }
+    return last;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Pipe a `StreamTextResult` (or similar) to the chat stream and capture
@@ -8925,10 +8997,18 @@ async function pipeChatAndCapture(
     },
   });
 
+  // Buffer chunks as they flow to the pipe so a transport failure that
+  // abandons the UI stream before `onFinish` fires — the one termination path
+  // that skips `onFinish` — can still reconstruct the partial. This retains
+  // chunk references only; the reassembly runs solely in the failure fallback
+  // below, so the happy path pays nothing extra.
+  const bufferedChunks: UIMessageChunk[] = [];
+  const tappedStream = tapUIMessageChunks(uiStream, bufferedChunks);
+
   let status: PipeAndCaptureResult["status"] = "complete";
   let error: unknown;
   try {
-    await pipeChat(uiStream, {
+    await pipeChat(tappedStream, {
       signal: options?.signal,
       spanName: options?.spanName ?? "stream response",
     });
@@ -8950,6 +9030,13 @@ async function pipeChatAndCapture(
   // prevent it from firing at all, so race it against a timeout to avoid
   // hanging the caller. Mirrors chat.agent's capture path.
   await Promise.race([onFinishPromise, new Promise<void>((r) => setTimeout(r, 2_000))]);
+
+  // A transport failure can abandon the UI stream before `onFinish` fires, so
+  // reconstruct the partial from the buffered chunks rather than losing output
+  // that already streamed. Only runs when `onFinish` produced nothing.
+  if (!captured && bufferedChunks.length > 0) {
+    captured = await assemblePartialFromChunks(bufferedChunks);
+  }
 
   return {
     message: captured,

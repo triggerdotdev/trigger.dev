@@ -4,11 +4,11 @@
 
 Custom chat agent loops get two ergonomic wins for owning the turn loop.
 
-`chat.writeTurnComplete()` now returns the `lastEventId` of the turn-complete record, so you can persist the next turn's resume cursor straight from the task instead of round-tripping it back from the client.
+`chat.writeTurnComplete()` now returns the turn boundary's resume cursors (`lastEventId` for the output stream and `sessionInEventId` for the input stream), so you can persist them straight from the task instead of round-tripping them back from the client.
 
 ```ts
-const { lastEventId } = await chat.writeTurnComplete();
-await db.chats.update(chatId, { lastEventId });
+const { lastEventId, sessionInEventId } = await chat.writeTurnComplete();
+await db.chats.update(chatId, { lastEventId, sessionInEventId });
 ```
 
 `chat.pipeAndCapture()` no longer throws when a stream is stopped or fails. It now returns a `PipeAndCaptureResult` whose `message` holds any partial output captured before the stop or failure, alongside a typed `status` (`"complete" | "aborted" | "error"`) and, on failure, the `error`. Read the message off the result:

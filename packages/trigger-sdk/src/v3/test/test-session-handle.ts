@@ -131,9 +131,10 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
     });
 
     (async () => {
-      const readable = ensureReadableStream(value);
-      const reader = readable.getReader();
+      let reader: ReadableStreamDefaultReader<T> | undefined;
       try {
+        const readable = ensureReadableStream(value);
+        reader = readable.getReader();
         while (true) {
           const { done: d, value: v } = await reader.read();
           if (d) break;
@@ -141,13 +142,13 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
           notify(state, v);
         }
       } catch (err) {
-        // Mirror production: a source-stream error rejects waitUntilComplete
-        // instead of being silently swallowed, so callers (e.g.
-        // chat.pipeAndCapture) can observe the failure.
+        // Mirror production: a source-stream error (or a throw from stream
+        // setup) rejects waitUntilComplete instead of being silently
+        // swallowed, so callers (e.g. chat.pipeAndCapture) can observe it.
         pipeError = err;
       } finally {
         try {
-          reader.releaseLock();
+          reader?.releaseLock();
         } catch {
           // ignore
         }

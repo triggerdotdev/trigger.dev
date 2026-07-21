@@ -80,7 +80,7 @@ function deltaCount(harness: { allChunks: unknown[] }): number {
 describe("chat.pipeAndCapture", () => {
   it("returns status 'complete' with the message and finish reason on a normal turn", async () => {
     const captures: PipeAndCaptureResult[] = [];
-    const lastEventIds: Array<string | undefined> = [];
+    const turnCompletes: Array<{ lastEventId?: string; sessionInEventId?: string }> = [];
 
     const agent = chat.customAgent({
       id: "pipe-capture.complete",
@@ -98,23 +98,25 @@ describe("chat.pipeAndCapture", () => {
         const captured = await chat.pipeAndCapture(result);
         captures.push(captured);
         if (captured.message) await conversation.addResponse(captured.message);
-        const { lastEventId } = await chat.writeTurnComplete();
-        lastEventIds.push(lastEventId);
+        turnCompletes.push(await chat.writeTurnComplete());
       },
     });
 
     const harness = mockChatAgent(agent, { chatId: "pc-complete" });
     try {
       await harness.sendMessage(userMessage("hi", "u-1"));
-      await waitFor(() => captures.length >= 1 && lastEventIds.length >= 1);
+      await waitFor(() => captures.length >= 1 && turnCompletes.length >= 1);
 
       expect(captures[0]!.status).toBe("complete");
       expect(extractText(captures[0]!.message)).toBe("hello world");
       expect(captures[0]!.finishReason).toBe("stop");
       expect(captures[0]!.error).toBeUndefined();
-      // chat.writeTurnComplete() surfaces the resume cursor for the next turn.
-      expect(typeof lastEventIds[0]).toBe("string");
-      expect(lastEventIds[0]!.length).toBeGreaterThan(0);
+      // chat.writeTurnComplete() surfaces the .out resume cursor for the next
+      // turn. (sessionInEventId is a passthrough of the same value written to
+      // the session-in-event-id header; the in-memory harness doesn't track
+      // the .in dispatch cursor, so its value isn't asserted here.)
+      expect(typeof turnCompletes[0]!.lastEventId).toBe("string");
+      expect(turnCompletes[0]!.lastEventId!.length).toBeGreaterThan(0);
     } finally {
       await harness.close();
     }
@@ -126,15 +128,24 @@ describe("chat.pipeAndCapture", () => {
 
     // Synthetic source whose UI stream errors after emitting a partial. This
     // deterministically drives the pipe-failure path without depending on the
-    // AI SDK's model-error handling.
+    // AI SDK's model-error handling. Chunks are delivered one-per-pull before
+    // the error so they aren't discarded — calling controller.error() in the
+    // same tick as enqueue() would reset the queue and drop them.
+    const partialChunks = [
+      { type: "start", messageId: "a-err" },
+      { type: "text-start", id: "t1" },
+      { type: "text-delta", id: "t1", delta: "partial" },
+    ];
     const erroringSource = {
       toUIMessageStream() {
+        let i = 0;
         return new ReadableStream({
-          start(controller) {
-            controller.enqueue({ type: "start", messageId: "a-err" });
-            controller.enqueue({ type: "text-start", id: "t1" });
-            controller.enqueue({ type: "text-delta", id: "t1", delta: "partial" });
-            controller.error(new Error("boom"));
+          pull(controller) {
+            if (i < partialChunks.length) {
+              controller.enqueue(partialChunks[i++]);
+            } else {
+              controller.error(new Error("boom"));
+            }
           },
         });
       },
@@ -166,6 +177,9 @@ describe("chat.pipeAndCapture", () => {
       expect(captures[0]!.status).toBe("error");
       expect(captures[0]!.error).toBeInstanceOf(Error);
       expect((captures[0]!.error as Error).message).toBe("boom");
+      // The partial that streamed before the failure is reconstructed from the
+      // buffered chunks even though onFinish never fired on this hard-error path.
+      expect(extractText(captures[0]!.message)).toBe("partial");
     } finally {
       await harness.close();
     }

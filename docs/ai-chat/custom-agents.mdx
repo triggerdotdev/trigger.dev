@@ -216,7 +216,7 @@ For full control, skip `createSession` and compose the primitives directly:
 | `chat.messages`                 | Input stream for incoming messages — use `.waitWithIdleTimeout()` to wait for the next turn  |
 | `chat.createStopSignal()`       | Create a managed stop signal wired to the stop input stream                                  |
 | `chat.pipeAndCapture(result)`   | Pipe a stream and capture the response; returns `{ message, status, error }`                 |
-| `chat.writeTurnComplete()`      | Signal the frontend that the current turn is complete; returns `{ lastEventId }`             |
+| `chat.writeTurnComplete()`      | Signal turn complete; returns `{ lastEventId, sessionInEventId }` resume cursors             |
 | `chat.MessageAccumulator`       | Accumulates conversation messages across turns                                               |
 | `chat.pipe(stream)`             | Pipe a stream to the frontend (no response capture)                                          |
 | `chat.cleanupAbortedParts(msg)` | Clean up incomplete parts from a stopped response                                            |
