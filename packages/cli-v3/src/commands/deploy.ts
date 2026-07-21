@@ -1351,10 +1351,24 @@ async function handleNativeBuildServerDeploy({
     await writeJSONFile(join(destination.path, BUNDLE_BUILD_ARGS_FILE), {
       env: buildManifest.build.env ?? {},
     });
-    await writeFile(
-      join(destination.path, ".dockerignore"),
-      `${BUNDLE_BUILD_ARGS_FILE}\n.dockerignore\n`
+
+    // Append to a .dockerignore a build extension may have produced, never clobber it
+    const dockerignorePath = join(destination.path, ".dockerignore");
+    const [, existingDockerignore] = await tryCatch(readFile(dockerignorePath, "utf-8"));
+    const dockerignoreEntries = [BUNDLE_BUILD_ARGS_FILE, ".dockerignore"].filter(
+      (entry) => !existingDockerignore?.split("\n").includes(entry)
     );
+    if (dockerignoreEntries.length > 0) {
+      await writeFile(
+        dockerignorePath,
+        `${existingDockerignore ? existingDockerignore.trimEnd() + "\n" : ""}${dockerignoreEntries.join("\n")}\n`
+      );
+    }
+
+    if (options.dryRun) {
+      logger.info(`Dry run complete. View the built bundle at ${destination.path}`);
+      return;
+    }
   }
 
   const $deploymentSpinner = spinner();
@@ -1441,7 +1455,9 @@ async function handleNativeBuildServerDeploy({
     userId,
     gitMeta,
     type: config.features.run_engine_v2 ? "MANAGED" : "V1",
-    runtime: bundleManifest?.runtime ?? config.runtime,
+    // Deliberately config.runtime (not the resolved manifest runtime) so the persisted
+    // value is identical to classic native deploys.
+    runtime: config.runtime,
     isNativeBuild: true,
     artifactKey,
     skipPromotion: options.skipPromotion,
