@@ -134,7 +134,8 @@ export type ChartLineRendererProps = {
    */
   warningOverlay?:
     | { threshold: number; color?: string }
-    | { series: string; below: string; color?: string };
+    | { series: string; below: string; color?: string }
+    | { series: string; atOrAbove: string; color?: string };
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
@@ -319,6 +320,11 @@ export function ChartLineRenderer({
             // "Not keeping up": the series dips below its companion (e.g. started < enqueued).
             const b = Number(r[warningOverlay.below]);
             return Number.isFinite(b) && v < b;
+          }
+          if ("atOrAbove" in warningOverlay!) {
+            // "At the limit": the series reaches or exceeds its companion (e.g. running >= limit).
+            const b = Number(r[warningOverlay.atOrAbove]);
+            return Number.isFinite(b) && b > 0 && v >= b;
           }
           return v > warningOverlay!.threshold;
         };

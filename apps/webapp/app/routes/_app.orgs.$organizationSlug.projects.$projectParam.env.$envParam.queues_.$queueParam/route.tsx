@@ -367,6 +367,8 @@ function OverviewCharts({
             { key: "limit", label: "Limit", color: COLORS.limit },
             { key: "running", label: "Running", color: COLORS.running },
           ]}
+          // Recolour Running warning where it reaches the limit (saturated), matching the tooltip.
+          warningOverlay={{ series: "running", atOrAbove: "limit" }}
           // The limit is a config value emitted only while the queue is active; back-fill its
           // leading zeros so the reference line doesn't start with a false 0→limit step.
           carryBackfill={["limit"]}

@@ -94,7 +94,7 @@ type QueueMetricChartProps = {
   fillGaps?: boolean;
   defaultPeriod?: string;
   /** Recolor a series warning where it drops below another (e.g. started below enqueued). */
-  warningOverlay?: { series: string; below: string };
+  warningOverlay?: { series: string; below: string } | { series: string; atOrAbove: string };
   /**
    * Series whose leading zeros should be back-filled with the first real value. Gauge series that
    * are only emitted while the queue is active (e.g. the concurrency `limit`) read as 0 before the
