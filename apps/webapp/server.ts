@@ -1,13 +1,13 @@
 import "./sentry.server";
 
 import { createRequestHandler } from "@remix-run/express";
-import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
 import compression from "compression";
 import type { Server as EngineServer } from "engine.io";
 import express, { type RequestHandler } from "express";
 import morgan from "morgan";
 import { nanoid } from "nanoid";
 import path from "path";
+import { pathToFileURL } from "node:url";
 import type { Server as IoServer } from "socket.io";
 import type { WebSocketServer } from "ws";
 import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
@@ -74,6 +74,12 @@ function installPrimarySignalHandlers() {
   });
 }
 
+// Bundled to CJS (esbuild rewrites import() to require); vite and the Remix
+// server bundle are ESM, so load them via a real dynamic import.
+const dynamicImport = new Function("specifier", "return import(specifier)") as (
+  specifier: string
+) => Promise<any>;
+
 if (ENABLE_CLUSTER && cluster.isPrimary) {
   process.title = `node webapp-server primary`;
   console.log(`[cluster] Primary ${process.pid} is starting with ${WORKERS} workers`);
@@ -92,6 +98,13 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
 
   installPrimarySignalHandlers();
 } else {
+  startServer().catch((error) => {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  });
+}
+
+async function startServer() {
   const app = express();
 
   if (process.env.DISABLE_COMPRESSION !== "1") {
@@ -101,16 +114,32 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
   // http://expressjs.com/en/advanced/best-practice-security.html#at-a-minimum-disable-x-powered-by-header
   app.disable("x-powered-by");
 
-  // Remix fingerprints its assets so we can cache forever.
-  app.use("/build", express.static("public/build", { immutable: true, maxAge: "1y" }));
-  // Stale dev builds can request an old hashed manifest; don't fall through to Remix.
-  app.use("/build", (_req, res) => {
-    res.status(404).end();
-  });
+  const MODE = process.env.NODE_ENV;
 
-  // Everything else (like favicon.ico) is cached for an hour. You may want to be
-  // more aggressive with this caching.
-  app.use(express.static("public", { maxAge: "1h" }));
+  // In development, Vite serves assets (and handles HMR) via middleware.
+  // Only NODE_ENV=development boots Vite — scripts that run the built server
+  // without NODE_ENV (start:local, dev:worker) must serve the build.
+  const viteDevServer =
+    MODE === "development"
+      ? await dynamicImport("vite").then((vite) =>
+          vite.createServer({ server: { middlewareMode: true } })
+        )
+      : undefined;
+
+  if (viteDevServer) {
+    app.use(viteDevServer.middlewares);
+  } else {
+    // Vite fingerprints its assets so we can cache forever.
+    app.use("/assets", express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
+    // Stale clients can request an old hashed asset; hard-404 instead of falling
+    // through to Remix and answering a .js request with HTML.
+    app.use("/assets", (_req, res) => {
+      res.status(404).end();
+    });
+    // Everything else (like favicon.ico) is cached for an hour. You may want to be
+    // more aggressive with this caching.
+    app.use(express.static("build/client", { maxAge: "1h" }));
+  }
 
   // On high-volume machine-ingest services (e.g. otel) the per-request access
   // log dominates log volume. HTTP_ACCESS_LOG_DISABLED suppresses successful
@@ -127,9 +156,17 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     ? `node webapp-worker-${cluster.isWorker ? cluster.worker?.id : "solo"}`
     : "node webapp-server";
 
-  const MODE = process.env.NODE_ENV;
-  const BUILD_DIR = path.join(process.cwd(), "build");
-  const build = require(BUILD_DIR);
+  const loadBuild = () => {
+    if (viteDevServer) {
+      return viteDevServer.ssrLoadModule("virtual:remix/server-build");
+    }
+    return dynamicImport(
+      pathToFileURL(path.join(process.cwd(), "build", "server", "index.mjs")).href
+    );
+  };
+
+  // Boots the entry.server singletons (socket.io, wss, rate limiters).
+  const build = await loadBuild();
 
   const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
@@ -207,7 +244,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         "*",
         // @ts-ignore
         createRequestHandler({
-          build,
+          build: viteDevServer ? loadBuild : build,
           mode: MODE,
         })
       );
@@ -220,7 +257,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         "/healthcheck",
         // @ts-ignore
         createRequestHandler({
-          build,
+          build: viteDevServer ? loadBuild : build,
           mode: MODE,
         })
       );
@@ -232,12 +269,6 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
           ENABLE_CLUSTER && cluster.isWorker ? ` [worker ${cluster.worker?.id}/${process.pid}]` : ""
         }`
       );
-
-      if (MODE === "development") {
-        broadcastDevReady(build)
-          .then(() => logDevReady(build))
-          .catch(console.error);
-      }
     });
 
     server.keepAliveTimeout = HTTP_KEEPALIVE_TIMEOUT_MS;
@@ -259,6 +290,8 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
           console.log("Express server closed gracefully.");
         }
       });
+      // Dev-only: release Vite's file watchers and HMR websocket
+      viteDevServer?.close();
     }
 
     process.on("SIGTERM", closeServer);
@@ -304,7 +337,6 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
       });
     });
   } else {
-    require(BUILD_DIR);
     console.log(`✅ app ready (skipping http server)`);
   }
 }

@@ -1,7 +1,7 @@
-// Recovers from a rolling deploy rotating the content-hashed /build assets out from
+// Recovers from a rolling deploy rotating the content-hashed /assets files out from
 // under a page. Each image serves only its own build and hard-404s unknown hashes, so
 // a client can request a hash the serving replica doesn't have and get missing styles
-// or a failed asset load. On such a /build load failure we do a bounded full document
+// or a failed asset load. On such an asset load failure we do a bounded full document
 // reload: the fresh document (and, under sticky routing, all of its assets) lands on a
 // single live build, so the asset resolves. Bounded via sessionStorage so it can never
 // loop; when the budget is spent it stops rather than reloading forever.
@@ -39,7 +39,7 @@ export function staleAssetRecoveryScript() {
   }
 
   function recover() {
-    // One recovery per page: a broken load fails several /build assets at once and each
+    // One recovery per page: a broken load fails several hashed assets at once and each
     // fires its own error event before location.reload() commits — without this guard a
     // single incident would burn the entire reload budget.
     if (recovering) return;
@@ -62,7 +62,9 @@ export function staleAssetRecoveryScript() {
           : el.tagName === "SCRIPT"
             ? (el as HTMLScriptElement).src
             : null;
-      if (url && url.indexOf("/build/") !== -1) recover();
+      // Match the pathname, not the full URL — a query string or third-party
+      // URL containing /assets/ must not burn the reload budget.
+      if (url && new URL(url, location.href).pathname.indexOf("/assets/") !== -1) recover();
     },
     true
   );

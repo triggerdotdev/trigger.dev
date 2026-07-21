@@ -2,6 +2,8 @@
   "include": ["src/**/*.ts"],
   "exclude": ["src/**/*.test.ts"],
   "compilerOptions": {
+    "types": ["node"],
+    "rootDir": ".",
     "composite": true,
     "target": "ES2019",
     "lib": ["ES2019", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],

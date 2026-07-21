@@ -5,6 +5,9 @@ packages:
   - "docs"
   - "!packages/cli-v3/e2e/**"
 
+catalog:
+  typescript: 6.0.3
+
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   - "@trigger.dev/platform"

@@ -1,0 +1,12 @@
+diff --git a/dist/rollup.js b/dist/rollup.js
+index cc82363..924f57f 100644
+--- a/dist/rollup.js
++++ b/dist/rollup.js
+@@ -6791,7 +6791,6 @@ var getRollupConfig = async (options) => {
+           tsconfig: options.tsconfig,
+           compilerOptions: {
+             ...compilerOptions,
+-            baseUrl: compilerOptions.baseUrl || ".",
+             // Ensure ".d.ts" modules are generated
+             declaration: true,
+             // Skip ".js" generation

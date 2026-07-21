@@ -10,7 +10,6 @@ import {
 } from "@heroicons/react/20/solid";
 import type { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
-import { logger } from "~/services/logger.server";
 import { cn } from "~/utils/cn";
 
 export const AvatarType = z.enum(["icon", "letters", "image"]);
@@ -45,7 +44,7 @@ export function parseAvatar(json: Prisma.JsonValue, defaultAvatar: Avatar): Avat
   const parsed = AvatarData.safeParse(json);
 
   if (!parsed.success) {
-    logger.error("Invalid org avatar", { json, error: parsed.error });
+    console.error("Invalid org avatar", { json, error: parsed.error });
     return defaultAvatar;
   }
 

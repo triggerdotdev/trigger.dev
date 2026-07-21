@@ -10,7 +10,8 @@ import {
   createLoaderPATApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
-import { isCuid } from "cuid";
+import cuid from "cuid";
+const { isCuid } = cuid;
 
 const ParamsSchema = z.object({
   orgParam: z.string(),

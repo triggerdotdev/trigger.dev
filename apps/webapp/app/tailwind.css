@@ -1,6 +1,3 @@
-@import url("non.geist");
-@import url("non.geist/mono");
-
 @import "react-grid-layout/css/styles.css" layer(base);
 @import "react-resizable/css/styles.css" layer(base);
 

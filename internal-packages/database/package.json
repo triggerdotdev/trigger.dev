@@ -23,7 +23,7 @@
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
     "typecheck": "tsc --noEmit",
-    "build": "pnpm run clean && tsc --noEmit false --outDir dist --declaration",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc --noEmit false --outDir dist --declaration --watch"
   }
 }

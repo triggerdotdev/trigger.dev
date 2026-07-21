@@ -8,7 +8,7 @@ const ParamsSchema = z.object({
   errorId: z.string(),
 });
 
-export const { action, loader } = createActionApiRoute(
+const route = createActionApiRoute(
   {
     params: ParamsSchema,
     method: "POST",
@@ -40,3 +40,6 @@ export const { action, loader } = createActionApiRoute(
     return json(updated);
   }
 );
+
+export const action = route.action;
+export const loader = route.loader;

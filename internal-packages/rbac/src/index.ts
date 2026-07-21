@@ -91,7 +91,8 @@ class LazyController implements RoleBaseAccessController {
     }
     const moduleName = "@triggerdotdev/plugins/rbac";
     try {
-      const module = await import(moduleName);
+      // Optional plugin, resolved at runtime only
+      const module = await import(/* @vite-ignore */ moduleName);
       const plugin: RoleBasedAccessControlPlugin = module.default;
       console.log("RBAC: using plugin implementation");
       return plugin.create({
