@@ -183,6 +183,7 @@ export class InitializeDeploymentService extends BaseService {
                     skipPromotion: payload.skipPromotion,
                     configFilePath: payload.configFilePath,
                     skipEnqueue: payload.skipEnqueue,
+                    fromBundle: payload.fromBundle,
                   }
                 : {}),
             }
@@ -276,6 +277,7 @@ export class InitializeDeploymentService extends BaseService {
           .enqueueBuild(environment, deployment, payload.artifactKey, {
             skipPromotion: payload.skipPromotion,
             configFilePath: payload.configFilePath,
+            fromBundle: payload.fromBundle,
           })
           .orElse((error) => {
             logger.error("Failed to enqueue build", {

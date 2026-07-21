@@ -996,6 +996,7 @@ export async function enqueueBuild(
   options: {
     skipPromotion?: boolean;
     configFilePath?: string;
+    fromBundle?: boolean;
   }
 ) {
   if (!client) return undefined;
