@@ -114,6 +114,9 @@ export default function Page() {
   const currentPlan = useCurrentPlan();
   const billingLimit = useBillingLimit();
   const planLimitCents = currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 0;
+  // Enterprise bills against prepaid credits, not a per-month included-usage tier,
+  // so the "Included usage" marker doesn't apply.
+  const isEnterprise = currentPlan?.v3Subscription?.plan?.type === "enterprise";
   const billingLimitDollars = isCurrentMonth
     ? getUsageBarBillingLimitDollars(billingLimit, planLimitCents)
     : undefined;
@@ -157,7 +160,7 @@ export default function Page() {
               <div className="flex flex-col gap-1 border-t border-grid-dimmed p-3">
                 <div className="flex items-end gap-8">
                   <div className="flex flex-col gap-1">
-                    <Header2 className="whitespace-nowrap">Promo credits</Header2>
+                    <Header2 className="whitespace-nowrap">Credits</Header2>
                     <p className="whitespace-nowrap text-3xl font-medium text-text-bright">
                       {formatCurrency(promoCredits.remainingCents / 100, false)}
                     </p>
@@ -215,7 +218,9 @@ export default function Page() {
                       <UsageBar
                         current={usage.overall.current}
                         isPaying={currentPlan?.v3Subscription?.isPaying ?? false}
-                        tierLimit={isCurrentMonth ? planLimitCents / 100 : undefined}
+                        tierLimit={
+                          isCurrentMonth && !isEnterprise ? planLimitCents / 100 : undefined
+                        }
                         billingLimit={billingLimitDollars}
                       />
                     </div>
