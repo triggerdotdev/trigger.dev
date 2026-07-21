@@ -1,5 +1,13 @@
 # internal-platform
 
+## 4.5.6
+
+### Patch Changes
+
+- Prevent prototype pollution when applying run metadata operations or reconstructing nested telemetry attributes, while preserving legitimate `constructor` and `prototype` fields. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Require explicit browser approval for CLI and MCP login, with resilient polling while approval is pending. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Add helpers to mint and verify the deployment-scoped token used to authenticate run controllers to the platform. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+
 ## 4.5.5
 
 ### Patch Changes
