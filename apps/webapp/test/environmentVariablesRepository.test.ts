@@ -180,4 +180,80 @@ describe("EnvironmentVariablesRepository.getVariableValuesForKeys", () => {
 
     expect(crossProjectRequest.size).toBe(0);
   });
+
+  postgresTest(
+    "create() rejects a mix of in-project and foreign environmentIds without writing foreign values",
+    async ({ prisma }) => {
+      const {
+        user,
+        organization,
+        project: projectA,
+      } = await createTestOrgProjectWithMember(prisma);
+
+      const projectB = await prisma.project.create({
+        data: {
+          name: "Project B",
+          slug: `proj-b-${Date.now()}`,
+          organizationId: organization.id,
+          externalRef: `ext-b-${Date.now()}`,
+        },
+      });
+
+      const envA = await createRuntimeEnvironment(prisma, {
+        projectId: projectA.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+      const envB = await createRuntimeEnvironment(prisma, {
+        projectId: projectB.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+
+      // Caller scoped to projectA supplies a mixed array: an in-project env
+      // (envA) plus a foreign one (envB). The whole request must be refused.
+      const result = await repository.create(projectA.id, {
+        override: true,
+        environmentIds: [envA.id, envB.id],
+        variables: [{ key: "CROSS_TENANT", value: "x" }],
+        isSecret: false,
+        lastUpdatedBy: { type: "user", userId: user.id },
+      });
+
+      expect(result.success).toBe(false);
+
+      // No value row may have been written against the foreign environment.
+      const foreignValues = await prisma.environmentVariableValue.findMany({
+        where: { environmentId: envB.id },
+      });
+      expect(foreignValues).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
+    "create() still succeeds for an all-in-project environmentIds array",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+
+      const environment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+
+      const result = await repository.create(project.id, {
+        override: true,
+        environmentIds: [environment.id],
+        variables: [{ key: "OK_KEY", value: "v" }],
+        isSecret: false,
+        lastUpdatedBy: { type: "user", userId: user.id },
+      });
+
+      expect(result.success).toBe(true);
+    }
+  );
 });

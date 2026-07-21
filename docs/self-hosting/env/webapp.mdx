@@ -11,7 +11,8 @@ mode: "wide"
 | `SESSION_SECRET`                                 | Yes      | —                     | Session encryption secret. Run: `openssl rand -hex 16`                                                             |
 | `MAGIC_LINK_SECRET`                              | Yes      | —                     | Magic link encryption secret. Run: `openssl rand -hex 16`                                                          |
 | `ENCRYPTION_KEY`                                 | Yes      | —                     | Secret store encryption key. Run: `openssl rand -hex 16`                                                           |
-| `MANAGED_WORKER_SECRET`                          | No       | managed-secret        | Managed worker secret. Should be changed and match supervisor.                                                     |
+| `MANAGED_WORKER_SECRET`                          | Yes      | —                     | Managed worker secret. Must be set and match supervisor. Run: `openssl rand -hex 32`                               |
+| `ALLOW_INSECURE_DEFAULT_SECRETS`                 | No       | false                 | Boot even if a secret is still a known-insecure published default. Temporary escape hatch for values you can't safely rotate yet (see [Secret generation and rotation](/self-hosting/kubernetes#secret-generation-and-rotation)). |
 | **Domains & ports**                              |          |                       |                                                                                                                    |
 | `REMIX_APP_PORT`                                 | No       | 3030                  | Remix app port.                                                                                                    |
 | `APP_ORIGIN`                                     | Yes      | http://localhost:3030 | App origin URL.                                                                                                    |

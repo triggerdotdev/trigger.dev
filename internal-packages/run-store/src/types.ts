@@ -673,7 +673,10 @@ export interface RunStore {
   // Snapshot group
   findLatestExecutionSnapshot(
     runId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    // When set, scopes the read to this environment (tenant boundary); a run in another env reads as
+    // not-found. Omit to read regardless of environment (internal callers).
+    environmentId?: string
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null>;

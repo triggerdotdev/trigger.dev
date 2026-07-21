@@ -44,6 +44,8 @@ export interface WorkloadManagerCreateOptions {
   deploymentVersion: string;
   // Canonical runtime identifier (e.g. "node", "node-22", "node-24")
   runtime?: string;
+  // When set, overrides the TRIGGER_DEPLOYMENT_ID value the runner forwards as its identity header.
+  deploymentToken?: string;
   runId: string;
   runFriendlyId: string;
   snapshotId: string;

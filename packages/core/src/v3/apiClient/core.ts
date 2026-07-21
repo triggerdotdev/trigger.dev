@@ -725,6 +725,13 @@ export type ApiResult<TSuccessResult> =
   | {
       success: false;
       error: string;
+      /**
+       * HTTP status code, when the failure originated from an API response
+       * (e.g. 429 for rate limiting). Undefined for connection/transport
+       * errors that never reached the server. Lets callers distinguish
+       * transient failures worth retrying from fatal ones.
+       */
+      statusCode?: number;
     };
 
 export async function wrapZodFetch<T extends z.ZodTypeAny>(
@@ -754,6 +761,7 @@ export async function wrapZodFetch<T extends z.ZodTypeAny>(
       return {
         success: false,
         error: error.message,
+        statusCode: error.status,
       };
     } else if (error instanceof Error) {
       return {

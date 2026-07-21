@@ -54,11 +54,13 @@ services:
       REALTIME_STREAMS_S2_ENDPOINT: ${REALTIME_STREAMS_S2_ENDPOINT:-http://s2/v1}
       REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: ${REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS:-true}
       REALTIME_STREAMS_S2_ACCESS_TOKEN: ${REALTIME_STREAMS_S2_ACCESS_TOKEN:-}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
-      DIRECT_URL: ${DIRECT_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/main?schema=public&sslmode=disable}
+      DIRECT_URL: ${DIRECT_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/main?schema=public&sslmode=disable}
       SESSION_SECRET: ${SESSION_SECRET}
       MAGIC_LINK_SECRET: ${MAGIC_LINK_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      PROVIDER_SECRET: ${PROVIDER_SECRET}
+      COORDINATOR_SECRET: ${COORDINATOR_SECRET}
       MANAGED_WORKER_SECRET: ${MANAGED_WORKER_SECRET}
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -78,11 +80,11 @@ services:
       TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: bootstrap
       TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
       # ClickHouse configuration
-      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://default:password@clickhouse:8123?secure=false}
+      CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://default:${CLICKHOUSE_PASSWORD}@clickhouse:8123?secure=false}
       CLICKHOUSE_LOG_LEVEL: ${CLICKHOUSE_LOG_LEVEL:-info}
       # Run replication
       RUN_REPLICATION_ENABLED: ${RUN_REPLICATION_ENABLED:-1}
-      RUN_REPLICATION_CLICKHOUSE_URL: ${RUN_REPLICATION_CLICKHOUSE_URL:-http://default:password@clickhouse:8123}
+      RUN_REPLICATION_CLICKHOUSE_URL: ${RUN_REPLICATION_CLICKHOUSE_URL:-http://default:${CLICKHOUSE_PASSWORD}@clickhouse:8123}
       RUN_REPLICATION_LOG_LEVEL: ${RUN_REPLICATION_LOG_LEVEL:-info}
       # Limits
       # TASK_PAYLOAD_OFFLOAD_THRESHOLD: 524288 # 512KB
@@ -109,7 +111,7 @@ services:
       - wal_level=logical
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env - run ./generate-secrets.sh}
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
@@ -144,7 +146,7 @@ services:
     networks:
       - webapp
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/main?schema=public&sslmode=disable}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/main?schema=public&sslmode=disable}
       ELECTRIC_INSECURE: true
       ELECTRIC_USAGE_REPORTING: false
     healthcheck:
@@ -163,7 +165,7 @@ services:
       - ${CLICKHOUSE_PUBLISH_IP:-127.0.0.1}:9090:9000
     environment:
       CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:-password}
+      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env - run ./generate-secrets.sh}
     volumes:
       - clickhouse:/bitnami/clickhouse
       - ../clickhouse/override.xml:/bitnami/clickhouse/etc/config.d/override.xml:ro
@@ -181,7 +183,7 @@ services:
           "--user",
           "${CLICKHOUSE_USER:-default}",
           "--password",
-          "${CLICKHOUSE_PASSWORD:-password}",
+          "${CLICKHOUSE_PASSWORD}",
           "--query",
           "SELECT 1",
         ]
@@ -224,8 +226,8 @@ services:
     volumes:
       - minio:/bitnami/minio/data
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-very-safe-password}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-${OBJECT_STORE_ACCESS_KEY_ID:-admin}}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-${OBJECT_STORE_SECRET_ACCESS_KEY:?Set OBJECT_STORE_SECRET_ACCESS_KEY in .env - run ./generate-secrets.sh}}
       MINIO_DEFAULT_BUCKETS: packets
       MINIO_BROWSER: "on"
     healthcheck:

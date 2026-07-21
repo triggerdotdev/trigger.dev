@@ -147,6 +147,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     const wss: WebSocketServer | undefined = build.entry.module.wss;
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
+    const otlpRateLimiter: RequestHandler = build.entry.module.otlpRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
     const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
 
@@ -198,6 +199,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
 
       app.use(apiRateLimiter);
       app.use(engineRateLimiter);
+      app.use(otlpRateLimiter);
 
       app.use(tenantContextMiddleware);
 

@@ -300,6 +300,7 @@ export class RunAttemptSystem {
     workerId,
     runnerId,
     isWarmStart,
+    environmentId,
     tx,
   }: {
     runId: string;
@@ -307,6 +308,7 @@ export class RunAttemptSystem {
     workerId?: string;
     runnerId?: string;
     isWarmStart?: boolean;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<StartRunAttemptResult> {
     const prisma = tx ?? this.$.prisma;
@@ -316,7 +318,12 @@ export class RunAttemptSystem {
       "startRunAttempt",
       async (span) => {
         return this.$.runLock.lock("startRunAttempt", [runId], async () => {
-          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+          const latestSnapshot = await getLatestExecutionSnapshot(
+            prisma,
+            runId,
+            this.$.runStore,
+            environmentId
+          );
 
           if (latestSnapshot.id !== snapshotId) {
             //if there is a big delay between the snapshot and the attempt, the snapshot might have changed
@@ -643,12 +650,14 @@ export class RunAttemptSystem {
     completion,
     workerId,
     runnerId,
+    environmentId,
   }: {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
     await this.#notifyMetadataUpdated(runId, completion);
 
@@ -661,6 +670,7 @@ export class RunAttemptSystem {
           tx: this.$.prisma,
           workerId,
           runnerId,
+          environmentId,
         });
       }
       case false: {
@@ -671,6 +681,7 @@ export class RunAttemptSystem {
           tx: this.$.prisma,
           workerId,
           runnerId,
+          environmentId,
         });
       }
     }
@@ -683,6 +694,7 @@ export class RunAttemptSystem {
     tx,
     workerId,
     runnerId,
+    environmentId,
   }: {
     runId: string;
     snapshotId: string;
@@ -690,6 +702,7 @@ export class RunAttemptSystem {
     tx: PrismaClientOrTransaction;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = tx ?? this.$.prisma;
 
@@ -698,7 +711,12 @@ export class RunAttemptSystem {
       "#completeRunAttemptSuccess",
       async (span) => {
         return this.$.runLock.lock("attemptSucceeded", [runId], async () => {
-          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+          const latestSnapshot = await getLatestExecutionSnapshot(
+            prisma,
+            runId,
+            this.$.runStore,
+            environmentId
+          );
 
           if (latestSnapshot.id !== snapshotId) {
             throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);
@@ -868,6 +886,7 @@ export class RunAttemptSystem {
     runnerId,
     completion,
     forceRequeue,
+    environmentId,
     tx,
   }: {
     runId: string;
@@ -876,6 +895,7 @@ export class RunAttemptSystem {
     runnerId?: string;
     completion: TaskRunFailedExecutionResult;
     forceRequeue?: boolean;
+    environmentId?: string;
     tx: PrismaClientOrTransaction;
   }): Promise<CompleteRunAttemptResult> {
     const prisma = this.$.prisma;
@@ -885,7 +905,12 @@ export class RunAttemptSystem {
       "completeRunAttemptFailure",
       async (span) => {
         return this.$.runLock.lock("attemptFailed", [runId], async () => {
-          const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
+          const latestSnapshot = await getLatestExecutionSnapshot(
+            prisma,
+            runId,
+            this.$.runStore,
+            environmentId
+          );
 
           if (latestSnapshot.id !== snapshotId) {
             throw new ServiceValidationError("Snapshot ID doesn't match the latest snapshot", 400);

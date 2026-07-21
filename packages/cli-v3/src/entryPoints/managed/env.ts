@@ -27,6 +27,9 @@ const Env = z.object({
 
   // Set at runtime
   TRIGGER_DEPLOYMENT_ID: z.string(),
+  // Plain deployment friendlyId for telemetry. Optional: older supervisors don't set it, in which
+  // case we fall back to TRIGGER_DEPLOYMENT_ID.
+  TRIGGER_DEPLOYMENT_FRIENDLY_ID: z.string().optional(),
   TRIGGER_DEPLOYMENT_VERSION: z.string(),
   TRIGGER_WORKLOAD_CONTROLLER_ID: z.string().default(`controller_${randomUUID()}`),
   TRIGGER_ENV_ID: z.string(),
@@ -74,6 +77,11 @@ export class RunnerEnv {
     return this.env;
   }
 
+  // TRIGGER_DEPLOYMENT_ID carries the deployment token; redact it before logging.
+  get rawForLogging() {
+    return { ...this.env, TRIGGER_DEPLOYMENT_ID: "[redacted]" };
+  }
+
   // Base environment variables
   get NODE_ENV() {
     return this.env.NODE_ENV;
@@ -92,6 +100,9 @@ export class RunnerEnv {
   }
   get TRIGGER_DEPLOYMENT_ID() {
     return this.env.TRIGGER_DEPLOYMENT_ID;
+  }
+  get TRIGGER_DEPLOYMENT_FRIENDLY_ID() {
+    return this.env.TRIGGER_DEPLOYMENT_FRIENDLY_ID;
   }
   get TRIGGER_DEPLOYMENT_VERSION() {
     return this.env.TRIGGER_DEPLOYMENT_VERSION;

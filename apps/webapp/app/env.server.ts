@@ -85,6 +85,29 @@ const S2EnvSchema = z.preprocess(
   ])
 );
 
+// Previously published secret values must never be accepted, including when
+// an existing deployment or external secret manager still supplies one.
+const INSECURE_SECRET_VALUES = [
+  "managed-secret",
+  "2818143646516f6fffd707b36f334bbb",
+  "44da78b7bbb0dfe709cf38931d25dcdd",
+  "f686147ab967943ebbe9ed3b496e465a",
+  "447c29678f9eaf289e9c4b70d3dd8a7f",
+];
+
+// Escape hatch for deployments that can't rotate a published default yet (e.g.
+// ENCRYPTION_KEY protects existing data). Read raw: a refine can't see the
+// sibling parsed flag.
+const allowInsecureDefaultSecrets = ["true", "1"].includes(
+  (process.env.ALLOW_INSECURE_DEFAULT_SECRETS ?? "").toLowerCase().trim()
+);
+
+const isNotInsecureSecret = (value: string) =>
+  allowInsecureDefaultSecrets || !INSECURE_SECRET_VALUES.includes(value);
+
+const INSECURE_SECRET_MESSAGE =
+  "must not be a known-insecure published default; set a strong, unique value. If you cannot rotate it yet (e.g. it protects existing encrypted data or active sessions), set ALLOW_INSECURE_DEFAULT_SECRETS=1 to boot while you migrate.";
+
 const EnvironmentSchema = z
   .object({
     NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -188,14 +211,15 @@ const EnvironmentSchema = z
     // Control-plane cache relax knobs. Unset -> defaults (DEFAULT_CP_CACHE_TTL_MS / _MAX_ENTRIES).
     CONTROL_PLANE_CACHE_TTL_MS: z.coerce.number().int().optional(),
     CONTROL_PLANE_CACHE_MAX_ENTRIES: z.coerce.number().int().optional(),
-    SESSION_SECRET: z.string(),
-    MAGIC_LINK_SECRET: z.string(),
+    SESSION_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    MAGIC_LINK_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     ENCRYPTION_KEY: z
       .string()
       .refine(
         (val) => Buffer.from(val, "utf8").length === 32,
         "ENCRYPTION_KEY must be exactly 32 bytes"
-      ),
+      )
+      .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     WHITELISTED_EMAILS: z
       .string()
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
@@ -547,6 +571,22 @@ const EnvironmentSchema = z
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
+    // Per-IP rate limit for the unauthenticated OTLP ingestion endpoints
+    // (/otel/*). Bounds unauthenticated request rates. Opt-in
+    // (disabled by default): because it keys on the source IP, it is only
+    // safe to enable when each client presents a distinct IP through a proxy
+    // that appends the real client IP to X-Forwarded-For. Enabling it where
+    // many clients share one egress IP (e.g. behind NAT or a shared proxy)
+    // would collapse that traffic into a single bucket and could throttle
+    // legitimate telemetry. Set OTLP_RATE_LIMIT_ENABLED=1 to enable, then tune
+    // OTLP_RATE_LIMIT_MAX / OTLP_RATE_LIMIT_WINDOW for expected volume.
+    OTLP_RATE_LIMIT_ENABLED: z.string().default("0"),
+    OTLP_RATE_LIMIT_WINDOW: z
+      .string()
+      .regex(/^\d+ ?(?:ms|s|m|h|d)$/)
+      .default("1m"),
+    OTLP_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(3000),
+
     DEPOT_TOKEN: z.string().optional(),
     DEPOT_ORG_ID: z.string().optional(),
     DEPOT_REGION: z.string().default("us-east-1"),
@@ -668,7 +708,18 @@ const EnvironmentSchema = z
     EVENTS_LOAD_SHEDDING_THRESHOLD: z.coerce.number().int().default(100000),
     EVENTS_LOAD_SHEDDING_ENABLED: z.string().default("1"),
 
-    MANAGED_WORKER_SECRET: z.string().default("managed-secret"),
+    MANAGED_WORKER_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+
+    // Allow booting with a known-insecure published default secret. Temporary
+    // bridge for deployments that can't rotate yet; rotate as soon as possible.
+    ALLOW_INSECURE_DEFAULT_SECRETS: BoolEnv.default(false),
+
+    // Tenant scoping on worker actions is header-driven (folded into the engine snapshot read) and
+    // needs no flag. This is only the no-header fallback: when "1", a worker action on a run created
+    // after WORKLOAD_TOKEN_CUTOFF without a verified env header is rejected; runs on or before the
+    // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
+    WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
+    WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
 
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
@@ -2090,3 +2141,24 @@ const EnvironmentSchema = z
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
 export const env = EnvironmentSchema.parse(process.env);
+
+if (env.ALLOW_INSECURE_DEFAULT_SECRETS) {
+  const insecure = (
+    [
+      ["SESSION_SECRET", env.SESSION_SECRET],
+      ["MAGIC_LINK_SECRET", env.MAGIC_LINK_SECRET],
+      ["ENCRYPTION_KEY", env.ENCRYPTION_KEY],
+      ["MANAGED_WORKER_SECRET", env.MANAGED_WORKER_SECRET],
+    ] as const
+  )
+    .filter(([, value]) => INSECURE_SECRET_VALUES.includes(value))
+    .map(([name]) => name);
+
+  if (insecure.length > 0) {
+    console.warn(
+      `⚠️  ALLOW_INSECURE_DEFAULT_SECRETS is enabled and these secrets still use a known-insecure published default: ${insecure.join(
+        ", "
+      )}. This is insecure - rotate them as soon as you can.`
+    );
+  }
+}

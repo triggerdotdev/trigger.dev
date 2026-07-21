@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.5.6
+
+### Patch Changes
+
+- Require explicit browser approval for CLI and MCP login, with resilient polling while approval is pending. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Deployed task telemetry now reports the deployment identifier (e.g. `deployment_abc123`) in the `worker.id` attribute, instead of an opaque internal value. Upgrade to get the readable identifier in your own OpenTelemetry exporters. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+  - `@trigger.dev/build@4.5.6`
+  - `@trigger.dev/schema-to-json@4.5.6`
+
 ## 4.5.5
 
 ### Patch Changes

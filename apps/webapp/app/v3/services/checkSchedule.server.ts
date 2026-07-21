@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { CronPattern } from "../schedules";
 import { BaseService, ServiceValidationError } from "./baseService.server";
+import { resolveProjectScopedEnvironments } from "./resolveProjectScopedEnvironments";
 import { getLimit } from "~/services/platform.v3.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
@@ -82,7 +83,19 @@ export class CheckScheduleService extends BaseService {
       throw new ServiceValidationError("Project not found");
     }
 
-    const environments = project.environments.filter((env) => environmentIds.includes(env.id));
+    // Reject (don't silently drop) any environmentId that doesn't belong to the
+    // authorized project.
+    const scopedEnvironments = resolveProjectScopedEnvironments(
+      environmentIds,
+      project.environments
+    );
+    if (scopedEnvironments.kind === "foreign") {
+      throw new ServiceValidationError(
+        `Environment ${scopedEnvironments.foreignEnvironmentId} does not belong to this project.`
+      );
+    }
+
+    const environments = scopedEnvironments.environments;
     if (environments.some((env) => env.archivedAt)) {
       throw new ServiceValidationError("Can't add or edit a schedule for an archived branch");
     }

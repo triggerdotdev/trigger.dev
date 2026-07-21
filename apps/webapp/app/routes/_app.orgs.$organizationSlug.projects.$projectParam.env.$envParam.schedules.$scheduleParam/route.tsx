@@ -6,7 +6,6 @@ import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
-import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -78,11 +77,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   // `_format=json` → return JSON instead of redirecting; caller stays put.
   const wantsJson = formData.get("_format") === "json";
 
-  const project = await prisma.project.findFirst({
-    where: {
-      slug: projectParam,
-    },
-  });
+  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
   if (!project) {
     const message = `No project found with slug ${projectParam}`;

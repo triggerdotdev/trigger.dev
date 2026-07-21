@@ -475,7 +475,7 @@ describe("run-trace/span-detail route loaders under a lagging replica", () => {
       const seed = await seedTenant(prisma14, suffix);
       const runId = `run_${CUID_25}`;
       const friendlyId = `run_${suffix}`;
-      const traceId = `trace_${suffix}`;
+      const traceId = "a".repeat(32);
       const userId = `user_${suffix}`;
 
       // The dashboard user, joined to the org so the route's real orgMember check passes.
@@ -538,7 +538,8 @@ describe("run-trace/span-detail route loaders under a lagging replica", () => {
       holder.resolvedEnv = { organizationId: seed.organization.id };
       holder.replicaMarker = { orgMember: prisma14.orgMember };
 
-      const res = (await syncTraceRunsLoader(syncRequest("trace_does_not_exist"))) as Response;
+      const res = (await syncTraceRunsLoader(syncRequest("b".repeat(32)))) as Response;
+      expect(lagged.legacyReplica.wasHit("taskRun")).toBe(true);
       expect(res.status).toBe(404);
     }
   );

@@ -14,8 +14,17 @@ export const Env = z
 
     // Required settings
     TRIGGER_API_URL: z.string().url(),
-    TRIGGER_WORKER_TOKEN: z.string(), // accepts file:// path to read from a file
+    TRIGGER_WORKER_TOKEN: z.string().min(1), // accepts file:// path to read from a file
     MANAGED_WORKER_SECRET: z.string(),
+
+    // Deployment token: sign a token into TRIGGER_DEPLOYMENT_ID at pod creation and verify it on
+    // inbound workload calls. "disabled" = off; "log" = mint + verify + metrics only; "enforce" =
+    // also reject invalid tokens.
+    WORKLOAD_TOKEN_SECRET: z.string().optional(),
+    WORKLOAD_TOKEN_ENFORCEMENT: z.enum(["disabled", "log", "enforce"]).default("disabled"),
+    // Absolute expiry for minted deployment tokens. Deterministic (no wall-clock issued-at) so every
+    // pod of a deployment carries an identical token; bump before this date. Must outlive any run.
+    WORKLOAD_TOKEN_EXP: z.string().datetime().default("2032-01-01T00:00:00.000Z"),
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url(), // set on the runners
 
     // Workload API settings (coordinator mode) - the workload API is what the run controller connects to
@@ -363,6 +372,14 @@ export const Env = z
         code: z.ZodIssueCode.custom,
         message: "TRIGGER_WORKLOAD_API_DOMAIN is required when COMPUTE_SNAPSHOTS_ENABLED is true",
         path: ["TRIGGER_WORKLOAD_API_DOMAIN"],
+      });
+    }
+    if (data.WORKLOAD_TOKEN_ENFORCEMENT !== "disabled" && !data.WORKLOAD_TOKEN_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "WORKLOAD_TOKEN_SECRET is required when WORKLOAD_TOKEN_ENFORCEMENT is not disabled",
+        path: ["WORKLOAD_TOKEN_SECRET"],
       });
     }
     if (

@@ -1,3 +1,4 @@
+import { scheduleUniqWhereClause, scheduleWhereClause } from "~/models/schedules.server";
 import { BaseService } from "./baseService.server";
 
 type Options = {
@@ -29,9 +30,7 @@ export class SetActiveOnTaskScheduleService extends BaseService {
 
     try {
       const schedule = await this._prisma.taskSchedule.findFirst({
-        where: {
-          friendlyId,
-        },
+        where: scheduleWhereClause(projectId, friendlyId),
       });
 
       if (!schedule) {
@@ -43,9 +42,7 @@ export class SetActiveOnTaskScheduleService extends BaseService {
       }
 
       await this._prisma.taskSchedule.update({
-        where: {
-          friendlyId,
-        },
+        where: scheduleUniqWhereClause(projectId, friendlyId),
         data: {
           active,
         },

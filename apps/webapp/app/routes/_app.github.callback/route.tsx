@@ -1,6 +1,9 @@
 import { type LoaderFunctionArgs } from "@remix-run/node";
 import { z } from "zod";
-import { validateGitHubAppInstallSession } from "~/services/gitHubSession.server";
+import {
+  destroyGitHubAppInstallSession,
+  validateGitHubAppInstallSession,
+} from "~/services/gitHubSession.server";
 import { linkGitHubAppInstallation, updateGitHubAppInstallation } from "~/services/gitHub.server";
 import { logger } from "~/services/logger.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -75,6 +78,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub app");
   }
 
+  // The install session is single-use: once a callback consumes an
+  // installation_id, invalidate the state cookie so the same initiation
+  // cannot be replayed against other installation_ids.
+  const clearInstallSession = await destroyGitHubAppInstallSession(cookieHeader);
+  const consumingSession = (response: Response) => {
+    response.headers.append("Set-Cookie", clearInstallSession);
+    return response;
+  };
+
   switch (callbackData.setup_action) {
     case "install": {
       const [error] = await tryCatch(
@@ -85,23 +97,33 @@ export async function loader({ request }: LoaderFunctionArgs) {
         logger.error("Failed to link GitHub App installation", {
           error,
         });
-        return redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub app");
+        return consumingSession(
+          await redirectWithErrorMessage(redirectTo, request, "Failed to install GitHub app")
+        );
       }
 
-      return redirectWithSuccessMessage(redirectTo, request, "GitHub App installed successfully");
+      return consumingSession(
+        await redirectWithSuccessMessage(redirectTo, request, "GitHub App installed successfully")
+      );
     }
 
     case "update": {
-      const [error] = await tryCatch(updateGitHubAppInstallation(callbackData.installation_id));
+      const [error] = await tryCatch(
+        updateGitHubAppInstallation(callbackData.installation_id, organizationId)
+      );
 
       if (error) {
         logger.error("Failed to update GitHub App installation", {
           error,
         });
-        return redirectWithErrorMessage(redirectTo, request, "Failed to update GitHub App");
+        return consumingSession(
+          await redirectWithErrorMessage(redirectTo, request, "Failed to update GitHub App")
+        );
       }
 
-      return redirectWithSuccessMessage(redirectTo, request, "GitHub App updated successfully");
+      return consumingSession(
+        await redirectWithSuccessMessage(redirectTo, request, "GitHub App updated successfully")
+      );
     }
 
     case "request": {

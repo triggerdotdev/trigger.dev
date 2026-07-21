@@ -2,21 +2,11 @@ Thank you for installing {{ .Chart.Name }}.
 
 Your release is named {{ .Release.Name }}.
 
-🔐 SECURITY WARNING:
-{{- if or (eq .Values.secrets.sessionSecret "2818143646516f6fffd707b36f334bbb") (eq .Values.secrets.magicLinkSecret "44da78b7bbb0dfe709cf38931d25dcdd") (eq .Values.secrets.encryptionKey "f686147ab967943ebbe9ed3b496e465a") (eq .Values.secrets.managedWorkerSecret "447c29678f9eaf289e9c4b70d3dd8a7f") }}
-   You are using DEFAULT SECRETS which are NOT SECURE for production!
-   
-   For production deployments, generate new secrets:
-   1. Run: openssl rand -hex 16  (repeat for each secret)
-   2. Override in your values.yaml:
-      secrets:
-        sessionSecret: "your-new-32-char-hex-secret"
-        magicLinkSecret: "your-new-32-char-hex-secret"
-        encryptionKey: "your-new-32-char-hex-secret"
-        managedWorkerSecret: "your-new-32-char-hex-secret"
-{{- else }}
-   Custom secrets detected - good for production deployment!
-{{- end }}
+🔐 SECURITY:
+   This chart ships no working secret defaults. Application and control-plane
+   secrets are auto-generated per install (and retained across upgrades) unless
+   you set them explicitly or supply secrets.existingSecret. Bundled-datastore
+   passwords must still be provided.
 
 To get started:
 

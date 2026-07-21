@@ -1497,6 +1497,7 @@ export class RunEngine {
     workerId,
     runnerId,
     isWarmStart,
+    environmentId,
     tx,
   }: {
     runId: string;
@@ -1504,6 +1505,7 @@ export class RunEngine {
     workerId?: string;
     runnerId?: string;
     isWarmStart?: boolean;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<StartRunAttemptResult> {
     return this.runAttemptSystem.startRunAttempt({
@@ -1512,6 +1514,7 @@ export class RunEngine {
       workerId,
       runnerId,
       isWarmStart,
+      environmentId,
       tx,
     });
   }
@@ -1523,12 +1526,14 @@ export class RunEngine {
     completion,
     workerId,
     runnerId,
+    environmentId,
   }: {
     runId: string;
     snapshotId: string;
     completion: TaskRunExecutionResult;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
     return this.runAttemptSystem.completeRunAttempt({
       runId,
@@ -1536,6 +1541,7 @@ export class RunEngine {
       completion,
       workerId,
       runnerId,
+      environmentId,
     });
   }
 
@@ -2014,12 +2020,14 @@ export class RunEngine {
     snapshotId,
     workerId,
     runnerId,
+    environmentId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
     workerId?: string;
     runnerId?: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<ExecutionResult> {
     return this.checkpointSystem.continueRunExecution({
@@ -2027,6 +2035,7 @@ export class RunEngine {
       snapshotId,
       workerId,
       runnerId,
+      environmentId,
       tx,
     });
   }
@@ -2062,14 +2071,21 @@ export class RunEngine {
   /** Get required data to execute the run */
   async getRunExecutionData({
     runId,
+    environmentId,
     tx,
   }: {
     runId: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData | null> {
     const prisma = tx ?? this.prisma;
     try {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.runStore);
+      const snapshot = await getLatestExecutionSnapshot(
+        prisma,
+        runId,
+        this.runStore,
+        environmentId
+      );
       return executionDataFromSnapshot(snapshot);
     } catch (e) {
       this.logger.error("Failed to getRunExecutionData", {
@@ -2086,10 +2102,12 @@ export class RunEngine {
   async getSnapshotsSince({
     runId,
     snapshotId,
+    environmentId,
     tx,
   }: {
     runId: string;
     snapshotId: string;
+    environmentId?: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData[] | null> {
     const useReplica =
@@ -2107,7 +2125,8 @@ export class RunEngine {
         runId,
         snapshotId,
         this.runStore,
-        repairClient
+        repairClient,
+        environmentId
       );
       return snapshots.map(executionDataFromSnapshot);
     };

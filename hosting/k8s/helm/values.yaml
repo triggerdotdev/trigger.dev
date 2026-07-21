@@ -10,11 +10,10 @@ nameOverride: ""
 fullnameOverride: ""
 
 # Secrets configuration
-# IMPORTANT: The default values below are for TESTING ONLY and should NOT be used in production
-# For production deployments:
-# 1. Generate new secrets using: openssl rand -hex 16
-# 2. Override these values in your values.yaml or use external secret management
-# 3. Each secret must be exactly 32 hex characters (16 bytes)
+# No working defaults are shipped. Leave a secret empty and the chart generates a
+# strong random value on first install, retained across upgrades (so sessions and
+# encrypted data survive). Set a value explicitly to control it yourself, or use
+# secrets.existingSecret / external secret management. Explicit values win.
 secrets:
   # Enable/disable creation of secrets
   # Set to false to use external secret management (Vault, Infisical, External Secrets, etc.)
@@ -27,17 +26,23 @@ secrets:
   #   - SESSION_SECRET
   #   - MAGIC_LINK_SECRET
   #   - ENCRYPTION_KEY
+  #   - PROVIDER_SECRET
+  #   - COORDINATOR_SECRET
   #   - MANAGED_WORKER_SECRET
   existingSecret: ""
 
-  # Session secret for user authentication (32 hex chars)
-  sessionSecret: "2818143646516f6fffd707b36f334bbb"
-  # Magic link secret for passwordless login (32 hex chars)
-  magicLinkSecret: "44da78b7bbb0dfe709cf38931d25dcdd"
-  # Encryption key for sensitive data (32 hex chars)
-  encryptionKey: "f686147ab967943ebbe9ed3b496e465a"
-  # Worker secret for managed worker authentication (32 hex chars)
-  managedWorkerSecret: "447c29678f9eaf289e9c4b70d3dd8a7f"
+  # Session secret for user authentication
+  sessionSecret: "" # Leave empty to auto-generate, or set a strong value.
+  # Magic link secret for passwordless login
+  magicLinkSecret: "" # Leave empty to auto-generate, or set a strong value.
+  # Encryption key for sensitive data
+  encryptionKey: "" # Leave empty to auto-generate, or set a strong value.
+  # Provider socket secret
+  providerSecret: "" # Leave empty to auto-generate, or set a strong value.
+  # Coordinator socket secret
+  coordinatorSecret: "" # Leave empty to auto-generate, or set a strong value.
+  # Worker secret for managed worker authentication
+  managedWorkerSecret: "" # Leave empty to auto-generate, or set a strong value.
   # Object store credentials moved to s3.auth and s3.external section
 
 # Webapp configuration
@@ -397,10 +402,16 @@ postgres:
   # Bitnami PostgreSQL chart configuration (when deploy: true)
   auth:
     enablePostgresUser: true
-    postgresPassword: "postgres"
+    postgresPassword: "" # Leave empty to auto-generate into the datastore secret, or set to pin.
     username: "postgres"
-    password: "postgres"
+    password: "" # Leave empty to auto-generate into the datastore secret, or set to pin.
     database: "main"
+    # Read the auto-generated password from the chart-managed datastore secret
+    # (templates/datastore-secret.yaml). Must equal trigger-v4.datastore.secretName.
+    existingSecret: "trigger-datastore"
+    secretKeys:
+      adminPasswordKey: "postgres-password"
+      userPasswordKey: "password"
 
   primary:
     persistence:
@@ -632,7 +643,10 @@ clickhouse:
   # Bitnami ClickHouse chart configuration (when deploy: true)
   auth:
     username: "default"
-    password: "password"
+    password: "" # Leave empty to auto-generate into the datastore secret, or set to pin.
+    # Read the auto-generated password from the chart-managed datastore secret.
+    existingSecret: "trigger-datastore"
+    existingSecretKey: "clickhouse-admin-password"
 
   # Single-node configuration (disable clustering for dev/test)
   keeper:
@@ -709,14 +723,18 @@ s3:
   # MinIO provides S3-compatible storage when deployed internally
   auth:
     rootUser: "admin"
-    rootPassword: "very-safe-password"
+    rootPassword: "" # Leave empty to auto-generate into the datastore secret, or set to pin.
     # Webapp credentials for S3 access (defaults to root credentials if not specified)
     accessKeyId: "" # Defaults to rootUser if empty
     secretAccessKey: "" # Defaults to rootPassword if empty
-    # Existing secret support for webapp credentials
-    existingSecret: "" # If set, accessKeyId/secretAccessKey will be ignored
-    accessKeyIdSecretKey: "access-key-id" # Key in existingSecret containing access key ID
-    secretAccessKeySecretKey: "secret-access-key" # Key in existingSecret containing secret access key
+    # Read the auto-generated root credentials from the chart-managed datastore secret.
+    # The same keys serve the MinIO subchart (rootUser/rootPassword) and the webapp's
+    # S3 credentials, so both stay in sync. Must equal trigger-v4.datastore.secretName.
+    existingSecret: "trigger-datastore"
+    rootUserSecretKey: "minio-root-user"
+    rootPasswordSecretKey: "minio-root-password"
+    accessKeyIdSecretKey: "minio-root-user" # Key in existingSecret containing access key ID
+    secretAccessKeySecretKey: "minio-root-password" # Key in existingSecret containing secret access key
 
   # The required "packets" bucket is created by default.
   defaultBuckets: "packets"
@@ -729,8 +747,8 @@ s3:
   # External S3 connection (when deploy: false)
   external:
     endpoint: "" # e.g., "https://s3.amazonaws.com" or "https://your-minio.com:9000"
-    accessKeyId: "admin" # Default for internal MinIO - change for production
-    secretAccessKey: "very-safe-password" # Default for internal MinIO - change for production
+    accessKeyId: "" # Required when s3.deploy=false — no default. Set explicitly or use existingSecret.
+    secretAccessKey: "" # Required when s3.deploy=false — no default. Set explicitly or use existingSecret.
     #
     # Secure credential management
     existingSecret: "" # Name of existing secret containing S3 credentials
@@ -769,7 +787,7 @@ registry:
   auth:
     enabled: true
     username: "registry-user"
-    password: "very-secure-indeed"
+    password: "" # Required when registry.deploy=true and auth.enabled — no default. Set a strong value.
 
   # External Registry connection (when deploy: false)
   external:

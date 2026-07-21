@@ -221,6 +221,13 @@ spec:
                   name: {{ include "trigger-v4.postgres.external.secretName" . }}
                   key: {{ include "trigger-v4.postgres.external.directUrlKey" . }}
             {{- else }}
+            {{- if .Values.postgres.deploy }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.datastore.secretName" . }}
+                  key: password
+            {{- end }}
             - name: DATABASE_URL
               value: {{ include "trigger-v4.postgres.connectionString" . | quote }}
             - name: DIRECT_URL
@@ -306,6 +313,16 @@ spec:
                 secretKeyRef:
                   name: {{ include "trigger-v4.secretsName" . }}
                   key: ENCRYPTION_KEY
+            - name: PROVIDER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: PROVIDER_SECRET
+            - name: COORDINATOR_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.secretsName" . }}
+                  key: COORDINATOR_SECRET
             - name: MANAGED_WORKER_SECRET
               valueFrom:
                 secretKeyRef:
@@ -401,6 +418,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "trigger-v4.clickhouse.external.secretName" . }}
                   key: {{ include "trigger-v4.clickhouse.external.passwordKey" . }}
+            {{- else if .Values.clickhouse.deploy }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "trigger-v4.datastore.secretName" . }}
+                  key: clickhouse-admin-password
             {{- end }}
             - name: CLICKHOUSE_URL
               value: {{ include "trigger-v4.clickhouse.url" . | quote }}

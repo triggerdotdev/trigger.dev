@@ -11,7 +11,7 @@ import type {
   Waitpoint,
 } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";
-import { ExecutionSnapshotNotFoundError } from "../errors.js";
+import { ExecutionSnapshotNotFoundError, ServiceValidationError } from "../errors.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
 
@@ -195,16 +195,21 @@ async function fetchWaitpointsInChunks(
   return allWaitpoints;
 }
 
-/* Gets the most recent valid snapshot for a run */
+/**
+ * Gets the most recent valid snapshot for a run. When `environmentId` is provided the read is scoped
+ * to that environment (tenant boundary): a run in another environment reads as not-found and rejects
+ * with a 404 rather than leaking existence. Internal callers omit it to read regardless of env.
+ */
 export async function getLatestExecutionSnapshot(
   prisma: PrismaClientOrTransaction,
   runId: string,
-  runStore?: RunStore
+  runStore?: RunStore,
+  environmentId?: string
 ): Promise<EnhancedExecutionSnapshot> {
   const snapshot = runStore
-    ? await runStore.findLatestExecutionSnapshot(runId, prisma)
+    ? await runStore.findLatestExecutionSnapshot(runId, prisma, environmentId)
     : await prisma.taskRunExecutionSnapshot.findFirst({
-        where: { runId, isValid: true },
+        where: { runId, isValid: true, ...(environmentId ? { environmentId } : {}) },
         include: {
           completedWaitpoints: true,
           checkpoint: true,
@@ -213,6 +218,9 @@ export async function getLatestExecutionSnapshot(
       });
 
   if (!snapshot) {
+    if (environmentId) {
+      throw new ServiceValidationError(`No execution snapshot found for TaskRun ${runId}`, 404);
+    }
     throw new Error(`No execution snapshot found for TaskRun ${runId}`);
   }
 
@@ -295,19 +303,24 @@ export async function getExecutionSnapshotsSince(
   runStore?: RunStore,
   // The primary, for read-repair when `prisma` is a lagging read replica (see Step 3). Omit when
   // `prisma` is already the primary.
-  repairClient?: PrismaClientOrTransaction
+  repairClient?: PrismaClientOrTransaction,
+  // When set, scopes both reads to this environment (tenant boundary): a run in another env reads as
+  // not-found. Omit to read regardless of environment (internal callers).
+  environmentId?: string
 ): Promise<EnhancedExecutionSnapshot[]> {
+  const envScope = environmentId ? { environmentId } : {};
+
   // Step 1: Find the createdAt of the sinceSnapshotId
   const sinceSnapshot = runStore
     ? await runStore.findExecutionSnapshot(
         {
-          where: { id: sinceSnapshotId, runId },
+          where: { id: sinceSnapshotId, runId, ...envScope },
           select: { createdAt: true },
         },
         prisma
       )
     : await prisma.taskRunExecutionSnapshot.findFirst({
-        where: { id: sinceSnapshotId, runId },
+        where: { id: sinceSnapshotId, runId, ...envScope },
         select: { createdAt: true },
       });
 
@@ -323,6 +336,7 @@ export async function getExecutionSnapshotsSince(
             runId,
             isValid: true,
             createdAt: { gt: sinceSnapshot.createdAt },
+            ...envScope,
           },
           include: {
             checkpoint: true,
@@ -338,6 +352,7 @@ export async function getExecutionSnapshotsSince(
           runId,
           isValid: true,
           createdAt: { gt: sinceSnapshot.createdAt },
+          ...envScope,
         },
         include: {
           checkpoint: true,

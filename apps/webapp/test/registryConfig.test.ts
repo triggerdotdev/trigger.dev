@@ -10,6 +10,9 @@ describe("getRegistryConfig", () => {
     MAGIC_LINK_SECRET: "test-magic-link-secret",
     ENCRYPTION_KEY: "test-encryption-keeeeey-32-bytes",
     CLICKHOUSE_URL: "http://localhost:8123",
+    PROVIDER_SECRET: "test-provider-secret",
+    COORDINATOR_SECRET: "test-coordinator-secret",
+    MANAGED_WORKER_SECRET: "test-managed-worker-secret",
   };
 
   beforeEach(() => {
