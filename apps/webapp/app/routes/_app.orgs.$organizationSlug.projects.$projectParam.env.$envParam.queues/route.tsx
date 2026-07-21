@@ -757,9 +757,10 @@ function QueuesWithMetricsView() {
                         <TableCell
                           to={queueDetailPath}
                           isTabbableCell
-                          // The queue-type icon and the status tooltips are real <button>s, so they
-                          // render beside the link (leading/trailing), never inside it — otherwise
-                          // the cell is invalid <a><button> nesting. The name stays the link.
+                          // The queue-type icon and the at-limit warning are real <button>s, so
+                          // they render beside the link (leading/trailing), never inside it —
+                          // otherwise the cell is invalid <a><button> nesting. The name stays the
+                          // link. (Override state is already explained by the "Limited by" column.)
                           leadingContent={
                             <SimpleTooltip
                               button={
@@ -787,25 +788,13 @@ function QueuesWithMetricsView() {
                             />
                           }
                           trailingContent={
-                            queue.concurrency?.overriddenAt || isAtConcurrencyLimit ? (
-                              <span className="flex items-center gap-2">
-                                {queue.concurrency?.overriddenAt ? (
-                                  <InfoIconTooltip
-                                    content="This queue's concurrency limit has been manually overridden from the dashboard or API."
-                                    contentClassName="max-w-xs"
-                                  />
-                                ) : null}
-                                {isAtConcurrencyLimit ? (
-                                  <SimpleTooltip
-                                    button={
-                                      <ExclamationTriangleIcon className="size-4 text-warning" />
-                                    }
-                                    content="At concurrency limit: this queue is running as many runs as its limit allows; new runs wait in the backlog."
-                                    className="max-w-xs"
-                                    disableHoverableContent
-                                  />
-                                ) : null}
-                              </span>
+                            isAtConcurrencyLimit ? (
+                              <SimpleTooltip
+                                button={<ExclamationTriangleIcon className="size-4 text-warning" />}
+                                content="At concurrency limit: this queue is running as many runs as its limit allows; new runs wait in the backlog."
+                                className="max-w-xs"
+                                disableHoverableContent
+                              />
                             ) : null
                           }
                         >
