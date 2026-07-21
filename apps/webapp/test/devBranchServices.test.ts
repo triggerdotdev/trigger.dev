@@ -97,7 +97,7 @@ describe("UpsertBranchService — DEVELOPMENT parent", () => {
       },
     });
 
-    await Promise.all([
+    const [firstRoot, secondRoot] = await Promise.all([
       createDevRoot(prisma, project.id, organization.id, firstMember.id),
       createDevRoot(prisma, project.id, organization.id, secondMember.id),
     ]);
@@ -122,7 +122,8 @@ describe("UpsertBranchService — DEVELOPMENT parent", () => {
     if (!firstResult.success || !secondResult.success) return;
     expect(firstResult.branch.id).not.toBe(secondResult.branch.id);
     expect(firstResult.branch.slug).toBe(secondResult.branch.slug);
-    expect(firstResult.branch.shortcode).not.toBe(secondResult.branch.shortcode);
+    expect(firstResult.branch.shortcode).toBe(`dev-shared-name-${firstRoot.shortcode}`);
+    expect(secondResult.branch.shortcode).toBe(`dev-shared-name-${secondRoot.shortcode}`);
     expect(firstResult.branch.orgMemberId).toBe(firstMember.id);
     expect(secondResult.branch.orgMemberId).toBe(secondMember.id);
 

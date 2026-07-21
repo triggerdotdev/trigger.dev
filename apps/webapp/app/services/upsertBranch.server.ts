@@ -17,7 +17,6 @@ import { logger } from "./logger.server";
 import { getCurrentPlan, getLimit } from "./platform.v3.server";
 import { type z } from "zod";
 import invariant from "tiny-invariant";
-import { nanoid } from "nanoid";
 import { type CreateBranchOptions } from "~/utils/branches";
 import {
   applyBillingLimitPauseAfterEnvCreate,
@@ -148,8 +147,11 @@ export class UpsertBranchService {
       const pkApiKey = createPkApiKeyForEnv(parentEnvironment.type);
       const isDevelopmentBranch = parentEnvironment.type === "DEVELOPMENT";
       // Dev branch slugs are member-scoped, but shortcodes remain project-scoped.
-      // Keep the readable slug while giving each member's branch a unique shortcode.
-      const shortcode = isDevelopmentBranch ? `${branchSlug}-${nanoid()}` : branchSlug;
+      // The parent shortcode is already unique within the project, so it gives
+      // each member's branch a stable, readable shortcode without a migration.
+      const shortcode = isDevelopmentBranch
+        ? `${branchSlug}-${parentEnvironment.shortcode}`
+        : branchSlug;
       let branchWhere: Prisma.RuntimeEnvironmentWhereUniqueInput;
       if (isDevelopmentBranch) {
         invariant(parentEnvironment.orgMemberId, "Development branches require an org member");
