@@ -41,7 +41,7 @@
     "swr": "^2.2.5"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.15.4",
+    "@arethetypeswrong/cli": "^0.18.5",
     "@types/react": "*",
     "@types/react-dom": "*",
     "rimraf": "^6.0.1",

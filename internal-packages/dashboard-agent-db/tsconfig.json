@@ -12,7 +12,8 @@
     "preserveWatchOutput": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "strict": true
+    "strict": true,
+    "types": ["node"]
   },
   "exclude": ["node_modules", "drizzle"]
 }

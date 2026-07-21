@@ -8,7 +8,7 @@ import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
 import { isGithubAuthSupported, isGoogleAuthSupported } from "~/services/auth.server";
@@ -139,9 +139,9 @@ export default function PromoPage() {
       <div className="flex w-full flex-col">
         {data.view === "signed_in" ? (
           <>
-            <Header2 className="sm:text-2xl md:text-3xl lg:text-4xl" spacing>
+            <Header1 className="pb-4 leading-tight sm:text-2xl md:text-3xl md:leading-tight lg:text-4xl lg:leading-tight">
               Promo codes are for new accounts
-            </Header2>
+            </Header1>
             <Paragraph variant="base" spacing>
               You're already signed in. Promo credits can only be added to a brand-new account.
             </Paragraph>
@@ -151,11 +151,11 @@ export default function PromoPage() {
           </>
         ) : (
           <>
-            <Header2 className="sm:text-2xl md:text-3xl lg:text-4xl" spacing>
+            <Header1 className="pb-4 leading-tight sm:text-2xl md:text-3xl md:leading-tight lg:text-4xl lg:leading-tight">
               {data.view === "valid"
                 ? `Claim ${formatDollars(data.amountInCents)} credits`
                 : "Create your account"}
-            </Header2>
+            </Header1>
             {data.view === "valid" ? (
               <Paragraph variant="base" spacing>
                 These are only available for new accounts on the Free plan.
