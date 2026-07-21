@@ -62,7 +62,9 @@ export function staleAssetRecoveryScript() {
           : el.tagName === "SCRIPT"
             ? (el as HTMLScriptElement).src
             : null;
-      if (url && url.indexOf("/assets/") !== -1) recover();
+      // Match the pathname, not the full URL — a query string or third-party
+      // URL containing /assets/ must not burn the reload budget.
+      if (url && new URL(url, location.href).pathname.indexOf("/assets/") !== -1) recover();
     },
     true
   );
