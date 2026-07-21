@@ -90,14 +90,16 @@ export function EnvironmentSelector({
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
               {/*
-                Opacity follows --sm-label-opacity to fade both directions without popping in on
-                drag-open; the generous max-width cap fades the text in place (not truncated) but
-                scales to 0 so it never holds width. Unset elsewhere → fully visible.
+                In the side menu, opacity + max-width follow --sm-label-opacity (1 → 0): the label
+                fades in place and scales its width to 0 so it never holds width mid-drag. The
+                selector is also reused outside the side menu (BlankStatePanels, limits) where the var
+                is unset — the 0.2 max-width fallback pins a ~200px cap (0.2 * 1000px) so long names
+                ellipsis-truncate there instead of widening the control, while opacity stays 1.
               */}
               <span
                 className="flex min-w-0 items-center overflow-hidden"
                 style={{
-                  maxWidth: "calc(var(--sm-label-opacity, 1) * 1000px)",
+                  maxWidth: "calc(var(--sm-label-opacity, 0.2) * 1000px)",
                   opacity: "var(--sm-label-opacity, 1)",
                 }}
               >
