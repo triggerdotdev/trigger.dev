@@ -128,7 +128,13 @@ import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { type RenderIcon } from "../primitives/Icon";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
-import { Popover, PopoverContent, PopoverMenuItem, PopoverTrigger } from "../primitives/Popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverSectionHeader,
+  PopoverTrigger,
+} from "../primitives/Popover";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import {
   SimpleTooltip,
@@ -1244,6 +1250,7 @@ function OrgSelector({
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
+        <PopoverSectionHeader title="Organization" />
         <div className="flex flex-col gap-1 p-1">
           <PopoverMenuItem
             to={organizationSettingsPath(organization)}
@@ -1469,6 +1476,7 @@ function AccountMenu({ isAdmin, isImpersonating }: { isAdmin: boolean; isImperso
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
+        <PopoverSectionHeader title="Account" />
         <AccountMenuItems isAdmin={isAdmin} isImpersonating={isImpersonating} />
       </PopoverContent>
     </Popover>
