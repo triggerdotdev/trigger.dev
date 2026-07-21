@@ -1307,6 +1307,26 @@ async function handleNativeBuildServerDeploy({
   let bundleOutputPath: string | undefined;
 
   if (options.localBundle) {
+    // The container build runs on the build server with its own fixed settings —
+    // local build-tuning flags are not forwarded. Be honest about ignoring them.
+    const ignoredBuildFlags = [
+      options.compression !== "zstd" && "--compression",
+      options.cacheCompression !== "zstd" && "--cache-compression",
+      options.compressionLevel !== undefined && "--compression-level",
+      !options.forceCompression && "--no-force-compression",
+      !options.cache && "--no-cache",
+      options.builder !== "trigger" && "--builder",
+      options.network !== undefined && "--network",
+      options.push !== undefined && "--push/--no-push",
+      options.load !== undefined && "--load/--no-load",
+    ].filter((flag): flag is string => Boolean(flag));
+
+    if (ignoredBuildFlags.length > 0) {
+      log.warn(
+        `The following flags are ignored with --local-bundle (the image is built remotely): ${ignoredBuildFlags.join(", ")}`
+      );
+    }
+
     const serverEnvVars = await apiClient.getEnvironmentVariables(config.project);
     loadDotEnvVars(config.workingDir, options.envFile);
 
