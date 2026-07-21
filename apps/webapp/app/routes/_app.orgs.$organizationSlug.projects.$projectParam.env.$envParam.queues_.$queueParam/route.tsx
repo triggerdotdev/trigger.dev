@@ -355,7 +355,7 @@ function OverviewCharts({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <QueueDetailChartCard
           title="Concurrency"
-          info="Running (blue) against the queue's concurrency limit (grey). Yellow when at the limit."
+          info="Running (purple) against the queue's concurrency limit (grey). Yellow when at the limit."
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -363,7 +363,7 @@ function OverviewCharts({
           timeRange={timeRange}
           queueName={queueName}
           series={[
-            // Limit first so the grey reference draws underneath; Running (blue) sits on top.
+            // Limit first so the grey reference draws underneath; Running (purple) sits on top.
             { key: "limit", label: "Limit", color: COLORS.limit },
             { key: "running", label: "Running", color: COLORS.running },
           ]}
@@ -381,7 +381,7 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Throughput"
-          info="Runs entering the queue (Enqueued, grey) versus leaving it (Started, blue). Yellow when Started falls behind."
+          info="Runs entering the queue (Enqueued, grey) versus leaving it (Started, purple). Yellow when Started falls behind."
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -390,7 +390,7 @@ function OverviewCharts({
           queueName={queueName}
           series={[
             // Enqueued is the neutral grey reference (same grey as the Limit line on Concurrency);
-            // Started is the accent — blue while keeping up, warning where it drops below Enqueued.
+            // Started is the accent — purple while keeping up, warning where it drops below Enqueued.
             { key: "enqueued", label: "Enqueued", color: COLORS.limit },
             { key: "started", label: "Started", color: COLORS.running },
           ]}
@@ -525,7 +525,7 @@ function ConcurrencyKeyCharts({
           timeRange={timeRange}
           queueName={queueName}
         />
-        {/* Whole-queue health across keys (single series, tasks-blue). */}
+        {/* Whole-queue health across keys (single series, queues-purple). */}
         <QueueDetailChartCard
           title="Keys with backlog"
           info="Keys with runs waiting at once."
@@ -857,7 +857,7 @@ function KeyDrilldown({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <QueueDetailChartCard
           title={`Key ${keyName}: backlog and running`}
-          info="This key: waiting (Queued, blue) vs running (grey)."
+          info="This key: waiting (Queued, purple) vs running (grey)."
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -865,7 +865,7 @@ function KeyDrilldown({
           timeRange={timeRange}
           queueName={queueName}
           series={[
-            // Running is the grey reference underneath; Queued (the backlog we care about) is the blue accent on top.
+            // Running is the grey reference underneath; Queued (the backlog we care about) is the purple accent on top.
             { key: "running", label: "Running", color: COLORS.limit },
             { key: "queued", label: "Queued", color: COLORS.running },
           ]}
@@ -1066,6 +1066,9 @@ function ConcurrencyBlock({
             </span>
             {limit !== null && limit > 0 && (
               <span className={cn("text-xs", atLimit ? "text-warning" : "text-text-dimmed")}>
+                {/* Separator so the limit and the percentage don't read as one number
+                    (e.g. "/ 25" + "44%" mashing into "2544%"). */}
+                <span className="mr-1 text-text-dimmed">·</span>
                 {pct}% of limit
               </span>
             )}
