@@ -1,7 +1,10 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "import", "react"],
-  "jsPlugins": ["./oxlint-plugins/no-thrown-unawaited-redirect.mjs"],
+  "jsPlugins": [
+    "./oxlint-plugins/no-thrown-unawaited-redirect.mjs",
+    "./oxlint-plugins/runops-residency.mjs"
+  ],
   "ignorePatterns": [
     "**/dist/**",
     "**/build/**",
@@ -34,5 +37,21 @@
     "react-hooks/exhaustive-deps": "off",
     "react-hooks/rules-of-hooks": "off",
     "trigger/no-thrown-unawaited-redirect": "error"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["apps/webapp/app/**/*.ts", "apps/webapp/app/**/*.tsx"],
+      "rules": {
+        "trigger-runops/no-control-plane-run-graph-access": "error",
+        "trigger-runops/no-control-plane-in-runops-slot": "error"
+      }
+    },
+    {
+      "files": ["apps/webapp/app/**/*.test.ts", "apps/webapp/app/**/*.test.tsx"],
+      "rules": {
+        "trigger-runops/no-control-plane-run-graph-access": "off",
+        "trigger-runops/no-control-plane-in-runops-slot": "off"
+      }
+    }
+  ]
 }

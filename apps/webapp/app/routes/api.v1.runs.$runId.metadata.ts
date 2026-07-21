@@ -64,6 +64,19 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     );
   }
 
+  // Read-your-writes: a run drained from the buffer to the primary but not yet replicated misses
+  // both the replica read and the buffer. Re-read the owning primary before 404ing.
+  const primaryRun = await runStore.findRunOnPrimary(
+    { friendlyId: parsed.data.runId, runtimeEnvironmentId: env.id },
+    { select: { metadata: true, metadataType: true } }
+  );
+  if (primaryRun) {
+    return json(
+      { metadata: primaryRun.metadata, metadataType: primaryRun.metadataType },
+      { status: 200 }
+    );
+  }
+
   return json({ error: "Run not found" }, { status: 404 });
 }
 

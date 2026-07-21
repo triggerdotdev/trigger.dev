@@ -155,7 +155,8 @@ export class LimitsPresenter extends BasePresenter {
     const activeBranchCount = await this._replica.runtimeEnvironment.count({
       where: {
         projectId,
-        branchName: {
+        type: "PREVIEW",
+        parentEnvironmentId: {
           not: null,
         },
         archivedAt: null,

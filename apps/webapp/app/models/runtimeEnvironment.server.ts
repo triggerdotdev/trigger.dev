@@ -274,19 +274,17 @@ export async function findEnvironmentFromRun(
 ): Promise<EnvironmentFromRun | null> {
   // Run-ops scalars (runTags/batchId/runtimeEnvironmentId) from the run store; the env half is
   // resolved via the control-plane resolver so the run-ops DB can split without a cross-DB join.
-  const taskRun = await runStore.findRun(
-    {
-      id: runId,
-    },
-    {
-      select: {
-        runTags: true,
-        batchId: true,
-        runtimeEnvironmentId: true,
-      },
-    },
-    tx ?? $replica
-  );
+  const select = {
+    runTags: true,
+    batchId: true,
+    runtimeEnvironmentId: true,
+  } as const;
+  let taskRun = await runStore.findRun({ id: runId }, { select }, tx ?? $replica);
+  if (!taskRun) {
+    // Read-your-writes: a just-created run may not have replicated. Re-read the owning primary before
+    // treating it as absent, so runMetadataUpdated doesn't drop a live run's final metadata + publish.
+    taskRun = await runStore.findRun({ id: runId }, { select }, prisma);
+  }
   if (!taskRun) {
     return null;
   }

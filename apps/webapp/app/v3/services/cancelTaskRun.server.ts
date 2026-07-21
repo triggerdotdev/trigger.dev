@@ -1,4 +1,5 @@
 import { RunEngineVersion, type TaskRun } from "@trigger.dev/database";
+import { runOpsLegacyPrismaClient } from "~/db.server";
 import { engine } from "../runEngine.server";
 import { isCancellableRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
@@ -43,7 +44,7 @@ export class CancelTaskRunService extends BaseService {
     // DB row directly. Never throw here: the cancel route returns 500 on any throw.
     if (!isCancellableRunStatus(taskRun.status)) {
       if (options?.bulkActionId) {
-        await this._prisma.taskRun.update({
+        await runOpsLegacyPrismaClient.taskRun.update({
           where: { id: taskRun.id },
           data: { bulkActionGroupIds: { push: options.bulkActionId } },
         });
@@ -51,7 +52,7 @@ export class CancelTaskRunService extends BaseService {
       return { id: taskRun.id, alreadyFinished: true };
     }
 
-    await this._prisma.taskRun.update({
+    await runOpsLegacyPrismaClient.taskRun.update({
       where: { id: taskRun.id },
       data: {
         status: "CANCELED",

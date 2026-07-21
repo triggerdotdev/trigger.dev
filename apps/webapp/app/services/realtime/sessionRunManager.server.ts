@@ -478,8 +478,10 @@ export async function swapSessionRun(params: SwapSessionRunParams): Promise<Swap
 async function getRunStatusAndFriendlyId(
   runId: string
 ): Promise<{ status: TaskRunStatus; friendlyId: string } | null> {
-  // Use the read replica — this is a hot-path probe and stale-by-ms is
-  // fine. The append handler re-checks if it ends up reusing the runId.
+  // Use the read replica — hot-path probe, stale-by-ms is fine. The dangerous
+  // stale shape (looks-vanished → double-trigger) is closed by the writer re-probe
+  // in ensureRunForSession; a stale-non-final reuse self-heals via the durable S2
+  // stream + next-append re-probe (there is no append-handler re-check).
   // `friendlyId` is fetched alongside `status` so the dead-run-detection
   // branch in `ensureRunForSession` can forward the public-form id as
   // `payload.previousRunId` without a second read. `Session.currentRunId`

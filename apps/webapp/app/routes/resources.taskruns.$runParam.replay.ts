@@ -323,7 +323,12 @@ export const action = dashboardAction(
     try {
       // Run-ops read keyed by friendlyId only; membership auth is re-checked on the
       // control plane below, keyed off the resolved run's projectId.
-      const pgRun = await runStore.findRun({ friendlyId: runParam });
+      let pgRun = await runStore.findRun({ friendlyId: runParam });
+      if (!pgRun) {
+        // Read-your-writes: a just-created run may not have replicated. Re-read the owning primary
+        // before falling back to the mollifier buffer (mirrors resolveRunOrganizationId above).
+        pgRun = await runStore.findRun({ friendlyId: runParam }, prisma);
+      }
 
       // Mollifier read-fallback: if the original isn't in PG yet, synthesise a
       // TaskRun from the buffered snapshot. Needs project/org/env slugs for the

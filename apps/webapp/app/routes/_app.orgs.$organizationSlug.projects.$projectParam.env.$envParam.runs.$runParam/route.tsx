@@ -193,7 +193,7 @@ async function getRunsListFromTableState({
 
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       project.organizationId,
-      "standard"
+      "runsList"
     );
     const runsListPresenter = new NextRunListPresenter($replica, clickhouse);
     const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {

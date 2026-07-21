@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.5.5
+
+### Patch Changes
+
+- Add experimental Node.js 24 and 26 task runtimes. Set `runtime` to `experimental-node-24` or `experimental-node-26` in `trigger.config.ts`. ([#4085](https://github.com/triggerdotdev/trigger.dev/pull/4085))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+  - `@trigger.dev/build@4.5.5`
+  - `@trigger.dev/schema-to-json@4.5.5`
+
 ## 4.5.4
 
 ### Patch Changes

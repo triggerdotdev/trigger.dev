@@ -134,18 +134,10 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
   const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
   if (process.env.HTTP_SERVER_DISABLED !== "true") {
-    // Stamp every response with the build this replica is running. The
-    // client-side stale-asset recovery reads it from Remix loader fetches to
-    // turn an ordinary navigation into a full document load when the server
-    // has moved to a new build.
-    app.use((_req, res, next) => {
-      res.set("X-Build-Id", build.assets.version);
-      next();
-    });
-
-    // Reports the build this replica is running. The client-side stale-asset
-    // recovery polls it after a /build 404 and reloads only once the server
-    // reports a different build than the one the page was rendered with.
+    // Back-compat shim: a previously-deployed client build polls this endpoint after a
+    // /build asset 404 and reloads once it reports a newer build id, letting those older
+    // tabs recover in a single reload. Temporary — safe to remove once older clients have
+    // churned out. Deliberately does NOT set an X-Build-Id response header.
     app.get("/build-version", (_req, res) => {
       res.set("Cache-Control", "no-store");
       res.json({ version: build.assets.version });

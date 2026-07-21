@@ -303,6 +303,7 @@ export default function Page() {
                               <RuntimeIcon
                                 runtime={deployment.runtime}
                                 runtimeVersion={deployment.runtimeVersion}
+                                withLabel
                               />
                             </TableCell>
                             <TableCell to={path} isSelected={isSelected}>

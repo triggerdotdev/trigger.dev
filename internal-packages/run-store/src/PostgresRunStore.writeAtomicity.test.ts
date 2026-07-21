@@ -748,7 +748,7 @@ describe("RoutingRunStore never threads a caller tx into either sub-store (recor
   );
 
   heteroRunOpsPostgresTest(
-    "deleteManyTaskRunWaitpoints fan-out hands BOTH sub-stores an undefined tx",
+    "deleteManyTaskRunWaitpoints routes by taskRunId to the owning store with an undefined tx",
     async ({ prisma14, prisma17 }) => {
       const legacyCalls: RecordedCall[] = [];
       const newCalls: RecordedCall[] = [];
@@ -769,14 +769,15 @@ describe("RoutingRunStore never threads a caller tx into either sub-store (recor
       );
       await seedLegacyBlockingEdge(prisma14, env, runId, "spy_del");
 
-      // Keyed by taskRunId → the both-stores fan-out branch. Pass the base control-plane client as tx.
+      // Keyed by a classifiable taskRunId (a cuid run → #legacy): routes to the owning store, no
+      // fan-out. Pass the base control-plane client as tx — it must NOT be threaded into the routed leg.
       await router.deleteManyTaskRunWaitpoints({ where: { taskRunId: runId } }, prisma14);
 
       const legacyTx = txArgsFor(legacyCalls, "deleteManyTaskRunWaitpoints");
       const newTx = txArgsFor(newCalls, "deleteManyTaskRunWaitpoints");
       expect(legacyTx.length).toBeGreaterThan(0);
-      expect(newTx.length).toBeGreaterThan(0);
-      for (const arg of [...legacyTx, ...newTx]) expect(arg).toBeUndefined();
+      expect(newTx.length).toBe(0); // routed to #legacy only; the non-owning store is never touched
+      for (const arg of legacyTx) expect(arg).toBeUndefined();
     }
   );
 });

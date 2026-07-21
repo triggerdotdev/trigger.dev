@@ -1685,6 +1685,7 @@ export class RunEngine {
     idempotencyKeyExpiresAt,
     timeout,
     tags,
+    standaloneResidency,
   }: {
     /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
     runId?: string;
@@ -1694,6 +1695,8 @@ export class RunEngine {
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
     tags?: string[];
+    /** Standalone-token residency (no owning run) from the env mint kind; ignored when `runId` is set. */
+    standaloneResidency?: "NEW" | "LEGACY";
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
       runId,
@@ -1703,6 +1706,7 @@ export class RunEngine {
       idempotencyKeyExpiresAt,
       timeout,
       tags,
+      standaloneResidency,
     });
   }
 
