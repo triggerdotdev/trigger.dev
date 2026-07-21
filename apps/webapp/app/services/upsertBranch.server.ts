@@ -146,9 +146,9 @@ export class UpsertBranchService {
       const apiKey = createApiKeyForEnv(parentEnvironment.type);
       const pkApiKey = createPkApiKeyForEnv(parentEnvironment.type);
       const isDevelopmentBranch = parentEnvironment.type === "DEVELOPMENT";
-      // Dev branch slugs are member-scoped, but shortcodes remain project-scoped.
-      // The parent shortcode is already unique within the project, so it gives
-      // each member's branch a stable, readable shortcode without a migration.
+      // Dev branches can share a slug across members, so their identity is scoped by
+      // orgMemberId. Shortcodes remain project-scoped and use the parent's unique
+      // shortcode to distinguish otherwise identical branch slugs.
       const shortcode = isDevelopmentBranch
         ? `${branchSlug}-${parentEnvironment.shortcode}`
         : branchSlug;
