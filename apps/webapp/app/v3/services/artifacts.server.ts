@@ -24,16 +24,18 @@ const objectStoreClient =
 
 const artifactKeyPrefixByType = {
   deployment_context: "deployments",
+  deployment_bundle: "deployments",
 } as const;
 const artifactBytesSizeLimitByType = {
   deployment_context: 100 * 1024 * 1024, // 100MB
+  deployment_bundle: 100 * 1024 * 1024, // 100MB
 } as const;
 
 export class ArtifactsService extends BaseService {
   private readonly bucket = env.ARTIFACTS_OBJECT_STORE_BUCKET;
 
   public createArtifact(
-    type: "deployment_context",
+    type: "deployment_context" | "deployment_bundle",
     authenticatedEnv: AuthenticatedEnvironment,
     contentLength?: number
   ) {

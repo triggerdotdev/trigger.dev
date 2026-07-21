@@ -339,6 +339,7 @@ export class DeploymentService extends BaseService {
     options: {
       skipPromotion?: boolean;
       configFilePath?: string;
+      fromBundle?: boolean;
     }
   ) {
     return fromPromise(
