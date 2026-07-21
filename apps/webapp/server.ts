@@ -131,6 +131,11 @@ async function startServer() {
   } else {
     // Vite fingerprints its assets so we can cache forever.
     app.use("/assets", express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
+    // Stale clients can request an old hashed asset; hard-404 instead of falling
+    // through to Remix and answering a .js request with HTML.
+    app.use("/assets", (_req, res) => {
+      res.status(404).end();
+    });
     // Everything else (like favicon.ico) is cached for an hour. You may want to be
     // more aggressive with this caching.
     app.use(express.static("build/client", { maxAge: "1h" }));
