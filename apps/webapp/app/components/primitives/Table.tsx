@@ -431,13 +431,36 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
             </Link>
           )
         ) : onClick ? (
-          <button
-            onClick={onClick}
-            className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
-            tabIndex={isTabbableCell ? 0 : -1}
-          >
+          leadingContent || trailingContent ? (
+            <div className={cn(flexClasses, "gap-2")}>
+              {leadingContent}
+              <button
+                onClick={onClick}
+                className={cn(
+                  "inline-flex cursor-pointer items-center gap-2 focus:outline-hidden",
+                  actionClassName
+                )}
+                tabIndex={isTabbableCell ? 0 : -1}
+              >
+                {children}
+              </button>
+              {trailingContent}
+            </div>
+          ) : (
+            <button
+              onClick={onClick}
+              className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
+              tabIndex={isTabbableCell ? 0 : -1}
+            >
+              {children}
+            </button>
+          )
+        ) : leadingContent || trailingContent ? (
+          <div className={cn(flexClasses, "gap-2")}>
+            {leadingContent}
             {children}
-          </button>
+            {trailingContent}
+          </div>
         ) : (
           <>{children}</>
         )}
