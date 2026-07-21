@@ -301,6 +301,10 @@ export function SideMenu({
   // True during a click/⌘B/release-snap animation. With isDragging, marks any in-flight transition
   // (the gutter is only reserved once settled — see `showReservedGutter`).
   const [isAnimating, setIsAnimating] = useState(false);
+  // Direction of an in-flight drag, for the Free-plan banner slide. A drag that started expanded is a
+  // close (the banner tracks it down); one that started collapsed is an open (the banner stays hidden
+  // until fully open, then rises). Only meaningful while `isDragging`.
+  const [dragStartedCollapsed, setDragStartedCollapsed] = useState(false);
 
   // --- Resize state (see the module constants above) ---
   const rootRef = useRef<HTMLDivElement>(null);
@@ -549,6 +553,7 @@ export function SideMenu({
           if (Math.abs(dx) < DRAG_CLICK_THRESHOLD) return;
           drag.didDrag = true;
           setIsDragging(true);
+          setDragStartedCollapsed(drag.startedCollapsed);
           document.body.style.userSelect = "none";
           document.body.style.cursor = "col-resize";
         }
@@ -644,6 +649,23 @@ export function SideMenu({
   // stops overflowing). Dropped mid-transition so the right padding can animate instead of a fixed
   // gutter snapping away (see SIDE_MENU_SCROLL_PAD_RIGHT).
   const showReservedGutter = !isCollapsed && !isDragging && !isAnimating;
+
+  // Free-plan banner slide (see FreePlanBanner). "tracking" = a close in progress, so the banner
+  // follows --sm-collapse down and is gone by the halfway point; "hidden" = collapsed or an open in
+  // progress (stays off-screen); "shown" = settled open, so it rises back up. Drag and click/⌘B share
+  // this: a click drives --sm-collapse through the same animation, with isAnimating standing in for
+  // isDragging and isCollapsed giving the direction.
+  const bannerPhase: "shown" | "tracking" | "hidden" = isDragging
+    ? dragStartedCollapsed
+      ? "hidden"
+      : "tracking"
+    : isAnimating
+      ? isCollapsed
+        ? "tracking"
+        : "hidden"
+      : isCollapsed
+        ? "hidden"
+        : "shown";
 
   return (
     <div
@@ -1066,12 +1088,11 @@ export function SideMenu({
               onToggleCollapsed={handleToggleCollapsed}
             />
             {isFreeUser && (
-              <CollapsibleHeight isCollapsed={isCollapsed}>
-                <FreePlanUsage
-                  to={v3BillingPath(organization)}
-                  percentage={currentPlan.v3Usage.usagePercentage}
-                />
-              </CollapsibleHeight>
+              <FreePlanBanner
+                to={v3BillingPath(organization)}
+                percentage={currentPlan.v3Usage.usagePercentage}
+                phase={bannerPhase}
+              />
             )}
           </motion.div>
         </div>
@@ -1761,25 +1782,75 @@ function CollapsibleElement({
   );
 }
 
-/** Helper component that fades out and collapses height completely */
-function CollapsibleHeight({
-  isCollapsed,
-  children,
-  className,
+/**
+ * The Free-plan banner at the foot of the menu. On close it doesn't collapse or slide on its own: its
+ * reserved height collapses (tracking --sm-collapse, gone by the halfway point) and, because the bottom
+ * section is pinned to the bottom, that pushes the whole section (Help & Feedback + this banner) down so
+ * the full-height banner slides off the bottom edge. On open it lags, waiting for the settled "shown"
+ * phase, then rises back up via translateY. Height is measured so the reclaimed space matches the banner.
+ */
+function FreePlanBanner({
+  to,
+  percentage,
+  phase,
 }: {
-  isCollapsed: boolean;
-  children: ReactNode;
-  className?: string;
+  to: string;
+  percentage: number;
+  phase: "shown" | "tracking" | "hidden";
 }) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const measure = () => setHeight(el.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Close progress, doubled + clamped so the banner is fully gone by the time the menu is halfway shut.
+  const closeProgress = "min(var(--sm-collapse, 0) * 2, 1)";
+  // Slide a little past its own height to clear the section padding + the viewport edge.
+  const offset = height + 24;
+
+  const maxHeight =
+    phase === "shown"
+      ? height
+        ? `${height}px`
+        : "none"
+      : phase === "hidden"
+        ? "0px"
+        : `calc((1 - ${closeProgress}) * ${height}px)`;
+  // On close the banner no longer slides itself: its reserved height collapses (maxHeight) and, because
+  // the bottom section is pinned to the bottom, that drops Help & Feedback down while the full-height
+  // banner overflows off the bottom edge. Only the pop-up-from-hidden rise uses translateY, so "hidden"
+  // parks it below the edge; "shown" and "tracking" both sit at 0.
+  const translateY = phase === "hidden" ? `${offset}px` : "0px";
+  // Fade out as it slides off (tracking --sm-collapse) and fade back in on the settled-open rise.
+  const opacity = phase === "shown" ? 1 : phase === "hidden" ? 0 : `calc(1 - ${closeProgress})`;
+
   return (
     <div
-      className={cn(
-        "grid transition-all duration-200 ease-in-out",
-        isCollapsed ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100",
-        className
-      )}
+      style={{
+        maxHeight,
+        // The full-height banner overflows off the bottom as maxHeight collapses; it isn't clipped.
+        overflow: "visible",
+        transform: `translateY(${translateY})`,
+        opacity,
+        // Only the settled-open rise animates; while tracking a drag/close we follow --sm-collapse
+        // frame-by-frame (a transition would lag the drag).
+        transition:
+          phase === "shown"
+            ? "max-height 300ms ease, transform 300ms ease, opacity 300ms ease"
+            : "none",
+      }}
     >
-      <div className="overflow-hidden">{children}</div>
+      <div ref={contentRef}>
+        <FreePlanUsage to={to} percentage={percentage} />
+      </div>
     </div>
   );
 }
