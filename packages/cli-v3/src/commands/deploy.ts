@@ -1310,7 +1310,8 @@ async function handleNativeBuildServerDeploy({
     const serverEnvVars = await apiClient.getEnvironmentVariables(config.project);
     loadDotEnvVars(config.workingDir, options.envFile);
 
-    const destination = getTmpDir(config.workingDir, "build", false);
+    // Keep the bundle dir around on dry runs so the printed path is inspectable
+    const destination = getTmpDir(config.workingDir, "build", options.dryRun);
     const forcedExternals = await resolveAlwaysExternal(apiClient);
 
     const $buildSpinner = spinner({ plain: options.plain });
@@ -1352,22 +1353,57 @@ async function handleNativeBuildServerDeploy({
       env: buildManifest.build.env ?? {},
     });
 
-    // Append to a .dockerignore a build extension may have produced, never clobber it
+    // Append to a .dockerignore a build extension may have produced, never clobber it.
+    // Our exclusions always go LAST so a pre-existing negation (!file) can't re-include
+    // the build-args file into the image context.
     const dockerignorePath = join(destination.path, ".dockerignore");
     const [, existingDockerignore] = await tryCatch(readFile(dockerignorePath, "utf-8"));
-    const dockerignoreEntries = [BUNDLE_BUILD_ARGS_FILE, ".dockerignore"].filter(
-      (entry) => !existingDockerignore?.split("\n").includes(entry)
+    await writeFile(
+      dockerignorePath,
+      `${
+        existingDockerignore ? existingDockerignore.trimEnd() + "\n" : ""
+      }${BUNDLE_BUILD_ARGS_FILE}\n.dockerignore\n`
     );
-    if (dockerignoreEntries.length > 0) {
-      await writeFile(
-        dockerignorePath,
-        `${existingDockerignore ? existingDockerignore.trimEnd() + "\n" : ""}${dockerignoreEntries.join("\n")}\n`
-      );
-    }
 
     if (options.dryRun) {
       logger.info(`Dry run complete. View the built bundle at ${destination.path}`);
       return;
+    }
+
+    // Sync env vars BEFORE initializing the deployment: initialization enqueues the
+    // remote build synchronously, so syncing afterwards would race a fast build —
+    // a run triggered right after promotion could execute without the synced vars.
+    // Syncing is environment-scoped and needs no deployment, so pre-init is safe.
+    if (!options.skipSyncEnvVars) {
+      const childVars = buildManifest.deploy.sync?.env ?? {};
+      const parentVars = buildManifest.deploy.sync?.parentEnv ?? {};
+      const secretChildVars = buildManifest.deploy.sync?.secretEnv ?? {};
+      const secretParentVars = buildManifest.deploy.sync?.secretParentEnv ?? {};
+
+      const hasVarsToSync =
+        Object.keys(childVars).length > 0 ||
+        Object.keys(secretChildVars).length > 0 ||
+        // Only sync parent variables if this is a branch environment
+        (branch &&
+          (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
+
+      if (hasVarsToSync) {
+        const uploadResult = await syncEnvVarsWithServer(
+          apiClient,
+          config.project,
+          options.env,
+          childVars,
+          parentVars,
+          secretChildVars,
+          secretParentVars
+        );
+
+        if (!uploadResult.success) {
+          throw new Error(`Failed to sync env vars with the server: ${uploadResult.error}`);
+        }
+
+        logger.debug("Synced env vars with the server");
+      }
     }
   }
 
@@ -1475,50 +1511,6 @@ async function handleNativeBuildServerDeploy({
   }
 
   const deployment = initializeDeploymentResult.data;
-
-  // In --local-bundle mode the build server never runs install/bundle, so the env-var
-  // sync that extensions rely on (syncEnvVars) must happen here on the client, using
-  // the unscrubbed in-memory manifest — same semantics as the classic local path.
-  if (bundleManifest && !options.skipSyncEnvVars) {
-    const childVars = bundleManifest.deploy.sync?.env ?? {};
-    const parentVars = bundleManifest.deploy.sync?.parentEnv ?? {};
-    const secretChildVars = bundleManifest.deploy.sync?.secretEnv ?? {};
-    const secretParentVars = bundleManifest.deploy.sync?.secretParentEnv ?? {};
-
-    const hasVarsToSync =
-      Object.keys(childVars).length > 0 ||
-      Object.keys(secretChildVars).length > 0 ||
-      // Only sync parent variables if this is a branch environment
-      (branch && (Object.keys(parentVars).length > 0 || Object.keys(secretParentVars).length > 0));
-
-    if (hasVarsToSync) {
-      const uploadResult = await syncEnvVarsWithServer(
-        apiClient,
-        config.project,
-        options.env,
-        childVars,
-        parentVars,
-        secretChildVars,
-        secretParentVars
-      );
-
-      if (!uploadResult.success) {
-        $deploymentSpinner.stop("Failed to sync env vars");
-        log.error(chalk.bold(chalkError(`Failed to sync env vars: ${uploadResult.error}`)));
-
-        await apiClient.failDeployment(deployment.id, {
-          error: {
-            name: "SyncEnvVarsError",
-            message: `Failed to sync env vars with the server: ${uploadResult.error}`,
-          },
-        });
-
-        throw new OutroCommandError(`Deployment failed`);
-      }
-
-      logger.debug("Synced env vars with the server");
-    }
-  }
 
   const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
   const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
@@ -1930,6 +1922,16 @@ async function handleFromBundleDeploy({
 
   if (!projectClient) {
     throw new Error("Failed to get project client");
+  }
+
+  if (!existingDeploymentId) {
+    // The supported flow is attach mode (the build server sets
+    // TRIGGER_EXISTING_DEPLOYMENT_ID). Fresh-init from a bundle is equivalent to a
+    // plain local build and mainly useful for local testing — warn so nobody relies
+    // on it against cloud by accident.
+    logger.warn(
+      "No existing deployment to attach to — initializing a fresh local-build deployment from the bundle. This path is intended for testing."
+    );
   }
 
   const deployment = await initializeOrAttachDeployment(
