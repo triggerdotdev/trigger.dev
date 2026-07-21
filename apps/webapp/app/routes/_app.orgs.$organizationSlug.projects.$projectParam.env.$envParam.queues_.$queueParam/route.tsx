@@ -367,6 +367,9 @@ function OverviewCharts({
             { key: "limit", label: "Limit", color: COLORS.limit },
             { key: "running", label: "Running", color: COLORS.running },
           ]}
+          // The limit is a config value emitted only while the queue is active; back-fill its
+          // leading zeros so the reference line doesn't start with a false 0→limit step.
+          carryBackfill={["limit"]}
         />
         <QueueDetailChartCard
           title="Queue depth"

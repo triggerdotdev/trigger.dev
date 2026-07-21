@@ -95,6 +95,13 @@ type QueueMetricChartProps = {
   defaultPeriod?: string;
   /** Recolor a series warning where it drops below another (e.g. started below enqueued). */
   warningOverlay?: { series: string; below: string };
+  /**
+   * Series whose leading zeros should be back-filled with the first real value. Gauge series that
+   * are only emitted while the queue is active (e.g. the concurrency `limit`) read as 0 before the
+   * first emission — carry-forward has nothing to carry yet — which draws a false 0→N step. These
+   * are config values that existed all along, so carry the first value backward instead.
+   */
+  carryBackfill?: string[];
 };
 
 // Bare chart (no card chrome) so it can live inside a shared card, e.g. a tabbed panel.
@@ -108,6 +115,7 @@ export function QueueMetricChart({
   fillGaps,
   defaultPeriod,
   warningOverlay,
+  carryBackfill,
 }: QueueMetricChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(query, {
     ids,
@@ -118,7 +126,7 @@ export function QueueMetricChart({
   });
 
   const data = useMemo(() => {
-    return rows
+    const points = rows
       .map((r) => {
         const point: { bucket: number } & Record<string, number> = {
           bucket: clickhouseTimeToMs(r.t),
@@ -127,7 +135,20 @@ export function QueueMetricChart({
         return point;
       })
       .filter((p) => Number.isFinite(p.bucket));
-  }, [rows, series]);
+
+    // Back-fill leading zeros for config gauges (see `carryBackfill`): find the first positive
+    // value and carry it back over the earlier buckets so the line doesn't start at a false 0.
+    if (carryBackfill?.length) {
+      for (const key of carryBackfill) {
+        const first = points.findIndex((p) => p[key] > 0);
+        if (first > 0) {
+          const value = points[first]![key]!;
+          for (let i = 0; i < first; i++) points[i]![key] = value;
+        }
+      }
+    }
+    return points;
+  }, [rows, series, carryBackfill]);
 
   const chartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
