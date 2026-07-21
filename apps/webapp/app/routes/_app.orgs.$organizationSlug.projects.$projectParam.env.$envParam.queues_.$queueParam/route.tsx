@@ -906,6 +906,10 @@ function KeyDrilldown({
 // signals the queue is stuck, not just busy.
 const OLDEST_WAIT_WARNING_MS = 5 * 60_000;
 
+// How recent the newest ClickHouse gauge bucket must be to drive the live blocks. Above the 10s
+// bucket + pipeline lag; past it we treat the queue as idle and fall back to the loader value.
+const LIVE_GAUGE_FRESH_MS = 90_000;
+
 function QueueStats({
   queue,
   environmentConcurrencyLimit,
@@ -951,11 +955,19 @@ function QueueStats({
       refreshIntervalMs: 15_000,
     }
   );
+  // Gauges are only emitted while the queue is active, so a drained queue's newest bucket is a past
+  // one holding its last non-zero reading. Trust the CH gauge only when its newest bucket is recent
+  // (covers the 10s bucket + pipeline lag); once it ages out we fall back to the loader's live
+  // Redis/PG value instead of lingering on a stale count.
   const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
-  const runningLive = latest ? toNumber(latest.running) : null;
-  const queuedLive = latest ? toNumber(latest.queued) : null;
-  const limitLive = latest ? toNumber(latest.q_limit) : null;
-  const ckWaitLive = latest ? toNumber(latest.ck_wait) : null;
+  const latestBucketMs = latest ? clickhouseTimeToMs(latest.t) : NaN;
+  const liveFresh =
+    Number.isFinite(latestBucketMs) && Date.now() - latestBucketMs < LIVE_GAUGE_FRESH_MS;
+  const fresh = latest && liveFresh ? latest : undefined;
+  const runningLive = fresh ? toNumber(fresh.running) : null;
+  const queuedLive = fresh ? toNumber(fresh.queued) : null;
+  const limitLive = fresh ? toNumber(fresh.q_limit) : null;
+  const ckWaitLive = fresh ? toNumber(fresh.ck_wait) : null;
 
   // Prefer CH once it has landed; loader values before that.
   const runningDisplay = runningLive ?? queue.running;
