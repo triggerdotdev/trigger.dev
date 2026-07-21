@@ -1,9 +1,11 @@
+import { useId } from "react";
 import {
   Area,
   AreaChart,
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceLine,
   XAxis,
   YAxis,
@@ -11,12 +13,22 @@ import {
   type YAxisProps,
 } from "recharts";
 import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/charts/Chart";
+import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { CHART_MARGIN } from "./ChartBar";
 import { useChartContext } from "./ChartContext";
 import { ChartLineInvalid, ChartLineLoading, ChartLineNoData } from "./ChartLoading";
 import { useHasNoData } from "./ChartRoot";
+import { useChartSync } from "./ChartSyncContext";
 import { defaultYAxisTickFormatter, useYAxisWidth } from "./useYAxisWidth";
 // Legend is now rendered by ChartRoot outside the chart container
+
+// Dashed line mirroring the hovered x across synced charts.
+const SYNC_LINE_COLOR = "var(--color-text-faint)";
+
+// Data key the warning overlay line is plotted under. Injected into the render data only; never
+// added to config/series, so it stays out of the legend, no-data check and series totals. Deduped
+// out of the tooltip so a hovered bucket shows one value, not the base + overlay retrace.
+const WARNING_OVERLAY_KEY = "__warningOverlay";
 
 type CurveType =
   | "basis"
@@ -31,6 +43,42 @@ type CurveType =
   | "step"
   | "stepBefore"
   | "stepAfter";
+
+/** While drag-to-zooming, show the selected From/To range instead of hovered values. */
+function ZoomRangeTooltip({ active, from, to }: { active?: boolean; from: string; to: string }) {
+  if (!active) return null;
+  return (
+    <TooltipPortal active={active}>
+      <div className="grid grid-cols-[auto_auto] gap-x-2 gap-y-1 rounded-lg border border-grid-bright bg-background-bright px-2.5 py-1.5 text-xs shadow-xl">
+        <span className="text-right text-text-dimmed">From:</span>
+        <span className="tabular-nums text-text-bright">{from}</span>
+        <span className="text-right text-text-dimmed">To:</span>
+        <span className="tabular-nums text-text-bright">{to}</span>
+      </div>
+    </TooltipPortal>
+  );
+}
+
+// Stable module-level tooltip for warning-overlay charts: drops the overlay's retraced entry so a
+// hovered bucket shows one value (base), not base + overlay. Defined at module scope (not inline in
+// the renderer) so recharts reconciles it in place across hover re-renders instead of remounting
+// the portaled tooltip — the latter caused a flicker while moving along the line.
+function OverlayFilteredTooltip(props: any) {
+  return (
+    <ChartTooltipContent
+      {...props}
+      payload={props.payload?.filter((p: any) => p.dataKey !== WARNING_OVERLAY_KEY)}
+    />
+  );
+}
+
+// Stable module-level tooltip for the stacked area chart: keeps the line-style indicator the
+// stacked view has always used (ChartTooltipContent otherwise defaults to a dot). Module-level for
+// the same reconcile-in-place reason as OverlayFilteredTooltip — an inline element would remount
+// the portaled tooltip on every hover re-render and flicker.
+function StackedAreaTooltip(props: any) {
+  return <ChartTooltipContent {...props} indicator="line" />;
+}
 
 // ============================================================================
 // COMPOUND COMPONENT API
@@ -51,30 +99,88 @@ export type ChartLineRendererProps = {
   tooltipValueFormatter?: (value: number) => string;
   /** Draw a dot at each data point. Defaults to true; turn off for dense/compact charts. */
   showDots?: boolean;
-  /** Horizontal reference lines (e.g. limits); the y-domain extends to include them. */
-  referenceLines?: Array<{ y: number; label?: string; color?: string }>;
+  /**
+   * Horizontal reference lines (e.g. limits); the y-domain extends to include them.
+   *
+   * `labelPlacement` controls where the label sits relative to the plot:
+   * - `"inside"` (default): right-aligned just below the line, inside the plot area.
+   * - `"outside"`: in the right gutter at the line's y. The chart's right margin is widened
+   *   automatically so outside labels are not clipped by the SVG viewport.
+   */
+  referenceLines?: Array<{
+    y: number;
+    label?: string;
+    color?: string;
+    labelPlacement?: "inside" | "outside";
+  }>;
+  /**
+   * Recolor the stroke above a threshold value (e.g. an over-limit warning). The y-domain is
+   * pinned so the gradient split lines up exactly with the plotted values and reference lines.
+   * Single-series (non-stacked) line charts only.
+   *
+   * Prefer {@link warningOverlay} when the threshold sits far below the data maximum: a gradient
+   * split whose boundary collapses onto the baseline paints zero/near-zero buckets the warning
+   * colour. The overlay retraces per-bucket instead, so under-threshold buckets always stay blue.
+   */
+  thresholdStroke?: { value: number; aboveColor: string };
+  /**
+   * Per-bucket warning recolour: a series is retraced in the warning colour only across buckets
+   * where it crosses a limit — either strictly above a constant `threshold` (single-series case,
+   * applied to the first series), or where one series drops below another (`series` below `below`,
+   * e.g. started < enqueued = "not keeping up"). The mask extends one bucket forward so a lone
+   * crossing still yields a visible segment. Unlike {@link thresholdStroke}'s gradient split,
+   * non-crossing buckets always stay the base colour. The overlay is excluded from the legend and
+   * deduped out of the tooltip. Non-stacked line charts only.
+   */
+  warningOverlay?:
+    | { threshold: number; color?: string }
+    | { series: string; below: string; color?: string }
+    | { series: string; atOrAbove: string; color?: string };
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
   height?: number;
 };
 
-/** Reference-line label: right-aligned just below the line (recharts injects viewBox). */
+/** Font size used for reference-line labels; also used to size the outside-label gutter. */
+const REFERENCE_LABEL_FONT_SIZE = 10;
+
+/**
+ * Reference-line label (recharts injects viewBox).
+ * - `"inside"`: right-aligned just below the line, inside the plot.
+ * - `"outside"`: left-aligned in the right gutter, vertically centered on the line.
+ */
 function ReferenceLineLabel({
   viewBox,
   value,
+  placement = "inside",
 }: {
   viewBox?: { x: number; y: number; width: number };
   value: string;
+  placement?: "inside" | "outside";
 }) {
   if (!viewBox) return null;
+  if (placement === "outside") {
+    return (
+      <text
+        x={viewBox.x + viewBox.width + 6}
+        y={viewBox.y}
+        dominantBaseline="middle"
+        textAnchor="start"
+        fill="#878C99"
+        fontSize={REFERENCE_LABEL_FONT_SIZE}
+      >
+        {value}
+      </text>
+    );
+  }
   return (
     <text
       x={viewBox.x + viewBox.width - 4}
       y={viewBox.y + 12}
       textAnchor="end"
       fill="#878C99"
-      fontSize={10}
+      fontSize={REFERENCE_LABEL_FONT_SIZE}
     >
       {value}
     </text>
@@ -82,8 +188,23 @@ function ReferenceLineLabel({
 }
 
 /**
+ * Extra right margin (px) needed so outside reference-line labels aren't clipped by the SVG
+ * viewport. Estimates label width from character count; returns 0 when no label is outside-placed.
+ */
+function outsideLabelGutter(referenceLines: ChartLineRendererProps["referenceLines"]): number {
+  const outside = (referenceLines ?? []).filter((l) => l.labelPlacement === "outside" && l.label);
+  if (outside.length === 0) return 0;
+  const maxChars = Math.max(...outside.map((l) => l.label!.length));
+  // ~0.62em per char at this font size, plus padding on both sides of the label.
+  return Math.ceil(maxChars * REFERENCE_LABEL_FONT_SIZE * 0.62) + 12;
+}
+
+/**
  * Line chart renderer for the compound component system.
  * Must be used within a Chart.Root.
+ *
+ * When wrapped in a <ChartSyncProvider>, participates in the group's shared hover
+ * indicator and drag-to-zoom (mirrors Chart.Bar; a no-op when no provider is present).
  *
  * @example
  * ```tsx
@@ -102,6 +223,8 @@ export function ChartLineRenderer({
   tooltipValueFormatter,
   showDots = true,
   referenceLines,
+  thresholdStroke,
+  warningOverlay,
   width,
   height,
 }: ChartLineRendererProps) {
@@ -117,6 +240,9 @@ export function ChartLineRenderer({
     showLegend,
   } = useChartContext();
   const hasNoData = useHasNoData();
+  const sync = useChartSync();
+  // Strip the colons React injects (":r1:") so the id is safe inside an SVG url(#…) reference.
+  const gradientId = `line-threshold-${useId().replace(/:/g, "")}`;
   const yAxisTickFormatter = yAxisPropsProp?.tickFormatter ?? defaultYAxisTickFormatter;
   const computedYAxisWidth = useYAxisWidth(data, visibleSeries, yAxisTickFormatter);
 
@@ -150,6 +276,63 @@ export function ChartLineRenderer({
     ...xAxisPropsProp,
   };
 
+  // A threshold stroke needs an exact, fixed y-domain so the gradient split aligns with the
+  // plotted values and the reference lines. Compute it from the data + reference/threshold ys.
+  let thresholdDomain: [number, number] | undefined;
+  let thresholdOffset = 0;
+  if (thresholdStroke && !stacked) {
+    let dataMax = thresholdStroke.value;
+    for (const row of data) {
+      for (const key of visibleSeries) {
+        const v = Number(row[key]);
+        if (Number.isFinite(v) && v > dataMax) dataMax = v;
+      }
+    }
+    for (const line of referenceLines ?? []) {
+      if (Number.isFinite(line.y) && line.y > dataMax) dataMax = line.y;
+    }
+    const domainMax = dataMax > 0 ? dataMax * 1.1 : 1;
+    thresholdDomain = [0, domainMax];
+    // Gradient runs top (offset 0 = domainMax) to bottom (offset 1 = 0); the split sits where
+    // the threshold value falls within the domain.
+    thresholdOffset = Math.min(1, Math.max(0, (domainMax - thresholdStroke.value) / domainMax));
+  }
+
+  // Per-bucket warning overlay: single-series line charts only. Retrace the primary series in the
+  // warning colour, non-null only across over-threshold stretches. Include the immediate neighbours
+  // of an over-threshold bucket (both endpoints of a segment must be non-null), so the crossing
+  // segment on BOTH sides is drawn — the colour change tracks the axis crossing symmetrically, and
+  // a lone over-threshold bucket still yields a visible segment.
+  const overlayKey =
+    warningOverlay && !stacked
+      ? "series" in warningOverlay
+        ? warningOverlay.series
+        : visibleSeries[0]
+      : undefined;
+  const overlayActive = overlayKey != null;
+  const chartData = overlayActive
+    ? data.map((row, i) => {
+        const isOver = (r: (typeof data)[number] | undefined) => {
+          if (!r) return false;
+          const v = Number(r[overlayKey]);
+          if (!Number.isFinite(v)) return false;
+          if ("below" in warningOverlay!) {
+            // "Not keeping up": the series dips below its companion (e.g. started < enqueued).
+            const b = Number(r[warningOverlay.below]);
+            return Number.isFinite(b) && v < b;
+          }
+          if ("atOrAbove" in warningOverlay!) {
+            // "At the limit": the series reaches or exceeds its companion (e.g. running >= limit).
+            const b = Number(r[warningOverlay.atOrAbove]);
+            return Number.isFinite(b) && b > 0 && v >= b;
+          }
+          return v > warningOverlay!.threshold;
+        };
+        const inOverlay = isOver(data[i - 1]) || isOver(row) || isOver(data[i + 1]);
+        return { ...row, [WARNING_OVERLAY_KEY]: inOverlay ? row[overlayKey] : null };
+      })
+    : data;
+
   const yAxisConfig = {
     axisLine: false,
     tickLine: false,
@@ -161,33 +344,149 @@ export function ChartLineRenderer({
       style: { fontVariantNumeric: "tabular-nums" },
     },
     tickFormatter: yAxisTickFormatter,
+    ...(thresholdDomain ? { domain: thresholdDomain } : {}),
     ...yAxisPropsProp,
   };
 
-  // Handle mouse leave to also reset highlight
+  // Widen the right margin only when a reference line is outside-labeled, so charts without
+  // outside labels keep their existing geometry.
+  const rightGutter = outsideLabelGutter(referenceLines);
+  const chartMargin =
+    rightGutter > 0
+      ? { ...CHART_MARGIN, right: Math.max(CHART_MARGIN.right, rightGutter) }
+      : CHART_MARGIN;
+
+  // Handle mouse leave to also reset highlight and any synced hover/zoom drag.
   const handleMouseLeave = () => {
     highlight.setTooltipActive(false);
     highlight.reset();
+    sync?.setActiveX(null);
+    sync?.cancelZoom();
   };
+
+  // Synced hover + drag-to-zoom state (mirrors Chart.Bar; all no-ops without a provider).
+  const syncActiveX = sync?.activeX ?? null;
+  const syncZoomSelection = sync?.zoomSelection ?? null;
+  const bucketWidthMs = data.length >= 2 ? Number(data[1][dataKey]) - Number(data[0][dataKey]) : 0;
+  const formatZoomEdge = (v: number): string =>
+    tooltipLabelFormatter ? tooltipLabelFormatter("", [{ payload: { [dataKey]: v } }]) : String(v);
+  let zoomFrom: string | null = null;
+  let zoomTo: string | null = null;
+  if (syncZoomSelection) {
+    const a = Number(syncZoomSelection.start);
+    const b = Number(syncZoomSelection.current);
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      zoomFrom = formatZoomEdge(Math.min(a, b));
+      zoomTo = formatZoomEdge(Math.max(a, b));
+    }
+  }
+
+  const sharedMouseHandlers = {
+    className: sync?.zoomEnabled ? "cursor-crosshair select-none" : undefined,
+    onMouseDown: (e: any) => {
+      if (sync?.zoomEnabled && e?.activeLabel != null) sync.startZoom(e.activeLabel);
+    },
+    onMouseMove: (e: any) => {
+      if (sync?.zoomEnabled && sync.zoomSelection && e?.activeLabel != null) {
+        sync.updateZoom(e.activeLabel);
+      }
+      if (e?.activePayload?.length) {
+        setActivePayload(e.activePayload, e.activeTooltipIndex);
+        highlight.setTooltipActive(true);
+        sync?.setActiveX(e.activeLabel ?? null);
+      } else {
+        highlight.setTooltipActive(false);
+        sync?.setActiveX(null);
+      }
+    },
+    onMouseUp: () => {
+      if (sync?.zoomEnabled) sync.endZoom(bucketWidthMs);
+    },
+    onMouseLeave: handleMouseLeave,
+  };
+
+  // Pass the tooltip as a stable ELEMENT (not an inline function). recharts remounts a function
+  // `content` on the re-renders that fire while hovering along the line (sync/highlight state
+  // updates), which unmounts the portaled tooltip every bucket = flicker. An element of a
+  // module-level component type reconciles in place, so the tooltip stays mounted while moving.
+  const tooltipContent =
+    syncZoomSelection && zoomFrom != null && zoomTo != null ? (
+      <ZoomRangeTooltip from={zoomFrom} to={zoomTo} />
+    ) : showLegend ? (
+      () => null
+    ) : overlayActive ? (
+      <OverlayFilteredTooltip valueFormatter={tooltipValueFormatter} />
+    ) : (
+      <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
+    );
+
+  const referenceOverlays = (
+    <>
+      {/* Synced drag-to-zoom selection — mirrored across charts in the same group. */}
+      {syncZoomSelection && (
+        <ReferenceArea
+          x1={syncZoomSelection.start}
+          x2={syncZoomSelection.current}
+          isFront
+          stroke="var(--color-pending)"
+          strokeOpacity={0.3}
+          fill="var(--color-pending)"
+          fillOpacity={0.15}
+          className="pointer-events-none"
+        />
+      )}
+      {/* Synced hover indicator: drawn on the *other* charts only (the hovered one shows its
+          own cursor); pointer-events-none so it never steals hover. */}
+      {syncActiveX != null && !highlight.tooltipActive && (
+        <ReferenceLine
+          x={syncActiveX}
+          stroke={SYNC_LINE_COLOR}
+          strokeWidth={1}
+          strokeDasharray="4 4"
+          isFront
+          className="pointer-events-none"
+        />
+      )}
+      {referenceLines?.map((line) => (
+        <ReferenceLine
+          key={`ref-${line.y}-${line.label ?? ""}`}
+          y={line.y}
+          stroke={line.color ?? "#4D525B"}
+          strokeDasharray="4 4"
+          strokeWidth={1}
+          // extendDomain (not "hidden") means recharts does NOT wrap this layer in the plot
+          // clipPath, so an outside-placed label can render into the right gutter unclipped.
+          ifOverflow="extendDomain"
+          label={
+            line.label ? (
+              <ReferenceLineLabel value={line.label} placement={line.labelPlacement} />
+            ) : undefined
+          }
+        />
+      ))}
+    </>
+  );
 
   // Render stacked area chart if stacked prop is true
   if (stacked && visibleSeries.length > 1) {
+    // Same variants as the line chart's tooltipContent, but the default popup keeps the stacked
+    // view's line-style indicator (warning overlay never applies to stacked areas).
+    const stackedTooltipContent =
+      syncZoomSelection && zoomFrom != null && zoomTo != null ? (
+        <ZoomRangeTooltip from={zoomFrom} to={zoomTo} />
+      ) : showLegend ? (
+        () => null
+      ) : (
+        <StackedAreaTooltip valueFormatter={tooltipValueFormatter} />
+      );
     return (
       <AreaChart
         data={data}
         width={width}
         height={height}
         stackOffset="none"
-        margin={CHART_MARGIN}
-        onMouseMove={(e: any) => {
-          if (e?.activePayload?.length) {
-            setActivePayload(e.activePayload, e.activeTooltipIndex);
-            highlight.setTooltipActive(true);
-          } else {
-            highlight.setTooltipActive(false);
-          }
-        }}
-        onMouseLeave={handleMouseLeave}
+        margin={chartMargin}
+        {...sharedMouseHandlers}
       >
         <CartesianGrid vertical={false} stroke="var(--color-grid-bright)" strokeDasharray="3 3" />
         <XAxis {...xAxisConfig} />
@@ -195,27 +494,14 @@ export function ChartLineRenderer({
         {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
         <ChartTooltip
           cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
-          content={
-            showLegend ? (
-              () => null
-            ) : (
-              <ChartTooltipContent indicator="line" valueFormatter={tooltipValueFormatter} />
-            )
-          }
+          content={stackedTooltipContent}
           labelFormatter={tooltipLabelFormatter}
+          isAnimationActive={false}
+          allowEscapeViewBox={{ x: true, y: true }}
+          wrapperStyle={{ zIndex: 1000 }}
         />
         {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
-        {referenceLines?.map((line) => (
-          <ReferenceLine
-            key={`ref-${line.y}-${line.label ?? ""}`}
-            y={line.y}
-            stroke={line.color ?? "#4D525B"}
-            strokeDasharray="4 4"
-            strokeWidth={1}
-            ifOverflow="extendDomain"
-            label={line.label ? <ReferenceLineLabel value={line.label} /> : undefined}
-          />
-        ))}
+        {referenceOverlays}
         {visibleSeries.map((key) => (
           <Area
             key={key}
@@ -236,55 +522,121 @@ export function ChartLineRenderer({
   return (
     <LineChart
       accessibilityLayer
-      data={data}
+      data={chartData}
       width={width}
       height={height}
-      margin={CHART_MARGIN}
-      onMouseMove={(e: any) => {
-        if (e?.activePayload?.length) {
-          setActivePayload(e.activePayload, e.activeTooltipIndex);
-          highlight.setTooltipActive(true);
-        } else {
-          highlight.setTooltipActive(false);
-        }
-      }}
-      onMouseLeave={handleMouseLeave}
+      margin={chartMargin}
+      {...sharedMouseHandlers}
     >
+      {thresholdStroke && thresholdDomain ? (
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset={thresholdOffset} stopColor={thresholdStroke.aboveColor} />
+            <stop offset={thresholdOffset} stopColor={config[visibleSeries[0]]?.color} />
+          </linearGradient>
+        </defs>
+      ) : null}
       <CartesianGrid vertical={false} stroke="var(--color-grid-bright)" strokeDasharray="3 3" />
       <XAxis {...xAxisConfig} />
       <YAxis {...yAxisConfig} />
       {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
       <ChartTooltip
         cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
-        content={
-          showLegend ? () => null : <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
-        }
+        content={tooltipContent}
         labelFormatter={tooltipLabelFormatter}
+        isAnimationActive={false}
+        allowEscapeViewBox={{ x: true, y: true }}
+        wrapperStyle={{ zIndex: 1000 }}
       />
       {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
-      {referenceLines?.map((line) => (
-        <ReferenceLine
-          key={`ref-${line.y}-${line.label ?? ""}`}
-          y={line.y}
-          stroke={line.color ?? "#4D525B"}
-          strokeDasharray="4 4"
-          strokeWidth={1}
-          ifOverflow="extendDomain"
-          label={line.label ? <ReferenceLineLabel value={line.label} /> : undefined}
-        />
-      ))}
+      {referenceOverlays}
       {visibleSeries.map((key) => (
         <Line
           key={key}
           dataKey={key}
           type={lineType}
-          stroke={config[key]?.color}
+          stroke={thresholdStroke && thresholdDomain ? `url(#${gradientId})` : config[key]?.color}
           strokeWidth={1}
           dot={showDots ? { r: 1.5, fill: config[key]?.color, strokeWidth: 0 } : false}
-          activeDot={{ r: 4 }}
+          // The hover dot matches the line colour under it: for a gradient (threshold) line it
+          // flips at the split; otherwise it's the series colour. The warning overlay draws its
+          // own dot on top where it's active.
+          activeDot={
+            thresholdStroke && thresholdDomain
+              ? (props: ActiveDotProps) => (
+                  <ThresholdActiveDot
+                    {...props}
+                    dataKey={key}
+                    threshold={thresholdStroke.value}
+                    aboveColor={thresholdStroke.aboveColor}
+                    baseColor={config[key]?.color ?? "var(--color-tasks)"}
+                  />
+                )
+              : { r: 4, fill: config[key]?.color, strokeWidth: 0 }
+          }
           isAnimationActive={false}
         />
       ))}
+      {overlayActive && (
+        // Drawn after the base line so the warning colour sits on top. connectNulls={false} keeps
+        // the mask to over-threshold stretches; excluded from the legend and (above) the tooltip.
+        // Its active dot inherits the warning colour so the hover dot is yellow over yellow.
+        // Slightly wider than the base line so it fully covers it — otherwise the base colour peeks
+        // out along the edges and the warning stretch reads as an outlined line.
+        <Line
+          key={WARNING_OVERLAY_KEY}
+          dataKey={WARNING_OVERLAY_KEY}
+          type={lineType}
+          stroke={warningOverlay!.color ?? "var(--color-warning)"}
+          strokeWidth={2}
+          dot={false}
+          activeDot={{
+            r: 4,
+            fill: warningOverlay!.color ?? "var(--color-warning)",
+            strokeWidth: 0,
+          }}
+          connectNulls={false}
+          legendType="none"
+          isAnimationActive={false}
+        />
+      )}
     </LineChart>
   );
+}
+
+type ActiveDotProps = {
+  cx?: number;
+  cy?: number;
+  value?: number | Array<number>;
+  payload?: Record<string, unknown>;
+};
+
+/** Hover dot for a gradient (threshold) line: filled with the colour of the line under it —
+ * the warning colour at/above the threshold, the base colour below. Reads the bucket value from
+ * `payload[dataKey]` (robust across recharts versions) and falls back to the `value` prop. */
+function ThresholdActiveDot({
+  cx,
+  cy,
+  value,
+  payload,
+  dataKey,
+  threshold,
+  aboveColor,
+  baseColor,
+}: ActiveDotProps & {
+  dataKey: string;
+  threshold: number;
+  aboveColor: string;
+  baseColor: string;
+}) {
+  if (cx === undefined || cy === undefined) return null;
+  const fromPayload = payload?.[dataKey];
+  const raw =
+    typeof fromPayload === "number"
+      ? fromPayload
+      : Array.isArray(value)
+        ? value[value.length - 1]
+        : value;
+  const color = typeof raw === "number" && raw > threshold ? aboveColor : baseColor;
+  return <circle cx={cx} cy={cy} r={4} fill={color} />;
 }

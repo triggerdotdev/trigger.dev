@@ -34,13 +34,18 @@ const queueListSelect = {
   concurrencyLimitBase: true,
   concurrencyLimitOverriddenAt: true,
   concurrencyLimitOverriddenBy: true,
+  concurrencyLimitOverridePercent: true,
   type: true,
   paused: true,
 } satisfies Prisma.TaskQueueSelect;
 
 type QueueListRow = Prisma.TaskQueueGetPayload<{ select: typeof queueListSelect }>;
 
-type QueueListItem = ReturnType<typeof toQueueItem>;
+// The percent source-of-truth for percent-based overrides isn't part of the shared `QueueItem`
+// schema (that's a public contract), so we surface it as an extra field on the list item.
+type QueueListItem = ReturnType<typeof toQueueItem> & {
+  concurrencyLimitOverridePercent: number | null;
+};
 
 type QueueListPagination =
   | { mode: "filtered"; currentPage: number; hasMore: boolean }
@@ -375,10 +380,11 @@ export class QueueListPresenter extends BasePresenter {
       concurrencyLimitBase: number | null;
       concurrencyLimitOverriddenAt: Date | null;
       concurrencyLimitOverriddenBy: string | null;
+      concurrencyLimitOverridePercent: Prisma.Decimal | null;
       type: TaskQueueType;
       paused: boolean;
     }[]
-  ) {
+  ): Promise<QueueListItem[]> {
     const [queuedByQueue, runningByQueue] = await Promise.all([
       this.engineClient.lengthOfQueues(
         environment,
@@ -401,8 +407,8 @@ export class QueueListPresenter extends BasePresenter {
 
     const overriddenByMap = new Map(overriddenByUsers.map((u) => [u.id, u]));
 
-    return queues.map((queue) =>
-      toQueueItem({
+    return queues.map((queue) => ({
+      ...toQueueItem({
         friendlyId: queue.friendlyId,
         name: queue.name,
         type: queue.type,
@@ -415,7 +421,12 @@ export class QueueListPresenter extends BasePresenter {
           ? (overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null)
           : null,
         paused: queue.paused,
-      })
-    );
+      }),
+      // Prisma returns Decimal; the client only needs a plain number (null for absolute overrides).
+      concurrencyLimitOverridePercent:
+        queue.concurrencyLimitOverridePercent !== null
+          ? Number(queue.concurrencyLimitOverridePercent)
+          : null,
+    }));
   }
 }

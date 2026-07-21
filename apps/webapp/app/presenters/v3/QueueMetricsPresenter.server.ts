@@ -6,8 +6,16 @@ export type QueueListMetric = {
   p50WaitMs: number | null;
   p95WaitMs: number | null;
   peakQueued: number;
+  /** Times this queue was throttled (running at limit with a backlog) over the window. */
+  throttledTotal: number;
   /** Equal-width buckets, oldest first, carry-forward filled across idle gaps. */
   depthSparkline: number[];
+  /**
+   * Throttled count per bucket, aligned 1:1 with `depthSparkline`. Not carry-forward filled —
+   * a bucket is non-zero only when throttling actually happened in it, so callers can tint
+   * exactly those bars.
+   */
+  throttledSparkline: number[];
 };
 
 export type QueueListMetrics = {
@@ -95,36 +103,41 @@ export class QueueMetricsPresenter {
         return empty;
       }
 
-      // Bucket -> depth per queue, mapped onto the aligned grid and forward-filled.
-      const depthsByQueue = new Map<string, Map<number, number>>();
+      // Bucket -> depth + throttled per queue, mapped onto the aligned grid. Depth is
+      // forward-filled below; throttled is not (only real per-bucket counts tint bars).
+      const bucketsByQueue = new Map<string, Map<number, { depth: number; throttled: number }>>();
       for (const row of sparklineRows ?? []) {
         const bucketMs = Date.parse(row.bucket.replace(" ", "T") + "Z");
         if (Number.isNaN(bucketMs)) continue;
         const index = Math.round((bucketMs - bucketStartMs) / bucketIntervalMs);
         if (index < 0 || index >= numBuckets) continue;
-        let byIndex = depthsByQueue.get(row.queue_name);
+        let byIndex = bucketsByQueue.get(row.queue_name);
         if (!byIndex) {
           byIndex = new Map();
-          depthsByQueue.set(row.queue_name, byIndex);
+          bucketsByQueue.set(row.queue_name, byIndex);
         }
-        byIndex.set(index, row.depth);
+        byIndex.set(index, { depth: row.depth, throttled: row.throttled });
       }
 
       const byQueue = new Map<string, QueueListMetric>();
       for (const row of summaryRows ?? []) {
-        const byIndex = depthsByQueue.get(row.queue_name);
+        const byIndex = bucketsByQueue.get(row.queue_name);
         const sparkline: number[] = new Array(numBuckets);
+        const throttledSparkline: number[] = new Array(numBuckets);
         let last = 0;
         for (let i = 0; i < numBuckets; i++) {
-          const value = byIndex?.get(i);
-          if (value !== undefined) last = value;
+          const bucket = byIndex?.get(i);
+          if (bucket !== undefined) last = bucket.depth;
           sparkline[i] = last;
+          throttledSparkline[i] = bucket?.throttled ?? 0;
         }
         byQueue.set(row.queue_name, {
           p50WaitMs: finiteOrNull(row.p50_wait_ms),
           p95WaitMs: finiteOrNull(row.p95_wait_ms),
           peakQueued: row.peak_queued,
+          throttledTotal: row.throttled_count,
           depthSparkline: sparkline,
+          throttledSparkline,
         });
       }
 

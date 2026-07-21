@@ -51,6 +51,7 @@ const QueueMetricsSummaryRow = z.object({
   p95_wait_ms: z.coerce.number(),
   peak_queued: z.coerce.number(),
   started_count: z.coerce.number(),
+  throttled_count: z.coerce.number(),
 });
 
 // Callers align window bounds to the bucket grid so repeated loads share cache entries.
@@ -68,7 +69,8 @@ export function getQueueListMetricsSummary(reader: ClickhouseReader) {
         round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50_wait_ms,
         round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95_wait_ms,
         max(max_queued) AS peak_queued,
-        deltaSumTimestampMerge(started_delta) AS started_count
+        deltaSumTimestampMerge(started_delta) AS started_count,
+        sum(throttled_count) AS throttled_count
       FROM trigger_dev.queue_metrics_v1
       WHERE organization_id = {organizationId: String}
         AND project_id = {projectId: String}
@@ -91,16 +93,22 @@ const QueueDepthSparklineRow = z.object({
   queue_name: z.string(),
   bucket: z.string(),
   depth: z.coerce.number(),
+  throttled: z.coerce.number(),
 });
 
-/** Per-queue, per-bucket peak depth for inline sparklines (carry-forward filled by the caller). */
+/**
+ * Per-queue, per-bucket peak depth (carry-forward filled by the caller) plus the throttled
+ * count in each bucket, so the sparkline can tint the exact buckets where throttling occurred.
+ * The extra aggregate rides the same scan as the depth series — no additional round trip.
+ */
 export function getQueueDepthSparklines(reader: ClickhouseReader) {
   return reader.query({
     name: "getQueueDepthSparklines",
     query: `SELECT
         queue_name,
         toStartOfInterval(bucket_start, toIntervalSecond({bucketSeconds: UInt32})) AS bucket,
-        max(max_queued) AS depth
+        max(max_queued) AS depth,
+        sum(throttled_count) AS throttled
       FROM trigger_dev.queue_metrics_v1
       WHERE organization_id = {organizationId: String}
         AND project_id = {projectId: String}

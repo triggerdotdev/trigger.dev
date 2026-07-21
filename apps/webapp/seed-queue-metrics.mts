@@ -615,6 +615,20 @@ async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear
     const prefix = "engine:runqueue:";
     const logicalBase = `{org:${ids.organization_id}}:proj:${ids.project_id}:env:${ids.environment_id}:queue:`;
     const base = `${prefix}${logicalBase}`;
+
+    // Env-level structures the Queues list "Queued"/"Running" blocks read:
+    //   lengthOfEnvQueue      -> ZCARD(envQueueKey)            (ZSET, no proj section)
+    //   concurrencyOfEnvQueue -> SCARD(envCurrentDequeuedKey)  (SET)
+    // We accumulate the per-queue staged counts below and stage these so the blocks
+    // equal the table's per-queue sums instead of showing 0/0.
+    const envQueueKey = `${prefix}{org:${ids.organization_id}}:env:${ids.environment_id}`;
+    const envCurrentDequeuedKey = `${prefix}{org:${ids.organization_id}}:proj:${ids.project_id}:env:${ids.environment_id}:currentDequeued`;
+    await redis.del(envQueueKey, envCurrentDequeuedKey);
+    // Table Queued = ZCARD(base) + lengthCounter (base zset unstaged -> only CK queues
+    // contribute their lengthCounter). Table Running = SCARD(currentDequeued) per queue.
+    let envQueuedTotal = 0;
+    let envRunningTotal = 0;
+
     for (const [q, profile] of scenario.queues.entries()) {
       const key = `${base}${profile.name}:currentDequeued`;
       await redis.del(key);
@@ -642,6 +656,7 @@ async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear
       if (count > 0) {
         await redis.sadd(key, ...Array.from({ length: count }, (_v, i) => `sim_run_${i}`));
       }
+      envRunningTotal += count;
 
       if (profile.ck) {
         const now = Date.now();
@@ -670,8 +685,28 @@ async function stageRedisUsage(scenario: Scenario, ids: Ids, seed: number, clear
         }
         // The aggregate "Queued now" reads ZCARD(base) + this counter; keep them coherent.
         await redis.set(lengthCounterKey, totalCkQueued, "EX", 24 * 3600);
+        envQueuedTotal += totalCkQueued;
       }
     }
+
+    // Stage the env-level structures so the list-page blocks match the table sums.
+    // Members are unique across queues (each per-queue set uses its own key, but the
+    // env set/zset needs distinct members to reach the summed cardinality).
+    if (!clear) {
+      if (envRunningTotal > 0) {
+        await redis.sadd(
+          envCurrentDequeuedKey,
+          ...Array.from({ length: envRunningTotal }, (_v, i) => `sim_env_run_${i}`)
+        );
+      }
+      if (envQueuedTotal > 0) {
+        const now = Date.now();
+        const zargs: Array<string | number> = [];
+        for (let i = 0; i < envQueuedTotal; i++) zargs.push(now + i, `sim_env_queued_${i}`);
+        await redis.zadd(envQueueKey, ...zargs);
+      }
+    }
+
     await redis.quit();
     console.log(
       clear
@@ -733,7 +768,16 @@ async function ensureTaskQueues(
         projectId,
         type: "NAMED",
       },
-      update: { concurrencyLimit },
+      // Reset any dashboard override left from manual testing: re-seeding overwrites the
+      // materialized concurrencyLimit, so a surviving override percent/base would contradict it
+      // (e.g. "10 (77%)" with an env limit of 25).
+      update: {
+        concurrencyLimit,
+        concurrencyLimitBase: null,
+        concurrencyLimitOverridePercent: null,
+        concurrencyLimitOverriddenAt: null,
+        concurrencyLimitOverriddenBy: null,
+      },
     });
   }
 

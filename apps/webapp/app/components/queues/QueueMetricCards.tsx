@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import {
   Chart,
@@ -12,6 +12,7 @@ import {
   type MetricResourceTimeRange,
 } from "~/hooks/useMetricResourceQuery";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { cn } from "~/utils/cn";
 
@@ -20,9 +21,9 @@ import { cn } from "~/utils/cn";
 // so pages render instantly; loaders only supply live counts and identifiers.
 
 export const QUEUE_METRIC_COLORS = {
-  running: "#6366F1",
+  running: "var(--color-queues)",
   limit: "#4D525B",
-  queued: "#A78BFA",
+  queued: "var(--color-queues)",
   p50: "#22D3EE",
   p95: "#F59E0B",
   p99: "#EF4444",
@@ -50,6 +51,8 @@ export function useQueueMetric(
     fillGaps?: boolean;
     /** Match the host page's TimeFilter default (e.g. "7d" on task detail). */
     defaultPeriod?: string;
+    /** Poll ClickHouse on this cadence (ms). Omit to use the query's default interval. */
+    refreshIntervalMs?: number;
   }
 ) {
   return useMetricResourceQuery(query, {
@@ -58,6 +61,7 @@ export function useQueueMetric(
     defaultPeriod: opts.defaultPeriod ?? QUEUE_METRICS_DEFAULT_PERIOD,
     queues: [opts.queueName],
     fillGaps: opts.fillGaps,
+    refreshIntervalMs: opts.refreshIntervalMs,
   });
 }
 
@@ -89,6 +93,15 @@ type QueueMetricChartProps = {
   valueFormat?: (value: number) => string;
   fillGaps?: boolean;
   defaultPeriod?: string;
+  /** Recolor a series warning where it drops below another (e.g. started below enqueued). */
+  warningOverlay?: { series: string; below: string } | { series: string; atOrAbove: string };
+  /**
+   * Series whose leading zeros should be back-filled with the first real value. Gauge series that
+   * are only emitted while the queue is active (e.g. the concurrency `limit`) read as 0 before the
+   * first emission — carry-forward has nothing to carry yet — which draws a false 0→N step. These
+   * are config values that existed all along, so carry the first value backward instead.
+   */
+  carryBackfill?: string[];
 };
 
 // Bare chart (no card chrome) so it can live inside a shared card, e.g. a tabbed panel.
@@ -101,6 +114,8 @@ export function QueueMetricChart({
   valueFormat,
   fillGaps,
   defaultPeriod,
+  warningOverlay,
+  carryBackfill,
 }: QueueMetricChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(query, {
     ids,
@@ -111,7 +126,7 @@ export function QueueMetricChart({
   });
 
   const data = useMemo(() => {
-    return rows
+    const points = rows
       .map((r) => {
         const point: { bucket: number } & Record<string, number> = {
           bucket: clickhouseTimeToMs(r.t),
@@ -120,7 +135,20 @@ export function QueueMetricChart({
         return point;
       })
       .filter((p) => Number.isFinite(p.bucket));
-  }, [rows, series]);
+
+    // Back-fill leading zeros for config gauges (see `carryBackfill`): find the first positive
+    // value and carry it back over the earlier buckets so the line doesn't start at a false 0.
+    if (carryBackfill?.length) {
+      for (const key of carryBackfill) {
+        const first = points.findIndex((p) => p[key] > 0);
+        if (first > 0) {
+          const value = points[first]![key]!;
+          for (let i = 0; i < first; i++) points[i]![key] = value;
+        }
+      }
+    }
+    return points;
+  }, [rows, series, carryBackfill]);
 
   const chartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
@@ -150,6 +178,7 @@ export function QueueMetricChart({
         yAxisProps={valueFormat ? { tickFormatter: (v: number) => valueFormat(v) } : undefined}
         tooltipLabelFormatter={tooltipLabelFormatter}
         tooltipValueFormatter={valueFormat}
+        warningOverlay={warningOverlay}
       />
     </Chart.Root>
   );
@@ -157,12 +186,32 @@ export function QueueMetricChart({
 
 export function QueueMetricChartCard({
   title,
+  info,
+  titleAccessory,
   className,
   ...chart
-}: QueueMetricChartProps & { title: string; className?: string }) {
+}: QueueMetricChartProps & {
+  title: string;
+  info?: ReactNode;
+  /** Extra content rendered after the info icon inside the title row (e.g. a live readout). */
+  titleAccessory?: ReactNode;
+  className?: string;
+}) {
   return (
     <div className={className ?? "h-64"}>
-      <ChartCard title={title}>
+      <ChartCard
+        title={
+          info || titleAccessory ? (
+            <span className="flex items-center gap-1.5">
+              {title}
+              {info ? <InfoIconTooltip content={info} contentClassName="max-w-xs" /> : null}
+              {titleAccessory}
+            </span>
+          ) : (
+            title
+          )
+        }
+      >
         <QueueMetricChart {...chart} />
       </ChartCard>
     </div>

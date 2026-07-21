@@ -11,6 +11,8 @@ interface BigNumberProps {
   animate?: boolean;
   loading?: boolean;
   value?: number;
+  /** Pre-formatted display value; overrides the numeric `value` rendering when set. */
+  formattedValue?: ReactNode;
   valueClassName?: string;
   defaultValue?: number;
   accessory?: ReactNode;
@@ -22,6 +24,7 @@ interface BigNumberProps {
 export function BigNumber({
   title,
   value,
+  formattedValue,
   defaultValue,
   valueClassName,
   suffix,
@@ -50,6 +53,11 @@ export function BigNumber({
       >
         {loading ? (
           <Spinner className="size-6" />
+        ) : formattedValue !== undefined ? (
+          <div className="flex flex-wrap items-baseline gap-2">
+            {formattedValue}
+            {suffix && <div className={cn("text-xs", suffixClassName)}>{suffix}</div>}
+          </div>
         ) : v !== undefined ? (
           <div className="flex flex-wrap items-baseline gap-2">
             {shouldCompact ? (
