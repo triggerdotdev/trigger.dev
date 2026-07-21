@@ -1,6 +1,6 @@
 import { BuildExtension } from "@trigger.dev/core/v3/build";
 import { readFile } from "node:fs/promises";
-import typescriptPkg from "typescript";
+import typescriptPkg from "typescript-legacy-api";
 
 const { transpileModule, ModuleKind } = typescriptPkg;
 

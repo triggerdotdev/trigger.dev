@@ -12,7 +12,7 @@
  *   pnpm --filter webapp run guard:runops-legacy            # regenerate baseline
  *   pnpm --filter webapp run guard:runops-legacy -- --check # CI gate
  */
-import ts from "typescript";
+import ts from "typescript-legacy-api";
 import * as fs from "node:fs";
 import * as path from "node:path";
 

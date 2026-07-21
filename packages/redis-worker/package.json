@@ -17,8 +17,8 @@
   ],
   "scripts": {
     "clean": "rimraf dist .turbo",
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit -p tsconfig.src.json",
     "test": "vitest --sequence.concurrent=false --no-file-parallelism"
   },
@@ -38,7 +38,7 @@
     "@types/lodash.omit": "^4.5.7",
     "@types/seedrandom": "^3.0.8",
     "rimraf": "6.0.1",
-    "tsup": "^8.4.0",
+    "tsdown": "0.22.10",
     "tsx": "4.17.0"
   },
   "engines": {

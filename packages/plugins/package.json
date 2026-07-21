@@ -19,14 +19,14 @@
   },
   "scripts": {
     "clean": "rimraf dist .turbo",
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
     "rimraf": "6.0.1",
-    "tsup": "^8.4.0",
+    "tsdown": "0.22.10",
     "typescript": "catalog:"
   },
   "engines": {
