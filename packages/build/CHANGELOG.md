@@ -1,5 +1,34 @@
 # @trigger.dev/build
 
+## 4.5.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+
+## 4.5.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+
+## 4.5.4
+
+### Patch Changes
+
+- You can now mark environment variables synced via the `syncEnvVars` build extension as secrets. Return `{ name, value, isSecret: true }` from your callback and those variables are stored redacted in the dashboard, just like manually created secret env vars. ([#4203](https://github.com/triggerdotdev/trigger.dev/pull/4203))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.4`
+
+## 4.5.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.3`
+
 ## 4.5.2
 
 ### Patch Changes

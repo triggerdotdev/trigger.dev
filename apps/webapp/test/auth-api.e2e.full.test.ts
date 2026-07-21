@@ -2910,4 +2910,230 @@ describe("API", () => {
       });
     });
   });
+
+  // PAT *action* routes (createActionPATApiRoute). Target: PUT
+  // /api/v1/projects/:projectRef/default-region — the first consumer of the
+  // new mutation builder. Exercises the method guard, body parsing, PAT auth,
+  // and the membership floor. The manage:project authorization block can't be
+  // driven to a 403 here: the OSS fallback ability is permissive
+  // (can: () => true), so role-based denial only bites with the cloud plugin
+  // loaded — that path is covered by the plugin's own tests.
+  describe("Default region — PAT action route", () => {
+    const pathFor = (ref: string) => `/api/v1/projects/${ref}/default-region`;
+    const putRegion = (path: string, headers: Record<string, string>, body?: unknown) =>
+      getTestServer().webapp.fetch(path, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+
+    it("missing Authorization: 401", async () => {
+      const res = await putRegion(pathFor("proj_nope"), {}, { region: "aws-us-east-1" });
+      expect(res.status).toBe(401);
+    });
+
+    it("non-PAT token: 401", async () => {
+      const res = await putRegion(
+        pathFor("proj_nope"),
+        { Authorization: "Bearer not-a-real-token" },
+        { region: "aws-us-east-1" }
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("revoked PAT: 401", async () => {
+      const server = getTestServer();
+      const { user } = await seedTestUserProject(server.prisma);
+      const revoked = await seedTestPAT(server.prisma, user.id, { revoked: true });
+      const res = await putRegion(
+        pathFor("proj_nope"),
+        { Authorization: `Bearer ${revoked.token}` },
+        { region: "aws-us-east-1" }
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("wrong method (POST): 405", async () => {
+      // A valid token is needed to clear the global api rate-limit middleware
+      // (it 401s unauthenticated /api requests before the route runs); the
+      // builder's method guard then rejects the non-PUT with 405.
+      const server = getTestServer();
+      const { pat } = await seedTestUserProject(server.prisma);
+      const res = await getTestServer().webapp.fetch(pathFor("proj_nope"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ region: "aws-us-east-1" }),
+      });
+      expect(res.status).toBe(405);
+    });
+
+    it("valid PAT, empty body: 400", async () => {
+      const server = getTestServer();
+      const { project, pat } = await seedTestUserProject(server.prisma);
+      const res = await getTestServer().webapp.fetch(pathFor(project.externalRef), {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("valid PAT, body missing region: 400", async () => {
+      const server = getTestServer();
+      const { project, pat } = await seedTestUserProject(server.prisma);
+      const res = await putRegion(
+        pathFor(project.externalRef),
+        { Authorization: `Bearer ${pat.token}` },
+        {}
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("valid PAT, project in another user's org: 404 (membership floor)", async () => {
+      const server = getTestServer();
+      const a = await seedTestUserProject(server.prisma);
+      const b = await seedTestUserProject(server.prisma);
+      const res = await putRegion(
+        pathFor(b.project.externalRef),
+        { Authorization: `Bearer ${a.pat.token}` },
+        { region: "aws-us-east-1" }
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("valid PAT, own project, unknown region: auth passes, handler runs", async () => {
+      const server = getTestServer();
+      const { project, pat } = await seedTestUserProject(server.prisma);
+      const res = await putRegion(
+        pathFor(project.externalRef),
+        { Authorization: `Bearer ${pat.token}` },
+        { region: "definitely-not-a-region" }
+      );
+      // No worker groups seeded → the presenter throws → the route returns 400.
+      // The point: the builder let the request through to the handler (auth +
+      // method + body all passed).
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // Member removal via the PAT action route. The last-member guard lives in
+  // removeTeamMember and surfaces as a ServiceValidationError the builder maps
+  // to 400 — so an org can't be emptied of its only member.
+  describe("Member removal — last-member guard", () => {
+    it("removing the last member is rejected: 400", async () => {
+      const server = getTestServer();
+      const { user, organization, pat } = await seedTestUserProject(server.prisma);
+      const member = await server.prisma.orgMember.findFirst({
+        where: { organizationId: organization.id, userId: user.id },
+      });
+      if (!member) throw new Error("seed did not create an org member");
+
+      const res = await server.webapp.fetch(
+        `/api/v1/orgs/${organization.id}/members/${member.id}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${pat.token}` } }
+      );
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // Multi-method PAT action routes declare their allowed verbs, so a verb they
+  // don't handle (e.g. POST on a PATCH/DELETE route) is rejected rather than
+  // falling through to the rename branch.
+  describe("Multi-method routes reject other verbs", () => {
+    it("POST to the org rename/delete route: 405", async () => {
+      const server = getTestServer();
+      const { organization, pat } = await seedTestUserProject(server.prisma);
+      const res = await server.webapp.fetch(`/api/v1/orgs/${organization.id}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "New name" }),
+      });
+      expect(res.status).toBe(405);
+    });
+  });
+
+  // Re-invite is idempotent: an already-invited email is skipped (not created,
+  // not re-emailed) and reported as alreadyInvited, so a repeat call neither
+  // 500s (P2002) nor sends a duplicate invite email.
+  describe("Member invites — re-invite is idempotent", () => {
+    it("inviting the same email twice: 201 then 200, second reports alreadyInvited", async () => {
+      const server = getTestServer();
+      const { organization, pat } = await seedTestUserProject(server.prisma);
+      const path = `/api/v1/orgs/${organization.id}/invites`;
+      const email = "dup-invite@example.com";
+      const invite = () =>
+        server.webapp.fetch(path, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ emails: [email] }),
+        });
+
+      const first = await invite();
+      expect(first.status).toBe(201);
+      const firstBody = (await first.json()) as { invited: { email: string }[] };
+      expect(firstBody.invited.map((i) => i.email)).toContain(email);
+
+      const second = await invite();
+      expect(second.status).toBe(200);
+      const secondBody = (await second.json()) as {
+        invited: { email: string }[];
+        alreadyInvited: string[];
+      };
+      expect(secondBody.invited).toHaveLength(0);
+      expect(secondBody.alreadyInvited).toContain(email);
+    });
+
+    it("re-inviting an email another org member already invited reports alreadyInvited", async () => {
+      const server = getTestServer();
+      const { organization, pat } = await seedTestUserProject(server.prisma);
+
+      // A different user invited this email first: the create hits P2002, so it's
+      // skipped (not re-created, not re-emailed) and surfaced as alreadyInvited
+      // rather than being reported as a fresh invite.
+      const otherUser = await server.prisma.user.create({
+        data: {
+          email: `other_${organization.id}@example.com`,
+          authenticationMethod: "MAGIC_LINK",
+        },
+      });
+      const sharedEmail = `shared_${organization.id}@example.com`;
+      await server.prisma.orgMemberInvite.create({
+        data: {
+          email: sharedEmail,
+          token: `tok_${Math.random().toString(36).slice(2)}`,
+          organizationId: organization.id,
+          inviterId: otherUser.id,
+          role: "MEMBER",
+        },
+      });
+
+      const res = await server.webapp.fetch(`/api/v1/orgs/${organization.id}/invites`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: [sharedEmail] }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        invited: { email: string }[];
+        alreadyInvited: string[];
+      };
+      expect(body.invited).toHaveLength(0);
+      expect(body.alreadyInvited).toContain(sharedEmail);
+    });
+  });
+
+  // Org creation via the management API is gated behind
+  // ORG_CREATION_API_ENABLED (default "0"). Without it, a valid PAT gets a 404
+  // so the endpoint stays invisible.
+  describe("Org creation — disabled by default", () => {
+    it("POST /api/v1/orgs with a valid PAT returns 404 when the flag is unset", async () => {
+      const server = getTestServer();
+      const { pat } = await seedTestUserProject(server.prisma);
+      const res = await server.webapp.fetch("/api/v1/orgs", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${pat.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "New org from API" }),
+      });
+      expect(res.status).toBe(404);
+    });
+  });
 });

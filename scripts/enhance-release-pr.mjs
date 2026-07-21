@@ -183,28 +183,8 @@ async function getPrForCommit(commitSha) {
 // --- Parse .server-changes/ files ---
 
 async function parseServerChanges() {
-  const dir = join(ROOT_DIR, ".server-changes");
   const entries = [];
-
-  let files;
-  try {
-    files = await fs.readdir(dir);
-  } catch {
-    return entries;
-  }
-
-  // Collect file info and look up commits in parallel
-  const fileData = [];
-  for (const file of files) {
-    if (!file.endsWith(".md") || file === "README.md") continue;
-
-    const filePath = join(".server-changes", file);
-    const content = await fs.readFile(join(dir, file), "utf-8");
-    const parsed = parseFrontmatter(content);
-    if (!parsed.body.trim()) continue;
-
-    fileData.push({ filePath, parsed });
-  }
+  const fileData = await getServerChangeFileData();
 
   // Look up commits for all files in parallel
   const commits = await Promise.all(fileData.map((f) => getCommitForFile(f.filePath)));
@@ -230,6 +210,98 @@ async function parseServerChanges() {
   }
 
   return entries;
+}
+
+async function getServerChangeFileData() {
+  // The changesets version command deletes .server-changes before this script
+  // enhances the release PR body. We combine files still live on disk with the
+  // ones recovered from the release branch diff, deduped by filename, rather
+  // than picking one source or the other. This is additive so a partial cleanup
+  // (some files deleted, some still live) can't silently drop entries. Live
+  // files win on collision since they are the current on-disk truth.
+  const [live, deleted] = await Promise.all([
+    getLiveServerChangeFileData(),
+    getDeletedServerChangeFileDataFromReleaseBranch(),
+  ]);
+
+  const byName = new Map();
+  for (const fileData of deleted) {
+    byName.set(fileData.filePath.split("/").pop(), fileData);
+  }
+  for (const fileData of live) {
+    byName.set(fileData.filePath.split("/").pop(), fileData);
+  }
+
+  return [...byName.values()].sort((a, b) => a.filePath.localeCompare(b.filePath));
+}
+
+async function getLiveServerChangeFileData() {
+  const dir = join(ROOT_DIR, ".server-changes");
+
+  let files;
+  try {
+    files = await fs.readdir(dir);
+  } catch {
+    return [];
+  }
+
+  const fileData = [];
+  for (const file of files.sort()) {
+    if (!file.endsWith(".md") || file === "README.md") continue;
+
+    const filePath = join(".server-changes", file);
+    const content = await fs.readFile(join(dir, file), "utf-8");
+    const parsed = parseFrontmatter(content);
+    if (!parsed.body.trim()) continue;
+
+    fileData.push({ filePath, parsed });
+  }
+
+  return fileData;
+}
+
+async function getDeletedServerChangeFileDataFromReleaseBranch() {
+  const baseRef = process.env.SERVER_CHANGES_BASE_REF || "origin/main";
+  const releaseRef = process.env.SERVER_CHANGES_RELEASE_REF || "origin/changeset-release/main";
+
+  let mergeBase;
+  let deletedFiles;
+  try {
+    mergeBase = await gitExec(["merge-base", baseRef, releaseRef]);
+    deletedFiles = await gitExec([
+      "diff",
+      "--name-only",
+      "--diff-filter=D",
+      `${mergeBase}..${releaseRef}`,
+      "--",
+      ".server-changes",
+    ]);
+  } catch (err) {
+    console.error(
+      "[enhance-release-pr] failed to recover deleted server-changes from release branch:",
+      err
+    );
+    return [];
+  }
+
+  const fileData = [];
+  for (const filePath of deletedFiles.split("\n").filter(Boolean).sort()) {
+    const file = filePath.split("/").pop();
+    if (!file?.endsWith(".md") || file === "README.md") continue;
+
+    try {
+      const content = await gitExec(["show", `${mergeBase}:${filePath}`]);
+      const parsed = parseFrontmatter(content);
+      if (!parsed.body.trim()) continue;
+      fileData.push({ filePath, parsed });
+    } catch (err) {
+      // If an individual file cannot be recovered, skip it rather than hiding
+      // all other server changes.
+      console.error(`[enhance-release-pr] failed to read deleted server-change ${filePath}:`, err);
+    }
+  }
+
+  return fileData;
 }
 
 function parseFrontmatter(content) {

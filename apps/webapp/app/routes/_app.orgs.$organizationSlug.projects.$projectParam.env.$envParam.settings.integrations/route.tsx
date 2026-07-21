@@ -5,6 +5,7 @@ import { json } from "@remix-run/server-runtime";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { InlineCode } from "~/components/code/InlineCode";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -130,6 +131,8 @@ const UpdateBuildSettingsFormSchema = z.object({
     .refine((val) => !val || val.length <= 500, {
       message: "Pre-build command must not exceed 500 characters",
     }),
+  // Positive checkbox in the UI ("Use native build server"). It is checked by
+  // default; we store the inverse as `disableNativeBuildServer`.
   useNativeBuildServer: z
     .string()
     .optional()
@@ -177,7 +180,8 @@ export const action = dashboardAction(
       installCommand: installCommand || undefined,
       preBuildCommand: preBuildCommand || undefined,
       triggerConfigFilePath: triggerConfigFilePath || undefined,
-      useNativeBuildServer: useNativeBuildServer,
+      // Native build server is the default, so we only persist the opt-out.
+      disableNativeBuildServer: useNativeBuildServer ? undefined : true,
     });
 
     if (resultOrFail.isErr()) {
@@ -379,6 +383,11 @@ export default function IntegrationsSettingsPage() {
 
               <div>
                 <Header2 spacing>Build settings</Header2>
+                <Hint className="mb-2">
+                  These settings apply to deployments triggered from GitHub and to CLI deployments
+                  run with the <InlineCode variant="extra-small">--native-build-server</InlineCode>{" "}
+                  flag.
+                </Hint>
                 <div className="w-full rounded-sm border border-grid-dimmed p-4">
                   <BuildSettingsForm buildSettings={buildSettings ?? {}} />
                 </div>
@@ -426,11 +435,14 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
   const navigation = useNavigation();
 
   const [hasBuildSettingsChanges, setHasBuildSettingsChanges] = useState(false);
+  // The native build server is enabled by default; it's only off when the
+  // project has explicitly opted out via `disableNativeBuildServer`.
+  const nativeBuildServerEnabled = buildSettings?.disableNativeBuildServer !== true;
   const [buildSettingsValues, setBuildSettingsValues] = useState({
     preBuildCommand: buildSettings?.preBuildCommand || "",
     installCommand: buildSettings?.installCommand || "",
     triggerConfigFilePath: buildSettings?.triggerConfigFilePath || "",
-    useNativeBuildServer: buildSettings?.useNativeBuildServer || false,
+    useNativeBuildServer: nativeBuildServerEnabled,
   });
 
   useEffect(() => {
@@ -438,9 +450,9 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
       buildSettingsValues.preBuildCommand !== (buildSettings?.preBuildCommand || "") ||
       buildSettingsValues.installCommand !== (buildSettings?.installCommand || "") ||
       buildSettingsValues.triggerConfigFilePath !== (buildSettings?.triggerConfigFilePath || "") ||
-      buildSettingsValues.useNativeBuildServer !== (buildSettings?.useNativeBuildServer || false);
+      buildSettingsValues.useNativeBuildServer !== nativeBuildServerEnabled;
     setHasBuildSettingsChanges(hasChanges);
-  }, [buildSettingsValues, buildSettings]);
+  }, [buildSettingsValues, buildSettings, nativeBuildServerEnabled]);
 
   const [buildSettingsForm, fields] = useForm({
     id: "update-build-settings",
@@ -529,7 +541,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
               {...getInputProps(fields.useNativeBuildServer, { type: "checkbox" })}
               label="Use native build server"
               variant="simple/small"
-              defaultChecked={buildSettings?.useNativeBuildServer || false}
+              defaultChecked={nativeBuildServerEnabled}
               onChange={(isChecked) => {
                 setBuildSettingsValues((prev) => ({
                   ...prev,
@@ -538,8 +550,8 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
               }}
             />
             <Hint>
-              Native build server builds do not rely on external build providers and will become the
-              default in the future. Version 4.2.0 or newer is required.
+              Native build server builds don't rely on external build providers and are used by
+              default. Requires version 4.2.0 or newer.
             </Hint>
             <FormError id={fields.useNativeBuildServer.errorId}>
               {fields.useNativeBuildServer.errors}

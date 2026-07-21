@@ -75,7 +75,7 @@ export const action = dashboardAction(
         prisma.workerDeployment.findUnique({
           select: {
             friendlyId: true,
-            projectId: true,
+            environmentId: true,
           },
           where: {
             projectId_shortCode: {
@@ -96,10 +96,7 @@ export const action = dashboardAction(
     const result = await verifyProjectMembership()
       .andThen(findDeploymentFriendlyId)
       .andThen((deployment) =>
-        deploymentService.cancelDeployment(
-          { projectId: deployment.projectId },
-          deployment.friendlyId
-        )
+        deploymentService.cancelDeployment({ id: deployment.environmentId }, deployment.friendlyId)
       );
 
     if (result.isErr()) {

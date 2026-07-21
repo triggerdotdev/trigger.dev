@@ -51,6 +51,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       const deployment = await this._prisma.workerDeployment.findFirst({
         where: {
           friendlyId: deploymentId,
+          environmentId: environment.id,
         },
       });
 

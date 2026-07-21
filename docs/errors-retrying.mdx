@@ -377,3 +377,7 @@ export const openaiTask = task({
   },
 });
 ```
+
+## Replay failed runs in bulk
+
+After you deploy a fix, use [bulk actions](/bulk-actions) to replay multiple failed runs from the dashboard, or [bulk actions with the SDK](/runs/bulk-actions) to replay them from backend code. Bulk replay creates an asynchronous action that targets selected run IDs or a `runs.list()` filter, so you can retry a known failure set without replaying each run individually.

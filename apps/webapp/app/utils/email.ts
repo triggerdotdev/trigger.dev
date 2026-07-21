@@ -7,6 +7,8 @@ export function assertEmailAllowed(email: string) {
   }
 
   if (!emailMatchesPattern(env.WHITELISTED_EMAILS, email)) {
-    throw new Error("This email is unauthorized");
+    // Surfaced verbatim on the login page. Name the actual policy so a
+    // rejection on a restricted instance reads as configuration, not a bug.
+    throw new Error("This email address isn't allowed to sign in on this instance.");
   }
 }

@@ -164,17 +164,13 @@ export class ApiRetrieveRunPresenter {
         collect(child.lockedToVersionId);
       }
 
+      const lockedWorkersByVersionId =
+        await controlPlaneResolver.resolveRunLockedWorkersByVersionIds([...distinctVersionIds]);
       const versionById = new Map<string, string | null>(
-        await Promise.all(
-          [...distinctVersionIds].map(
-            async (id) =>
-              [
-                id,
-                (await controlPlaneResolver.resolveRunLockedWorker({ lockedToVersionId: id }))
-                  ?.lockedToVersion?.version ?? null,
-              ] as const
-          )
-        )
+        [...distinctVersionIds].map((id) => [
+          id,
+          lockedWorkersByVersionId.get(id)?.lockedToVersion?.version ?? null,
+        ])
       );
 
       const resolveVersion = (id: string | null): { version: string } | null => {

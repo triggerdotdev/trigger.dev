@@ -1,5 +1,3 @@
-import { createLRUMemoryStore } from "@internal/cache";
-import { metrics } from "@opentelemetry/api";
 import { MachinePresetName, tryCatch } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
@@ -8,7 +6,6 @@ import {
   machines as machinesFromPlatform,
   type BillingAlertsResult,
   type CreatePrivateLinkConnectionBody,
-  type CurrentPlan,
   type Limits,
   type MachineCode,
   type PrivateLinkConnection,
@@ -18,20 +15,14 @@ import {
   type UpdateBillingAlertsRequest,
   type UsageResult,
   type UsageSeriesParams,
+  type CurrentPlan,
 } from "@trigger.dev/platform";
-import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
-import { existsSync, readFileSync } from "node:fs";
-import { redirect } from "remix-typedjson";
-import { z } from "zod";
-import { $replica } from "~/db.server";
-import { env } from "~/env.server";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import {
-  asPlatformSchema,
   BillingLimitResultSchema,
   BillingLimitsActiveResultSchema,
   BillingLimitsPendingResolvesResultSchema,
   EntitlementResultSchema,
+  asPlatformSchema,
   type BillingLimitResult,
   type BillingLimitsActiveResult,
   type BillingLimitsPendingResolvesResult,
@@ -39,10 +30,19 @@ import {
   type ResolveBillingLimitRequest,
   type UpdateBillingLimitRequest,
 } from "~/services/billingLimit.schemas";
+import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
+import { createLRUMemoryStore } from "@internal/cache";
+import { existsSync, readFileSync } from "node:fs";
+import { redirect } from "remix-typedjson";
+import { z } from "zod";
+import { env } from "~/env.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { singleton } from "~/utils/singleton";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
+import { $replica } from "~/db.server";
+import { metrics } from "@opentelemetry/api";
 
 function initializeClient() {
   if (isCloud() && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {
@@ -82,6 +82,78 @@ function recordPlatformFailure(fn: string, kind: "caught" | "no_success") {
   platformClientFailuresCounter.add(1, { function: fn, kind });
 }
 
+export type ValidatedPromoCode = {
+  valid: boolean;
+  amountInCents?: number;
+  expiresAt?: string | null;
+};
+
+/**
+ * Validate a promo code (no org context). Returns `undefined` when billing
+ * isn't configured or the call fails, so callers fall back to treating the
+ * code as not-yet-validated rather than crashing the page.
+ */
+export async function validatePromoCode(code: string): Promise<ValidatedPromoCode | undefined> {
+  if (!client) {
+    return undefined;
+  }
+
+  const [error, result] = await tryCatch(client.validatePromoCode(code));
+  if (error) {
+    recordPlatformFailure("validatePromoCode", "caught");
+    logger.error("validatePromoCode threw", { error });
+    return undefined;
+  }
+  if (!result.success) {
+    recordPlatformFailure("validatePromoCode", "no_success");
+    return undefined;
+  }
+
+  return {
+    valid: result.valid,
+    amountInCents: result.amountInCents,
+    expiresAt: result.expiresAt,
+  };
+}
+
+export type AppliedPromoCode = {
+  applied: boolean;
+  amountInCents?: number;
+  reason?: string;
+};
+
+/**
+ * Apply a promo code to a newly created org. Returns `undefined` when billing
+ * isn't configured or the call fails — callers treat that as "not applied" and
+ * must never block org creation on it.
+ */
+export async function applyPromoCode(
+  orgId: string,
+  userId: string,
+  code: string
+): Promise<AppliedPromoCode | undefined> {
+  if (!client) {
+    return undefined;
+  }
+
+  const [error, result] = await tryCatch(client.applyPromoCode(orgId, { code, userId }));
+  if (error) {
+    recordPlatformFailure("applyPromoCode", "caught");
+    logger.error("applyPromoCode threw", { error });
+    return undefined;
+  }
+  if (!result.success) {
+    recordPlatformFailure("applyPromoCode", "no_success");
+    return undefined;
+  }
+
+  return {
+    applied: result.applied,
+    amountInCents: result.amountInCents,
+    reason: result.reason,
+  };
+}
+
 function initializePlatformCache() {
   const ctx = new DefaultStatefulContext();
   const memory = createLRUMemoryStore(1000);
@@ -119,6 +191,11 @@ function initializePlatformCache() {
       fresh: 60_000,
       stale: 120_000,
     }),
+    promoCredits: new Namespace<PromoCreditsData | null>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: 60_000,
+      stale: 120_000,
+    }),
   });
 
   return cache;
@@ -133,6 +210,12 @@ function invalidateBillingLimitCaches(organizationId: string) {
 
 export function bustBillingLimitCaches(organizationId: string) {
   invalidateBillingLimitCaches(organizationId);
+}
+
+// Clear the cached promo-credits read so a just-granted code shows on the usage
+// page immediately rather than after the stale TTL.
+export function bustPromoCreditsCache(organizationId: string) {
+  platformCache.promoCredits.remove(organizationId).catch(() => {});
 }
 
 type Machines = typeof machinesFromPlatform;
@@ -417,7 +500,15 @@ export async function setPlan(
   request: Request,
   callerPath: string,
   plan: SetPlanBody,
-  opts?: { invalidateBillingCache?: (orgId: string) => void }
+  opts?: {
+    invalidateBillingCache?: (orgId: string) => void;
+    // Runs only after the Free plan has actually been provisioned, with the
+    // redirect it will return — the single success path where side effects that
+    // depend on a working free-plan entitlement (e.g. redeeming a promo code)
+    // are safe. It never fires on an error path, so callers can't act on a
+    // plan change that didn't happen.
+    onFreePlanProvisioned?: (response: Response) => void | Promise<void>;
+  }
 ) {
   if (!client) {
     return redirectWithErrorMessage(callerPath, request, "Error setting plan", {
@@ -447,7 +538,9 @@ export async function setPlan(
       // Selecting Free provisions the plan directly, so any free result is a success.
       opts?.invalidateBillingCache?.(organization.id);
       platformCache.entitlement.remove(organization.id).catch(() => {});
-      return redirect(newProjectPath(organization, "You're on the Free plan."));
+      const response = redirect(newProjectPath(organization, "You're on the Free plan."));
+      await opts?.onFreePlanProvisioned?.(response);
+      return response;
     }
     case "create_subscription_flow_start": {
       return redirect(result.checkoutUrl);
@@ -465,6 +558,12 @@ export async function setPlan(
       return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
     }
   }
+
+  // Unrecognised action shape — surface an error rather than falling through to
+  // an implicit undefined return, so callers always get a Response back.
+  return redirectWithErrorMessage(callerPath, request, "Error setting plan", {
+    ephemeral: false,
+  });
 }
 
 export async function setConcurrencyAddOn(organizationId: string, amount: number) {
@@ -655,6 +754,45 @@ export async function getEntitlement(
     };
   }
 
+  return result.val;
+}
+
+export type PromoCreditsData = {
+  grantedCents: number;
+  remainingCents: number;
+  expiresAt: string | null;
+};
+
+/**
+ * Remaining promo/credit-grant balance for an org, or null when it has none.
+ * Billing-side gating keeps this cheap for orgs without credits; the SWR cache
+ * keeps repeated dashboard loads off the network. Fails closed to null so the
+ * display is simply hidden on any error — never blocks the page.
+ */
+export async function getPromoCredits(organizationId: string): Promise<PromoCreditsData | null> {
+  if (!client) return null;
+
+  const result = await platformCache.promoCredits.swr(organizationId, async () => {
+    try {
+      const response = await client.promoCredits(organizationId);
+      if (!response.success) {
+        recordPlatformFailure("promoCredits", "no_success");
+        // Return undefined (not null) so SWR doesn't cache a transient failure
+        // as "no credits" and hide the display for the stale TTL. null is
+        // reserved for a successful "org has no promo credits" response.
+        return undefined;
+      }
+      return response.promoCredits;
+    } catch (_e) {
+      recordPlatformFailure("promoCredits", "caught");
+      logger.error("promoCredits threw", { error: _e });
+      return undefined;
+    }
+  });
+
+  if (result.err || result.val === undefined) {
+    return null;
+  }
   return result.val;
 }
 
@@ -980,8 +1118,8 @@ export type {
   BillingLimitConfig,
   BillingLimitPageData,
   BillingLimitResult,
-  BillingLimitsActiveResult,
   BillingLimitState,
+  BillingLimitsActiveResult,
   EntitlementResult,
   ResolveBillingLimitRequest,
   UpdateBillingLimitRequest,

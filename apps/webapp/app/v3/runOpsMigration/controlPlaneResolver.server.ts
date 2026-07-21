@@ -70,6 +70,15 @@ function lockedWorkerKey(lockedById?: string | null, lockedToVersionId?: string 
   return `${lockedById ?? "_"}:${lockedToVersionId ?? "_"}`;
 }
 
+type LockedToVersionRow = {
+  id: string;
+  version: string;
+  sdkVersion: string;
+  runtime: string | null;
+  runtimeVersion: string | null;
+  supportsLazyAttempts: boolean;
+};
+
 export class ControlPlaneResolver {
   private readonly controlPlanePrimary: PrismaClient;
   private readonly controlPlaneReplica: PrismaReplicaClient;
@@ -240,6 +249,87 @@ export class ControlPlaneResolver {
     return {
       lockedBy: lockedByRow,
       lockedToVersion: lockedToVersionRow,
+    };
+  }
+
+  /**
+   * Grouped counterpart to `resolveRunLockedWorker({ lockedToVersionId })`: resolves the
+   * `lockedToVersion` for many distinct BackgroundWorker ids with ONE `findMany` for the
+   * cache misses (BackgroundWorker is control-plane only, no run-ops residency split), instead
+   * of one `findFirst` per id. Cache keys/shape match `resolveRunLockedWorker`'s
+   * `lockedById=undefined` slot, so entries populated here are reused by that method and
+   * vice versa.
+   */
+  async resolveRunLockedWorkersByVersionIds(
+    ids: string[]
+  ): Promise<Map<string, ResolvedRunLockedWorker | null>> {
+    const result = new Map<string, ResolvedRunLockedWorker | null>();
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) {
+      return result;
+    }
+
+    if (!this.splitEnabled()) {
+      const rows = await this.#queryLockedToVersionRows(this.controlPlanePrimary, uniqueIds);
+      for (const id of uniqueIds) {
+        result.set(id, this.#toResolvedRunLockedWorker(rows.get(id)));
+      }
+      return result;
+    }
+
+    const misses: string[] = [];
+    for (const id of uniqueIds) {
+      const cached = this.cache.getLockedWorker(lockedWorkerKey(undefined, id));
+      if (cached !== undefined) {
+        result.set(id, cached);
+      } else {
+        misses.push(id);
+      }
+    }
+
+    if (misses.length > 0) {
+      const rows = await this.#queryLockedToVersionRows(this.controlPlaneReplica, misses);
+      for (const id of misses) {
+        const value = this.#toResolvedRunLockedWorker(rows.get(id));
+        this.cache.setLockedWorker(lockedWorkerKey(undefined, id), value);
+        result.set(id, value);
+      }
+    }
+
+    return result;
+  }
+
+  async #queryLockedToVersionRows(
+    client: CpClient,
+    ids: string[]
+  ): Promise<Map<string, LockedToVersionRow>> {
+    const rows = await client.backgroundWorker.findMany({
+      where: { id: { in: ids } },
+      select: {
+        id: true,
+        version: true,
+        sdkVersion: true,
+        runtime: true,
+        runtimeVersion: true,
+        supportsLazyAttempts: true,
+      },
+    });
+    return new Map(rows.map((row) => [row.id, row]));
+  }
+
+  #toResolvedRunLockedWorker(row: LockedToVersionRow | undefined): ResolvedRunLockedWorker | null {
+    if (!row) {
+      return null;
+    }
+    return {
+      lockedBy: null,
+      lockedToVersion: {
+        version: row.version,
+        sdkVersion: row.sdkVersion,
+        runtime: row.runtime,
+        runtimeVersion: row.runtimeVersion,
+        supportsLazyAttempts: row.supportsLazyAttempts,
+      },
     };
   }
 

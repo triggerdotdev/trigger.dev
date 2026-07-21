@@ -29,6 +29,7 @@ const { action } = createActionApiRoute(
         environmentId: authentication.environment.id,
         read: (client: PrismaReplicaClient) =>
           client.waitpoint.findFirst({
+            // runops-routed-ok: resolveWaitpointThroughReadThrough legacy leg
             where: {
               id: waitpointId,
               environmentId: authentication.environment.id,

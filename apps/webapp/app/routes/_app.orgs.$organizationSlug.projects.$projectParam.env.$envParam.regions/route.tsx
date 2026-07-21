@@ -7,7 +7,7 @@ import {
   MapPinIcon,
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -16,7 +16,6 @@ import { CloudProviderIcon } from "~/assets/icons/CloudProviderIcon";
 import { FlagIcon } from "~/assets/icons/RegionIcons";
 import { cloudProviderTitle } from "~/components/CloudProvider";
 import { Feedback } from "~/components/Feedback";
-import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -47,13 +46,16 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -90,44 +92,60 @@ const FormSchema = z.object({
   regionId: z.string(),
 });
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const user = await requireUser(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return orgId ? { organizationId: orgId } : {};
+    },
+  },
+  async ({ user, ability, request, params }) => {
+    const { organizationSlug, projectParam, envParam } = params;
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    const redirectPath = regionsPath(
+      { slug: organizationSlug },
+      { slug: projectParam },
+      { slug: envParam }
+    );
 
-  const redirectPath = regionsPath(
-    { slug: organizationSlug },
-    { slug: projectParam },
-    { slug: envParam }
-  );
+    if (!ability.can("manage", { type: "project" })) {
+      throw await redirectWithErrorMessage(
+        redirectPath,
+        request,
+        "You don't have permission to change the default region"
+      );
+    }
 
-  if (!project) {
-    throw redirectWithErrorMessage(redirectPath, request, "Project not found");
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+
+    if (!project) {
+      throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
+    }
+
+    const formData = await request.formData();
+    const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
+
+    if (!parsedFormData.success) {
+      throw await redirectWithErrorMessage(redirectPath, request, "No region specified");
+    }
+
+    const service = new SetDefaultRegionService();
+    const [error, result] = await tryCatch(
+      service.call({
+        projectId: project.id,
+        regionId: parsedFormData.data.regionId,
+        isAdmin: user.admin || user.isImpersonating,
+      })
+    );
+
+    if (error) {
+      return redirectWithErrorMessage(redirectPath, request, error.message);
+    }
+
+    return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
   }
-
-  const formData = await request.formData();
-  const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
-
-  if (!parsedFormData.success) {
-    throw redirectWithErrorMessage(redirectPath, request, "No region specified");
-  }
-
-  const service = new SetDefaultRegionService();
-  const [error, result] = await tryCatch(
-    service.call({
-      projectId: project.id,
-      regionId: parsedFormData.data.regionId,
-      isAdmin: user.admin || user.isImpersonating,
-    })
-  );
-
-  if (error) {
-    return redirectWithErrorMessage(redirectPath, request, error.message);
-  }
-
-  return redirectWithSuccessMessage(redirectPath, request, `Set ${result.name} as default`);
-};
+);
 
 export default function Page() {
   const { regions, isPaying: _isPaying } = useTypedLoaderData<typeof loader>();
@@ -138,7 +156,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Regions</V4Title>} />
+        <PageTitle title="Regions" />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -168,7 +186,15 @@ export default function Page() {
                     <TableRow>
                       <TableHeaderCell>Region</TableHeaderCell>
                       <TableHeaderCell>Cloud Provider</TableHeaderCell>
-                      <TableHeaderCell>Location</TableHeaderCell>
+                      <TableHeaderCell>
+                        <span className="flex items-center gap-1">
+                          Location
+                          <InfoIconTooltip
+                            content="Region location is where your runs execute, not where your data is stored."
+                            contentClassName="normal-case tracking-normal"
+                          />
+                        </span>
+                      </TableHeaderCell>
                       <TableHeaderCell>Static IPs</TableHeaderCell>
                       {isAdmin && <TableHeaderCell>Admin</TableHeaderCell>}
                       <TableHeaderCell
@@ -309,8 +335,12 @@ export default function Page() {
                     variant="minimal"
                     panelClassName="max-w-full gap-1"
                   >
-                    <Paragraph variant="extra-small" className="flex items-baseline gap-x-0.5">
-                      Trigger.dev is fully GDPR compliant. Learn more in our{" "}
+                    <Paragraph variant="extra-small">
+                      Trigger.dev is fully{" "}
+                      <TextLink to="https://security.trigger.dev/gdpr?tab=securityControls&frameworks=gdpr_v1">
+                        GDPR compliant
+                      </TextLink>
+                      . Learn more in our{" "}
                       <TextLink to="https://security.trigger.dev">security portal</TextLink> or{" "}
                       <Feedback
                         button={
@@ -318,7 +348,7 @@ export default function Page() {
                             get in touch
                           </span>
                         }
-                        defaultValue="help"
+                        defaultValue="feedback"
                       />
                       .
                     </Paragraph>
@@ -341,6 +371,7 @@ function SetDefaultDialog({
   newDefaultRegion: Region;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const { isManagedCloud } = useFeatures();
   const currentDefaultRegion = regions.find((r) => r.isDefault);
 
   return (
@@ -444,6 +475,27 @@ function SetDefaultDialog({
               Runs triggered from now on will execute in "{newDefaultRegion.name}", unless you{" "}
               <TextLink to={docsPath("triggering#region")}>override when triggering</TextLink>.
             </Paragraph>
+
+            <InfoPanel
+              icon={InformationCircleIcon}
+              iconClassName="size-4"
+              variant="minimal"
+              panelClassName="mt-4 max-w-full gap-1 border-t border-grid-dimmed pt-4 pb-0 pl-0"
+            >
+              <Paragraph variant="extra-small">
+                Region is where your runs execute, not where your data is stored.
+                {isManagedCloud ? (
+                  <>
+                    {" "}
+                    Trigger.dev is fully{" "}
+                    <TextLink to="https://security.trigger.dev/gdpr?tab=securityControls&frameworks=gdpr_v1">
+                      GDPR compliant
+                    </TextLink>
+                    .
+                  </>
+                ) : null}
+              </Paragraph>
+            </InfoPanel>
           </div>
         </DialogDescription>
         <DialogFooter>

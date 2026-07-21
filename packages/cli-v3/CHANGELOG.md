@@ -1,5 +1,45 @@
 # trigger.dev
 
+## 4.5.6
+
+### Patch Changes
+
+- Require explicit browser approval for CLI and MCP login, with resilient polling while approval is pending. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Deployed task telemetry now reports the deployment identifier (e.g. `deployment_abc123`) in the `worker.id` attribute, instead of an opaque internal value. Upgrade to get the readable identifier in your own OpenTelemetry exporters. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+  - `@trigger.dev/build@4.5.6`
+  - `@trigger.dev/schema-to-json@4.5.6`
+
+## 4.5.5
+
+### Patch Changes
+
+- Add experimental Node.js 24 and 26 task runtimes. Set `runtime` to `experimental-node-24` or `experimental-node-26` in `trigger.config.ts`. ([#4085](https://github.com/triggerdotdev/trigger.dev/pull/4085))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+  - `@trigger.dev/build@4.5.5`
+  - `@trigger.dev/schema-to-json@4.5.5`
+
+## 4.5.4
+
+### Patch Changes
+
+- Remove the legacy `--mcp` and `--mcp-port` options from the `dev` command. Run the dedicated `trigger mcp` command to start the Trigger.dev MCP server. ([#4246](https://github.com/triggerdotdev/trigger.dev/pull/4246))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.4`
+  - `@trigger.dev/build@4.5.4`
+  - `@trigger.dev/schema-to-json@4.5.4`
+
+## 4.5.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.5.3`
+  - `@trigger.dev/core@4.5.3`
+  - `@trigger.dev/schema-to-json@4.5.3`
+
 ## 4.5.2
 
 ### Patch Changes

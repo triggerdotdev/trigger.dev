@@ -7,9 +7,9 @@ import { getTestServer } from "./helpers/sharedTestServer";
 import { seedTestSession, seedTestUser } from "./helpers/seedTestSession";
 
 describe("Dashboard", () => {
-  it("shared webapp container redirects /admin/concurrency to /login when unauthenticated", async () => {
+  it("shared webapp container redirects /admin/feature-flags to /login when unauthenticated", async () => {
     const server = getTestServer();
-    const res = await server.webapp.fetch("/admin/concurrency", { redirect: "manual" });
+    const res = await server.webapp.fetch("/admin/feature-flags", { redirect: "manual" });
     expect(res.status).toBe(302);
   });
 
@@ -26,7 +26,7 @@ describe("Dashboard", () => {
   // already proves. If the wrapper config drifts per-route in the
   // future, add targeted tests for the divergent ones.
   describe("Admin pages — requireSuper gate", () => {
-    const adminRoutes = ["/admin", "/admin/concurrency", "/admin/back-office"];
+    const adminRoutes = ["/admin", "/admin/feature-flags", "/admin/back-office"];
 
     for (const path of adminRoutes) {
       describe(`GET ${path}`, () => {

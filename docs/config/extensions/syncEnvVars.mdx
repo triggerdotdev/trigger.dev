@@ -32,6 +32,33 @@ The callback is passed a context object with the following properties:
 - `projectRef`: The project ref of the Trigger.dev project
 - `env`: The environment variables that are currently set in the Trigger.dev project
 
+### Marking variables as secrets
+
+Return the array form and set `isSecret: true` on any variable you want stored as a [secret](/deploy-environment-variables). Secret env vars are redacted in the dashboard and their values can't be revealed after they're set, just like manually created secret variables. You can mix secret and non-secret variables in the same callback.
+
+```ts
+import { defineConfig } from "@trigger.dev/sdk";
+import { syncEnvVars } from "@trigger.dev/build/extensions/core";
+
+export default defineConfig({
+  build: {
+    extensions: [
+      syncEnvVars(async (ctx) => {
+        return [
+          { name: "PUBLIC_API_URL", value: "https://api.example.com" },
+          { name: "DATABASE_URL", value: "postgres://...", isSecret: true },
+        ];
+      }),
+    ],
+  },
+});
+```
+
+<Note>
+  `isSecret` is only available when you return the array form (`{ name, value, isSecret }`). The
+  record form (`{ KEY: "value" }`) always creates non-secret variables.
+</Note>
+
 ### Example: Sync env vars from Infisical
 
 In this example we're using env vars from [Infisical](https://infisical.com).

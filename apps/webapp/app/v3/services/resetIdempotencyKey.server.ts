@@ -2,6 +2,7 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
 
 export class ResetIdempotencyKeyService extends BaseService {
   public async call(
@@ -9,12 +10,27 @@ export class ResetIdempotencyKeyService extends BaseService {
     taskIdentifier: string,
     authenticatedEnv: AuthenticatedEnvironment
   ): Promise<{ id: string }> {
+    // The predicate has no run id to route by. When the env mints run-ops ids its runs live on NEW,
+    // so pin the reset to NEW and skip the wrong-DB (0-row) write to the draining legacy DB. Resolve
+    // this only when the org (and its flags) is loaded on the env — which the authenticated API path
+    // always provides; otherwise fall back to the two-store reset (correct, just not optimized).
+    let residency: "NEW" | "LEGACY" = "LEGACY";
+    if (authenticatedEnv.organization) {
+      const mintKind = await resolveRunIdMintKind({
+        organizationId: authenticatedEnv.organizationId,
+        id: authenticatedEnv.id,
+        orgFeatureFlags: authenticatedEnv.organization.featureFlags,
+      });
+      residency = mintKind === "runOpsId" ? "NEW" : "LEGACY";
+    }
+
     const { count: pgCount } = await this.runStore.clearIdempotencyKey(
       {
         byPredicate: {
           idempotencyKey,
           taskIdentifier,
           runtimeEnvironmentId: authenticatedEnv.id,
+          residency,
         },
       },
       this._prisma
@@ -80,6 +96,7 @@ export class ResetIdempotencyKeyService extends BaseService {
             idempotencyKey,
             taskIdentifier,
             runtimeEnvironmentId: authenticatedEnv.id,
+            residency,
           },
         },
         this._prisma

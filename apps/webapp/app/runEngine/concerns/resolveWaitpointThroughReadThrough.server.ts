@@ -1,6 +1,6 @@
 import type { PrismaReplicaClient } from "~/db.server";
 import {
-  $replica as defaultLegacyReplica,
+  runOpsLegacyReplica as defaultLegacyReplica,
   runOpsNewPrisma as defaultNewPrimary,
   runOpsNewReplica as defaultNewClient,
   runOpsSplitReadEnabled as defaultSplitReadEnabled,

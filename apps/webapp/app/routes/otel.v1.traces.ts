@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { ExportTraceServiceRequest, ExportTraceServiceResponse } from "@trigger.dev/otlp-importer";
-import { otlpExporter } from "~/v3/otlpExporter.server";
+import { otlpExporter, otlpTransformWorkerPoolEnabled } from "~/v3/otlpExporter.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
@@ -16,6 +16,15 @@ export async function action({ request }: ActionFunctionArgs) {
       return json(exportResponse, { status: 200 });
     } else if (contentType.startsWith("application/x-protobuf")) {
       const buffer = await request.arrayBuffer();
+
+      if (otlpTransformWorkerPoolEnabled) {
+        await exporter.exportTracesRaw(new Uint8Array(buffer));
+
+        return new Response(
+          ExportTraceServiceResponse.encode(ExportTraceServiceResponse.create()).finish(),
+          { status: 200 }
+        );
+      }
 
       const exportRequest = ExportTraceServiceRequest.decode(new Uint8Array(buffer));
 

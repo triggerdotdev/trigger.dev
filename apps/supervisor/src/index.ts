@@ -27,6 +27,7 @@ import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { getWorkerToken } from "./workerToken.js";
+import { mintDeploymentToken } from "./workloadToken.js";
 import { OtlpTraceService } from "./services/otlpTraceService.js";
 import {
   WarmStartVerificationService,
@@ -96,6 +97,7 @@ class ManagedSupervisor {
       COMPUTE_GATEWAY_AUTH_TOKEN,
       DOCKER_REGISTRY_PASSWORD,
       TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
+      WORKLOAD_TOKEN_SECRET,
       ...envWithoutSecrets
     } = env;
 
@@ -120,6 +122,7 @@ class ManagedSupervisor {
       snapshotPollIntervalSeconds: env.RUNNER_SNAPSHOT_POLL_INTERVAL_SECONDS,
       additionalEnvVars: env.RUNNER_ADDITIONAL_ENV_VARS,
       dockerAutoremove: env.DOCKER_AUTOREMOVE_EXITED_CONTAINERS,
+      checkpointsEnabled: !!env.TRIGGER_CHECKPOINT_URL,
     } satisfies WorkloadManagerOptions;
 
     this.resourceMonitor = env.RESOURCE_MONITOR_ENABLED
@@ -289,8 +292,10 @@ class ManagedSupervisor {
       });
     }
 
+    const workerToken = getWorkerToken();
+
     this.workerSession = new SupervisorSession({
-      workerToken: getWorkerToken(),
+      workerToken,
       apiUrl: env.TRIGGER_API_URL,
       instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
       managedWorkerSecret: env.MANAGED_WORKER_SECRET,
@@ -568,6 +573,7 @@ class ManagedSupervisor {
       checkpointClient: this.checkpointClient,
       computeManager: this.computeManager,
       tracing: this.tracing,
+      snapshotCallbackSecret: workerToken,
       wideEventOpts: this.wideEventOpts,
       wideEventsNoisyRoutes: this.wideEventsNoisyRoutes,
     });
@@ -602,6 +608,15 @@ class ManagedSupervisor {
         throw new Error("Image is missing");
       }
 
+      const deploymentToken = await mintDeploymentToken({
+        deployment: message.deployment.friendlyId,
+        deployment_version: message.backgroundWorker.version,
+        environment_id: message.environment.id,
+        environment_type: message.environment.type,
+        org_id: message.organization.id,
+        project_id: message.project.id,
+      });
+
       await this.workloadManager.create({
         dequeuedAt: message.dequeuedAt,
         dequeueResponseMs: timings.dequeueResponseMs,
@@ -615,6 +630,8 @@ class ManagedSupervisor {
         projectId: message.project.id,
         deploymentFriendlyId: message.deployment.friendlyId,
         deploymentVersion: message.backgroundWorker.version,
+        runtime: message.backgroundWorker.runtime,
+        deploymentToken,
         runId: message.run.id,
         runFriendlyId: message.run.friendlyId,
         version: message.version,

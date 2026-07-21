@@ -26,6 +26,11 @@ import { z } from "zod";
 import { env } from "../env.js";
 import { register } from "../metrics.js";
 import {
+  verifyDeploymentIdHeader,
+  workloadTokenEnforced,
+  workloadTokensEnabled,
+} from "../workloadToken.js";
+import {
   ComputeSnapshotService,
   type RunTraceContext,
 } from "../services/computeSnapshotService.js";
@@ -86,6 +91,7 @@ type WorkloadServerOptions = {
   checkpointClient?: CheckpointClient;
   computeManager?: ComputeWorkloadManager;
   tracing?: OtlpTraceService;
+  snapshotCallbackSecret: string;
   wideEventOpts: WideEventOptions;
   /** When true, high-frequency HTTP routes also emit wide events. */
   wideEventsNoisyRoutes: boolean;
@@ -136,6 +142,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         workerClient: opts.workerClient,
         tracing: opts.tracing,
         wideEventOpts: this.wideEventOpts,
+        snapshotCallbackSecret: opts.snapshotCallbackSecret,
       });
     }
 
@@ -167,6 +174,34 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
   private projectRefFromRequest(req: IncomingMessage): string | undefined {
     return this.headerValueFromRequest(req, WORKLOAD_HEADERS.PROJECT_REF);
+  }
+
+  /**
+   * Verify the deployment token from the workload deployment-id header and return the verified
+   * environment_id to forward upstream. The env id is only forwarded in enforce mode: in log mode
+   * we still verify + record metrics but attach no header (so the platform never scopes). Only
+   * enforce fails a request, and only for a present-but-invalid token; absent and legacy ids pass.
+   */
+  private async authorizeWorkloadRequest(
+    req: IncomingMessage
+  ): Promise<{ ok: true; environmentId?: string } | { ok: false }> {
+    if (!workloadTokensEnabled) {
+      return { ok: true };
+    }
+
+    const result = await verifyDeploymentIdHeader(this.deploymentIdFromRequest(req), "http");
+
+    if (result.outcome === "jwt_invalid" && workloadTokenEnforced) {
+      return { ok: false };
+    }
+
+    return {
+      ok: true,
+      environmentId:
+        workloadTokenEnforced && result.outcome === "jwt_valid"
+          ? result.claims.environment_id
+          : undefined,
+    };
   }
 
   /**
@@ -250,11 +285,17 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "POST",
               async () => {
                 const { req, reply, params, body } = ctx;
+                const auth = await this.authorizeWorkloadRequest(req);
+                if (!auth.ok) {
+                  reply.empty(401);
+                  return;
+                }
                 const startResponse = await this.workerClient.startRunAttempt(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
                   body,
-                  this.runnerIdFromRequest(req)
+                  this.runnerIdFromRequest(req),
+                  auth.environmentId
                 );
 
                 if (!startResponse.success) {
@@ -286,6 +327,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "POST",
               async () => {
                 const { req, reply, params, body } = ctx;
+                const auth = await this.authorizeWorkloadRequest(req);
+                if (!auth.ok) {
+                  reply.empty(401);
+                  return;
+                }
                 const runnerId = this.runnerIdFromRequest(req);
 
                 // A completion attempt invalidates any pending delayed snapshot
@@ -304,7 +350,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
                   body,
-                  runnerId
+                  runnerId,
+                  auth.environmentId
                 );
 
                 if (!completeResponse.success) {
@@ -336,6 +383,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "POST",
               async () => {
                 const { req, reply, params, body } = ctx;
+                const auth = await this.authorizeWorkloadRequest(req);
+                if (!auth.ok) {
+                  reply.empty(401);
+                  return;
+                }
                 const heartbeatResponse = await this.workerClient.heartbeatRun(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
@@ -373,6 +425,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "GET",
               async () => {
                 const { reply, params, req } = ctx;
+                const auth = await this.authorizeWorkloadRequest(req);
+                if (!auth.ok) {
+                  reply.empty(401);
+                  return;
+                }
                 const runnerId = this.runnerIdFromRequest(req);
                 const deploymentVersion = this.deploymentVersionFromRequest(req);
                 const projectRef = this.projectRefFromRequest(req);
@@ -469,6 +526,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "GET",
               async () => {
                 const { req, reply, params } = ctx;
+                const auth = await this.authorizeWorkloadRequest(req);
+                if (!auth.ok) {
+                  reply.empty(401);
+                  return;
+                }
                 this.logger.debug("Run continuation request", { params });
 
                 // Cancel any pending delayed snapshot for this run
@@ -477,7 +539,8 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                 const continuationResult = await this.workerClient.continueRunExecution(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
-                  this.runnerIdFromRequest(req)
+                  this.runnerIdFromRequest(req),
+                  auth.environmentId
                 );
 
                 if (!continuationResult.success) {
@@ -511,10 +574,16 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "GET",
               async () => {
                 const { req, reply, params } = ctx;
+                const auth = await this.authorizeWorkloadRequest(req);
+                if (!auth.ok) {
+                  reply.empty(401);
+                  return;
+                }
                 const sinceSnapshotResponse = await this.workerClient.getSnapshotsSince(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
-                  this.runnerIdFromRequest(req)
+                  this.runnerIdFromRequest(req),
+                  auth.environmentId
                 );
 
                 if (!sinceSnapshotResponse.success) {
@@ -585,9 +654,18 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               const { req, reply, params, body } = ctx;
               reply.empty(204);
 
+              // Redact TRIGGER_DEPLOYMENT_ID before relaying to the platform.
+              const sanitizedBody =
+                body.properties && "TRIGGER_DEPLOYMENT_ID" in body.properties
+                  ? {
+                      ...body,
+                      properties: { ...body.properties, TRIGGER_DEPLOYMENT_ID: "[redacted]" },
+                    }
+                  : body;
+
               await this.workerClient.sendDebugLog(
                 params.runFriendlyId,
-                body,
+                sanitizedBody,
                 this.runnerIdFromRequest(req)
               );
             },
@@ -681,7 +759,31 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         return;
       }
 
-      this.logger.debug("[WS] auth success", socket.data);
+      if (workloadTokensEnabled) {
+        const result = await verifyDeploymentIdHeader(socket.data.deploymentId, "ws");
+
+        if (result.outcome === "jwt_invalid" && workloadTokenEnforced) {
+          this.logger.error("[WS] deployment token verification failed", {
+            runnerId: socket.data.runnerId,
+          });
+          socket.disconnect(true);
+          return;
+        }
+
+        // Re-source the deployment id from the verified claim; the raw header may be an opaque token.
+        // A legacy bare id is itself the friendlyId, so it's safe to keep.
+        socket.data.deploymentFriendlyId =
+          result.outcome === "jwt_valid"
+            ? result.claims.deployment
+            : result.outcome === "legacy_bare"
+              ? socket.data.deploymentId
+              : undefined;
+      }
+
+      this.logger.debug("[WS] handshake complete", {
+        runnerId: socket.data.runnerId,
+        deploymentFriendlyId: socket.data.deploymentFriendlyId,
+      });
 
       next();
     });
@@ -693,7 +795,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
       const getSocketMetadata = () => {
         return {
-          deploymentId: socket.data.deploymentId,
+          deploymentId: socket.data.deploymentFriendlyId ?? socket.data.deploymentId,
           runId: socket.data.runFriendlyId,
           snapshotId: socket.data.snapshotId,
           runnerId: socket.data.runnerId,
@@ -712,8 +814,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           populate: (state) => {
             state.extras.event = event;
             setMeta(state, "run_id", friendlyId);
-            if (socket.data.deploymentId) {
-              setMeta(state, "deployment_id", socket.data.deploymentId);
+            const deploymentId = socket.data.deploymentFriendlyId ?? socket.data.deploymentId;
+            if (deploymentId) {
+              setMeta(state, "deployment_id", deploymentId);
             }
             if (socket.data.runnerId) setMeta(state, "runner_id", socket.data.runnerId);
             state.extras.socket_id = socket.id;
@@ -724,6 +827,33 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
       const runConnected = (friendlyId: string) => {
         socketLogger.debug("runConnected", { ...getSocketMetadata() });
+
+        // Only the owning runner may (re)bind a run. A live socket from a *different*
+        // runner keeps its binding so an unrelated connection can't hijack the run. But
+        // the newest socket for the *same* runner is a legitimate reconnection/handoff and
+        // is allowed to take over even while the stale socket still reports connected -
+        // otherwise, during a reconnect race the fresh socket would silently stay unbound
+        // (missing continue/cancel/suspend notifications) until the dead socket times out.
+        const existing = this.runSockets.get(friendlyId);
+        if (existing && existing.id !== socket.id && existing.connected) {
+          const sameRunner =
+            !!socket.data.runnerId && existing.data.runnerId === socket.data.runnerId;
+
+          if (!sameRunner) {
+            socketLogger.warn("runConnected: run already bound to another socket", {
+              ...getSocketMetadata(),
+              friendlyId,
+              existingSocketId: existing.id,
+            });
+            return;
+          }
+
+          socketLogger.debug("runConnected: replacing stale socket for same runner", {
+            ...getSocketMetadata(),
+            friendlyId,
+            existingSocketId: existing.id,
+          });
+        }
 
         // If there's already a run ID set, we should "disconnect" it from this socket
         if (socket.data.runFriendlyId && socket.data.runFriendlyId !== friendlyId) {
@@ -743,6 +873,22 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
       const runDisconnected = (friendlyId: string, reason: string) => {
         socketLogger.debug("runDisconnected", { ...getSocketMetadata() });
+
+        // A newer socket may have taken over this run (same-runner reconnect race). If the
+        // run is now bound to a different socket, this stale socket must not clear the fresh
+        // binding or emit a spurious disconnect - just drop its own reference and bail.
+        const bound = this.runSockets.get(friendlyId);
+        if (bound && bound.id !== socket.id) {
+          socketLogger.debug("runDisconnected: run rebound to another socket, skipping", {
+            ...getSocketMetadata(),
+            friendlyId,
+            boundSocketId: bound.id,
+          });
+          if (socket.data.runFriendlyId === friendlyId) {
+            socket.data.runFriendlyId = undefined;
+          }
+          return;
+        }
 
         // The run is gone from this runner (crash, exit, or replaced by a new
         // run), so a pending delayed snapshot for it is stale. Genuine

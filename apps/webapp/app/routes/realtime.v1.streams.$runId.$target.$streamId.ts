@@ -19,32 +19,34 @@ const { action } = createActionApiRoute(
     params: ParamsSchema,
   },
   async ({ request, params, authentication }) => {
-    const run = await runStore.findRun(
-      {
-        friendlyId: params.runId,
-        runtimeEnvironmentId: authentication.environment.id,
-      },
-      {
-        select: {
-          id: true,
-          friendlyId: true,
-          streamBasinName: true,
-          parentTaskRun: {
-            select: {
-              friendlyId: true,
-              streamBasinName: true,
-            },
+    const where = {
+      friendlyId: params.runId,
+      runtimeEnvironmentId: authentication.environment.id,
+    };
+    const args = {
+      select: {
+        id: true,
+        friendlyId: true,
+        streamBasinName: true,
+        parentTaskRun: {
+          select: {
+            friendlyId: true,
+            streamBasinName: true,
           },
-          rootTaskRun: {
-            select: {
-              friendlyId: true,
-              streamBasinName: true,
-            },
+        },
+        rootTaskRun: {
+          select: {
+            friendlyId: true,
+            streamBasinName: true,
           },
         },
       },
-      $replica
-    );
+    };
+    // Replica lag can null out a live run; a spurious 404 permanently fails the ingest client.
+    // Re-read the owning primary on a replica miss.
+    const run =
+      (await runStore.findRun(where, args, $replica)) ??
+      (await runStore.findRunOnPrimary(where, args));
 
     if (!run) {
       return new Response("Run not found", { status: 404 });
@@ -154,32 +156,33 @@ const loader = createLoaderApiRoute(
     allowJWT: false,
     corsStrategy: "none",
     findResource: async (params, authentication) => {
-      return runStore.findRun(
-        {
-          friendlyId: params.runId,
-          runtimeEnvironmentId: authentication.environment.id,
-        },
-        {
-          select: {
-            id: true,
-            friendlyId: true,
-            streamBasinName: true,
-            parentTaskRun: {
-              select: {
-                friendlyId: true,
-                streamBasinName: true,
-              },
+      const where = {
+        friendlyId: params.runId,
+        runtimeEnvironmentId: authentication.environment.id,
+      };
+      const args = {
+        select: {
+          id: true,
+          friendlyId: true,
+          streamBasinName: true,
+          parentTaskRun: {
+            select: {
+              friendlyId: true,
+              streamBasinName: true,
             },
-            rootTaskRun: {
-              select: {
-                friendlyId: true,
-                streamBasinName: true,
-              },
+          },
+          rootTaskRun: {
+            select: {
+              friendlyId: true,
+              streamBasinName: true,
             },
           },
         },
-        $replica
-      );
+      };
+      // Replica lag can null out a live run; a spurious 404 permanently fails the HEAD probe.
+      // Re-read the owning primary on a replica miss.
+      const run = await runStore.findRun(where, args, $replica);
+      return run ?? runStore.findRunOnPrimary(where, args);
     },
   },
   async ({ request, params, resource: run, authentication }) => {

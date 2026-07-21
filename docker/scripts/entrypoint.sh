@@ -27,6 +27,22 @@ else
   echo "RUN_OPS_DATABASE_URL not set, skipping run-ops migrations."
 fi
 
+# Run-ops split: keep the legacy runs DB's schema current by applying the full @trigger.dev/database
+# migrations to it too, pointed at its direct (non-pooled) URL. Only runs when that URL is configured;
+# installs that never set it skip this entirely.
+if [ -n "$RUN_OPS_LEGACY_DIRECT_URL" ]; then
+  if [ "$SKIP_RUN_OPS_LEGACY_MIGRATIONS" != "1" ]; then
+    echo "Running legacy run-ops migrations"
+    # Subshell with tracing off so `set -x` does not print the DSN (with credentials) to the logs.
+    (set +x; DATABASE_URL="$RUN_OPS_LEGACY_DIRECT_URL" DIRECT_URL="$RUN_OPS_LEGACY_DIRECT_URL" pnpm --filter @trigger.dev/database db:migrate:deploy)
+    echo "Legacy run-ops migrations done"
+  else
+    echo "SKIP_RUN_OPS_LEGACY_MIGRATIONS=1, skipping legacy run-ops migrations."
+  fi
+else
+  echo "RUN_OPS_LEGACY_DIRECT_URL not set, skipping legacy run-ops migrations."
+fi
+
 if [ "$SKIP_DASHBOARD_AGENT_MIGRATIONS" != "1" ]; then
   echo "Running dashboard agent migrations"
   pnpm --filter @internal/dashboard-agent-db db:migrate:deploy

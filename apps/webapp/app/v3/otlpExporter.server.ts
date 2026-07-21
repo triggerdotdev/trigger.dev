@@ -2,48 +2,59 @@ import type { Tracer } from "@opentelemetry/api";
 import { trace } from "@opentelemetry/api";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
 import type {
-  AnyValue,
   ExportLogsServiceRequest,
   ExportMetricsServiceRequest,
   ExportTraceServiceRequest,
-  KeyValue,
-  ResourceLogs,
   ResourceMetrics,
-  ResourceSpans,
-  Span,
-  Span_Event,
 } from "@trigger.dev/otlp-importer";
 import {
   ExportLogsServiceResponse,
   ExportMetricsServiceResponse,
   ExportTraceServiceResponse,
-  SeverityNumber,
-  Span_SpanKind,
-  Status_StatusCode,
 } from "@trigger.dev/otlp-importer";
 import type { MetricsV1Input } from "@internal/clickhouse";
+import { getMeter, type Counter, type Histogram, type Meter } from "@internal/tracing";
 import { logger } from "~/services/logger.server";
 import type { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
-
-import { generateSpanId } from "./eventRepository/common.server";
 import { eventRepository } from "./eventRepository/eventRepository.server";
-import type {
-  CreatableEventKind,
-  CreatableEventStatus,
-  CreateEventInput,
-  IEventRepository,
-} from "./eventRepository/eventRepository.types";
+import type { CreateEventInput, IEventRepository } from "./eventRepository/eventRepository.types";
 import { startSpan } from "./tracing.server";
 import { enrichCreatableEvents } from "./utils/enrichCreatableEvents.server";
-import { waitForLlmPricingReady } from "./llmPricingRegistry.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
+import {
+  convertLogsToCreateableEvents,
+  convertMetricsToClickhouseRows,
+  convertSpansToCreateableEvents,
+  isBoolValue,
+  isStringValue,
+} from "./otlpTransform.server";
+import os from "node:os";
+import { getOtlpWorkerPool } from "./otlpWorkerPool.server";
+import {
+  llmPricingRegistry,
+  subscribeToPricingReload,
+  waitForLlmPricingReady,
+} from "./llmPricingRegistry.server";
+
+// When enabled, decode+convert+enrich run in a worker pool; the main thread keeps the single
+// consolidated insert path (batching/part-count unchanged). Off = today's single-thread path.
+export const otlpTransformWorkerPoolEnabled = env.OTEL_TRANSFORM_WORKER_POOL_ENABLED;
+
+// Always at least 1 worker: a 0/negative override must not silently disable the pool while the
+// flag is on (that would hang every raw-export request on an empty pool).
+const OTEL_TRANSFORM_WORKER_POOL_SIZE = Math.max(
+  1,
+  env.OTEL_TRANSFORM_WORKER_POOL_SIZE ?? (os.cpus()?.length ?? 2) - 2
+);
 
 type OTLPExporterConfig = {
   clickhouseFactory: ClickhouseFactory;
   verbose: boolean;
   spanAttributeValueLengthLimit: number;
+  // Inject in tests; defaults to the global provider. Instruments are no-op when metrics are off.
+  meter?: Meter;
 };
 
 class OTLPExporter {
@@ -51,70 +62,223 @@ class OTLPExporter {
   private readonly _clickhouseFactory: ClickhouseFactory;
   private readonly _verbose: boolean;
   private readonly _spanAttributeValueLengthLimit: number;
+  #pricingSubscribed = false;
+
+  private readonly _meter: Meter;
+  private readonly _ingestRequests: Counter;
+  private readonly _ingestBytes: Counter;
+  private readonly _ingestDuration: Histogram;
+  private readonly _eventsProduced: Counter;
+  private readonly _metricRowsProduced: Counter;
 
   constructor(config: OTLPExporterConfig) {
     this._tracer = trace.getTracer("otlp-exporter");
     this._clickhouseFactory = config.clickhouseFactory;
     this._verbose = config.verbose;
     this._spanAttributeValueLengthLimit = config.spanAttributeValueLengthLimit;
+
+    this._meter = config.meter ?? getMeter("ingest");
+    this._ingestRequests = this._meter.createCounter("ingest.requests", {
+      description: "OTLP export calls received, by signal / path / outcome",
+      unit: "requests",
+    });
+    this._ingestBytes = this._meter.createCounter("ingest.bytes", {
+      description: "Compressed protobuf payload bytes received",
+      unit: "By",
+    });
+    this._ingestDuration = this._meter.createHistogram("ingest.duration", {
+      description: "End-to-end time to handle an OTLP export call",
+      unit: "ms",
+    });
+    this._eventsProduced = this._meter.createCounter("ingest.events.produced", {
+      description: "Task events produced from spans/logs after filter + convert",
+      unit: "events",
+    });
+    this._metricRowsProduced = this._meter.createCounter("ingest.metric_rows.produced", {
+      description: "ClickHouse metric rows produced from OTLP metrics",
+      unit: "rows",
+    });
+  }
+
+  // One helper for both the worker (mode="worker") and inline (mode="inline") paths. Called once
+  // per export call, so building the small attribute objects here is not a hot-path allocation.
+  #recordIngest(kind: string, mode: string, outcome: string, startedAt: number): void {
+    this._ingestRequests.add(1, { kind, mode, outcome });
+    this._ingestDuration.record(Date.now() - startedAt, { kind, mode });
   }
 
   async exportTraces(request: ExportTraceServiceRequest): Promise<ExportTraceServiceResponse> {
     return await startSpan(this._tracer, "exportTraces", async (span) => {
-      this.#logExportTracesVerbose(request);
+      const startedAt = Date.now();
+      try {
+        this.#logExportTracesVerbose(request);
 
-      const eventsWithStores = this.#filterResourceSpans(request.resourceSpans).flatMap(
-        (resourceSpan) => {
-          return convertSpansToCreateableEvents(resourceSpan, this._spanAttributeValueLengthLimit);
-        }
-      );
+        const eventsWithStores = this.#filterResourceSpans(request.resourceSpans).flatMap(
+          (resourceSpan) => {
+            return convertSpansToCreateableEvents(
+              resourceSpan,
+              this._spanAttributeValueLengthLimit,
+              env.EVENT_REPOSITORY_DEFAULT_STORE
+            );
+          }
+        );
 
-      const eventCount = await this.#exportEvents(eventsWithStores);
+        const eventCount = await this.#exportEvents(eventsWithStores);
 
-      span.setAttribute("event_count", eventCount);
+        span.setAttribute("event_count", eventCount);
+        this._eventsProduced.add(eventCount, { kind: "traces" });
+        this.#recordIngest("traces", "inline", "ok", startedAt);
 
-      return ExportTraceServiceResponse.create();
+        return ExportTraceServiceResponse.create();
+      } catch (error) {
+        this.#recordIngest("traces", "inline", "error", startedAt);
+        throw error;
+      }
     });
   }
 
   async exportMetrics(request: ExportMetricsServiceRequest): Promise<ExportMetricsServiceResponse> {
     return await startSpan(this._tracer, "exportMetrics", async (span) => {
-      const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap((resourceMetrics) =>
-        convertMetricsToClickhouseRows(resourceMetrics, this._spanAttributeValueLengthLimit)
-      );
+      const startedAt = Date.now();
+      try {
+        const rows = this.#filterResourceMetrics(request.resourceMetrics).flatMap(
+          (resourceMetrics) =>
+            convertMetricsToClickhouseRows(resourceMetrics, this._spanAttributeValueLengthLimit)
+        );
 
-      span.setAttribute("metric_row_count", rows.length);
+        span.setAttribute("metric_row_count", rows.length);
 
-      if (rows.length > 0) {
-        await this.#exportMetricRows(rows);
+        if (rows.length > 0) {
+          await this.#exportMetricRows(rows);
+        }
+
+        this._metricRowsProduced.add(rows.length, { kind: "metrics" });
+        this.#recordIngest("metrics", "inline", "ok", startedAt);
+
+        return ExportMetricsServiceResponse.create();
+      } catch (error) {
+        this.#recordIngest("metrics", "inline", "error", startedAt);
+        throw error;
       }
-
-      return ExportMetricsServiceResponse.create();
     });
   }
 
   async exportLogs(request: ExportLogsServiceRequest): Promise<ExportLogsServiceResponse> {
     return await startSpan(this._tracer, "exportLogs", async (span) => {
-      this.#logExportLogsVerbose(request);
+      const startedAt = Date.now();
+      try {
+        this.#logExportLogsVerbose(request);
 
-      const eventsWithStores = this.#filterResourceLogs(request.resourceLogs).flatMap(
-        (resourceLog) => {
-          return convertLogsToCreateableEvents(resourceLog, this._spanAttributeValueLengthLimit);
-        }
-      );
+        const eventsWithStores = this.#filterResourceLogs(request.resourceLogs).flatMap(
+          (resourceLog) => {
+            return convertLogsToCreateableEvents(
+              resourceLog,
+              this._spanAttributeValueLengthLimit,
+              env.EVENT_REPOSITORY_DEFAULT_STORE
+            );
+          }
+        );
 
-      const eventCount = await this.#exportEvents(eventsWithStores);
+        const eventCount = await this.#exportEvents(eventsWithStores);
 
-      span.setAttribute("event_count", eventCount);
+        span.setAttribute("event_count", eventCount);
+        this._eventsProduced.add(eventCount, { kind: "logs" });
+        this.#recordIngest("logs", "inline", "ok", startedAt);
 
-      return ExportLogsServiceResponse.create();
+        return ExportLogsServiceResponse.create();
+      } catch (error) {
+        this.#recordIngest("logs", "inline", "error", startedAt);
+        throw error;
+      }
     });
   }
 
-  async #exportEvents(
-    eventsWithStores: { events: Array<CreateEventInput>; taskEventStore: string }[]
-  ) {
+  async exportTracesRaw(payload: Uint8Array): Promise<void> {
+    await this.#exportRawEvents("traces", payload);
+  }
+
+  async exportLogsRaw(payload: Uint8Array): Promise<void> {
+    await this.#exportRawEvents("logs", payload);
+  }
+
+  async exportMetricsRaw(payload: Uint8Array): Promise<void> {
+    await startSpan(this._tracer, "exportMetricsRaw", async (span) => {
+      const startedAt = Date.now();
+      this._ingestBytes.add(payload.byteLength, { kind: "metrics" });
+      try {
+        const pool = await this.#pool();
+        const { rows } = await pool.runTransform("metrics", payload, this.#transformConfig());
+        span.setAttribute("metric_row_count", rows.length);
+        if (rows.length > 0) {
+          await this.#exportMetricRows(rows);
+        }
+        this._metricRowsProduced.add(rows.length, { kind: "metrics" });
+        this.#recordIngest("metrics", "worker", "ok", startedAt);
+      } catch (error) {
+        this.#recordIngest("metrics", "worker", "error", startedAt);
+        throw error;
+      }
+    });
+  }
+
+  async #exportRawEvents(kind: "traces" | "logs", payload: Uint8Array): Promise<void> {
+    await startSpan(
+      this._tracer,
+      kind === "traces" ? "exportTracesRaw" : "exportLogsRaw",
+      async (span) => {
+        const startedAt = Date.now();
+        this._ingestBytes.add(payload.byteLength, { kind });
+        try {
+          const pool = await this.#pool();
+          const { eventsWithStores } = await pool.runTransform(
+            kind,
+            payload,
+            this.#transformConfig()
+          );
+          const eventCount = await this.#exportEvents(eventsWithStores, true);
+          span.setAttribute("event_count", eventCount);
+          this._eventsProduced.add(eventCount, { kind });
+          this.#recordIngest(kind, "worker", "ok", startedAt);
+        } catch (error) {
+          this.#recordIngest(kind, "worker", "error", startedAt);
+          throw error;
+        }
+      }
+    );
+  }
+
+  #transformConfig() {
+    return {
+      spanAttributeValueLengthLimit: this._spanAttributeValueLengthLimit,
+      defaultEventStore: env.EVENT_REPOSITORY_DEFAULT_STORE,
+    };
+  }
+
+  async #pool() {
     await waitForLlmPricingReady();
+    const models =
+      llmPricingRegistry && llmPricingRegistry.isLoaded ? llmPricingRegistry.toSerializable() : [];
+    const pool = getOtlpWorkerPool(
+      OTEL_TRANSFORM_WORKER_POOL_SIZE,
+      models,
+      env.OTEL_TRANSFORM_WORKER_PATH,
+      this._meter
+    );
+    if (!this.#pricingSubscribed) {
+      this.#pricingSubscribed = true;
+      // Re-broadcast pricing to workers on every registry reload so their cost math stays fresh.
+      subscribeToPricingReload((updated) => pool.broadcastPricing(updated));
+    }
+    return pool;
+  }
+
+  async #exportEvents(
+    eventsWithStores: { events: Array<CreateEventInput>; taskEventStore: string }[],
+    alreadyEnriched = false
+  ) {
+    if (!alreadyEnriched) {
+      await waitForLlmPricingReady();
+    }
 
     // Group by unique event repositories
     const routeCache = new Map<string, { key: string; repository: IEventRepository }>();
@@ -151,7 +315,7 @@ class OTLPExporter {
     let eventCount = 0;
 
     for (const [repoKey, { repository, events }] of groups) {
-      const enrichedEvents = enrichCreatableEvents(events);
+      const enrichedEvents = alreadyEnriched ? events : enrichCreatableEvents(events);
 
       this.#logEventsVerbose(enrichedEvents, `exportEvents ${repoKey}`);
 
@@ -283,923 +447,6 @@ class OTLPExporter {
       return isBoolValue(triggerAttribute.value) ? triggerAttribute.value.boolValue : false;
     });
   }
-}
-
-function convertLogsToCreateableEvents(
-  resourceLog: ResourceLogs,
-  spanAttributeValueLengthLimit: number
-): { events: Array<CreateEventInput>; taskEventStore: string } {
-  const resourceAttributes = resourceLog.resource?.attributes ?? [];
-
-  const resourceProperties = extractEventProperties(resourceAttributes);
-
-  const userDefinedResourceAttributes = truncateAttributes(
-    convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
-      SemanticInternalAttributes.USAGE,
-      SemanticInternalAttributes.SPAN,
-      SemanticInternalAttributes.METADATA,
-      SemanticInternalAttributes.STYLE,
-      SemanticInternalAttributes.METRIC_EVENTS,
-      SemanticInternalAttributes.TRIGGER,
-      "process",
-      "sdk",
-      "service",
-      "ctx",
-      "cli",
-      "cloud",
-    ]),
-    spanAttributeValueLengthLimit
-  );
-
-  const taskEventStore =
-    extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
-    env.EVENT_REPOSITORY_DEFAULT_STORE;
-
-  const events = resourceLog.scopeLogs.flatMap((scopeLog) => {
-    return scopeLog.logRecords
-      .map((log) => {
-        const logLevel = logLevelToEventLevel(log.severityNumber);
-
-        if (!log.traceId || !log.spanId) {
-          return;
-        }
-
-        const logProperties = extractEventProperties(
-          log.attributes ?? [],
-          SemanticInternalAttributes.METADATA
-        );
-
-        const properties =
-          truncateAttributes(
-            convertKeyValueItemsToMap(log.attributes ?? [], [], undefined, [
-              SemanticInternalAttributes.USAGE,
-              SemanticInternalAttributes.SPAN,
-              SemanticInternalAttributes.METADATA,
-              SemanticInternalAttributes.STYLE,
-              SemanticInternalAttributes.METRIC_EVENTS,
-              SemanticInternalAttributes.TRIGGER,
-            ]),
-            spanAttributeValueLengthLimit
-          ) ?? {};
-
-        return {
-          traceId: binaryToHex(log.traceId),
-          spanId: generateSpanId(),
-          parentId: binaryToHex(log.spanId),
-          message: isStringValue(log.body)
-            ? log.body.stringValue.slice(0, 4096)
-            : `${log.severityText} log`,
-          isPartial: false,
-          kind: "INTERNAL" as const,
-          level: logLevelToEventLevel(log.severityNumber),
-          isError: logLevel === "ERROR",
-          status: logLevelToEventStatus(log.severityNumber),
-          startTime: log.timeUnixNano,
-          properties,
-          resourceProperties: userDefinedResourceAttributes,
-          style: convertKeyValueItemsToMap(
-            pickAttributes(log.attributes ?? [], SemanticInternalAttributes.STYLE),
-            []
-          ),
-          metadata: logProperties.metadata ?? resourceProperties.metadata ?? {},
-          environmentId:
-            logProperties.environmentId ?? resourceProperties.environmentId ?? "unknown",
-          environmentType: "DEVELOPMENT" as const, // We've deprecated this but we need to keep it for backwards compatibility
-          organizationId:
-            logProperties.organizationId ?? resourceProperties.organizationId ?? "unknown",
-          projectId: logProperties.projectId ?? resourceProperties.projectId ?? "unknown",
-          runId: logProperties.runId ?? resourceProperties.runId ?? "unknown",
-          taskSlug: logProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
-          machineId: logProperties.machineId ?? resourceProperties.machineId,
-          attemptNumber:
-            extractNumberAttribute(
-              log.attributes ?? [],
-              [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_NUMBER].join(
-                "."
-              )
-            ) ?? resourceProperties.attemptNumber,
-        };
-      })
-      .filter(Boolean);
-  });
-
-  return { events, taskEventStore };
-}
-
-function convertSpansToCreateableEvents(
-  resourceSpan: ResourceSpans,
-  spanAttributeValueLengthLimit: number
-): { events: Array<CreateEventInput>; taskEventStore: string } {
-  const resourceAttributes = resourceSpan.resource?.attributes ?? [];
-
-  const resourceProperties = extractEventProperties(resourceAttributes);
-
-  const userDefinedResourceAttributes = truncateAttributes(
-    convertKeyValueItemsToMap(resourceAttributes ?? [], [], undefined, [
-      SemanticInternalAttributes.USAGE,
-      SemanticInternalAttributes.SPAN,
-      SemanticInternalAttributes.METADATA,
-      SemanticInternalAttributes.STYLE,
-      SemanticInternalAttributes.METRIC_EVENTS,
-      SemanticInternalAttributes.TRIGGER,
-      "process",
-      "sdk",
-      "service",
-      "ctx",
-      "cli",
-      "cloud",
-    ]),
-    spanAttributeValueLengthLimit
-  );
-
-  const taskEventStore =
-    extractStringAttribute(resourceAttributes, [SemanticInternalAttributes.TASK_EVENT_STORE]) ??
-    env.EVENT_REPOSITORY_DEFAULT_STORE;
-
-  const events = resourceSpan.scopeSpans.flatMap((scopeSpan) => {
-    return scopeSpan.spans
-      .map((span) => {
-        const isPartial = isPartialSpan(span);
-
-        if (!span.traceId || !span.spanId) {
-          return;
-        }
-
-        const spanProperties = extractEventProperties(
-          span.attributes ?? [],
-          SemanticInternalAttributes.METADATA
-        );
-
-        const runTags = extractArrayAttribute(
-          span.attributes ?? [],
-          SemanticInternalAttributes.RUN_TAGS
-        );
-
-        const properties =
-          truncateAttributes(
-            convertKeyValueItemsToMap(span.attributes ?? [], [], undefined, [
-              SemanticInternalAttributes.USAGE,
-              SemanticInternalAttributes.SPAN,
-              SemanticInternalAttributes.METADATA,
-              SemanticInternalAttributes.STYLE,
-              SemanticInternalAttributes.METRIC_EVENTS,
-              SemanticInternalAttributes.TRIGGER,
-            ]),
-            spanAttributeValueLengthLimit
-          ) ?? {};
-
-        return {
-          traceId: binaryToHex(span.traceId),
-          spanId: isPartial
-            ? extractStringAttribute(
-                span?.attributes ?? [],
-                SemanticInternalAttributes.SPAN_ID,
-                binaryToHex(span.spanId)
-              )
-            : binaryToHex(span.spanId),
-          parentId: binaryToHex(span.parentSpanId),
-          message: span.name,
-          isPartial,
-          isError: span.status?.code === Status_StatusCode.ERROR,
-          kind: spanKindToEventKind(span.kind),
-          level: "TRACE" as const,
-          status: spanStatusToEventStatus(span.status),
-          startTime: span.startTimeUnixNano,
-          events: spanEventsToEventEvents(span.events ?? []),
-          duration: span.endTimeUnixNano - span.startTimeUnixNano,
-          properties,
-          resourceProperties: userDefinedResourceAttributes,
-          style: convertKeyValueItemsToMap(
-            pickAttributes(span.attributes ?? [], SemanticInternalAttributes.STYLE),
-            []
-          ),
-          metadata: spanProperties.metadata ?? resourceProperties.metadata ?? {},
-          environmentId:
-            spanProperties.environmentId ?? resourceProperties.environmentId ?? "unknown",
-          environmentType: "DEVELOPMENT" as const,
-          organizationId:
-            spanProperties.organizationId ?? resourceProperties.organizationId ?? "unknown",
-          projectId: spanProperties.projectId ?? resourceProperties.projectId ?? "unknown",
-          runId: spanProperties.runId ?? resourceProperties.runId ?? "unknown",
-          taskSlug: spanProperties.taskSlug ?? resourceProperties.taskSlug ?? "unknown",
-          machineId: spanProperties.machineId ?? resourceProperties.machineId,
-          runTags,
-          attemptNumber:
-            extractNumberAttribute(
-              span.attributes ?? [],
-              [SemanticInternalAttributes.METADATA, SemanticInternalAttributes.ATTEMPT_NUMBER].join(
-                "."
-              )
-            ) ?? resourceProperties.attemptNumber,
-        };
-      })
-      .filter(Boolean);
-  });
-
-  return { events, taskEventStore };
-}
-
-function floorToTenSecondBucket(timeUnixNano: bigint | number): string {
-  const epochMs = Number(BigInt(timeUnixNano) / BigInt(1_000_000));
-  const flooredMs = Math.floor(epochMs / 10_000) * 10_000;
-  const date = new Date(flooredMs);
-  // Format as ClickHouse DateTime: YYYY-MM-DD HH:MM:SS
-  return date
-    .toISOString()
-    .replace("T", " ")
-    .replace(/\.\d{3}Z$/, "");
-}
-
-function convertMetricsToClickhouseRows(
-  resourceMetrics: ResourceMetrics,
-  spanAttributeValueLengthLimit: number
-): MetricsV1Input[] {
-  const resourceAttributes = resourceMetrics.resource?.attributes ?? [];
-  const resourceProperties = extractEventProperties(resourceAttributes);
-
-  const organizationId = resourceProperties.organizationId ?? "unknown";
-  const projectId = resourceProperties.projectId ?? "unknown";
-  const environmentId = resourceProperties.environmentId ?? "unknown";
-  const resourceCtx = {
-    taskSlug: resourceProperties.taskSlug,
-    runId: resourceProperties.runId,
-    attemptNumber: resourceProperties.attemptNumber,
-    machineId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.MACHINE_ID),
-    workerId: extractStringAttribute(resourceAttributes, SemanticInternalAttributes.WORKER_ID),
-    workerVersion: extractStringAttribute(
-      resourceAttributes,
-      SemanticInternalAttributes.WORKER_VERSION
-    ),
-  };
-
-  const rows: MetricsV1Input[] = [];
-
-  for (const scopeMetrics of resourceMetrics.scopeMetrics) {
-    for (const metric of scopeMetrics.metrics) {
-      const metricName = metric.name;
-
-      // Process gauge data points
-      if (metric.gauge) {
-        for (const dp of metric.gauge.dataPoints) {
-          const value: number =
-            dp.asDouble !== undefined ? dp.asDouble : dp.asInt !== undefined ? Number(dp.asInt) : 0;
-          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
-
-          rows.push({
-            organization_id: organizationId,
-            project_id: projectId,
-            environment_id: environmentId,
-            metric_name: metricName,
-            metric_type: "gauge",
-            metric_subject: resolved.machineId ?? "unknown",
-            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
-            value,
-            attributes: resolved.attributes,
-          });
-        }
-      }
-
-      // Process sum data points
-      if (metric.sum) {
-        for (const dp of metric.sum.dataPoints) {
-          const value: number =
-            dp.asDouble !== undefined ? dp.asDouble : dp.asInt !== undefined ? Number(dp.asInt) : 0;
-          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
-
-          rows.push({
-            organization_id: organizationId,
-            project_id: projectId,
-            environment_id: environmentId,
-            metric_name: metricName,
-            metric_type: "sum",
-            metric_subject: resolved.machineId ?? "unknown",
-            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
-            value,
-            attributes: resolved.attributes,
-          });
-        }
-      }
-
-      // Process histogram data points
-      if (metric.histogram) {
-        for (const dp of metric.histogram.dataPoints) {
-          const resolved = resolveDataPointContext(dp.attributes ?? [], resourceCtx);
-          const count = Number(dp.count);
-          const sum = dp.sum ?? 0;
-
-          rows.push({
-            organization_id: organizationId,
-            project_id: projectId,
-            environment_id: environmentId,
-            metric_name: metricName,
-            metric_type: "histogram",
-            metric_subject: resolved.machineId ?? "unknown",
-            bucket_start: floorToTenSecondBucket(dp.timeUnixNano),
-            value: count > 0 ? sum / count : 0,
-            attributes: resolved.attributes,
-          });
-        }
-      }
-    }
-  }
-
-  return rows;
-}
-
-// Prefixes injected by TaskContextMetricExporter — these are extracted into
-// the nested `trigger` key and should not appear as top-level user attributes.
-const INTERNAL_METRIC_ATTRIBUTE_PREFIXES = ["ctx.", "worker."];
-
-interface ResourceContext {
-  taskSlug: string | undefined;
-  runId: string | undefined;
-  attemptNumber: number | undefined;
-  machineId: string | undefined;
-  workerId: string | undefined;
-  workerVersion: string | undefined;
-}
-
-function resolveDataPointContext(
-  dpAttributes: KeyValue[],
-  resourceCtx: ResourceContext
-): {
-  machineId: string | undefined;
-  attributes: Record<string, unknown>;
-} {
-  const runId =
-    resourceCtx.runId ?? extractStringAttribute(dpAttributes, SemanticInternalAttributes.RUN_ID);
-  const taskSlug =
-    resourceCtx.taskSlug ??
-    extractStringAttribute(dpAttributes, SemanticInternalAttributes.TASK_SLUG);
-  const attemptNumber =
-    resourceCtx.attemptNumber ??
-    extractNumberAttribute(dpAttributes, SemanticInternalAttributes.ATTEMPT_NUMBER);
-  const machineId =
-    resourceCtx.machineId ??
-    extractStringAttribute(dpAttributes, SemanticInternalAttributes.MACHINE_ID);
-  const workerId =
-    resourceCtx.workerId ??
-    extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_ID);
-  const workerVersion =
-    resourceCtx.workerVersion ??
-    extractStringAttribute(dpAttributes, SemanticInternalAttributes.WORKER_VERSION);
-  const machineName = extractStringAttribute(
-    dpAttributes,
-    SemanticInternalAttributes.MACHINE_PRESET_NAME
-  );
-  const environmentType = extractStringAttribute(
-    dpAttributes,
-    SemanticInternalAttributes.ENVIRONMENT_TYPE
-  );
-
-  // Build the trigger context object with only defined values
-  const trigger: Record<string, string | number> = {};
-  if (runId) trigger.run_id = runId;
-  if (taskSlug) trigger.task_slug = taskSlug;
-  if (attemptNumber !== undefined) trigger.attempt_number = attemptNumber;
-  if (machineId) trigger.machine_id = machineId;
-  if (machineName) trigger.machine_name = machineName;
-  if (workerId) trigger.worker_id = workerId;
-  if (workerVersion) trigger.worker_version = workerVersion;
-  if (environmentType) trigger.environment_type = environmentType;
-
-  // Build user attributes, filtering out internal ctx/worker keys
-  const result: Record<string, unknown> = {};
-
-  if (Object.keys(trigger).length > 0) {
-    result.trigger = trigger;
-  }
-
-  for (const attr of dpAttributes) {
-    if (INTERNAL_METRIC_ATTRIBUTE_PREFIXES.some((prefix) => attr.key.startsWith(prefix))) {
-      continue;
-    }
-
-    if (isStringValue(attr.value)) {
-      result[attr.key] = attr.value.stringValue;
-    } else if (isIntValue(attr.value)) {
-      result[attr.key] = Number(attr.value.intValue);
-    } else if (isDoubleValue(attr.value)) {
-      result[attr.key] = attr.value.doubleValue;
-    } else if (isBoolValue(attr.value)) {
-      result[attr.key] = attr.value.boolValue;
-    }
-  }
-
-  return { machineId, attributes: result };
-}
-
-function extractEventProperties(attributes: KeyValue[], prefix?: string) {
-  return {
-    metadata: convertSelectedKeyValueItemsToMap(attributes, [SemanticInternalAttributes.METADATA]),
-    environmentId: extractStringAttribute(attributes, [
-      prefix,
-      SemanticInternalAttributes.ENVIRONMENT_ID,
-    ]),
-    organizationId: extractStringAttribute(attributes, [
-      prefix,
-      SemanticInternalAttributes.ORGANIZATION_ID,
-    ]),
-    projectId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.PROJECT_ID]),
-    runId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.RUN_ID]),
-    attemptNumber: extractNumberAttribute(attributes, [
-      prefix,
-      SemanticInternalAttributes.ATTEMPT_NUMBER,
-    ]),
-    taskSlug: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.TASK_SLUG]),
-    machineId: extractStringAttribute(attributes, [prefix, SemanticInternalAttributes.MACHINE_ID]),
-  };
-}
-
-function pickAttributes(attributes: KeyValue[], prefix: string): KeyValue[] {
-  return attributes
-    .filter((attribute) => attribute.key.startsWith(prefix))
-    .map((attribute) => {
-      return {
-        key: attribute.key.replace(`${prefix}.`, ""),
-        value: attribute.value,
-      };
-    });
-}
-
-function convertKeyValueItemsToMap(
-  attributes: KeyValue[],
-  filteredKeys: string[] = [],
-  prefix?: string,
-  filteredPrefixes: string[] = []
-): Record<string, string | number | boolean | undefined> | undefined {
-  if (!attributes) return;
-  if (!attributes.length) return;
-
-  let filteredAttributes = attributes.filter((attribute) => !filteredKeys.includes(attribute.key));
-
-  if (!filteredAttributes.length) return;
-
-  if (filteredPrefixes.length) {
-    filteredAttributes = filteredAttributes.filter(
-      (attribute) => !filteredPrefixes.some((prefix) => attribute.key.startsWith(prefix))
-    );
-  }
-
-  if (!filteredAttributes.length) return;
-
-  const result = filteredAttributes.reduce(
-    (map: Record<string, string | number | boolean | undefined>, attribute) => {
-      map[`${prefix ? `${prefix}.` : ""}${attribute.key}`] = isStringValue(attribute.value)
-        ? attribute.value.stringValue
-        : isIntValue(attribute.value)
-          ? Number(attribute.value.intValue)
-          : isDoubleValue(attribute.value)
-            ? attribute.value.doubleValue
-            : isBoolValue(attribute.value)
-              ? attribute.value.boolValue
-              : isBytesValue(attribute.value)
-                ? binaryToHex(attribute.value.bytesValue)
-                : isArrayValue(attribute.value)
-                  ? serializeArrayValue(attribute.value.arrayValue!.values)
-                  : undefined;
-
-      return map;
-    },
-    {}
-  );
-
-  return result;
-}
-
-function convertSelectedKeyValueItemsToMap(
-  attributes: KeyValue[],
-  selectedPrefixes: string[] = [],
-  prefix?: string
-): Record<string, string | number | boolean | undefined> | undefined {
-  if (!attributes) return;
-  if (!attributes.length) return;
-
-  let selectedAttributes = attributes.filter((attribute) =>
-    selectedPrefixes.some((prefix) => attribute.key.startsWith(prefix))
-  );
-
-  if (!selectedAttributes.length) return;
-
-  const result = selectedAttributes.reduce(
-    (map: Record<string, string | number | boolean | undefined>, attribute) => {
-      map[`${prefix ? `${prefix}.` : ""}${attribute.key}`] = isStringValue(attribute.value)
-        ? attribute.value.stringValue
-        : isIntValue(attribute.value)
-          ? Number(attribute.value.intValue)
-          : isDoubleValue(attribute.value)
-            ? attribute.value.doubleValue
-            : isBoolValue(attribute.value)
-              ? attribute.value.boolValue
-              : isBytesValue(attribute.value)
-                ? binaryToHex(attribute.value.bytesValue)
-                : isArrayValue(attribute.value)
-                  ? serializeArrayValue(attribute.value.arrayValue!.values)
-                  : undefined;
-
-      return map;
-    },
-    {}
-  );
-
-  return result;
-}
-function spanEventsToEventEvents(events: Span_Event[]): CreateEventInput["events"] {
-  return events.map((event) => {
-    return {
-      name: event.name,
-      time: convertUnixNanoToDate(event.timeUnixNano),
-      properties: convertKeyValueItemsToMap(event.attributes ?? []),
-    };
-  });
-}
-
-function spanStatusToEventStatus(status: Span["status"]): CreatableEventStatus {
-  if (!status) return "UNSET";
-
-  switch (status.code) {
-    case Status_StatusCode.OK: {
-      return "OK";
-    }
-    case Status_StatusCode.ERROR: {
-      return "ERROR";
-    }
-    case Status_StatusCode.UNSET: {
-      return "UNSET";
-    }
-    default: {
-      return "UNSET";
-    }
-  }
-}
-
-function spanKindToEventKind(kind: Span["kind"]): CreatableEventKind {
-  switch (kind) {
-    case Span_SpanKind.CLIENT: {
-      return "CLIENT";
-    }
-    case Span_SpanKind.SERVER: {
-      return "SERVER";
-    }
-    case Span_SpanKind.CONSUMER: {
-      return "CONSUMER";
-    }
-    case Span_SpanKind.PRODUCER: {
-      return "PRODUCER";
-    }
-    default: {
-      return "INTERNAL";
-    }
-  }
-}
-
-function logLevelToEventLevel(level: SeverityNumber): CreateEventInput["level"] {
-  switch (level) {
-    case SeverityNumber.TRACE:
-    case SeverityNumber.TRACE2:
-    case SeverityNumber.TRACE3:
-    case SeverityNumber.TRACE4: {
-      return "TRACE";
-    }
-    case SeverityNumber.DEBUG:
-    case SeverityNumber.DEBUG2:
-    case SeverityNumber.DEBUG3:
-    case SeverityNumber.DEBUG4: {
-      return "DEBUG";
-    }
-    case SeverityNumber.INFO:
-    case SeverityNumber.INFO2:
-    case SeverityNumber.INFO3:
-    case SeverityNumber.INFO4: {
-      return "INFO";
-    }
-    case SeverityNumber.WARN:
-    case SeverityNumber.WARN2:
-    case SeverityNumber.WARN3:
-    case SeverityNumber.WARN4: {
-      return "WARN";
-    }
-    case SeverityNumber.ERROR:
-    case SeverityNumber.ERROR2:
-    case SeverityNumber.ERROR3:
-    case SeverityNumber.ERROR4: {
-      return "ERROR";
-    }
-    case SeverityNumber.FATAL:
-    case SeverityNumber.FATAL2:
-    case SeverityNumber.FATAL3:
-    case SeverityNumber.FATAL4: {
-      return "ERROR";
-    }
-    default: {
-      return "INFO";
-    }
-  }
-}
-
-function logLevelToEventStatus(level: SeverityNumber): CreatableEventStatus {
-  switch (level) {
-    case SeverityNumber.TRACE:
-    case SeverityNumber.TRACE2:
-    case SeverityNumber.TRACE3:
-    case SeverityNumber.TRACE4: {
-      return "OK";
-    }
-    case SeverityNumber.DEBUG:
-    case SeverityNumber.DEBUG2:
-    case SeverityNumber.DEBUG3:
-    case SeverityNumber.DEBUG4: {
-      return "OK";
-    }
-    case SeverityNumber.INFO:
-    case SeverityNumber.INFO2:
-    case SeverityNumber.INFO3:
-    case SeverityNumber.INFO4: {
-      return "OK";
-    }
-    case SeverityNumber.WARN:
-    case SeverityNumber.WARN2:
-    case SeverityNumber.WARN3:
-    case SeverityNumber.WARN4: {
-      return "OK";
-    }
-    case SeverityNumber.ERROR:
-    case SeverityNumber.ERROR2:
-    case SeverityNumber.ERROR3:
-    case SeverityNumber.ERROR4: {
-      return "ERROR";
-    }
-    case SeverityNumber.FATAL:
-    case SeverityNumber.FATAL2:
-    case SeverityNumber.FATAL3:
-    case SeverityNumber.FATAL4: {
-      return "ERROR";
-    }
-    default: {
-      return "OK";
-    }
-  }
-}
-
-function convertUnixNanoToDate(unixNano: bigint | number): Date {
-  return new Date(Number(BigInt(unixNano) / BigInt(1_000_000)));
-}
-
-function extractStringAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>
-): string | undefined;
-function extractStringAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback: string
-): string;
-function extractStringAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback?: string
-): string | undefined {
-  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
-
-  const attribute = attributes.find((attribute) => attribute.key === key);
-
-  if (!attribute) return fallback;
-
-  return isStringValue(attribute?.value) ? attribute.value.stringValue : fallback;
-}
-
-function extractNumberAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>
-): number | undefined;
-function extractNumberAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback: number
-): number;
-function extractNumberAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback?: number
-): number | undefined {
-  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
-
-  const attribute = attributes.find((attribute) => attribute.key === key);
-
-  if (!attribute) return fallback;
-
-  return isIntValue(attribute?.value) ? Number(attribute.value.intValue) : fallback;
-}
-
-// eslint-disable-next-line no-unused-vars
-function extractDoubleAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>
-): number | undefined;
-// eslint-disable-next-line no-unused-vars
-function extractDoubleAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback: number
-): number;
-function extractDoubleAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback?: number
-): number | undefined {
-  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
-
-  const attribute = attributes.find((attribute) => attribute.key === key);
-
-  if (!attribute) return fallback;
-
-  return isDoubleValue(attribute?.value) ? Number(attribute.value.doubleValue) : fallback;
-}
-
-// eslint-disable-next-line no-unused-vars
-function extractBooleanAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>
-): boolean | undefined;
-// eslint-disable-next-line no-unused-vars
-function extractBooleanAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback: boolean
-): boolean;
-function extractBooleanAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback?: boolean
-): boolean | undefined {
-  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
-
-  const attribute = attributes.find((attribute) => attribute.key === key);
-
-  if (!attribute) return fallback;
-
-  return isBoolValue(attribute?.value) ? attribute.value.boolValue : fallback;
-}
-
-function extractArrayAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>
-): string[] | undefined {
-  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
-
-  const attribute = attributes.find((attribute) => attribute.key === key);
-
-  if (!attribute?.value?.arrayValue?.values) return undefined;
-
-  return attribute.value.arrayValue.values
-    .filter((v): v is { stringValue: string } => isStringValue(v))
-    .map((v) => v.stringValue);
-}
-
-function isPartialSpan(span: Span): boolean {
-  if (!span.attributes) return false;
-
-  const attribute = span.attributes.find(
-    (attribute) => attribute.key === SemanticInternalAttributes.SPAN_PARTIAL
-  );
-
-  if (!attribute) return false;
-
-  return isBoolValue(attribute.value) ? attribute.value.boolValue : false;
-}
-
-function isBoolValue(value: AnyValue | undefined): value is { boolValue: boolean } {
-  if (!value) return false;
-
-  return typeof value.boolValue === "boolean";
-}
-
-function isStringValue(value: AnyValue | undefined): value is { stringValue: string } {
-  if (!value) return false;
-
-  return typeof value.stringValue === "string";
-}
-
-function isIntValue(value: AnyValue | undefined): value is { intValue: bigint } {
-  if (!value) return false;
-
-  return typeof value.intValue === "number" || typeof value.intValue === "bigint";
-}
-
-function isDoubleValue(value: AnyValue | undefined): value is { doubleValue: number } {
-  if (!value) return false;
-
-  return typeof value.doubleValue === "number";
-}
-
-function isBytesValue(value: AnyValue | undefined): value is { bytesValue: Buffer } {
-  if (!value) return false;
-
-  return Buffer.isBuffer(value.bytesValue);
-}
-
-function isArrayValue(
-  value: AnyValue | undefined
-): value is { arrayValue: { values: AnyValue[] } } {
-  if (!value) return false;
-
-  return value.arrayValue != null && Array.isArray(value.arrayValue.values);
-}
-
-/**
- * Serialize an OTEL array value into a JSON string.
- * For arrays of strings, produces a JSON array: `["item1","item2"]`
- * For mixed types, extracts primitives and serializes.
- */
-function serializeArrayValue(values: AnyValue[]): string {
-  const items = values.map((v) => {
-    if (isStringValue(v)) return v.stringValue;
-    if (isIntValue(v)) return Number(v.intValue);
-    if (isDoubleValue(v)) return v.doubleValue;
-    if (isBoolValue(v)) return v.boolValue;
-    return null;
-  });
-
-  return JSON.stringify(items);
-}
-
-function binaryToHex(buffer: Buffer | string): string;
-function binaryToHex(buffer: Buffer | string | undefined): string | undefined;
-function binaryToHex(buffer: Buffer | string | undefined): string | undefined {
-  if (!buffer) return undefined;
-  if (typeof buffer === "string") return buffer;
-
-  return Buffer.from(Array.from(buffer)).toString("hex");
-}
-
-function truncateAttributes(
-  attributes: Record<string, string | number | boolean | undefined> | undefined,
-  maximumLength: number = 1024
-): Record<string, string | number | boolean | undefined> | undefined {
-  if (!attributes) return undefined;
-
-  const truncatedAttributes: Record<string, string | number | boolean | undefined> = {};
-
-  for (const [key, value] of Object.entries(attributes)) {
-    if (!key) continue;
-
-    if (typeof value === "string") {
-      truncatedAttributes[key] = truncateAndDetectUnpairedSurrogate(value, maximumLength);
-    } else {
-      truncatedAttributes[key] = value;
-    }
-  }
-
-  return truncatedAttributes;
-}
-
-function truncateAndDetectUnpairedSurrogate(str: string, maximumLength: number): string {
-  const truncatedString = smartTruncateString(str, maximumLength);
-
-  if (hasUnpairedSurrogateAtEnd(truncatedString)) {
-    return smartTruncateString(truncatedString, [...truncatedString].length - 1);
-  }
-
-  return truncatedString;
-}
-
-const ASCII_ONLY_REGEX = /^[\p{ASCII}]*$/u;
-
-function smartTruncateString(str: string, maximumLength: number): string {
-  if (!str) return "";
-  if (str.length <= maximumLength) return str;
-
-  const checkLength = Math.min(str.length, maximumLength * 2 + 2);
-
-  if (ASCII_ONLY_REGEX.test(str.slice(0, checkLength))) {
-    return str.slice(0, maximumLength);
-  }
-
-  return [...str.slice(0, checkLength)].slice(0, maximumLength).join("");
-}
-
-function hasUnpairedSurrogateAtEnd(str: string): boolean {
-  if (str.length === 0) return false;
-
-  const lastCode = str.charCodeAt(str.length - 1);
-
-  // Check if last character is an unpaired high surrogate
-  if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
-    return true; // High surrogate at end = unpaired
-  }
-
-  // Check if last character is an unpaired low surrogate
-  if (lastCode >= 0xdc00 && lastCode <= 0xdfff) {
-    // Low surrogate is only valid if preceded by high surrogate
-    if (str.length === 1) return true; // Single low surrogate
-
-    const secondLastCode = str.charCodeAt(str.length - 2);
-    if (secondLastCode < 0xd800 || secondLastCode > 0xdbff) {
-      return true; // Low surrogate not preceded by high surrogate
-    }
-  }
-
-  return false;
 }
 
 export const otlpExporter = singleton("otlpExporter", initializeOTLPExporter);

@@ -4,7 +4,7 @@ import {
   ExportMetricsServiceRequest,
   ExportMetricsServiceResponse,
 } from "@trigger.dev/otlp-importer";
-import { otlpExporter } from "~/v3/otlpExporter.server";
+import { otlpExporter, otlpTransformWorkerPoolEnabled } from "~/v3/otlpExporter.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
@@ -20,6 +20,15 @@ export async function action({ request }: ActionFunctionArgs) {
     } else if (contentType.startsWith("application/x-protobuf")) {
       const exporter = await otlpExporter;
       const buffer = await request.arrayBuffer();
+
+      if (otlpTransformWorkerPoolEnabled) {
+        await exporter.exportMetricsRaw(new Uint8Array(buffer));
+
+        return new Response(
+          ExportMetricsServiceResponse.encode(ExportMetricsServiceResponse.create()).finish(),
+          { status: 200 }
+        );
+      }
 
       const exportRequest = ExportMetricsServiceRequest.decode(new Uint8Array(buffer));
 

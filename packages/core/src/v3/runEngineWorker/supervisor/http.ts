@@ -143,7 +143,8 @@ export class SupervisorHttpClient {
     runId: string,
     snapshotId: string,
     body: WorkerApiRunAttemptStartRequestBody,
-    runnerId?: string
+    runnerId?: string,
+    environmentId?: string
   ) {
     return wrapZodFetch(
       WorkerApiRunAttemptStartResponseBody,
@@ -153,6 +154,7 @@ export class SupervisorHttpClient {
         headers: {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
         },
         body: JSON.stringify(body),
       }
@@ -163,7 +165,8 @@ export class SupervisorHttpClient {
     runId: string,
     snapshotId: string,
     body: WorkerApiRunAttemptCompleteRequestBody,
-    runnerId?: string
+    runnerId?: string,
+    environmentId?: string
   ) {
     return wrapZodFetch(
       WorkerApiRunAttemptCompleteResponseBody,
@@ -173,13 +176,14 @@ export class SupervisorHttpClient {
         headers: {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
         },
         body: JSON.stringify(body),
       }
     );
   }
 
-  async getLatestSnapshot(runId: string, runnerId?: string) {
+  async getLatestSnapshot(runId: string, runnerId?: string, environmentId?: string) {
     return wrapZodFetch(
       WorkerApiRunLatestSnapshotResponseBody,
       `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/latest`,
@@ -188,12 +192,18 @@ export class SupervisorHttpClient {
         headers: {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
         },
       }
     );
   }
 
-  async getSnapshotsSince(runId: string, snapshotId: string, runnerId?: string) {
+  async getSnapshotsSince(
+    runId: string,
+    snapshotId: string,
+    runnerId?: string,
+    environmentId?: string
+  ) {
     return wrapZodFetch(
       WorkerApiRunSnapshotsSinceResponseBody,
       `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/since/${snapshotId}`,
@@ -202,6 +212,7 @@ export class SupervisorHttpClient {
         headers: {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
         },
       }
     );
@@ -235,7 +246,12 @@ export class SupervisorHttpClient {
     }
   }
 
-  async continueRunExecution(runId: string, snapshotId: string, runnerId?: string) {
+  async continueRunExecution(
+    runId: string,
+    snapshotId: string,
+    runnerId?: string,
+    environmentId?: string
+  ) {
     return wrapZodFetch(
       WorkerApiContinueRunExecutionRequestBody,
       `${this.apiUrl}/engine/v1/worker-actions/runs/${runId}/snapshots/${snapshotId}/continue`,
@@ -244,6 +260,7 @@ export class SupervisorHttpClient {
         headers: {
           ...this.defaultHeaders,
           ...this.runnerIdHeader(runnerId),
+          ...this.environmentIdHeader(environmentId),
         },
       },
       {
@@ -293,6 +310,12 @@ export class SupervisorHttpClient {
   private runnerIdHeader(runnerId?: string): Record<string, string> {
     return createHeaders({
       [WORKER_HEADERS.RUNNER_ID]: runnerId,
+    });
+  }
+
+  private environmentIdHeader(environmentId?: string): Record<string, string> {
+    return createHeaders({
+      [WORKER_HEADERS.ENVIRONMENT_ID]: environmentId,
     });
   }
 }

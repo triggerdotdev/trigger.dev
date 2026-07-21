@@ -164,10 +164,20 @@ async function startServer() {
   const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
   if (process.env.HTTP_SERVER_DISABLED !== "true") {
+    // Back-compat shim: a previously-deployed client build polls this endpoint after a
+    // /build asset 404 and reloads once it reports a newer build id, letting those older
+    // tabs recover in a single reload. Temporary — safe to remove once older clients have
+    // churned out. Deliberately does NOT set an X-Build-Id response header.
+    app.get("/build-version", (_req, res) => {
+      res.set("Cache-Control", "no-store");
+      res.json({ version: build.assets.version });
+    });
+
     const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
     const wss: WebSocketServer | undefined = build.entry.module.wss;
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
+    const otlpRateLimiter: RequestHandler = build.entry.module.otlpRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
     const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
 
@@ -219,6 +229,7 @@ async function startServer() {
 
       app.use(apiRateLimiter);
       app.use(engineRateLimiter);
+      app.use(otlpRateLimiter);
 
       app.use(tenantContextMiddleware);
 

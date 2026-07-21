@@ -11,7 +11,8 @@ mode: "wide"
 | `SESSION_SECRET`                                 | Yes      | —                     | Session encryption secret. Run: `openssl rand -hex 16`                                                             |
 | `MAGIC_LINK_SECRET`                              | Yes      | —                     | Magic link encryption secret. Run: `openssl rand -hex 16`                                                          |
 | `ENCRYPTION_KEY`                                 | Yes      | —                     | Secret store encryption key. Run: `openssl rand -hex 16`                                                           |
-| `MANAGED_WORKER_SECRET`                          | No       | managed-secret        | Managed worker secret. Should be changed and match supervisor.                                                     |
+| `MANAGED_WORKER_SECRET`                          | Yes      | —                     | Managed worker secret. Must be set and match supervisor. Run: `openssl rand -hex 32`                               |
+| `ALLOW_INSECURE_DEFAULT_SECRETS`                 | No       | false                 | Boot even if a secret is still a known-insecure published default. Temporary escape hatch for values you can't safely rotate yet (see [Secret generation and rotation](/self-hosting/kubernetes#secret-generation-and-rotation)). |
 | **Domains & ports**                              |          |                       |                                                                                                                    |
 | `REMIX_APP_PORT`                                 | No       | 3030                  | Remix app port.                                                                                                    |
 | `APP_ORIGIN`                                     | Yes      | http://localhost:3030 | App origin URL.                                                                                                    |
@@ -52,11 +53,8 @@ mode: "wide"
 | `AWS_REGION`                                     | No       | —                     | AWS region for SES.                                                                                                |
 | `AWS_ACCESS_KEY_ID`                              | No       | —                     | AWS access key ID for SES.                                                                                         |
 | `AWS_SECRET_ACCESS_KEY`                          | No       | —                     | AWS secret access key for SES.                                                                                     |
-| **Graphile & Redis worker**                      |          |                       |                                                                                                                    |
-| `WORKER_CONCURRENCY`                             | No       | 10                    | Redis worker concurrency.                                                                                          |
-| `WORKER_POLL_INTERVAL`                           | No       | 1000                  | Redis worker poll interval (ms).                                                                                   |
-| `WORKER_SCHEMA`                                  | No       | graphile_worker       | Graphile worker schema.                                                                                            |
-| `GRACEFUL_SHUTDOWN_TIMEOUT`                      | No       | 60000 (1m)            | Graphile graceful shutdown timeout (ms). Affects shutdown time.                                                    |
+| **Worker**                                       |          |                       |                                                                                                                    |
+| `GRACEFUL_SHUTDOWN_TIMEOUT`                      | No       | 60000 (1m)            | Graceful shutdown timeout (ms). Affects shutdown time.                                                             |
 | **Concurrency limits**                           |          |                       |                                                                                                                    |
 | `DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT`        | No       | 100                   | Default env execution concurrency.                                                                                 |
 | `DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT`        | No       | 300                   | Default org execution concurrency, needs to be 3x env concurrency.                                                 |
@@ -138,6 +136,7 @@ mode: "wide"
 | `SERVER_OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT`  | No       | 8192                  | OTel span attribute value length limit.                                                                            |
 | **Task events**                                  |          |                       |                                                                                                                    |
 | `EVENT_REPOSITORY_DEFAULT_STORE`                 | No       | postgres              | Where to store task events. Set to `clickhouse_v2` to store in ClickHouse (recommended for production).            |
+| `EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED`      | No       | 0                     | Skip all PostgreSQL task-event writes (set to `1`). Only enable when `EVENT_REPOSITORY_DEFAULT_STORE` is `clickhouse_v2`, otherwise task events are lost. |
 | **Realtime**                                     |          |                       |                                                                                                                    |
 | `REALTIME_STREAM_VERSION`                        | No       | v1                    | Stream version exposed to tasks via the `TRIGGER_REALTIME_STREAM_VERSION` variable. Distinct from `REALTIME_STREAMS_DEFAULT_VERSION`. One of `v1`, `v2`. |
 | `REALTIME_STREAM_MAX_LENGTH`                     | No       | 1000                  | Realtime stream max length.                                                                                        |
@@ -168,8 +167,6 @@ mode: "wide"
 | `MAXIMUM_DEV_QUEUE_SIZE`                         | No       | —                     | Maximum queued runs per queue in development environments.                                                         |
 | `MAXIMUM_DEPLOYED_QUEUE_SIZE`                    | No       | —                     | Maximum queued runs per queue in deployed (staging/prod) environments.                                             |
 | **Misc**                                         |          |                       |                                                                                                                    |
-| `PROVIDER_SECRET`                                | No       | provider-secret       | Secret for provider auth. **Must be set to a secure value in self-hosted/production**; the default is insecure.    |
-| `COORDINATOR_SECRET`                             | No       | coordinator-secret    | Secret for coordinator auth. **Must be set to a secure value in self-hosted/production**; the default is insecure. |
 | `TRIGGER_TELEMETRY_DISABLED`                     | No       | —                     | Disable telemetry.                                                                                                 |
 | `NODE_MAX_OLD_SPACE_SIZE`                        | No       | 8192                  | Maximum memory allocation for Node.js heap in MiB (e.g. "4096" for 4GB).                                           |
 | `OPENAI_API_KEY`                                 | No       | —                     | OpenAI API key.                                                                                                    |

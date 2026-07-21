@@ -286,7 +286,7 @@ export class InitializeDeploymentService extends BaseService {
             });
 
             return deploymentService
-              .cancelDeployment(environment, deployment.friendlyId, {
+              .cancelDeployment({ id: environment.id }, deployment.friendlyId, {
                 canceledReason: "Failed to enqueue build, please try again shortly.",
               })
               .orTee((cancelError) =>

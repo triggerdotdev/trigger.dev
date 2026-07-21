@@ -14,7 +14,8 @@
   "updateInternalDependencies": "patch",
   "ignore": [
     "webapp",
-    "supervisor"
+    "supervisor",
+    "@trigger.dev/plugins"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true

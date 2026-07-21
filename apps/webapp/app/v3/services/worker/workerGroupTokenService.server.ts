@@ -18,11 +18,14 @@ import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { WORKER_HEADERS, type WorkerQueueClass } from "@trigger.dev/core/v3/workers";
 import type { RuntimeEnvironment, WorkerInstanceGroup } from "@trigger.dev/database";
 import { Prisma, WorkerInstanceGroupType } from "@trigger.dev/database";
-import { SENSITIVE_WORKER_HEADERS, sanitizeWorkerHeaders } from "./sanitizeWorkerHeaders";
+import { json } from "@remix-run/server-runtime";
 import { createHash, timingSafeEqual } from "crypto";
 import { customAlphabet } from "nanoid";
+import { Counter } from "prom-client";
 import { z } from "zod";
 import { env } from "~/env.server";
+import { metricsRegister } from "~/metrics.server";
+import { evaluateCreatedAtGate } from "./workloadTokenAuthorization.server";
 import {
   isWorkerQueueDequeueDisabled,
   recordBlockedDequeue,
@@ -41,6 +44,30 @@ const authenticatedWorkerInstanceCache = singleton(
   "authenticatedWorkerInstanceCache",
   createAuthenticatedWorkerInstanceCache
 );
+
+// Opt-in suppression of untokened worker actions on runs created after the cutoff. Only the
+// no-header path ever reads a run row, and only when this is on - default off means feature-off is
+// byte-for-byte today's behavior (no extra reads). Tenant scoping itself is header-driven (folded
+// into the engine snapshot read) and needs no platform flag.
+const workloadCreatedAtGateEnabled = env.WORKLOAD_CREATED_AT_GATE_ENABLED === "1";
+const workloadTokenCutoff = env.WORKLOAD_TOKEN_CUTOFF
+  ? new Date(env.WORKLOAD_TOKEN_CUTOFF)
+  : undefined;
+
+if (workloadCreatedAtGateEnabled && !workloadTokenCutoff) {
+  logger.warn(
+    "WORKLOAD_CREATED_AT_GATE_ENABLED is set but WORKLOAD_TOKEN_CUTOFF is missing; the created-at gate stays off until a cutoff is configured"
+  );
+}
+
+type WorkloadGateAction = "start" | "complete" | "continue" | "snapshots_since";
+
+const workloadAuthGateCounter = new Counter({
+  name: "workload_auth_gate_total",
+  help: "Deployment token authorization outcomes on worker actions",
+  labelNames: ["outcome", "action"] as const,
+  registers: [metricsRegister],
+});
 
 function createAuthenticatedWorkerInstanceCache() {
   return createCache({
@@ -188,6 +215,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
 
     if (a.byteLength !== b.byteLength) {
       logger.error("[WorkerGroupTokenService] Managed secret length mismatch", {
+        managedWorkerSecret,
         headers: this.sanitizeHeaders(request),
       });
       return;
@@ -195,6 +223,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
 
     if (!timingSafeEqual(a, b)) {
       logger.error("[WorkerGroupTokenService] Managed secret mismatch", {
+        managedWorkerSecret,
         headers: this.sanitizeHeaders(request),
       });
       return;
@@ -316,10 +345,16 @@ export class WorkerGroupTokenService extends WithRunEngine {
     }
   }
 
-  // Strip sensitive headers before logging request headers — see
-  // `sanitizeWorkerHeaders`.
-  private sanitizeHeaders(request: Request, denylist = SENSITIVE_WORKER_HEADERS) {
-    return sanitizeWorkerHeaders(request.headers, denylist);
+  private sanitizeHeaders(request: Request, skipHeaders = ["authorization"]) {
+    const sanitizedHeaders: Partial<Record<string, string>> = {};
+
+    for (const [key, value] of request.headers.entries()) {
+      if (!skipHeaders.includes(key.toLowerCase())) {
+        sanitizedHeaders[key] = value;
+      }
+    }
+
+    return sanitizedHeaders;
   }
 }
 
@@ -398,6 +433,55 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
+  /**
+   * The no-header fallback. When the env header is present the engine scopes the snapshot read by it
+   * (nothing to do here). When it's absent, this optionally suppresses runs created after the cutoff -
+   * a run that new enough should have carried a token, so a missing one is treated as out-of-scope.
+   * Only runs when the gate is enabled AND a cutoff is set; that's the ONLY path that reads a run row.
+   */
+  private async assertCreatedAtGate({
+    runId,
+    environmentId,
+    action,
+  }: {
+    runId: string;
+    environmentId?: string;
+    action: WorkloadGateAction;
+  }): Promise<void> {
+    if (environmentId) {
+      // Scoping is delegated to the engine snapshot read; no run-row read here. Recorded so the
+      // platform can see how much traffic is env-scoped as enforcement rolls out.
+      workloadAuthGateCounter.inc({ outcome: "env_scoped", action });
+      return;
+    }
+
+    if (!workloadCreatedAtGateEnabled || !workloadTokenCutoff) {
+      return;
+    }
+
+    const run = await this._engine.runStore.findRun({ id: runId }, { select: { createdAt: true } });
+
+    if (!run) {
+      // Let the engine method surface the canonical not-found error.
+      return;
+    }
+
+    const { allow, outcome } = evaluateCreatedAtGate({
+      runCreatedAt: run.createdAt,
+      cutoff: workloadTokenCutoff,
+    });
+
+    workloadAuthGateCounter.inc({ outcome, action });
+
+    if (!allow) {
+      logger.warn("[workload-auth] rejecting untokened worker action created after cutoff", {
+        action,
+        runId,
+      });
+      throw json({ error: "Run does not belong to this worker" }, { status: 403 });
+    }
+  }
+
   async heartbeatRun({
     runFriendlyId,
     snapshotFriendlyId,
@@ -420,22 +504,31 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     snapshotFriendlyId,
     isWarmStart,
     runnerId,
+    environmentId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     isWarmStart?: boolean;
     runnerId?: string;
+    environmentId?: string;
   }): Promise<
     StartRunAttemptResult & {
       envVars: Record<string, string>;
     }
   > {
+    await this.assertCreatedAtGate({
+      runId: fromFriendlyId(runFriendlyId),
+      environmentId,
+      action: "start",
+    });
+
     const engineResult = await this._engine.startRunAttempt({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       isWarmStart,
       workerId: this.workerInstanceId,
       runnerId,
+      environmentId,
     });
 
     const defaultMachinePreset = machinePresetFromName(defaultMachine);
@@ -470,24 +563,42 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     snapshotFriendlyId,
     completion,
     runnerId,
+    environmentId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     completion: TaskRunExecutionResult;
     runnerId?: string;
+    environmentId?: string;
   }): Promise<CompleteRunAttemptResult> {
+    await this.assertCreatedAtGate({
+      runId: fromFriendlyId(runFriendlyId),
+      environmentId,
+      action: "complete",
+    });
+
     return await this._engine.completeRunAttempt({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       completion,
       workerId: this.workerInstanceId,
       runnerId,
+      environmentId,
     });
   }
 
-  async getLatestSnapshot({ runFriendlyId }: { runFriendlyId: string }) {
+  async getLatestSnapshot({
+    runFriendlyId,
+    environmentId,
+  }: {
+    runFriendlyId: string;
+    environmentId?: string;
+  }) {
+    // No created-at gate: the only untokened caller is an internal warm-start poll that legitimately
+    // has no token, so an absent header must not reject. When a header is present the engine scopes.
     return await this._engine.getRunExecutionData({
       runId: fromFriendlyId(runFriendlyId),
+      environmentId,
     });
   }
 
@@ -515,29 +626,47 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runFriendlyId,
     snapshotFriendlyId,
     runnerId,
+    environmentId,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
     runnerId?: string;
+    environmentId?: string;
   }) {
+    await this.assertCreatedAtGate({
+      runId: fromFriendlyId(runFriendlyId),
+      environmentId,
+      action: "continue",
+    });
+
     return await this._engine.continueRunExecution({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotFriendlyId),
       workerId: this.workerInstanceId,
       runnerId,
+      environmentId,
     });
   }
 
   async getSnapshotsSince({
     runFriendlyId,
     snapshotId,
+    environmentId,
   }: {
     runFriendlyId: string;
     snapshotId: string;
+    environmentId?: string;
   }) {
+    await this.assertCreatedAtGate({
+      runId: fromFriendlyId(runFriendlyId),
+      environmentId,
+      action: "snapshots_since",
+    });
+
     return await this._engine.getSnapshotsSince({
       runId: fromFriendlyId(runFriendlyId),
       snapshotId: fromFriendlyId(snapshotId),
+      environmentId,
     });
   }
 

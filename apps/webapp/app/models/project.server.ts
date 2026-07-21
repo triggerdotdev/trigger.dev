@@ -3,6 +3,7 @@ import { customAlphabet, nanoid } from "nanoid";
 import slug from "slug";
 import { $replica, prisma } from "~/db.server";
 import { projectCreated } from "~/services/projectCreated.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
 import { type Organization, createEnvironment } from "./organization.server";
 export type { Project } from "@trigger.dev/database";
 
@@ -50,7 +51,10 @@ export async function createProject(
 
   if (version === "v3") {
     if (!organization.isActivated) {
-      throw new Error(`Organization can't create v3 projects.`);
+      throw new ServiceValidationError(
+        "You must select a plan for this organization before creating projects.",
+        402
+      );
     }
   }
 
@@ -101,6 +105,10 @@ export async function createProject(
       },
       externalRef: `proj_${externalRefGenerator()}`,
       version: version === "v3" ? "V3" : "V2",
+      // New projects run on the v2 engine. The Prisma column still defaults to V1
+      // for historical rows; the V1->V2 upgrade guards on worker-register / deploy
+      // stay in place to migrate existing legacy projects.
+      engine: "V2",
       onboardingData,
     },
     include: {

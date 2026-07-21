@@ -134,7 +134,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
 
     if (!project) {
-      throw redirectWithErrorMessage(redirectPath, request, "Project not found");
+      throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
     }
 
     const currentPlan = await getCurrentPlan(project.organizationId);

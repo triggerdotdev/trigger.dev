@@ -1,5 +1,35 @@
 # @trigger.dev/sdk
 
+## 4.5.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+
+## 4.5.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+
+## 4.5.4
+
+### Patch Changes
+
+- Fix a `chat.agent` message-loss race where sending a message right after an action (such as an undo) could drop the follow-up's response from the UI until a refresh. ([#4234](https://github.com/triggerdotdev/trigger.dev/pull/4234))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.4`
+
+## 4.5.3
+
+### Patch Changes
+
+- Fix TS2742 ("inferred type cannot be named") when exporting a `chat.agent` from a project with declaration emit: `ChatTaskWirePayload` and `ChatInputChunk` are now declared in the public `@trigger.dev/sdk/chat` subpath, so inferred agent types emit portable declarations and the wire types are directly importable. ([#4218](https://github.com/triggerdotdev/trigger.dev/pull/4218))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.3`
+
 ## 4.5.2
 
 ### Patch Changes
