@@ -1,6 +1,7 @@
 import { env } from "~/env.server";
 import { eventRepository } from "./eventRepository.server";
 import { type IEventRepository, type TraceEventOptions } from "./eventRepository.types";
+import { convertDateToNanoseconds } from "./common.server";
 import { prisma } from "~/db.server";
 import { runStore } from "../runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -240,7 +241,7 @@ async function recordRunEvent(
         runId: foundRun.friendlyId,
         ...attributes,
       },
-      startTime: BigInt((startTime?.getTime() ?? Date.now()) * 1_000_000),
+      startTime: convertDateToNanoseconds(startTime ?? new Date()),
       ...optionsRest,
     });
 
