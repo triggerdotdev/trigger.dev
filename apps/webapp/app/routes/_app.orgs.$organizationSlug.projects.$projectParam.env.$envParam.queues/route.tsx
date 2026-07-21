@@ -923,7 +923,7 @@ function QueuesWithMetricsView() {
                             <span className="text-text-dimmed">–</span>
                           )}
                         </TableCell>
-                        <TableCell to={queueDetailPath}>
+                        <TableCell to={queueDetailPath} alignment="right">
                           <MiniLineChart
                             data={queueMetric?.depthSparkline}
                             throttled={queueMetric?.throttledSparkline}

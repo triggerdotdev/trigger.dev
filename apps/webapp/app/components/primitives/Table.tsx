@@ -407,7 +407,7 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           // With leading/trailing content, the link is content-sized and the adornments sit beside
           // it (still inside the td) so interactive triggers never nest inside the <a>.
           leadingContent || trailingContent ? (
-            <div className={flexClasses}>
+            <div className={cn(flexClasses, "gap-2")}>
               {leadingContent}
               <Link
                 to={to}
