@@ -1,5 +1,6 @@
-import { ArrowLeftIcon, LinkIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { BellIcon } from "~/assets/icons/BellIcon";
+import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
 import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
@@ -34,7 +35,6 @@ import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
 import { useHasAdminAccess } from "~/hooks/useUser";
-import { AskAI } from "../AskAI";
 
 export type BuildInfo = {
   appVersion: string | undefined;
@@ -79,11 +79,19 @@ export function OrganizationSettingsSideMenu({
           <span className="text-text-bright">Back to app</span>
         </LinkButton>
       </div>
-      <div className="mb-6 flex grow flex-col gap-4 overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+      <div className="mb-6 flex grow flex-col gap-4 overflow-y-auto pl-2.5 pr-0 pt-2 scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="flex flex-col">
           <div className="mb-1">
             <SideMenuHeader title="Organization" />
           </div>
+          <SideMenuItem
+            name="Settings"
+            icon={SlidersIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            to={organizationSettingsPath(organization)}
+            data-action="settings"
+          />
           {isManagedCloud && (
             <>
               <SideMenuItem
@@ -130,7 +138,7 @@ export function OrganizationSettingsSideMenu({
           {featureFlags.hasPrivateConnections && (
             <SideMenuItem
               name="Private Connections"
-              icon={LinkIcon}
+              icon={ChainLinkIcon}
               activeIconColor="text-text-bright"
               inactiveIconColor="text-text-dimmed"
               to={v3PrivateConnectionsPath(organization)}
@@ -162,14 +170,6 @@ export function OrganizationSettingsSideMenu({
               }
             />
           )}
-          <SideMenuItem
-            name="Settings"
-            icon={SlidersIcon}
-            activeIconColor="text-text-bright"
-            inactiveIconColor="text-text-dimmed"
-            to={organizationSettingsPath(organization)}
-            data-action="settings"
-          />
         </div>
         <div className="flex flex-col">
           <div className="mb-1">
@@ -241,7 +241,6 @@ export function OrganizationSettingsSideMenu({
       </div>
       <div className="flex w-full items-center justify-between border-t border-grid-bright p-1">
         <HelpAndFeedback organizationId={organization.id} />
-        <AskAI />
       </div>
     </div>
   );

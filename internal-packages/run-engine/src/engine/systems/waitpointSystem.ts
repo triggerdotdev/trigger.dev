@@ -59,9 +59,10 @@ export class WaitpointSystem {
     runId: string;
     tx?: PrismaClientOrTransaction;
   }) {
-    // Route the delete: a run's edges may live on #new and/or #legacy (mid-drain), so it must fan
-    // across both stores. The caller's `tx` is not forwarded into either leg — each store's delete
-    // runs on its own client (the router never threads a control-plane tx into a routed write).
+    // A run's edges co-locate with the run (the edge write routes by runId), so the router routes this
+    // taskRunId-keyed delete to the run's store rather than fanning out. The caller's `tx` is not
+    // forwarded — the delete runs on the owning store's own client (the router never threads a
+    // control-plane tx into a routed write).
     const deleted = await this.$.runStore.deleteManyTaskRunWaitpoints(
       { where: { taskRunId: runId } },
       tx
@@ -307,6 +308,7 @@ export class WaitpointSystem {
     idempotencyKeyExpiresAt,
     timeout,
     tags,
+    standaloneResidency,
   }: {
     runId?: string;
     environmentId: string;
@@ -315,13 +317,22 @@ export class WaitpointSystem {
     idempotencyKeyExpiresAt?: Date;
     timeout?: Date;
     tags?: string[];
+    // For a STANDALONE token (no owning `runId`): the residency the env's mint kind resolves to, so
+    // the token lands on the run-ops DB (NEW) in a fully-minted-new deployment instead of defaulting
+    // to LEGACY by its cuid id-shape. Ignored when `runId` is set (co-location wins).
+    standaloneResidency?: "NEW" | "LEGACY";
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     // Co-location invariant (see createDateTimeWaitpoint): when a `runId` is supplied the waitpoint
     // co-locates with that run's DB and the (env,idempotencyKey) dedup is per-run (co-resident). A
     // standalone token (api.v1.waitpoints.tokens.ts) passes no run id — it is created without an
     // owner, blocked later by whichever run waits on it (possibly cross-DB, resolved by the
-    // run-co-resident block edge + completion fan-out), so it routes by id-shape and dedups cross-DB. No tx here.
-    const colocate = runId ? { coLocateWithRunId: runId } : undefined;
+    // run-co-resident block edge + completion fan-out). With no owner it reads the env mint kind via
+    // `standaloneResidency` so a minted-new env keeps its tokens on NEW; unset, it routes by id-shape. No tx here.
+    const colocate = runId
+      ? { coLocateWithRunId: runId }
+      : standaloneResidency
+        ? { residency: standaloneResidency }
+        : undefined;
     const existingWaitpoint = idempotencyKey
       ? await this.$.runStore.findWaitpoint(
           {
@@ -493,7 +504,9 @@ export class WaitpointSystem {
 
       // Check if the run is actually blocked using a separate query (see above). Pass the writer so the
       // pending re-read is read-your-writes on the owning PRIMARY (a lagging replica can strand the run).
-      const pendingCount = await this.$.runStore.countPendingWaitpoints($waitpoints, prisma);
+      // Route by the blocked run id: its blocking waitpoints co-locate with the run, so the router
+      // counts on the run's store and only falls back to the other DB for a cross-tree token.
+      const pendingCount = await this.$.runStore.countPendingWaitpoints($waitpoints, prisma, runId);
 
       const isRunBlocked = pendingCount > 0;
 

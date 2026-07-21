@@ -85,6 +85,29 @@ const S2EnvSchema = z.preprocess(
   ])
 );
 
+// Previously published secret values must never be accepted, including when
+// an existing deployment or external secret manager still supplies one.
+const INSECURE_SECRET_VALUES = [
+  "managed-secret",
+  "2818143646516f6fffd707b36f334bbb",
+  "44da78b7bbb0dfe709cf38931d25dcdd",
+  "f686147ab967943ebbe9ed3b496e465a",
+  "447c29678f9eaf289e9c4b70d3dd8a7f",
+];
+
+// Escape hatch for deployments that can't rotate a published default yet (e.g.
+// ENCRYPTION_KEY protects existing data). Read raw: a refine can't see the
+// sibling parsed flag.
+const allowInsecureDefaultSecrets = ["true", "1"].includes(
+  (process.env.ALLOW_INSECURE_DEFAULT_SECRETS ?? "").toLowerCase().trim()
+);
+
+const isNotInsecureSecret = (value: string) =>
+  allowInsecureDefaultSecrets || !INSECURE_SECRET_VALUES.includes(value);
+
+const INSECURE_SECRET_MESSAGE =
+  "must not be a known-insecure published default; set a strong, unique value. If you cannot rotate it yet (e.g. it protects existing encrypted data or active sessions), set ALLOW_INSECURE_DEFAULT_SECRETS=1 to boot while you migrate.";
+
 const EnvironmentSchema = z
   .object({
     NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -113,6 +136,8 @@ const EnvironmentSchema = z
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
     // (org featureFlags) win regardless.
     DASHBOARD_AGENT_ENABLED: z.string().default("0"),
+    // Gates the create-org management API endpoint (default off).
+    ORG_CREATION_API_ENABLED: z.string().default("0"),
     // "1" gives admins/impersonators an everywhere-preview (default off),
     // separate from the per-org rollout flag above.
     DASHBOARD_AGENT_ADMIN_PREVIEW: z.string().default("0"),
@@ -159,6 +184,8 @@ const EnvironmentSchema = z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is invalid")
       .optional(),
+    // Optional cap for the unpooled new run-ops read replica. Unset falls back to DATABASE_CONNECTION_LIMIT.
+    RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT: z.coerce.number().int().optional(),
     // Direct DSN for applying the full @trigger.dev/database migrations to the LEGACY run-ops DB, keeping
     // its schema current after the control plane moves off it. Direct, not pooled — migrations never run
     // over a pooler. Optional; unset -> the entrypoint's legacy migrate step is skipped.
@@ -184,14 +211,15 @@ const EnvironmentSchema = z
     // Control-plane cache relax knobs. Unset -> defaults (DEFAULT_CP_CACHE_TTL_MS / _MAX_ENTRIES).
     CONTROL_PLANE_CACHE_TTL_MS: z.coerce.number().int().optional(),
     CONTROL_PLANE_CACHE_MAX_ENTRIES: z.coerce.number().int().optional(),
-    SESSION_SECRET: z.string(),
-    MAGIC_LINK_SECRET: z.string(),
+    SESSION_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    MAGIC_LINK_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     ENCRYPTION_KEY: z
       .string()
       .refine(
         (val) => Buffer.from(val, "utf8").length === 32,
         "ENCRYPTION_KEY must be exactly 32 bytes"
-      ),
+      )
+      .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     WHITELISTED_EMAILS: z
       .string()
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
@@ -543,6 +571,22 @@ const EnvironmentSchema = z
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
+    // Per-IP rate limit for the unauthenticated OTLP ingestion endpoints
+    // (/otel/*). Bounds unauthenticated request rates. Opt-in
+    // (disabled by default): because it keys on the source IP, it is only
+    // safe to enable when each client presents a distinct IP through a proxy
+    // that appends the real client IP to X-Forwarded-For. Enabling it where
+    // many clients share one egress IP (e.g. behind NAT or a shared proxy)
+    // would collapse that traffic into a single bucket and could throttle
+    // legitimate telemetry. Set OTLP_RATE_LIMIT_ENABLED=1 to enable, then tune
+    // OTLP_RATE_LIMIT_MAX / OTLP_RATE_LIMIT_WINDOW for expected volume.
+    OTLP_RATE_LIMIT_ENABLED: z.string().default("0"),
+    OTLP_RATE_LIMIT_WINDOW: z
+      .string()
+      .regex(/^\d+ ?(?:ms|s|m|h|d)$/)
+      .default("1m"),
+    OTLP_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(3000),
+
     DEPOT_TOKEN: z.string().optional(),
     DEPOT_ORG_ID: z.string().optional(),
     DEPOT_REGION: z.string().default("us-east-1"),
@@ -664,7 +708,18 @@ const EnvironmentSchema = z
     EVENTS_LOAD_SHEDDING_THRESHOLD: z.coerce.number().int().default(100000),
     EVENTS_LOAD_SHEDDING_ENABLED: z.string().default("1"),
 
-    MANAGED_WORKER_SECRET: z.string().default("managed-secret"),
+    MANAGED_WORKER_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+
+    // Allow booting with a known-insecure published default secret. Temporary
+    // bridge for deployments that can't rotate yet; rotate as soon as possible.
+    ALLOW_INSECURE_DEFAULT_SECRETS: BoolEnv.default(false),
+
+    // Tenant scoping on worker actions is header-driven (folded into the engine snapshot read) and
+    // needs no flag. This is only the no-header fallback: when "1", a worker action on a run created
+    // after WORKLOAD_TOKEN_CUTOFF without a verified env header is rejected; runs on or before the
+    // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
+    WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
+    WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
 
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
@@ -1332,6 +1387,9 @@ const EnvironmentSchema = z
     // claim TTL), how long a waiter blocks before timing out, and the
     // waiter poll interval.
     TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+    // Pipeline floor: the claim never shrinks below this even for a short customer key TTL, so it
+    // can't expire mid-pipeline and let a loser re-claim (cross-DB duplicate under the split).
+    TRIGGER_MOLLIFIER_CLAIM_MIN_TTL_SECONDS: z.coerce.number().int().positive().default(5),
     TRIGGER_MOLLIFIER_CLAIM_WAIT_MS: z.coerce.number().int().positive().default(5_000),
     TRIGGER_MOLLIFIER_CLAIM_POLL_MS: z.coerce.number().int().positive().default(25),
 
@@ -1739,6 +1797,11 @@ const EnvironmentSchema = z
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
+    // Optional read replica endpoint. Read-only clients (logs, query, admin, runsList,
+    // engine, realtime) default to this when their own URL is unset; writes always stay on
+    // CLICKHOUSE_URL. Events reads opt in separately via EVENTS_READER_CLICKHOUSE_URL (no
+    // fallback here). Must share storage with the CLICKHOUSE_URL warehouse.
+    CLICKHOUSE_READER_URL: z.string().optional(),
     CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
@@ -1801,13 +1864,13 @@ const EnvironmentSchema = z
     LOGS_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
 
     // Query page ClickHouse limits (for TSQL queries)
     QUERY_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
     QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
     QUERY_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_073_741_824), // 1GB in bytes
     QUERY_CLICKHOUSE_MAX_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
@@ -1826,12 +1889,14 @@ const EnvironmentSchema = z
     ADMIN_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
 
     EVENTS_CLICKHOUSE_URL: z
       .string()
       .optional()
       .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+    // Events read replica (traces/spans/logs). No CLICKHOUSE_READER_URL fallback by design: this write-capable client opts in explicitly.
+    EVENTS_READER_CLICKHOUSE_URL: z.string().optional(),
     EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
@@ -1844,7 +1909,7 @@ const EnvironmentSchema = z
     RUN_ENGINE_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
     RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     RUN_ENGINE_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(5),
@@ -1856,7 +1921,7 @@ const EnvironmentSchema = z
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce
       .number()
@@ -1867,6 +1932,20 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    // Dedicated ClickHouse pool for the runs list (dashboard + API). Lets us point
+    // the highest-traffic read path at a read replica without moving ingest/replication
+    // writes off CLICKHOUSE_URL. Falls back to CLICKHOUSE_URL when unset.
+    RUNS_LIST_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
+    RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    RUNS_LIST_CLICKHOUSE_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
     EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     METRICS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(10000),
@@ -2087,3 +2166,24 @@ const EnvironmentSchema = z
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
 export const env = EnvironmentSchema.parse(process.env);
+
+if (env.ALLOW_INSECURE_DEFAULT_SECRETS) {
+  const insecure = (
+    [
+      ["SESSION_SECRET", env.SESSION_SECRET],
+      ["MAGIC_LINK_SECRET", env.MAGIC_LINK_SECRET],
+      ["ENCRYPTION_KEY", env.ENCRYPTION_KEY],
+      ["MANAGED_WORKER_SECRET", env.MANAGED_WORKER_SECRET],
+    ] as const
+  )
+    .filter(([, value]) => INSECURE_SECRET_VALUES.includes(value))
+    .map(([name]) => name);
+
+  if (insecure.length > 0) {
+    console.warn(
+      `⚠️  ALLOW_INSECURE_DEFAULT_SECRETS is enabled and these secrets still use a known-insecure published default: ${insecure.join(
+        ", "
+      )}. This is insecure - rotate them as soon as you can.`
+    );
+  }
+}

@@ -9,7 +9,7 @@ import {
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction, useActionData, useNavigation, useSubmit } from "@remix-run/react";
-import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -45,10 +45,12 @@ import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { useFaviconUrl } from "~/hooks/useFaviconUrl";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { clearCurrentProject } from "~/services/dashboardPreferences.server";
 import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
 import { logger } from "~/services/logger.server";
 import { requireUser, requireUserId } from "~/services/session.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { extractDomain, faviconUrl as buildFaviconUrl } from "~/utils/favicon";
 import { OrganizationParamsSchema, organizationSettingsPath, rootPath } from "~/utils/pathBuilder";
@@ -143,98 +145,147 @@ export function createSchema(
   ]);
 }
 
-export const action: ActionFunction = async ({ request, params }) => {
-  const user = await requireUser(request);
-  const { organizationSlug } = params;
-  if (!organizationSlug) {
-    return json({ errors: { body: "organizationSlug is required" } }, { status: 400 });
-  }
+const Params = z.object({
+  organizationSlug: z.string(),
+});
 
-  const formData = await request.formData();
-  const schema = createSchema({
-    getSlugMatch: (slug) => {
-      return { isMatch: slug === organizationSlug, organizationSlug };
+export const action = dashboardAction(
+  {
+    params: Params,
+    context: async (params) => {
+      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return orgId ? { organizationId: orgId } : {};
     },
-  });
-  const submission = parseWithZod(formData, { schema });
+  },
+  async ({ ability, request, params }) => {
+    // clearCurrentProject (delete branch) needs the full UserFromSession
+    // (dashboardPreferences), which the builder's SessionUser doesn't carry.
+    const user = await requireUser(request);
+    const { organizationSlug } = params;
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
-  }
+    const formData = await request.formData();
+    const schema = createSchema({
+      getSlugMatch: (slug) => {
+        return { isMatch: slug === organizationSlug, organizationSlug };
+      },
+    });
+    const submission = parseWithZod(formData, { schema });
 
-  try {
-    switch (submission.value.action) {
-      case "rename": {
-        await prisma.organization.update({
-          where: {
-            slug: organizationSlug,
-            members: {
-              some: {
-                userId: user.id,
+    if (submission.status !== "success") {
+      return json(submission.reply());
+    }
+
+    try {
+      switch (submission.value.action) {
+        case "rename": {
+          if (!ability.can("manage", { type: "organization" })) {
+            throw await redirectWithErrorMessage(
+              organizationSettingsPath({ slug: organizationSlug }),
+              request,
+              "You don't have permission to rename this organization"
+            );
+          }
+          await prisma.organization.update({
+            where: {
+              slug: organizationSlug,
+              members: {
+                some: {
+                  userId: user.id,
+                },
               },
             },
-          },
-          data: {
-            title: submission.value.organizationName,
-          },
-        });
-
-        return redirectWithSuccessMessage(
-          organizationSettingsPath({ slug: organizationSlug }),
-          request,
-          `Organization renamed to ${submission.value.organizationName}`
-        );
-      }
-      case "delete": {
-        const deleteOrganizationService = new DeleteOrganizationService();
-        try {
-          await deleteOrganizationService.call({ organizationSlug, userId: user.id, request });
-
-          //we need to clear the project from the session
-          await clearCurrentProject({
-            user,
+            data: {
+              title: submission.value.organizationName,
+            },
           });
-          return redirect(rootPath());
-        } catch (error: unknown) {
-          const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-          logger.error("Organization could not be deleted", {
-            error: errorMessage,
-          });
-          return redirectWithErrorMessage(
+
+          return redirectWithSuccessMessage(
             organizationSettingsPath({ slug: organizationSlug }),
             request,
-            errorMessage
+            `Organization renamed to ${submission.value.organizationName}`
           );
         }
-      }
-      case "avatar": {
-        const orgWhere = {
-          slug: organizationSlug,
-          members: { some: { userId: user.id } },
-        };
+        case "delete": {
+          if (!ability.can("manage", { type: "organization" })) {
+            throw await redirectWithErrorMessage(
+              organizationSettingsPath({ slug: organizationSlug }),
+              request,
+              "You don't have permission to delete this organization"
+            );
+          }
+          const deleteOrganizationService = new DeleteOrganizationService();
+          try {
+            await deleteOrganizationService.call({ organizationSlug, userId: user.id, request });
 
-        if (submission.value.type === "image") {
-          const url = submission.value.url ?? "";
-          const domain = url ? extractDomain(url) : null;
+            //we need to clear the project from the session
+            await clearCurrentProject({
+              user,
+            });
+            return redirect(rootPath());
+          } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+            logger.error("Organization could not be deleted", {
+              error: errorMessage,
+            });
+            return redirectWithErrorMessage(
+              organizationSettingsPath({ slug: organizationSlug }),
+              request,
+              errorMessage
+            );
+          }
+        }
+        case "avatar": {
+          const orgWhere = {
+            slug: organizationSlug,
+            members: { some: { userId: user.id } },
+          };
 
-          const existing = await prisma.organization.findFirst({
-            where: orgWhere,
-            select: { avatar: true, onboardingData: true },
-          });
+          if (submission.value.type === "image") {
+            const url = submission.value.url ?? "";
+            const domain = url ? extractDomain(url) : null;
 
-          const existingData = toRecord(existing?.onboardingData);
-          const existingAvatar = parseAvatar(existing?.avatar ?? null, defaultAvatar);
-          const lastIconHex = extractLastIconHex(existingAvatar);
+            const existing = await prisma.organization.findFirst({
+              where: orgWhere,
+              select: { avatar: true, onboardingData: true },
+            });
+
+            const existingData = toRecord(existing?.onboardingData);
+            const existingAvatar = parseAvatar(existing?.avatar ?? null, defaultAvatar);
+            const lastIconHex = extractLastIconHex(existingAvatar);
+
+            await prisma.organization.update({
+              where: orgWhere,
+              data: {
+                avatar: {
+                  type: "image",
+                  url: domain ? buildFaviconUrl(domain) : "",
+                  ...(lastIconHex ? { lastIconHex } : {}),
+                },
+                onboardingData: { ...existingData, companyUrl: url },
+              },
+            });
+
+            return redirectWithSuccessMessage(
+              organizationSettingsPath({ slug: organizationSlug }),
+              request,
+              `Updated logo`
+            );
+          }
+
+          const avatar = AvatarData.safeParse(submission.value);
+
+          if (!avatar.success) {
+            return redirectWithErrorMessage(
+              organizationSettingsPath({ slug: organizationSlug }),
+              request,
+              avatar.error.message
+            );
+          }
 
           await prisma.organization.update({
             where: orgWhere,
             data: {
-              avatar: {
-                type: "image",
-                url: domain ? buildFaviconUrl(domain) : "",
-                ...(lastIconHex ? { lastIconHex } : {}),
-              },
-              onboardingData: { ...existingData, companyUrl: url },
+              avatar: avatar.data,
             },
           });
 
@@ -244,36 +295,16 @@ export const action: ActionFunction = async ({ request, params }) => {
             `Updated logo`
           );
         }
-
-        const avatar = AvatarData.safeParse(submission.value);
-
-        if (!avatar.success) {
-          return redirectWithErrorMessage(
-            organizationSettingsPath({ slug: organizationSlug }),
-            request,
-            avatar.error.message
-          );
-        }
-
-        await prisma.organization.update({
-          where: orgWhere,
-          data: {
-            avatar: avatar.data,
-          },
-        });
-
-        return redirectWithSuccessMessage(
-          organizationSettingsPath({ slug: organizationSlug }),
-          request,
-          `Updated logo`
-        );
       }
+    } catch (error: unknown) {
+      // Permission checks throw a redirect Response (toast) — let it through
+      // rather than flattening it into a generic 400.
+      if (error instanceof Response) throw error;
+      const message = error instanceof Error ? error.message : "An unexpected error occurred";
+      return json({ errors: { body: message } }, { status: 400 });
     }
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "An unexpected error occurred";
-    return json({ errors: { body: message } }, { status: 400 });
   }
-};
+);
 
 export default function Page() {
   const { organization } = useTypedLoaderData<typeof loader>();

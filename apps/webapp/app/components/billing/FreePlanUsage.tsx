@@ -27,11 +27,11 @@ export function FreePlanUsage({ to, percentage }: { to: string; percentage: numb
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <ArrowUpCircleIcon className="h-5 w-5 text-text-dimmed" />
-          <span className="text-2sm text-text-bright">Free Plan</span>
+        <div className="flex min-w-0 items-center gap-1">
+          <ArrowUpCircleIcon className="h-5 w-5 shrink-0 text-text-dimmed" />
+          <span className="truncate text-2sm text-text-bright">Free Plan</span>
         </div>
-        <Link to={to} className="text-2sm text-text-link focus-custom">
+        <Link to={to} className="shrink-0 text-2sm text-text-link focus-custom">
           Upgrade
         </Link>
       </div>

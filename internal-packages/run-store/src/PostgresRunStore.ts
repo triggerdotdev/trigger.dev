@@ -19,6 +19,7 @@ import type {
   ExpireSnapshotInput,
   FinalizeRunData,
   ForWaitpointCompletionContext,
+  IdempotencyKeyRunMatch,
   LockRunData,
   ReadClient,
   RescheduleSnapshotInput,
@@ -71,6 +72,7 @@ export interface RunOpsCapableClient {
   // Standalone entity keyed by (environmentId, name); present on both schemas.
   waitpointTag: RunOpsDelegate<"upsert" | "findMany">;
   $queryRaw: PrismaClient["$queryRaw"];
+  $queryRawUnsafe: PrismaClient["$queryRawUnsafe"];
   $executeRaw: PrismaClient["$executeRaw"];
 }
 
@@ -1682,19 +1684,41 @@ export class PostgresRunStore implements RunStore {
     return byId;
   }
 
+  async findRunsByIdempotencyKeys(
+    args: { runtimeEnvironmentId: string; taskIdentifier: string; idempotencyKeys: string[] },
+    client?: ReadClient
+  ): Promise<IdempotencyKeyRunMatch[]> {
+    if (args.idempotencyKeys.length === 0) {
+      return [];
+    }
+    const prisma = (client ?? this.readOnlyPrisma) as RunOpsCapableClient;
+    const params: string[] = [];
+    const branches = args.idempotencyKeys.map((key) => {
+      const base = params.length;
+      params.push(args.runtimeEnvironmentId, args.taskIdentifier, key);
+      return `SELECT "friendlyId", "idempotencyKey", "idempotencyKeyExpiresAt" FROM "TaskRun" WHERE "runtimeEnvironmentId" = $${base + 1} AND "taskIdentifier" = $${base + 2} AND "idempotencyKey" = $${base + 3}`;
+    });
+    return prisma.$queryRawUnsafe<IdempotencyKeyRunMatch[]>(
+      branches.join(" UNION ALL "),
+      ...params
+    );
+  }
+
   // --- run-ops persistence ---
 
   async findLatestExecutionSnapshot(
     runId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    environmentId?: string
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null> {
     const prisma = client ?? this.readOnlyPrisma;
+    const where = { runId, isValid: true, ...(environmentId ? { environmentId } : {}) };
 
     if (this.schemaVariant === "dedicated") {
       const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-        where: { runId, isValid: true },
+        where,
         include: { checkpoint: true },
         orderBy: { createdAt: "desc" },
       });
@@ -1706,7 +1730,7 @@ export class PostgresRunStore implements RunStore {
     }
 
     return prisma.taskRunExecutionSnapshot.findFirst({
-      where: { runId, isValid: true },
+      where,
       include: {
         completedWaitpoints: true,
         checkpoint: true,
@@ -1875,7 +1899,9 @@ export class PostgresRunStore implements RunStore {
 
   async findSnapshotCompletedWaitpointIds(
     snapshotId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    // `runId` selects residency at the router; a single store has one client and ignores it.
+    _runId?: string
   ): Promise<string[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
@@ -1902,7 +1928,9 @@ export class PostgresRunStore implements RunStore {
   // return the snapshot (via a separate read) while a different, laggier reader returns 0 links.
   async findSnapshotCompletedWaitpointIdsWithPresence(
     snapshotId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    // `runId` selects residency at the router; a single store has one client and ignores it.
+    _runId?: string
   ): Promise<{ present: boolean; ids: string[] }> {
     const prisma = client ?? this.readOnlyPrisma;
 
@@ -2075,7 +2103,12 @@ export class PostgresRunStore implements RunStore {
       SELECT COUNT(*) FROM inserted`;
   }
 
-  async countPendingWaitpoints(waitpointIds: string[], client?: ReadClient): Promise<number> {
+  async countPendingWaitpoints(
+    waitpointIds: string[],
+    client?: ReadClient,
+    // `runId` selects residency at the router; a single store has one client and ignores it.
+    _runId?: string
+  ): Promise<number> {
     const prisma = client ?? this.readOnlyPrisma;
 
     if (waitpointIds.length === 0) {
@@ -2094,7 +2127,7 @@ export class PostgresRunStore implements RunStore {
         WHERE id = ANY(${waitpointIds}::text[])
         AND status = 'PENDING'
       `;
-      return Number(pendingCheck.at(0)?.pending_count ?? 0);
+      return Number(pendingCheck[0]?.pending_count ?? 0);
     }
 
     const pendingCheck = await prisma.$queryRaw<{ pending_count: bigint }[]>`
@@ -2103,7 +2136,36 @@ export class PostgresRunStore implements RunStore {
       WHERE id IN (${Prisma.join(waitpointIds)})
       AND status = 'PENDING'
     `;
-    return Number(pendingCheck.at(0)?.pending_count ?? 0);
+    return Number(pendingCheck[0]?.pending_count ?? 0);
+  }
+
+  // One `SELECT id, status` returns which ids are PENDING and which exist on this store (any status),
+  // so the router can route by run id and only re-count the ids ABSENT here on the other DB — without
+  // undercounting pending (which would prematurely unblock a run) or double-counting a drain-mirrored
+  // id. Reads only id+status, so it stays cheap for a run's small blocking set.
+  async countPendingWaitpointsWithPresence(
+    waitpointIds: string[],
+    client?: ReadClient
+  ): Promise<{ pendingIds: string[]; presentIds: string[] }> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    if (waitpointIds.length === 0) {
+      return { pendingIds: [], presentIds: [] };
+    }
+
+    const rows =
+      this.schemaVariant === "dedicated"
+        ? await prisma.$queryRaw<{ id: string; status: string }[]>`
+            SELECT id, status FROM "Waitpoint" WHERE id = ANY(${waitpointIds}::text[])
+          `
+        : await prisma.$queryRaw<{ id: string; status: string }[]>`
+            SELECT id, status FROM "Waitpoint" WHERE id IN (${Prisma.join(waitpointIds)})
+          `;
+
+    return {
+      pendingIds: rows.filter((r) => r.status === "PENDING").map((r) => r.id),
+      presentIds: rows.map((r) => r.id),
+    };
   }
 
   async createWaitpoint<T extends Prisma.WaitpointCreateArgs>(
@@ -2167,7 +2229,9 @@ export class PostgresRunStore implements RunStore {
 
   async findManyWaitpoints<T extends Prisma.WaitpointFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindManyArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    // `runId` selects residency at the router; a single store has one client and ignores it.
+    _runId?: string
   ): Promise<Prisma.WaitpointGetPayload<T>[]> {
     const prisma = client ?? this.readOnlyPrisma;
 
@@ -2473,7 +2537,9 @@ export class PostgresRunStore implements RunStore {
 
   async upsertWaitpointTag(
     data: { environmentId: string; name: string; projectId: string; id?: string },
-    tx?: PrismaClientOrTransaction
+    tx?: PrismaClientOrTransaction,
+    // `residency` selects the store at the router; a single store has one client and ignores it.
+    _residency?: "NEW" | "LEGACY"
   ): Promise<WaitpointTag> {
     const prisma = tx ?? this.prisma;
 

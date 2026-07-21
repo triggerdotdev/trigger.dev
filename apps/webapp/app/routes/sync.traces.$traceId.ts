@@ -1,15 +1,33 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
+import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { getUserId } from "~/services/session.server";
 import { longPollingFetch } from "~/utils/longPollingFetch";
+import {
+  OtelTraceIdSchema,
+  RESERVED_ELECTRIC_SHAPE_PARAMS,
+  buildElectricTraceWhereClause,
+} from "~/v3/electricShape.server";
+
+const Params = z.object({
+  traceId: OtelTraceIdSchema,
+});
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   try {
     const userId = await getUserId(request);
 
-    logger.log(`/sync/traces/${params.traceId}`, { userId });
+    const parsedParams = Params.safeParse(params);
+    if (!parsedParams.success) {
+      // Treat a malformed traceId as not-found rather than 400 to avoid
+      // signalling the validator.
+      return new Response("Not found", { status: 404 });
+    }
+    const { traceId } = parsedParams.data;
+
+    logger.log(`/sync/traces/${traceId}`, { userId });
 
     if (!userId) {
       return new Response("No user found in cookie", { status: 401 });
@@ -20,7 +38,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         organizationId: true,
       },
       where: {
-        traceId: params.traceId,
+        traceId,
       },
     });
 
@@ -41,11 +59,19 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
     const url = new URL(request.url);
     const originUrl = new URL(`${env.ELECTRIC_ORIGIN}/v1/shape/public."TaskEvent"`);
+    // Strip params we set ourselves so the caller can't override them.
     url.searchParams.forEach((value, key) => {
+      if (RESERVED_ELECTRIC_SHAPE_PARAMS.has(key)) return;
       originUrl.searchParams.set(key, value);
     });
 
-    originUrl.searchParams.set("where", `"traceId"='${params.traceId}'`);
+    originUrl.searchParams.set(
+      "where",
+      buildElectricTraceWhereClause({
+        traceId,
+        scope: { column: "organizationId", id: trace.organizationId },
+      })
+    );
 
     const finalUrl = originUrl.toString();
 

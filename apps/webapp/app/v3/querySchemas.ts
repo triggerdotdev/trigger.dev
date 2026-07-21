@@ -2,7 +2,6 @@ import { column, type BucketThreshold, type TableSchema } from "@internal/tsql";
 import { z } from "zod";
 import { autoFormatSQL } from "~/components/code/TSQLEditor";
 import { runFriendlyStatus, runStatusTitleFromStatus } from "~/components/runs/v3/TaskRunStatus";
-import { logger } from "~/services/logger.server";
 
 export const QueryScopeSchema = z.enum(["organization", "project", "environment"]);
 export type QueryScope = z.infer<typeof QueryScopeSchema>;
@@ -443,10 +442,7 @@ export const runsSchema: TableSchema = {
       ...column("Array(String)", {
         description: "Any bulk actions that operated on this run.",
         example: '["bulk_12345678", "bulk_34567890"]',
-        whereTransform: (value: string) => {
-          logger.log(`WHERE TRANSFORM: ${value}`);
-          return value.replace(/^bulk_/, "");
-        },
+        whereTransform: (value: string) => value.replace(/^bulk_/, ""),
       }),
     },
   },

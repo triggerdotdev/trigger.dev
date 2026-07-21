@@ -3,8 +3,6 @@ import { conformZodMessage, parseWithZod } from "@conform-to/zod";
 import { Form, type MetaFunction, useActionData } from "@remix-run/react";
 import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
-import { EnvelopeIcon } from "~/assets/icons/EnvelopeIcon";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import {
   MainHorizontallyCenteredContainer,
@@ -12,15 +10,12 @@ import {
   PageContainer,
 } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
-import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
-import { Fieldset } from "~/components/primitives/Fieldset";
-import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
-import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
+import { Switch } from "~/components/primitives/Switch";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { prisma } from "~/db.server";
 import { useUser } from "~/hooks/useUser";
@@ -144,56 +139,72 @@ export default function Page() {
       </NavBar>
 
       <PageBody>
-        <MainHorizontallyCenteredContainer className="grid place-items-center">
-          <div className="mb-3 w-full border-b border-grid-dimmed pb-3">
+        <MainHorizontallyCenteredContainer className="max-w-[37.5rem] overflow-visible">
+          <div className="w-full border-b border-grid-dimmed pb-3">
             <Header2>Profile</Header2>
           </div>
           <Form method="post" {...getFormProps(form)} className="w-full">
-            <InputGroup className="mb-4">
-              <Label htmlFor={name.id}>Profile picture</Label>
-              <UserProfilePhoto className="size-24" />
-            </InputGroup>
-            <Fieldset>
-              <InputGroup fullWidth>
-                <Label htmlFor={name.id}>Full name</Label>
-                <Input
-                  {...getInputProps(name, { type: "text" })}
-                  placeholder="Your full name"
-                  defaultValue={user?.name ?? ""}
-                  icon={AvatarCircleIcon}
-                />
-                <Hint>Your teammates will see this</Hint>
-                <FormError id={name.errorId}>{name.errors}</FormError>
-              </InputGroup>
-              <InputGroup fullWidth>
-                <Label htmlFor={email.id}>Email address</Label>
-                <Input
-                  {...getInputProps(email, { type: "text" })}
-                  placeholder="Your email"
-                  defaultValue={user?.email ?? ""}
-                  icon={EnvelopeIcon}
-                />
-                <FormError id={email.errorId}>{email.errors}</FormError>
-              </InputGroup>
-              <InputGroup>
-                <Label>Notifications</Label>
-                <CheckboxWithLabel
-                  {...getInputProps(marketingEmails, { type: "checkbox" })}
-                  label="Receive onboarding emails"
-                  variant="simple/small"
-                  defaultChecked={user.marketingEmails}
-                />
-                <FormError id={marketingEmails.errorId}>{marketingEmails.errors}</FormError>
-              </InputGroup>
-
-              <FormButtons
-                confirmButton={
-                  <Button type="submit" variant={"secondary/small"}>
-                    Update
-                  </Button>
-                }
-              />
-            </Fieldset>
+            <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+              <div className="flex w-full items-center justify-between gap-4">
+                <InputGroup className="flex-1">
+                  <Label>Profile picture</Label>
+                </InputGroup>
+                <div className="flex flex-none items-center">
+                  <UserProfilePhoto className="size-8" strokeWidth={1.5} />
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+              <div className="flex w-full items-center justify-between gap-4">
+                <InputGroup className="flex-1">
+                  <Label htmlFor={name.id}>Full name</Label>
+                </InputGroup>
+                <div className="flex w-56 flex-none flex-col gap-1">
+                  <Input
+                    {...getInputProps(name, { type: "text" })}
+                    placeholder="Your full name"
+                    defaultValue={user?.name ?? ""}
+                  />
+                  <FormError id={name.errorId}>{name.errors}</FormError>
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+              <div className="flex w-full items-center justify-between gap-4">
+                <InputGroup className="flex-1">
+                  <Label htmlFor={email.id}>Email address</Label>
+                </InputGroup>
+                <div className="flex w-56 flex-none flex-col gap-1">
+                  <Input
+                    {...getInputProps(email, { type: "text" })}
+                    placeholder="Your email"
+                    defaultValue={user?.email ?? ""}
+                  />
+                  <FormError id={email.errorId}>{email.errors}</FormError>
+                </div>
+              </div>
+            </div>
+            <div className="flex min-h-16 w-full items-center border-b border-grid-dimmed">
+              <div className="flex w-full items-center justify-between gap-4">
+                <InputGroup className="flex-1">
+                  <Label htmlFor={marketingEmails.id}>Receive onboarding emails</Label>
+                </InputGroup>
+                <div className="flex flex-none items-center">
+                  <Switch
+                    id={marketingEmails.id}
+                    name={marketingEmails.name}
+                    variant="medium"
+                    defaultChecked={user.marketingEmails}
+                    className="w-fit pr-3"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex w-full justify-end pt-4">
+              <Button type="submit" variant="primary/small">
+                Update
+              </Button>
+            </div>
           </Form>
         </MainHorizontallyCenteredContainer>
       </PageBody>

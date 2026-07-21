@@ -14,6 +14,7 @@ import { PlacementTagProcessor } from "@trigger.dev/core/v3/serverOnly";
 import { env } from "../env.js";
 import { type K8sApi, createK8sApi, type k8s } from "../clients/kubernetes.js";
 import { getRunnerId } from "../util.js";
+import { withBlockIoUringSeccompProfile } from "./kubernetesPodSpec.js";
 
 type ResourceQuantities = {
   [K in "cpu" | "memory" | "ephemeral-storage"]?: string;
@@ -105,6 +106,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
     const runnerId = getRunnerId(opts.runFriendlyId, opts.nextAttemptNumber);
 
     try {
+      const basePodSpec = this.addPlacementTags(this.#defaultPodSpec, opts.placementTags);
+      const podSpec = this.opts.checkpointsEnabled
+        ? withBlockIoUringSeccompProfile(basePodSpec, opts.runtime)
+        : basePodSpec;
+
       await this.k8s.core.createNamespacedPod({
         namespace: this.namespace,
         body: {
@@ -119,7 +125,7 @@ export class KubernetesWorkloadManager implements WorkloadManager {
             },
           },
           spec: {
-            ...this.addPlacementTags(this.#defaultPodSpec, opts.placementTags),
+            ...podSpec,
             affinity: this.#getAffinity(opts),
             tolerations: this.#getScheduleTolerations(this.#isScheduledRun(opts)),
             terminationGracePeriodSeconds: 60 * 60,
@@ -152,6 +158,11 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                   },
                   {
                     name: "TRIGGER_DEPLOYMENT_ID",
+                    value: opts.deploymentToken ?? opts.deploymentFriendlyId,
+                  },
+                  {
+                    // Plain friendlyId for telemetry (worker.id), not the opaque token in DEPLOYMENT_ID.
+                    name: "TRIGGER_DEPLOYMENT_FRIENDLY_ID",
                     value: opts.deploymentFriendlyId,
                   },
                   {

@@ -295,9 +295,10 @@ export async function login(options?: LoginOptions): Promise<LoginResult> {
         const indexResult = await pRetry(
           () => getPersonalAccessToken(apiClient, authorizationCodeResult.authorizationCode),
           {
-            //this means we're polling, same distance between each attempt
+            //poll at a fixed 1s interval. ~5 min window so the user has time to
+            //approve the consent screen; stays within the code's 10-min validity.
             factor: 1,
-            retries: 60,
+            retries: 300,
             minTimeout: 1000,
           }
         );
@@ -404,6 +405,15 @@ export async function getPersonalAccessToken(apiClient: CliApiClient, authorizat
       const token = await apiClient.getPersonalAccessToken(authorizationCode);
 
       if (!token.success) {
+        // A 429 from the per-code poll rate limiter is transient: the auth code
+        // is still valid and the user may just not have approved the consent
+        // screen yet. Throw a regular (retryable) error so the poll loop backs
+        // off and keeps polling, rather than an AbortError, which pRetry treats
+        // as fatal and would abandon the whole login.
+        if (token.statusCode === 429) {
+          throw new Error(token.error);
+        }
+
         throw new AbortError(token.error);
       }
 

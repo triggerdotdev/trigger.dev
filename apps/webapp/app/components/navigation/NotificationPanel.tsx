@@ -121,7 +121,7 @@ export function NotificationPanel({
 
   return (
     <Popover>
-      <div className={isCollapsed ? "p-1" : "p-2"}>
+      <div className={isCollapsed ? "p-1" : "p-2 pt-0"}>
         {isCollapsed ? (
           <SimpleTooltip
             asChild

@@ -394,6 +394,8 @@ model RuntimeEnvironment {
   taskIdentifiers         TaskIdentifier[]
   revokedApiKeys          RevokedApiKey[]
 
+  // A partial unique index also enforces one STAGING/PREVIEW root per project and type.
+  // It is defined in SQL because Prisma does not support partial indexes in the schema.
   @@unique([projectId, slug, orgMemberId])
   @@unique([projectId, shortcode])
   @@index([parentEnvironmentId])

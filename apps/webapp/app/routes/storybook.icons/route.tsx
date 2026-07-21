@@ -81,6 +81,7 @@ import { KeyboardUpIcon } from "~/assets/icons/KeyboardUpIcon";
 import { KeyboardWindowsIcon } from "~/assets/icons/KeyboardWindowsIcon";
 import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { KeyValueIcon } from "~/assets/icons/KeyValueIcon";
+import { LeftSideMenuIcon } from "~/assets/icons/LeftSideMenuIcon";
 import { ListBulletIcon } from "~/assets/icons/ListBulletIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
@@ -217,6 +218,7 @@ const icons: IconEntry[] = [
   { name: "KeyboardWindowsIcon", render: simple(KeyboardWindowsIcon) },
   { name: "KeyIcon", render: simple(KeyIcon) },
   { name: "KeyValueIcon", render: simple(KeyValueIcon) },
+  { name: "LeftSideMenuIcon", render: simple(LeftSideMenuIcon) },
   { name: "ListBulletIcon", render: simple(ListBulletIcon) },
   { name: "ListCheckedIcon", render: simple(ListCheckedIcon) },
   { name: "LlamaIcon", render: simple(LlamaIcon) },

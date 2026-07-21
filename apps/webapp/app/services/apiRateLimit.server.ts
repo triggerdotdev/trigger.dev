@@ -48,6 +48,9 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
   // Allow /api/v1/tasks/:id/callback/:secret
   pathWhiteList: [
     "/api/internal/stripe_webhooks",
+    // Keep allowlisted: these CLI endpoints are intentionally unauthenticated,
+    // so this Authorization-header-keyed limiter would 401 them. They are
+    // throttled separately by authCodeRateLimiter.server.ts.
     "/api/v1/authorization-code",
     "/api/v1/token",
     "/api/v1/usage/ingest",

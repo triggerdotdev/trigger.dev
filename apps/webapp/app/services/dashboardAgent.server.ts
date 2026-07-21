@@ -212,7 +212,9 @@ export async function resolveRunCommit(
   environmentId: string,
   runFriendlyId: string
 ): Promise<{ sha: string; version: string; dirty: boolean } | null> {
-  const run = await runStore.findRun(
+  // Read-your-writes: a just-locked run's lockedToVersionId may not have replicated. Read the owning
+  // primary so a live, pinned run resolves its commit instead of silently falling back to branch head.
+  const run = await runStore.findRunOnPrimary(
     { friendlyId: runFriendlyId, runtimeEnvironmentId: environmentId },
     { select: { lockedToVersionId: true } }
   );

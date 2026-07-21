@@ -42,29 +42,36 @@ export class ApiWaitpointPresenter extends BasePresenter {
     return this.trace("call", async (span) => {
       // The store routes by the waitpointId's residency (id shape) and reads the owning
       // store's replica. waitpointId is pre-decoded from the friendlyId via WaitpointId.toId.
-      const waitpoint = await this.runStore.findWaitpoint({
-        where: {
-          id: waitpointId,
-          environmentId: environment.id,
-        },
-        select: {
-          id: true,
-          friendlyId: true,
-          type: true,
-          status: true,
-          idempotencyKey: true,
-          userProvidedIdempotencyKey: true,
-          idempotencyKeyExpiresAt: true,
-          inactiveIdempotencyKey: true,
-          output: true,
-          outputType: true,
-          outputIsError: true,
-          completedAfter: true,
-          completedAt: true,
-          createdAt: true,
-          tags: true,
-        },
-      });
+      const where = {
+        id: waitpointId,
+        environmentId: environment.id,
+      };
+      const select = {
+        id: true,
+        friendlyId: true,
+        type: true,
+        status: true,
+        idempotencyKey: true,
+        userProvidedIdempotencyKey: true,
+        idempotencyKeyExpiresAt: true,
+        inactiveIdempotencyKey: true,
+        output: true,
+        outputType: true,
+        outputIsError: true,
+        completedAfter: true,
+        completedAt: true,
+        createdAt: true,
+        tags: true,
+      } as const;
+
+      let waitpoint = await this.runStore.findWaitpoint({ where, select });
+
+      // Read-your-writes on a public GET: a just-minted token may not be on the owning store's
+      // replica yet, so a replica miss would 404 a live token. Re-read the owning primary before
+      // concluding it doesn't exist (mirrors the metadata GET loader + the complete/callback paths).
+      if (!waitpoint) {
+        waitpoint = await this.runStore.findWaitpointOnPrimary({ where, select });
+      }
 
       if (!waitpoint) {
         logger.error(`WaitpointPresenter: Waitpoint not found`, {

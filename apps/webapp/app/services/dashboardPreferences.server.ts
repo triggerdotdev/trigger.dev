@@ -5,6 +5,8 @@ import { type UserFromSession } from "./session.server";
 
 const SideMenuPreferences = z.object({
   isCollapsed: z.boolean().default(false),
+  /** Expanded side menu width in px, set by the resize handle. */
+  width: z.number().optional(),
   // Map for section collapsed states - keys are section identifiers
   collapsedSections: z.record(z.string(), z.boolean()).optional(),
   /** Organization-specific settings */
@@ -124,10 +126,13 @@ export async function clearCurrentProject({ user }: { user: UserFromSession }) {
 export async function updateSideMenuPreferences({
   user,
   isCollapsed,
+  width,
   sectionCollapsed,
 }: {
   user: UserFromSession;
   isCollapsed?: boolean;
+  /** Expanded side menu width in px (from the resize handle) */
+  width?: number;
   /** Update a specific section's collapsed state */
   sectionCollapsed?: { sectionId: SideMenuSectionId; collapsed: boolean };
 }) {
@@ -148,6 +153,7 @@ export async function updateSideMenuPreferences({
   const updatedSideMenu = SideMenuPreferences.parse({
     ...currentSideMenu,
     ...(isCollapsed !== undefined && { isCollapsed }),
+    ...(width !== undefined && { width }),
     collapsedSections: updatedCollapsedSections,
   });
 
@@ -156,7 +162,11 @@ export async function updateSideMenuPreferences({
     JSON.stringify(updatedSideMenu.collapsedSections) !==
     JSON.stringify(currentSideMenu.collapsedSections);
 
-  if (updatedSideMenu.isCollapsed === currentSideMenu.isCollapsed && !hasCollapsedSectionsChanged) {
+  if (
+    updatedSideMenu.isCollapsed === currentSideMenu.isCollapsed &&
+    updatedSideMenu.width === currentSideMenu.width &&
+    !hasCollapsedSectionsChanged
+  ) {
     return;
   }
 

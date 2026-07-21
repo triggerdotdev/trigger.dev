@@ -62,6 +62,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
   const result = await repository.create(environment.project.id, {
     override: true,
     environmentIds: [environment.id],
+    isSecret: body.data.isSecret,
     variables: [
       {
         key: body.data.name,

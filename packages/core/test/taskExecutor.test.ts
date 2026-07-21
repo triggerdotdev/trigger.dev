@@ -1802,8 +1802,10 @@ describe("TaskExecutor", () => {
         // Rate limit errors should use the rate limit retry delay
         expect((result.result as any).retry.delay).toBeGreaterThan(0);
       } else {
-        // Other retryable errors should use the exponential backoff
-        expect((result.result as any).retry.delay).toBeGreaterThan(1000);
+        // Other retryable errors should use the exponential backoff. The first retry uses
+        // minDelay (1000ms) as its base, and jitter can land exactly on the floor, so this
+        // is >= rather than > to avoid a flaky boundary failure.
+        expect((result.result as any).retry.delay).toBeGreaterThanOrEqual(1000);
         expect((result.result as any).retry.delay).toBeLessThan(5000);
       }
     }
