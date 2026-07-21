@@ -117,12 +117,14 @@ async function startServer() {
   const MODE = process.env.NODE_ENV;
 
   // In development, Vite serves assets (and handles HMR) via middleware.
+  // Only NODE_ENV=development boots Vite — scripts that run the built server
+  // without NODE_ENV (start:local, dev:worker) must serve the build.
   const viteDevServer =
-    MODE === "production"
-      ? undefined
-      : await dynamicImport("vite").then((vite) =>
+    MODE === "development"
+      ? await dynamicImport("vite").then((vite) =>
           vite.createServer({ server: { middlewareMode: true } })
-        );
+        )
+      : undefined;
 
   if (viteDevServer) {
     app.use(viteDevServer.middlewares);

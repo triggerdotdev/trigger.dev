@@ -2,4 +2,4 @@
 "@trigger.dev/sdk": patch
 ---
 
-Annotate the optional `@ai-sdk/otel` dynamic import with `@vite-ignore` so Vite-based bundlers don't warn about an unanalyzable import.
+Suppress a build-time warning that could appear in Vite-based projects when the optional `@ai-sdk/otel` package is not installed.

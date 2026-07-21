@@ -46,5 +46,5 @@ const route = createActionApiRoute(
 );
 
 export const action = route.action;
-// The builder's loader handles CORS OPTIONS preflight
+// The builder's loader answers non-POST methods with a 405
 export const loader = route.loader;
