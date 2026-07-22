@@ -7,6 +7,7 @@ import {
   ClockIcon,
   CloudArrowDownIcon,
   EnvelopeIcon,
+  ExclamationTriangleIcon,
   GlobeAltIcon,
   KeyIcon,
   QueueListIcon,
@@ -19,10 +20,11 @@ import {
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
-import { useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { toast } from "sonner";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -82,7 +84,14 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { formatWaitMs, QueueSparklineStat } from "~/components/queues/QueueMetricCards";
+import {
+  clickhouseTimeToMs,
+  formatWaitMs,
+  QueueMetricChart,
+  QUEUE_METRIC_COLORS,
+  toNumber,
+  useQueueMetric,
+} from "~/components/queues/QueueMetricCards";
 import {
   resolveRunQueueMetrics,
   type RunQueueMetrics,
@@ -1109,12 +1118,16 @@ function RunBody({
             </div>
           ) : (
             <div className="flex flex-col gap-4 pt-3">
-              <div className="border-b border-grid-bright pb-3">
-                <SimpleTooltip
-                  button={<TaskRunStatusCombo status={run.status} className="text-sm" />}
-                  content={descriptionForTaskRunStatus(run.status)}
-                />
-              </div>
+              {/* The waiting-queue block carries its own Status tile, so drop the duplicate
+                  status combo here; other runs still get it. */}
+              {queueMetrics?.waiting ? null : (
+                <div className="border-b border-grid-bright pb-3">
+                  <SimpleTooltip
+                    button={<TaskRunStatusCombo status={run.status} className="text-sm" />}
+                    content={descriptionForTaskRunStatus(run.status)}
+                  />
+                </div>
+              )}
               {queueMetrics?.waiting ? (
                 <WaitingInQueueBlock
                   queueName={queueMetrics.queueName}
@@ -1122,6 +1135,7 @@ function RunBody({
                   paused={queueMetrics.paused}
                   waiting={queueMetrics.waiting}
                   status={run.status}
+                  createdAt={run.createdAt}
                 />
               ) : null}
               <RunTimeline run={run} />
@@ -1183,76 +1197,170 @@ function RunBody({
   );
 }
 
+// Trust a ClickHouse gauge only while its newest bucket is recent (10s bucket + pipeline lag);
+// once it ages out, fall back to the loader's live Redis value instead of a stale count.
+const LIVE_GAUGE_FRESH_MS = 90_000;
+
+const WAITING_STATUS_LABELS: Partial<Record<SpanRun["status"], string>> = {
+  PENDING: "Queued",
+  DELAYED: "Delayed",
+  PENDING_VERSION: "Pending version",
+};
+
+// A mini version of the queue page's stat block: same chrome, title font and alignment, smaller value.
+function MiniStat({
+  title,
+  value,
+  valueClassName,
+  suffix,
+  accessory,
+}: {
+  title: ReactNode;
+  value: ReactNode;
+  valueClassName?: string;
+  suffix?: ReactNode;
+  accessory?: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-[5.5rem] flex-col justify-between gap-3 rounded-sm border border-grid-dimmed bg-background-bright p-3">
+      <div className="flex items-center justify-between gap-1">
+        <Header3 className="leading-6">{title}</Header3>
+        {accessory ? <div className="-my-1 shrink-0">{accessory}</div> : null}
+      </div>
+      <div className="flex flex-wrap items-baseline gap-1">
+        <span
+          className={cn(
+            "text-2xl font-normal leading-none tabular-nums text-text-bright",
+            valueClassName
+          )}
+        >
+          {value}
+        </span>
+        {suffix ? <span className="text-xs tabular-nums text-text-dimmed">{suffix}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+// A compact "mini queue" for a waiting run: the queue page's stat blocks + charts, scaled down.
 function WaitingInQueueBlock({
   queueName,
   queuePath,
   paused,
   waiting,
   status,
+  createdAt,
 }: {
   queueName: string;
   queuePath: string | undefined;
   paused: boolean;
   waiting: RunQueueWaiting;
   status: SpanRun["status"];
+  createdAt: Date;
 }) {
-  const key = waiting.concurrencyKey;
-  const limit = waiting.concurrencyLimit;
-  // The concurrency limit applies per key on keyed queues. PENDING renders as "Queued".
-  const atLimit = limit !== null && (key ? key.running >= limit : waiting.running >= limit);
-  const showAtLimit = status === "PENDING" && atLimit && !paused;
+  // Latest gauges from ClickHouse (as on the queue page), polled so the blocks keep ticking. Trust
+  // the newest bucket only while fresh; otherwise fall back to the loader's live values.
+  const { rows: liveRows } = useQueueMetric(
+    `SELECT timeBucket() AS t, max(max_running) AS running, max(max_queued) AS queued, max(max_limit) AS q_limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
+    {
+      ids: waiting.ids,
+      timeRange: { period: "15m", from: null, to: null },
+      defaultPeriod: "15m",
+      queueName,
+      refreshIntervalMs: 15_000,
+    }
+  );
+  const latest = liveRows.length > 0 ? liveRows[liveRows.length - 1] : undefined;
+  const latestBucketMs = latest ? clickhouseTimeToMs(latest.t) : NaN;
+  const fresh =
+    latest && Number.isFinite(latestBucketMs) && Date.now() - latestBucketMs < LIVE_GAUGE_FRESH_MS
+      ? latest
+      : undefined;
 
-  const runningLabel = (running: number, withLimit: boolean) =>
-    withLimit && limit !== null
-      ? `${running.toLocaleString()} of ${limit.toLocaleString()} running`
-      : `${running.toLocaleString()} running`;
+  const key = waiting.concurrencyKey;
+  const running = fresh ? toNumber(fresh.running) : waiting.running;
+  const limit = waiting.concurrencyLimit ?? (fresh ? toNumber(fresh.q_limit) || null : null);
+
+  // The concurrency limit applies per key on keyed queues. PENDING renders as "Queued".
+  const atLimit = limit !== null && (key ? key.running >= limit : running >= limit);
+  const showAtLimit = status === "PENDING" && atLimit && !paused;
+  const pct = limit && limit > 0 ? Math.min(100, Math.round((running / limit) * 100)) : null;
+  const waitedMs = Math.max(0, Date.now() - new Date(createdAt).getTime());
+
+  // Why the run is held, surfaced as a warning icon on the Status tile (queue-page style) rather
+  // than a separate sentence.
+  const warningMessage = paused
+    ? "Queue is paused. Runs will not start until it is resumed."
+    : showAtLimit
+      ? "At the concurrency limit. This run starts when a running one finishes."
+      : null;
 
   return (
     <div className="flex flex-col gap-3 border-b border-grid-bright pb-4">
-      <div className="flex items-center justify-between gap-2">
-        <Header3>Waiting in queue</Header3>
-        {queuePath ? <TextLink to={queuePath}>View queue</TextLink> : null}
-      </div>
-      <div className="grid grid-cols-2 gap-x-6">
-        <QueueSparklineStat
-          title="Backlog"
-          headline={`${waiting.queued.toLocaleString()} queued`}
-          query={`SELECT timeBucket() AS t, max(max_queued) AS v\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-          color="var(--color-tasks)"
-          ids={waiting.ids}
-          queueName={queueName}
-        />
-        <QueueSparklineStat
-          title="Scheduling delay (p95)"
-          headline={waiting.delayP95Ms !== null ? formatWaitMs(waiting.delayP95Ms) : "–"}
-          headlineClassName={
-            waiting.delayP95Ms !== null && waiting.delayP95Ms >= 60_000 ? "text-warning" : undefined
+      <div className="grid grid-cols-3 gap-2">
+        <MiniStat
+          title={
+            <span className="flex items-center gap-1.5">
+              Status
+              {warningMessage ? (
+                <SimpleTooltip
+                  button={<ExclamationTriangleIcon className="size-4 text-warning" />}
+                  content={warningMessage}
+                />
+              ) : null}
+            </span>
           }
-          query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS v\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
-          color="#F59E0B"
-          ids={waiting.ids}
-          queueName={queueName}
-          formatPeak={(v) => formatWaitMs(v)}
+          value={WAITING_STATUS_LABELS[status] ?? "Waiting"}
+          valueClassName="tracking-tight"
         />
+        <MiniStat
+          title="Concurrency"
+          value={running.toLocaleString()}
+          valueClassName={cn(atLimit && "text-warning")}
+          suffix={
+            limit !== null
+              ? `/ ${limit.toLocaleString()}${pct !== null ? ` · ${pct}%` : ""}`
+              : "of ∞"
+          }
+        />
+        <MiniStat title="Waiting for" value={formatWaitMs(waitedMs)} />
       </div>
-      <Paragraph variant="small" className="tabular-nums text-text-dimmed">
-        {runningLabel(waiting.running, !key)}
-        {key
-          ? ` · key ${key.key}: ${key.queued.toLocaleString()} queued · ${runningLabel(
-              key.running,
-              true
-            )}${key.oldestWaitMs !== null ? ` · oldest wait ${formatWaitMs(key.oldestWaitMs)}` : ""}`
-          : ""}
-      </Paragraph>
-      {paused ? (
-        <Paragraph variant="small" className="text-warning">
-          Queue is paused. Runs will not start until it is resumed.
-        </Paragraph>
-      ) : showAtLimit ? (
-        <Paragraph variant="small" className="text-warning">
-          At the concurrency limit. This run starts when a running one finishes.
-        </Paragraph>
-      ) : null}
+
+      <div className="rounded-sm border border-grid-dimmed bg-background-bright p-3">
+        <div className="mb-2 flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5">
+            <Header3 className="leading-6">Scheduling delay</Header3>
+            <InfoIconTooltip
+              content="Wait from eligible to dequeued (p50/p95)."
+              contentClassName="max-w-xs"
+            />
+          </div>
+          {queuePath ? (
+            <LinkButton
+              variant="secondary/small-icon"
+              LeadingIcon={QueuesIcon}
+              leadingIconClassName="text-queues"
+              to={queuePath}
+              tooltip="View queue"
+            />
+          ) : null}
+        </div>
+        <div className="h-40">
+          <QueueMetricChart
+            query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
+            series={[
+              { key: "p50", label: "p50", color: QUEUE_METRIC_COLORS.p50 },
+              { key: "p95", label: "p95", color: QUEUE_METRIC_COLORS.p95 },
+            ]}
+            ids={waiting.ids}
+            timeRange={{ period: "30m", from: null, to: null }}
+            defaultPeriod="30m"
+            queueName={queueName}
+            valueFormat={formatWaitMs}
+            fillGaps
+          />
+        </div>
+      </div>
     </div>
   );
 }

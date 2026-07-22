@@ -6,15 +6,17 @@ import {
   type ChartState,
 } from "~/components/primitives/charts/ChartCompound";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
-import { UsageSparkline } from "~/components/primitives/UsageSparkline";
+import { MiniLineChart } from "~/components/metrics/MiniLineChart";
 import {
   useMetricResourceQuery,
   type MetricResourceTimeRange,
 } from "~/hooks/useMetricResourceQuery";
+import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { cn } from "~/utils/cn";
+import { formatNumberCompact } from "~/utils/numberFormatter";
 
 // Shared building blocks for queue-metric UI (queue detail page, task detail page,
 // run inspector). All CH-derived data is fetched client-side through useQueueMetric
@@ -268,22 +270,27 @@ const SPARKLINE_PERIOD = "30m";
 
 export function QueueSparklineStat({
   title,
-  headline,
-  headlineClassName,
+  info,
   query,
   color,
   ids,
   queueName,
   formatPeak,
+  unitLabel,
+  chartHeight,
 }: {
   title: string;
-  headline: string;
-  headlineClassName?: string;
+  /** Tooltip text under the info icon next to the title (matches the queue page copy). */
+  info?: ReactNode;
   query: string;
   color: string;
   ids: QueueMetricIds;
   queueName: string;
   formatPeak?: (peak: number) => string;
+  /** Unit shown in the per-bucket hover tooltip (e.g. queued, ms). */
+  unitLabel?: { singular: string; plural: string };
+  /** Plot height in px. Defaults to the shared mini-chart height. */
+  chartHeight?: number;
 }) {
   const timeRange: QueueMetricTimeRange = { period: SPARKLINE_PERIOD, from: null, to: null };
   const { rows } = useQueueMetric(query, {
@@ -294,13 +301,19 @@ export function QueueSparklineStat({
     defaultPeriod: SPARKLINE_PERIOD,
   });
 
-  const { data, bucketStartMs, bucketIntervalMs, peak } = useMemo(() => {
+  const { data, throttled, bucketStartMs, bucketIntervalMs, peak } = useMemo(() => {
     const points = rows
-      .map((r) => ({ bucket: clickhouseTimeToMs(r.t), v: toNumber(r.v) }))
+      .map((r) => ({
+        bucket: clickhouseTimeToMs(r.t),
+        v: toNumber(r.v),
+        // Present only when the query selects it (Backlog); 0 elsewhere so no overlay draws.
+        throttled: toNumber(r.throttled),
+      }))
       .filter((p) => Number.isFinite(p.bucket))
       .sort((a, b) => a.bucket - b.bucket);
     return {
       data: points.map((p) => p.v),
+      throttled: points.map((p) => p.throttled),
       bucketStartMs: points[0]?.bucket,
       bucketIntervalMs: points.length > 1 ? points[1]!.bucket - points[0]!.bucket : undefined,
       peak: points.reduce((m, p) => Math.max(m, p.v), 0),
@@ -308,25 +321,35 @@ export function QueueSparklineStat({
   }, [rows]);
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs uppercase tracking-wide text-text-dimmed">{title}</span>
-        {data.length > 0 && peak > 0 ? (
-          <span className="text-xs tabular-nums text-text-dimmed">
-            peak {formatPeak ? formatPeak(peak) : peak.toLocaleString()}
-          </span>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-1.5">
+        <Header3 className="leading-6">{title}</Header3>
+        {info || (data.length > 0 && peak > 0) ? (
+          <InfoIconTooltip
+            content={
+              <div className="flex flex-col gap-1">
+                {info ? <span>{info}</span> : null}
+                {data.length > 0 && peak > 0 ? (
+                  <span className="tabular-nums text-text-dimmed">
+                    Peak {formatPeak ? formatPeak(peak) : formatNumberCompact(peak)}
+                  </span>
+                ) : null}
+              </div>
+            }
+            contentClassName="max-w-xs"
+          />
         ) : null}
       </div>
-      <div className={cn("text-xl tabular-nums text-text-bright", headlineClassName)}>
-        {headline}
-      </div>
-      <UsageSparkline
+      <MiniLineChart
         data={data}
+        throttled={throttled}
         bucketStartMs={bucketStartMs}
         bucketIntervalMs={bucketIntervalMs}
         color={color}
-        chartClassName="h-6 w-full"
-        hideTotal
+        unitLabel={unitLabel}
+        height={chartHeight}
+        fillWidth
+        showPeak={false}
       />
     </div>
   );

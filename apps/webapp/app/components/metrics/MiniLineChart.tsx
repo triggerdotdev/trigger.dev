@@ -1,5 +1,13 @@
 import { type ReactNode } from "react";
-import { Line, LineChart, ReferenceLine, Tooltip, type TooltipProps, YAxis } from "recharts";
+import {
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  type TooltipProps,
+  YAxis,
+} from "recharts";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -48,8 +56,12 @@ export type MiniLineChartProps = {
   peakTooltip?: ReactNode;
   /** Unit shown in the per-bucket tooltip (e.g. queued, runs). */
   unitLabel?: UnitLabel;
-  /** Chart width in px. Defaults to the shared ACTIVITY_CHART_WIDTH. */
+  /** Chart width in px. Defaults to the shared ACTIVITY_CHART_WIDTH. Ignored when `fillWidth`. */
   width?: number;
+  /** Plot height in px. Defaults to the shared ACTIVITY_CHART_HEIGHT. */
+  height?: number;
+  /** Stretch the plot to the container width (via ResponsiveContainer) instead of a fixed px width. */
+  fillWidth?: boolean;
   /** Show the trailing peak label to the right of the chart. Defaults to true. */
   showPeak?: boolean;
 };
@@ -72,6 +84,8 @@ export function MiniLineChart({
   peakTooltip,
   unitLabel = { singular: "value", plural: "values" },
   width = ACTIVITY_CHART_WIDTH,
+  height = ACTIVITY_CHART_HEIGHT,
+  fillWidth = false,
   showPeak = true,
 }: MiniLineChartProps) {
   const hasPeakOverride = peakOverride !== undefined;
@@ -104,49 +118,63 @@ export function MiniLineChart({
     };
   });
 
+  const chart = (
+    <LineChart
+      data={chartData}
+      width={width}
+      height={height + DOT_HEADROOM}
+      margin={{ top: DOT_HEADROOM, right: 0, left: 0, bottom: 0 }}
+    >
+      <YAxis domain={[0, max || 1]} hide />
+      <Tooltip
+        cursor={{ stroke: "rgba(255, 255, 255, 0.2)", strokeWidth: 1 }}
+        content={<MiniLineChartTooltip unitLabel={unitLabel} />}
+        allowEscapeViewBox={{ x: true, y: true }}
+        wrapperStyle={{ zIndex: 1000 }}
+        animationDuration={0}
+      />
+      <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
+      <Line
+        type="monotone"
+        dataKey="count"
+        stroke={color}
+        strokeWidth={1.5}
+        dot={false}
+        activeDot={{ r: 2.5, fill: color, strokeWidth: 0 }}
+        isAnimationActive={false}
+      />
+      {hasThrottled && (
+        <Line
+          type="monotone"
+          dataKey="throttledOverlay"
+          stroke="var(--color-warning)"
+          strokeWidth={1.5}
+          dot={false}
+          activeDot={{ r: 2.5, fill: "var(--color-warning)", strokeWidth: 0 }}
+          connectNulls={false}
+          isAnimationActive={false}
+        />
+      )}
+    </LineChart>
+  );
+
   return (
-    <div className="flex items-start gap-1.5">
+    <div className={`flex items-start gap-1.5${fillWidth ? " w-full" : ""}`}>
       {/* +DOT_HEADROOM of extra height, spent as top margin, so the hover activeDot at the peak
-          isn't clipped by the SVG edge while the plotted area stays ACTIVITY_CHART_HEIGHT tall. */}
-      <div className="rounded-sm" style={{ width, height: ACTIVITY_CHART_HEIGHT + DOT_HEADROOM }}>
-        {/* Fixed px dims skip ResponsiveContainer's ResizeObserver — see ActivityBarChart. */}
-        <LineChart
-          data={chartData}
-          width={width}
-          height={ACTIVITY_CHART_HEIGHT + DOT_HEADROOM}
-          margin={{ top: DOT_HEADROOM, right: 0, left: 0, bottom: 0 }}
-        >
-          <YAxis domain={[0, max || 1]} hide />
-          <Tooltip
-            cursor={{ stroke: "rgba(255, 255, 255, 0.2)", strokeWidth: 1 }}
-            content={<MiniLineChartTooltip unitLabel={unitLabel} />}
-            allowEscapeViewBox={{ x: true, y: true }}
-            wrapperStyle={{ zIndex: 1000 }}
-            animationDuration={0}
-          />
-          <ReferenceLine y={0} stroke="var(--color-border-bright)" strokeWidth={1} />
-          <Line
-            type="monotone"
-            dataKey="count"
-            stroke={color}
-            strokeWidth={1.5}
-            dot={false}
-            activeDot={{ r: 2.5, fill: color, strokeWidth: 0 }}
-            isAnimationActive={false}
-          />
-          {hasThrottled && (
-            <Line
-              type="monotone"
-              dataKey="throttledOverlay"
-              stroke="var(--color-warning)"
-              strokeWidth={1.5}
-              dot={false}
-              activeDot={{ r: 2.5, fill: "var(--color-warning)", strokeWidth: 0 }}
-              connectNulls={false}
-              isAnimationActive={false}
-            />
-          )}
-        </LineChart>
+          isn't clipped by the SVG edge while the plotted area stays `height` tall. */}
+      <div
+        className={`rounded-sm${fillWidth ? " w-full" : ""}`}
+        style={{ width: fillWidth ? undefined : width, height: height + DOT_HEADROOM }}
+      >
+        {/* Fixed px dims skip ResponsiveContainer's ResizeObserver (see ActivityBarChart); with
+            fillWidth we opt back into it so the plot stretches to the block. */}
+        {fillWidth ? (
+          <ResponsiveContainer width="100%" height={height + DOT_HEADROOM}>
+            {chart}
+          </ResponsiveContainer>
+        ) : (
+          chart
+        )}
       </div>
       {showPeak && (
         <MiniLinePeakLabel tooltip={peakTooltip}>
