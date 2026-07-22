@@ -37,7 +37,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const service = new InitializeDeploymentService();
 
   try {
-    const { deployment, imageRef, eventStream } = await service.call(authenticatedEnv, body.data);
+    const { deployment, imageRef, eventStream, buildEnvVarsStored } = await service.call(
+      authenticatedEnv,
+      body.data
+    );
 
     const responseBody: InitializeDeploymentResponseBody = {
       id: deployment.friendlyId,
@@ -49,6 +52,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       imageTag: imageRef,
       imagePlatform: deployment.imagePlatform,
       eventStream,
+      // Only ack when we actually stored vars; older CLIs ignore this field.
+      ...(buildEnvVarsStored ? { buildEnvVarsStored: true } : {}),
     };
 
     return json(responseBody, { status: 200 });

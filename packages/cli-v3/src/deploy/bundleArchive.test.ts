@@ -25,8 +25,8 @@ describe("createBundleArchive", () => {
     await writeFile(join(bundleDir, "Containerfile"), "FROM scratch");
     await writeFile(join(bundleDir, "package.json"), "{}");
     await writeFile(join(bundleDir, "index.mjs"), "export {}");
-    await writeFile(join(bundleDir, ".dockerignore"), "trigger-build-args.json\n");
-    await writeFile(join(bundleDir, "trigger-build-args.json"), JSON.stringify({ env: {} }));
+    // A build extension may produce a .dockerignore — it must survive archiving
+    await writeFile(join(bundleDir, ".dockerignore"), "*.log\n");
     await mkdir(join(bundleDir, ".trigger", "skills", "my-skill"), { recursive: true });
     await writeFile(join(bundleDir, ".trigger", "skills", "my-skill", "SKILL.md"), "# skill");
 
@@ -48,7 +48,6 @@ describe("createBundleArchive", () => {
         "build.json",
         "index.mjs",
         "package.json",
-        "trigger-build-args.json",
       ].sort()
     );
 

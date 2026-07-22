@@ -680,6 +680,9 @@ export const InitializeDeploymentResponseBody = z.object({
       }),
     })
     .optional(),
+  // Ack that the server accepted and stored buildEnvVars from the request. The CLI
+  // treats its absence (older server) as a hard error when it sent non-empty vars.
+  buildEnvVarsStored: z.boolean().optional(),
 });
 
 export type InitializeDeploymentResponseBody = z.infer<typeof InitializeDeploymentResponseBody>;
@@ -706,6 +709,7 @@ type NativeBuildOutput = BaseOutput & {
   configFilePath?: string;
   skipEnqueue?: boolean;
   fromBundle?: boolean;
+  buildEnvVars?: Record<string, string>;
 };
 
 type NonNativeBuildOutput = BaseOutput & {
@@ -715,6 +719,7 @@ type NonNativeBuildOutput = BaseOutput & {
   configFilePath?: never;
   skipEnqueue?: never;
   fromBundle?: never;
+  buildEnvVars?: never;
 };
 
 const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.extend({
@@ -726,6 +731,9 @@ const InitializeDeploymentRequestBodyFull = InitializeDeploymentRequestBodyBase.
   // The uploaded artifact is a pre-built bundle (local install + bundle already done);
   // the build server should skip install/bundle and only run the container build.
   fromBundle: z.boolean().optional(),
+  // Build-time env var values for fromBundle deploys. Stored encrypted on the
+  // deployment and cleared once the deployment reaches a terminal status.
+  buildEnvVars: z.record(z.string()).optional(),
 });
 
 export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFull.transform(
@@ -733,7 +741,15 @@ export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFu
     if (data.isNativeBuild) {
       return { ...data, isNativeBuild: true as const };
     }
-    const { skipPromotion, artifactKey, configFilePath, skipEnqueue, fromBundle, ...rest } = data;
+    const {
+      skipPromotion,
+      artifactKey,
+      configFilePath,
+      skipEnqueue,
+      fromBundle,
+      buildEnvVars,
+      ...rest
+    } = data;
     return { ...rest, isNativeBuild: false as const };
   }
 );
@@ -837,6 +853,16 @@ export const GetDeploymentResponseBody = z.object({
 });
 
 export type GetDeploymentResponseBody = z.infer<typeof GetDeploymentResponseBody>;
+
+// Response of the dedicated build-env-vars endpoint (secret material — deliberately
+// kept off GetDeploymentResponseBody). Empty record when none were stored.
+export const GetDeploymentBuildEnvVarsResponseBody = z.object({
+  variables: z.record(z.string()),
+});
+
+export type GetDeploymentBuildEnvVarsResponseBody = z.infer<
+  typeof GetDeploymentBuildEnvVarsResponseBody
+>;
 
 export const GetLatestDeploymentResponseBody = GetDeploymentResponseBody.omit({
   worker: true,
