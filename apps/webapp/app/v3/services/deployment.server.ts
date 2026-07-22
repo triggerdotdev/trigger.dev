@@ -1,7 +1,7 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { BaseService } from "./baseService.server";
 import { errAsync, fromPromise, okAsync, type ResultAsync } from "neverthrow";
-import { type WorkerDeployment, type Project, boundedIn } from "@trigger.dev/database";
+import { Prisma, type WorkerDeployment, type Project, boundedIn } from "@trigger.dev/database";
 import {
   BuildServerMetadata,
   logger,
@@ -227,6 +227,8 @@ export class DeploymentService extends BaseService {
             status: "CANCELED",
             canceledAt: new Date(),
             canceledReason: data?.canceledReason,
+            // Build env vars only live for the active build window
+            buildEnvVars: Prisma.DbNull,
           },
         }),
         (error) => ({

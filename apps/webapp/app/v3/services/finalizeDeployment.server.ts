@@ -1,4 +1,5 @@
 import type { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
+import { Prisma } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
@@ -76,6 +77,8 @@ export class FinalizeDeploymentService extends BaseService {
         deployedAt: new Date(),
         // Only add the digest, if any
         imageReference: imageDigest ? `${deployment.imageReference}@${imageDigest}` : undefined,
+        // Build env vars only live for the active build window
+        buildEnvVars: Prisma.DbNull,
       },
     });
 

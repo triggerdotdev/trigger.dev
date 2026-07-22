@@ -26,7 +26,7 @@ import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";
 import { createBundleArchive } from "../deploy/bundleArchive.js";
 import { S2 } from "@s2-dev/streamstore";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink } from "node:fs/promises";
 import {
   CommonCommandOptions,
   commonOptions,
@@ -55,7 +55,7 @@ import {
   prettyWarning,
 } from "../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../utilities/dotEnv.js";
-import { isDirectory, writeJSONFile } from "../utilities/fileSystem.js";
+import { isDirectory } from "../utilities/fileSystem.js";
 import { setGithubActionsOutputAndEnvVars } from "../utilities/githubActions.js";
 import { createGitMeta, isGitHubActions } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
@@ -105,12 +105,12 @@ type DeployCommandOptions = z.infer<typeof DeployCommandOptions>;
 
 type Deployment = InitializeDeploymentResponseBody;
 
-// Carries the build-arg VALUES for the `ARG` lines in the generated Containerfile.
-// They only exist in the in-memory build manifest (build.json is deliberately scrubbed
-// because it gets COPY'd into the image), so --local-bundle writes them to this file
-// and --from-bundle reads them back. A .dockerignore entry keeps the file out of the
-// image COPY context so the values never land in image layers.
-const BUNDLE_BUILD_ARGS_FILE = "trigger-build-args.json";
+// Limits for the build-arg VALUES sent with --local-bundle deploys (they only exist in
+// the in-memory build manifest — build.json is deliberately scrubbed because it gets
+// COPY'd into the image). The server enforces the same limits authoritatively; this
+// pre-check just fails fast with a friendly error before uploading anything.
+const BUILD_ENV_VARS_MAX_BYTES = 128 * 1024;
+const BUILD_ENV_VARS_MAX_KEYS = 200;
 
 export function configureDeployCommand(program: Command) {
   return (
@@ -1305,6 +1305,9 @@ async function handleNativeBuildServerDeploy({
   // server then runs just the container build from it.
   let bundleManifest: BuildManifest | undefined;
   let bundleOutputPath: string | undefined;
+  // Build-arg values for --local-bundle, sent with the init request and stored
+  // encrypted on the deployment (they're scrubbed from build.json).
+  let bundleBuildEnvVars: Record<string, string> | undefined;
 
   if (options.localBundle) {
     // The container build runs on the build server with its own fixed settings —
@@ -1367,23 +1370,25 @@ async function handleNativeBuildServerDeploy({
     bundleManifest = buildManifest;
     bundleOutputPath = destination.path;
 
-    // Persist the build-arg values (scrubbed from build.json) for the build server's
-    // --from-bundle step, and keep them out of the image via .dockerignore.
-    await writeJSONFile(join(destination.path, BUNDLE_BUILD_ARGS_FILE), {
-      env: buildManifest.build.env ?? {},
-    });
+    // The build-arg values (scrubbed from build.json) travel via the deployment
+    // record (sent with the init request, stored encrypted server-side) — never
+    // as a file in the bundle. Pre-check the limits the server enforces.
+    bundleBuildEnvVars = buildManifest.build.env ?? {};
 
-    // Append to a .dockerignore a build extension may have produced, never clobber it.
-    // Our exclusions always go LAST so a pre-existing negation (!file) can't re-include
-    // the build-args file into the image context.
-    const dockerignorePath = join(destination.path, ".dockerignore");
-    const [, existingDockerignore] = await tryCatch(readFile(dockerignorePath, "utf-8"));
-    await writeFile(
-      dockerignorePath,
-      `${
-        existingDockerignore ? existingDockerignore.trimEnd() + "\n" : ""
-      }${BUNDLE_BUILD_ARGS_FILE}\n.dockerignore\n`
-    );
+    const buildEnvVarCount = Object.keys(bundleBuildEnvVars).length;
+    const buildEnvVarBytes = Buffer.byteLength(JSON.stringify(bundleBuildEnvVars), "utf8");
+
+    if (buildEnvVarCount > BUILD_ENV_VARS_MAX_KEYS) {
+      throw new Error(
+        `Your build uses too many build environment variables: ${buildEnvVarCount} (max ${BUILD_ENV_VARS_MAX_KEYS}).`
+      );
+    }
+
+    if (buildEnvVarBytes > BUILD_ENV_VARS_MAX_BYTES) {
+      throw new Error(
+        `Your build environment variables are too large: ${buildEnvVarBytes} bytes (max ${BUILD_ENV_VARS_MAX_BYTES}). Reduce the size of the env var values used by your build.`
+      );
+    }
 
     if (options.dryRun) {
       logger.info(`Dry run complete. View the built bundle at ${destination.path}`);
@@ -1522,6 +1527,10 @@ async function handleNativeBuildServerDeploy({
     externalId: options.externalId,
     force: options.force,
     fromBundle: options.localBundle ? true : undefined,
+    buildEnvVars:
+      options.localBundle && bundleBuildEnvVars && Object.keys(bundleBuildEnvVars).length > 0
+        ? bundleBuildEnvVars
+        : undefined,
   });
 
   if (!initializeDeploymentResult.success) {
@@ -1531,6 +1540,26 @@ async function handleNativeBuildServerDeploy({
   }
 
   const deployment = initializeDeploymentResult.data;
+
+  // Version-skew guard: an older server silently strips unknown fields, so if we sent
+  // build env vars and the server didn't ack storing them, the remote build would run
+  // without them and fail in a confusing way. Fail fast instead.
+  if (
+    options.localBundle &&
+    bundleBuildEnvVars &&
+    Object.keys(bundleBuildEnvVars).length > 0 &&
+    !deployment.buildEnvVarsStored
+  ) {
+    $deploymentSpinner.stop("Failed to initialize deployment");
+    log.error(
+      chalk.bold(
+        chalkError(
+          "This server does not support --local-bundle deploys with build environment variables yet. Deploy without --local-bundle instead."
+        )
+      )
+    );
+    throw new OutroCommandError(`Deployment failed`);
+  }
 
   const rawDeploymentLink = `${dashboardUrl}/projects/v3/${config.project}/deployments/${deployment.shortCode}`;
   const rawTestLink = `${dashboardUrl}/projects/v3/${config.project}/test?environment=${
@@ -1862,8 +1891,8 @@ export function verifyDirectory(dir: string, projectPath: string) {
 // the bundling step, as produced by --local-bundle / a dry-run build). Used primarily
 // by the build server to run ONLY the container build for pre-bundled artifacts, but
 // also works standalone for local testing. Skips config loading entirely — the bundle
-// has no trigger.config.ts source; everything needed comes from the bundle's build.json,
-// the build-args file, and the deployment record.
+// has no trigger.config.ts source; everything needed comes from the bundle's build.json
+// and the deployment record (including the build-arg values, stored encrypted there).
 async function handleFromBundleDeploy({
   bundleDir,
   options,
@@ -1910,26 +1939,6 @@ async function handleFromBundleDeploy({
 
   const bundleManifest = manifestResult.data;
 
-  // Recover the build-arg values scrubbed from build.json (written by --local-bundle).
-  // Optional: bundles without build-time env vars may not carry the file.
-  let buildEnvVars: Record<string, string> | undefined;
-  const [buildArgsError, buildArgsRaw] = await tryCatch(
-    readFile(join(bundlePath, BUNDLE_BUILD_ARGS_FILE), "utf-8")
-  );
-
-  if (!buildArgsError) {
-    let parsed: { env?: Record<string, string> };
-    try {
-      parsed = JSON.parse(buildArgsRaw);
-    } catch {
-      throw new Error(`Invalid ${BUNDLE_BUILD_ARGS_FILE} in the bundle directory`);
-    }
-    buildEnvVars = (typeof parsed === "object" && parsed !== null ? parsed.env : undefined) ?? {};
-  } else if (bundleManifest.build.env && Object.keys(bundleManifest.build.env).length > 0) {
-    // The scrubbed manifest can't carry values, but if a manifest somehow has them, use them.
-    buildEnvVars = bundleManifest.build.env;
-  }
-
   const projectRef = projectRefOverride ?? bundleManifest.config.project;
 
   const branch = options.env === "preview" ? getBranch({ specified: options.branch }) : undefined;
@@ -1965,11 +1974,34 @@ async function handleFromBundleDeploy({
     throw new Error("Failed to get project client");
   }
 
+  // Recover the build-arg values scrubbed from build.json. In attach mode they were
+  // stored encrypted on the deployment by --local-bundle's init request; fetch them
+  // through the dedicated endpoint. An empty record is normal for builds that use no
+  // build-time env vars.
+  let buildEnvVars: Record<string, string> | undefined;
+
+  if (existingDeploymentId) {
+    const buildEnvVarsResult =
+      await projectClient.client.getDeploymentBuildEnvVars(existingDeploymentId);
+
+    if (!buildEnvVarsResult.success) {
+      throw new Error(
+        `Failed to fetch the build environment variables for deployment ${existingDeploymentId}: ${buildEnvVarsResult.error}`
+      );
+    }
+
+    buildEnvVars = buildEnvVarsResult.data.variables;
+  } else if (bundleManifest.build.env && Object.keys(bundleManifest.build.env).length > 0) {
+    // The scrubbed manifest can't carry values, but if a manifest somehow has them, use them.
+    buildEnvVars = bundleManifest.build.env;
+  }
+
   if (!existingDeploymentId) {
     // The supported flow is attach mode (the build server sets
     // TRIGGER_EXISTING_DEPLOYMENT_ID). Fresh-init from a bundle is equivalent to a
     // plain local build and mainly useful for local testing — warn so nobody relies
-    // on it against cloud by accident.
+    // on it against cloud by accident. There are no stored build env vars on this
+    // path; the build proceeds without them.
     logger.warn(
       "No existing deployment to attach to — initializing a fresh local-build deployment from the bundle. This path is intended for testing."
     );
