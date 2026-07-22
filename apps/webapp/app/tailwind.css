@@ -225,6 +225,25 @@
 }
 
 /*
+  Theme overrides. A theme re-maps ONLY the semantic tokens above, never the raw
+  palette values. That invariant is what lets a future [data-contrast] overlay
+  re-map semantic tokens on top of whichever theme is active.
+*/
+
+/*
+  Dark is System preference's dark mode. It derives from Classic (the :root
+  defaults) - only accent adjustments shared with Light mode belong here, so
+  cross-mode accents can be tuned in one place. Monochrome surfaces stay
+  Classic's.
+*/
+[data-theme="dark"] {
+  /* Derives from Classic. Add only shared cross-mode accent overrides here. */
+
+  /* emerald-600 clears 3:1 on both dark cards and white (4.57 / 3.36) */
+  --color-bulkActions: var(--color-emerald-600);
+}
+
+/*
   Code syntax palette - the trigger-dark highlight theme, shared by the shiki
   theme (streamdown) and the prism theme (CodeBlock). Consumed from JS via
   var(), so declared static to always be emitted.
@@ -334,8 +353,9 @@
 @custom-variant lg-height (@media (max-height: 750px));
 @custom-variant md-height (@media (max-height: 600px));
 
-/* dark: follows the app theme (data-theme on <html>), not the OS preference */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+/* dark: follows the app theme (data-theme on <html>), not the OS preference.
+   Classic and Dark are both dark-mode themes, so the variant matches both. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="classic"], [data-theme="dark"] *, [data-theme="classic"] *));
 
 @utility focus-custom {
   &:focus-visible {
@@ -490,12 +510,21 @@
     --chart-5: 27 87% 67%;
   }
 
-  [data-theme="dark"] {
+  /* Classic and Dark share these HSL chart vars - they were the app-wide dark values. */
+  :is([data-theme="dark"], [data-theme="classic"]) {
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+  }
+
+  /* Same hues as the :root set, lightness lowered to clear 3:1 on white */
+  [data-theme="light"] {
+    --chart-1: 12 76% 55%;
+    --chart-2: 173 58% 36%;
+    --chart-4: 43 74% 38%;
+    --chart-5: 27 87% 45%;
   }
 
   /* Override react-grid-layout placeholder color (default is red) */
@@ -698,16 +727,32 @@
   --color-run-canceled: #d8dbdf;
   --color-run-expired: #dee0e4;
 
+  /* Amber run statuses: same family, one step darker each so ordering holds */
+  --color-run-waiting-for-deploy: #b45309;
+  --color-run-paused: #d97706;
+
   /* Icons that fail contrast on white */
-  --color-schedules: var(--color-yellow-600);
-  --color-previewBranches: var(--color-yellow-600);
+  --color-schedules: var(--color-yellow-700);
+  --color-previewBranches: var(--color-yellow-700);
   --color-customDashboards: var(--color-charcoal-500);
+  /* mint-600 instead of green-600: green-600 still misses 3:1 on white */
+  --color-metrics: var(--color-mint-600);
+  --color-regions: var(--color-mint-600);
+  --color-aiMetrics: var(--color-mint-600);
+  --color-bulkActions: var(--color-emerald-600);
+  /* amber-600 matches the light warning token (borderline 2.84:1 on white) */
+  --color-concurrency: var(--color-amber-600);
+  --color-errors: var(--color-amber-600);
+  --color-apiKeys: var(--color-amber-600);
 
   /* Callouts - deep tints instead of the dark theme's pastels */
   --color-callout-warning-text: var(--color-yellow-800);
   --color-callout-error-text: var(--color-rose-700);
   --color-callout-success-text: var(--color-green-800);
+  --color-callout-docs: var(--color-blue-500);
   --color-callout-docs-text: var(--color-blue-800);
+  --color-callout-pending: var(--color-blue-500);
+  --color-callout-pricing: var(--color-indigo-500);
   --color-callout-pending-bg: var(--color-blue-100);
   --color-callout-pending-text: var(--color-blue-800);
   --color-callout-pricing-bg: var(--color-indigo-100);

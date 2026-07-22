@@ -46,7 +46,7 @@ export function RunTag({
       return (
         <>
           <TagNotch />
-          <span className="flex items-center rounded-r-sm border-y border-r border-grid-bright bg-background-bright pr-1.5 text-text-dimmed group-hover:rounded-r-none group-hover:group-has-[[href]]:border-border-bright group-hover:group-has-[[href]]:text-charcoal-300">
+          <span className="flex items-center rounded-r-sm border-y border-r border-grid-bright bg-background-bright pr-1.5 text-text-dimmed group-hover:rounded-r-none group-hover:group-has-[[href]]:border-border-bright group-hover:group-has-[[href]]:text-text-bright">
             {tag}
           </span>
         </>
@@ -55,10 +55,10 @@ export function RunTag({
       return (
         <>
           <TagNotch />
-          <span className="flex items-center border-y border-r border-grid-bright bg-background-bright pr-1.5 text-text-dimmed group-hover:group-has-[[href]]:border-border-bright group-hover:group-has-[[href]]:text-charcoal-300">
+          <span className="flex items-center border-y border-r border-grid-bright bg-background-bright pr-1.5 text-text-dimmed group-hover:group-has-[[href]]:border-border-bright group-hover:group-has-[[href]]:text-text-bright">
             {tagResult.key}
           </span>
-          <span className="flex items-center whitespace-nowrap rounded-r-sm border-y border-r border-grid-bright bg-background-hover px-1.5 text-text-dimmed group-hover:rounded-r-none group-hover:group-has-[[href]]:border-border-bright group-hover:group-has-[[href]]:bg-background-raised group-hover:group-has-[[href]]:text-charcoal-300">
+          <span className="flex items-center whitespace-nowrap rounded-r-sm border-y border-r border-grid-bright bg-background-hover px-1.5 text-text-dimmed group-hover:rounded-r-none group-hover:group-has-[[href]]:border-border-bright group-hover:group-has-[[href]]:bg-background-raised group-hover:group-has-[[href]]:text-text-bright">
             {tagResult.value}
           </span>
         </>

@@ -122,10 +122,10 @@ const ClientTabsTrigger = React.forwardRef<
             <motion.div
               layoutId={layoutId}
               transition={{ duration: 0.4, type: "spring" }}
-              className="absolute inset-0 rounded-[2px] border border-[#e2e4e9] bg-white dark:border-border-brightest/50 dark:bg-surface-control"
+              className="absolute inset-0 rounded-[2px] border border-grid-bright bg-white dark:border-border-brightest/50 dark:bg-surface-control"
             />
           ) : (
-            <div className="absolute inset-0 rounded-[2px] border border-[#e2e4e9] bg-white dark:border-border-brightest/50 dark:bg-surface-control" />
+            <div className="absolute inset-0 rounded-[2px] border border-grid-bright bg-white dark:border-border-brightest/50 dark:bg-surface-control" />
           )
         ) : null}
       </TabsPrimitive.Trigger>

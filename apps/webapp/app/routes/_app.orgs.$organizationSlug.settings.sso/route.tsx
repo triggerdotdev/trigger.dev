@@ -848,7 +848,7 @@ function StatusIndicator({ label, active = true }: { label: string; active?: boo
         active ? "text-success" : "text-text-dimmed"
       )}
     >
-      <span className={cn("size-1.5 rounded-full", active ? "bg-success" : "bg-charcoal-500")} />
+      <span className={cn("size-1.5 rounded-full", active ? "bg-success" : "bg-text-dimmed")} />
       {label}
     </span>
   );

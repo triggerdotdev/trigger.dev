@@ -3,4 +3,4 @@ area: webapp
 type: feature
 ---
 
-Adds an opt-in light theme behind a feature flag. When enabled, an Interface theme setting appears on the account page (dark stays the default). Code editors and syntax highlighting use the trigger.light palette.
+Adds an opt-in Interface theme setting on the account page behind a feature flag. Choose Classic (the default), System preference (follows your OS), Dark, or Light. System preference switches automatically when your OS appearance changes.

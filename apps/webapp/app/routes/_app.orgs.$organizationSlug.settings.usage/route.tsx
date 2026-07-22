@@ -166,7 +166,7 @@ export default function Page() {
                     </p>
                   </div>
                   <div className="flex w-full flex-1 flex-col gap-1 pb-1">
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-charcoal-700">
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-background-raised">
                       <div
                         className="h-full rounded-full bg-blue-500"
                         style={{

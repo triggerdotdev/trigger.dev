@@ -2115,7 +2115,7 @@ function VersionsTab({
               {(v.model || v.commitMessage) && (
                 <div className="flex items-center gap-1.5 truncate text-xs text-text-dimmed">
                   {v.model && <span>{v.model}</span>}
-                  {v.model && v.commitMessage && <span className="text-charcoal-600">/</span>}
+                  {v.model && v.commitMessage && <span className="text-text-dimmed/50">/</span>}
                   {v.commitMessage && <span className="truncate">{v.commitMessage}</span>}
                 </div>
               )}
