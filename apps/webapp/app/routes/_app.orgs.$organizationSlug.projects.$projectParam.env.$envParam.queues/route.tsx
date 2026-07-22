@@ -625,59 +625,64 @@ function QueuesWithMetricsView() {
 
         {/* Env saturation, Backlog, Scheduling delay p95, Throttled viz — full-size, synced,
             drag-to-zoom line charts (Agent page pattern). Four chart tiles: 2x2 below lg, 4-up
-            from lg, derived from the tile count. `kind="charts"` bakes the fixed row height. */}
-        <ChartSyncProvider onZoom={zoomToTimeFilter}>
-          <MetricsLayout.Grid kind="charts">
-            {QUEUE_HEADER_TILES.map((tile) => (
-              <QueueEnvMetricChart
-                key={tile.id}
-                tile={tile}
-                timeRange={timeRange}
-                queueNames={chartQueueNames}
-                referenceLines={
-                  tile.id === "saturation"
-                    ? [
-                        {
-                          y: 100,
-                          label: `Limit ${environment.concurrencyLimit}`,
-                          labelPlacement: "outside" as const,
-                        },
-                        ...(environment.burstFactor > 1
-                          ? [
-                              {
-                                y: Math.round(environment.burstFactor * 100),
-                                label: `Burst ${Math.round(
-                                  environment.concurrencyLimit * environment.burstFactor
-                                )}`,
-                                labelPlacement: "outside" as const,
-                              },
-                            ]
-                          : []),
-                      ]
-                    : undefined
-                }
-                // Saturation and p95 "step over the line": a per-bucket overlay retraces only
-                // the over-threshold stretches in warning colour, so under-threshold values stay
-                // blue. (A gradient split can't do this reliably — an SVG objectBoundingBox
-                // gradient tracks the line's own bbox, not the y-axis, so a low/flat line reads
-                // as entirely warning-coloured.)
-                // All thresholded lines colour warning where they step over the threshold: the
-                // per-bucket overlay retraces only the over-threshold stretches, so the colour
-                // change tracks the axis crossing.
-                warningOverlay={
-                  tile.id === "saturation"
-                    ? { threshold: 100 }
-                    : tile.id === "p95"
-                      ? { threshold: 60_000 }
-                      : tile.id === "throttled"
-                        ? // Integer counts: threshold 0 warns once a bucket has ≥1 throttle.
-                          { threshold: 0 }
-                        : undefined
-                }
-              />
-            ))}
-          </MetricsLayout.Grid>
-        </ChartSyncProvider>
+            from lg, derived from the tile count. `kind="charts"` bakes the fixed row height.
+            Only when there are queues to chart: not-success states (engine-version, no tasks) and a
+            filtered-to-empty list leave chartQueueNames empty, where the tiles would just render
+            four "No activity" cards above the blank state. */}
+        {chartQueueNames.length > 0 ? (
+          <ChartSyncProvider onZoom={zoomToTimeFilter}>
+            <MetricsLayout.Grid kind="charts">
+              {QUEUE_HEADER_TILES.map((tile) => (
+                <QueueEnvMetricChart
+                  key={tile.id}
+                  tile={tile}
+                  timeRange={timeRange}
+                  queueNames={chartQueueNames}
+                  referenceLines={
+                    tile.id === "saturation"
+                      ? [
+                          {
+                            y: 100,
+                            label: `Limit ${environment.concurrencyLimit}`,
+                            labelPlacement: "outside" as const,
+                          },
+                          ...(environment.burstFactor > 1
+                            ? [
+                                {
+                                  y: Math.round(environment.burstFactor * 100),
+                                  label: `Burst ${Math.round(
+                                    environment.concurrencyLimit * environment.burstFactor
+                                  )}`,
+                                  labelPlacement: "outside" as const,
+                                },
+                              ]
+                            : []),
+                        ]
+                      : undefined
+                  }
+                  // Saturation and p95 "step over the line": a per-bucket overlay retraces only
+                  // the over-threshold stretches in warning colour, so under-threshold values stay
+                  // blue. (A gradient split can't do this reliably — an SVG objectBoundingBox
+                  // gradient tracks the line's own bbox, not the y-axis, so a low/flat line reads
+                  // as entirely warning-coloured.)
+                  // All thresholded lines colour warning where they step over the threshold: the
+                  // per-bucket overlay retraces only the over-threshold stretches, so the colour
+                  // change tracks the axis crossing.
+                  warningOverlay={
+                    tile.id === "saturation"
+                      ? { threshold: 100 }
+                      : tile.id === "p95"
+                        ? { threshold: 60_000 }
+                        : tile.id === "throttled"
+                          ? // Integer counts: threshold 0 warns once a bucket has ≥1 throttle.
+                            { threshold: 0 }
+                          : undefined
+                  }
+                />
+              ))}
+            </MetricsLayout.Grid>
+          </ChartSyncProvider>
+        ) : null}
 
         {success ? (
           <MetricsLayout.Content>
