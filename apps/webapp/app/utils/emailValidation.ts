@@ -4,5 +4,5 @@ export const MAX_EMAIL_LENGTH = 254;
 
 export const emailSchema = z
   .string()
-  .max(MAX_EMAIL_LENGTH, `Email must be ${MAX_EMAIL_LENGTH} characters or fewer`)
-  .pipe(z.string().email());
+  .email()
+  .max(MAX_EMAIL_LENGTH, `Email must be ${MAX_EMAIL_LENGTH} characters or fewer`);
