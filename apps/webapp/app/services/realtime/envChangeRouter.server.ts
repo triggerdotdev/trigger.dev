@@ -57,11 +57,7 @@ export type EnvChangeRouterOptions = {
    * (columnSig,runId) among them (the serialize-once-per-batch floor). `deliveries / distinctRuns`
    * is the average number of feeds a changed run is delivered to; a shared-serialization step would
    * save at most `deliveries - distinctRuns` encodings. */
-  onEmissionFanout?: (stats: {
-    distinctRuns: number;
-    deliveries: number;
-    feeds: number;
-  }) => void;
+  onEmissionFanout?: (stats: { distinctRuns: number; deliveries: number; feeds: number }) => void;
   /** Read-your-writes gate over the replica: delays wake-path hydrates until the replica
    * should have applied the change (record.updatedAtMs + lag + margin), and re-hydrates
    * rows the tripwire still finds stale. Omit to hydrate immediately (legacy behavior). */
