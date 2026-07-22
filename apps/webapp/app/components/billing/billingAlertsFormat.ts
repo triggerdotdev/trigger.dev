@@ -315,8 +315,9 @@ export function getAlertPreviewLimitCents(
   planLimitCents: number
 ): number {
   const amountCents = getSavedAlertAmountCents(alerts);
+  // Percentages always apply to the current limit, not the base stored at last save.
   if (amountCents > 0 && percentageAlertLevelsToUiThresholds(alerts.alertLevels).length > 0) {
-    return amountCents;
+    return effectiveLimitCents;
   }
   if (percentageAlertAmountMatches(amountCents, effectiveLimitCents, planLimitCents)) {
     return amountCents;
