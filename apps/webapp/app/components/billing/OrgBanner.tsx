@@ -63,7 +63,7 @@ export function OrgBanner() {
     case OrgBannerKind.LimitGrace:
       return hideBillingLimitBanner ? null : <LimitGraceBanner />;
     case OrgBannerKind.NoLimitConfigured:
-      return <NoLimitConfiguredBanner onBillingLimitsPage={hideBillingLimitBanner} />;
+      return hideBillingLimitBanner ? null : <NoLimitConfiguredBanner />;
     case OrgBannerKind.Upgrade:
       return organization ? <UpgradeBanner /> : null;
     case OrgBannerKind.EnvironmentWarning:
@@ -141,29 +141,25 @@ function LimitGraceBanner() {
   );
 }
 
-function NoLimitConfiguredBanner({ onBillingLimitsPage }: { onBillingLimitsPage: boolean }) {
+function NoLimitConfiguredBanner() {
   const organization = useOrganization();
   const canManageBillingLimits = useCanManageBillingLimits();
-
-  if (!canManageBillingLimits) {
-    return null;
-  }
 
   return (
     <AnimatedOrgBannerBar
       show
       variant="warning"
       action={
-        onBillingLimitsPage ? undefined : (
+        canManageBillingLimits ? (
           <LinkButton variant="tertiary/small" to={v3BillingLimitsPath(organization)}>
             Configure billing limit
           </LinkButton>
-        )
+        ) : undefined
       }
     >
-      {onBillingLimitsPage
-        ? "Please configure a billing limit to protect your organization from unexpected usage spikes."
-        : "Protect your organization from unexpected usage spikes."}
+      {canManageBillingLimits
+        ? "Protect your organization from unexpected usage spikes."
+        : "Billing limits are not configured for this organization. Contact an organization administrator to configure them."}
     </AnimatedOrgBannerBar>
   );
 }

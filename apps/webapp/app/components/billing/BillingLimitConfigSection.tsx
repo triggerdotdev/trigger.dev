@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getBillingLimitMode } from "~/components/billing/billingAlertsFormat";
 import { formatGracePeriodMs } from "~/components/billing/billingLimitFormat";
 import { AnimatedCallout } from "~/components/primitives/AnimatedCallout";
+import { Callout } from "~/components/primitives/Callout";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -189,6 +190,13 @@ export function BillingLimitConfigSection({
           billable environments enter a grace period before new triggers are rejected.
         </Paragraph>
       </div>
+
+      {!billingLimit.isConfigured && (
+        <Callout variant="warning" className="mb-3">
+          Configure a monthly billing limit below to cap your spend, or set no limit to let runs
+          keep going.
+        </Callout>
+      )}
 
       <Form method="post" {...getFormProps(form)} ref={formRef}>
         <input type="hidden" name="intent" value="billing-limit" />
