@@ -115,6 +115,18 @@ export type ExecuteQueryResult<T> =
     }
   | { success: false; error: Error };
 
+/** Own-property flag tagged on the transient "query concurrency exceeded" rejection (retryable). */
+const QUERY_CONCURRENCY_REJECTION_FLAG = "__queryConcurrencyRejection";
+
+/** True for the transient concurrency-limit rejection — a stable signal callers can retry on. */
+export function isQueryConcurrencyRejection(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as Record<string, unknown>)[QUERY_CONCURRENCY_REJECTION_FLAG] === true
+  );
+}
+
 const INTERVAL_UNIT_SECONDS: Record<TimeBucketInterval["unit"], number> = {
   SECOND: 1,
   MINUTE: 60,
@@ -204,7 +216,11 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       acquireResult.reason === "key_limit"
         ? `You've exceeded your query concurrency of ${orgLimit} for this project. Please try again later.`
         : "We're experiencing a lot of queries at the moment. Please try again later.";
-    return { success: false, error: new QueryError(errorMessage, { query: options.query }) };
+    const error = new QueryError(errorMessage, { query: options.query });
+    // Stable marker so callers can retry on a transient concurrency rejection without
+    // matching the message text (which is free to change).
+    Object.assign(error, { [QUERY_CONCURRENCY_REJECTION_FLAG]: true });
+    return { success: false, error };
   }
 
   // Detect which table the query targets to determine the time column
