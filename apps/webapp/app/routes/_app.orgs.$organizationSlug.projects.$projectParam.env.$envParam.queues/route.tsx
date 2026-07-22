@@ -10,7 +10,7 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
@@ -709,14 +709,14 @@ function QueuesWithMetricsView() {
                     tooltip={
                       <div className="max-w-xs space-y-1 p-1 text-left text-xs text-text-dimmed">
                         <p>
-                          <span className="text-text-bright">Environment</span> — the environment's
+                          <span className="text-text-bright">Environment</span>: the environment's
                           limit of {environment.concurrencyLimit}.
                         </p>
                         <p>
-                          <span className="text-text-bright">User</span> — a limit set in your code.
+                          <span className="text-text-bright">User</span>: a limit set in your code.
                         </p>
                         <p>
-                          <span className="text-text-bright">Override</span> — set manually from the
+                          <span className="text-text-bright">Override</span>: set manually from the
                           dashboard or API.
                         </p>
                       </div>
@@ -737,7 +737,11 @@ function QueuesWithMetricsView() {
                   <TableHeaderCell
                     alignment="right"
                     {...getSortProps("backlog")}
-                    tooltip="Runs waiting over the selected window. Yellow where throttled."
+                    tooltip={
+                      <>
+                        Runs waiting over the selected window. <WarningSwatch /> where throttled.
+                      </>
+                    }
                   >
                     Backlog
                   </TableHeaderCell>
@@ -1194,11 +1198,23 @@ type MetricTileRow = Record<string, number | string | null>;
 /** One charted point per time bucket, already aggregated across the visible queue set. */
 type TilePoint = { bucket: number; value: number };
 
+// Inline colour swatch matching the chart's warning ("yellow") line — used in tooltip copy that
+// refers to that colour instead of naming it, so the swatch always matches the chart.
+function WarningSwatch() {
+  return (
+    <span
+      className="mx-0.5 inline-block size-2.5 rounded-[3px] align-middle"
+      style={{ backgroundColor: "var(--color-warning)" }}
+      aria-label="yellow"
+    />
+  );
+}
+
 type QueueHeaderTile = {
   id: string;
   label: string;
   /** Info-icon copy explaining what the chart shows, rendered next to the card title. */
-  description: string;
+  description: ReactNode;
   color: string;
   /** Optional inline legend rendered below the card title: a fixed set of {colored square, label}
    * entries, for charts where a colour (e.g. the orange warning line) needs explaining. */
@@ -1263,7 +1279,12 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
   {
     id: "saturation",
     label: "Env saturation",
-    description: "Running as a share of the environment limit. Yellow over 100% (burst headroom).",
+    description: (
+      <>
+        Running as a share of the environment limit. Turns <WarningSwatch /> over 100% (burst
+        headroom).
+      </>
+    ),
     color: "var(--color-queues)",
     legend: [
       { color: "var(--color-queues)", label: "Saturation" },
@@ -1303,7 +1324,11 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
   {
     id: "p95",
     label: "Scheduling delay p95",
-    description: "p95 wait from eligible to dequeued. Yellow over 1 min.",
+    description: (
+      <>
+        p95 wait from eligible to dequeued. Turns <WarningSwatch /> over 1 min.
+      </>
+    ),
     totalTooltip: "The worst p95 in the selected window.",
     color: "var(--color-queues)",
     legend: [
