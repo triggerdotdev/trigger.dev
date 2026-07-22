@@ -245,7 +245,25 @@ export default function Page() {
             everything, like the Queues list. The time filter scopes the tab charts; search filters
             the keys table. The bar is pinned by the layout while the page scrolls. */}
         <MetricsLayout.Filters>
-          <div className="flex items-center gap-2">
+          <div className="pl-2">
+            <TabContainer>
+              <TabButton
+                isActive={view === "overview"}
+                layoutId="queue-detail-view"
+                onClick={() => replace({ view: undefined, key: undefined })}
+              >
+                Overview
+              </TabButton>
+              <TabButton
+                isActive={view === "keys"}
+                layoutId="queue-detail-view"
+                onClick={() => replace({ view: "keys" })}
+              >
+                Concurrency keys
+              </TabButton>
+            </TabContainer>
+          </div>
+          <div className="flex items-center gap-1.5">
             {view === "keys" && hasKeys ? (
               <SearchInput placeholder="Search keys…" paramName="query" resetParams={["key"]} />
             ) : null}
@@ -256,6 +274,16 @@ export default function Page() {
               maxPeriodDays={maxPeriodDays}
               valueClassName="text-text-bright"
               shortcut={{ key: "d" }}
+            />
+            <QueueOverrideConcurrencyButton
+              queue={queue}
+              environmentConcurrencyLimit={environmentConcurrencyLimit}
+              trigger="button"
+            />
+            <QueuePauseResumeButton
+              queue={{ id: queue.id, name: queue.name, paused: queue.paused }}
+              variant="secondary/small"
+              withQueueName
             />
           </div>
         </MetricsLayout.Filters>
@@ -275,23 +303,6 @@ export default function Page() {
         {/* Tabs + charts share the padded (inset) column. Both tabs always render; the keys tab
             shows an empty state when the queue has no concurrency keys. */}
         <MetricsLayout.Content inset>
-          <TabContainer>
-            <TabButton
-              isActive={view === "overview"}
-              layoutId="queue-detail-view"
-              onClick={() => replace({ view: undefined, key: undefined })}
-            >
-              Overview
-            </TabButton>
-            <TabButton
-              isActive={view === "keys"}
-              layoutId="queue-detail-view"
-              onClick={() => replace({ view: "keys" })}
-            >
-              Concurrency keys
-            </TabButton>
-          </TabContainer>
-
           {view === "keys" ? (
             hasKeys ? (
               <ConcurrencyKeyCharts
@@ -983,25 +994,7 @@ function QueueStats({
 
   return (
     <MetricsLayout.Grid>
-      <ConcurrencyBlock
-        running={runningDisplay}
-        limit={limitDisplay}
-        paused={queue.paused}
-        accessory={
-          <div className="flex items-center gap-1">
-            <QueuePauseResumeButton
-              queue={{ id: queue.id, name: queue.name, paused: queue.paused }}
-              variant="secondary/small-icon"
-              iconOnly
-            />
-            <QueueOverrideConcurrencyButton
-              queue={queue}
-              environmentConcurrencyLimit={environmentConcurrencyLimit}
-              trigger="icon"
-            />
-          </div>
-        }
-      />
+      <ConcurrencyBlock running={runningDisplay} limit={limitDisplay} paused={queue.paused} />
       <BigNumber
         title="Queued"
         value={queuedDisplay}

@@ -32,6 +32,7 @@ export function QueuePauseResumeButton({
   fullWidth = false,
   showTooltip = true,
   iconOnly = false,
+  withQueueName = false,
 }: {
   /** The "id" here is a friendlyId */
   queue: { id: string; name: string; paused: boolean };
@@ -41,6 +42,8 @@ export function QueuePauseResumeButton({
   /** Icon-only trigger (label moves to the tooltip). For compact placements like the detail-page
    * live blocks. */
   iconOnly?: boolean;
+  /** Render the full "Pause/Resume {name} queue" label instead of the short "Pause"/"Resume". */
+  withQueueName?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -64,7 +67,13 @@ export function QueuePauseResumeButton({
                   textAlignLeft={fullWidth}
                   aria-label={label}
                 >
-                  {iconOnly ? undefined : queue.paused ? "Resume" : "Pause"}
+                  {iconOnly
+                    ? undefined
+                    : withQueueName
+                      ? `${queue.paused ? "Resume" : "Pause"} ${queue.name} queue`
+                      : queue.paused
+                        ? "Resume"
+                        : "Pause"}
                 </Button>
               </DialogTrigger>
             </div>
@@ -209,24 +218,38 @@ export function QueueOverrideConcurrencyButton({
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
+      ) : trigger === "button" ? (
+        <TooltipProvider disableHoverableContent={true}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="cursor-pointer [&_button]:cursor-pointer">
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="secondary/small"
+                    LeadingIcon={AdjustmentsHorizontalIcon}
+                    leadingIconClassName="text-text-dimmed"
+                    aria-label={
+                      isOverridden ? "Edit concurrency override" : "Override concurrency limit"
+                    }
+                  >
+                    {isOverridden ? "Edit override" : "Override limit"}
+                  </Button>
+                </DialogTrigger>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-[230px] text-xs">
+              Set a custom concurrency limit for this queue, overriding the environment default — as
+              an absolute number or a percentage of the environment limit.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ) : (
         <DialogTrigger asChild>
-          {trigger === "button" ? (
-            <Button
-              type="button"
-              variant="minimal/small"
-              LeadingIcon={AdjustmentsHorizontalIcon}
-              leadingIconClassName="text-text-dimmed"
-              aria-label={isOverridden ? "Edit concurrency override" : "Override concurrency limit"}
-            >
-              {isOverridden ? "Edit override" : "Override"}
-            </Button>
-          ) : (
-            <PopoverMenuItem
-              icon={AdjustmentsHorizontalIcon}
-              title={isOverridden ? "Edit override…" : "Override limit…"}
-            />
-          )}
+          <PopoverMenuItem
+            icon={AdjustmentsHorizontalIcon}
+            title={isOverridden ? "Edit override…" : "Override limit…"}
+          />
         </DialogTrigger>
       )}
       <DialogContent>
