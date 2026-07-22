@@ -13,6 +13,9 @@ config({ path: path.resolve(__dirname, "../.env") });
 // the pair — the ioredis mock below forces lazyConnect, so nothing ever dials.
 process.env.REDIS_HOST ??= "localhost";
 process.env.REDIS_PORT ??= "6379";
+process.env.PROVIDER_SECRET ??= "test-provider-secret";
+process.env.COORDINATOR_SECRET ??= "test-coordinator-secret";
+process.env.MANAGED_WORKER_SECRET ??= "test-managed-worker-secret";
 
 // Worker singletons construct a RedisWorker at import time whose ioredis client
 // connects eagerly, so any test importing the service graph opens real Redis
@@ -33,13 +36,10 @@ function createWorkerStub() {
 
 vi.mock("~/v3/commonWorker.server", () => ({ commonWorker: createWorkerStub() }));
 vi.mock("~/v3/batchTriggerWorker.server", () => ({ batchTriggerWorker: createWorkerStub() }));
-vi.mock("~/v3/legacyRunEngineWorker.server", () => ({
-  legacyRunEngineWorker: createWorkerStub(),
-}));
 vi.mock("~/v3/alertsWorker.server", () => ({ alertsWorker: createWorkerStub() }));
 
-// RunEngine, MarQS, devPubSub and the socket.io server are further singletons
-// that open eager ioredis connections at import via the same pattern. No test
+// RunEngine and the socket.io server are further singletons that open eager
+// ioredis connections at import via the same pattern. No test
 // uses these app-level singletons directly (store-routing tests build their own
 // engine and run store), so stub them to no-op proxies.
 // Recursive no-op proxy: property access at any depth returns another callable
@@ -157,8 +157,6 @@ vi.mock("~/services/dataStores/organizationDataStoresRegistryInstance.server", (
 }));
 
 vi.mock("~/v3/runEngine.server", () => ({ engine: noopProxy() }));
-vi.mock("~/v3/marqs/index.server", () => ({ marqs: noopProxy(), MarQS: class {} }));
-vi.mock("~/v3/marqs/devPubSub.server", () => ({ devPubSub: noopProxy() }));
 vi.mock("~/v3/handleSocketIo.server", () => ({
   socketIo: noopProxy(),
   roomFromFriendlyRunId: (id: string) => `room:${id}`,

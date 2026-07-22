@@ -29,6 +29,7 @@ import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { UsagePresenter, type UsageSeriesData } from "~/presenters/v3/UsagePresenter.server";
+import { getPromoCredits } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
 import { useBillingLimit } from "~/hooks/useOrganizations";
@@ -81,13 +82,25 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     startDate,
   });
 
+  // Credit-grant balance (promo now, other grant types later). Cheap + cached +
+  // fails to null, and applies to any org with grants — not gated on plan tier.
+  const promoCredits = await getPromoCredits(organization.id);
+
   return typeddefer({
     usage,
     tasks,
     months,
     isCurrentMonth: startDate.toISOString() === months[0].toISOString(),
+    promoCredits,
   });
 }
+
+const creditExpiryFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "utc",
+});
 
 const monthDateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "long",
@@ -96,10 +109,14 @@ const monthDateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 export default function Page() {
-  const { usage, tasks, months, isCurrentMonth } = useTypedLoaderData<typeof loader>();
+  const { usage, tasks, months, isCurrentMonth, promoCredits } =
+    useTypedLoaderData<typeof loader>();
   const currentPlan = useCurrentPlan();
   const billingLimit = useBillingLimit();
   const planLimitCents = currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 0;
+  // Enterprise bills against prepaid credits, not a per-month included-usage tier,
+  // so the "Included usage" marker doesn't apply.
+  const isEnterprise = currentPlan?.v3Subscription?.plan?.type === "enterprise";
   const billingLimitDollars = isCurrentMonth
     ? getUsageBarBillingLimitDollars(billingLimit, planLimitCents)
     : undefined;
@@ -139,6 +156,45 @@ export default function Page() {
                 ))
               }
             </Select>
+            {promoCredits && (
+              <div className="flex flex-col gap-1 border-t border-grid-dimmed p-3">
+                <div className="flex items-end gap-8">
+                  <div className="flex flex-col gap-1">
+                    <Header2 className="whitespace-nowrap">Credits</Header2>
+                    <p className="whitespace-nowrap text-3xl font-medium text-text-bright">
+                      {formatCurrency(promoCredits.remainingCents / 100, false)}
+                    </p>
+                  </div>
+                  <div className="flex w-full flex-1 flex-col gap-1 pb-1">
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-charcoal-700">
+                      <div
+                        className="h-full rounded-full bg-blue-500"
+                        style={{
+                          width: `${
+                            promoCredits.grantedCents > 0
+                              ? Math.min(
+                                  100,
+                                  Math.max(
+                                    0,
+                                    (promoCredits.remainingCents / promoCredits.grantedCents) * 100
+                                  )
+                                )
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                    <Paragraph variant="extra-small" className="text-text-dimmed">
+                      {formatCurrency(promoCredits.remainingCents / 100, false)} of{" "}
+                      {formatCurrency(promoCredits.grantedCents / 100, false)} remaining
+                      {promoCredits.expiresAt
+                        ? ` · expires ${creditExpiryFormatter.format(new Date(promoCredits.expiresAt))}`
+                        : ""}
+                    </Paragraph>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex w-full flex-col gap-2 border-t border-grid-dimmed p-3">
               <Suspense fallback={<Spinner />}>
                 <Await
@@ -162,7 +218,9 @@ export default function Page() {
                       <UsageBar
                         current={usage.overall.current}
                         isPaying={currentPlan?.v3Subscription?.isPaying ?? false}
-                        tierLimit={isCurrentMonth ? planLimitCents / 100 : undefined}
+                        tierLimit={
+                          isCurrentMonth && !isEnterprise ? planLimitCents / 100 : undefined
+                        }
                         billingLimit={billingLimitDollars}
                       />
                     </div>
@@ -171,6 +229,7 @@ export default function Page() {
               </Suspense>
             </div>
           </div>
+
           <div className="px-3">
             <Card>
               <Card.Header>Usage by day</Card.Header>

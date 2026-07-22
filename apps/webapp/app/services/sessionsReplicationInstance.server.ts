@@ -24,7 +24,8 @@ function initializeSessionsReplicationInstance() {
 
   const service = new SessionsReplicationService({
     clickhouseFactory,
-    pgConnectionUrl: DATABASE_URL,
+    // Sessions-replication source DSN; falls back to DATABASE_URL when its dedicated var is unset.
+    pgConnectionUrl: env.SESSION_REPLICATION_DATABASE_URL ?? DATABASE_URL,
     serviceName: "sessions-replication",
     slotName: env.SESSION_REPLICATION_SLOT_NAME,
     publicationName: env.SESSION_REPLICATION_PUBLICATION_NAME,

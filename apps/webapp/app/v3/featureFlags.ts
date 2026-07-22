@@ -20,6 +20,9 @@ export const FEATURE_FLAG = {
   computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
   devBranchesEnabled: "devBranchesEnabled",
   runOpsMintKind: "runOpsMintKind",
+  // Grace-linger stamp carried alongside runOpsMintKind on flip. See mintFlipGrace.ts.
+  runOpsMintKindPrev: "runOpsMintKindPrev",
+  runOpsMintKindFlippedAt: "runOpsMintKindFlippedAt",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -57,6 +60,10 @@ export const FeatureFlagCatalog = {
   // Per-org run-ops-id mint cutover. Defaults to "cuid"; only honored when
   // RUN_OPS_MINT_ENABLED is on AND isSplitEnabled() is true.
   [FEATURE_FLAG.runOpsMintKind]: z.enum(["cuid", "runOpsId"]),
+  // Grace-linger stamp: the previously-effective kind and the flip timestamp, written
+  // by stampMintKindFlip on a genuine flip. Display-only (see ORG_LOCKED_FLAGS).
+  [FEATURE_FLAG.runOpsMintKindPrev]: z.enum(["cuid", "runOpsId"]),
+  [FEATURE_FLAG.runOpsMintKindFlippedAt]: z.string().datetime(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -73,6 +80,8 @@ export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
 export const ORG_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.defaultWorkerInstanceGroupId,
   FEATURE_FLAG.taskEventRepository,
+  FEATURE_FLAG.runOpsMintKindPrev,
+  FEATURE_FLAG.runOpsMintKindFlippedAt,
 ];
 
 // Create a Zod schema from the existing catalog

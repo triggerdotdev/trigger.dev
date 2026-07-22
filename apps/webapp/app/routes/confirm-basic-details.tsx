@@ -27,6 +27,7 @@ import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
+import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { rootPath } from "~/utils/pathBuilder";
 import { getVercelInstallParams } from "~/v3/vercel";
 
@@ -72,10 +73,8 @@ function createSchema(
   return z
     .object({
       name: z.string().min(3, "Your name must be at least 3 characters").max(50),
-      email: z
-        .string()
-        .email()
-        .superRefine((email, ctx) => {
+      email: emailSchema.pipe(
+        z.string().superRefine((email, ctx) => {
           if (constraints.isEmailUnique === undefined) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
@@ -93,8 +92,9 @@ function createSchema(
               });
             });
           }
-        }),
-      confirmEmail: z.string(),
+        })
+      ),
+      confirmEmail: emailSchema,
       referralSource: z.string().optional(),
       referralSourceOther: z.string().optional(),
       role: z.string().optional(),
@@ -290,6 +290,7 @@ export default function Page() {
                 </Label>
                 <Input
                   {...getInputProps(email, { type: "email" })}
+                  maxLength={MAX_EMAIL_LENGTH}
                   defaultValue={enteredEmail}
                   onChange={(e) => {
                     setEnteredEmail(e.target.value);
@@ -306,6 +307,7 @@ export default function Page() {
                   <Label htmlFor={confirmEmail.id}>Confirm email</Label>
                   <Input
                     {...getInputProps(confirmEmail, { type: "email" })}
+                    maxLength={MAX_EMAIL_LENGTH}
                     placeholder="Your email, again"
                     icon={EnvelopeIcon}
                     spellCheck={false}

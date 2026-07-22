@@ -82,7 +82,10 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: "Project not found" };
     }
 
-    if (options.environmentIds.every((v) => !project.environments.some((e) => e.id === v))) {
+    // Reject if ANY supplied environmentId is outside the caller's project.
+    // `.some` (not `.every`) so one in-project id can't let a mixed array
+    // through.
+    if (options.environmentIds.some((v) => !project.environments.some((e) => e.id === v))) {
       return { success: false as const, error: `Environment not found` };
     }
 
@@ -291,7 +294,9 @@ export class EnvironmentVariablesRepository implements Repository {
       return { success: false as const, error: "Project not found" };
     }
 
-    if (options.values.every((v) => !project.environments.some((e) => e.id === v.environmentId))) {
+    // Same guard as `create()`: reject if ANY supplied environmentId is
+    // outside the caller's project (`.some`, not `.every`).
+    if (options.values.some((v) => !project.environments.some((e) => e.id === v.environmentId))) {
       return { success: false as const, error: `Environment not found` };
     }
 

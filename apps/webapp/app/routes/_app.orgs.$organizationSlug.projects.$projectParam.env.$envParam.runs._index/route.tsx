@@ -11,6 +11,7 @@ import {
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence";
 import { InlineCode } from "~/components/code/InlineCode";
 import { StepContentContainer } from "~/components/StepContentContainer";
@@ -104,7 +105,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
-    "standard"
+    "runsList"
   );
   const presenter = new NextRunListPresenter($replica, clickhouse);
   const list = presenter.call(project.organizationId, environment.id, {
@@ -166,6 +167,7 @@ export default function Page() {
           <DevDisconnectedBanner isConnected={isConnected} />
         )}
         <PageAccessories>
+          <AdminDebugTooltip />
           <LinkButton
             variant={"docs/small"}
             LeadingIcon={BookOpenIcon}

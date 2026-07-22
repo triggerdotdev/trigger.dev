@@ -91,6 +91,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   const error = session.get("auth:error");
+  // Same migration hygiene as /login: pre-fix sessions stored this with
+  // set(), which get() doesn't clear — unset so the commit below removes it.
+  session.unset("auth:error");
 
   const redirectTo = sanitized === "/" ? null : sanitized;
   const headers = new Headers();
@@ -141,7 +144,9 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (!result.success) {
     const session = await getUserSession(request);
-    session.set("auth:error", {
+    // flash, not set: a set() key survives every later read/commit, so the
+    // error would reappear on each /login visit long after the failed attempt.
+    session.flash("auth:error", {
       message: "Please enter a valid email address.",
     });
 
@@ -191,7 +196,8 @@ export async function action({ request }: ActionFunctionArgs) {
               : "Failed sending magic link. Please try again shortly.";
 
           const session = await getUserSession(request);
-          session.set("auth:error", {
+          // flash, not set — same one-shot semantics as the validation error above.
+          session.flash("auth:error", {
             message: errorMessage,
           });
 
@@ -260,7 +266,7 @@ export default function LoginMagicLinkPage() {
           </Header1>
           <Fieldset className="flex w-full flex-col items-center gap-y-2">
             <InboxArrowDownIcon className="mb-4 h-12 w-12 text-indigo-500" />
-            <Paragraph className="mb-6 text-center [text-wrap:balance]">
+            <Paragraph className="mb-6 text-center">
               {email ? (
                 <>
                   We emailed a magic link to <span className="text-text-bright">{email}</span> to

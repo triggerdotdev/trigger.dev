@@ -1,5 +1,64 @@
 # @trigger.dev/sdk
 
+## 4.5.7
+
+### Patch Changes
+
+- Custom chat agent loops get two ergonomic wins for owning the turn loop. ([#4304](https://github.com/triggerdotdev/trigger.dev/pull/4304))
+
+  `chat.writeTurnComplete()` now returns the turn boundary's resume cursors (`lastEventId` for the output stream and `sessionInEventId` for the input stream), so you can persist them straight from the task instead of round-tripping them back from the client.
+
+  ```ts
+  const { lastEventId, sessionInEventId } = await chat.writeTurnComplete();
+  await db.chats.update(chatId, { lastEventId, sessionInEventId });
+  ```
+
+  `chat.pipeAndCapture()` no longer throws when a stream is stopped or fails. It now returns a `PipeAndCaptureResult` whose `message` holds any partial output captured before the stop or failure, alongside a typed `status` (`"complete" | "aborted" | "error"`) and, on failure, the `error`. Read the message off the result:
+
+  ```ts
+  const { message, status, error } = await chat.pipeAndCapture(result, {
+    signal,
+  });
+  if (message) conversation.addResponse(message);
+  if (status === "error") logger.error("turn failed", { error });
+  ```
+
+  Note: `pipeAndCapture` previously resolved to `UIMessage | undefined`. Update call sites to read `.message` from the returned result.
+
+- Suppress a build-time warning that could appear in Vite-based projects when the optional `@ai-sdk/otel` package is not installed. ([#4188](https://github.com/triggerdotdev/trigger.dev/pull/4188))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.7`
+
+## 4.5.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.6`
+
+## 4.5.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.5`
+
+## 4.5.4
+
+### Patch Changes
+
+- Fix a `chat.agent` message-loss race where sending a message right after an action (such as an undo) could drop the follow-up's response from the UI until a refresh. ([#4234](https://github.com/triggerdotdev/trigger.dev/pull/4234))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.4`
+
+## 4.5.3
+
+### Patch Changes
+
+- Fix TS2742 ("inferred type cannot be named") when exporting a `chat.agent` from a project with declaration emit: `ChatTaskWirePayload` and `ChatInputChunk` are now declared in the public `@trigger.dev/sdk/chat` subpath, so inferred agent types emit portable declarations and the wire types are directly importable. ([#4218](https://github.com/triggerdotdev/trigger.dev/pull/4218))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.3`
+
 ## 4.5.2
 
 ### Patch Changes

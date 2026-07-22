@@ -79,6 +79,10 @@ export const action: ActionFunction = async ({ request }) => {
       avatar,
     });
 
+    // A promo code carried over from the /promo landing page (via cookie) is
+    // redeemed later, once the org is activated through plan selection and its
+    // usage entitlement exists — not here, where there's nothing to grant onto.
+
     const url = new URL(request.url);
     const code = url.searchParams.get("code");
     const configurationId = url.searchParams.get("configurationId");
@@ -94,8 +98,7 @@ export const action: ActionFunction = async ({ request }) => {
       if (next) {
         params.set("next", next);
       }
-      const redirectUrl = `${organizationPath(organization)}/projects/new?${params.toString()}`;
-      return redirect(redirectUrl);
+      return redirect(`${organizationPath(organization)}/projects/new?${params.toString()}`);
     }
 
     return redirect(organizationPath(organization));

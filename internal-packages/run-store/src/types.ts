@@ -9,6 +9,7 @@ import type {
   TaskRunExecutionStatus,
   RuntimeEnvironmentType,
   Waitpoint,
+  WaitpointTag,
 } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import type { Residency } from "@trigger.dev/core/v3/isomorphic";
@@ -20,6 +21,12 @@ import type { Residency } from "@trigger.dev/core/v3/isomorphic";
  * reads use. Write methods stay on `PrismaClientOrTransaction`.
  */
 export type ReadClient = PrismaClientOrTransaction | PrismaReplicaClient;
+
+export type IdempotencyKeyRunMatch = {
+  friendlyId: string;
+  idempotencyKey: string | null;
+  idempotencyKeyExpiresAt: Date | null;
+};
 
 export type CreateRunSnapshotInput = {
   engine: "V2";
@@ -233,10 +240,32 @@ export type RewriteDebouncedRunData = {
   runTags?: string[];
 };
 
+/**
+ * Input for {@link RunStore.finalizeRun}: the terminal `status` and its `error` are written in ONE
+ * update (a separate later error write races realtime, which shuts the stream on the final status
+ * before the error lands). `bulkActionId` is pushed onto `bulkActionGroupIds`. Every field is
+ * optional so a caller can finalize with any subset (e.g. status-only, or expire with expiredAt).
+ */
+export type FinalizeRunData = {
+  status?: TaskRunStatus;
+  expiredAt?: Date;
+  completedAt?: Date;
+  error?: TaskRunError;
+  bulkActionId?: string;
+};
+
 export type ClearIdempotencyKeyInput =
   | { byId: { runId: string; idempotencyKey: string }; byPredicate?: never; byFriendlyIds?: never }
   | {
-      byPredicate: { idempotencyKey: string; taskIdentifier: string; runtimeEnvironmentId: string };
+      byPredicate: {
+        idempotencyKey: string;
+        taskIdentifier: string;
+        runtimeEnvironmentId: string;
+        // A predicate has no run id to route by, so it fans out to both stores. When the env mints
+        // run-ops ids its matching runs live on NEW, so `residency: "NEW"` routes to NEW only and
+        // avoids a wrong-DB (0-row) write to the draining legacy DB. Omit to fan out (mixed residency).
+        residency?: Residency;
+      };
       byId?: never;
       byFriendlyIds?: never;
     }
@@ -304,6 +333,15 @@ export interface ForWaitpointCompletionContext {
  */
 export interface WaitpointColocationOptions {
   coLocateWithRunId?: string;
+  /**
+   * Residency for a STANDALONE waitpoint that has no owning run to co-locate with (e.g. a
+   * `wait.createToken()` token created via the env-scoped API). Its minted id is always a cuid, so
+   * id-shape routing would always send it to LEGACY; a standalone token instead reads the env mint
+   * kind and pins here (NEW when the env mints run-ops ids), so a fully-minted-new deployment keeps
+   * its tokens off the draining legacy DB. Ignored when `coLocateWithRunId` (or an owner id) is set —
+   * a co-located waitpoint always inherits its run/batch residency, never the flag.
+   */
+  residency?: Residency;
 }
 
 export interface RunStore {
@@ -393,6 +431,27 @@ export interface RunStore {
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+
+  // Generic dual-residency finalize: writes the terminal `status` and its `error` in ONE update,
+  // pushing `bulkActionId` onto `bulkActionGroupIds`. Overloads mirror findRun: select / include /
+  // bare full-row.
+  finalizeRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  finalizeRun<I extends Prisma.TaskRunInclude>(
+    runId: string,
+    data: FinalizeRunData,
+    args: { include: I },
+    tx?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  finalizeRun(
+    runId: string,
+    data: FinalizeRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
 
   // Expiry
   expireRun<S extends Prisma.TaskRunSelect>(
@@ -573,6 +632,32 @@ export interface RunStore {
     client?: ReadClient
   ): Promise<TaskRun[]>;
 
+  // Grouped replacement for `Promise.all(ids.map(id => findRun(id)))`: one round trip for the
+  // whole id batch instead of one per id. Returns an id-keyed Map; missing/duplicate ids are
+  // simply absent/collapsed.
+  findRunsByIds<S extends Prisma.TaskRunSelect>(
+    ids: string[],
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ select: S }>>>;
+  findRunsByIds<I extends Prisma.TaskRunInclude>(
+    ids: string[],
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Map<string, Prisma.TaskRunGetPayload<{ include: I }>>>;
+  findRunsByIds(ids: string[], client?: ReadClient): Promise<Map<string, TaskRun>>;
+
+  /**
+   * Point-lookup a set of idempotency keys within one (runtimeEnvironmentId, taskIdentifier).
+   * Each key is matched by full unique-key equality so the planner always does a per-key index
+   * probe and never falls back to scanning the whole (env, task) range and filtering in memory.
+   * Callers chunk large key sets; this resolves one chunk.
+   */
+  findRunsByIdempotencyKeys(
+    args: { runtimeEnvironmentId: string; taskIdentifier: string; idempotencyKeys: string[] },
+    client?: ReadClient
+  ): Promise<IdempotencyKeyRunMatch[]>;
+
   // --- run-ops persistence ---
   // Snapshots, waitpoints, implicit M:N joins, dependents, attempts and checkpoints. The
   // generic model wrappers are thin generics over the Prisma `*Args` types so include/select
@@ -588,7 +673,10 @@ export interface RunStore {
   // Snapshot group
   findLatestExecutionSnapshot(
     runId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    // When set, scopes the read to this environment (tenant boundary); a run in another env reads as
+    // not-found. Omit to read regardless of environment (internal callers).
+    environmentId?: string
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{
     include: { completedWaitpoints: true; checkpoint: true };
   }> | null>;
@@ -606,12 +694,19 @@ export interface RunStore {
   ): Promise<Prisma.TaskRunExecutionSnapshotGetPayload<{ include: { checkpoint: true } }>>;
 
   // Implicit-join group
-  findSnapshotCompletedWaitpointIds(snapshotId: string, client?: ReadClient): Promise<string[]>;
+  /** `runId` (when known) routes to the run's store — the snapshot + its join co-locate with the run;
+   * omit it and the router fans out (the cuid snapshot id alone can't say which store holds the join). */
+  findSnapshotCompletedWaitpointIds(
+    snapshotId: string,
+    client?: ReadClient,
+    runId?: string
+  ): Promise<string[]>;
   /** As above, but reports in the SAME read whether the snapshot is visible on the reader: `present=false`
    * means this reader lacks the snapshot, so its empty id list is not authoritative (repair from primary). */
   findSnapshotCompletedWaitpointIdsWithPresence(
     snapshotId: string,
-    client?: ReadClient
+    client?: ReadClient,
+    runId?: string
   ): Promise<{ present: boolean; ids: string[] }>;
   /** Run ids connected to a waitpoint (WaitpointRunConnection / `_WaitpointRunConnections`), this DB only. */
   findWaitpointConnectedRunIds(waitpointId: string, client?: ReadClient): Promise<string[]>;
@@ -626,7 +721,20 @@ export interface RunStore {
     batchIndex?: number;
     tx?: PrismaClientOrTransaction;
   }): Promise<void>;
-  countPendingWaitpoints(waitpointIds: string[], client?: ReadClient): Promise<number>;
+  /** `runId` (when known) routes to the run's store and falls back to the other DB only for ids absent
+   * there (a rare cross-tree token), instead of fanning the count out to both DBs on every call. */
+  countPendingWaitpoints(
+    waitpointIds: string[],
+    client?: ReadClient,
+    runId?: string
+  ): Promise<number>;
+  /** Which of the given ids are PENDING and which exist on this store (any status), so the router can
+   * route by run id and only re-count the ids absent here on the other DB — without undercounting
+   * pending (which would prematurely unblock a run) or double-counting a drain-mirrored id. */
+  countPendingWaitpointsWithPresence(
+    waitpointIds: string[],
+    client?: ReadClient
+  ): Promise<{ pendingIds: string[]; presentIds: string[] }>;
 
   // Waitpoint group
   createWaitpoint<T extends Prisma.WaitpointCreateArgs>(
@@ -649,9 +757,12 @@ export interface RunStore {
   findWaitpointOnPrimary<T extends Prisma.WaitpointFindFirstArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindFirstArgs>
   ): Promise<Prisma.WaitpointGetPayload<T> | null>;
+  /** `runId` (when known) routes to the run's store and falls back to the other DB only for the ids
+   * missing there, instead of fanning every token read out to both DBs. */
   findManyWaitpoints<T extends Prisma.WaitpointFindManyArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindManyArgs>,
-    client?: ReadClient
+    client?: ReadClient,
+    runId?: string
   ): Promise<Prisma.WaitpointGetPayload<T>[]>;
   updateWaitpoint<T extends Prisma.WaitpointUpdateArgs>(
     args: Prisma.SelectSubset<T, Prisma.WaitpointUpdateArgs>,
@@ -753,4 +864,42 @@ export interface RunStore {
     args: Prisma.BatchTaskRunItemUpdateManyArgs,
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.BatchPayload>;
+  // An item co-resides with both its batch (batchTaskRunId FK) and its child run (taskRunId FK) on
+  // ONE DB, so a read keyed by either scalar routes to that store; `include` resolves the co-resident
+  // relations locally.
+  findManyBatchTaskRunItems<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { taskRunId?: string; batchTaskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }>[]>;
+  findBatchTaskRunItem<I extends Prisma.BatchTaskRunItemInclude = {}>(
+    where: { batchTaskRunId: string; taskRunId?: string },
+    args?: { include?: I },
+    client?: ReadClient
+  ): Promise<Prisma.BatchTaskRunItemGetPayload<{ include: I }> | null>;
+
+  // --- WaitpointTag (run-ops) ---
+  // A WaitpointTag has no run/waitpoint FK — a standalone entity keyed by (environmentId, name).
+  // Callers never mint a tag id (defaults to cuid), so the WRITE is always LEGACY-resident today
+  // (single-homed), like standalone waitpoint tokens; the READ still fans out NEW→LEGACY and
+  // de-dupes by id in case tag ids ever become residency-aware.
+  upsertWaitpointTag(
+    data: { environmentId: string; name: string; projectId: string; id?: string },
+    tx?: PrismaClientOrTransaction,
+    // A tag has no owning run to co-locate with; when no minted `id` pins it by id-shape, a
+    // minted-new env's tags read this residency (NEW) so they land with the env's tokens/runs
+    // instead of defaulting to LEGACY. Single-store impls ignore it.
+    residency?: Residency
+  ): Promise<WaitpointTag>;
+  findManyWaitpointTags(
+    args: {
+      where: Prisma.WaitpointTagWhereInput;
+      orderBy?:
+        | Prisma.WaitpointTagOrderByWithRelationInput
+        | Prisma.WaitpointTagOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+    },
+    client?: ReadClient
+  ): Promise<WaitpointTag[]>;
 }

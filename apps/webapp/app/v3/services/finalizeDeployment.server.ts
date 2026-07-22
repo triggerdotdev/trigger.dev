@@ -1,7 +1,6 @@
 import type { FinalizeDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
-import { socketIo } from "../handleSocketIo.server";
 import { updateEnvConcurrencyLimits } from "../runQueue.server";
 import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
@@ -127,20 +126,6 @@ export class FinalizeDeploymentService extends BaseService {
       await updateEnvConcurrencyLimits(authenticatedEnv);
     } catch (err) {
       logger.error("Failed to publish WORKER_CREATED event", { err });
-    }
-
-    if (finalizedDeployment.imageReference) {
-      socketIo.providerNamespace.emit("PRE_PULL_DEPLOYMENT", {
-        version: "v1",
-        imageRef: finalizedDeployment.imageReference,
-        shortCode: finalizedDeployment.shortCode,
-        // identifiers
-        deploymentId: finalizedDeployment.id,
-        envId: authenticatedEnv.id,
-        envType: authenticatedEnv.type,
-        orgId: authenticatedEnv.organizationId,
-        projectId: finalizedDeployment.projectId,
-      });
     }
 
     if (deployment.worker.engine === "V2") {

@@ -214,6 +214,21 @@ class RoutingRunStore implements RunStore {
   pushRealtimeStream(runId: string, streamId: string, _tx?: unknown): any {
     return this.#resolveById(runId).pushRealtimeStream(runId, streamId);
   }
+  finalizeRun(runId: string, ...a: any[]): any {
+    return (this.#resolveById(runId).finalizeRun as any)(runId, ...a);
+  }
+  findManyBatchTaskRunItems(...a: any[]): any {
+    return (this.#newStore.findManyBatchTaskRunItems as any)(...a);
+  }
+  findBatchTaskRunItem(...a: any[]): any {
+    return (this.#newStore.findBatchTaskRunItem as any)(...a);
+  }
+  upsertWaitpointTag(...a: any[]): any {
+    return (this.#newStore.upsertWaitpointTag as any)(...a);
+  }
+  findManyWaitpointTags(...a: any[]): any {
+    return (this.#newStore.findManyWaitpointTags as any)(...a);
+  }
 }
 
 function buildRoutingStore(prisma17: PrismaClient, prisma14: PrismaClient) {

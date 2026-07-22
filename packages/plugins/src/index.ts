@@ -16,6 +16,7 @@ export type {
   UserActorAuthResult,
   UserActorClaims,
   RbacPluginConfig,
+  RbacDatabaseConfig,
   SystemRole,
   AuthenticatedEnvironment,
 } from "./rbac.js";
@@ -28,8 +29,11 @@ export {
   USER_ACTOR_TOKEN_PREFIX,
 } from "./rbac.js";
 
+export type { PluginDatabaseConfig } from "./databaseConfig.js";
+
 export type {
   SsoPlugin,
+  SsoPluginConfig,
   SsoController,
   OrgSsoStatus,
   SsoRouteDecision,

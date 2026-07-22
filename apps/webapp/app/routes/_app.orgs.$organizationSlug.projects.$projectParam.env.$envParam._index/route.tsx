@@ -16,6 +16,7 @@ import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
 import { HasNoTasksDeployed, HasNoTasksDev } from "~/components/BlankStatePanels";
@@ -261,6 +262,7 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Tasks" accessory={<TasksHelpTooltip />} />
         <PageAccessories>
+          <AdminDebugTooltip />
           <LinkButton
             variant={"docs/small"}
             LeadingIcon={BookOpenIcon}

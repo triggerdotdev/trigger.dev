@@ -117,18 +117,25 @@ async function startServer() {
   const MODE = process.env.NODE_ENV;
 
   // In development, Vite serves assets (and handles HMR) via middleware.
+  // Only NODE_ENV=development boots Vite — scripts that run the built server
+  // without NODE_ENV (start:local, dev:worker) must serve the build.
   const viteDevServer =
-    MODE === "production"
-      ? undefined
-      : await dynamicImport("vite").then((vite) =>
+    MODE === "development"
+      ? await dynamicImport("vite").then((vite) =>
           vite.createServer({ server: { middlewareMode: true } })
-        );
+        )
+      : undefined;
 
   if (viteDevServer) {
     app.use(viteDevServer.middlewares);
   } else {
     // Vite fingerprints its assets so we can cache forever.
     app.use("/assets", express.static("build/client/assets", { immutable: true, maxAge: "1y" }));
+    // Stale clients can request an old hashed asset; hard-404 instead of falling
+    // through to Remix and answering a .js request with HTML.
+    app.use("/assets", (_req, res) => {
+      res.status(404).end();
+    });
     // Everything else (like favicon.ico) is cached for an hour. You may want to be
     // more aggressive with this caching.
     app.use(express.static("build/client", { maxAge: "1h" }));
@@ -164,10 +171,20 @@ async function startServer() {
   const port = process.env.REMIX_APP_PORT || process.env.PORT || 3000;
 
   if (process.env.HTTP_SERVER_DISABLED !== "true") {
+    // Back-compat shim: a previously-deployed client build polls this endpoint after a
+    // /build asset 404 and reloads once it reports a newer build id, letting those older
+    // tabs recover in a single reload. Temporary — safe to remove once older clients have
+    // churned out. Deliberately does NOT set an X-Build-Id response header.
+    app.get("/build-version", (_req, res) => {
+      res.set("Cache-Control", "no-store");
+      res.json({ version: build.assets.version });
+    });
+
     const socketIo: { io: IoServer } | undefined = build.entry.module.socketIo;
     const wss: WebSocketServer | undefined = build.entry.module.wss;
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
+    const otlpRateLimiter: RequestHandler = build.entry.module.otlpRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
     const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
 
@@ -219,6 +236,7 @@ async function startServer() {
 
       app.use(apiRateLimiter);
       app.use(engineRateLimiter);
+      app.use(otlpRateLimiter);
 
       app.use(tenantContextMiddleware);
 

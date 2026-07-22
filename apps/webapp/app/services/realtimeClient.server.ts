@@ -15,6 +15,7 @@ import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 import { env } from "~/env.server";
 import type { API_VERSIONS } from "~/api/versions";
 import { CURRENT_API_VERSION } from "~/api/versions";
+import { sanitizeRealtimeTagsForSql } from "~/v3/electricShape.server";
 
 export interface CachedLimitProvider {
   getCachedLimit: (organizationId: string, defaultValue: number) => Promise<number | undefined>;
@@ -171,7 +172,10 @@ export class RealtimeClient {
     const whereClauses: string[] = [`"runtimeEnvironmentId"='${environment.id}'`];
 
     if (params.tags) {
-      whereClauses.push(`"runTags" @> ARRAY[${params.tags.map((t) => `'${t}'`).join(",")}]`);
+      // Reject unsafe chars and escape single quotes so tag values can't
+      // break out of the Electric SQL string literal.
+      const safeTags = sanitizeRealtimeTagsForSql(params.tags);
+      whereClauses.push(`"runTags" @> ARRAY[${safeTags.map((t) => `'${t}'`).join(",")}]`);
     }
 
     const createdAtFilter = await this.#calculateCreatedAtFilter(url, params.createdAt);

@@ -69,7 +69,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   if (!params.success) {
     logger.error("Invalid params for Vercel onboarding", { error: params.error });
-    throw redirectWithErrorMessage(
+    throw await redirectWithErrorMessage(
       "/",
       request,
       "Invalid installation parameters. Please try again from Vercel."
@@ -89,7 +89,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   if (!params.data.code) {
     logger.error("Missing code parameter for Vercel onboarding");
-    throw redirectWithErrorMessage(
+    throw await redirectWithErrorMessage(
       "/",
       request,
       "Invalid installation parameters. Please try again from Vercel."
@@ -151,7 +151,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
         organizationId: params.data.organizationId,
         userId,
       });
-      throw redirectWithErrorMessage("/", request, "Organization not found. Please try again.");
+      throw await redirectWithErrorMessage(
+        "/",
+        request,
+        "Organization not found. Please try again."
+      );
     }
 
     return typedjson({

@@ -2,6 +2,7 @@ import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
 import {
@@ -113,7 +114,9 @@ export default function Page() {
             <Property.Table>
               <Property.Item key={environment.id}>
                 <Property.Label>{environment.slug}</Property.Label>
-                <Property.Value>{environment.id}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={environment.id} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>

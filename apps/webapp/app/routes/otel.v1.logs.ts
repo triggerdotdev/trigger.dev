@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { ExportLogsServiceRequest, ExportLogsServiceResponse } from "@trigger.dev/otlp-importer";
-import { otlpExporter } from "~/v3/otlpExporter.server";
+import { otlpExporter, otlpTransformWorkerPoolEnabled } from "~/v3/otlpExporter.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
@@ -17,13 +17,27 @@ export async function action({ request }: ActionFunctionArgs) {
     } else if (contentType.startsWith("application/x-protobuf")) {
       const buffer = await request.arrayBuffer();
 
+      if (otlpTransformWorkerPoolEnabled) {
+        await exporter.exportLogsRaw(new Uint8Array(buffer));
+
+        return new Response(
+          ExportLogsServiceResponse.encode(
+            ExportLogsServiceResponse.create()
+          ).finish() as Uint8Array<ArrayBuffer>,
+          { status: 200 }
+        );
+      }
+
       const exportRequest = ExportLogsServiceRequest.decode(new Uint8Array(buffer));
 
       const exportResponse = await exporter.exportLogs(exportRequest);
 
-      return new Response(ExportLogsServiceResponse.encode(exportResponse).finish(), {
-        status: 200,
-      });
+      return new Response(
+        ExportLogsServiceResponse.encode(exportResponse).finish() as Uint8Array<ArrayBuffer>,
+        {
+          status: 200,
+        }
+      );
     } else {
       return new Response(
         "Unsupported content type. Must be either application/x-protobuf or application/json",

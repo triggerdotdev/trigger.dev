@@ -1,6 +1,5 @@
 import type { PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
-import { marqs } from "~/v3/marqs/index.server";
 import { engine } from "~/v3/runEngine.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
@@ -34,11 +33,6 @@ export class DeleteProjectService {
 
     if (project.deletedAt) {
       return;
-    }
-
-    // Remove queues from MARQS
-    for (const environment of project.environments) {
-      await marqs?.removeEnvironmentQueuesFromMasterQueue(project.organization.id, environment.id);
     }
 
     // Delete all queues from the RunEngine 2 prod master queues

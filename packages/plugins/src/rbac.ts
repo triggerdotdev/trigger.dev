@@ -422,7 +422,15 @@ export interface RoleBaseAccessController {
 export type RoleMutationResult = { ok: true; role: Role } | { ok: false; error: string };
 
 // Result for assignment / deletion mutations that don't return a value.
-export type RoleAssignmentResult = { ok: true } | { ok: false; error: string };
+// `code` is an optional machine-readable reason so callers can branch on
+// expected outcomes (e.g. `last_owner`, the guard that keeps an org from
+// losing its final Owner) instead of matching the free-text `error`.
+export type RoleAssignmentErrorCode = "last_owner";
+export type RoleAssignmentResult =
+  | { ok: true }
+  | { ok: false; error: string; code?: RoleAssignmentErrorCode };
+
+import type { PluginDatabaseConfig } from "./databaseConfig.js";
 
 // Host-injected configuration the plugin can't read from the environment
 // itself (the plugin runs in the host's process but owns no env contract).
@@ -430,7 +438,12 @@ export type RbacPluginConfig = {
   // Platform secret the host signs user-actor tokens with; the plugin uses
   // it to verify them in `authenticateUserActor`. Omitted → UAT auth 401s.
   userActorSecret?: string;
+  // Database connections for a plugin that owns its own client. Omitted →
+  // the plugin falls back to its own defaults.
+  database?: PluginDatabaseConfig;
 };
+
+export type { PluginDatabaseConfig as RbacDatabaseConfig } from "./databaseConfig.js";
 
 export interface RoleBasedAccessControlPlugin {
   create(config?: RbacPluginConfig): RoleBaseAccessController | Promise<RoleBaseAccessController>;

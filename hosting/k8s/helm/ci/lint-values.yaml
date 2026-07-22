@@ -1,0 +1,26 @@
+# Throwaway credentials used ONLY to render the chart during CI (helm lint / helm template).
+# The shipped values.yaml no longer contains working default credentials for the bundled
+# datastores (see SEC-70): an unconfigured install now fails closed. CI must therefore
+# supply dummy secrets here so template rendering can be validated. These values are never
+# deployed and must never be used in a real environment.
+secrets:
+  sessionSecret: "ci-render-only-session"
+  magicLinkSecret: "ci-render-only-magic-link"
+  encryptionKey: "ci-render-only-encryption-key"
+  providerSecret: "ci-render-only-provider"
+  coordinatorSecret: "ci-render-only-coordinator"
+  managedWorkerSecret: "ci-render-only-managed-worker"
+postgres:
+  auth:
+    postgresPassword: "ci-render-only-postgres"
+    password: "ci-render-only-postgres"
+clickhouse:
+  auth:
+    password: "ci-render-only-clickhouse"
+s3:
+  auth:
+    rootPassword: "ci-render-only-minio"
+registry:
+  deploy: true
+  auth:
+    password: "ci-render-only-registry"

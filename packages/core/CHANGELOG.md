@@ -1,5 +1,44 @@
 # internal-platform
 
+## 4.5.7
+
+### Patch Changes
+
+- Add `node-24` and `node-26` as supported `runtime` options in `trigger.config.ts`. The `experimental-node-24` and `experimental-node-26` names are now deprecated aliases and emit a deprecation warning; switch to `node-24` / `node-26` instead. ([#4337](https://github.com/triggerdotdev/trigger.dev/pull/4337))
+
+  ```ts
+  import { defineConfig } from "@trigger.dev/sdk";
+
+  export default defineConfig({
+    runtime: "node-24",
+    project: "<your-project-ref>",
+  });
+  ```
+
+## 4.5.6
+
+### Patch Changes
+
+- Prevent prototype pollution when applying run metadata operations or reconstructing nested telemetry attributes, while preserving legitimate `constructor` and `prototype` fields. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Require explicit browser approval for CLI and MCP login, with resilient polling while approval is pending. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+- Add helpers to mint and verify the deployment-scoped token used to authenticate run controllers to the platform. ([#4316](https://github.com/triggerdotdev/trigger.dev/pull/4316))
+
+## 4.5.5
+
+### Patch Changes
+
+- Add experimental Node.js 24 and 26 task runtimes. Set `runtime` to `experimental-node-24` or `experimental-node-26` in `trigger.config.ts`. ([#4085](https://github.com/triggerdotdev/trigger.dev/pull/4085))
+- Add `defaultRegion` to the project GET and list API responses; null when unset. ([#4146](https://github.com/triggerdotdev/trigger.dev/pull/4146))
+
+## 4.5.4
+
+### Patch Changes
+
+- Removed the unused `ResourceMonitor` export from `@trigger.dev/core/v3/serverOnly`. It was a server-side logging helper with no remaining consumers. ([#4244](https://github.com/triggerdotdev/trigger.dev/pull/4244))
+- Removed the unused `@trigger.dev/core/v3/zodNamespace` export and the legacy v3 socket message schemas. These were only used by the now-retired v3 engine and have no v4 consumers. ([#4236](https://github.com/triggerdotdev/trigger.dev/pull/4236))
+
+## 4.5.3
+
 ## 4.5.2
 
 ### Patch Changes

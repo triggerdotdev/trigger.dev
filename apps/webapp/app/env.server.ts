@@ -85,6 +85,29 @@ const S2EnvSchema = z.preprocess(
   ])
 );
 
+// Previously published secret values must never be accepted, including when
+// an existing deployment or external secret manager still supplies one.
+const INSECURE_SECRET_VALUES = [
+  "managed-secret",
+  "2818143646516f6fffd707b36f334bbb",
+  "44da78b7bbb0dfe709cf38931d25dcdd",
+  "f686147ab967943ebbe9ed3b496e465a",
+  "447c29678f9eaf289e9c4b70d3dd8a7f",
+];
+
+// Escape hatch for deployments that can't rotate a published default yet (e.g.
+// ENCRYPTION_KEY protects existing data). Read raw: a refine can't see the
+// sibling parsed flag.
+const allowInsecureDefaultSecrets = ["true", "1"].includes(
+  (process.env.ALLOW_INSECURE_DEFAULT_SECRETS ?? "").toLowerCase().trim()
+);
+
+const isNotInsecureSecret = (value: string) =>
+  allowInsecureDefaultSecrets || !INSECURE_SECRET_VALUES.includes(value);
+
+const INSECURE_SECRET_MESSAGE =
+  "must not be a known-insecure published default; set a strong, unique value. If you cannot rotate it yet (e.g. it protects existing encrypted data or active sessions), set ALLOW_INSECURE_DEFAULT_SECRETS=1 to boot while you migrate.";
+
 const EnvironmentSchema = z
   .object({
     NODE_ENV: z.union([z.literal("development"), z.literal("production"), z.literal("test")]),
@@ -113,6 +136,8 @@ const EnvironmentSchema = z
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
     // (org featureFlags) win regardless.
     DASHBOARD_AGENT_ENABLED: z.string().default("0"),
+    // Gates the create-org management API endpoint (default off).
+    ORG_CREATION_API_ENABLED: z.string().default("0"),
     // "1" gives admins/impersonators an everywhere-preview (default off),
     // separate from the per-org rollout flag above.
     DASHBOARD_AGENT_ADMIN_PREVIEW: z.string().default("0"),
@@ -138,8 +163,10 @@ const EnvironmentSchema = z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_URL is invalid")
       .optional(),
-    // The LEGACY run-ops DB (the control-plane DB during the transition). When unset, legacy
-    // run-ops reuses the existing DATABASE_URL (legacy run-ops == control-plane DB initially).
+    // The LEGACY run-ops DB. Now a CONNECTED DSN (Track 2): when split is on and this is set it builds
+    // an INDEPENDENT legacy Prisma client, no longer an alias of the control-plane client (nor merely
+    // the sentinel's probe target). Unset -> legacy reuses the control-plane client / DATABASE_URL, so
+    // single-DB and self-host installs boot byte-identical.
     RUN_OPS_LEGACY_DATABASE_URL: z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_URL is invalid")
@@ -151,6 +178,24 @@ const EnvironmentSchema = z
       .string()
       .refine(isValidDatabaseUrl, "RUN_OPS_DATABASE_READ_REPLICA_URL is invalid")
       .optional(),
+    // The LEGACY run-ops DB read replica (Track 2). Unset -> the legacy replica handle falls back to the
+    // legacy WRITER (as $replica does with no CP replica). Set in production so legacy reads hit the reader.
+    RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DATABASE_READ_REPLICA_URL is invalid")
+      .optional(),
+    // Optional cap for the unpooled new run-ops read replica. Unset falls back to DATABASE_CONNECTION_LIMIT.
+    RUN_OPS_DATABASE_READ_REPLICA_CONNECTION_LIMIT: z.coerce.number().int().optional(),
+    // Direct DSN for applying the full @trigger.dev/database migrations to the LEGACY run-ops DB, keeping
+    // its schema current after the control plane moves off it. Direct, not pooled — migrations never run
+    // over a pooler. Optional; unset -> the entrypoint's legacy migrate step is skipped.
+    RUN_OPS_LEGACY_DIRECT_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "RUN_OPS_LEGACY_DIRECT_URL is invalid")
+      .optional(),
+    // Advisory control-plane co-residency sentinel enforcement (Track 2, T2.3). Default OFF; the advisory
+    // arm always emits its metric, this only turns a still-co-resident pair into a hard boot failure.
+    RUN_OPS_EXPECT_CONTROL_PLANE_SPLIT: BoolEnv.default(false),
     // --- Control-plane datasource repoint. Additive-only. ---
     // Optional control-plane DB. Unset (self-host/single-DB) -> getClient()/getReplicaClient() fall back to
     // DATABASE_URL/DATABASE_READ_REPLICA_URL, so boot is byte-identical. When set, these point at the
@@ -166,14 +211,15 @@ const EnvironmentSchema = z
     // Control-plane cache relax knobs. Unset -> defaults (DEFAULT_CP_CACHE_TTL_MS / _MAX_ENTRIES).
     CONTROL_PLANE_CACHE_TTL_MS: z.coerce.number().int().optional(),
     CONTROL_PLANE_CACHE_MAX_ENTRIES: z.coerce.number().int().optional(),
-    SESSION_SECRET: z.string(),
-    MAGIC_LINK_SECRET: z.string(),
+    SESSION_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+    MAGIC_LINK_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     ENCRYPTION_KEY: z
       .string()
       .refine(
         (val) => Buffer.from(val, "utf8").length === 32,
         "ENCRYPTION_KEY must be exactly 32 bytes"
-      ),
+      )
+      .refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
     WHITELISTED_EMAILS: z
       .string()
       .refine(isValidRegex, "WHITELISTED_EMAILS must be a valid regex.")
@@ -224,9 +270,6 @@ const EnvironmentSchema = z
     PLAIN_CUSTOMER_CARDS_SECRET: z.string().optional(),
     PLAIN_CUSTOMER_CARDS_KEY: z.string().optional(),
     PLAIN_CUSTOMER_CARDS_HEADERS: z.string().optional(),
-    WORKER_SCHEMA: z.string().default("graphile_worker"),
-    WORKER_CONCURRENCY: z.coerce.number().int().default(10),
-    WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
     // How often each replica reloads the global flags snapshot from the DB.
     // Sets kill/ramp propagation latency.
     GLOBAL_FLAGS_RELOAD_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
@@ -381,6 +424,8 @@ const EnvironmentSchema = z
 
     // Master switch for the native realtime backend; off = Electric serves everything, publishes no-op.
     REALTIME_BACKEND_NATIVE_ENABLED: z.string().default("0"),
+    // Default backend when an org has no `realtimeBackend` override and no global flag row is set.
+    REALTIME_BACKEND_DEFAULT: z.enum(["electric", "native", "shadow"]).default("electric"),
     // Live long-poll backstop hold (ms); matches Electric's ~20s cadence.
     REALTIME_BACKEND_NATIVE_LIVE_POLL_TIMEOUT_MS: z.coerce.number().int().default(20_000),
     // Jitter ratio on the live-poll hold (0.15 = ±15%) to avoid synchronized refetch herds.
@@ -526,9 +571,22 @@ const EnvironmentSchema = z
     API_RATE_LIMIT_JWT_WINDOW: z.string().default("1m"),
     API_RATE_LIMIT_JWT_TOKENS: z.coerce.number().int().default(60),
 
-    //v3
-    PROVIDER_SECRET: z.string().default("provider-secret"),
-    COORDINATOR_SECRET: z.string().default("coordinator-secret"),
+    // Per-IP rate limit for the unauthenticated OTLP ingestion endpoints
+    // (/otel/*). Bounds unauthenticated request rates. Opt-in
+    // (disabled by default): because it keys on the source IP, it is only
+    // safe to enable when each client presents a distinct IP through a proxy
+    // that appends the real client IP to X-Forwarded-For. Enabling it where
+    // many clients share one egress IP (e.g. behind NAT or a shared proxy)
+    // would collapse that traffic into a single bucket and could throttle
+    // legitimate telemetry. Set OTLP_RATE_LIMIT_ENABLED=1 to enable, then tune
+    // OTLP_RATE_LIMIT_MAX / OTLP_RATE_LIMIT_WINDOW for expected volume.
+    OTLP_RATE_LIMIT_ENABLED: z.string().default("0"),
+    OTLP_RATE_LIMIT_WINDOW: z
+      .string()
+      .regex(/^\d+ ?(?:ms|s|m|h|d)$/)
+      .default("1m"),
+    OTLP_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(3000),
+
     DEPOT_TOKEN: z.string().optional(),
     DEPOT_ORG_ID: z.string().optional(),
     DEPOT_REGION: z.string().default("us-east-1"),
@@ -616,16 +674,6 @@ const EnvironmentSchema = z
     // log-only mode before enforcement.
     DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
 
-    // Master switch for the v3 engine (RunEngineVersion.V1) shutdown. When
-    // enabled it: rejects triggers that resolve to V1 (single, batch, schedule,
-    // replay, triggerAndWait) with a graceful error pointing at the v4 migration
-    // guide; closes the legacy `trigger dev` websocket used by v3 CLIs; and turns
-    // the V1 run-lifecycle background jobs (heartbeat timeout, TTL expiry, retry,
-    // resume, scheduled fires) into no-ops so abandoned V1 runs stop generating
-    // database load. v4 (V2) is never affected (every gate also checks the run is
-    // V1). Defaults to off so self-hosted instances still on V1 keep working.
-    DEPRECATE_V3_ENABLED: z.string().default("0"),
-
     // Verify the deploy image exists before promoting. Disable for out-of-band/air-gapped push. ECR only.
     DEPLOY_IMAGE_VERIFICATION_ENABLED: BoolEnv.default(true),
 
@@ -659,13 +707,19 @@ const EnvironmentSchema = z
     EVENTS_MEMORY_PRESSURE_THRESHOLD: z.coerce.number().int().default(5000),
     EVENTS_LOAD_SHEDDING_THRESHOLD: z.coerce.number().int().default(100000),
     EVENTS_LOAD_SHEDDING_ENABLED: z.string().default("1"),
-    SHARED_QUEUE_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
-    SHARED_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(100),
-    SHARED_QUEUE_CONSUMER_NEXT_TICK_INTERVAL_MS: z.coerce.number().int().default(100),
-    SHARED_QUEUE_CONSUMER_EMIT_RESUME_DEPENDENCY_TIMEOUT_MS: z.coerce.number().int().default(1000),
-    SHARED_QUEUE_CONSUMER_RESOLVE_PAYLOADS_BATCH_SIZE: z.coerce.number().int().default(25),
 
-    MANAGED_WORKER_SECRET: z.string().default("managed-secret"),
+    MANAGED_WORKER_SECRET: z.string().min(1).refine(isNotInsecureSecret, INSECURE_SECRET_MESSAGE),
+
+    // Allow booting with a known-insecure published default secret. Temporary
+    // bridge for deployments that can't rotate yet; rotate as soon as possible.
+    ALLOW_INSECURE_DEFAULT_SECRETS: BoolEnv.default(false),
+
+    // Tenant scoping on worker actions is header-driven (folded into the engine snapshot read) and
+    // needs no flag. This is only the no-header fallback: when "1", a worker action on a run created
+    // after WORKLOAD_TOKEN_CUTOFF without a verified env header is rejected; runs on or before the
+    // cutoff pass (grandfathered). Default off = no run-row read, byte-for-byte today's behavior.
+    WORKLOAD_CREATED_AT_GATE_ENABLED: z.string().default("0"),
+    WORKLOAD_TOKEN_CUTOFF: z.string().datetime().optional(),
 
     // Development OTEL environment variables
     DEV_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
@@ -783,50 +837,9 @@ const EnvironmentSchema = z
 
     LOOPS_API_KEY: z.string().optional(),
     ATTIO_API_KEY: z.string().optional(),
-    MARQS_DISABLE_REBALANCING: BoolEnv.default(false),
-    MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
-      .number()
-      .int()
-      .default(60 * 1000 * 15),
-    MARQS_SHARED_QUEUE_LIMIT: z.coerce.number().int().default(1000),
-    MARQS_MAXIMUM_QUEUE_PER_ENV_COUNT: z.coerce.number().int().default(50),
-    MARQS_DEV_QUEUE_LIMIT: z.coerce.number().int().default(1000),
-    MARQS_MAXIMUM_NACK_COUNT: z.coerce.number().int().default(64),
-    MARQS_CONCURRENCY_LIMIT_BIAS: z.coerce.number().default(0.75),
-    MARQS_AVAILABLE_CAPACITY_BIAS: z.coerce.number().default(0.3),
-    MARQS_QUEUE_AGE_RANDOMIZATION_BIAS: z.coerce.number().default(0.25),
-    MARQS_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
-    MARQS_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
-    MARQS_SHARED_WORKER_QUEUE_CONSUMER_INTERVAL_MS: z.coerce.number().int().default(250),
-    MARQS_SHARED_WORKER_QUEUE_MAX_MESSAGE_COUNT: z.coerce.number().int().default(10),
-
-    MARQS_SHARED_WORKER_QUEUE_EAGER_DEQUEUE_ENABLED: z.string().default("0"),
-    MARQS_WORKER_ENABLED: z.string().default("0"),
-    MARQS_WORKER_COUNT: z.coerce.number().int().default(2),
-    MARQS_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
-    MARQS_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(5),
-    MARQS_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
-    MARQS_WORKER_IMMEDIATE_POLL_INTERVAL_MS: z.coerce.number().int().default(100),
-    MARQS_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
-    MARQS_SHARED_WORKER_QUEUE_COOLOFF_COUNT_THRESHOLD: z.coerce.number().int().default(10),
-    MARQS_SHARED_WORKER_QUEUE_COOLOFF_PERIOD_MS: z.coerce.number().int().default(5_000),
 
     PROD_TASK_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
 
-    VERBOSE_GRAPHILE_LOGGING: z.string().default("false"),
-    V2_MARQS_ENABLED: z.string().default("0"),
-    V2_MARQS_CONSUMER_POOL_ENABLED: z.string().default("0"),
-    V2_MARQS_CONSUMER_POOL_SIZE: z.coerce.number().int().default(10),
-    V2_MARQS_CONSUMER_POLL_INTERVAL_MS: z.coerce.number().int().default(1000),
-    V2_MARQS_QUEUE_SELECTION_COUNT: z.coerce.number().int().default(36),
-    V2_MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
-      .number()
-      .int()
-      .default(60 * 1000 * 15),
-    V2_MARQS_DEFAULT_ENV_CONCURRENCY: z.coerce.number().int().default(100),
-    V2_MARQS_VERBOSE: z.string().default("0"),
-    V3_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
-    V2_MARQS_CONCURRENCY_MONITOR_ENABLED: z.string().default("0"),
     /* Usage settings */
     USAGE_EVENT_URL: z.string().optional(),
     PROD_USAGE_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().optional(),
@@ -834,7 +847,6 @@ const EnvironmentSchema = z
     CENTS_PER_RUN: z.coerce.number().default(0),
 
     EVENT_LOOP_MONITOR_ENABLED: z.string().default("1"),
-    RESOURCE_MONITOR_ENABLED: z.string().default("0"),
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
@@ -1166,55 +1178,6 @@ const EnvironmentSchema = z
     /** The CLI should connect to this for dev runs */
     DEV_ENGINE_URL: z.string().default(process.env.APP_ORIGIN ?? "http://localhost:3030"),
 
-    LEGACY_RUN_ENGINE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
-    LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
-    LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(1),
-    LEGACY_RUN_ENGINE_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
-    LEGACY_RUN_ENGINE_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
-    LEGACY_RUN_ENGINE_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(50),
-    LEGACY_RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
-    LEGACY_RUN_ENGINE_WORKER_LOG_LEVEL: z
-      .enum(["log", "error", "warn", "info", "debug"])
-      .default("info"),
-
-    LEGACY_RUN_ENGINE_WORKER_REDIS_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_HOST),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_READER_HOST: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_READER_HOST),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_READER_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) =>
-          v ?? (process.env.REDIS_READER_PORT ? parseInt(process.env.REDIS_READER_PORT) : undefined)
-      ),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_PORT: z.coerce
-      .number()
-      .optional()
-      .transform(
-        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
-      ),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_USERNAME: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_USERNAME),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_PASSWORD: z
-      .string()
-      .optional()
-      .transform((v) => v ?? process.env.REDIS_PASSWORD),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_TLS_DISABLED: z
-      .string()
-      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
-    LEGACY_RUN_ENGINE_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
-
-    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_SIZE: z.coerce.number().int().default(100),
-    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_BATCH_STAGGER_MS: z.coerce.number().int().default(1_000),
-    LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_DISABLED: z.string().default("0"),
-
     COMMON_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     COMMON_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
     COMMON_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
@@ -1399,6 +1362,9 @@ const EnvironmentSchema = z
     // claim TTL), how long a waiter blocks before timing out, and the
     // waiter poll interval.
     TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+    // Pipeline floor: the claim never shrinks below this even for a short customer key TTL, so it
+    // can't expire mid-pipeline and let a loser re-claim (cross-DB duplicate under the split).
+    TRIGGER_MOLLIFIER_CLAIM_MIN_TTL_SECONDS: z.coerce.number().int().positive().default(5),
     TRIGGER_MOLLIFIER_CLAIM_WAIT_MS: z.coerce.number().int().positive().default(5_000),
     TRIGGER_MOLLIFIER_CLAIM_POLL_MS: z.coerce.number().int().positive().default(25),
 
@@ -1727,6 +1693,14 @@ const EnvironmentSchema = z
     RUN_REPLICATION_DISABLE_PAYLOAD_INSERT: z.string().default("0"),
     RUN_REPLICATION_DISABLE_ERROR_FINGERPRINTING: z.string().default("0"),
 
+    // Connection URL for the LEGACY runs-replication source (the runs-CDC slot on the legacy runs DB, plus
+    // the admin recovery route). Direct, not pooled: replication can't run over a pooler. Optional; unset ->
+    // falls back to DATABASE_URL, so nothing changes today.
+    RUN_REPLICATION_LEGACY_DATABASE_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "RUN_REPLICATION_LEGACY_DATABASE_URL is invalid")
+      .optional(),
+
     // --- Run-ops DB split — second replication source (the NEW dedicated run-ops DB). ---
     // Cloud-only; only consulted when isSplitEnabled() is true. Self-host never sets these.
     // Connection URL for the run-ops DB used by the runs-replication source. Required when the split is
@@ -1753,6 +1727,10 @@ const EnvironmentSchema = z
     RUN_OPS_MINT_ENABLED: BoolEnv.default(false),
     RUN_OPS_MINT_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     RUN_OPS_MINT_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(10_000),
+    // Deterministic wall-clock cutover after a runOpsMintKind flip. Must exceed the sum
+    // of RUN_OPS_MINT_FLAG_CACHE_TTL_MS and the control-plane cache TTL so every process
+    // (stale or fresh) resolves to the same kind for the whole window. See mintFlipGrace.ts.
+    RUN_OPS_MINT_FLIP_GRACE_MS: z.coerce.number().int().default(90_000),
 
     // Session replication (Postgres → ClickHouse sessions_v1). Shares Redis
     // with the runs replicator for leader locking but has its own slot and
@@ -1763,6 +1741,12 @@ const EnvironmentSchema = z
     SESSION_REPLICATION_PUBLICATION_NAME: z
       .string()
       .default("sessions_to_clickhouse_v1_publication"),
+    // Connection URL for the sessions-replication slot. Direct, not pooled: replication can't run over a
+    // pooler. Optional; unset -> falls back to DATABASE_URL, so nothing changes today.
+    SESSION_REPLICATION_DATABASE_URL: z
+      .string()
+      .refine(isValidDatabaseUrl, "SESSION_REPLICATION_DATABASE_URL is invalid")
+      .optional(),
     SESSION_REPLICATION_MAX_FLUSH_CONCURRENCY: z.coerce.number().int().default(1),
     SESSION_REPLICATION_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     SESSION_REPLICATION_FLUSH_BATCH_SIZE: z.coerce.number().int().default(100),
@@ -1788,6 +1772,11 @@ const EnvironmentSchema = z
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
+    // Optional read replica endpoint. Read-only clients (logs, query, admin, runsList,
+    // engine, realtime) default to this when their own URL is unset; writes always stay on
+    // CLICKHOUSE_URL. Events reads opt in separately via EVENTS_READER_CLICKHOUSE_URL (no
+    // fallback here). Must share storage with the CLICKHOUSE_URL warehouse.
+    CLICKHOUSE_READER_URL: z.string().optional(),
     CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
@@ -1850,13 +1839,13 @@ const EnvironmentSchema = z
     LOGS_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
 
     // Query page ClickHouse limits (for TSQL queries)
     QUERY_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
     QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
     QUERY_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_073_741_824), // 1GB in bytes
     QUERY_CLICKHOUSE_MAX_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
@@ -1875,12 +1864,14 @@ const EnvironmentSchema = z
     ADMIN_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
 
     EVENTS_CLICKHOUSE_URL: z
       .string()
       .optional()
       .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+    // Events read replica (traces/spans/logs). No CLICKHOUSE_READER_URL fallback by design: this write-capable client opts in explicitly.
+    EVENTS_READER_CLICKHOUSE_URL: z.string().optional(),
     EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
@@ -1893,7 +1884,7 @@ const EnvironmentSchema = z
     RUN_ENGINE_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
     RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     RUN_ENGINE_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(5),
@@ -1905,7 +1896,7 @@ const EnvironmentSchema = z
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce
       .number()
@@ -1916,6 +1907,20 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    // Dedicated ClickHouse pool for the runs list (dashboard + API). Lets us point
+    // the highest-traffic read path at a read replica without moving ingest/replication
+    // writes off CLICKHOUSE_URL. Falls back to CLICKHOUSE_URL when unset.
+    RUNS_LIST_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
+    RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    RUNS_LIST_CLICKHOUSE_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
     EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     METRICS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(10000),
@@ -1933,9 +1938,17 @@ const EnvironmentSchema = z
       .enum(["postgres", "clickhouse", "clickhouse_v2"])
       .default("postgres"),
     EVENT_REPOSITORY_DEBUG_LOGS_DISABLED: BoolEnv.default(false),
+    EVENT_REPOSITORY_POSTGRES_WRITES_DISABLED: BoolEnv.default(false),
     EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(5_000),
     EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING: z.coerce.number().int().default(2000),
+
+    // OTLP ingest transform worker pool (opt-in). When enabled, decode/convert/enrich run in a
+    // worker_threads pool instead of the request event loop; the single consolidated insert path
+    // is unchanged.
+    OTEL_TRANSFORM_WORKER_POOL_ENABLED: BoolEnv.default(false),
+    OTEL_TRANSFORM_WORKER_POOL_SIZE: z.coerce.number().int().optional(),
+    OTEL_TRANSFORM_WORKER_PATH: z.string().optional(),
 
     // Organization data stores registry
     ORGANIZATION_DATA_STORES_RELOAD_INTERVAL_MS: z.coerce
@@ -2072,9 +2085,22 @@ const EnvironmentSchema = z
     // Force RBAC to not use the plugin
     RBAC_FORCE_FALLBACK: BoolEnv.default(false),
 
+    // Per-process pool sizes for an RBAC plugin that owns its own database
+    // client (the fallback queries through Prisma and ignores these). Writes
+    // are rare role mutations; reads run on the per-request auth hot path.
+    RBAC_DATABASE_WRITER_CONNECTION_LIMIT: z.coerce.number().int().default(2),
+    RBAC_DATABASE_READER_CONNECTION_LIMIT: z.coerce.number().int().default(5),
+
     // Force SSO to not use the plugin (contributors without the cloud
     // plugin installed can opt in to a clean OSS-only experience).
     SSO_FORCE_FALLBACK: BoolEnv.default(false),
+
+    // Per-process pool sizes for an SSO plugin that owns its own database
+    // client (the fallback queries through Prisma and ignores these). Writes
+    // are rare config mutations and webhook processing; reads run on the
+    // login path.
+    SSO_DATABASE_WRITER_CONNECTION_LIMIT: z.coerce.number().int().default(2),
+    SSO_DATABASE_READER_CONNECTION_LIMIT: z.coerce.number().int().default(5),
     // Emit a console.log when the SSO fallback is selected because no
     // plugin is installed. Default off so OSS deployments stay quiet.
     SSO_LOG_FALLBACK: BoolEnv.default(false),
@@ -2115,3 +2141,24 @@ const EnvironmentSchema = z
 
 export type Environment = z.infer<typeof EnvironmentSchema>;
 export const env = EnvironmentSchema.parse(process.env);
+
+if (env.ALLOW_INSECURE_DEFAULT_SECRETS) {
+  const insecure = (
+    [
+      ["SESSION_SECRET", env.SESSION_SECRET],
+      ["MAGIC_LINK_SECRET", env.MAGIC_LINK_SECRET],
+      ["ENCRYPTION_KEY", env.ENCRYPTION_KEY],
+      ["MANAGED_WORKER_SECRET", env.MANAGED_WORKER_SECRET],
+    ] as const
+  )
+    .filter(([, value]) => INSECURE_SECRET_VALUES.includes(value))
+    .map(([name]) => name);
+
+  if (insecure.length > 0) {
+    console.warn(
+      `⚠️  ALLOW_INSECURE_DEFAULT_SECRETS is enabled and these secrets still use a known-insecure published default: ${insecure.join(
+        ", "
+      )}. This is insecure - rotate them as soon as you can.`
+    );
+  }
+}

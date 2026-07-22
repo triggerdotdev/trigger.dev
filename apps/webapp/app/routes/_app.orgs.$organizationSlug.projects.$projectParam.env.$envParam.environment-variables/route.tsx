@@ -78,6 +78,7 @@ import {
   v3NewEnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 import {
   DeleteEnvironmentVariableValue,
   EditEnvironmentVariableValue,
@@ -265,6 +266,24 @@ export const action = dashboardAction(
     });
     if (!project) {
       return json(submission.reply({ formErrors: ["Project not found"] }));
+    }
+
+    // Per-env write gate for the mutating value actions: `environmentId` is a
+    // user-supplied hidden field and the repository only checks project
+    // membership. Mirrors the create route's check.
+    if (submission.value.action === "edit" || submission.value.action === "delete") {
+      const submittedEnvs = await prisma.runtimeEnvironment.findMany({
+        where: { projectId: project.id, id: submission.value.environmentId },
+        select: { id: true, type: true, orgMember: { select: { userId: true } } },
+      });
+      const unauthorizedEnvironmentId = findUnauthorizedEnvironmentId(
+        submittedEnvs,
+        [submission.value.environmentId],
+        userId
+      );
+      if (unauthorizedEnvironmentId) {
+        return json(submission.reply({ formErrors: ["This environment is not writable by you."] }));
+      }
     }
 
     switch (submission.value.action) {

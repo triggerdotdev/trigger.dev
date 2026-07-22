@@ -29,12 +29,32 @@ import {
 } from "@internal/testcontainers";
 import { Prisma, type PrismaClient, type WaitpointStatus } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
 import {
   WaitpointListPresenter,
   type WaitpointListOptions,
 } from "~/presenters/v3/WaitpointListPresenter.server";
 
 vi.setConfig({ testTimeout: 90_000 });
+
+// Wire the presenter's run store to the test containers so waitpoint reads route to the
+// container DBs (NEW=dedicated, LEGACY=legacy) instead of the default localhost:5432 client.
+// In single-DB passthrough both legs point at the same client (a no-op fan-out that de-dupes
+// back to one DB's rows), mirroring production single-DB deployments.
+function makeRunStore(newClient: PrismaClient, legacyClient: PrismaClient): RoutingRunStore {
+  return new RoutingRunStore({
+    new: new PostgresRunStore({
+      prisma: newClient as never,
+      readOnlyPrisma: newClient as never,
+      schemaVariant: "dedicated",
+    }),
+    legacy: new PostgresRunStore({
+      prisma: legacyClient as never,
+      readOnlyPrisma: legacyClient as never,
+      schemaVariant: "legacy",
+    }),
+  });
+}
 
 type SeedContext = {
   projectId: string;
@@ -175,17 +195,14 @@ describe("WaitpointListPresenter read-route", () => {
     // Non-MANUAL row that must be excluded by w.type = 'MANUAL'.
     await seedWaitpoint(prisma, ctx, { id: "wp00000000000000000000099", type: "RUN" });
 
-    // Spy: any would-be legacy handle access throws if invoked.
-    const legacyThrows = new Proxy(
-      {},
-      {
-        get() {
-          throw new Error("legacy handle must never be touched in passthrough");
-        },
-      }
-    ) as unknown as PrismaClient;
-
-    const presenter = new WaitpointListPresenter(prisma, prisma);
+    // Single-DB deployment: both run-store legs point at the same container client, so the
+    // mandatory NEW+LEGACY fan-out in findManyWaitpoints reads one DB and de-dupes by id.
+    const presenter = new WaitpointListPresenter(
+      prisma,
+      prisma,
+      undefined,
+      makeRunStore(prisma, prisma)
+    );
     const result = await presenter.call(baseOptions(ctx.environmentId, { pageSize: 2 }));
 
     expect(result.success).toBe(true);
@@ -208,13 +225,9 @@ describe("WaitpointListPresenter read-route", () => {
       "wp00000000000000000000001",
     ]);
 
-    // Constructing with a throwing legacy handle but no split must never invoke it.
-    const presenterWithLegacy = new WaitpointListPresenter(prisma, prisma, {
-      runOpsLegacyReplica: legacyThrows,
-      // splitEnabled omitted => passthrough.
-    });
-    const result2 = await presenterWithLegacy.call(baseOptions(ctx.environmentId, { pageSize: 2 }));
-    expect(result2.success).toBe(true);
+    // FLAG: dropped the old "throwing legacy handle never invoked" tripwire — RoutingRunStore's
+    // findManyWaitpoints always fans out to both legs, so single-DB is modeled by both legs
+    // sharing one client (above), not by a throwing legacy leg.
   });
 
   // Raw paginated scan byte-identical + identical ORDER-BY across PG14/PG17.
@@ -282,7 +295,12 @@ describe("WaitpointListPresenter read-route", () => {
       }
 
       // Same with a cursor active (forward => id < cursor) — exercised via the presenter.
-      const presenter14 = new WaitpointListPresenter(prisma14, prisma14);
+      const presenter14 = new WaitpointListPresenter(
+        prisma14,
+        prisma14,
+        undefined,
+        makeRunStore(prisma14, prisma14)
+      );
       const cursored = await presenter14.call(
         baseOptions(ctx14.environmentId, { pageSize: 2, cursor: "wp10000000000000000000004" })
       );
@@ -343,13 +361,14 @@ describe("WaitpointListPresenter read-route", () => {
         },
       }) as PrismaClient;
 
-      const presenter = new WaitpointListPresenter(prisma17, prisma17, {
-        runOpsNew: prisma17,
-        runOpsLegacyReplica: legacyCounted,
-        splitEnabled: true,
-      });
+      const presenter = new WaitpointListPresenter(
+        prisma17,
+        prisma17,
+        undefined,
+        makeRunStore(prisma17, legacyCounted)
+      );
 
-      // pageSize 4 < union of 5 => new DB (2 rows) does NOT fill page+1=5, so legacy is scanned.
+      // pageSize 4 < union of 5 => merged NEW (2 rows) + LEGACY page fills 4.
       const result = await presenter.call(baseOptions(ctx17.environmentId, { pageSize: 4 }));
       expect(result.success).toBe(true);
       if (!result.success) return;
@@ -371,20 +390,23 @@ describe("WaitpointListPresenter read-route", () => {
       expect(dupes).toHaveLength(1);
       expect(dupes[0]?.status).toBe("COMPLETED");
 
-      // Now a page the new DB fully satisfies => legacy must NOT be scanned.
+      // A page the new DB fully satisfies still returns only the newest token.
       legacyScanCount = 0;
-      const presenter2 = new WaitpointListPresenter(prisma17, prisma17, {
-        runOpsNew: prisma17,
-        runOpsLegacyReplica: legacyCounted,
-        splitEnabled: true,
-      });
-      // pageSize 1 => page+1 = 2; new DB has 2 rows => fills the over-fetch, skip legacy.
+      const presenter2 = new WaitpointListPresenter(
+        prisma17,
+        prisma17,
+        undefined,
+        makeRunStore(prisma17, legacyCounted)
+      );
+      // pageSize 1 => page+1 = 2; new DB has 2 rows, so its keyset window already covers the page.
       const result2 = await presenter2.call(baseOptions(ctx17.environmentId, { pageSize: 1 }));
       expect(result2.success).toBe(true);
       if (result2.success) {
         expect(result2.tokens.map((t) => t.id)).toEqual(["wp_wp20000000000000000000005"]);
       }
-      expect(legacyScanCount).toBe(0);
+      // FLAG: dropped the old "legacy NOT scanned when new fills the page" tripwire.
+      // RoutingRunStore.findManyWaitpoints unconditionally fans out to both legs, so legacy is
+      // always scanned; the result (only the newest token) is what proves the window is correct.
     }
   );
 
@@ -401,11 +423,12 @@ describe("WaitpointListPresenter read-route", () => {
       await seedWaitpoint(prisma14, ctx, { id: "wp30000000000000000000001" });
 
       // Filter yields an empty page (no token has this idempotencyKey) so the probe runs.
-      const splitPresenter = new WaitpointListPresenter(prisma17, prisma17, {
-        runOpsNew: prisma17,
-        runOpsLegacyReplica: prisma14,
-        splitEnabled: true,
-      });
+      const splitPresenter = new WaitpointListPresenter(
+        prisma17,
+        prisma17,
+        undefined,
+        makeRunStore(prisma17, prisma14)
+      );
       const r1 = await splitPresenter.call(
         baseOptions(ctx.environmentId, { idempotencyKey: "no-such-key" })
       );
@@ -426,18 +449,14 @@ describe("WaitpointListPresenter read-route", () => {
         expect(r2.hasAnyTokens).toBe(false);
       }
 
-      // split off => probe reads only _replica, never the legacy handle (throws if touched).
-      const legacyThrows = new Proxy(
-        {},
-        {
-          get() {
-            throw new Error("legacy handle must never be touched when split is off");
-          },
-        }
-      ) as unknown as PrismaClient;
-      const passthroughPresenter = new WaitpointListPresenter(prisma17, prisma17, {
-        runOpsLegacyReplica: legacyThrows,
-      });
+      // Single-DB passthrough: both legs share one client; the probe (findWaitpoint) tries NEW
+      // then LEGACY, both empty here, so no false-positive.
+      const passthroughPresenter = new WaitpointListPresenter(
+        prisma17,
+        prisma17,
+        undefined,
+        makeRunStore(prisma17, prisma17)
+      );
       const r3 = await passthroughPresenter.call(
         baseOptions(ctx.environmentId, { idempotencyKey: "no-such-key" })
       );
@@ -474,11 +493,12 @@ describe("WaitpointListPresenter read-route", () => {
         },
       });
 
-      const presenter = new WaitpointListPresenter(prisma14 as any, prisma14 as any, {
-        runOpsNew: prisma17 as any,
-        runOpsLegacyReplica: prisma14 as any,
-        splitEnabled: true,
-      });
+      const presenter = new WaitpointListPresenter(
+        prisma14 as any,
+        prisma14 as any,
+        undefined,
+        makeRunStore(prisma17 as any, prisma14 as any)
+      );
 
       const result = await presenter.call({
         environment: {

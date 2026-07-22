@@ -160,11 +160,11 @@ for await (const turn of session) {
   });
 
   // Manual: pipe and capture separately
-  const response = await chat.pipeAndCapture(result, { signal: turn.signal });
+  const { message } = await chat.pipeAndCapture(result, { signal: turn.signal });
 
-  if (response) {
+  if (message) {
     // Custom processing before accumulating
-    await turn.addResponse(response);
+    await turn.addResponse(message);
   }
 
   // Custom persistence, analytics, etc.
@@ -215,8 +215,8 @@ For full control, skip `createSession` and compose the primitives directly:
 | ------------------------------- | -------------------------------------------------------------------------------------------- |
 | `chat.messages`                 | Input stream for incoming messages — use `.waitWithIdleTimeout()` to wait for the next turn  |
 | `chat.createStopSignal()`       | Create a managed stop signal wired to the stop input stream                                  |
-| `chat.pipeAndCapture(result)`   | Pipe a `StreamTextResult` to the chat stream and capture the response                        |
-| `chat.writeTurnComplete()`      | Signal the frontend that the current turn is complete                                        |
+| `chat.pipeAndCapture(result)`   | Pipe a stream and capture the response; returns `{ message, status, error }`                 |
+| `chat.writeTurnComplete()`      | Signal turn complete; returns `{ lastEventId, sessionInEventId }` resume cursors             |
 | `chat.MessageAccumulator`       | Accumulates conversation messages across turns                                               |
 | `chat.pipe(stream)`             | Pipe a stream to the frontend (no response capture)                                          |
 | `chat.cleanupAbortedParts(msg)` | Clean up incomplete parts from a stopped response                                            |
@@ -285,21 +285,16 @@ export const myChat = chat.customAgent({
         stopWhen: stepCountIs(15),
       });
 
-      let response;
-      try {
-        response = await chat.pipeAndCapture(result, { signal: combinedSignal });
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          if (runSignal.aborted) break;
-          // Stop — fall through to accumulate partial
-        } else {
-          throw error;
-        }
-      }
+      const { message, status, error } = await chat.pipeAndCapture(result, {
+        signal: combinedSignal,
+      });
+      // pipeAndCapture never throws: a user stop returns status "aborted" with
+      // the partial message, and a failure returns status "error" with `error`.
+      if (status === "error") throw error;
 
-      if (response) {
+      if (message) {
         const cleaned =
-          stop.signal.aborted && !runSignal.aborted ? chat.cleanupAbortedParts(response) : response;
+          stop.signal.aborted && !runSignal.aborted ? chat.cleanupAbortedParts(message) : message;
         await conversation.addResponse(cleaned);
       }
 
@@ -346,8 +341,8 @@ const messages = await conversation.addIncoming(
 );
 
 // After piping, add the response
-const response = await chat.pipeAndCapture(result);
-if (response) await conversation.addResponse(response);
+const { message } = await chat.pipeAndCapture(result);
+if (message) await conversation.addResponse(message);
 
 // Access accumulated messages for persistence
 conversation.uiMessages; // UIMessage[]

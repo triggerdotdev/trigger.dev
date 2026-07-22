@@ -55,6 +55,7 @@ import {
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
+import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
 
 const Variable = z.object({
   key: EnvironmentVariableKey,
@@ -162,6 +163,31 @@ export const action = dashboardAction(
     });
     if (!project) {
       return json(submission.reply({ formErrors: ["Project not found"] }));
+    }
+
+    // The submitted `environmentIds` are user-supplied. Shared env types are
+    // writable by any member; a DEV env only by its owner. See
+    // findUnauthorizedEnvironmentId.
+    const submittedEnvs = await prisma.runtimeEnvironment.findMany({
+      where: {
+        projectId: project.id,
+        id: { in: submission.value.environmentIds },
+      },
+      select: { id: true, type: true, orgMember: { select: { userId: true } } },
+    });
+    const unauthorizedEnvironmentId = findUnauthorizedEnvironmentId(
+      submittedEnvs,
+      submission.value.environmentIds,
+      userId
+    );
+    if (unauthorizedEnvironmentId) {
+      return json(
+        submission.reply({
+          fieldErrors: {
+            environmentIds: ["One or more of the selected environments is not writable by you."],
+          },
+        })
+      );
     }
 
     const repository = new EnvironmentVariablesRepository(prisma);

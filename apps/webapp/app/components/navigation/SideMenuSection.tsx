@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ToggleArrowIcon } from "~/assets/icons/ToggleArrowIcon";
 
 type Props = {
@@ -14,9 +14,7 @@ type Props = {
   headerAction?: React.ReactNode;
 };
 
-/** A collapsible section for the side menu
- * The collapsed state is passed in as a prop, and there's a callback when it's toggled so we can save the state.
- */
+/** A collapsible section for the side menu. Collapsed state is controlled via props + a toggle callback. */
 export function SideMenuSection({
   title,
   initialCollapsed = false,
@@ -27,6 +25,7 @@ export function SideMenuSection({
   headerAction,
 }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const handleToggle = useCallback(() => {
     const newIsCollapsed = !isCollapsed;
@@ -34,22 +33,37 @@ export function SideMenuSection({
     onCollapseToggle?.(newIsCollapsed);
   }, [isCollapsed, onCollapseToggle]);
 
+  // Collapsed items stay in the DOM (height 0) for the animation, so `inert` removes them from the
+  // tab order and a11y tree (it doesn't affect layout). Set the DOM property directly — React 18's
+  // `inert` prop handling is unreliable.
+  useEffect(() => {
+    if (contentRef.current) {
+      contentRef.current.inert = isCollapsed;
+    }
+  }, [isCollapsed]);
+
   return (
     <div className="w-full overflow-hidden">
       {/* Header container - stays in DOM to preserve height */}
       <div className="relative w-full">
-        {/* Header - fades out when sidebar is collapsed */}
-        <motion.div
-          className="group/section flex cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 transition hover:bg-background-hover"
-          initial={false}
-          animate={{
-            opacity: isSideMenuCollapsed ? 0 : 1,
-          }}
-          transition={{ duration: 0.15, ease: "easeOut" }}
+        {/*
+          Header fades out as the menu narrows via --sm-label-opacity (falls back to 1 unset). Hover
+          background and text color snap (no transition), matching the nav items.
+        */}
+        <button
+          type="button"
+          // A real button for native keyboard toggle + focus ring. Out of the tab order when the
+          // menu is collapsed (the header is hidden and can't be toggled).
+          className="group/section flex w-full cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 hover:bg-background-hover focus-custom"
           onClick={isSideMenuCollapsed ? undefined : handleToggle}
-          style={{ cursor: isSideMenuCollapsed ? "default" : "pointer" }}
+          tabIndex={isSideMenuCollapsed ? -1 : undefined}
+          aria-expanded={!isCollapsed}
+          style={{
+            opacity: "var(--sm-label-opacity, 1)",
+            cursor: isSideMenuCollapsed ? "default" : "pointer",
+          }}
         >
-          <div className="flex items-center gap-1 text-text-dimmed transition group-hover/section:text-text-bright">
+          <div className="flex items-center gap-1 text-text-dimmed group-hover/section:text-text-bright">
             <h2 className="whitespace-nowrap text-xs">{title}</h2>
             <motion.div
               initial={isCollapsed}
@@ -60,19 +74,18 @@ export function SideMenuSection({
             </motion.div>
           </div>
           {headerAction && <div className="flex items-center">{headerAction}</div>}
-        </motion.div>
-        {/* Divider - absolutely positioned, visible when sidebar is collapsed but section is expanded */}
-        <motion.div
+        </button>
+        {/*
+          Divider fades in via --sm-collapse (0 → 1) as the header fades out. Only while expanded.
+        */}
+        <div
           className="absolute left-2 right-2 top-1 h-px bg-surface-control"
-          initial={false}
-          animate={{
-            opacity: isSideMenuCollapsed && !isCollapsed ? 1 : 0,
-          }}
-          transition={{ duration: 0.15, ease: "easeOut" }}
+          style={{ opacity: isCollapsed ? 0 : "var(--sm-collapse, 0)" }}
         />
       </div>
       <AnimatePresence initial={false}>
         <motion.div
+          ref={contentRef}
           className="w-full"
           initial={isCollapsed ? "collapsed" : "expanded"}
           animate={isCollapsed ? "collapsed" : "expanded"}

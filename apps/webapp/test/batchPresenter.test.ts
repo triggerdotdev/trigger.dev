@@ -1,4 +1,5 @@
 import { containerTest, heteroPostgresTest } from "@internal/testcontainers";
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
 import { type PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import {
@@ -6,9 +7,26 @@ import {
   type DisplayableInputEnvironment,
 } from "~/models/runtimeEnvironment.server";
 import { BatchPresenter } from "~/presenters/v3/BatchPresenter.server";
-import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
 
 vi.setConfig({ testTimeout: 90_000 });
+
+// Wire the presenter's run store to the test containers so batch reads route to the
+// container DBs (NEW=dedicated, LEGACY=legacy) instead of the default localhost:5432
+// client. legacyClient may be a tripwire proxy to assert a leg is never probed.
+function makeRunStore(newClient: PrismaClient, legacyClient: PrismaClient) {
+  return new RoutingRunStore({
+    new: new PostgresRunStore({
+      prisma: newClient as never,
+      readOnlyPrisma: newClient as never,
+      schemaVariant: "dedicated",
+    }),
+    legacy: new PostgresRunStore({
+      prisma: legacyClient as never,
+      readOnlyPrisma: legacyClient as never,
+      schemaVariant: "legacy",
+    }),
+  });
+}
 
 type SeedContext = {
   organizationId: string;
@@ -159,13 +177,12 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
         },
       }) as unknown as PrismaClient;
 
-      const presenter = new BatchPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: prisma17,
-        legacyReplica: tripwireLegacy,
-        readThrough: readThroughRun,
-        resolveDisplayableEnvironment: makeEnvResolver(prisma17),
-      });
+      const presenter = new BatchPresenter(
+        undefined,
+        undefined,
+        { resolveDisplayableEnvironment: makeEnvResolver(prisma17) },
+        makeRunStore(prisma17, tripwireLegacy)
+      );
 
       const result = await presenter.call({
         environmentId: ctx.environmentId,
@@ -215,14 +232,13 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
 
       // The structural guarantee: there is no legacy-PRIMARY handle in readThroughRun; the only
       // legacy handle threaded here is the read replica (prisma14).
-      const presenter = new BatchPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: prisma17, // NEW probe misses (nothing seeded there)
-        legacyReplica: prisma14,
-        // Real readThroughRun; the NEW miss falls through to the legacy replica.
-        readThrough: readThroughRun,
-        resolveDisplayableEnvironment: makeEnvResolver(prisma14),
-      });
+      // NEW probe misses (nothing seeded there); the router falls through to the legacy leg.
+      const presenter = new BatchPresenter(
+        undefined,
+        undefined,
+        { resolveDisplayableEnvironment: makeEnvResolver(prisma14) },
+        makeRunStore(prisma17, prisma14)
+      );
 
       const result = await presenter.call({
         environmentId: ctx.environmentId,
@@ -245,13 +261,12 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
     async ({ prisma14, prisma17 }) => {
       const ctx = await seedEnvironment(prisma14, "missing1");
 
-      const presenter = new BatchPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: prisma17,
-        legacyReplica: prisma14,
-        readThrough: readThroughRun,
-        resolveDisplayableEnvironment: makeEnvResolver(prisma14),
-      });
+      const presenter = new BatchPresenter(
+        undefined,
+        undefined,
+        { resolveDisplayableEnvironment: makeEnvResolver(prisma14) },
+        makeRunStore(prisma17, prisma14)
+      );
 
       await expect(
         presenter.call({ environmentId: ctx.environmentId, batchId: "batch_does_not_exist" })
@@ -266,13 +281,12 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
       const ctx = await seedEnvironment(prisma17, "dev1", "DEVELOPMENT");
       await seedBatch(prisma17, ctx.environmentId, { friendlyId: "batch_dev1" });
 
-      const presenter = new BatchPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: prisma17,
-        legacyReplica: prisma14,
-        readThrough: readThroughRun,
-        resolveDisplayableEnvironment: makeEnvResolver(prisma17),
-      });
+      const presenter = new BatchPresenter(
+        undefined,
+        undefined,
+        { resolveDisplayableEnvironment: makeEnvResolver(prisma17) },
+        makeRunStore(prisma17, prisma14)
+      );
 
       // No userId passed -> userName resolves to the member's username (the orgMember branch).
       const result = await presenter.call({
@@ -299,21 +313,23 @@ describe("BatchPresenter single-DB passthrough", () => {
       });
 
       let legacyInvoked = false;
-      const presenter = new BatchPresenter(prisma, prisma, {
-        splitEnabled: false,
-        // Pass the single DB as both clients; the passthrough must read NEW only.
-        newClient: prisma,
-        legacyReplica: new Proxy(prisma, {
-          get(target, prop) {
-            if (prop === "batchTaskRun") {
-              legacyInvoked = true;
-              throw new Error("legacy boundary must not be touched in single-DB passthrough");
-            }
-            return (target as any)[prop];
-          },
-        }) as unknown as PrismaClient,
-        resolveDisplayableEnvironment: makeEnvResolver(prisma),
-      });
+      // Single DB is the NEW leg; the batch resolves there so the legacy leg (tripwire) is
+      // never probed.
+      const tripwireLegacy = new Proxy(prisma, {
+        get(target, prop) {
+          if (prop === "batchTaskRun") {
+            legacyInvoked = true;
+            throw new Error("legacy boundary must not be touched in single-DB passthrough");
+          }
+          return (target as any)[prop];
+        },
+      }) as unknown as PrismaClient;
+      const presenter = new BatchPresenter(
+        prisma,
+        prisma,
+        { resolveDisplayableEnvironment: makeEnvResolver(prisma) },
+        makeRunStore(prisma, tripwireLegacy)
+      );
 
       const result = await presenter.call({
         environmentId: ctx.environmentId,
@@ -342,11 +358,12 @@ describe("BatchPresenter single-DB passthrough", () => {
         runCount: 10, // implies members spanning migrated + abandoned runs
       });
 
-      const presenter = new BatchPresenter(prisma, prisma, {
-        splitEnabled: false,
-        newClient: prisma,
-        resolveDisplayableEnvironment: makeEnvResolver(prisma),
-      });
+      const presenter = new BatchPresenter(
+        prisma,
+        prisma,
+        { resolveDisplayableEnvironment: makeEnvResolver(prisma) },
+        makeRunStore(prisma, prisma)
+      );
 
       const result = await presenter.call({
         environmentId: ctx.environmentId,

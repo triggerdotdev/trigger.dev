@@ -748,11 +748,7 @@ export function PromptsNone() {
       iconClassName="text-aiPrompts"
       panelClassName="max-w-lg"
       accessory={
-        <LinkButton
-          to={docsPath("prompt-management")}
-          variant="docs/small"
-          LeadingIcon={BookOpenIcon}
-        >
+        <LinkButton to={docsPath("ai/prompts")} variant="docs/small" LeadingIcon={BookOpenIcon}>
           Prompts docs
         </LinkButton>
       }

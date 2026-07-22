@@ -123,9 +123,10 @@ export async function mcpAuth(options: McpAuthOptions): Promise<LoginResult> {
   const indexResult = await pRetry(
     () => getPersonalAccessToken(apiClient, authorizationCodeResult.authorizationCode),
     {
-      //this means we're polling, same distance between each attempt
+      //poll at a fixed 1s interval. ~5 min window so the user has time to
+      //approve the consent screen; stays within the code's 10-min validity.
       factor: 1,
-      retries: 60,
+      retries: 300,
       minTimeout: 1000,
     }
   );

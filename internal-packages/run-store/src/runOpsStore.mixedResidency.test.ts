@@ -834,18 +834,20 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 11b: deleteManyTaskRunWaitpoints by taskRunId fans out to both and sums (:944) ──
-  // A run's edges can straddle DBs mid-drain; a delete keyed by taskRunId (not waitpointId) must
-  // delete from BOTH DBs and sum the count.
+  // ── Case 11b: deleteManyTaskRunWaitpoints by taskRunId routes to the run's store (no fan-out) ──
+  // An edge always co-locates with its run (blockRunWithWaitpointEdges routes the write by runId), so
+  // a run's edges only ever live on ONE store — a straddle can't arise via the write path. A delete
+  // keyed by a classifiable taskRunId therefore routes to the run's store and must NOT touch the other
+  // DB. To prove the routing (not a fan-out), we manufacture an edge on the non-owning DB too and
+  // assert it survives the delete.
   heteroRunOpsPostgresTest(
-    "case 11b: deleteManyTaskRunWaitpoints by taskRunId deletes edges on both DBs and sums",
+    "case 11b: deleteManyTaskRunWaitpoints by taskRunId routes to the run's store and leaves the other DB untouched",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedSharedEnv(prisma14, "m11b");
 
-      // ONE logical run id whose edges happen to exist on BOTH DBs (the straddle the fan-out guards).
-      // The edge is FK-free on #new (unnest path) and FK-bound on #legacy, so seed a co-resident
-      // waitpoint + run on #legacy for its edge, and write the #new edge directly.
+      // A run-ops run (→ #new). Its real edge lives on #new; we also plant an edge on #legacy that the
+      // write path could never create, purely to prove the routed delete does not fan out to #legacy.
       const runId = runOpsNew("m11br");
       const legacyToken = cuidLegacy("m11bt");
       await router.createRun(buildCreateRunInput({ runId, friendlyId: "run_m11b", ...env }));
@@ -881,7 +883,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
       await prisma14.$executeRawUnsafe(
         `INSERT INTO "TaskRunWaitpoint" ("id","taskRunId","waitpointId","projectId","createdAt","updatedAt") VALUES (gen_random_uuid(),'${runId}','${legacyToken}','${env.projectId}',NOW(),NOW())`
       );
-      // #new edge (FK-free) pointing at a run-ops token absent locally — drain straddle.
+      // The run's real edge, on its own DB (#new, FK-free unnest path), pointing at a run-ops token.
       const newToken = runOpsNew("m11bn");
       await prisma17.$executeRawUnsafe(
         `INSERT INTO "TaskRunWaitpoint" ("id","taskRunId","waitpointId","projectId","createdAt","updatedAt") VALUES (gen_random_uuid(),'${runId}','${newToken}','${env.projectId}',NOW(),NOW())`
@@ -891,10 +893,10 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
       expect(await prisma17.taskRunWaitpoint.count({ where: { taskRunId: runId } })).toBe(1);
 
       const { count } = await router.deleteManyTaskRunWaitpoints({ where: { taskRunId: runId } });
-      expect(count).toBe(2); // one edge deleted on each DB, summed
-
-      expect(await prisma14.taskRunWaitpoint.count({ where: { taskRunId: runId } })).toBe(0);
+      // Routed to #new (the run's store): only its edge is deleted; #legacy is never touched.
+      expect(count).toBe(1);
       expect(await prisma17.taskRunWaitpoint.count({ where: { taskRunId: runId } })).toBe(0);
+      expect(await prisma14.taskRunWaitpoint.count({ where: { taskRunId: runId } })).toBe(1);
     }
   );
 });

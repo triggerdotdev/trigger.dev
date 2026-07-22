@@ -1,12 +1,15 @@
 // Real heterogeneous legacy + new Postgres proof for the public waitpoint retrieve read.
-// The DB is never mocked: reads hit the two real containers. Only pure boundaries
-// (splitEnabled, isPastRetention) and recording client wrappers are
-// injected. heteroPostgresTest runs the legacy and new databases on different major versions.
+// The DB is never mocked: reads hit the two real containers. The presenter's run store is
+// wired to the test containers via makeRunStore (NEW=dedicated, LEGACY=legacy) so reads route
+// to the container DBs instead of the default localhost:5432 client. Recording client wrappers
+// let us assert which leg served the read. heteroPostgresTest runs the legacy and new databases
+// on different major versions.
 import {
   heteroPostgresTest,
   heteroRunOpsPostgresTest,
   postgresTest,
 } from "@internal/testcontainers";
+import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import type { PrismaClient, WaitpointType } from "@trigger.dev/database";
 import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
@@ -15,6 +18,24 @@ import type { PrismaReplicaClient } from "~/db.server";
 import { ApiWaitpointPresenter } from "~/presenters/v3/ApiWaitpointPresenter.server";
 
 vi.setConfig({ testTimeout: 60_000 });
+
+// Wire the presenter's run store to the test containers so waitpoint reads route to the
+// container DBs (NEW=dedicated, LEGACY=legacy) instead of the default localhost:5432 client.
+// The recording handles passed in still see every findFirst the store issues through them.
+function makeRunStore(newClient: PrismaClient, legacyClient: PrismaClient) {
+  return new RoutingRunStore({
+    new: new PostgresRunStore({
+      prisma: newClient as never,
+      readOnlyPrisma: newClient as never,
+      schemaVariant: "dedicated",
+    }),
+    legacy: new PostgresRunStore({
+      prisma: legacyClient as never,
+      readOnlyPrisma: legacyClient as never,
+      schemaVariant: "legacy",
+    }),
+  });
+}
 
 // 25-char cuid body (no v1 version marker) → LEGACY residency.
 function generateLegacyCuid() {
@@ -127,11 +148,15 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
       const newClient = recording(prisma17);
       const legacy = recording(prisma14, { forbidden: true });
 
-      const presenter = new ApiWaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: newClient.handle,
-        legacyReplica: legacy.handle,
-      });
+      const presenter = new ApiWaitpointPresenter(
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(
+          newClient.handle as unknown as PrismaClient,
+          legacy.handle as unknown as PrismaClient
+        )
+      );
 
       const result = await presenter.call(environmentArg(environment), id);
 
@@ -139,8 +164,9 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
       expect(result.tags).toEqual(["x", "y", "z"]);
       expect(result.output).toBe(JSON.stringify({ n: 42 }));
       expect(result.type).toBe("MANUAL");
-      // run-ops id → NEW: new store served the read, legacy never touched (fast-path).
-      expect(newClient.calls.length).toBe(1);
+      // run-ops id → NEW: the router classifies by id-shape and serves the read from the NEW
+      // store (resolve-probe + read = 2 findFirst on the NEW handle). Legacy is never touched.
+      expect(newClient.calls.length).toBe(2);
       expect(legacy.calls.length).toBe(0);
     }
   );
@@ -158,22 +184,28 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
       });
 
       const newClient = recording(prisma17);
-      // The deps expose only legacyReplica — there is NO legacy-primary handle at all.
+      // The legacy leg is threaded as both prisma and readOnlyPrisma — there is NO legacy-primary
+      // handle distinct from the replica handle at all.
       const legacy = recording(prisma14);
 
-      const presenter = new ApiWaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: newClient.handle,
-        legacyReplica: legacy.handle,
-      });
+      const presenter = new ApiWaitpointPresenter(
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(
+          newClient.handle as unknown as PrismaClient,
+          legacy.handle as unknown as PrismaClient
+        )
+      );
 
       const result = await presenter.call(environmentArg(environment), id);
 
       expect(result.id).toBe(seeded.friendlyId);
       expect(result.tags).toEqual(["a", "b"]);
-      // NEW probed first (miss) → resolved off the LEGACY REPLICA handle.
-      expect(newClient.calls.length).toBe(1);
-      expect(legacy.calls.length).toBe(1);
+      // cuid → LEGACY: the router classifies by id-shape and routes straight to LEGACY (resolve
+      // + read = 2 findFirst on the legacy handle). NEW is never probed for a legacy id.
+      expect(newClient.calls.length).toBe(0);
+      expect(legacy.calls.length).toBe(2);
     }
   );
 
@@ -183,11 +215,15 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
       const id = generateLegacyCuid();
       const { environment } = await seedOrgProjectEnv(prisma14, "nf");
 
-      const presenter = new ApiWaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: recording(prisma17).handle,
-        legacyReplica: recording(prisma14).handle,
-      });
+      const presenter = new ApiWaitpointPresenter(
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(
+          recording(prisma17).handle as unknown as PrismaClient,
+          recording(prisma14).handle as unknown as PrismaClient
+        )
+      );
 
       await expect(presenter.call(environmentArg(environment), id)).rejects.toThrow(
         "Waitpoint not found"
@@ -196,17 +232,20 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
   );
 
   heteroPostgresTest(
-    "past-retention maps to the same not-found surface",
+    "absent waitpoint maps to the same not-found surface",
     async ({ prisma17, prisma14 }) => {
       const id = generateLegacyCuid();
       const { environment } = await seedOrgProjectEnv(prisma14, "pr");
 
-      const presenter = new ApiWaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: recording(prisma17).handle,
-        legacyReplica: recording(prisma14).handle,
-        isPastRetention: () => true,
-      });
+      const presenter = new ApiWaitpointPresenter(
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(
+          recording(prisma17).handle as unknown as PrismaClient,
+          recording(prisma14).handle as unknown as PrismaClient
+        )
+      );
 
       await expect(presenter.call(environmentArg(environment), id)).rejects.toThrow(
         "Waitpoint not found"
@@ -225,11 +264,15 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         projectId: newEnv.project.id,
       });
       const newLegacy = recording(prisma14, { forbidden: true });
-      const migratedPresenter = new ApiWaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: recording(prisma17).handle,
-        legacyReplica: newLegacy.handle,
-      });
+      const migratedPresenter = new ApiWaitpointPresenter(
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(
+          recording(prisma17).handle as unknown as PrismaClient,
+          newLegacy.handle as unknown as PrismaClient
+        )
+      );
       const migratedResult = await migratedPresenter.call(
         environmentArg(newEnv.environment),
         newId
@@ -244,11 +287,15 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         id: oldEnv.environment.id,
         projectId: oldEnv.project.id,
       });
-      const retentionPresenter = new ApiWaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: recording(prisma17).handle,
-        legacyReplica: recording(prisma14).handle,
-      });
+      const retentionPresenter = new ApiWaitpointPresenter(
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(
+          recording(prisma17).handle as unknown as PrismaClient,
+          recording(prisma14).handle as unknown as PrismaClient
+        )
+      );
       const retentionResult = await retentionPresenter.call(
         environmentArg(oldEnv.environment),
         oldId
@@ -258,9 +305,9 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
   );
 });
 
-// Regression: the split-mode NEW client is the REAL scalar-only run-ops client (prisma17). A cuid
-// classifies LEGACY, so readThroughRun probes NEW first — a relation in hydrate() (connectedRuns)
-// throws PrismaClientValidationError there (the 500) before the legacy fallback runs.
+// Regression: the NEW store is the REAL scalar-only run-ops client (prisma17). A cuid classifies
+// LEGACY, so the router routes straight to the legacy leg — the dedicated store's scalar-only
+// select never issues a relation projection that would throw PrismaClientValidationError.
 describe("ApiWaitpointPresenter read-through (dedicated scalar-only run-ops NEW client)", () => {
   heteroRunOpsPostgresTest(
     "cuid token: hydrate() select is valid against the scalar-only run-ops client, resolves via legacy",
@@ -279,11 +326,15 @@ describe("ApiWaitpointPresenter read-through (dedicated scalar-only run-ops NEW 
       const newClient = recording(prisma17);
       const legacy = recording(prisma14);
 
-      const presenter = new ApiWaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: newClient.handle,
-        legacyReplica: legacy.handle,
-      });
+      const presenter = new ApiWaitpointPresenter(
+        undefined,
+        undefined,
+        undefined,
+        makeRunStore(
+          newClient.handle as unknown as PrismaClient,
+          legacy.handle as unknown as PrismaClient
+        )
+      );
 
       // Must NOT throw PrismaClientValidationError; resolves the token off the legacy side.
       const result = await presenter.call(environmentArg(environment), id);
@@ -291,15 +342,17 @@ describe("ApiWaitpointPresenter read-through (dedicated scalar-only run-ops NEW 
       expect(result.id).toBe(seeded.friendlyId);
       expect(result.tags).toEqual(["p", "q"]);
       expect(result.output).toBe(JSON.stringify({ ok: true }));
-      expect(newClient.calls.length).toBe(1);
-      expect(legacy.calls.length).toBe(1);
+      // cuid → LEGACY: routed straight to legacy (resolve + read); the scalar-only NEW client is
+      // never probed for a legacy id.
+      expect(newClient.calls.length).toBe(0);
+      expect(legacy.calls.length).toBe(2);
     }
   );
 });
 
 describe("ApiWaitpointPresenter passthrough (single-DB)", () => {
   postgresTest(
-    "no read-through deps → one plain replica read; legacy never touched",
+    "single-DB resolves via the NEW leg; legacy leg never touched",
     async ({ prisma }) => {
       const id = generateRunOpsId();
       const { project, environment } = await seedOrgProjectEnv(prisma, "pt");
@@ -313,20 +366,24 @@ describe("ApiWaitpointPresenter passthrough (single-DB)", () => {
       const single = recording(prisma);
       const legacy = recording(prisma, { forbidden: true });
 
-      // No splitEnabled → passthrough. newClient defaults to the single recording handle so we
-      // can assert exactly one read against it; legacy must never fire.
-      const presenter = new ApiWaitpointPresenter(undefined, undefined, {
-        newClient: single.handle,
-        legacyReplica: legacy.handle,
-      });
+      // run-ops id → NEW leg (the single DB). Legacy leg is a tripwire and must never fire.
+      const presenter = new ApiWaitpointPresenter(
+        prisma,
+        prisma,
+        undefined,
+        makeRunStore(
+          single.handle as unknown as PrismaClient,
+          legacy.handle as unknown as PrismaClient
+        )
+      );
 
       const result = await presenter.call(environmentArg(environment), id);
 
       expect(result.id).toBe(seeded.friendlyId);
       expect(result.tags).toEqual(["one"]);
       expect(result.output).toBe(JSON.stringify({ ok: true }));
-      // Passthrough: exactly one read on the single client; legacy untouched.
-      expect(single.calls.length).toBe(1);
+      // run-ops id → NEW leg served the read (resolve + read = 2 findFirst); legacy untouched.
+      expect(single.calls.length).toBe(2);
       expect(legacy.calls.length).toBe(0);
     }
   );

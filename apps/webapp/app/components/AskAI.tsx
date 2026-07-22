@@ -11,11 +11,12 @@ import { useSearchParams } from "@remix-run/react";
 import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
 import { marked } from "marked";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useTypedRouteLoaderData } from "remix-typedjson";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { useFeatures } from "~/hooks/useFeatures";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader } from "~/root";
 import { Button } from "./primitives/Buttons";
 import { Callout } from "./primitives/Callout";
@@ -36,6 +37,104 @@ import { ClientOnly } from "remix-utils/client-only";
 function useKapaWebsiteId() {
   const routeMatch = useTypedRouteLoaderData<typeof loader>("root");
   return routeMatch?.kapa.websiteId;
+}
+
+/** Open/close state for the Ask AI dialog, including the `?aiHelp=` deep-link handling. */
+function useAskAIState() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [initialQuery, setInitialQuery] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const openAskAI = useCallback((question?: string) => {
+    if (question) {
+      setInitialQuery(question);
+    } else {
+      setInitialQuery(undefined);
+    }
+    setIsOpen(true);
+  }, []);
+
+  const closeAskAI = useCallback(() => {
+    setIsOpen(false);
+    setInitialQuery(undefined);
+  }, []);
+
+  // Handle URL param functionality
+  useEffect(() => {
+    const aiHelp = searchParams.get("aiHelp");
+    if (aiHelp) {
+      // Delay to avoid hCaptcha bot detection
+      window.setTimeout(() => openAskAI(aiHelp), 1000);
+
+      // Clone instead of mutating in place
+      const next = new URLSearchParams(searchParams);
+      next.delete("aiHelp");
+      setSearchParams(next);
+    }
+  }, [searchParams, openAskAI]);
+
+  return { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI };
+}
+
+/**
+ * Hosts Ask AI (Kapa provider, ⌘I shortcut, dialog) for a menu that renders its own trigger. Wrap
+ * it around the popover, not inside, so the dialog and shortcut survive the popover closing.
+ * `children` receives the open function, or undefined when Ask AI is unavailable (self-hosted, no
+ * Kapa website id, or SSR).
+ */
+export function AskAIRoot({
+  children,
+}: {
+  children: (openAskAI: (() => void) | undefined) => ReactNode;
+}) {
+  const { isManagedCloud } = useFeatures();
+  const websiteId = useKapaWebsiteId();
+
+  if (!isManagedCloud || !websiteId) {
+    return <>{children(undefined)}</>;
+  }
+
+  return (
+    <ClientOnly fallback={<>{children(undefined)}</>}>
+      {() => <AskAIRootProvider websiteId={websiteId}>{children}</AskAIRootProvider>}
+    </ClientOnly>
+  );
+}
+
+function AskAIRootProvider({
+  websiteId,
+  children,
+}: {
+  websiteId: string;
+  children: (openAskAI: () => void) => ReactNode;
+}) {
+  const { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI } = useAskAIState();
+
+  useShortcutKeys({
+    shortcut: { modifiers: ["mod"], key: "i", enabledOnInputElements: true },
+    action: () => openAskAI(),
+  });
+
+  return (
+    <KapaProvider
+      integrationId={websiteId}
+      callbacks={{
+        askAI: {
+          onQuerySubmit: () => openAskAI(),
+          onAnswerGenerationCompleted: () => openAskAI(),
+        },
+      }}
+      botProtectionMechanism="hcaptcha"
+    >
+      {children(() => openAskAI())}
+      <AskAIDialog
+        initialQuery={initialQuery}
+        isOpen={isOpen}
+        onOpenChange={setIsOpen}
+        closeAskAI={closeAskAI}
+      />
+    </KapaProvider>
+  );
 }
 
 export function AskAI({ isCollapsed = false }: { isCollapsed?: boolean }) {
@@ -72,37 +171,7 @@ type AskAIProviderProps = {
 };
 
 function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [initialQuery, setInitialQuery] = useState<string | undefined>();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const openAskAI = useCallback((question?: string) => {
-    if (question) {
-      setInitialQuery(question);
-    } else {
-      setInitialQuery(undefined);
-    }
-    setIsOpen(true);
-  }, []);
-
-  const closeAskAI = useCallback(() => {
-    setIsOpen(false);
-    setInitialQuery(undefined);
-  }, []);
-
-  // Handle URL param functionality
-  useEffect(() => {
-    const aiHelp = searchParams.get("aiHelp");
-    if (aiHelp) {
-      // Delay to avoid hCaptcha bot detection
-      window.setTimeout(() => openAskAI(aiHelp), 1000);
-
-      // Clone instead of mutating in place
-      const next = new URLSearchParams(searchParams);
-      next.delete("aiHelp");
-      setSearchParams(next);
-    }
-  }, [searchParams, openAskAI]);
+  const { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI } = useAskAIState();
 
   return (
     <KapaProvider

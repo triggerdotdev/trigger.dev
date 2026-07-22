@@ -141,7 +141,7 @@ PostgreSQL connection string (fallback when not using secrets)
 {{- if .Values.postgres.external.databaseUrl -}}
 {{ .Values.postgres.external.databaseUrl }}
 {{- else if .Values.postgres.deploy -}}
-postgresql://{{ .Values.postgres.auth.username }}:{{ .Values.postgres.auth.password }}@{{ include "trigger-v4.postgres.hostname" . }}:5432/{{ .Values.postgres.auth.database }}?schema={{ .Values.postgres.connection.schema | default "public" }}&sslmode={{ .Values.postgres.connection.sslMode | default "prefer" }}
+postgresql://{{ .Values.postgres.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "trigger-v4.postgres.hostname" . }}:5432/{{ .Values.postgres.auth.database }}?schema={{ .Values.postgres.connection.schema | default "public" }}&sslmode={{ .Values.postgres.connection.sslMode | default "prefer" }}
 {{- end -}}
 {{- end }}
 
@@ -439,7 +439,7 @@ hex-encoded password or percent-encode before storing in the Secret.
 {{- if .Values.clickhouse.deploy -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.secure -}}
 {{- $secure := ternary "true" "false" .Values.clickhouse.secure -}}
-{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:{{ .Values.clickhouse.auth.password }}@{{ include "trigger-v4.clickhouse.hostname" . }}:8123?secure={{ $secure }}
+{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:$(CLICKHOUSE_PASSWORD)@{{ include "trigger-v4.clickhouse.hostname" . }}:8123?secure={{ $secure }}
 {{- else if .Values.clickhouse.external.host -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
 {{- $secure := ternary "true" "false" .Values.clickhouse.external.secure -}}
@@ -460,7 +460,7 @@ applies to the replication URL.
 {{- define "trigger-v4.clickhouse.replication.url" -}}
 {{- if .Values.clickhouse.deploy -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.secure -}}
-{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:{{ .Values.clickhouse.auth.password }}@{{ include "trigger-v4.clickhouse.hostname" . }}:8123
+{{ $protocol }}://{{ .Values.clickhouse.auth.username }}:$(CLICKHOUSE_PASSWORD)@{{ include "trigger-v4.clickhouse.hostname" . }}:8123
 {{- else if .Values.clickhouse.external.host -}}
 {{- $protocol := ternary "https" "http" .Values.clickhouse.external.secure -}}
 {{- if .Values.clickhouse.external.existingSecret -}}
@@ -508,6 +508,35 @@ Get the secrets name - either existing secret or generated name
 {{ .Values.secrets.existingSecret }}
 {{- else -}}
 {{ include "trigger-v4.fullname" . }}-secrets
+{{- end -}}
+{{- end }}
+
+{{/*
+Fixed name of the chart-managed datastore-credentials Secret. Fixed (not release-
+scoped) because bundled Bitnami subcharts read it via `*.auth.existingSecret`, which
+is set in values.yaml and cannot be templated - so the name must be a literal that
+both this chart and those values agree on. One release per namespace.
+*/}}
+{{- define "trigger-v4.datastore.secretName" -}}
+trigger-datastore
+{{- end }}
+
+{{/*
+Resolve a chart-managed secret: an explicit value wins; otherwise reuse the
+value already stored in the cluster Secret so `helm upgrade` never rotates it
+(rotating ENCRYPTION_KEY/SESSION_SECRET would orphan encrypted data and
+invalidate every session); otherwise generate a fresh 32-hex-char value.
+Note: `lookup` returns nothing during `helm template`/`--dry-run`, so those
+render a throwaway value each time - only real installs/upgrades retain.
+Args: dict "existingData" <map> "key" <string> "value" <string>
+*/}}
+{{- define "trigger-v4.resolveSecret" -}}
+{{- if .value -}}
+{{- .value -}}
+{{- else if (index .existingData .key) -}}
+{{- index .existingData .key | b64dec -}}
+{{- else -}}
+{{- sha256sum (randAlphaNum 32) | trunc 32 -}}
 {{- end -}}
 {{- end }}
 

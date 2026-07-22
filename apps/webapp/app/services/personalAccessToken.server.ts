@@ -18,6 +18,10 @@ const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", toke
 // staleness is fine.
 export const PAT_LAST_ACCESSED_THROTTLE_MS = 5 * 60 * 1000;
 
+// How long an unconsumed CLI authorization code stays valid. Shared constant so
+// the mint and read paths can't drift.
+export const AUTHORIZATION_CODE_TTL_MS = 10 * 60 * 1000;
+
 type CreatePersonalAccessTokenOptions = {
   name: string;
   userId: string;
@@ -60,16 +64,16 @@ export type ObfuscatedPersonalAccessToken = Awaited<
 
 /** Gets a PersonalAccessToken from an Auth Code, this only works within 10 mins of the auth code being created */
 export async function getPersonalAccessTokenFromAuthorizationCode(authorizationCode: string) {
-  //only allow authorization codes that were created less than 10 mins ago
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-  const code = await prisma.authorizationCode.findUnique({
+  // Only allow authorization codes created within the short consent window.
+  const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
+  const code = await prisma.authorizationCode.findFirst({
     select: {
       personalAccessToken: true,
     },
     where: {
       code: authorizationCode,
       createdAt: {
-        gte: tenMinutesAgo,
+        gte: validAfter,
       },
     },
   });
@@ -280,6 +284,27 @@ export function isPersonalAccessToken(token: string) {
   return token.startsWith(tokenPrefix);
 }
 
+/**
+ * Read-only check that an authorization code is still mintable: it exists, is
+ * unconsumed (`personalAccessTokenId: null`), and within the TTL. Lets the
+ * consent-screen loader show Authorize vs expired/invalid without minting a PAT.
+ */
+export async function isAuthorizationCodeMintable(
+  authorizationCode: string,
+  prismaClient = prisma
+): Promise<boolean> {
+  const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
+  const code = await prismaClient.authorizationCode.findFirst({
+    where: {
+      code: authorizationCode,
+      personalAccessTokenId: null,
+      createdAt: { gte: validAfter },
+    },
+    select: { id: true },
+  });
+  return code !== null;
+}
+
 export function createAuthorizationCode() {
   return prisma.authorizationCode.create({
     data: {
@@ -293,14 +318,14 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
   authorizationCode: string,
   userId: string
 ) {
-  //only allow authorization codes that were created less than 10 mins ago
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-  const code = await prisma.authorizationCode.findUnique({
+  // Only allow authorization codes created within the short consent window.
+  const validAfter = new Date(Date.now() - AUTHORIZATION_CODE_TTL_MS);
+  const code = await prisma.authorizationCode.findFirst({
     where: {
       code: authorizationCode,
       personalAccessTokenId: null,
       createdAt: {
-        gte: tenMinutesAgo,
+        gte: validAfter,
       },
     },
   });

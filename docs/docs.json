@@ -77,7 +77,8 @@
               "run-usage",
               "context",
               "runs/priority",
-              "hidden-tasks"
+              "hidden-tasks",
+              "runs/bulk-actions"
             ]
           },
           {
@@ -339,13 +340,21 @@
               "management/runs/retrieve",
               "management/runs/replay",
               "management/runs/cancel",
-              "management/runs/bulk-actions",
               "management/runs/reschedule",
               "management/runs/update-metadata",
               "management/runs/add-tags",
               "management/runs/retrieve-events",
               "management/runs/retrieve-trace",
               "management/runs/retrieve-result"
+            ]
+          },
+          {
+            "group": "Bulk actions API",
+            "pages": [
+              "management/bulk-actions/create",
+              "management/bulk-actions/list",
+              "management/bulk-actions/retrieve",
+              "management/bulk-actions/abort"
             ]
           },
           {
@@ -750,6 +759,10 @@
     {
       "source": "/reattempting-replaying",
       "destination": "/replaying"
+    },
+    {
+      "source": "/management/runs/bulk-actions",
+      "destination": "/runs/bulk-actions"
     },
     {
       "source": "/tasks-overview",
