@@ -60,11 +60,23 @@ describe("createBundleArchive", () => {
     expect(skill).toBe("# skill");
   });
 
-  it("excludes node_modules and .DS_Store but nothing else", async () => {
+  it("excludes only .DS_Store — node_modules paths must survive", async () => {
     await writeFile(join(bundleDir, "build.json"), "{}");
     await writeFile(join(bundleDir, ".DS_Store"), "junk");
-    await mkdir(join(bundleDir, "node_modules", "leftover"), { recursive: true });
-    await writeFile(join(bundleDir, "node_modules", "leftover", "index.js"), "x");
+    // The bundler emits controller entry points at paths mirroring the CLI's
+    // install location — under npx that contains a node_modules segment. Those
+    // files are load-bearing (the Containerfile's indexer stage runs them).
+    const controllerDir = join(
+      bundleDir,
+      ".npm",
+      "_npx",
+      "abc123",
+      "node_modules",
+      "trigger.dev",
+      "dist"
+    );
+    await mkdir(controllerDir, { recursive: true });
+    await writeFile(join(controllerDir, "managed-index-controller.mjs"), "x");
     // dist-like names must NOT be excluded — the bundle IS build output
     await mkdir(join(bundleDir, "dist"), { recursive: true });
     await writeFile(join(bundleDir, "dist", "chunk.mjs"), "x");
@@ -77,7 +89,22 @@ describe("createBundleArchive", () => {
     await tar.extract({ file: archivePath, cwd: extractDir });
 
     const rootEntries = (await readdir(extractDir)).sort();
-    expect(rootEntries).toEqual(["build.json", "dist"].sort());
+    expect(rootEntries).toEqual(["build.json", "dist", ".npm"].sort());
+
+    const controller = await readFile(
+      join(
+        extractDir,
+        ".npm",
+        "_npx",
+        "abc123",
+        "node_modules",
+        "trigger.dev",
+        "dist",
+        "managed-index-controller.mjs"
+      ),
+      "utf-8"
+    );
+    expect(controller).toBe("x");
   });
 
   it("throws when the bundle dir is empty", async () => {

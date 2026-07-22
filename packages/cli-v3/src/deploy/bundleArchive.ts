@@ -5,8 +5,10 @@ import { logger } from "../utilities/logger.js";
 // The bundle dir is generated build output (bundled JS, synthesized package.json,
 // build.json, Containerfile, .trigger/skills). Unlike the source-context archiver,
 // it must NOT apply the usual build-output ignores (dist, build, .trigger) — those
-// would strip the bundle itself. Only genuinely unwanted entries are excluded.
-const BUNDLE_IGNORES = ["**/node_modules", "**/.DS_Store"];
+// would strip the bundle itself. node_modules must NOT be excluded either: the
+// bundler emits the controller entry points at paths mirroring the CLI's install
+// location, which contains a node_modules segment when the CLI runs via npx.
+const BUNDLE_IGNORES = ["**/.DS_Store"];
 
 /**
  * Archives a pre-built bundle directory (the buildWorker destination) so its
