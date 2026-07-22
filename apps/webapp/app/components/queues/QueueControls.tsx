@@ -258,7 +258,7 @@ export function QueueOverrideConcurrencyButton({
         </DialogHeader>
         <div className="flex flex-col gap-3 pt-3">
           {isOverridden ? (
-            <Paragraph>
+            <Paragraph variant="small">
               This queue's concurrency limit is currently overridden to {currentLimit}.
               {typeof queue.concurrency?.base === "number" &&
                 ` The original limit set in code was ${queue.concurrency.base}.`}{" "}
@@ -269,7 +269,7 @@ export function QueueOverrideConcurrencyButton({
               .
             </Paragraph>
           ) : (
-            <Paragraph>
+            <Paragraph variant="small">
               Override this queue's concurrency limit. The current limit is {currentLimit}, which is
               set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
             </Paragraph>
@@ -278,10 +278,39 @@ export function QueueOverrideConcurrencyButton({
             <input type="hidden" name="friendlyId" value={queue.id} />
             <input type="hidden" name="mode" value={mode} />
             <InputGroup fullWidth>
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor={mode === "percent" ? "percent" : "concurrencyLimit"}>
-                  Concurrency limit
-                </Label>
+              <Label htmlFor={mode === "percent" ? "percent" : "concurrencyLimit"}>
+                Concurrency limit
+              </Label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  {mode === "percent" ? (
+                    <Input
+                      type="number"
+                      name="percent"
+                      id="percent"
+                      min="1"
+                      max="100"
+                      step="0.01"
+                      value={percent}
+                      onChange={(e) => setPercent(e.target.value)}
+                      placeholder="100"
+                      autoFocus
+                      accessory={<span className="pr-1 text-text-dimmed">%</span>}
+                    />
+                  ) : (
+                    <Input
+                      type="number"
+                      name="concurrencyLimit"
+                      id="concurrencyLimit"
+                      min="0"
+                      max={environmentConcurrencyLimit}
+                      value={concurrencyLimit}
+                      onChange={(e) => setConcurrencyLimit(e.target.value)}
+                      placeholder={currentLimit.toString()}
+                      autoFocus
+                    />
+                  )}
+                </div>
                 <SegmentedControl
                   name="unit"
                   value={mode}
@@ -293,46 +322,19 @@ export function QueueOverrideConcurrencyButton({
                 />
               </div>
               {mode === "percent" ? (
-                <>
-                  <Input
-                    type="number"
-                    name="percent"
-                    id="percent"
-                    min="1"
-                    max="100"
-                    step="0.01"
-                    value={percent}
-                    onChange={(e) => setPercent(e.target.value)}
-                    placeholder="100"
-                    autoFocus
-                  />
-                  <Hint>
-                    {materializedFromPercent !== null
-                      ? `${percentNumber}% = ${materializedFromPercent} concurrent ${
-                          materializedFromPercent === 1 ? "run" : "runs"
-                        } of the environment's ${environmentConcurrencyLimit}. Recalculates automatically when the environment limit changes.`
-                      : "Enter a percentage between 1 and 100."}
-                  </Hint>
-                </>
+                <Hint>
+                  {materializedFromPercent !== null
+                    ? `${percentNumber}% = ${materializedFromPercent} concurrent ${
+                        materializedFromPercent === 1 ? "run" : "runs"
+                      } of the environment's ${environmentConcurrencyLimit}. Recalculates automatically when the environment limit changes.`
+                    : "Enter a percentage between 1 and 100."}
+                </Hint>
               ) : (
-                <>
-                  <Input
-                    type="number"
-                    name="concurrencyLimit"
-                    id="concurrencyLimit"
-                    min="0"
-                    max={environmentConcurrencyLimit}
-                    value={concurrencyLimit}
-                    onChange={(e) => setConcurrencyLimit(e.target.value)}
-                    placeholder={currentLimit.toString()}
-                    autoFocus
-                  />
-                  <Hint className={limitOverCap ? "text-warning" : undefined}>
-                    {limitOverCap
-                      ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
-                      : `Up to the environment limit of ${environmentConcurrencyLimit}.`}
-                  </Hint>
-                </>
+                <Hint className={limitOverCap ? "text-warning" : undefined}>
+                  {limitOverCap
+                    ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
+                    : `Up to the environment limit of ${environmentConcurrencyLimit}.`}
+                </Hint>
               )}
             </InputGroup>
 
