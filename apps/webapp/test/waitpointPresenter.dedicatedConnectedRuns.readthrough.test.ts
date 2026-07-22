@@ -59,6 +59,7 @@ vi.mock("~/presenters/v3/NextRunListPresenter.server", () => ({
 
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import { PostgresRunStore, RoutingRunStore } from "@internal/run-store";
+import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { WaitpointPresenter } from "~/presenters/v3/WaitpointPresenter.server";
@@ -147,10 +148,12 @@ async function seedWaitpoint(
 async function seedRun(
   prisma: PrismaClient | RunOpsPrismaClient,
   ctx: SeedContext,
-  friendlyId: string
+  friendlyId: string,
+  id?: string
 ) {
   return (prisma as PrismaClient).taskRun.create({
     data: {
+      ...(id ? { id } : {}),
       friendlyId,
       taskIdentifier: "my-task",
       status: "PENDING",
@@ -216,7 +219,7 @@ describe("WaitpointPresenter against the REAL dedicated run-ops client", () => {
       const waitpoint = await seedWaitpoint(prisma14, ctx, "waitpoint_crossdb");
 
       // The connected run + join live only on the NEW dedicated DB (co-resident with the run).
-      const run = await seedRun(prisma17, ctx, "run_crossnew");
+      const run = await seedRun(prisma17, ctx, "run_crossnew", `run_${generateRunOpsId()}`);
       await prisma17.waitpointRunConnection.create({
         data: { taskRunId: run.id, waitpointId: waitpoint.id },
       });

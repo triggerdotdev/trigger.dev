@@ -89,7 +89,18 @@ describe("RoutingRunStore id-set residency routing", () => {
       const router = new RoutingRunStore({ new: newStore, legacy: legacyStore });
 
       const mixedIds = [0, 1, 2, 3, 4].flatMap((i) => [newId(i), cuidId(i)]);
-      const globalDesc = [newId(4), cuidId(4), newId(3), cuidId(3), newId(2), cuidId(2), newId(1), cuidId(1), newId(0), cuidId(0)];
+      const globalDesc = [
+        newId(4),
+        cuidId(4),
+        newId(3),
+        cuidId(3),
+        newId(2),
+        cuidId(2),
+        newId(1),
+        cuidId(1),
+        newId(0),
+        cuidId(0),
+      ];
 
       const all = (await router.findRuns({
         where: { id: { in: mixedIds } },
