@@ -150,8 +150,6 @@ export class TaskRunProcess {
       TRIGGERDOTDEV: "1",
     };
 
-    // Only log env var names, never values: fullEnv contains secrets
-    // (TRIGGER_SECRET_KEY, TRIGGER_JWT, and arbitrary customer secret env vars).
     logger.debug(`initializing task run process`, {
       envKeys: Object.keys(fullEnv),
       path: workerManifest.workerEntryPoint,
