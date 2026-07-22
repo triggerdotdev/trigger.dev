@@ -73,29 +73,27 @@ function createSchema(
   return z
     .object({
       name: z.string().min(3, "Your name must be at least 3 characters").max(50),
-      email: emailSchema.superRefine((email, ctx) => {
-        if (email.length > MAX_EMAIL_LENGTH) {
-          return;
-        }
-
-        if (constraints.isEmailUnique === undefined) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: conformZodMessage.VALIDATION_UNDEFINED,
-          });
-        } else {
-          return constraints.isEmailUnique(email).then((isUnique) => {
-            if (isUnique) {
-              return;
-            }
-
+      email: emailSchema.pipe(
+        z.string().superRefine((email, ctx) => {
+          if (constraints.isEmailUnique === undefined) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "Email is already being used by a different account",
+              message: conformZodMessage.VALIDATION_UNDEFINED,
             });
-          });
-        }
-      }),
+          } else {
+            return constraints.isEmailUnique(email).then((isUnique) => {
+              if (isUnique) {
+                return;
+              }
+
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Email is already being used by a different account",
+              });
+            });
+          }
+        })
+      ),
       confirmEmail: emailSchema,
       referralSource: z.string().optional(),
       referralSourceOther: z.string().optional(),

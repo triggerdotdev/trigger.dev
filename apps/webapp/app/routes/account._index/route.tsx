@@ -43,31 +43,29 @@ function createSchema(
       .string({ required_error: "You must enter a name" })
       .min(2, "Your name must be at least 2 characters long")
       .max(50),
-    email: emailSchema.superRefine((email, ctx) => {
-      if (email.length > MAX_EMAIL_LENGTH) {
-        return;
-      }
-
-      if (constraints.isEmailUnique === undefined) {
-        //client-side validation skips this
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: conformZodMessage.VALIDATION_UNDEFINED,
-        });
-      } else {
-        // Tell zod this is an async validation by returning the promise
-        return constraints.isEmailUnique(email).then((isUnique) => {
-          if (isUnique) {
-            return;
-          }
-
+    email: emailSchema.pipe(
+      z.string().superRefine((email, ctx) => {
+        if (constraints.isEmailUnique === undefined) {
+          //client-side validation skips this
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "Email is already being used by a different account",
+            message: conformZodMessage.VALIDATION_UNDEFINED,
           });
-        });
-      }
-    }),
+        } else {
+          // Tell zod this is an async validation by returning the promise
+          return constraints.isEmailUnique(email).then((isUnique) => {
+            if (isUnique) {
+              return;
+            }
+
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Email is already being used by a different account",
+            });
+          });
+        }
+      })
+    ),
     marketingEmails: z.preprocess((value) => value === "on", z.boolean()),
   });
 }
