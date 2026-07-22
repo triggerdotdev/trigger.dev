@@ -21,21 +21,3 @@ export function buildDefaultBillingAlerts(): UpdateBillingAlertsRequest {
     alertLevels: [...DEFAULT_ALERT_THRESHOLD_DOLLARS],
   };
 }
-
-/**
- * Whether alerts look never-configured. When no alert row exists the platform
- * returns a default of `{ amount: planIncludedUsage, emails: [], alertLevels: [] }`;
- * a deliberately cleared config stores the $1 absolute base amount and/or keeps
- * the configured emails.
- */
-export function billingAlertsLookUnconfigured(alerts: {
-  amount: number;
-  emails: string[];
-  alertLevels: number[];
-}): boolean {
-  return (
-    alerts.alertLevels.length === 0 &&
-    alerts.emails.length === 0 &&
-    alerts.amount !== ABSOLUTE_ALERT_BASE_CENTS
-  );
-}

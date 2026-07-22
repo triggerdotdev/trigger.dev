@@ -25,10 +25,6 @@ import {
 } from "~/components/billing/billingAlertsFormat";
 import { getSuggestedRecoveryLimitDollars } from "~/components/billing/billingLimitFormat";
 import {
-  billingAlertsLookUnconfigured,
-  buildDefaultBillingAlerts,
-} from "~/services/billingAlertsDefaults.server";
-import {
   BillingLimitConfigSection,
   billingLimitFormSchema,
 } from "~/components/billing/BillingLimitConfigSection";
@@ -130,25 +126,15 @@ export const loader = dashboardLoader(
       });
     }
 
-    const planLimitCents = currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 500;
-
-    const [alertsError, fetchedAlerts] = await tryCatch(getBillingAlerts(organization.id));
-    let alerts = alertsError ? undefined : fetchedAlerts;
-    if (
-      getBillingLimitMode(billingLimit) === "none" &&
-      (!alerts || billingAlertsLookUnconfigured(alerts))
-    ) {
-      // Lazily seed default alerts for orgs that have none configured.
-      const defaults = buildDefaultBillingAlerts();
-      const [seedError, seeded] = await tryCatch(setBillingAlert(organization.id, defaults));
-      alerts = seedError || !seeded ? defaults : seeded;
-    }
-    if (!alerts) {
+    const [alertsError, alerts] = await tryCatch(getBillingAlerts(organization.id));
+    if (alertsError || !alerts) {
       throw new Response(null, {
         status: 404,
         statusText: `Billing alerts error: ${alertsError ?? "not found"}`,
       });
     }
+
+    const planLimitCents = currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 500;
     const alertsResetRequested = getAlertsResetRequested(request);
     const resolveSubmitted = getResolveSubmitted(request);
     const submittedResumeMode = getSubmittedResumeMode(request);
