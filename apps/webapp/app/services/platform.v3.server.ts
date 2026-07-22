@@ -1236,6 +1236,13 @@ export function isCloud(): boolean {
     return true;
   }
 
+  // PR preview environments are cloud-style installs running against the
+  // cloud's staging services. Without this, anything gated on the billing
+  // client silently no-ops there (e.g. remote builds never get enqueued).
+  if (env.LOGIN_ORIGIN.endsWith(".triggerlabs.dev")) {
+    return true;
+  }
+
   if (process.env.CLOUD_ENV === "development" && process.env.NODE_ENV === "development") {
     return true;
   }
