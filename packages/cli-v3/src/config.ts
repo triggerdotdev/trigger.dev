@@ -8,7 +8,8 @@ import type {
 import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import {
   DEFAULT_RUNTIME,
-  isExperimentalConfigRuntime,
+  deprecatedRuntimeReplacement,
+  isDeprecatedConfigRuntime,
   resolveBuildRuntime,
 } from "@trigger.dev/core/v3/build";
 import * as c12 from "c12";
@@ -184,9 +185,11 @@ async function resolveConfig(
   const configuredRuntime = overrides?.runtime ?? config.runtime ?? defaultRuntime;
   const runtime = resolveBuildRuntime(configuredRuntime);
 
-  if (warn && isExperimentalConfigRuntime(configuredRuntime)) {
+  if (warn && isDeprecatedConfigRuntime(configuredRuntime)) {
     prettyWarning(
-      `The "${configuredRuntime}" runtime is experimental and may change before general availability.`
+      `The "${configuredRuntime}" runtime is deprecated. Use "${deprecatedRuntimeReplacement(
+        configuredRuntime
+      )}" instead.`
     );
   }
 
