@@ -1,4 +1,5 @@
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
   Tooltip,
@@ -44,23 +45,31 @@ function Content({ children }: { children: React.ReactNode }) {
       <Property.Table>
         <Property.Item>
           <Property.Label>User ID</Property.Label>
-          <Property.Value>{user.id}</Property.Value>
+          <Property.Value>
+            <CopyableText value={user.id} asChild />
+          </Property.Value>
         </Property.Item>
         {organization && (
           <Property.Item>
             <Property.Label>Org ID</Property.Label>
-            <Property.Value>{organization.id}</Property.Value>
+            <Property.Value>
+              <CopyableText value={organization.id} asChild />
+            </Property.Value>
           </Property.Item>
         )}
         {project && (
           <>
             <Property.Item>
               <Property.Label>Project ID</Property.Label>
-              <Property.Value>{project.id}</Property.Value>
+              <Property.Value>
+                <CopyableText value={project.id} asChild />
+              </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Project ref</Property.Label>
-              <Property.Value>{project.externalRef}</Property.Value>
+              <Property.Value>
+                <CopyableText value={project.externalRef} asChild />
+              </Property.Value>
             </Property.Item>
           </>
         )}
@@ -68,7 +77,9 @@ function Content({ children }: { children: React.ReactNode }) {
           <>
             <Property.Item>
               <Property.Label>Environment ID</Property.Label>
-              <Property.Value>{environment.id}</Property.Value>
+              <Property.Value>
+                <CopyableText value={environment.id} asChild />
+              </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Environment type</Property.Label>
