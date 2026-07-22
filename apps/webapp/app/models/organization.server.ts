@@ -129,12 +129,13 @@ export async function createOrganization(
     adminUserId: userId,
   });
 
-  void seedDefaultBillingAlerts(organization.id);
+  // Awaited so the seed can't land after the user's first alert edit.
+  await seedDefaultBillingAlerts(organization.id);
 
   return { ...organization };
 }
 
-/** Seed default billing alerts for a new org. Never blocks/fails org creation. */
+/** Seed default billing alerts for a new org. Never fails org creation. */
 async function seedDefaultBillingAlerts(organizationId: string): Promise<void> {
   if (!isBillingConfigured()) {
     return;
