@@ -135,13 +135,25 @@ export async function createOrganization(
   return { ...organization };
 }
 
+// The platform client has no request timeout; don't let a slow billing backend stall org creation.
+const SEED_ALERTS_TIMEOUT_MS = 5_000;
+
 /** Seed default billing alerts for a new org. Never fails org creation. */
 async function seedDefaultBillingAlerts(organizationId: string): Promise<void> {
   if (!isBillingConfigured()) {
     return;
   }
 
-  const [error] = await tryCatch(setBillingAlert(organizationId, buildDefaultBillingAlerts()));
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Timed out")), SEED_ALERTS_TIMEOUT_MS);
+  });
+
+  const [error] = await tryCatch(
+    Promise.race([setBillingAlert(organizationId, buildDefaultBillingAlerts()), timeout]).finally(
+      () => clearTimeout(timer)
+    )
+  );
   if (error) {
     logger.warn("Failed to seed default billing alerts for new org", {
       organizationId,
