@@ -26,7 +26,7 @@ export function AdminDebugTooltip({ children }: { children?: React.ReactNode }) 
         <TooltipTrigger>
           <ShieldCheckIcon className="size-5" />
         </TooltipTrigger>
-        <TooltipContent className="max-h-[90vh] overflow-y-auto">
+        <TooltipContent className="max-h-[90vh] overflow-y-auto pr-8">
           <Content>{children}</Content>
         </TooltipContent>
       </Tooltip>
