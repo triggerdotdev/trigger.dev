@@ -55,7 +55,6 @@ export function isBillingLimitFormDirty(input: {
   customAmount: string;
   cancelInProgressRuns: boolean;
 }): boolean {
-  // No mode selected yet (unconfigured limit) — nothing to save.
   if (input.mode === "") {
     return false;
   }
@@ -116,7 +115,7 @@ export function BillingLimitConfigSection({
       : "";
   const savedCancelInProgressRuns = billingLimit.isConfigured && billingLimit.cancelInProgressRuns;
 
-  // When no limit is configured yet, start with no radio option selected.
+  // Unconfigured limit starts with nothing selected.
   const resetMode: "" | "none" | "plan" | "custom" = billingLimit.isConfigured ? savedMode : "";
 
   const [mode, setMode] = useState<"" | "none" | "plan" | "custom">(resetMode);

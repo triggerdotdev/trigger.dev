@@ -63,8 +63,6 @@ export function OrgBanner() {
     case OrgBannerKind.LimitGrace:
       return hideBillingLimitBanner ? null : <LimitGraceBanner />;
     case OrgBannerKind.NoLimitConfigured:
-      // On the billing-limits page we still surface the warning, but without the
-      // "Configure billing limit" action — the form is already on the page.
       return <NoLimitConfiguredBanner onBillingLimitsPage={hideBillingLimitBanner} />;
     case OrgBannerKind.Upgrade:
       return organization ? <UpgradeBanner /> : null;
@@ -147,7 +145,6 @@ function NoLimitConfiguredBanner({ onBillingLimitsPage }: { onBillingLimitsPage:
   const organization = useOrganization();
   const canManageBillingLimits = useCanManageBillingLimits();
 
-  // Users who can't manage billing limits can't act on this — no banner for them.
   if (!canManageBillingLimits) {
     return null;
   }
