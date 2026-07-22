@@ -1372,8 +1372,14 @@ async function handleNativeBuildServerDeploy({
 
     // The build-arg values (scrubbed from build.json) travel via the deployment
     // record (sent with the init request, stored encrypted server-side) — never
-    // as a file in the bundle. Pre-check the limits the server enforces.
-    bundleBuildEnvVars = buildManifest.build.env ?? {};
+    // as a file in the bundle. Despite the manifest type, extensions can set
+    // undefined values at runtime (e.g. env?.MISSING_VAR) — drop those, they'd
+    // be stripped by JSON serialization anyway. Pre-check the server's limits.
+    bundleBuildEnvVars = Object.fromEntries(
+      Object.entries(buildManifest.build.env ?? {}).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string"
+      )
+    );
 
     const buildEnvVarCount = Object.keys(bundleBuildEnvVars).length;
     const buildEnvVarBytes = Buffer.byteLength(JSON.stringify(bundleBuildEnvVars), "utf8");
