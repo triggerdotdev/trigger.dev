@@ -865,26 +865,35 @@ function QueuesWithMetricsView() {
                           )}
                         </TableCell>
                         <TableCell
+                          to={queueDetailPath}
                           alignment="right"
+                          actionClassName="pl-16"
                           className={cn(
-                            "w-[1%] pl-16",
+                            "w-[1%]",
                             queue.paused ? "opacity-50" : undefined,
                             queue.concurrency?.overriddenAt && "font-medium text-text-bright"
                           )}
+                          // Keep the whole row navigable: the override explainer is a tooltip
+                          // button, so it renders beside the link (trailing) rather than nested
+                          // inside the <a>, and the label itself stays the link.
+                          trailingContent={
+                            queue.concurrency?.overriddenAt ? (
+                              <InfoIconTooltip
+                                content={
+                                  queue.concurrencyLimitOverridePercent !== null
+                                    ? `Overridden at ${formatOverridePercent(
+                                        queue.concurrencyLimitOverridePercent
+                                      )}% of the environment limit.`
+                                    : `This queue's concurrency limit has been manually overridden to ${limit}.`
+                                }
+                                contentClassName="max-w-xs"
+                                disableHoverableContent
+                              />
+                            ) : undefined
+                          }
                         >
                           {queue.concurrency?.overriddenAt ? (
-                            <SimpleTooltip
-                              button={<span className="text-text-bright">Override</span>}
-                              content={
-                                queue.concurrencyLimitOverridePercent !== null
-                                  ? `Overridden at ${formatOverridePercent(
-                                      queue.concurrencyLimitOverridePercent
-                                    )}% of the environment limit.`
-                                  : `This queue's concurrency limit has been manually overridden to ${limit}.`
-                              }
-                              className="max-w-xs"
-                              disableHoverableContent
-                            />
+                            <span className="text-text-bright">Override</span>
                           ) : queue.concurrencyLimit ? (
                             "User"
                           ) : (
