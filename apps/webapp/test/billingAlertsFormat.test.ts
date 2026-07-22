@@ -90,6 +90,18 @@ describe("billingAlertsFormat", () => {
     ).toBe(10_000);
   });
 
+  it("previews percentage alerts against the current limit after it is raised", () => {
+    // Alerts were saved against an old $30 limit; the customer has since raised
+    // it to $300. The preview should follow the current limit, not the snapshot.
+    expect(
+      getAlertPreviewLimitCents(
+        { amount: 30, emails: [], alertLevels: [0.75, 0.9] },
+        30_000,
+        10_000
+      )
+    ).toBe(30_000);
+  });
+
   it("normalizes legacy API alerts with dollar amount field and whole percents", () => {
     expect(
       normalizeBillingAlertsFromApi(

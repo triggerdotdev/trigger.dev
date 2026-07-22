@@ -315,9 +315,6 @@ export function getAlertPreviewLimitCents(
   planLimitCents: number
 ): number {
   const amountCents = getSavedAlertAmountCents(alerts);
-  if (amountCents > 0 && percentageAlertLevelsToUiThresholds(alerts.alertLevels).length > 0) {
-    return amountCents;
-  }
   if (percentageAlertAmountMatches(amountCents, effectiveLimitCents, planLimitCents)) {
     return amountCents;
   }
