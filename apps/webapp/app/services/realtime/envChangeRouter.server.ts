@@ -51,13 +51,15 @@ export type EnvChangeRouterOptions = {
   /** Observability: a buffered record was evicted. `cap` evictions mean the env churns more
    * runs inside the window than the buffer holds (the replay guarantee is degrading). */
   onReplayEviction?: (reason: "cap" | "window") => void;
-  /** Observability: per-batch emission fan-out. `runEmissions` = total (feed,run) rows resolved
-   * to feeds this batch (the baseline per-feed serialize count); `distinctSerializations` = distinct
-   * (columnSig,runId) among them (what a serialize-once-per-batch memo would compute). The gap
-   * (runEmissions - distinctSerializations) is the duplicate serialization such a memo would remove. */
+  /** Observability: per-batch emission fan-out. `deliveries` = total (feed,run) rows matched and
+   * resolved to feeds this batch. It is an upper bound on the per-feed wire serializations, since
+   * the client working-set diff drops already-seen rows before encoding. `distinctRuns` = distinct
+   * (columnSig,runId) among them (the serialize-once-per-batch floor). `deliveries / distinctRuns`
+   * is the average number of feeds a changed run is delivered to; a shared-serialization step would
+   * save at most `deliveries - distinctRuns` encodings. */
   onEmissionFanout?: (stats: {
-    distinctSerializations: number;
-    runEmissions: number;
+    distinctRuns: number;
+    deliveries: number;
     feeds: number;
   }) => void;
   /** Read-your-writes gate over the replica: delays wake-path hydrates until the replica
@@ -618,8 +620,8 @@ export class EnvChangeRouter {
 
     // 4. Assemble each feed's matched rows (post-filtering tag feeds against the
     //    authoritative hydrated row) and resolve its pending wait.
-    let runEmissions = 0;
-    const emittedSerializationKeys = new Set<string>();
+    let deliveries = 0;
+    const distinctRunKeys = new Set<string>();
     for (const [feed, runIds] of matchedRunIdsByFeed) {
       if (!feed.resolve) {
         continue; // stopped waiting while we hydrated; its next poll/backstop covers it
@@ -642,19 +644,19 @@ export class EnvChangeRouter {
 
       if (rows.length > 0) {
         feed.resolve({ reason: "notify", rows });
-        runEmissions += rows.length;
+        deliveries += rows.length;
         for (const matched of rows) {
-          emittedSerializationKeys.add(`${feed.columnSig} ${matched.row.id}`);
+          distinctRunKeys.add(`${feed.columnSig} ${matched.row.id}`);
         }
       }
       // No surviving rows (e.g. a partial-record candidate that didn't actually match):
       // leave the feed waiting; nothing relevant changed for it.
     }
 
-    if (runEmissions > 0) {
+    if (deliveries > 0) {
       this.options.onEmissionFanout?.({
-        distinctSerializations: emittedSerializationKeys.size,
-        runEmissions,
+        distinctRuns: distinctRunKeys.size,
+        deliveries,
         feeds: matchedRunIdsByFeed.size,
       });
     }

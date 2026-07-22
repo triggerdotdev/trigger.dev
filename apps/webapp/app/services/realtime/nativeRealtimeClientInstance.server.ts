@@ -71,21 +71,15 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     unit: "rows",
   });
 
-  const emissionRunSerializations = meter.createCounter(
-    "realtime_native.emission_run_serializations",
-    {
-      description:
-        "Total per-feed row emissions per batch (the wire-value serializations the current path performs). Divide by realtime_native.emission_distinct_serializations for average feeds-per-run fan-out; the excess is duplicate serialization a serialize-once-per-batch memo would remove.",
-    }
-  );
+  const emissionFeedDeliveries = meter.createCounter("realtime_native.emission_feed_deliveries", {
+    description:
+      "Matched (feed,run) rows resolved to feeds per batch, summed. Upper bound on per-feed wire serializations, since the client working-set diff drops already-seen rows before encoding. Divide by realtime_native.emission_distinct_runs for average feeds-per-run fan-out.",
+  });
 
-  const emissionDistinctSerializations = meter.createCounter(
-    "realtime_native.emission_distinct_serializations",
-    {
-      description:
-        "Distinct (columnSig,runId) emitted per batch, summed. A serialize-once-per-batch memo would perform exactly this many serializations vs realtime_native.emission_run_serializations today; 1 - (this / run_serializations) is the memo's serialization-work saving.",
-    }
-  );
+  const emissionDistinctRuns = meter.createCounter("realtime_native.emission_distinct_runs", {
+    description:
+      "Distinct (columnSig,run) among the deliveries per batch, summed. The serialize-once-per-batch floor: a shared-serialization step would encode at most this many rows, saving at most (feed_deliveries minus distinct_runs) encodings.",
+  });
 
   const backstops = meter.createCounter("realtime_native.backstops", {
     description:
@@ -182,9 +176,9 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     unsubscribeLingerMs: env.REALTIME_BACKEND_NATIVE_UNSUBSCRIBE_LINGER_MS,
     onReplay: (result) => replays.add(1, { result }),
     onReplayEviction: (reason) => replayEvictions.add(1, { reason }),
-    onEmissionFanout: ({ distinctSerializations, runEmissions }) => {
-      emissionRunSerializations.add(runEmissions);
-      emissionDistinctSerializations.add(distinctSerializations);
+    onEmissionFanout: ({ distinctRuns, deliveries }) => {
+      emissionFeedDeliveries.add(deliveries);
+      emissionDistinctRuns.add(distinctRuns);
     },
     replicaLag: lagEstimator
       ? {
