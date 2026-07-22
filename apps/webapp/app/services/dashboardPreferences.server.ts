@@ -25,15 +25,8 @@ export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
 import { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
 export type { SideMenuSectionId };
 
-const ThemePreference = z.enum(["classic", "system", "dark", "light"]);
-export type ThemePreference = z.infer<typeof ThemePreference>;
-
-/** Coerce any stored/legacy value into a valid preference. Missing or unknown
- * values fall back to `classic` (the default dark theme). */
-export function normalizeThemePreference(value: unknown): ThemePreference {
-  const result = ThemePreference.safeParse(value);
-  return result.success ? result.data : "classic";
-}
+import { ThemePreference } from "~/utils/themePreference";
+export { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
 
 const DashboardPreferences = z.object({
   version: z.literal("1"),

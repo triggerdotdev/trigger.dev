@@ -21,10 +21,7 @@ import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
 import { useSystemThemeSync } from "./hooks/useSystemThemeSync";
 import { getUser } from "./services/session.server";
-import {
-  normalizeThemePreference,
-  type ThemePreference,
-} from "./services/dashboardPreferences.server";
+import { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
 import { flag } from "~/v3/featureFlags.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";

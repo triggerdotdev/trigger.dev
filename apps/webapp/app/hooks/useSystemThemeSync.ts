@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { type ThemePreference } from "~/services/dashboardPreferences.server";
+import { type ThemePreference } from "~/utils/themePreference";
 
 /**
  * When the preference is `system`, keep `data-theme` on <html> in sync with the

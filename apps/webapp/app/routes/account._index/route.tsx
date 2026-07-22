@@ -29,11 +29,8 @@ import { prisma } from "~/db.server";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
-import {
-  normalizeThemePreference,
-  type ThemePreference,
-  updateThemePreference,
-} from "~/services/dashboardPreferences.server";
+import { updateThemePreference } from "~/services/dashboardPreferences.server";
+import { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
 import { flag } from "~/v3/featureFlags.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";

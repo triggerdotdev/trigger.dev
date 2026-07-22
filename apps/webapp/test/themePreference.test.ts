@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  getDashboardPreferences,
-  normalizeThemePreference,
-  type ThemePreference,
-} from "~/services/dashboardPreferences.server";
+import { getDashboardPreferences } from "~/services/dashboardPreferences.server";
+import { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
 
 const VALID_THEMES: ThemePreference[] = ["classic", "system", "dark", "light"];
 
