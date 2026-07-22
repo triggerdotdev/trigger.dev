@@ -603,19 +603,21 @@ function QueuesWithMetricsView() {
                   plan?.v3Subscription?.plan?.limits.concurrentRuns.canExceed ? (
                     <LinkButton
                       to={concurrencyPath(organization, project, env)}
-                      variant="secondary/small-icon"
+                      variant="secondary/small"
                       LeadingIcon={ConcurrencyIcon}
                       leadingIconClassName="text-amber-500"
-                      tooltip="Increase limit"
-                    />
+                    >
+                      Increase limit
+                    </LinkButton>
                   ) : (
                     <LinkButton
                       to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
-                      variant="secondary/small-icon"
+                      variant="secondary/small"
                       LeadingIcon={ArrowUpCircleIcon}
                       leadingIconClassName="text-indigo-500"
-                      tooltip="Increase limit"
-                    />
+                    >
+                      Increase limit
+                    </LinkButton>
                   )
                 ) : undefined
               }
