@@ -6,7 +6,7 @@ import type {
   RuntimeEnvironment,
   User,
 } from "@trigger.dev/database";
-import { tryCatch } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { customAlphabet } from "nanoid";
 import { generate } from "random-words";
 import slug from "slug";
