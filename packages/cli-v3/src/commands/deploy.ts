@@ -1895,7 +1895,14 @@ async function handleFromBundleDeploy({
     );
   }
 
-  const manifestResult = BuildManifest.safeParse(JSON.parse(manifestRaw));
+  let manifestJson: unknown;
+  try {
+    manifestJson = JSON.parse(manifestRaw);
+  } catch {
+    throw new Error(`Invalid build.json in the bundle directory: not valid JSON`);
+  }
+
+  const manifestResult = BuildManifest.safeParse(manifestJson);
 
   if (!manifestResult.success) {
     throw new Error(`Invalid build.json in the bundle directory: ${manifestResult.error.message}`);
@@ -1911,11 +1918,13 @@ async function handleFromBundleDeploy({
   );
 
   if (!buildArgsError) {
-    const [parseError, parsed] = await tryCatch(Promise.resolve(JSON.parse(buildArgsRaw)));
-    if (parseError) {
+    let parsed: { env?: Record<string, string> };
+    try {
+      parsed = JSON.parse(buildArgsRaw);
+    } catch {
       throw new Error(`Invalid ${BUNDLE_BUILD_ARGS_FILE} in the bundle directory`);
     }
-    buildEnvVars = parsed.env ?? {};
+    buildEnvVars = (typeof parsed === "object" && parsed !== null ? parsed.env : undefined) ?? {};
   } else if (bundleManifest.build.env && Object.keys(bundleManifest.build.env).length > 0) {
     // The scrubbed manifest can't carry values, but if a manifest somehow has them, use them.
     buildEnvVars = bundleManifest.build.env;
@@ -1929,6 +1938,18 @@ async function handleFromBundleDeploy({
     throw new Error(
       "Preview deploys from a bundle require an explicit branch. Pass --branch <branch>."
     );
+  }
+
+  // In attach mode the branch env already exists (it was created by whatever
+  // initialized the deployment); a fresh-init preview deploy needs the upsert.
+  if (options.env === "preview" && branch && !existingDeploymentId) {
+    await upsertBranch({
+      accessToken: auth.accessToken,
+      apiUrl: auth.apiUrl,
+      projectRef,
+      branch,
+      gitMeta: undefined,
+    });
   }
 
   const projectClient = await getProjectClient({
