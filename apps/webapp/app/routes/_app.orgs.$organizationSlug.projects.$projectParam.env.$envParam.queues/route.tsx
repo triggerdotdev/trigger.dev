@@ -1198,6 +1198,9 @@ type QueueHeaderTile = {
   /** Info-icon copy explaining what the chart shows, rendered next to the card title. */
   description: string;
   color: string;
+  /** Optional inline legend rendered below the card title: a fixed set of {colored square, label}
+   * entries, for charts where a colour (e.g. the orange warning line) needs explaining. */
+  legend?: Array<{ color: string; label: string }>;
   query: string;
   /** Formats a single bucket's value in the chart tooltip. */
   formatValue?: (value: number) => string;
@@ -1260,6 +1263,10 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Env saturation",
     description: "Running as a share of the environment limit. Yellow over 100% (burst headroom).",
     color: "var(--color-queues)",
+    legend: [
+      { color: "var(--color-queues)", label: "Saturation" },
+      { color: "var(--color-warning)", label: "Over limit" },
+    ],
     // Numerator: running summed across the visible set. Denominator: the env-wide limit (same for
     // every queue in a bucket), so the line reads as the set's share of the environment capacity.
     query: `SELECT timeBucket() AS t,\n  queue,\n  max(max_running) AS running,\n  max(max_env_limit) AS env_limit\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
@@ -1297,6 +1304,10 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     description: "p95 wait from eligible to dequeued. Yellow over 1 min.",
     totalTooltip: "The worst p95 in the selected window.",
     color: "var(--color-queues)",
+    legend: [
+      { color: "var(--color-queues)", label: "p95" },
+      { color: "var(--color-warning)", label: "Over 1 min" },
+    ],
     // quantilesMerge over the set's rows in a bucket is the true p95 across the union of samples
     // (merging quantile states is valid; averaging per-queue percentiles would not be).
     query: `SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
@@ -1319,6 +1330,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     description: "Times dequeuing was blocked by a limit.",
     totalTooltip: "The share of the selected window with at least one blocked dequeue.",
     color: "var(--color-queues)",
+    legend: [{ color: "var(--color-warning)", label: "Throttled" }],
     query: `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
     derive: (rows) => {
       const points = rows.map((r) => ({
@@ -1430,35 +1442,53 @@ function QueueEnvMetricChart({
   return (
     <ChartCard
       title={
-        <span className="flex items-baseline gap-2">
-          <span className="flex items-center gap-1.5">
-            {tile.label}
-            <InfoIconTooltip content={tile.description} contentClassName="max-w-xs" />
+        <span className="flex flex-col gap-0.5">
+          <span className="flex items-baseline gap-2">
+            <span className="flex items-center gap-1.5">
+              {tile.label}
+              <InfoIconTooltip content={tile.description} contentClassName="max-w-xs" />
+            </span>
+            {peak != null ? (
+              tile.totalTooltip && !showLoading ? (
+                <SimpleTooltip
+                  button={
+                    <span
+                      className={cn(
+                        "text-xs font-normal tabular-nums text-text-dimmed",
+                        totalClassName
+                      )}
+                    >
+                      {peak}
+                    </span>
+                  }
+                  content={tile.totalTooltip}
+                  className="max-w-xs"
+                  disableHoverableContent
+                />
+              ) : (
+                <span
+                  className={cn("text-xs font-normal tabular-nums text-text-dimmed", totalClassName)}
+                >
+                  {peak}
+                </span>
+              )
+            ) : null}
           </span>
-          {peak != null ? (
-            tile.totalTooltip && !showLoading ? (
-              <SimpleTooltip
-                button={
+          {tile.legend ? (
+            <span className="flex items-center gap-2">
+              {tile.legend.map((item) => (
+                <span
+                  key={item.label}
+                  className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
+                >
                   <span
-                    className={cn(
-                      "text-xs font-normal tabular-nums text-text-dimmed",
-                      totalClassName
-                    )}
-                  >
-                    {peak}
-                  </span>
-                }
-                content={tile.totalTooltip}
-                className="max-w-xs"
-                disableHoverableContent
-              />
-            ) : (
-              <span
-                className={cn("text-xs font-normal tabular-nums text-text-dimmed", totalClassName)}
-              >
-                {peak}
-              </span>
-            )
+                    className="size-2.5 rounded-[3px]"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  {item.label}
+                </span>
+              ))}
+            </span>
           ) : null}
         </span>
       }
