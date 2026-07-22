@@ -255,18 +255,13 @@ export function ChartLineRenderer({
     return <ChartLineInvalid />;
   }
 
-  // Get the x-axis ticks based on tooltip state
-  const xAxisTicks =
-    highlight.tooltipActive && data.length > 2
-      ? [data[0]?.[dataKey], data[data.length - 1]?.[dataKey]]
-      : undefined;
-
   const xAxisConfig = {
     dataKey,
     tickLine: false,
     axisLine: false,
     tickMargin: 10,
-    ticks: xAxisTicks,
+    // Keep every x-axis label visible at all times, including on hover. Previously the axis
+    // collapsed to just the first + last tick while the tooltip was active.
     interval: "preserveStartEnd" as const,
     tick: {
       fill: "var(--color-text-dimmed)",
