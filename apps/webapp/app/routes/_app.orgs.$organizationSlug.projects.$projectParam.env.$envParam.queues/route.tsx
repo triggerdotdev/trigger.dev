@@ -491,7 +491,7 @@ function QueuesWithMetricsView() {
             cluster = pagination. */}
         {success ? (
           <MetricsLayout.Filters>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <QueueFilters />
               <TimeFilter
                 defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
@@ -502,7 +502,7 @@ function QueuesWithMetricsView() {
                 shortcut={{ key: "d" }}
               />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {environment.runsEnabled &&
               env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
                 <EnvironmentPauseResumeButton env={env} />
