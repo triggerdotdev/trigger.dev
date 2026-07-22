@@ -63,7 +63,9 @@ export function OrgBanner() {
     case OrgBannerKind.LimitGrace:
       return hideBillingLimitBanner ? null : <LimitGraceBanner />;
     case OrgBannerKind.NoLimitConfigured:
-      return hideBillingLimitBanner ? null : <NoLimitConfiguredBanner />;
+      // On the billing-limits page we still surface the warning, but without the
+      // "Configure billing limit" action — the form is already on the page.
+      return <NoLimitConfiguredBanner onBillingLimitsPage={hideBillingLimitBanner} />;
     case OrgBannerKind.Upgrade:
       return organization ? <UpgradeBanner /> : null;
     case OrgBannerKind.EnvironmentWarning:
@@ -141,25 +143,29 @@ function LimitGraceBanner() {
   );
 }
 
-function NoLimitConfiguredBanner() {
+function NoLimitConfiguredBanner({ onBillingLimitsPage }: { onBillingLimitsPage: boolean }) {
   const organization = useOrganization();
   const canManageBillingLimits = useCanManageBillingLimits();
+
+  const message = canManageBillingLimits
+    ? onBillingLimitsPage
+      ? "Please configure a billing limit to protect your organization from unexpected usage spikes."
+      : "Protect your organization from unexpected usage spikes."
+    : "Billing limits are not configured for this organization. Contact an organization administrator to configure them.";
 
   return (
     <AnimatedOrgBannerBar
       show
       variant="warning"
       action={
-        canManageBillingLimits ? (
+        canManageBillingLimits && !onBillingLimitsPage ? (
           <LinkButton variant="tertiary/small" to={v3BillingLimitsPath(organization)}>
             Configure billing limit
           </LinkButton>
         ) : undefined
       }
     >
-      {canManageBillingLimits
-        ? "Protect your organization from unexpected usage spikes."
-        : "Billing limits are not configured for this organization. Contact an organization administrator to configure them."}
+      {message}
     </AnimatedOrgBannerBar>
   );
 }
