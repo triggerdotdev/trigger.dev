@@ -271,40 +271,19 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         tabIndex={-1}
       >
         {sortable ? (
-          // Order is always title → info icon → sort arrows. The info trigger is itself a <button>,
-          // so it can't nest inside the sort <button> (invalid DOM). Without a tooltip the arrows
-          // ride inside the full-width label button (unchanged). With a tooltip, the info sits
-          // between the label and a separate arrows button — both buttons toggle the sort.
+          // Only the sort arrows toggle sorting — the label (and info tooltip) are not clickable, so
+          // clicking the header text does nothing. Order is always title → info icon → sort arrows.
           <div className={rowClassName}>
+            {label}
+            {tooltip ? tooltipNode : null}
             <button
               type="button"
               onClick={onSort}
-              className={cn(
-                "group/sort flex cursor-pointer select-none items-center gap-1 rounded-sm font-medium text-text-bright focus-custom",
-                tooltip
-                  ? undefined
-                  : cn("w-full", {
-                      "justify-center": alignment === "center",
-                      "justify-end": alignment === "right",
-                    })
-              )}
+              aria-label="Toggle sort"
+              className="group/sort flex cursor-pointer select-none items-center rounded-sm focus-custom"
             >
-              {label}
-              {!tooltip && sortIndicator}
+              {sortIndicator}
             </button>
-            {tooltip ? (
-              <>
-                {tooltipNode}
-                <button
-                  type="button"
-                  onClick={onSort}
-                  aria-label="Toggle sort"
-                  className="group/sort flex cursor-pointer select-none items-center rounded-sm focus-custom"
-                >
-                  {sortIndicator}
-                </button>
-              </>
-            ) : null}
           </div>
         ) : tooltip ? (
           <div className={rowClassName}>
