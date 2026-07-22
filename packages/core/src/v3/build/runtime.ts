@@ -22,6 +22,12 @@ export function deprecatedRuntimeReplacement(runtime: DeprecatedConfigRuntime): 
   }
 }
 
+/** @deprecated Renamed to {@link DeprecatedConfigRuntime}. */
+export type ExperimentalConfigRuntime = DeprecatedConfigRuntime;
+
+/** @deprecated Renamed to {@link isDeprecatedConfigRuntime}. */
+export const isExperimentalConfigRuntime = isDeprecatedConfigRuntime;
+
 export function resolveBuildRuntime(runtime: unknown): BuildRuntime {
   const parsedRuntime = ConfigRuntime.safeParse(runtime);
 
