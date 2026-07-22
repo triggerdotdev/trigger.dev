@@ -147,25 +147,26 @@ function NoLimitConfiguredBanner({ onBillingLimitsPage }: { onBillingLimitsPage:
   const organization = useOrganization();
   const canManageBillingLimits = useCanManageBillingLimits();
 
-  const message = canManageBillingLimits
-    ? onBillingLimitsPage
-      ? "Please configure a billing limit to protect your organization from unexpected usage spikes."
-      : "Protect your organization from unexpected usage spikes."
-    : "Billing limits are not configured for this organization. Contact an organization administrator to configure them.";
+  // Users who can't manage billing limits can't act on this — no banner for them.
+  if (!canManageBillingLimits) {
+    return null;
+  }
 
   return (
     <AnimatedOrgBannerBar
       show
       variant="warning"
       action={
-        canManageBillingLimits && !onBillingLimitsPage ? (
+        onBillingLimitsPage ? undefined : (
           <LinkButton variant="tertiary/small" to={v3BillingLimitsPath(organization)}>
             Configure billing limit
           </LinkButton>
-        ) : undefined
+        )
       }
     >
-      {message}
+      {onBillingLimitsPage
+        ? "Please configure a billing limit to protect your organization from unexpected usage spikes."
+        : "Protect your organization from unexpected usage spikes."}
     </AnimatedOrgBannerBar>
   );
 }
