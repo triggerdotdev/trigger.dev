@@ -591,7 +591,7 @@ function QueuesWithMetricsView() {
               formattedValue={allocation ? undefined : "–"}
               valueClassName={cn(allocation && overAllocated && "text-warning")}
               suffix={allocation ? `${allocationPct}% of the environment limit` : undefined}
-              suffixClassName="text-text-bright"
+              suffixClassName="text-text-dimmed"
             />
             <BigNumber
               title="Environment limit"
