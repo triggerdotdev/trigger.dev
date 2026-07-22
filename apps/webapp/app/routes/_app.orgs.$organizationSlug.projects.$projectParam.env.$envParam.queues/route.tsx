@@ -502,12 +502,18 @@ function QueuesWithMetricsView() {
                 shortcut={{ key: "d" }}
               />
             </div>
-            <PaginationControls
-              currentPage={pagination.currentPage}
-              totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
-              hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
-              showPageNumbers={false}
-            />
+            <div className="flex items-center gap-2">
+              {environment.runsEnabled &&
+              env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
+                <EnvironmentPauseResumeButton env={env} />
+              ) : null}
+              <PaginationControls
+                currentPage={pagination.currentPage}
+                totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
+                hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
+                showPageNumbers={false}
+              />
+            </div>
           </MetricsLayout.Filters>
         ) : null}
 
@@ -524,23 +530,17 @@ function QueuesWithMetricsView() {
               suffix={env.paused ? <span className="text-warning">paused</span> : undefined}
               animate
               accessory={
-                <div className="flex items-start gap-1">
-                  {environment.runsEnabled &&
-                  env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
-                    <EnvironmentPauseResumeButton env={env} />
-                  ) : null}
-                  <LinkButton
-                    variant="secondary/small-icon"
-                    LeadingIcon={RunsIcon}
-                    leadingIconClassName="text-runs"
-                    to={v3RunsPath(organization, project, env, {
-                      statuses: ["PENDING"],
-                      period: "30d",
-                      rootOnly: false,
-                    })}
-                    tooltip="View queued runs"
-                  />
-                </div>
+                <LinkButton
+                  variant="secondary/small-icon"
+                  LeadingIcon={RunsIcon}
+                  leadingIconClassName="text-runs"
+                  to={v3RunsPath(organization, project, env, {
+                    statuses: ["PENDING"],
+                    period: "30d",
+                    rootOnly: false,
+                  })}
+                  tooltip="View queued runs"
+                />
               }
               valueClassName={env.paused ? "text-warning tabular-nums" : "tabular-nums"}
               compactThreshold={1000000}
@@ -1062,7 +1062,7 @@ function EnvironmentPauseResumeButton({
                 <DialogTrigger asChild>
                   <Button
                     type="button"
-                    variant="secondary/small-icon"
+                    variant="secondary/small"
                     LeadingIcon={env.paused ? PlayIcon : PauseIcon}
                     leadingIconClassName={env.paused ? "text-success" : "text-warning"}
                     aria-label={
@@ -1070,7 +1070,11 @@ function EnvironmentPauseResumeButton({
                         ? `Resume processing runs in ${environmentFullTitle(env)}`
                         : `Pause processing runs in ${environmentFullTitle(env)}`
                     }
-                  />
+                  >
+                    {env.paused
+                      ? `Resume ${environmentFullTitle(env)} environment`
+                      : `Pause ${environmentFullTitle(env)} environment`}
+                  </Button>
                 </DialogTrigger>
               </div>
             </TooltipTrigger>
