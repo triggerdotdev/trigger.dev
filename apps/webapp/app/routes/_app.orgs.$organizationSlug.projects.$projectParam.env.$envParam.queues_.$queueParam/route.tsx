@@ -1050,7 +1050,7 @@ function ConcurrencyBlock({
   const atLimit = limit !== null && limit > 0 && running >= limit;
   const pct = limit && limit > 0 ? Math.min(100, Math.round((running / limit) * 100)) : 0;
   return (
-    <div className="flex flex-col justify-between gap-4 rounded-sm border border-grid-dimmed bg-background-bright p-4">
+    <div className="flex flex-col justify-between gap-4 rounded-lg border border-grid-bright bg-background-bright p-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Header3 className="leading-6">Concurrency</Header3>
