@@ -272,7 +272,7 @@ export default function Page() {
                     {environment.branchName ? ` (${environment.branchName})` : ""}
                   </Property.Label>
                   <Property.Value>
-                    <CopyableText value={environment.id} asChild />
+                    <CopyableText value={environment.id} asChild hideTooltip />
                   </Property.Value>
                 </Property.Item>
               ))}

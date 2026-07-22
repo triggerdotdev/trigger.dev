@@ -164,7 +164,7 @@ export default function Page() {
                 <Property.Item key={region.id}>
                   <Property.Label>{region.name}</Property.Label>
                   <Property.Value>
-                    <CopyableText value={region.id} asChild />
+                    <CopyableText value={region.id} asChild hideTooltip />
                   </Property.Value>
                 </Property.Item>
               ))}

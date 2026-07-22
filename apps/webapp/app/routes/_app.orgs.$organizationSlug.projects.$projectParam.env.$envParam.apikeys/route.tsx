@@ -115,7 +115,7 @@ export default function Page() {
               <Property.Item key={environment.id}>
                 <Property.Label>{environment.slug}</Property.Label>
                 <Property.Value>
-                  <CopyableText value={environment.id} asChild />
+                  <CopyableText value={environment.id} asChild hideTooltip />
                 </Property.Value>
               </Property.Item>
             </Property.Table>

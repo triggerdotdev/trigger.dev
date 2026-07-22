@@ -285,26 +285,26 @@ export default function Page() {
             <Property.Item>
               <Property.Label>ID</Property.Label>
               <Property.Value>
-                <CopyableText value={deployment.id} asChild />
+                <CopyableText value={deployment.id} asChild hideTooltip />
               </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Project ID</Property.Label>
               <Property.Value>
-                <CopyableText value={deployment.projectId} asChild />
+                <CopyableText value={deployment.projectId} asChild hideTooltip />
               </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Org ID</Property.Label>
               <Property.Value>
-                <CopyableText value={deployment.organizationId} asChild />
+                <CopyableText value={deployment.organizationId} asChild hideTooltip />
               </Property.Value>
             </Property.Item>
             {deployment.imageReference && (
               <Property.Item>
                 <Property.Label>Image</Property.Label>
                 <Property.Value>
-                  <CopyableText value={deployment.imageReference} asChild />
+                  <CopyableText value={deployment.imageReference} asChild hideTooltip />
                 </Property.Value>
               </Property.Item>
             )}

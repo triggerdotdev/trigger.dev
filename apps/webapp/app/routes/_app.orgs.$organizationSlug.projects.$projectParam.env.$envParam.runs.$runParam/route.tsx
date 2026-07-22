@@ -490,25 +490,25 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>ID</Property.Label>
                 <Property.Value>
-                  <CopyableText value={run.id} asChild />
+                  <CopyableText value={run.id} asChild hideTooltip />
                 </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Trace ID</Property.Label>
                 <Property.Value>
-                  <CopyableText value={run.traceId} asChild />
+                  <CopyableText value={run.traceId} asChild hideTooltip />
                 </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Env ID</Property.Label>
                 <Property.Value>
-                  <CopyableText value={run.environment.id} asChild />
+                  <CopyableText value={run.environment.id} asChild hideTooltip />
                 </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Org ID</Property.Label>
                 <Property.Value>
-                  <CopyableText value={run.environment.organizationId} asChild />
+                  <CopyableText value={run.environment.organizationId} asChild hideTooltip />
                 </Property.Value>
               </Property.Item>
             </Property.Table>

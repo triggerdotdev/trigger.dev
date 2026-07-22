@@ -96,7 +96,7 @@ export default function Page() {
                 <Property.Item key={branch.id}>
                   <Property.Label>{branch.branchName}</Property.Label>
                   <Property.Value>
-                    <CopyableText value={branch.id} asChild />
+                    <CopyableText value={branch.id} asChild hideTooltip />
                   </Property.Value>
                 </Property.Item>
               ))}

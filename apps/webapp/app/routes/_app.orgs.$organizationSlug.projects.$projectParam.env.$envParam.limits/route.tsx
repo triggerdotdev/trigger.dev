@@ -127,7 +127,7 @@ export default function Page() {
               <Property.Item>
                 <Property.Label>Organization ID</Property.Label>
                 <Property.Value>
-                  <CopyableText value={data.organizationId} asChild />
+                  <CopyableText value={data.organizationId} asChild hideTooltip />
                 </Property.Value>
               </Property.Item>
             </Property.Table>

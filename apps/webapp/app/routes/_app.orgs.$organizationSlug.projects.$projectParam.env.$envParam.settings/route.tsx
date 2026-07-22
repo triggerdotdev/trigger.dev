@@ -56,13 +56,13 @@ export default function SettingsLayout() {
               <Property.Item>
                 <Property.Label>ID</Property.Label>
                 <Property.Value>
-                  <CopyableText value={project.id} asChild />
+                  <CopyableText value={project.id} asChild hideTooltip />
                 </Property.Value>
               </Property.Item>
               <Property.Item>
                 <Property.Label>Org ID</Property.Label>
                 <Property.Value>
-                  <CopyableText value={project.organizationId} asChild />
+                  <CopyableText value={project.organizationId} asChild hideTooltip />
                 </Property.Value>
               </Property.Item>
             </Property.Table>
