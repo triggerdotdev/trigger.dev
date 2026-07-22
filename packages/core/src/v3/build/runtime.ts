@@ -8,9 +8,7 @@ export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 
 export type DeprecatedConfigRuntime = "experimental-node-24" | "experimental-node-26";
 
-export function isDeprecatedConfigRuntime(
-  runtime: unknown
-): runtime is DeprecatedConfigRuntime {
+export function isDeprecatedConfigRuntime(runtime: unknown): runtime is DeprecatedConfigRuntime {
   return runtime === "experimental-node-24" || runtime === "experimental-node-26";
 }
 
