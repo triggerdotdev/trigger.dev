@@ -1,5 +1,27 @@
 # trigger.dev
 
+## 4.5.7
+
+### Patch Changes
+
+- Fixes intermittent `trigger dev` run crashes where a run could fail at boot with a cryptic `Cannot find module .../dev-run-worker.mjs` after a rebuild had cleaned up the build directory the run was launched against. Dev runs now retry cleanly instead of hard-crashing when their build directory is missing, the dev watchdog no longer removes the build tree of a still-running session, and a run assigned to a worker version that was superseded by a rebuild now fails fast with a clear message instead of silently hanging until it times out. ([#4276](https://github.com/triggerdotdev/trigger.dev/pull/4276))
+- Add `node-24` and `node-26` as supported `runtime` options in `trigger.config.ts`. The `experimental-node-24` and `experimental-node-26` names are now deprecated aliases and emit a deprecation warning; switch to `node-24` / `node-26` instead. ([#4337](https://github.com/triggerdotdev/trigger.dev/pull/4337))
+
+  ```ts
+  import { defineConfig } from "@trigger.dev/sdk";
+
+  export default defineConfig({
+    runtime: "node-24",
+    project: "<your-project-ref>",
+  });
+  ```
+
+- Avoid logging task run environment variable values at debug level ([#4336](https://github.com/triggerdotdev/trigger.dev/pull/4336))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.7`
+  - `@trigger.dev/build@4.5.7`
+  - `@trigger.dev/schema-to-json@4.5.7`
+
 ## 4.5.6
 
 ### Patch Changes
