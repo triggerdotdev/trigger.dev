@@ -1,12 +1,8 @@
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import { useEffect, useRef, useState } from "react";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/primitives/Tooltip";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useIsImpersonating, useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
@@ -15,22 +11,55 @@ import { useHasAdminAccess, useUser } from "~/hooks/useUser";
 export function AdminDebugTooltip({ children }: { children?: React.ReactNode }) {
   const hasAdminAccess = useHasAdminAccess();
   const isImpersonating = useIsImpersonating();
+  const [open, setOpen] = useState(false);
+  const closeTimeout = useRef<ReturnType<typeof setTimeout>>();
+
+  // Clean up any pending close timer on unmount.
+  useEffect(() => () => clearTimeout(closeTimeout.current), []);
 
   if (!hasAdminAccess && !isImpersonating) {
     return null;
   }
 
+  const openNow = () => {
+    clearTimeout(closeTimeout.current);
+    setOpen(true);
+  };
+
+  // Delay closing so moving the pointer across the gap into the popover — or onto a
+  // copy button that opens its own tooltip — doesn't dismiss it. This is a Popover
+  // rather than a Tooltip on purpose: Radix tooltips only allow one open at a time, so
+  // a copy button's tooltip would otherwise close this panel.
+  const closeSoon = () => {
+    clearTimeout(closeTimeout.current);
+    closeTimeout.current = setTimeout(() => setOpen(false), 150);
+  };
+
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger>
-          <ShieldCheckIcon className="size-5" />
-        </TooltipTrigger>
-        <TooltipContent className="max-h-[90vh] overflow-y-auto pr-8">
-          <Content>{children}</Content>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        type="button"
+        aria-label="Admin debug info"
+        className="flex items-center outline-hidden focus-custom"
+        onClick={(e) => e.preventDefault()}
+        onMouseEnter={openNow}
+        onMouseLeave={closeSoon}
+        onFocus={openNow}
+        onBlur={closeSoon}
+      >
+        <ShieldCheckIcon className="size-5" />
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="max-h-[90vh] overflow-y-auto px-3 py-2 pr-8 text-sm"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        onMouseEnter={openNow}
+        onMouseLeave={closeSoon}
+      >
+        <Content>{children}</Content>
+      </PopoverContent>
+    </Popover>
   );
 }
 
