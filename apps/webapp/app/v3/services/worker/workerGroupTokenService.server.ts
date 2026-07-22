@@ -62,12 +62,17 @@ if (workloadCreatedAtGateEnabled && !workloadTokenCutoff) {
 
 type WorkloadGateAction = "start" | "complete" | "continue" | "snapshots_since";
 
-const workloadAuthGateCounter = new Counter({
-  name: "workload_auth_gate_total",
-  help: "Deployment token authorization outcomes on worker actions",
-  labelNames: ["outcome", "action"] as const,
-  registers: [metricsRegister],
-});
+// singleton: module-scope registration double-registers under dev HMR
+const workloadAuthGateCounter = singleton(
+  "workloadAuthGateCounter",
+  () =>
+    new Counter({
+      name: "workload_auth_gate_total",
+      help: "Deployment token authorization outcomes on worker actions",
+      labelNames: ["outcome", "action"] as const,
+      registers: [metricsRegister],
+    })
+);
 
 function createAuthenticatedWorkerInstanceCache() {
   return createCache({
