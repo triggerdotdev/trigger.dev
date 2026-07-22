@@ -4,7 +4,7 @@ import {
   type WorkloadDeploymentTokenClaims,
   type WorkloadDeploymentTokenInput,
 } from "@trigger.dev/core/v3";
-import { Counter } from "prom-client";
+import { Counter, Gauge } from "prom-client";
 import { env } from "./env.js";
 import { register } from "./metrics.js";
 
@@ -36,6 +36,16 @@ const verifyCounter = new Counter({
   labelNames: ["outcome", "transport", "env_type"] as const,
   registers: [register],
 });
+
+// Exports the active mode (value 1 for the current WORKLOAD_TOKEN_ENFORCEMENT) so dashboards can show
+// disabled/log/enforce at a glance — the counters alone don't distinguish log from enforce.
+const enforcementModeGauge = new Gauge({
+  name: "workload_token_enforcement_mode",
+  help: "Active runner-boundary auth mode: value 1 for the label matching WORKLOAD_TOKEN_ENFORCEMENT",
+  labelNames: ["mode"] as const,
+  registers: [register],
+});
+enforcementModeGauge.set({ mode: env.WORKLOAD_TOKEN_ENFORCEMENT }, 1);
 
 export async function mintDeploymentToken(
   claims: WorkloadDeploymentTokenInput
