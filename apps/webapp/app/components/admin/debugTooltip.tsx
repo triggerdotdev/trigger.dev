@@ -121,7 +121,7 @@ function Content({ children }: { children: React.ReactNode }) {
           </>
         )}
       </Property.Table>
-      <div className="pt-2">{children}</div>
+      {children && <div className="pt-2">{children}</div>}
     </div>
   );
 }
