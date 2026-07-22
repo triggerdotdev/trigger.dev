@@ -797,7 +797,7 @@ function QueuesWithMetricsView() {
                               <SimpleTooltip
                                 button={<ExclamationTriangleIcon className="size-4 text-warning" />}
                                 content="At concurrency limit: this queue is running as many runs as its limit allows; new runs wait in the backlog."
-                                className="max-w-xs"
+                                className="max-w-[230px]"
                                 disableHoverableContent
                               />
                             ) : null
@@ -886,7 +886,7 @@ function QueuesWithMetricsView() {
                                       )}% of the environment limit.`
                                     : `This queue's concurrency limit has been manually overridden to ${limit}.`
                                 }
-                                contentClassName="max-w-xs"
+                                contentClassName="max-w-[230px]"
                                 disableHoverableContent
                               />
                             ) : undefined
@@ -1446,7 +1446,7 @@ function QueueEnvMetricChart({
           <span className="flex items-baseline gap-2">
             <span className="flex items-center gap-1.5">
               {tile.label}
-              <InfoIconTooltip content={tile.description} contentClassName="max-w-xs" />
+              <InfoIconTooltip content={tile.description} contentClassName="max-w-[230px]" />
             </span>
             {peak != null ? (
               tile.totalTooltip && !showLoading ? (
@@ -1462,7 +1462,7 @@ function QueueEnvMetricChart({
                     </span>
                   }
                   content={tile.totalTooltip}
-                  className="max-w-xs"
+                  className="max-w-[230px]"
                   disableHoverableContent
                 />
               ) : (
@@ -1828,7 +1828,7 @@ function ClassicQueuesView() {
                                     </Badge>
                                   }
                                   content="This queue's concurrency limit has been manually overridden from the dashboard or API."
-                                  className="max-w-xs"
+                                  className="max-w-[230px]"
                                   disableHoverableContent
                                 />
                               ) : null}
@@ -2012,7 +2012,7 @@ function BurstFactorTooltip({
       }, but you can burst up to ${
         environment.burstFactor * environment.concurrencyLimit
       } when across multiple queues/tasks.`}
-      contentClassName="max-w-xs"
+      contentClassName="max-w-[230px]"
     />
   );
 }

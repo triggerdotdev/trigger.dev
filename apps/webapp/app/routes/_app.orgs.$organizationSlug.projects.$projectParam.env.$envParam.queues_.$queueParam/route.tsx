@@ -603,7 +603,7 @@ function chartTitleWithInfo(title: string, info: string) {
   return (
     <span className="flex items-center gap-1.5">
       {title}
-      <InfoIconTooltip content={info} contentClassName="max-w-xs" />
+      <InfoIconTooltip content={info} contentClassName="max-w-[230px]" />
     </span>
   );
 }
