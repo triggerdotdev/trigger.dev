@@ -75,6 +75,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       });
     }
 
+    // Vars exist but can't be read: fail LOUD. Returning an empty record here would
+    // be indistinguishable from "there were none" and let the build run without its
+    // build-time secrets (confusing failure at best, silently-wrong image at worst).
+    // Concrete trigger: ENCRYPTION_KEY rotation during the build window.
     const envelope = EncryptedSecretValueSchema.safeParse(deployment.buildEnvVars);
 
     if (!envelope.success) {
@@ -82,9 +86,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         deploymentId,
         environmentId: authenticatedEnv.id,
       });
-      return json({ variables: {} } satisfies GetDeploymentBuildEnvVarsResponseBody, {
-        status: 200,
-      });
+      return json(
+        { error: "The stored build environment variables could not be read. Retry the deploy." },
+        { status: 500 }
+      );
     }
 
     let variables: Record<string, string>;
@@ -98,9 +103,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         environmentId: authenticatedEnv.id,
         error,
       });
-      return json({ variables: {} } satisfies GetDeploymentBuildEnvVarsResponseBody, {
-        status: 200,
-      });
+      return json(
+        {
+          error: "The stored build environment variables could not be decrypted. Retry the deploy.",
+        },
+        { status: 500 }
+      );
     }
 
     return json({ variables } satisfies GetDeploymentBuildEnvVarsResponseBody, { status: 200 });

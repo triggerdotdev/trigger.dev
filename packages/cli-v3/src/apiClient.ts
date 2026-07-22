@@ -690,6 +690,19 @@ export class CliApiClient {
     );
   }
 
+  // Best-effort cancel (204 on success, no body) — callers may ignore failures.
+  async cancelDeployment(deploymentId: string, reason?: string) {
+    if (!this.accessToken) {
+      throw new Error("cancelDeployment: No access token");
+    }
+
+    return fetch(`${this.apiURL}/api/v1/deployments/${deploymentId}/cancel`, {
+      method: "POST",
+      headers: this.getHeaders(),
+      body: JSON.stringify({ reason }),
+    });
+  }
+
   async getDeploymentBuildEnvVars(deploymentId: string) {
     if (!this.accessToken) {
       throw new Error("getDeploymentBuildEnvVars: No access token");

@@ -1556,6 +1556,18 @@ async function handleNativeBuildServerDeploy({
     Object.keys(bundleBuildEnvVars).length > 0 &&
     !deployment.buildEnvVarsStored
   ) {
+    // Courtesy cancel so the deployment doesn't linger as PENDING until the
+    // queue timeout reaps it. Best-effort: the hard error below is what matters.
+    const [cancelError] = await tryCatch(
+      apiClient.cancelDeployment(deployment.id, "Build environment variables were not stored")
+    );
+    if (cancelError) {
+      logger.debug("Failed to cancel deployment after missing build env vars ack", {
+        deploymentId: deployment.id,
+        error: cancelError,
+      });
+    }
+
     $deploymentSpinner.stop("Failed to initialize deployment");
     log.error(
       chalk.bold(
