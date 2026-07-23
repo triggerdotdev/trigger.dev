@@ -48,8 +48,8 @@ export function QueuePauseResumeButton({
   const [isOpen, setIsOpen] = useState(false);
 
   const label = queue.paused
-    ? `Resume processing runs in queue "${queue.name}"`
-    : `Pause processing runs in queue "${queue.name}"`;
+    ? `Resume the "${queue.name}" queue so its runs can be dequeued again`
+    : `Pause the "${queue.name}" queue — its runs stay queued until you resume it`;
 
   const trigger = showTooltip ? (
     <div>
@@ -66,11 +66,20 @@ export function QueuePauseResumeButton({
                   fullWidth={fullWidth}
                   textAlignLeft={fullWidth}
                   aria-label={label}
+                  className={
+                    withQueueName
+                      ? queue.paused
+                        ? "border-success/60 hover:border-success"
+                        : "border-warning/60 hover:border-warning"
+                      : undefined
+                  }
                 >
                   {iconOnly
                     ? undefined
                     : withQueueName
-                      ? `${queue.paused ? "Resume" : "Pause"} ${queue.name} queue`
+                      ? queue.paused
+                        ? "Resume this queue…"
+                        : "Pause this queue…"
                       : queue.paused
                         ? "Resume"
                         : "Pause"}
@@ -314,6 +323,7 @@ export function QueueOverrideConcurrencyButton({
                 <SegmentedControl
                   name="unit"
                   value={mode}
+                  className="h-8"
                   options={[
                     { label: "Number", value: "absolute" },
                     { label: "Percent", value: "percent" },
@@ -322,7 +332,7 @@ export function QueueOverrideConcurrencyButton({
                 />
               </div>
               {mode === "percent" ? (
-                <Hint>
+                <Hint className="tabular-nums">
                   {materializedFromPercent !== null
                     ? `${percentNumber}% = ${materializedFromPercent} concurrent ${
                         materializedFromPercent === 1 ? "run" : "runs"
@@ -330,10 +340,10 @@ export function QueueOverrideConcurrencyButton({
                     : "Enter a percentage between 1 and 100."}
                 </Hint>
               ) : (
-                <Hint className={limitOverCap ? "text-warning" : undefined}>
+                <Hint className={limitOverCap ? "text-warning tabular-nums" : "tabular-nums"}>
                   {limitOverCap
                     ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
-                    : `Up to the environment limit of ${environmentConcurrencyLimit}.`}
+                    : `The most concurrent runs this queue can use at once. It can't exceed the environment limit of ${environmentConcurrencyLimit}.`}
                 </Hint>
               )}
             </InputGroup>
@@ -371,7 +381,7 @@ export function QueueOverrideConcurrencyButton({
                     </Button>
                   )}
                   <DialogClose asChild>
-                    <Button type="button" variant="tertiary/medium">
+                    <Button type="button" variant="secondary/medium">
                       Cancel
                     </Button>
                   </DialogClose>

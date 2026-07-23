@@ -1038,6 +1038,11 @@ function EnvironmentPauseResumeButton({
                     variant="secondary/small"
                     LeadingIcon={env.paused ? PlayIcon : PauseIcon}
                     leadingIconClassName={env.paused ? "text-success" : "text-warning"}
+                    className={
+                      env.paused
+                        ? "border-success/60 hover:border-success"
+                        : "border-warning/60 hover:border-warning"
+                    }
                     aria-label={
                       env.paused
                         ? `Resume processing runs in ${environmentFullTitle(env)}`
@@ -1045,8 +1050,8 @@ function EnvironmentPauseResumeButton({
                     }
                   >
                     {env.paused
-                      ? `Resume ${environmentFullTitle(env)} environment`
-                      : `Pause ${environmentFullTitle(env)} environment`}
+                      ? `Resume ${environmentFullTitle(env)} environment…`
+                      : `Pause ${environmentFullTitle(env)} environment…`}
                   </Button>
                 </DialogTrigger>
               </div>
