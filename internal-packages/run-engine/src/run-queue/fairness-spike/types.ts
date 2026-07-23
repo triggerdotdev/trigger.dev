@@ -46,6 +46,12 @@ export interface SpikeSelectionStrategy extends RunQueueSelectionStrategy {
   readonly name: string;
   onServiced(descriptor: QueueDescriptor, now: number): void | Promise<void>;
   reset?(): void | Promise<void>;
+  /**
+   * The driver calls this with the current logical clock (in message-score
+   * space) before each drain, so time-aware disciplines (CoDel) can measure
+   * sojourn against the same clock the workload uses.
+   */
+  setClock?(now: number): void;
 }
 
 export type ActiveQueue = {
