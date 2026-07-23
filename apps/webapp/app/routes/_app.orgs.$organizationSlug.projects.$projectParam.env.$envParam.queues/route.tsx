@@ -951,7 +951,7 @@ function QueuesWithMetricsView() {
                                 })}
                               />
                               <PopoverMenuItem
-                                icon={RectangleStackIcon}
+                                icon={QueuesIcon}
                                 leadingIconClassName="text-queues"
                                 title="View queued runs"
                                 to={v3RunsPath(organization, project, env, {
