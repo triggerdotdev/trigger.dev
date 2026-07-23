@@ -66,11 +66,13 @@ export function CopyableText({
           iconButton
         ) : (
           // asChild so the Radix trigger merges onto our button instead of nesting a button.
+          // tabbable keeps the button in the tab order (the trigger sets tabIndex -1 otherwise).
           <SimpleTooltip
             button={iconButton}
             content={copied ? "Copied!" : "Copy"}
             className="font-sans"
             disableHoverableContent
+            tabbable
             asChild
           />
         )}
