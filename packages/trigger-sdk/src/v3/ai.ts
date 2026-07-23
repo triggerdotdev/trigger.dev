@@ -36,6 +36,14 @@ import {
   type TaskWithSchema,
   TRIGGER_CONTROL_SUBTYPE,
   type StreamWriteResult,
+  type AnyChatEvent,
+  type ChatEventActions,
+  type ValidatedWebhookKey,
+  type ValidateWebhookFilter,
+  type WebhookVerifierArtifact,
+  type WebhookSecretProvisioning,
+  type AnyWebhookSource,
+  type InferWebhookEvent,
 } from "@trigger.dev/core/v3";
 import type {
   FinishReason,
@@ -50,15 +58,6 @@ import type {
   JSONSchema7,
   Schema,
 } from "ai";
-import type { AnyChatEvent, ChatEventActions } from "@trigger.dev/core/v3";
-import type {
-  ValidatedWebhookKey,
-  ValidateWebhookFilter,
-  WebhookVerifierArtifact,
-  WebhookSecretProvisioning,
-  AnyWebhookSource,
-  InferWebhookEvent,
-} from "@trigger.dev/core/v3";
 import { chatEvent, normalizeKeyString } from "./webhooks.js";
 // Runtime VALUES go through the ESM/CJS shim so the CJS build can `require`
 // ESM-only `ai@7` (see ../imports/ai-runtime.ts).

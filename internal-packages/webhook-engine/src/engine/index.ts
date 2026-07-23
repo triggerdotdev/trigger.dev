@@ -1,16 +1,15 @@
-import {
-  Counter,
-  getMeter,
-  getTracer,
-  Histogram,
-  Meter,
-  startSpan,
-  Tracer,
-} from "@internal/tracing";
+import type { Counter, Histogram, Meter, Tracer } from "@internal/tracing";
+import { getMeter, getTracer, startSpan } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { Prisma, WebhookDatabase, WebhookDelivery, WebhookEndpoint } from "@trigger.dev/database";
+import type {
+  Prisma,
+  WebhookDatabase,
+  WebhookDelivery,
+  WebhookEndpoint,
+} from "@trigger.dev/database";
 import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";
-import { createRedisClient, Redis } from "@internal/redis";
+import type { Redis } from "@internal/redis";
+import { createRedisClient } from "@internal/redis";
 import { FilterAst, WebhookVerifierArtifact } from "@trigger.dev/core/v3";
 import type { WebhookRoutingTarget } from "@trigger.dev/core/v3";
 import { WebhookDeliveryId } from "@trigger.dev/core/v3/isomorphic";
@@ -21,7 +20,7 @@ import { evaluateFilter, parseFilter } from "./filter/index.js";
 import { verify } from "./verification/index.js";
 import { sha256Hex } from "./verification/util.js";
 import { deriveIdempotencyKey, tryParseJson } from "./verification/derive.js";
-import {
+import type {
   IngestInput,
   IngestResult,
   ReplayResult,

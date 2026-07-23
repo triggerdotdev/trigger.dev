@@ -52,8 +52,6 @@ import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useOrganization } from "~/hooks/useOrganizations";
-import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import {
   redirectBackWithErrorMessage,

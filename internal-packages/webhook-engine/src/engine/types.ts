@@ -1,7 +1,7 @@
-import { Logger } from "@trigger.dev/core/logger";
-import { Meter, Tracer } from "@internal/tracing";
-import { WebhookDatabase } from "@trigger.dev/database";
-import { RedisOptions } from "@internal/redis";
+import type { Logger } from "@trigger.dev/core/logger";
+import type { Meter, Tracer } from "@internal/tracing";
+import type { WebhookDatabase } from "@trigger.dev/database";
+import type { RedisOptions } from "@internal/redis";
 
 export type WebhookDeliverTaskErrorType = "QUEUE_LIMIT" | "SYSTEM_ERROR" | "NOT_FOUND";
 

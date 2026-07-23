@@ -1,7 +1,4 @@
-import { Webhook } from "@trigger.dev/core/v3";
-import { subtle } from "../imports/uncrypto.js";
-import { createTask } from "./shared.js";
-import { resourceCatalog } from "@trigger.dev/core/v3";
+import { Webhook, resourceCatalog } from "@trigger.dev/core/v3";
 import type {
   WebhookSource,
   InferWebhookEvent,
@@ -10,12 +7,13 @@ import type {
   ValidateWebhookFilter,
   ChatEvent,
   ValidatedWebhookKey,
-} from "@trigger.dev/core/v3";
-import type {
   WebhookVerifierConfig,
   StripeWebhookEvent,
   GitHubWebhookEvent,
+  TaskRunContext,
 } from "@trigger.dev/core/v3";
+import { subtle } from "../imports/uncrypto.js";
+import { createTask, type Task } from "./shared.js";
 import {
   discordVerifierConfig,
   githubVerifierConfig,
@@ -25,8 +23,6 @@ import {
   webhookProviderConfigs,
   type WebhookProviderId,
 } from "@trigger.dev/core/webhooks";
-import type { Task } from "./shared.js";
-import type { TaskRunContext } from "@trigger.dev/core/v3";
 
 /**
  * The type of error thrown when a webhook fails to parse or verify

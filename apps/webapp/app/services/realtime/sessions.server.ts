@@ -5,7 +5,7 @@ import type { RunStore } from "@internal/run-store";
 import { $replica, prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
-import { runStore, runStore as defaultRunStore } from "~/v3/runStore.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
 /**
  * Prefix that {@link SessionId.generate} attaches to every Session friendlyId.

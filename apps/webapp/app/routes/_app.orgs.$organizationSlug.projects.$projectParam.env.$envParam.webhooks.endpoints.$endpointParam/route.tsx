@@ -4,8 +4,7 @@ import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/ser
 import { randomBytes } from "node:crypto";
 import { WebhookRoutingTarget, WebhookVerifierArtifact } from "@trigger.dev/core/v3";
 import type { WebhookValueSource } from "@trigger.dev/core/v3";
-import { useEffect, useState } from "react";
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
@@ -48,12 +47,7 @@ import {
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { requireUser } from "~/services/session.server";
-import {
-  docsPath,
-  EnvironmentParamSchema,
-  v3WebhookTaskPath,
-  v3WebhooksPath,
-} from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3WebhookTaskPath } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { flag } from "~/v3/featureFlags.server";
@@ -98,7 +92,7 @@ async function requireWebhookAccess(request: Request, params: LoaderFunctionArgs
 }
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { user, project, environment, endpointParam } = await requireWebhookAccess(request, params);
+  const { project, environment, endpointParam } = await requireWebhookAccess(request, params);
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,

@@ -1,9 +1,14 @@
-import type { VerifierArtifact, VerifierConfig, VerifierResult, VerifyInput } from "./types.js";
+import type {
+  SchemeVerifier,
+  VerifierArtifact,
+  VerifierConfig,
+  VerifierResult,
+  VerifyInput,
+} from "./types.js";
 import { hmacVerifier } from "./hmac.js";
 import { asymmetricVerifier } from "./asymmetric.js";
 import { sharedSecretVerifier } from "./sharedSecret.js";
 import { urlSecretVerifier } from "./urlSecret.js";
-import type { SchemeVerifier } from "./types.js";
 
 const SCHEME_REGISTRY: Record<VerifierConfig["scheme"], SchemeVerifier> = {
   hmac: hmacVerifier,

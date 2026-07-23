@@ -74,6 +74,9 @@
       "schemas": [
         "dist/commonjs/schemas/index.d.ts"
       ],
+      "webhooks": [
+        "dist/commonjs/v3/webhooks/index.d.ts"
+      ],
       "types": [
         "dist/commonjs/types.d.ts"
       ],

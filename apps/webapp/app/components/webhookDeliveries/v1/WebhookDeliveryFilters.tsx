@@ -17,12 +17,6 @@ import {
   shortcutFromIndex,
 } from "~/components/primitives/Select";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "~/components/primitives/Tooltip";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";

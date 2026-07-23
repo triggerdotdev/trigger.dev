@@ -1,6 +1,5 @@
 import type {
   WebhookVerifierArtifact,
-  WebhookRoutingTarget,
   WebhookSecretProvisioning,
 } from "../schemas/webhookConfig.js";
 

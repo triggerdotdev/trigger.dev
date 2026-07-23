@@ -1,5 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { expect } from "vitest";
 import {
   addDays,

@@ -1,8 +1,7 @@
 import { type ClickHouse } from "@internal/clickhouse";
 import { type Tracer } from "@internal/tracing";
 import { type Logger, type LogLevel } from "@trigger.dev/core/logger";
-import { type Prisma, WebhookDeliveryStatus } from "@trigger.dev/database";
-import { z } from "zod";
+import { type Prisma, type WebhookDeliveryStatus } from "@trigger.dev/database";
 import { type WebhookReplicaDatabase } from "~/db.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { ClickHouseWebhookDeliveriesRepository } from "./clickhouseWebhookDeliveriesRepository.server";
@@ -14,10 +13,6 @@ export type WebhookDeliveriesRepositoryOptions = {
   logLevel?: LogLevel;
   tracer?: Tracer;
 };
-
-const DeliveryStatus = z.enum(
-  Object.values(WebhookDeliveryStatus) as [WebhookDeliveryStatus, ...WebhookDeliveryStatus[]]
-);
 
 export type FilterWebhookDeliveriesOptions = {
   organizationId: string;
