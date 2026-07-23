@@ -31,7 +31,11 @@ export async function parsePacket(value: IOPacket, options?: ParsePacketOptions)
 
   switch (value.dataType) {
     case "application/json":
-      return JSON.parse(value.data, makeSafeReviver(options));
+      try {
+        return JSON.parse(value.data, makeSafeReviver(options));
+      } catch {
+        return undefined;
+      }
     case "application/super+json":
       return superjson.parse(value.data);
     case "text/plain":
@@ -55,7 +59,11 @@ export async function parsePacketAsJson(
 
   switch (value.dataType) {
     case "application/json":
-      return JSON.parse(value.data, makeSafeReviver(options));
+      try {
+        return JSON.parse(value.data, makeSafeReviver(options));
+      } catch {
+        return undefined;
+      }
     case "application/super+json":
       const superJsonResult = superjson.parse(value.data);
 

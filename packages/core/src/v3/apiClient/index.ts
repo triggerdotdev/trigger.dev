@@ -2375,7 +2375,7 @@ function shouldRetryStreamBatchItems(
 
   // Retry on rate limits with special handling for Retry-After
   if (response.status === 429) {
-    if (attempt >= retryOptions.maxAttempts!) {
+    if (retryOptions.maxAttempts !== undefined && attempt >= retryOptions.maxAttempts) {
       return { retry: false };
     }
 
