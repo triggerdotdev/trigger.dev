@@ -15,6 +15,7 @@ import disconnectedImage from "../assets/images/cli-disconnected.png";
 import { InlineCode } from "./code/InlineCode";
 import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "./primitives/Dialog";
+import { cn } from "~/utils/cn";
 import { Paragraph } from "./primitives/Paragraph";
 import { TextLink } from "./primitives/TextLink";
 import { PackageManagerProvider, TriggerDevStepV3 } from "./SetupCommands";
@@ -165,7 +166,10 @@ export function DevPresencePanel({ isConnected }: { isConnected: boolean | undef
             width={282}
             height={45}
           />
-          <Paragraph variant="small" className={isConnected ? "text-success" : "text-error"}>
+          <Paragraph
+            variant="small"
+            className={cn("system-mono-label", isConnected ? "text-success" : "text-error")}
+          >
             {isConnected === undefined
               ? "Checking connection..."
               : isConnected
