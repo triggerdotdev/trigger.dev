@@ -669,15 +669,16 @@ function QueuesWithMetricsView() {
                     tooltip={
                       <div className="max-w-xs space-y-1 p-1 text-left text-xs text-text-dimmed">
                         <p>
-                          <span className="text-text-bright">Environment</span>: the environment's
-                          limit of {environment.concurrencyLimit}.
+                          <span className="text-text-bright">Environment</span>: uses the
+                          environment limit of {environment.concurrencyLimit}.
                         </p>
                         <p>
-                          <span className="text-text-bright">User</span>: a limit set in your code.
+                          <span className="text-text-bright">User</span>: a limit you set in your
+                          code.
                         </p>
                         <p>
-                          <span className="text-text-bright">Override</span>: set manually from the
-                          dashboard or API.
+                          <span className="text-text-bright">Override</span>: a limit you set here or
+                          via the API.
                         </p>
                       </div>
                     }
@@ -689,7 +690,7 @@ function QueuesWithMetricsView() {
                   </TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
-                    tooltip="p95 wait from eligible to dequeued, over the selected window."
+                    tooltip="How long runs waited before starting (95% were faster), over the selected time."
                   >
                     Delay p95
                   </TableHeaderCell>
@@ -697,7 +698,8 @@ function QueuesWithMetricsView() {
                     alignment="right"
                     tooltip={
                       <>
-                        Runs waiting over the selected window. <WarningSwatch /> where throttled.
+                        How many runs were waiting, over the selected time. <WarningSwatch /> marks
+                        where the queue was throttled.
                       </>
                     }
                   >
@@ -1244,8 +1246,8 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Env saturation",
     description: (
       <>
-        Running as a share of the environment limit. Turns <WarningSwatch /> over 100% (burst
-        headroom).
+        How much of the environment's concurrency these queues are using. Turns{" "}
+        <WarningSwatch /> above 100%, when they're into burst capacity.
       </>
     ),
     color: "var(--color-queues)",
@@ -1272,7 +1274,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
   {
     id: "backlog",
     label: "Backlog",
-    description: "Runs waiting across these queues over time.",
+    description: "How many runs are waiting across these queues, over time.",
     color: "var(--color-queues)",
     query: `SELECT timeBucket() AS t,\n  queue,\n  max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
     derive: (rows) => {
@@ -1289,7 +1291,8 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Scheduling delay p95",
     description: (
       <>
-        p95 wait from eligible to dequeued. Turns <WarningSwatch /> over 1 min.
+        How long runs wait before they start (95% start faster than this). Turns{" "}
+        <WarningSwatch /> above 1 minute.
       </>
     ),
     totalTooltip: "The worst p95 in the selected window.",
@@ -1317,7 +1320,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
   {
     id: "throttled",
     label: "Throttled",
-    description: "Times dequeuing was blocked by a limit.",
+    description: "How often runs were held back by a limit.",
     totalTooltip: "The share of the selected window with at least one blocked dequeue.",
     color: "var(--color-queues)",
     legend: [{ color: "var(--color-warning)", label: "Throttled" }],

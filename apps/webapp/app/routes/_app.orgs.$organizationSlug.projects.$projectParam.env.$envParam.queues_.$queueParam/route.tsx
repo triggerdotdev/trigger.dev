@@ -364,7 +364,7 @@ function OverviewCharts({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <QueueDetailChartCard
           title="Concurrency"
-          info="Running (purple) against the queue's concurrency limit (grey). Yellow when at the limit."
+          info="How many runs are going at once (purple) versus the queue's limit (grey). Turns yellow at the limit."
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -384,7 +384,7 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Queue depth"
-          info="Runs waiting in this queue over time."
+          info="How many runs are waiting in this queue, over time."
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -395,7 +395,7 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Throughput"
-          info="Runs entering the queue (Enqueued, grey) versus leaving it (Started, purple). Yellow when Started falls behind."
+          info="Runs arriving (Enqueued, grey) versus starting (Started, purple). Turns yellow when Started falls behind."
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -412,7 +412,7 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Scheduling delay"
-          info="Wait from eligible to dequeued (p50/p95/p99)."
+          info="How long runs wait before they start (p50/p95/p99)."
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -428,7 +428,7 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Throttled"
-          info="Times dequeuing was blocked by a limit."
+          info="How often runs were held back by a limit."
           className="aspect-[2/1] sm:col-span-2 sm:aspect-[4/1]"
           query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps

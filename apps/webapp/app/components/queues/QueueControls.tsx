@@ -48,8 +48,8 @@ export function QueuePauseResumeButton({
   const [isOpen, setIsOpen] = useState(false);
 
   const label = queue.paused
-    ? `Resume the "${queue.name}" queue so its runs can be dequeued again`
-    : `Pause the "${queue.name}" queue — its runs stay queued until you resume it`;
+    ? `Resume the "${queue.name}" queue so its runs can start again`
+    : `Pause the "${queue.name}" queue. Its runs wait until you resume it`;
 
   const trigger = showTooltip ? (
     <div>
@@ -248,8 +248,8 @@ export function QueueOverrideConcurrencyButton({
               </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-[230px] text-xs">
-              Set a custom concurrency limit for this queue, overriding the environment default — as
-              an absolute number or a percentage of the environment limit.
+              Give this queue its own concurrency limit instead of the environment default. Set it as
+              a number or a percentage of the environment limit.
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
