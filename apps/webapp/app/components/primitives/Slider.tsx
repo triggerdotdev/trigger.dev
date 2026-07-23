@@ -12,10 +12,10 @@ const variants = {
     root: "h-4 grow",
     track: "h-1 bg-grid-bright",
     range: "bg-transparent",
-    // Matches the Switch thumb: white dot (soft shadow keeps it visible on the
-    // light track), charcoal in dark themes
+    // Matches the Switch thumb; the secondary-button hairline+shadow keeps the
+    // white dot visible on the light track
     thumb:
-      "h-3 w-3 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.35),0_0_0_1px_rgba(0,0,0,0.06)] dark:bg-charcoal-200 dark:shadow-none",
+      "h-3 w-3 border border-border-bright/50 bg-white shadow-xs dark:border-transparent dark:bg-charcoal-200 dark:shadow-none",
   },
   tertiary: {
     container: "h-6 gap-1 rounded-sm hover:bg-background-raised px-1",
