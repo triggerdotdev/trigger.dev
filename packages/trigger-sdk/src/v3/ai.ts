@@ -6396,6 +6396,7 @@ function chatAgent<
           // onFinish message if it fired; otherwise the buffered chunks are
           // reconstructed as the fallback (mirrors chat.pipeAndCapture).
           let capturedPartialResponse: TUIMessage | undefined;
+          let responseCommitted = false;
           const turnBufferedChunks: UIMessageChunk[] = [];
           try {
             // Extract turn-level context before entering the span. Slim
@@ -7404,6 +7405,11 @@ function chatAgent<
                     }
                   }
 
+                  if (capturedResponseMessage) {
+                    responseCommitted = true;
+                    capturedPartialResponse = capturedResponseMessage;
+                  }
+
                   if (runSignal.aborted) return "exit";
 
                   // Await deferred background work (e.g. DB writes from onTurnStart)
@@ -7625,6 +7631,7 @@ function chatAgent<
                         parts: [...(msg.parts ?? []), ...lateParts],
                       } as TUIMessage;
                       capturedResponseMessage = accumulatedUIMessages[idx] as TUIMessage;
+                      capturedPartialResponse = capturedResponseMessage;
                       turnCompleteEvent.responseMessage = capturedResponseMessage;
                       turnCompleteEvent.uiMessages = accumulatedUIMessages;
                     }
@@ -7935,10 +7942,9 @@ function chatAgent<
             // success path) instead of dropping it as a dup; otherwise append.
             // `erroredWireMessage` was already folded into `erroredUIMessages`
             // above when the pre-run merge hadn't happened.
-            const partialIdx =
-              partialResponse?.id != null
-                ? erroredUIMessages.findIndex((m) => m.id === partialResponse!.id)
-                : -1;
+            const partialIdx = partialResponse?.id
+              ? erroredUIMessages.findIndex((m) => m.id === partialResponse!.id)
+              : -1;
             const erroredUIMessagesWithPartial: TUIMessage[] = !partialResponse
               ? erroredUIMessages
               : partialIdx === -1
@@ -7950,7 +7956,7 @@ function chatAgent<
             const erroredNewUIMessages: TUIMessage[] = erroredWireMessage
               ? [erroredWireMessage]
               : [];
-            if (partialResponse) {
+            if (partialResponse && !responseCommitted) {
               erroredNewUIMessages.push(partialResponse);
             }
 
@@ -7964,7 +7970,7 @@ function chatAgent<
             // its model messages to preserve a prior turn's compaction (mirrors
             // the success path's append branch); otherwise reconvert from UI.
             // Guard the conversion so a secondary failure can't crash the run.
-            if (erroredUIMessagesWithPartial !== accumulatedUIMessages) {
+            if (!responseCommitted && erroredUIMessagesWithPartial !== accumulatedUIMessages) {
               const onlyAppendedPartial =
                 partialResponse != null &&
                 partialIdx === -1 &&

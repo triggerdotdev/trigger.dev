@@ -160,6 +160,66 @@ describe("chat.agent managed loop — source-stream failure", () => {
       await harness.close();
     }
   });
+
+  it("does not overwrite an already-committed enriched response when a post-response hook throws", async () => {
+    const events: TurnCompleteEvent<unknown, UIMessage>[] = [];
+
+    const okModel = (text: string) =>
+      new MockLanguageModelV3({
+        doStream: async () => ({
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "text-start", id: "t1" },
+              { type: "text-delta", id: "t1", delta: text },
+              { type: "text-end", id: "t1" },
+              {
+                type: "finish",
+                finishReason: { unified: "stop", raw: "stop" },
+                usage: {
+                  inputTokens: {
+                    total: 5,
+                    noCache: 5,
+                    cacheRead: undefined,
+                    cacheWrite: undefined,
+                  },
+                  outputTokens: { total: 5, text: 5, reasoning: undefined },
+                },
+              },
+            ] as LanguageModelV3StreamPart[],
+          }),
+        }),
+      });
+
+    const agent = chat.agent({
+      id: "chatAgent.post-commit-hook-throw",
+      run: async ({ messages }) => {
+        chat.response.write({ type: "data-marker", data: { kept: true } } as never);
+        return streamText({ model: okModel("full response"), messages });
+      },
+      onTurnComplete: async (event) => {
+        events.push(event);
+        if (event.error == null) {
+          throw new Error("hook boom after commit");
+        }
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "cae-post-commit-throw" });
+    try {
+      await harness.sendMessage(userMessage("hi", "u-1"));
+      await waitFor(() => events.some((e) => e.error != null));
+
+      const errorEvent = events.find((e) => e.error != null)!;
+      const assistant = (errorEvent.uiMessages as UIMessage[]).find((m) => m.role === "assistant");
+      expect(assistant).toBeDefined();
+      expect(
+        (assistant!.parts as Array<{ type: string }>).some((p) => p.type === "data-marker")
+      ).toBe(true);
+      expect(extractText(assistant)).toBe("full response");
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 describe("chat.createSession turn.complete() — source-stream failure", () => {
