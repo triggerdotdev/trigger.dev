@@ -531,7 +531,7 @@ function QueuesWithMetricsView() {
                   ) : null}
                   <LinkButton
                     variant="secondary/small-icon"
-                    className="system:border-transparent system:bg-indigo-500"
+                    className="system:border-indigo-500 system:bg-indigo-600 system:group-hover/button:border-indigo-400 system:group-hover/button:bg-indigo-500"
                     LeadingIcon={RunsIcon}
                     leadingIconClassName="text-runs system:text-white"
                     to={v3RunsPath(organization, project, env, {
@@ -564,7 +564,7 @@ function QueuesWithMetricsView() {
               accessory={
                 <LinkButton
                   variant="secondary/small-icon"
-                  className="system:border-transparent system:bg-indigo-500"
+                  className="system:border-indigo-500 system:bg-indigo-600 system:group-hover/button:border-indigo-400 system:group-hover/button:bg-indigo-500"
                   LeadingIcon={RunsIcon}
                   leadingIconClassName="text-runs system:text-white"
                   to={v3RunsPath(organization, project, env, {
@@ -606,7 +606,7 @@ function QueuesWithMetricsView() {
                     <LinkButton
                       to={concurrencyPath(organization, project, env)}
                       variant="secondary/small-icon"
-                      className="system:border-transparent system:bg-amber-600"
+                      className="system:border-amber-500 system:bg-amber-600 system:group-hover/button:border-amber-400 system:group-hover/button:bg-amber-500"
                       LeadingIcon={ConcurrencyIcon}
                       leadingIconClassName="text-amber-500 system:text-white"
                       tooltip="Increase limit"
@@ -615,7 +615,7 @@ function QueuesWithMetricsView() {
                     <LinkButton
                       to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
                       variant="secondary/small-icon"
-                      className="system:border-transparent system:bg-indigo-500"
+                      className="system:border-indigo-500 system:bg-indigo-600 system:group-hover/button:border-indigo-400 system:group-hover/button:bg-indigo-500"
                       LeadingIcon={ArrowUpCircleIcon}
                       leadingIconClassName="text-indigo-500 system:text-white"
                       tooltip="Increase limit"
@@ -1067,7 +1067,7 @@ function EnvironmentPauseResumeButton({
                   <Button
                     type="button"
                     variant="secondary/small-icon"
-                    className={env.paused ? "system:border-transparent system:bg-success" : "system:border-transparent system:bg-amber-600"}
+                    className={env.paused ? "system:border-mint-500 system:bg-mint-600 system:group-hover/button:border-mint-400 system:group-hover/button:bg-mint-500" : "system:border-amber-500 system:bg-amber-600 system:group-hover/button:border-amber-400 system:group-hover/button:bg-amber-500"}
                     LeadingIcon={env.paused ? PlayIcon : PauseIcon}
                     leadingIconClassName={
                       env.paused ? "text-success system:text-white" : "text-warning system:text-white"

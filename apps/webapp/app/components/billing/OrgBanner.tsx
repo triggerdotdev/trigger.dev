@@ -153,7 +153,7 @@ function NoLimitConfiguredBanner() {
         canManageBillingLimits ? (
           <LinkButton
             variant="tertiary/small"
-            className="system:border-transparent system:bg-amber-600 system:hover:bg-amber-700"
+            className="system:border-amber-500 system:bg-amber-600 system:group-hover/button:border-amber-400 system:group-hover/button:bg-amber-500"
             to={v3BillingLimitsPath(organization)}
           >
             <span className="mx-auto grow self-center truncate text-text-bright system:text-white">
