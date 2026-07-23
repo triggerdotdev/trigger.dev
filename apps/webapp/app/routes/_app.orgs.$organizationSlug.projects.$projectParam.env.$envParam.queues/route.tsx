@@ -861,6 +861,9 @@ function QueuesWithMetricsView() {
                                 }
                                 contentClassName="max-w-[230px]"
                                 disableHoverableContent
+                                // Tighten the gap from the "Override" label to gap-1 (the cell's
+                                // trailing adornment gap is gap-2; -ml-1 pulls the icon in 4px).
+                                buttonClassName="-ml-1"
                               />
                             ) : undefined
                           }
@@ -1197,8 +1200,8 @@ type QueueHeaderTile = {
   /** Formats the y-axis tick labels. Without it the axis shows raw numbers (bad for durations
    * in ms or percent scales). Passed through to Chart.Line's yAxisProps.tickFormatter. */
   formatAxis?: (value: number) => string;
-  /** Hover tooltip explaining the headline readout next to the title (e.g. what "9% of window"
-   * means). Without it the readout has no tooltip. */
+  /** Hover tooltip explaining the headline readout next to the title (e.g. what "9% of current
+   * period" means). Without it the readout has no tooltip. */
   totalTooltip?: string;
   // Rows can be one-per-bucket (p95, throttled: aggregated across the set in ClickHouse) or
   // one-per-(bucket, queue) (saturation, backlog: summed across the set here, since summing a
@@ -1346,7 +1349,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
       return {
         points,
         total: pct,
-        formatTotal: (v) => `${v}% of window`,
+        formatTotal: (v) => `${v}% of current period`,
         totalClassName: pct > 0 ? "text-warning" : undefined,
       };
     },
