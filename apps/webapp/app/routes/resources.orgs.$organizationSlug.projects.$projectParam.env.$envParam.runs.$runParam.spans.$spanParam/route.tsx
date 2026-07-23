@@ -429,7 +429,9 @@ function RunBody({
           <Header2
             className={cn(
               "overflow-x-hidden",
-              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-blue-500"
+              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-blue-500",
+              // System themes: monochrome title, the task icon keeps the color
+              "system:text-text-bright"
             )}
           >
             <span className="truncate">
