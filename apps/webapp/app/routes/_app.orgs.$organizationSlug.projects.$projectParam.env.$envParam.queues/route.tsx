@@ -542,7 +542,7 @@ function QueuesWithMetricsView() {
             />
             <BigNumber
               title={
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1">
                   Allocated
                   {allocation && overAllocated ? (
                     <InfoIconTooltip
@@ -1441,7 +1441,7 @@ function QueueEnvMetricChart({
       title={
         <span className="flex flex-col gap-1">
           <span className="flex items-baseline gap-2">
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1">
               {tile.label}
               <InfoIconTooltip content={tile.description} contentClassName="max-w-[230px]" />
             </span>
