@@ -16,7 +16,7 @@ import { Hint } from "~/components/primitives/Hint";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import {
   Tooltip,
@@ -754,7 +754,7 @@ export function VercelOnboardingModal({
             </div>
           </DialogHeader>
           <div className="flex items-center justify-center py-8">
-            <SpinnerWhite className="size-6" />
+            <Spinner color="blue" className="size-6" />
           </div>
         </DialogContent>
       </Dialog>
@@ -859,7 +859,7 @@ export function VercelOnboardingModal({
                       variant="primary/medium"
                       onClick={handleProjectSelection}
                       disabled={!selectedVercelProject || fetcher.state !== "idle"}
-                      LeadingIcon={fetcher.state !== "idle" ? SpinnerWhite : undefined}
+                      LeadingIcon={fetcher.state !== "idle" ? Spinner : undefined}
                     >
                       {fetcher.state !== "idle" ? "Connecting..." : "Connect Project"}
                     </Button>
@@ -930,7 +930,7 @@ export function VercelOnboardingModal({
                     variant="primary/medium"
                     onClick={handleUpdateEnvMapping}
                     disabled={envMappingFetcher.state !== "idle"}
-                    LeadingIcon={envMappingFetcher.state !== "idle" ? SpinnerWhite : undefined}
+                    LeadingIcon={envMappingFetcher.state !== "idle" ? Spinner : undefined}
                   >
                     Next
                   </Button>
@@ -1112,7 +1112,7 @@ export function VercelOnboardingModal({
                     LeadingIcon={
                       fromMarketplaceContext &&
                       (completeOnboardingFetcher.state !== "idle" || isRedirecting)
-                        ? SpinnerWhite
+                        ? Spinner
                         : undefined
                     }
                   >
@@ -1168,7 +1168,7 @@ export function VercelOnboardingModal({
                     disabled={completeOnboardingFetcher.state !== "idle" || isRedirecting}
                     LeadingIcon={
                       completeOnboardingFetcher.state !== "idle" || isRedirecting
-                        ? SpinnerWhite
+                        ? Spinner
                         : undefined
                     }
                   >

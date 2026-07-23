@@ -939,7 +939,11 @@ function OverrideDialog({
           className="-mx-3 w-auto flex-1 border-b border-t border-grid-dimmed"
         >
           {/* Editor */}
-          <ResizablePanel id="override-editor" min="300px" className="bg-[#121317]">
+          <ResizablePanel
+            id="override-editor"
+            min="300px"
+            className="bg-[#121317] light:bg-editor-background"
+          >
             <TextEditor
               className="h-full"
               autoFocus

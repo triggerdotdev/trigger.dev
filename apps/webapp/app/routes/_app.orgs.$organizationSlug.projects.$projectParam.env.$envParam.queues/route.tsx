@@ -16,6 +16,7 @@ import { z } from "zod";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
+import upgradeForQueuesLightPath from "~/assets/images/queues-dashboard-light.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
@@ -1166,7 +1167,12 @@ function EngineVersionUpgradeCallout() {
         <img
           src={upgradeForQueuesPath}
           alt="Upgrade for queues"
-          className="rounded-sm border border-grid-dimmed"
+          className="rounded-sm border border-grid-dimmed light:hidden"
+        />
+        <img
+          src={upgradeForQueuesLightPath}
+          alt="Upgrade for queues"
+          className="hidden rounded-sm border border-grid-dimmed light:block"
         />
       </div>
     </div>
