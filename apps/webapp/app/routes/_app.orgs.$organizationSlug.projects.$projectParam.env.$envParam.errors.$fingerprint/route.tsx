@@ -589,7 +589,7 @@ function ErrorDetailSidebar({
               <Property.Label>Error status</Property.Label>
               <Property.Value>
                 <div className="flex items-center justify-between">
-                  <ErrorStatusBadge status={errorGroup.state.status} className="w-fit" />
+                  <ErrorStatusBadge status={errorGroup.state.status} prominence="bright" className="w-fit" />
                   <ErrorStatusDropdown
                     state={errorGroup.state}
                     taskIdentifier={errorGroup.taskIdentifier}
