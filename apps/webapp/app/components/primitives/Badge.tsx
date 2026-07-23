@@ -5,9 +5,9 @@ const variants = {
   default:
     "grid place-items-center rounded-full px-2 h-5 tracking-wider text-xxs bg-background-hover text-text-bright uppercase whitespace-nowrap",
   "extra-small":
-    "grid place-items-center border border-border-bright rounded-sm px-1 h-4 text-xxs bg-background-bright text-blue-500 system:border-transparent system:bg-blue-500/10 whitespace-nowrap",
+    "grid place-items-center border border-border-bright rounded-sm px-1 h-4 text-xxs bg-background-bright text-blue-500 system:border-blue-500/60 system:bg-transparent system:text-text-bright whitespace-nowrap",
   small:
-    "grid place-items-center border border-border-bright rounded-sm px-1 h-5 text-xs bg-background-bright text-blue-500 system:border-transparent system:bg-blue-500/10 whitespace-nowrap",
+    "grid place-items-center border border-border-bright rounded-sm px-1 h-5 text-xs bg-background-bright text-blue-500 system:border-blue-500/60 system:bg-transparent system:text-text-bright whitespace-nowrap",
   "outline-rounded":
     "grid place-items-center rounded-full px-1 h-4 tracking-wider text-xxs border border-blue-500 text-blue-500 uppercase whitespace-nowrap",
   rounded:
