@@ -231,16 +231,45 @@
 */
 
 /*
-  Dark is System preference's dark mode. It derives from Classic (the :root
-  defaults) - only accent adjustments shared with Light mode belong here, so
-  cross-mode accents can be tuned in one place. Monochrome surfaces stay
-  Classic's.
+  System preference unified accents (dark+light); Classic keeps the original
+  set. One shared value per accent token, >=3:1 against both dark cards and
+  white. Accents whose Classic default already clears both modes (blue-500,
+  indigo-500, pink-500, purple-500, red-500, violet-500, fuchsia-500,
+  rose-600) are not repeated here. Text-sized tokens (text-link, callout
+  text) stay per-mode: no color reaches 4.5:1 on both #1a1b1f and #ffffff.
+  Dark derives everything else (monochrome surfaces etc.) from Classic.
 */
-[data-theme="dark"] {
-  /* Derives from Classic. Add only shared cross-mode accent overrides here. */
+:is([data-theme="dark"], [data-theme="light"]) {
+  /* Status */
+  --color-success: var(--color-mint-600);
+  --color-warning: var(--color-amber-600);
+  --color-staging: var(--color-orange-600);
+  --color-prod: var(--color-mint-600);
+  --color-preview: var(--color-yellow-700);
 
-  /* emerald-600 clears 3:1 on both dark cards and white (4.57 / 3.36) */
+  /* Icons */
+  --color-schedules: var(--color-yellow-700);
+  --color-previewBranches: var(--color-yellow-700);
+  --color-metrics: var(--color-green-600);
+  --color-regions: var(--color-green-600);
+  --color-aiMetrics: var(--color-green-600);
   --color-bulkActions: var(--color-emerald-600);
+  --color-concurrency: var(--color-amber-600);
+  --color-errors: var(--color-amber-600);
+  --color-apiKeys: var(--color-amber-600);
+
+  /* Callout accents (callout text/bg tints stay per-mode) */
+  --color-callout-docs: var(--color-blue-500);
+  --color-callout-pending: var(--color-blue-500);
+  --color-callout-pricing: var(--color-indigo-500);
+
+  /* Amber run statuses: three distinct steps, Classic's dark-to-light order
+     kept (waiting-for-deploy < pending-version < paused) */
+  --color-run-waiting-for-deploy: var(--color-amber-700);
+  --color-run-pending-version: #c76508;
+  --color-run-paused: var(--color-amber-600);
+  /* Nudged under 3:1's ceiling on white; stays lighter than system-failure */
+  --color-run-timed-out: #ed5f74;
 }
 
 /*
@@ -519,12 +548,14 @@
     --chart-5: 340 75% 55%;
   }
 
-  /* Same hues as the :root set, lightness lowered to clear 3:1 on white */
-  [data-theme="light"] {
-    --chart-1: 12 76% 55%;
-    --chart-2: 173 58% 36%;
-    --chart-4: 43 74% 38%;
-    --chart-5: 27 87% 45%;
+  /* System preference unified chart set (dark+light): Classic's hues, with
+     chart-2/3 darkened to clear 3:1 on white. Classic keeps the set above. */
+  :is([data-theme="dark"], [data-theme="light"]) {
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 40%;
+    --chart-3: 30 80% 47%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
   }
 
   /* Override react-grid-layout placeholder color (default is red) */
@@ -712,13 +743,8 @@
   --color-border-brighter: #b9bdc7;
   --color-border-brightest: #9ba1ad;
 
-  /* Status - darker steps for contrast on white */
-  --color-success: var(--color-mint-600);
-  --color-warning: var(--color-amber-600);
-  --color-dev: var(--color-pink-600);
-  --color-prod: var(--color-mint-600);
-  --color-staging: var(--color-orange-600);
-  --color-preview: var(--color-yellow-700);
+  /* Status/env/icon accents live in the unified dark+light block above;
+     dev keeps its Classic pink-500, which passes on white too. */
 
   /* Neutral run statuses: soft light grays for sparkbars and charts */
   --color-run-pending: #ccd0d6;
@@ -727,32 +753,15 @@
   --color-run-canceled: #d8dbdf;
   --color-run-expired: #dee0e4;
 
-  /* Amber run statuses: same family, one step darker each so ordering holds */
-  --color-run-waiting-for-deploy: #b45309;
-  --color-run-paused: #d97706;
-
-  /* Icons that fail contrast on white */
-  --color-schedules: var(--color-yellow-700);
-  --color-previewBranches: var(--color-yellow-700);
+  /* Monochrome icon gray - per-mode, not part of the unified accent set */
   --color-customDashboards: var(--color-charcoal-500);
-  /* mint-600 instead of green-600: green-600 still misses 3:1 on white */
-  --color-metrics: var(--color-mint-600);
-  --color-regions: var(--color-mint-600);
-  --color-aiMetrics: var(--color-mint-600);
-  --color-bulkActions: var(--color-emerald-600);
-  /* amber-600 matches the light warning token (borderline 2.84:1 on white) */
-  --color-concurrency: var(--color-amber-600);
-  --color-errors: var(--color-amber-600);
-  --color-apiKeys: var(--color-amber-600);
 
-  /* Callouts - deep tints instead of the dark theme's pastels */
+  /* Callout text/bg - deep tints instead of the dark theme's pastels; text
+     can't unify across modes (see the unified accents block) */
   --color-callout-warning-text: var(--color-yellow-800);
   --color-callout-error-text: var(--color-rose-700);
   --color-callout-success-text: var(--color-green-800);
-  --color-callout-docs: var(--color-blue-500);
   --color-callout-docs-text: var(--color-blue-800);
-  --color-callout-pending: var(--color-blue-500);
-  --color-callout-pricing: var(--color-indigo-500);
   --color-callout-pending-bg: var(--color-blue-100);
   --color-callout-pending-text: var(--color-blue-800);
   --color-callout-pricing-bg: var(--color-indigo-100);
