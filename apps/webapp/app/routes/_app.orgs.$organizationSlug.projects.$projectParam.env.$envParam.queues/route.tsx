@@ -531,7 +531,7 @@ function QueuesWithMetricsView() {
                   ) : null}
                   <LinkButton
                     variant="secondary/small-icon"
-                    className="system:border-transparent system:bg-runs system:transition system:group-hover/button:brightness-110"
+                    className="system:border-transparent system:bg-runs system:transition system:group-hover/button:bg-runs system:group-hover/button:brightness-90"
                     LeadingIcon={RunsIcon}
                     leadingIconClassName="text-runs system:text-white"
                     to={v3RunsPath(organization, project, env, {
@@ -569,7 +569,7 @@ function QueuesWithMetricsView() {
               accessory={
                 <LinkButton
                   variant="secondary/small-icon"
-                  className="system:border-transparent system:bg-runs system:transition system:group-hover/button:brightness-110"
+                  className="system:border-transparent system:bg-runs system:transition system:group-hover/button:bg-runs system:group-hover/button:brightness-90"
                   LeadingIcon={RunsIcon}
                   leadingIconClassName="text-runs system:text-white"
                   to={v3RunsPath(organization, project, env, {
@@ -611,7 +611,7 @@ function QueuesWithMetricsView() {
                     <LinkButton
                       to={concurrencyPath(organization, project, env)}
                       variant="secondary/small-icon"
-                      className="system:border-transparent system:bg-concurrency system:transition system:group-hover/button:brightness-110"
+                      className="system:border-transparent system:bg-concurrency system:transition system:group-hover/button:bg-concurrency system:group-hover/button:brightness-90"
                       LeadingIcon={ConcurrencyIcon}
                       leadingIconClassName="text-amber-500 system:text-white"
                       tooltip="Increase limit"
@@ -620,7 +620,7 @@ function QueuesWithMetricsView() {
                     <LinkButton
                       to={v3BillingPath(organization, "Upgrade your plan for more concurrency")}
                       variant="secondary/small-icon"
-                      className="system:border-transparent system:bg-runs system:transition system:group-hover/button:brightness-110"
+                      className="system:border-transparent system:bg-runs system:transition system:group-hover/button:bg-runs system:group-hover/button:brightness-90"
                       LeadingIcon={ArrowUpCircleIcon}
                       leadingIconClassName="text-indigo-500 system:text-white"
                       tooltip="Increase limit"
@@ -1074,8 +1074,8 @@ function EnvironmentPauseResumeButton({
                     variant="secondary/small-icon"
                     className={
                       env.paused
-                        ? "system:border-transparent system:bg-success system:transition system:group-hover/button:brightness-110"
-                        : "system:border-transparent system:bg-warning system:transition system:group-hover/button:brightness-110"
+                        ? "system:border-transparent system:bg-success system:transition system:group-hover/button:bg-success system:group-hover/button:brightness-90"
+                        : "system:border-transparent system:bg-warning system:transition system:group-hover/button:bg-warning system:group-hover/button:brightness-90"
                     }
                     LeadingIcon={env.paused ? PlayIcon : PauseIcon}
                     leadingIconClassName={

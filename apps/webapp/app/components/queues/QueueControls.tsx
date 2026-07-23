@@ -62,8 +62,8 @@ export function QueuePauseResumeButton({
                   className={
                     iconOnly
                       ? queue.paused
-                        ? "system:border-transparent system:bg-success system:transition system:group-hover/button:brightness-110"
-                        : "system:border-transparent system:bg-warning system:transition system:group-hover/button:brightness-110"
+                        ? "system:border-transparent system:bg-success system:transition system:group-hover/button:bg-success system:group-hover/button:brightness-90"
+                        : "system:border-transparent system:bg-warning system:transition system:group-hover/button:bg-warning system:group-hover/button:brightness-90"
                       : undefined
                   }
                   LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
