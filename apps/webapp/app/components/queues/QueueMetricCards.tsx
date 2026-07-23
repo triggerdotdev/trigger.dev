@@ -24,7 +24,7 @@ import { formatNumberCompact } from "~/utils/numberFormatter";
 
 export const QUEUE_METRIC_COLORS = {
   running: "var(--color-queues-chart)",
-  limit: "#4D525B",
+  limit: "var(--color-queues-chart-ref)",
   queued: "var(--color-queues-chart)",
   p50: "#22D3EE",
   p95: "#F59E0B",

@@ -263,6 +263,7 @@
 
   /* Queue charts read blue here; Classic keeps the queues purple */
   --color-queues-chart: var(--color-blue-500);
+  --color-queues-chart-ref: var(--color-charcoal-500);
 
   /* Callout accents (callout text/bg tints stay per-mode) */
   --color-callout-docs: var(--color-blue-500);
@@ -359,10 +360,12 @@
   --color-editor-scrollbar-thumb-active: #3c4b62;
 }
 
-/* Queue chart series color - queues purple in Classic, overridden to blue in
-   the System themes. Consumed from JS via var(), so declared static. */
+/* Queue chart series colors - queues purple in Classic, overridden to blue in
+   the System themes; the grey reference series lightens per mode there.
+   Consumed from JS via var(), so declared static. */
 @theme static {
   --color-queues-chart: var(--color-queues);
+  --color-queues-chart-ref: #4d525b;
 }
 
 /*
@@ -783,6 +786,9 @@
   /* Staging is the one per-mode env color: warm orange has no clean unified
      mid-tone, so dark keeps Classic's bright orange-400 and light deepens it */
   --color-staging: var(--color-orange-600);
+
+  /* Grey chart reference series, light enough not to dominate on white */
+  --color-queues-chart-ref: #c3c7cf;
 
   /* Neutral run statuses: soft light grays for sparkbars and charts */
   --color-run-pending: #ccd0d6;
