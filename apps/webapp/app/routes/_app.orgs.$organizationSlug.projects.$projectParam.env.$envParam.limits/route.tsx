@@ -448,21 +448,21 @@ function RateLimitTypeBadge({
     case "tokenBucket":
       return (
         <RateLimitTypePill
-          className="bg-blue-500/20 text-blue-600 dark:text-blue-400"
+          className="bg-blue-500/20 text-blue-600 dark:text-blue-400 system:bg-blue-500 system:text-white"
           label="Token bucket"
         />
       );
     case "fixedWindow":
       return (
         <RateLimitTypePill
-          className="bg-purple-500/20 text-purple-600 dark:text-purple-400"
+          className="bg-purple-500/20 text-purple-600 dark:text-purple-400 system:bg-purple-500 system:text-white"
           label="Fixed window"
         />
       );
     case "slidingWindow":
       return (
         <RateLimitTypePill
-          className="bg-green-500/20 text-green-700 dark:text-green-400"
+          className="bg-green-500/20 text-green-700 dark:text-green-400 system:bg-green-600 system:text-white"
           label="Sliding window"
         />
       );
