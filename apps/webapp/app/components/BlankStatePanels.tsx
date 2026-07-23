@@ -16,11 +16,8 @@ import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import openBulkActionsPanel from "~/assets/images/open-bulk-actions-panel.png";
-import openBulkActionsPanelLight from "~/assets/images/open-bulk-actions-panel-light.png";
 import selectRunsIndividually from "~/assets/images/select-runs-individually.png";
-import selectRunsIndividuallyLight from "~/assets/images/select-runs-individually-light.png";
 import selectRunsUsingFilters from "~/assets/images/select-runs-using-filters.png";
-import selectRunsUsingFiltersLight from "~/assets/images/select-runs-using-filters-light.png";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -616,16 +613,7 @@ export function BulkActionsNone() {
       <StepContentContainer className="mb-4 flex flex-col gap-4">
         <Paragraph>Select runs from the runs page individually.</Paragraph>
         <div>
-          <img
-            src={selectRunsIndividually}
-            alt="Select runs individually"
-            className="light:hidden"
-          />
-          <img
-            src={selectRunsIndividuallyLight}
-            alt="Select runs individually"
-            className="hidden light:block"
-          />
+          <img src={selectRunsIndividually} alt="Select runs individually" />
         </div>
       </StepContentContainer>
       <div className="mb-5 ml-9 flex items-center gap-2">
@@ -641,32 +629,14 @@ export function BulkActionsNone() {
           Use the filter menu on the runs page to select just the runs you want to bulk action.
         </Paragraph>
         <div>
-          <img
-            src={selectRunsUsingFilters}
-            alt="Select runs using filters"
-            className="light:hidden"
-          />
-          <img
-            src={selectRunsUsingFiltersLight}
-            alt="Select runs using filters"
-            className="hidden light:block"
-          />
+          <img src={selectRunsUsingFilters} alt="Select runs using filters" />
         </div>
       </StepContentContainer>
       <StepNumber stepNumber="3" title="Open the bulk action panel" />
       <StepContentContainer className="flex flex-col gap-4">
         <Paragraph>Click the “Bulk actions” button in the top right of the runs page.</Paragraph>
         <div>
-          <img
-            src={openBulkActionsPanel}
-            alt="Open the bulk action panel"
-            className="light:hidden"
-          />
-          <img
-            src={openBulkActionsPanelLight}
-            alt="Open the bulk action panel"
-            className="hidden light:block"
-          />
+          <img src={openBulkActionsPanel} alt="Open the bulk action panel" />
         </div>
       </StepContentContainer>
     </div>

@@ -9,9 +9,7 @@ import simplur from "simplur";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import selectRunsIndividually from "~/assets/images/select-runs-individually.png";
-import selectRunsIndividuallyLight from "~/assets/images/select-runs-individually-light.png";
 import selectRunsUsingFilters from "~/assets/images/select-runs-using-filters.png";
-import selectRunsUsingFiltersLight from "~/assets/images/select-runs-using-filters-light.png";
 import {
   BulkActionAction,
   BulkActionFilterSummary,
@@ -336,31 +334,13 @@ export function CreateBulkActionInspector({
                       Select runs individually using the checkboxes.
                     </Paragraph>
                     <div>
-                      <img
-                        src={selectRunsIndividually}
-                        alt="Select runs individually"
-                        className="light:hidden"
-                      />
-                      <img
-                        src={selectRunsIndividuallyLight}
-                        alt="Select runs individually"
-                        className="hidden light:block"
-                      />
+                      <img src={selectRunsIndividually} alt="Select runs individually" />
                     </div>
                     <Paragraph variant="small">
                       Or select runs using the filter menus on this page.
                     </Paragraph>
                     <div>
-                      <img
-                        src={selectRunsUsingFilters}
-                        alt="Select runs using filters"
-                        className="light:hidden"
-                      />
-                      <img
-                        src={selectRunsUsingFiltersLight}
-                        alt="Select runs using filters"
-                        className="hidden light:block"
-                      />
+                      <img src={selectRunsUsingFilters} alt="Select runs using filters" />
                     </div>
                     <Paragraph variant="small">
                       Then complete the form below and click “Cancel runs” or “Replay runs”.
