@@ -1,6 +1,6 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { conformZodMessage, parseWithZod } from "@conform-to/zod";
-import { MoonIcon, SunIcon } from "@heroicons/react/20/solid";
+import { ComputerDesktopIcon, MoonIcon, SunIcon, SwatchIcon } from "@heroicons/react/20/solid";
 import {
   Form,
   type MetaFunction,
@@ -18,6 +18,7 @@ import {
 } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { Slider } from "~/components/primitives/Slider";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
@@ -29,11 +30,49 @@ import { prisma } from "~/db.server";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
-import { updateThemePreference } from "~/services/dashboardPreferences.server";
+import {
+  updateContrastPreference,
+  updateThemePreference,
+} from "~/services/dashboardPreferences.server";
+import {
+  normalizeThemeContrast,
+  normalizeThemePreference,
+  type ThemePreference,
+} from "~/utils/themePreference";
 import { flag } from "~/v3/featureFlags.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { accountPath } from "~/utils/pathBuilder";
+
+const THEME_LABELS: Record<ThemePreference, string> = {
+  classic: "Classic",
+  system: "System preference",
+  dark: "Dark",
+  light: "Light",
+};
+
+function themeLabel(value: ThemePreference) {
+  return THEME_LABELS[value];
+}
+
+function themeIcon(value: ThemePreference) {
+  switch (value) {
+    case "classic":
+      return <SwatchIcon className="size-4 text-text-dimmed" />;
+    case "system":
+      return <ComputerDesktopIcon className="size-4 text-text-dimmed" />;
+    case "dark":
+      // Moon glyph reads small at its natural size, so nudge it up inside a
+      // size-4 box to line up with the other icons.
+      return (
+        <span className="grid size-4 place-items-center">
+          <MoonIcon className="size-3 text-text-dimmed" />
+        </span>
+      );
+    case "light":
+      return <SunIcon className="size-4 text-text-dimmed" />;
+  }
+}
 
 export const meta: MetaFunction = () => {
   return [
@@ -97,8 +136,19 @@ export const action: ActionFunction = async ({ request }) => {
       return json({ error: "Not available" }, { status: 404 });
     }
     const user = await requireUser(request);
-    const theme = formData.get("theme") === "light" ? "light" : "dark";
+    const theme = normalizeThemePreference(formData.get("theme"));
     await updateThemePreference({ user, theme });
+    return json({ success: true });
+  }
+
+  if (formData.get("action") === "update-contrast") {
+    const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: true });
+    if (!showThemeSwitcher) {
+      return json({ error: "Not available" }, { status: 404 });
+    }
+    const user = await requireUser(request);
+    const contrast = normalizeThemeContrast(formData.get("contrast"));
+    await updateContrastPreference({ user, contrast });
     return json({ success: true });
   }
 
@@ -151,11 +201,17 @@ export default function Page() {
   const { showThemeSwitcher } = useLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const themeFetcher = useFetcher();
+  const contrastFetcher = useFetcher();
   const pendingTheme = themeFetcher.formData?.get("theme");
-  const theme =
+  const pendingContrast = contrastFetcher.formData?.get("contrast");
+  const contrast =
+    typeof pendingContrast === "string"
+      ? normalizeThemeContrast(pendingContrast)
+      : normalizeThemeContrast(user.dashboardPreferences.contrast);
+  const theme: ThemePreference =
     typeof pendingTheme === "string"
-      ? (pendingTheme as "dark" | "light")
-      : (user.dashboardPreferences.theme ?? "dark");
+      ? normalizeThemePreference(pendingTheme)
+      : normalizeThemePreference(user.dashboardPreferences.theme);
 
   const [form, { name, email, marketingEmails }] = useForm({
     id: "account",
@@ -248,7 +304,7 @@ export default function Page() {
               </div>
               <div className="flex w-full items-center justify-between gap-4">
                 <Label>Interface theme</Label>
-                <Select<"dark" | "light", "dark" | "light">
+                <Select<ThemePreference, ThemePreference>
                   value={theme}
                   setValue={(value) =>
                     themeFetcher.submit(
@@ -258,42 +314,50 @@ export default function Page() {
                   }
                   variant="secondary/small"
                   dropdownIcon
-                  items={["dark", "light"]}
+                  items={["classic", "system", "dark", "light"]}
                   text={(value) => (
                     <span className="flex items-center gap-1.5">
-                      {value === "dark" ? (
-                        <span className="grid size-4 place-items-center">
-                          <MoonIcon className="size-3 text-text-dimmed" />
-                        </span>
-                      ) : (
-                        <SunIcon className="size-4 text-text-dimmed" />
-                      )}
-                      {value === "dark" ? "Dark" : "Light"}
+                      {themeIcon(value)}
+                      {themeLabel(value)}
                     </span>
                   )}
-                  className="w-32"
+                  className="w-44"
                 >
                   {(items) =>
                     items.map((item) => (
-                      <SelectItem
-                        key={item}
-                        value={item}
-                        icon={
-                          item === "dark" ? (
-                            <span className="grid size-4 place-items-center">
-                              <MoonIcon className="size-3 text-text-dimmed" />
-                            </span>
-                          ) : (
-                            <SunIcon className="size-4 text-text-dimmed" />
-                          )
-                        }
-                      >
-                        {item === "dark" ? "Dark" : "Light"}
+                      <SelectItem key={item} value={item} icon={themeIcon(item)}>
+                        {themeLabel(item)}
                       </SelectItem>
                     ))
                   }
                 </Select>
               </div>
+              {theme !== "classic" && (
+                <div className="mt-4 flex w-full items-center justify-between gap-4">
+                  <Label>Contrast</Label>
+                  <Slider
+                    variant="settings"
+                    className="w-44"
+                    min={0}
+                    max={100}
+                    step={5}
+                    defaultValue={[contrast]}
+                    onValueChange={(values) => {
+                      // Live preview before the preference persists
+                      document.documentElement.style.setProperty(
+                        "--theme-contrast",
+                        String((values[0] ?? 0) / 100)
+                      );
+                    }}
+                    onValueCommit={(values) =>
+                      contrastFetcher.submit(
+                        { action: "update-contrast", contrast: String(values[0] ?? 0) },
+                        { method: "post" }
+                      )
+                    }
+                  />
+                </div>
+              )}
             </>
           )}
         </MainHorizontallyCenteredContainer>

@@ -206,7 +206,7 @@ function ErrorPopover({
       <PopoverContent
         align="start"
         side="bottom"
-        className="w-(--radix-popover-trigger-width) min-w-(--radix-popover-trigger-width) max-w-(--radix-popover-trigger-width) border border-error/20 bg-[#2F1D24] px-3 py-2 text-xs text-text-dimmed"
+        className="w-(--radix-popover-trigger-width) min-w-(--radix-popover-trigger-width) max-w-(--radix-popover-trigger-width) border border-error/20 bg-[#2F1D24] light:bg-error/10 px-3 py-2 text-xs text-text-dimmed"
       >
         {error}
       </PopoverContent>

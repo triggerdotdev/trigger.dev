@@ -69,7 +69,10 @@ export function SideMenuItem({
         icon={icon}
         className={cn(
           "size-5 shrink-0",
-          isActive ? activeIconColor : (inactiveIconColor ?? "text-text-dimmed"),
+          // side-menu-active-icon: System themes neutralize the accent (see tailwind.css)
+          isActive
+            ? cn(activeIconColor, "side-menu-active-icon")
+            : (inactiveIconColor ?? "text-text-dimmed"),
           !isActive &&
             !disableIconHover &&
             "group-hover/menuitem:text-text-bright group-hover/menulink:text-text-bright",

@@ -141,7 +141,7 @@ export default function Page() {
           <div>
             <FormTitle
               LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
-              className="mb-0 text-sky-500"
+              className="mb-0 text-sky-500 system:text-text-bright"
               title={simplur`You have ${invites.length} new invitation[|s]`}
             />
             <FormError>{form.errors}</FormError>

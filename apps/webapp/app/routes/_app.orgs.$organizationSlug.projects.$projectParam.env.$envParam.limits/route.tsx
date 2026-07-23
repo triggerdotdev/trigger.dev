@@ -197,7 +197,7 @@ function CurrentPlanSection({
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
-        <IconCardsFilled className="size-5 text-amber-400" />
+        <IconCardsFilled className="size-5 text-amber-400 system-mono-icon" />
         Current plan
       </Header2>
       <Table variant="bright/no-hover">
@@ -232,7 +232,7 @@ function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1.5">
-        <ConcurrencyIcon className="size-5 text-orange-500" />
+        <ConcurrencyIcon className="size-5 text-orange-500 system-mono-icon" />
         Concurrency limits
         <InfoIconTooltip
           content="Concurrency limits control how many runs execute at the same time."
@@ -276,7 +276,7 @@ function RateLimitsSection({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <Header2 className="flex items-center gap-1.5">
-          <Gauge className="size-5 text-indigo-500" />
+          <Gauge className="size-5 text-indigo-500 system-mono-icon" />
           Rate limits
           <InfoIconTooltip
             content="Rate limits control how many API requests can be made within a time window. They are tracked per API key."
@@ -448,21 +448,21 @@ function RateLimitTypeBadge({
     case "tokenBucket":
       return (
         <RateLimitTypePill
-          className="bg-blue-500/20 text-blue-600 dark:text-blue-400"
+          className="bg-blue-500/10 text-blue-600 dark:text-blue-400 system:text-blue-500"
           label="Token bucket"
         />
       );
     case "fixedWindow":
       return (
         <RateLimitTypePill
-          className="bg-purple-500/20 text-purple-600 dark:text-purple-400"
+          className="bg-purple-500/10 text-purple-600 dark:text-purple-400 system:text-purple-500"
           label="Fixed window"
         />
       );
     case "slidingWindow":
       return (
         <RateLimitTypePill
-          className="bg-green-500/20 text-green-700 dark:text-green-400"
+          className="bg-green-500/10 text-green-700 dark:text-green-400 system:text-green-600"
           label="Sliding window"
         />
       );
@@ -546,7 +546,7 @@ function QuotasSection({
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
-        <IconTallymark4 className="size-6 text-blue-500" />
+        <IconTallymark4 className="size-6 text-blue-500 system-mono-icon" />
         Quotas
         <InfoIconTooltip
           content="Quotas define the maximum resources available to your organization."
@@ -731,7 +731,7 @@ function FeaturesSection({
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1.5">
-        <IconDiamondFilled className="size-5 text-green-600" />
+        <IconDiamondFilled className="size-5 text-green-600 system-mono-icon" />
         Plan features
       </Header2>
       <Table variant="bright/no-hover">
@@ -867,7 +867,7 @@ function RateLimitTypePill({ className, label }: { className: string; label: str
   return (
     <span
       className={cn(
-        "inline-flex w-fit items-center rounded px-1.5 py-0.5 text-xs font-medium",
+        "contrast-chip inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
         className
       )}
     >
@@ -880,15 +880,15 @@ function SourceBadge({ source }: { source: "default" | "plan" | "override" }) {
   const variants: Record<typeof source, { label: string; className: string }> = {
     default: {
       label: "Default",
-      className: "bg-indigo-500/20 text-indigo-600 dark:text-indigo-400",
+      className: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 system:text-indigo-500",
     },
     plan: {
       label: "Plan",
-      className: "bg-purple-500/20 text-purple-600 dark:text-purple-400",
+      className: "bg-purple-500/10 text-purple-600 dark:text-purple-400 system:text-purple-500",
     },
     override: {
       label: "Override",
-      className: "bg-amber-500/20 text-amber-700 dark:text-amber-400",
+      className: "bg-amber-500/10 text-amber-700 dark:text-amber-400 system:text-warning",
     },
   };
 
@@ -897,7 +897,7 @@ function SourceBadge({ source }: { source: "default" | "plan" | "override" }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium",
+        "contrast-chip inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
         variant.className
       )}
     >

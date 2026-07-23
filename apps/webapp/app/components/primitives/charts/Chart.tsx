@@ -5,7 +5,9 @@ import { AnimatedNumber } from "../AnimatedNumber";
 import TooltipPortal from "../TooltipPortal";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
-const THEMES = { light: "", dark: '[data-theme="dark"]' } as const;
+// dark covers Classic too; :is() keeps it one scoped selector when the prefix is
+// interpolated as `${prefix} [data-chart=...]` below (a comma would break scoping).
+const THEMES = { light: "", dark: ':is([data-theme="dark"], [data-theme="classic"])' } as const;
 
 export type ChartState = "loading" | "noData" | "invalid" | "loaded" | undefined;
 
@@ -216,7 +218,7 @@ const ChartTooltipContent = React.forwardRef<
                       )}
                       <div
                         className={cn(
-                          "flex flex-1 justify-between leading-none",
+                          "flex flex-1 justify-between gap-3 leading-none",
                           nestLabel ? "items-end" : "items-center"
                         )}
                       >

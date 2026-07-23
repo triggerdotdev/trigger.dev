@@ -23,7 +23,7 @@ import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Spinner } from "~/components/primitives/Spinner";
 import {
   redirectBackWithErrorMessage,
   redirectWithErrorMessage,
@@ -562,7 +562,7 @@ function VercelConnectionPrompt({
                   }
                   LeadingIcon={
                     isLoadingProjects
-                      ? () => <SpinnerWhite className="size-4" />
+                      ? () => <Spinner color="blue" className="size-4" />
                       : () => <VercelLogo className="-mx-1 size-4" />
                   }
                 >
@@ -993,7 +993,7 @@ function ConnectedVercelProjectForm({
                         LeadingIcon={
                           navigation.formData?.get("action") === "disable-auto-assign" &&
                           (navigation.state === "submitting" || navigation.state === "loading")
-                            ? SpinnerWhite
+                            ? Spinner
                             : undefined
                         }
                       >
@@ -1022,7 +1022,7 @@ function ConnectedVercelProjectForm({
                     ? undefined
                     : "You don't have permission to manage the Vercel integration"
                 }
-                LeadingIcon={isConfigLoading ? SpinnerWhite : undefined}
+                LeadingIcon={isConfigLoading ? Spinner : undefined}
                 onClick={(event) => {
                   if (shouldPromptClearOnSave) {
                     event.preventDefault();
@@ -1138,7 +1138,7 @@ function VercelSettingsPanel({
   if (fetcher.state === "loading" && !data) {
     return (
       <div className="flex items-center gap-2 text-text-dimmed">
-        <SpinnerWhite className="size-4" />
+        <Spinner color="blue" className="size-4" />
         <span className="text-sm">Loading Vercel settings...</span>
       </div>
     );

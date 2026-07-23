@@ -555,7 +555,10 @@ export default function PromptDetailPage() {
                 <span className="text-xs text-text-dimmed">v{selectedVersion.version}</span>
                 {isCurrent && <Badge variant="extra-small">current</Badge>}
                 {selectedVersion.labels.includes("override") && (
-                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
+                  <Badge
+                    variant="extra-small"
+                    className="border-amber-500/30 text-amber-400 system:border-transparent system:bg-warning system:text-white"
+                  >
                     override
                   </Badge>
                 )}
@@ -613,7 +616,7 @@ export default function PromptDetailPage() {
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
             >
-              <span className="py-1.5 text-xs text-amber-300">
+              <span className="py-1.5 text-xs text-amber-300 light:text-amber-800">
                 Override v{overrideVersion.version} is active. API calls resolve to this version
                 instead of the deployed prompt.
               </span>
@@ -622,20 +625,22 @@ export default function PromptDetailPage() {
                   hasPermission={canWritePrompts}
                   noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
-                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200 system:border-transparent system:bg-warning system:text-white system:transition system:group-hover/button:bg-warning system:group-hover/button:brightness-90 system:group-hover/button:text-white"
                   onClick={() => setOverrideDialogOpen(true)}
                 >
-                  Edit
+                  <span className="mx-auto grow self-center truncate text-text-bright system:text-white">
+                    Edit
+                  </span>
                 </PermissionButton>
                 <PermissionButton
                   hasPermission={canWritePrompts}
                   noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
-                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200 system:border-warning/60 system:bg-transparent system:transition system:group-hover/button:bg-warning/10"
                   onClick={() => fetcher.submit({ intent: "removeOverride" }, { method: "POST" })}
                   disabled={fetcher.state !== "idle"}
                 >
-                  Remove
+                  <span className="mx-auto grow self-center truncate text-text-bright">Remove</span>
                 </PermissionButton>
               </div>
             </motion.div>
@@ -934,7 +939,11 @@ function OverrideDialog({
           className="-mx-3 w-auto flex-1 border-b border-t border-grid-dimmed"
         >
           {/* Editor */}
-          <ResizablePanel id="override-editor" min="300px" className="bg-[#121317]">
+          <ResizablePanel
+            id="override-editor"
+            min="300px"
+            className="bg-[#121317] light:bg-editor-background"
+          >
             <TextEditor
               className="h-full"
               autoFocus
@@ -2097,7 +2106,10 @@ function VersionsTab({
                 />
                 <span className="font-medium text-text-bright">v{v.version}</span>
                 {isOverride && (
-                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
+                  <Badge
+                    variant="extra-small"
+                    className="border-amber-500/30 text-amber-400 system:border-transparent system:bg-warning system:text-white"
+                  >
                     override
                   </Badge>
                 )}
@@ -2115,7 +2127,7 @@ function VersionsTab({
               {(v.model || v.commitMessage) && (
                 <div className="flex items-center gap-1.5 truncate text-xs text-text-dimmed">
                   {v.model && <span>{v.model}</span>}
-                  {v.model && v.commitMessage && <span className="text-charcoal-600">/</span>}
+                  {v.model && v.commitMessage && <span className="text-text-dimmed/50">/</span>}
                   {v.commitMessage && <span className="truncate">{v.commitMessage}</span>}
                 </div>
               )}

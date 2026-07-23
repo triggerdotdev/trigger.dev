@@ -67,6 +67,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { UsageSparkline } from "~/components/primitives/UsageSparkline";
 import {
   appliedSummary,
@@ -1311,21 +1312,21 @@ function YourModelsTab({
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHeaderCell className="w-[18%]">Model</TableHeaderCell>
-                <TableHeaderCell className="w-[12%]">Provider</TableHeaderCell>
+                <TableHeaderCell className="w-[24%]">Model</TableHeaderCell>
+                <TableHeaderCell className="w-[10%]">Provider</TableHeaderCell>
                 <TableHeaderCell className="w-[8%]" alignment="right">
                   Calls
                 </TableHeaderCell>
                 <TableHeaderCell className="w-[8%]" alignment="right">
                   Cost
                 </TableHeaderCell>
-                <TableHeaderCell className="w-[10%]" alignment="right">
+                <TableHeaderCell className="w-[9%]" alignment="right">
                   Cache savings
                 </TableHeaderCell>
-                <TableHeaderCell className="w-[9%]" alignment="right">
+                <TableHeaderCell className="w-[8%]" alignment="right">
                   Avg TTFC
                 </TableHeaderCell>
-                <TableHeaderCell className="w-[11%]" alignment="right">
+                <TableHeaderCell className="w-[9%]" alignment="right">
                   Avg tokens/sec
                 </TableHeaderCell>
                 <TableHeaderCell className="w-[12%]">Calls trend</TableHeaderCell>
@@ -1351,7 +1352,13 @@ function YourModelsTab({
                     isSelected={!!catalogItem && selectedModelId === catalogItem.friendlyId}
                   >
                     <TableCell onClick={select} isTabbableCell={!!select}>
-                      {displayId}
+                      <SimpleTooltip
+                        asChild
+                        button={<span className="block truncate">{displayId}</span>}
+                        content={displayId}
+                        side="top"
+                        disableHoverableContent
+                      />
                     </TableCell>
                     <TableCell onClick={select}>
                       <span className="flex items-center gap-1.5">

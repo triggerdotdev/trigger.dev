@@ -25,9 +25,14 @@ export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
 import { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
 export type { SideMenuSectionId };
 
+import { ThemePreference } from "~/utils/themePreference";
+export { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
+
 const DashboardPreferences = z.object({
   version: z.literal("1"),
-  theme: z.enum(["dark", "light"]).optional(),
+  theme: ThemePreference.optional(),
+  /** Interface contrast for the System themes, 0-100. */
+  contrast: z.number().int().min(0).max(100).optional(),
   currentProjectId: z.string().optional(),
   projects: z.record(
     z.string(),
@@ -109,7 +114,7 @@ export async function updateThemePreference({
   theme,
 }: {
   user: UserFromSession;
-  theme: "dark" | "light";
+  theme: ThemePreference;
 }) {
   if (user.isImpersonating) {
     return;
@@ -130,6 +135,36 @@ export async function updateThemePreference({
       ),
       '{theme}',
       to_jsonb(${theme}::text)
+    )
+    WHERE id = ${user.id}
+  `;
+}
+
+export async function updateContrastPreference({
+  user,
+  contrast,
+}: {
+  user: UserFromSession;
+  contrast: number;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  if (user.dashboardPreferences.contrast === contrast) {
+    return;
+  }
+
+  // Narrow jsonb_set write: see updateThemePreference.
+  return prisma.$executeRaw`
+    UPDATE "User"
+    SET "dashboardPreferences" = jsonb_set(
+      COALESCE(
+        "dashboardPreferences",
+        '{"version":"1","projects":{}}'::jsonb
+      ),
+      '{contrast}',
+      to_jsonb(${contrast}::int)
     )
     WHERE id = ${user.id}
   `;

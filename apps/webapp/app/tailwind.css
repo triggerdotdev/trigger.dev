@@ -225,6 +225,84 @@
 }
 
 /*
+  Theme overrides. A theme re-maps ONLY the semantic tokens above, never the raw
+  palette values. That invariant is what lets a future [data-contrast] overlay
+  re-map semantic tokens on top of whichever theme is active.
+*/
+
+/*
+  System preference unified accents (dark+light); Classic keeps the original
+  set. One shared value per accent token, >=3:1 against both dark cards and
+  white. Accents whose Classic default already clears both modes (blue-500,
+  indigo-500, pink-500, purple-500, red-500, violet-500, fuchsia-500,
+  rose-600) are not repeated here. Text-sized tokens (text-link, callout
+  text) stay per-mode: no color reaches 4.5:1 on both #1a1b1f and #ffffff.
+  Dark derives everything else (monochrome surfaces etc.) from Classic.
+*/
+:is([data-theme="dark"], [data-theme="light"]) {
+  /* Status */
+  --color-success: var(--color-mint-600);
+  --color-warning: var(--color-amber-600);
+  /* Env set: pink dev and green prod as in Classic, preview moves to blue
+     (yellow's unified mid-tone reads muddy brown). Staging stays warm orange
+     and is the one per-mode env color - see the light block. */
+  --color-prod: var(--color-mint-600);
+  --color-preview: var(--color-blue-500);
+
+  /* Icons */
+  --color-schedules: var(--color-yellow-700);
+  /* Matches the preview env color */
+  --color-previewBranches: var(--color-blue-500);
+  --color-metrics: var(--color-green-600);
+  --color-regions: var(--color-green-600);
+  --color-aiMetrics: var(--color-green-600);
+  --color-bulkActions: var(--color-emerald-600);
+  --color-concurrency: var(--color-amber-600);
+  --color-errors: var(--color-amber-600);
+  --color-apiKeys: var(--color-amber-600);
+
+  /* Queue charts read blue here; Classic keeps the queues purple */
+  --color-queues-chart: var(--color-blue-500);
+  --color-queues-chart-ref: var(--color-charcoal-500);
+
+  /* Callout accents (callout text/bg tints stay per-mode) */
+  --color-callout-docs: var(--color-blue-500);
+  --color-callout-pending: var(--color-blue-500);
+  --color-callout-pricing: var(--color-indigo-500);
+
+  /* Amber run statuses: three distinct steps, Classic's dark-to-light order
+     kept (waiting-for-deploy < pending-version < paused) */
+  --color-run-waiting-for-deploy: var(--color-amber-700);
+  --color-run-pending-version: #c76508;
+  --color-run-paused: var(--color-amber-600);
+  /* Nudged under 3:1's ceiling on white; stays lighter than system-failure */
+  --color-run-timed-out: #ed5f74;
+}
+
+/* System themes drop decorative icon accents to monochrome; Classic keeps the
+   colored icons. side-menu-active-icon is set in SideMenuItem for the active
+   nav item; system-mono-icon marks section-header icons (e.g. the limits page). */
+:is([data-theme="dark"], [data-theme="light"]) :is(.side-menu-active-icon, .system-mono-icon) {
+  color: var(--color-text-bright);
+}
+
+/* System themes: status/env labels follow the surrounding text color, only the
+   icon keeps its tint. Classic colors both. Set in EnvironmentLabel and the
+   status combo components. */
+:is([data-theme="dark"], [data-theme="light"]) .system-mono-label {
+  color: inherit;
+}
+
+/* Tinted status chips respond to the contrast control: a ring in the chip's
+   own text color fades in as contrast rises, so the soft tint keeps its
+   footprint but the chip gains definition. Transparent at contrast 0;
+   Classic never sets the variable. Marker set by the chip components. */
+:is([data-theme="dark"], [data-theme="light"]) .contrast-chip {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, currentColor calc(var(--theme-contrast, 0) * 70%), transparent);
+}
+
+/*
   Code syntax palette - the trigger-dark highlight theme, shared by the shiki
   theme (streamdown) and the prism theme (CodeBlock). Consumed from JS via
   var(), so declared static to always be emitted.
@@ -291,6 +369,14 @@
   --color-editor-scrollbar-thumb-active: #3c4b62;
 }
 
+/* Queue chart series colors - queues purple in Classic, overridden to blue in
+   the System themes; the grey reference series lightens per mode there.
+   Consumed from JS via var(), so declared static. */
+@theme static {
+  --color-queues-chart: var(--color-queues);
+  --color-queues-chart-ref: #4d525b;
+}
+
 /*
   Run-status chart colors. In-between shades are intentional - statuses within
   a family (blues, roses, charcoals) are evenly spaced so chart series stay
@@ -334,8 +420,17 @@
 @custom-variant lg-height (@media (max-height: 750px));
 @custom-variant md-height (@media (max-height: 600px));
 
-/* dark: follows the app theme (data-theme on <html>), not the OS preference */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+/* dark: follows the app theme (data-theme on <html>), not the OS preference.
+   Classic and Dark are both dark-mode themes, so the variant matches both. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="classic"], [data-theme="dark"] *, [data-theme="classic"] *));
+
+/* system: matches the System preference themes (Dark and Light) but never
+   Classic - for restyles that must leave Classic untouched. */
+@custom-variant system (&:where([data-theme="dark"], [data-theme="light"], [data-theme="dark"] *, [data-theme="light"] *));
+
+/* light: the Light theme only - for values that are fine on every dark theme
+   but illegible on white. Classic is never matched. */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
 @utility focus-custom {
   &:focus-visible {
@@ -490,10 +585,21 @@
     --chart-5: 27 87% 67%;
   }
 
-  [data-theme="dark"] {
+  /* Classic and Dark share these HSL chart vars - they were the app-wide dark values. */
+  :is([data-theme="dark"], [data-theme="classic"]) {
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+
+  /* System preference unified chart set (dark+light): Classic's hues, with
+     chart-2/3 darkened to clear 3:1 on white. Classic keeps the set above. */
+  :is([data-theme="dark"], [data-theme="light"]) {
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 40%;
+    --chart-3: 30 80% 47%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
   }
@@ -683,13 +789,15 @@
   --color-border-brighter: #b9bdc7;
   --color-border-brightest: #9ba1ad;
 
-  /* Status - darker steps for contrast on white */
-  --color-success: var(--color-mint-600);
-  --color-warning: var(--color-amber-600);
-  --color-dev: var(--color-pink-600);
-  --color-prod: var(--color-mint-600);
+  /* Status/env/icon accents live in the unified dark+light block above;
+     dev keeps its Classic pink-500, which passes on white too. */
+
+  /* Staging is the one per-mode env color: warm orange has no clean unified
+     mid-tone, so dark keeps Classic's bright orange-400 and light deepens it */
   --color-staging: var(--color-orange-600);
-  --color-preview: var(--color-yellow-700);
+
+  /* Grey chart reference series, light enough not to dominate on white */
+  --color-queues-chart-ref: #c3c7cf;
 
   /* Neutral run statuses: soft light grays for sparkbars and charts */
   --color-run-pending: #ccd0d6;
@@ -698,12 +806,11 @@
   --color-run-canceled: #d8dbdf;
   --color-run-expired: #dee0e4;
 
-  /* Icons that fail contrast on white */
-  --color-schedules: var(--color-yellow-600);
-  --color-previewBranches: var(--color-yellow-600);
+  /* Monochrome icon gray - per-mode, not part of the unified accent set */
   --color-customDashboards: var(--color-charcoal-500);
 
-  /* Callouts - deep tints instead of the dark theme's pastels */
+  /* Callout text/bg - deep tints instead of the dark theme's pastels; text
+     can't unify across modes (see the unified accents block) */
   --color-callout-warning-text: var(--color-yellow-800);
   --color-callout-error-text: var(--color-rose-700);
   --color-callout-success-text: var(--color-green-800);
@@ -775,8 +882,9 @@
   --muted: #eceef1;
 }
 
-/* The timeline label shadow is a dark-theme legibility aid; drop it on light */
-[data-theme="light"] .text-shadow-custom {
+/* The timeline label shadow is a Classic legibility aid; the System themes
+   drop it entirely */
+:is([data-theme="dark"], [data-theme="light"]) .text-shadow-custom {
   text-shadow: none;
 }
 
@@ -795,14 +903,15 @@
    bars the sticky label overflows onto the page background, where the
    default dark-on-light text is correct. */
 [data-theme="light"] .timeline-span.bg-success,
-[data-theme="light"] .timeline-span.bg-error {
+[data-theme="light"] .timeline-span.bg-error,
+[data-theme="light"] .timeline-span.bg-blue-500 {
   container-type: inline-size;
 }
 @container (min-width: 3.5rem) {
   [data-theme="light"] .timeline-span.bg-success .text-shadow-custom,
-  [data-theme="light"] .timeline-span.bg-error .text-shadow-custom {
+  [data-theme="light"] .timeline-span.bg-error .text-shadow-custom,
+  [data-theme="light"] .timeline-span.bg-blue-500 .text-shadow-custom {
     color: #ffffff;
-    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -811,4 +920,62 @@
    border, so drop it here. */
 [data-theme="light"] .suggest-region-cell > div > div {
   box-shadow: none;
+}
+
+/*
+  Interface contrast (System themes only). --theme-contrast is 0..1, set on
+  <html> from the dashboard preference. It pulls the whole monochrome scale
+  apart: text mixes toward the mode's foreground, backgrounds toward its
+  depth, borders step up. Accents are untouched. srgb mixing keeps contrast 0
+  byte-identical to the base values, and Classic never reads the variable.
+  These blocks must stay below the [data-theme="light"] theme block so they
+  win the cascade.
+*/
+[data-theme="dark"] {
+  /* Text brightens toward white */
+  --color-text-bright: color-mix(in srgb, var(--color-charcoal-200), #fff calc(var(--theme-contrast, 0) * 100%));
+  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-400), #fff calc(var(--theme-contrast, 0) * 60%));
+  --color-text-faint: color-mix(in srgb, var(--color-charcoal-500), #fff calc(var(--theme-contrast, 0) * 45%));
+
+  /* Backgrounds deepen toward black, keeping their relative order */
+  --color-background-deep: color-mix(in srgb, var(--color-charcoal-900), #000 calc(var(--theme-contrast, 0) * 60%));
+  --color-background-dimmed: color-mix(in srgb, var(--color-charcoal-850), #000 calc(var(--theme-contrast, 0) * 55%));
+  --color-background-bright: color-mix(in srgb, var(--color-charcoal-800), #000 calc(var(--theme-contrast, 0) * 45%));
+  --color-background-hover: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
+  --color-background-raised: color-mix(in srgb, var(--color-charcoal-700), #000 calc(var(--theme-contrast, 0) * 25%));
+  --color-input-bg: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
+
+  /* Controls and borders step up toward white */
+  --color-surface-control: color-mix(in srgb, var(--color-charcoal-600), #fff calc(var(--theme-contrast, 0) * 12%));
+  --color-surface-control-hover: color-mix(in srgb, var(--color-charcoal-550), #fff calc(var(--theme-contrast, 0) * 14%));
+  --color-surface-control-active: color-mix(in srgb, var(--color-charcoal-500), #fff calc(var(--theme-contrast, 0) * 16%));
+  --color-grid-dimmed: color-mix(in srgb, var(--color-charcoal-750), #fff calc(var(--theme-contrast, 0) * 18%));
+  --color-grid-bright: color-mix(in srgb, var(--color-charcoal-700), #fff calc(var(--theme-contrast, 0) * 20%));
+  --color-border-bright: color-mix(in srgb, var(--color-charcoal-600), #fff calc(var(--theme-contrast, 0) * 24%));
+  --color-border-brighter: color-mix(in srgb, var(--color-charcoal-550), #fff calc(var(--theme-contrast, 0) * 27%));
+  --color-border-brightest: color-mix(in srgb, var(--color-charcoal-500), #fff calc(var(--theme-contrast, 0) * 30%));
+}
+
+[data-theme="light"] {
+  /* Text deepens toward black */
+  --color-text-bright: color-mix(in srgb, #1a1b1f, #000 calc(var(--theme-contrast, 0) * 100%));
+  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), #000 calc(var(--theme-contrast, 0) * 85%));
+  --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), #000 calc(var(--theme-contrast, 0) * 70%));
+
+  /* On white the foregrounds carry the contrast: cards stay white while the
+     page-behind surfaces darken a touch so panels separate */
+  --color-background-deep: color-mix(in srgb, #f1f2f4, #000 calc(var(--theme-contrast, 0) * 10%));
+  --color-background-hover: color-mix(in srgb, #f2f3f5, #000 calc(var(--theme-contrast, 0) * 8%));
+  --color-background-raised: color-mix(in srgb, #e9eaee, #000 calc(var(--theme-contrast, 0) * 10%));
+
+  /* Controls and borders push hard toward black - this is where light-mode
+     contrast is actually visible */
+  --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 25%));
+  --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 28%));
+  --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 32%));
+  --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 28%));
+  --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 32%));
+  --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
+  --color-border-brighter: color-mix(in srgb, #b9bdc7, #000 calc(var(--theme-contrast, 0) * 42%));
+  --color-border-brightest: color-mix(in srgb, #9ba1ad, #000 calc(var(--theme-contrast, 0) * 46%));
 }

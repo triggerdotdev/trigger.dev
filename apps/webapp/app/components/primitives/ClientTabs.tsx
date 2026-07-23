@@ -122,10 +122,10 @@ const ClientTabsTrigger = React.forwardRef<
             <motion.div
               layoutId={layoutId}
               transition={{ duration: 0.4, type: "spring" }}
-              className="absolute inset-0 rounded-[2px] border border-[#e2e4e9] bg-white dark:border-border-brightest/50 dark:bg-surface-control"
+              className="absolute inset-0 rounded-[2px] border border-grid-bright bg-white dark:border-border-brightest/50 dark:bg-surface-control"
             />
           ) : (
-            <div className="absolute inset-0 rounded-[2px] border border-[#e2e4e9] bg-white dark:border-border-brightest/50 dark:bg-surface-control" />
+            <div className="absolute inset-0 rounded-[2px] border border-grid-bright bg-white dark:border-border-brightest/50 dark:bg-surface-control" />
           )
         ) : null}
       </TabsPrimitive.Trigger>
@@ -175,7 +175,7 @@ const ClientTabsTrigger = React.forwardRef<
       ref={ref}
       tabIndex={0}
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap border-r border-grid-bright px-2 text-sm transition-all first:pl-0 last:border-none focus-custom data-[state=active]:text-indigo-500 data-[state=inactive]:text-text-dimmed data-[state=inactive]:hover:text-text-bright disabled:pointer-events-none disabled:opacity-50",
+        "inline-flex items-center justify-center whitespace-nowrap border-r border-grid-bright px-2 text-sm transition-all first:pl-0 last:border-none focus-custom data-[state=active]:text-indigo-500 system:data-[state=active]:text-text-bright data-[state=inactive]:text-text-dimmed data-[state=inactive]:hover:text-text-bright disabled:pointer-events-none disabled:opacity-50",
         className
       )}
       {...props}

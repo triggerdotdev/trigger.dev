@@ -3,7 +3,7 @@ import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import type { QueryScope } from "~/services/queryService.server";
-import { querySchemas } from "~/v3/querySchemas";
+import { visibleQuerySchemas } from "~/v3/querySchemas";
 import { TryableCodeBlock } from "./TRQLGuideContent";
 
 // Example queries for the Examples tab
@@ -211,14 +211,14 @@ LIMIT 20`,
   },
 ];
 
-const tableOptions = querySchemas.map((s) => ({ label: s.name, value: s.name }));
+const tableOptions = visibleQuerySchemas.map((s) => ({ label: s.name, value: s.name }));
 
 export function ExamplesContent({
   onTryExample,
 }: {
   onTryExample: (query: string, scope: QueryScope) => void;
 }) {
-  const [selectedTable, setSelectedTable] = useState(querySchemas[0].name);
+  const [selectedTable, setSelectedTable] = useState(visibleQuerySchemas[0].name);
   const filtered = exampleQueries.filter((e) => e.table === selectedTable);
 
   return (

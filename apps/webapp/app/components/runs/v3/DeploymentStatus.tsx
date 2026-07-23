@@ -35,7 +35,8 @@ export function DeploymentStatusLabel({
   isBuilt: boolean;
 }) {
   return (
-    <span className={deploymentStatusClassNameColor(status)}>
+    // system-mono-label: System themes uncolor the label (see tailwind.css)
+    <span className={cn("system-mono-label", deploymentStatusClassNameColor(status))}>
       {deploymentStatusTitle(status, isBuilt)}
     </span>
   );

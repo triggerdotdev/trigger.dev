@@ -5,6 +5,18 @@ import type { RenderIcon } from "./Icon";
 import { Icon } from "./Icon";
 
 const variants = {
+  /* Quiet variant for settings rows: no hover box, no thumb halo */
+  settings: {
+    container: "h-6 gap-1 rounded-sm px-1",
+    icons: "h-4 w-4 text-text-bright",
+    root: "h-4 grow",
+    track: "h-1 bg-grid-bright",
+    range: "bg-transparent",
+    // Matches the Switch thumb; the secondary-button hairline+shadow keeps the
+    // white dot visible on the light track
+    thumb:
+      "h-3 w-3 border border-border-bright bg-white shadow-sm dark:border-transparent dark:bg-charcoal-200 dark:shadow-none",
+  },
   tertiary: {
     container: "h-6 gap-1 rounded-sm hover:bg-background-raised px-1",
     icons: "h-4 w-4 text-text-bright",

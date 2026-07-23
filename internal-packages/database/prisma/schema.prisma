@@ -1831,14 +1831,18 @@ model TaskQueue {
   runtimeEnvironmentId String
 
   /// Represents the current concurrency limit for the queue
-  concurrencyLimit             Int?
+  concurrencyLimit                Int?
   /// When the concurrency limit was overridden
-  concurrencyLimitOverriddenAt DateTime?
+  concurrencyLimitOverriddenAt    DateTime?
   /// Who overrode the concurrency limit (will be null if overridden via the API)
-  concurrencyLimitOverriddenBy String?
+  concurrencyLimitOverriddenBy    String?
   /// If concurrencyLimit is overridden, this is the overridden value
-  concurrencyLimitBase         Int?
-  rateLimit                    Json?
+  concurrencyLimitBase            Int?
+  /// If the override was expressed as a percentage of the environment limit, this stores that
+  /// percentage (the source of truth). The absolute concurrencyLimit is materialized from it.
+  /// Decimal(5,2) allows fractional percentages like 12.50% (0.01–100.00).
+  concurrencyLimitOverridePercent Decimal?  @db.Decimal(5, 2)
+  rateLimit                       Json?
 
   paused Boolean @default(false)
 

@@ -911,6 +911,31 @@ const EnvironmentSchema = z
     RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
     RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
     RUN_ENGINE_RUN_QUEUE_SHARD_COUNT: z.coerce.number().int().default(4),
+    // Queue metrics ingestion (Redis Stream -> ClickHouse). The runtime on/off is the
+    // `queue_metrics:enabled` Redis key; these gate emitter construction + consumer boot.
+    QUEUE_METRICS_EMIT_ENABLED: z.string().default("0"),
+    QUEUE_METRICS_CONSUMER_ENABLED: z.string().default("0"),
+    QUEUE_METRICS_STREAM_SHARD_COUNT: z.coerce.number().int().default(4),
+    QUEUE_METRICS_CONSUMER_BATCH_SIZE: z.coerce.number().int().default(1000),
+    // Counter stream (exact counts, loss-intolerant). Unset host => the run-queue Redis;
+    // set it to a dedicated instance so counter backlog never competes with the run queue.
+    QUEUE_METRICS_REDIS_HOST: z.string().optional(),
+    QUEUE_METRICS_REDIS_PORT: z.coerce.number().optional(),
+    QUEUE_METRICS_REDIS_USERNAME: z.string().optional(),
+    QUEUE_METRICS_REDIS_PASSWORD: z.string().optional(),
+    QUEUE_METRICS_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    // Default depends on where the stream lives: see metricsDefinition() in
+    // queueMetrics.server.ts (2M on the shared run-queue Redis, 8M on a dedicated one).
+    QUEUE_METRICS_COUNTER_STREAM_MAXLEN: z.coerce.number().int().optional(),
+    // TTL (seconds) on the per-(queue,op) cumulative odometer key, refreshed on every write.
+    // Idle-past-TTL queues purge and self-heal (restart from 1) on return; default 7 days.
+    QUEUE_METRICS_COUNTER_ODOMETER_TTL_SECONDS: z.coerce.number().int().default(604_800),
+    // Per-env distinct queue_name cap (0 = unlimited); overflow maps to "__overflow__".
+    QUEUE_METRICS_MAX_QUEUE_NAMES_PER_ENV: z.coerce.number().int().default(1000),
+    QUEUE_METRICS_MAX_CONCURRENCY_KEYS_PER_QUEUE: z.coerce.number().int().default(10_000),
+    // Fraction (0..1) of ops that emit a gauge; counters are never sampled. Dial below 1
+    // only if EngineCPU is too high in slow-path-heavy regions (hurts low-traffic queues).
+    QUEUE_METRICS_GAUGE_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
     RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
     RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS: z.coerce.number().int().default(30_000),
     RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),

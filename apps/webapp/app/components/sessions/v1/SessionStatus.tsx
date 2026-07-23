@@ -74,7 +74,12 @@ export function SessionStatusIcon({
 }
 
 export function SessionStatusLabel({ status }: { status: SessionStatus }) {
-  return <span className={sessionStatusColor(status)}>{sessionStatusTitle(status)}</span>;
+  // system-mono-label: System themes uncolor the label (see tailwind.css)
+  return (
+    <span className={cn("system-mono-label", sessionStatusColor(status))}>
+      {sessionStatusTitle(status)}
+    </span>
+  );
 }
 
 export function SessionStatusCombo({

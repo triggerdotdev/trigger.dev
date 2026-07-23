@@ -522,6 +522,15 @@ export function v3QueuesPath(
   return `${v3EnvironmentPath(organization, project, environment)}/queues`;
 }
 
+export function v3QueuePath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  queue: { friendlyId: string }
+) {
+  return `${v3QueuesPath(organization, project, environment)}/${queue.friendlyId}`;
+}
+
 export function v3WaitpointTokensPath(
   organization: OrgForPath,
   project: ProjectForPath,

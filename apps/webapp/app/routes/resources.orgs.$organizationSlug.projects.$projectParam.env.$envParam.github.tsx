@@ -34,7 +34,7 @@ import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
@@ -596,7 +596,7 @@ export function ConnectGitHubRepoModal({
                     name="action"
                     value="connect-repo"
                     variant="primary/medium"
-                    LeadingIcon={isConnectRepositoryLoading ? SpinnerWhite : undefined}
+                    LeadingIcon={isConnectRepositoryLoading ? Spinner : undefined}
                     leadingIconClassName="text-white"
                     disabled={isConnectRepositoryLoading}
                   >
@@ -907,7 +907,7 @@ export function ConnectedGitHubRepoForm({
                     ? undefined
                     : "You don't have permission to manage the GitHub integration"
                 }
-                LeadingIcon={isGitSettingsLoading ? SpinnerWhite : undefined}
+                LeadingIcon={isGitSettingsLoading ? Spinner : undefined}
               >
                 Save
               </Button>
@@ -955,7 +955,7 @@ export function GitHubSettingsPanel({
   if (fetcher.state === "loading" && !data) {
     return (
       <div className="flex items-center gap-2 text-text-dimmed">
-        <SpinnerWhite className="size-4" />
+        <Spinner color="blue" className="size-4" />
         <span className="text-sm">Loading GitHub settings...</span>
       </div>
     );

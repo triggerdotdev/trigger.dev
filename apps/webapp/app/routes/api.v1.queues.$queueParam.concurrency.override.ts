@@ -4,11 +4,23 @@ import { z } from "zod";
 import { toQueueItem } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
+import {
+  MAX_QUEUE_OVERRIDE_PERCENT,
+  MIN_QUEUE_OVERRIDE_PERCENT,
+} from "~/v3/services/concurrencySystem.server";
 
-const BodySchema = z.object({
-  type: RetrieveQueueType.default("id"),
-  concurrencyLimit: z.number().int().min(0).max(100000),
-});
+const BodySchema = z
+  .object({
+    type: RetrieveQueueType.default("id"),
+    // Absolute concurrency limit. Backwards compatible with existing callers.
+    concurrencyLimit: z.number().int().min(0).max(100000).optional(),
+    // Percentage of the environment's maximum concurrency limit (0 < percent <= 100).
+    // Stored as the source of truth; the absolute limit is materialized from it.
+    percent: z.number().gt(MIN_QUEUE_OVERRIDE_PERCENT).max(MAX_QUEUE_OVERRIDE_PERCENT).optional(),
+  })
+  .refine((body) => (body.concurrencyLimit === undefined) !== (body.percent === undefined), {
+    message: "Provide exactly one of `concurrencyLimit` or `percent`",
+  });
 
 const route = createActionApiRoute(
   {
@@ -26,8 +38,11 @@ const route = createActionApiRoute(
             name: decodeURIComponent(params.queueParam).replace(/%2F/g, "/"),
           };
 
+    const override =
+      body.percent !== undefined ? { percent: body.percent } : { limit: body.concurrencyLimit! };
+
     return concurrencySystem.queues
-      .overrideQueueConcurrencyLimit(authentication.environment, input, body.concurrencyLimit)
+      .overrideQueueConcurrencyLimit(authentication.environment, input, override)
       .match(
         (queue) => {
           return json(
@@ -50,6 +65,10 @@ const route = createActionApiRoute(
           switch (error.type) {
             case "queue_not_found": {
               return json({ error: "Queue not found" }, { status: 404 });
+            }
+            case "invalid_override":
+            case "concurrency_limit_exceeds_maximum": {
+              return json({ error: error.message }, { status: 400 });
             }
             case "queue_update_failed": {
               return json({ error: "Failed to update queue concurrency limit" }, { status: 500 });

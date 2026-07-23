@@ -62,6 +62,7 @@ type Section<TItem> = {
 
 function isSection<TItem>(data: TItem[] | Section<TItem>[]): data is Section<TItem>[] {
   const firstItem = data[0];
+  if (!firstItem) return false;
   return (
     (firstItem as Section<TItem>).type === "section" &&
     (firstItem as Section<TItem>).items !== undefined &&

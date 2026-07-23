@@ -7,6 +7,7 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { Dialog, DialogContent, DialogHeader } from "../Dialog";
 import { Card } from "./Card";
+import { ChartSyncProvider, useChartSync } from "./ChartSyncContext";
 
 type ChartCardProps = {
   /** Title shown in the card header (and the fullscreen dialog header). */
@@ -34,6 +35,10 @@ export function ChartCard({
 }: ChartCardProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // A maximized chart is its own sync group: hover + drag-select shouldn't mirror onto the
+  // (hidden) sibling charts behind the dialog. Give it a fresh provider with isolated state,
+  // but inherit the page group's onZoom so drag-to-zoom still sets the time filter.
+  const parentSync = useChartSync();
 
   // "v" toggles fullscreen for the hovered card.
   useShortcutKeys({
@@ -85,7 +90,13 @@ export function ChartCard({
           <DialogContent fullscreen className="flex flex-col bg-background-bright">
             <DialogHeader>{title}</DialogHeader>
             <div className="min-h-0 w-full flex-1 overflow-hidden pt-4">
-              {fullscreenChildren ?? children}
+              {parentSync ? (
+                <ChartSyncProvider onZoom={parentSync.onZoom}>
+                  {fullscreenChildren ?? children}
+                </ChartSyncProvider>
+              ) : (
+                (fullscreenChildren ?? children)
+              )}
             </div>
           </DialogContent>
         </Dialog>

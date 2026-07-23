@@ -3914,3 +3914,388 @@ describe("timeBucket()", () => {
     });
   });
 });
+
+// ============================================================
+// fillGaps Tests
+// ============================================================
+
+describe("timeBucket() fillGaps", () => {
+  // Schema with a gauge column (fillMode: "carry"), a counter, and a groupable dim.
+  const metricsSchema: TableSchema = {
+    name: "metrics",
+    clickhouseName: "trigger_dev.queue_metrics_v1",
+    timeConstraint: "bucket_at",
+    columns: {
+      bucket_at: { name: "bucket_at", clickhouseName: "created_at", ...column("DateTime64") },
+      queue_name: { name: "queue_name", ...column("String") },
+      max_running: { name: "max_running", ...column("UInt64"), fillMode: "carry" },
+      enqueued: { name: "enqueued", ...column("UInt64"), fillMode: "zero" },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  // 7-day range -> 6 HOUR buckets (same as the timeBucket() block).
+  const sevenDayRange = {
+    from: new Date("2024-01-01T00:00:00Z"),
+    to: new Date("2024-01-08T00:00:00Z"),
+  };
+
+  function ctx(fillGaps: boolean): PrinterContext {
+    return createPrinterContext({
+      schema: createSchemaRegistry([metricsSchema]),
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test123" },
+        project_id: { op: "eq", value: "proj_test456" },
+        environment_id: { op: "eq", value: "env_test789" },
+      },
+      timeRange: sevenDayRange,
+      fillGaps,
+    });
+  }
+
+  function run(query: string, fillGaps: boolean) {
+    const context = ctx(fillGaps);
+    const result = printToClickHouse(parseTSQLSelect(query), context);
+    return { ...result, warnings: context.warnings };
+  }
+
+  it("emits no WITH FILL when fillGaps is off (unchanged)", () => {
+    const query =
+      "SELECT timeBucket(), max(max_running), count() FROM metrics GROUP BY timeBucket ORDER BY timeBucket";
+    const { sql } = run(query, false);
+    expect(sql).not.toContain("WITH FILL");
+    expect(sql).not.toContain("INTERPOLATE");
+  });
+
+  it("single-series gauge + counter: WITH FILL plus INTERPOLATE for the gauge only", () => {
+    const query =
+      "SELECT timeBucket(), max(max_running) AS max_running, count() AS runs FROM metrics GROUP BY timeBucket ORDER BY timeBucket";
+    const { sql, params } = run(query, true);
+
+    // STEP matches the 6 HOUR bucket interval, FROM/TO snapped + parameterized.
+    expect(sql).toContain("WITH FILL FROM toStartOfInterval({");
+    expect(sql).toContain("STEP INTERVAL 6 HOUR");
+    expect(sql).toMatch(/TO toStartOfInterval\(\{[^}]+: DateTime64\(6\)\}, INTERVAL 6 HOUR\)/);
+
+    // Gauge carried forward; counter omitted (defaults to 0).
+    expect(sql).toContain("INTERPOLATE (max_running AS max_running)");
+    expect(sql).not.toContain("runs AS runs");
+
+    // FROM/TO bounds are real parameters carrying the time range.
+    const dateParams = Object.values(params).filter((v) => v instanceof Date);
+    expect(dateParams).toContainEqual(sevenDayRange.from);
+    expect(dateParams).toContainEqual(sevenDayRange.to);
+  });
+
+  it("single-series counter only: WITH FILL but no INTERPOLATE", () => {
+    const query =
+      "SELECT timeBucket(), count() AS runs FROM metrics GROUP BY timeBucket ORDER BY timeBucket";
+    const { sql } = run(query, true);
+    expect(sql).toContain("WITH FILL FROM toStartOfInterval({");
+    expect(sql).toContain("STEP INTERVAL 6 HOUR");
+    expect(sql).not.toContain("INTERPOLATE");
+  });
+
+  it("grouped counter only: group dim first, then WITH FILL, no INTERPOLATE", () => {
+    const query =
+      "SELECT timeBucket(), queue_name, count() AS runs FROM metrics GROUP BY timeBucket, queue_name ORDER BY timeBucket";
+    const { sql } = run(query, true);
+    expect(sql).toMatch(/ORDER BY queue_name, timebucket ASC WITH FILL/);
+    expect(sql).toContain("STEP INTERVAL 6 HOUR");
+    expect(sql).not.toContain("INTERPOLATE");
+  });
+
+  it("grouped + carry gauge: per-group LOCF via window functions, no INTERPOLATE", () => {
+    const query =
+      "SELECT timeBucket(), queue_name, max(max_running) AS max_running FROM metrics GROUP BY timeBucket, queue_name ORDER BY timeBucket";
+    const { sql, warnings } = run(query, true);
+
+    // Inner query densifies per group (dims first, then the bucket WITH FILL) + sentinel.
+    expect(sql).toMatch(/ORDER BY queue_name, timebucket ASC WITH FILL/);
+    expect(sql).toContain("STEP INTERVAL 6 HOUR");
+    expect(sql).toContain("1 AS __tsql_present");
+
+    // Block id increments at each real row, partitioned by the group dim.
+    expect(sql).toContain(
+      "sum(__tsql_present) OVER (PARTITION BY queue_name ORDER BY timebucket ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS __tsql_block"
+    );
+
+    // Gauge carried within each (group, block); never INTERPOLATE (which bleeds across groups).
+    expect(sql).toContain(
+      "max(if(__tsql_present = 1, max_running, NULL)) OVER (PARTITION BY queue_name, __tsql_block) AS max_running"
+    );
+    expect(sql).not.toContain("INTERPOLATE");
+
+    // Final result re-ordered by the user's ORDER BY, and not skipped.
+    expect(sql).toMatch(/\)\s*ORDER BY timebucket ASC$/);
+    expect(warnings.some((w) => w.code === "fill_skipped_grouped_gauge")).toBe(false);
+  });
+
+  it("grouped + carry gauge with a non-plain group dim: fill is skipped", () => {
+    const query =
+      "SELECT timeBucket(), upper(queue_name) AS q, max(max_running) AS max_running FROM metrics GROUP BY timeBucket, upper(queue_name) ORDER BY timeBucket";
+    const { sql, warnings } = run(query, true);
+    expect(sql).not.toContain("WITH FILL");
+    expect(sql).not.toContain("__tsql_block");
+    expect(warnings.some((w) => w.code === "fill_skipped_grouped_gauge")).toBe(true);
+  });
+
+  it("user ORDER BY not led by timeBucket: fill is skipped", () => {
+    const query =
+      "SELECT timeBucket(), count() AS runs FROM metrics GROUP BY timeBucket ORDER BY runs DESC";
+    const { sql } = run(query, true);
+    expect(sql).not.toContain("WITH FILL");
+    expect(sql).not.toContain("INTERPOLATE");
+  });
+
+  it("bucket-led ORDER BY DESC: fill is skipped (ascending fill would be invalid)", () => {
+    const query =
+      "SELECT timeBucket(), count() AS runs FROM metrics GROUP BY timeBucket ORDER BY timeBucket DESC";
+    const { sql } = run(query, true);
+    expect(sql).not.toContain("WITH FILL");
+    expect(sql).not.toContain("INTERPOLATE");
+    // The plain descending order still stands.
+    expect(sql).toContain("ORDER BY timebucket DESC");
+  });
+});
+
+describe("cross-queue counter totals via subquery (env-wide throughput shape)", () => {
+  // deltaSumTimestamp states must merge per queue, then sum outside; this is the
+  // supported shape for env-wide totals.
+  const metricsSchema: TableSchema = {
+    name: "metrics",
+    clickhouseName: "trigger_dev.queue_metrics_v1",
+    timeConstraint: "bucket_at",
+    columns: {
+      bucket_at: { name: "bucket_at", clickhouseName: "created_at", ...column("DateTime64") },
+      queue_name: { name: "queue_name", ...column("String") },
+      started_delta: {
+        name: "started_delta",
+        mergeGroupKey: "queue_name",
+        ...column("String"),
+        groupable: false,
+        sortable: false,
+        filterable: false,
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function runSubquery(query: string) {
+    const context = createPrinterContext({
+      schema: createSchemaRegistry([metricsSchema]),
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_test123" },
+      },
+      timeRange: {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-08T00:00:00Z"),
+      },
+    });
+    const result = printToClickHouse(parseTSQLSelect(query), context);
+    return { ...result, warnings: context.warnings };
+  }
+
+  it("compiles per-queue merge + outer sum, with tenant scoping inside the subquery", () => {
+    const { sql, params } = runSubquery(`
+      SELECT t, sum(started) AS started
+      FROM (
+        SELECT timeBucket() AS t, queue_name, deltaSumTimestampMerge(started_delta) AS started
+        FROM metrics
+        GROUP BY t, queue_name
+      )
+      GROUP BY t
+      ORDER BY t
+    `);
+
+    expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
+    expect(sql).toContain("toStartOfInterval(created_at, INTERVAL 6 HOUR)");
+    const subqueryStart = sql.indexOf("FROM (");
+    const tenantFilter = sql.indexOf("organization_id");
+    expect(subqueryStart).toBeGreaterThan(-1);
+    expect(tenantFilter).toBeGreaterThan(subqueryStart);
+    expect(Object.values(params)).toContain("org_test123");
+  });
+});
+
+describe("mergeGroupKey validation", () => {
+  const metricsSchema: TableSchema = {
+    name: "metrics",
+    clickhouseName: "trigger_dev.queue_metrics_v1",
+    timeConstraint: "bucket_at",
+    columns: {
+      bucket_at: { name: "bucket_at", ...column("DateTime64") },
+      queue: { name: "queue", clickhouseName: "queue_name", ...column("String") },
+      started_delta: {
+        name: "started_delta",
+        mergeGroupKey: "queue",
+        ...column("String"),
+        groupable: false,
+        sortable: false,
+        filterable: false,
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function compile(
+    query: string,
+    enforced: Record<string, unknown> = { organization_id: { op: "eq", value: "org_x" } }
+  ) {
+    const context = createPrinterContext({
+      schema: createSchemaRegistry([metricsSchema]),
+      enforcedWhereClause: enforced as never,
+      timeRange: {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-08T00:00:00Z"),
+      },
+    });
+    return printToClickHouse(parseTSQLSelect(query), context);
+  }
+
+  it("rejects an ungrouped, unpinned merge with an actionable message", () => {
+    expect(() =>
+      compile(
+        "SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started FROM metrics GROUP BY t"
+      )
+    ).toThrowError(
+      /Merging 'started_delta' across every queue[\s\S]*GROUP BY queue\)[\s\S]*WHERE queue = 'my-queue'[\s\S]*inner GROUP BY t, queue and outer GROUP BY t/
+    );
+  });
+
+  it("allows the merge when queue is in the GROUP BY", () => {
+    const { sql } = compile(
+      "SELECT timeBucket() AS t, queue, deltaSumTimestampMerge(started_delta) AS started FROM metrics GROUP BY t, queue"
+    );
+    expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
+  });
+
+  it("allows the merge when queue is pinned by an equality filter", () => {
+    const { sql } = compile(
+      "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics WHERE queue = 'emails'"
+    );
+    expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
+  });
+
+  it("allows the merge when the enforced clause pins queue to one value", () => {
+    const { sql } = compile(
+      "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics",
+      { organization_id: { op: "eq", value: "org_x" }, queue: { op: "in", values: ["emails"] } }
+    );
+    expect(sql).toContain("deltaSumTimestampMerge(started_delta)");
+  });
+
+  it("rejects the merge when the enforced clause spans several queues", () => {
+    expect(() =>
+      compile("SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics", {
+        organization_id: { op: "eq", value: "org_x" },
+        queue: { op: "in", values: ["emails", "webhooks"] },
+      })
+    ).toThrowError(/only combine correctly within one queue/);
+  });
+
+  it("allows a grouped inner merge summed by the outer query", () => {
+    const { sql } = compile(
+      "SELECT t, sum(started) AS started FROM (SELECT timeBucket() AS t, queue, deltaSumTimestampMerge(started_delta) AS started FROM metrics GROUP BY t, queue) GROUP BY t ORDER BY t"
+    );
+    expect(sql).toContain("GROUP BY t, queue_name");
+  });
+
+  it("rejects an ungrouped merge inside a subquery", () => {
+    expect(() =>
+      compile(
+        "SELECT t, sum(started) AS started FROM (SELECT timeBucket() AS t, deltaSumTimestampMerge(started_delta) AS started FROM metrics GROUP BY t) GROUP BY t"
+      )
+    ).toThrowError(/only combine correctly within one queue/);
+  });
+});
+
+describe("compound mergeGroupKey validation", () => {
+  const byKeySchema: TableSchema = {
+    name: "metrics_by_key",
+    clickhouseName: "trigger_dev.queue_metrics_ck_v1",
+    timeConstraint: "bucket_at",
+    columns: {
+      bucket_at: { name: "bucket_at", ...column("DateTime64") },
+      queue: { name: "queue", clickhouseName: "queue_name", ...column("String") },
+      concurrency_key: { name: "concurrency_key", ...column("String") },
+      started_delta: {
+        name: "started_delta",
+        mergeGroupKey: ["queue", "concurrency_key"],
+        ...column("String"),
+        groupable: false,
+        sortable: false,
+        filterable: false,
+      },
+      organization_id: { name: "organization_id", ...column("String") },
+      project_id: { name: "project_id", ...column("String") },
+      environment_id: { name: "environment_id", ...column("String") },
+    },
+    tenantColumns: {
+      organizationId: "organization_id",
+      projectId: "project_id",
+      environmentId: "environment_id",
+    },
+  };
+
+  function compile(query: string) {
+    const context = createPrinterContext({
+      schema: createSchemaRegistry([byKeySchema]),
+      enforcedWhereClause: { organization_id: { op: "eq", value: "org_x" } } as never,
+      timeRange: {
+        from: new Date("2024-01-01T00:00:00Z"),
+        to: new Date("2024-01-08T00:00:00Z"),
+      },
+    });
+    return printToClickHouse(parseTSQLSelect(query), context);
+  }
+
+  it("requires EVERY listed key grouped or pinned", () => {
+    expect(() =>
+      compile(
+        "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics_by_key WHERE queue = 'emails'"
+      )
+    ).toThrowError(/only combine correctly within one concurrency_key/);
+    expect(() =>
+      compile(
+        "SELECT concurrency_key, deltaSumTimestampMerge(started_delta) AS started FROM metrics_by_key GROUP BY concurrency_key"
+      )
+    ).toThrowError(/only combine correctly within one queue/);
+  });
+
+  it("allows pin + group combinations covering both keys", () => {
+    const grouped = compile(
+      "SELECT concurrency_key, deltaSumTimestampMerge(started_delta) AS started FROM metrics_by_key WHERE queue = 'emails' GROUP BY concurrency_key"
+    );
+    expect(grouped.sql).toContain("deltaSumTimestampMerge(started_delta)");
+    const pinned = compile(
+      "SELECT deltaSumTimestampMerge(started_delta) AS started FROM metrics_by_key WHERE queue = 'emails' AND concurrency_key = 't1'"
+    );
+    expect(pinned.sql).toContain("deltaSumTimestampMerge(started_delta)");
+    const bothGrouped = compile(
+      "SELECT queue, concurrency_key, deltaSumTimestampMerge(started_delta) AS started FROM metrics_by_key GROUP BY queue, concurrency_key"
+    );
+    expect(bothGrouped.sql).toContain("GROUP BY queue_name, concurrency_key");
+  });
+});

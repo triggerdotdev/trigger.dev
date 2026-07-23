@@ -28,7 +28,7 @@ const theme = {
     active: "text-text-bright",
     inactive: "text-text-dimmed transition hover:text-text-bright",
     selected:
-      "absolute inset-0 rounded bg-white border border-[#e2e4e9] dark:bg-background-raised dark:border-border-bright",
+      "absolute inset-0 rounded bg-white border border-grid-bright dark:bg-background-raised dark:border-border-bright",
   },
 };
 
