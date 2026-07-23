@@ -64,11 +64,7 @@
             "eventDate": "2023-03-08T10:45:05+01:00",
             "merchantAccountCode": "OctovieECOM",
             "merchantReference": "8313842560770001",
-            "operations": [
-              "CANCEL",
-              "CAPTURE",
-              "REFUND"
-            ],
+            "operations": ["CANCEL", "CAPTURE", "REFUND"],
             "paymentMethod": "visa",
             "pspReference": "NGAO2BVQFXJ7XZDP",
             "reason": "1234:7777:12/2012",
@@ -1213,9 +1209,7 @@
       "scope": "store/customer/channel/login/access/updated",
       "data": {
         "customer_id": 22,
-        "channel_ids": [
-          1
-        ]
+        "channel_ids": [1]
       },
       "hash": "3f9ea420af83450d7ef9f78b08c8af25b2213637"
     },
@@ -1368,10 +1362,7 @@
       "data": {
         "type": "shared_modifier",
         "id": 205,
-        "affected_product_ids": [
-          1,
-          2
-        ],
+        "affected_product_ids": [1, 2],
         "context": {
           "channel_id": 2,
           "locale": "fr"
@@ -1398,10 +1389,7 @@
       "data": {
         "type": "local_option",
         "id": 205,
-        "affected_product_ids": [
-          1,
-          2
-        ],
+        "affected_product_ids": [1, 2],
         "context": {
           "channel_id": 2,
           "locale": "fr"
@@ -1645,9 +1633,7 @@
       "scope": "store/priceLists/deleted",
       "store_id": "1001197568",
       "data": {
-        "price_list_ids": [
-          5
-        ]
+        "price_list_ids": [5]
       },
       "hash": "e0c298b8097a6a2f39d17e593a9b360f5b2fef7d",
       "created_at": 1709327895,
@@ -1697,11 +1683,7 @@
       "data": {
         "type": "product",
         "id": 205,
-        "properties": [
-          "warranty",
-          "is_featured",
-          "custom_fields"
-        ],
+        "properties": ["warranty", "is_featured", "custom_fields"],
         "context": {
           "channel_id": 2,
           "locale": "fr"
@@ -4211,11 +4193,7 @@
                 }
               },
               "type": "branch",
-              "merge_strategies": [
-                "merge_commit",
-                "squash",
-                "fast_forward"
-              ],
+              "merge_strategies": ["merge_commit", "squash", "fast_forward"],
               "default_merge_strategy": "merge_commit"
             },
             "new": {
@@ -4302,11 +4280,7 @@
                 }
               },
               "type": "branch",
-              "merge_strategies": [
-                "merge_commit",
-                "squash",
-                "fast_forward"
-              ],
+              "merge_strategies": ["merge_commit", "squash", "fast_forward"],
               "default_merge_strategy": "merge_commit"
             },
             "truncated": false,
@@ -6684,9 +6658,7 @@
         "id": 403738602,
         "name": "web",
         "active": true,
-        "events": [
-          "*"
-        ],
+        "events": ["*"],
         "config": {
           "content_type": "json",
           "insecure_ssl": "0",
@@ -7579,9 +7551,7 @@
         },
         "added": [],
         "removed": [],
-        "modified": [
-          "README.md"
-        ]
+        "modified": ["README.md"]
       }
     },
     "extraHeaders": {
@@ -8535,9 +8505,7 @@
             "email": "hookdeckwrite@gmail.com"
           },
           "added": [],
-          "modified": [
-            "README.md"
-          ],
+          "modified": ["README.md"],
           "removed": []
         }
       ],
@@ -11415,10 +11383,7 @@
           "id": "550e8400-e29b-41d4-a716-446655440001",
           "title": "Draft Post",
           "status": "archived",
-          "channels": [
-            "LinkedIn",
-            "Twitter"
-          ],
+          "channels": ["LinkedIn", "Twitter"],
           "campaign": null,
           "url": "https://app.tryordinal.com/acme/posts/550e8400-e29b-41d4-a716-446655440001",
           "labels": [
@@ -11544,10 +11509,7 @@
         "post": {
           "id": "550e8400-e29b-41d4-a716-446655440001",
           "title": "Q4 Product Launch Announcement",
-          "channels": [
-            "LinkedIn",
-            "Twitter"
-          ],
+          "channels": ["LinkedIn", "Twitter"],
           "campaign": {
             "id": "550e8400-e29b-41d4-a716-446655440003",
             "name": "Launch 2025",
@@ -11630,9 +11592,7 @@
           "id": "550e8400-e29b-41d4-a716-446655440001",
           "title": "New Draft",
           "status": "draft",
-          "channels": [
-            "LinkedIn"
-          ],
+          "channels": ["LinkedIn"],
           "campaign": null,
           "url": "https://app.tryordinal.com/acme/posts/550e8400-e29b-41d4-a716-446655440001",
           "labels": [
@@ -11744,9 +11704,7 @@
           "id": "550e8400-e29b-41d4-a716-446655440001",
           "title": "Old Draft",
           "status": "archived",
-          "channels": [
-            "LinkedIn"
-          ],
+          "channels": ["LinkedIn"],
           "campaign": null,
           "url": "https://app.tryordinal.com/acme/posts/550e8400-e29b-41d4-a716-446655440001",
           "labels": [
@@ -11901,9 +11859,7 @@
         "post": {
           "id": "550e8400-e29b-41d4-a716-446655440001",
           "title": "Q4 Product Launch Announcement",
-          "channels": [
-            "LinkedIn"
-          ],
+          "channels": ["LinkedIn"],
           "campaign": null,
           "url": "https://app.tryordinal.com/acme/posts/550e8400-e29b-41d4-a716-446655440001",
           "labels": [
@@ -11970,10 +11926,7 @@
         "post": {
           "id": "550e8400-e29b-41d4-a716-446655440001",
           "title": "Q4 Product Launch Announcement",
-          "channels": [
-            "LinkedIn",
-            "Twitter"
-          ],
+          "channels": ["LinkedIn", "Twitter"],
           "campaign": {
             "id": "550e8400-e29b-41d4-a716-446655440003",
             "name": "Launch 2025",
@@ -12068,9 +12021,7 @@
         "post": {
           "id": "550e8400-e29b-41d4-a716-446655440001",
           "title": "Q4 Product Launch Announcement",
-          "channels": [
-            "LinkedIn"
-          ],
+          "channels": ["LinkedIn"],
           "campaign": null,
           "url": "https://app.tryordinal.com/acme/posts/550e8400-e29b-41d4-a716-446655440001",
           "labels": [
@@ -17786,10 +17737,7 @@
                   },
                   "seller_protection": {
                     "status": "ELIGIBLE",
-                    "dispute_categories": [
-                      "ITEM_NOT_RECEIVED",
-                      "UNAUTHORIZED_TRANSACTION"
-                    ]
+                    "dispute_categories": ["ITEM_NOT_RECEIVED", "UNAUTHORIZED_TRANSACTION"]
                   },
                   "final_capture": true,
                   "seller_receivable_breakdown": {
@@ -18394,9 +18342,7 @@
           ]
         },
         "primary_currency_code": "USD",
-        "secondary_currency_codes": [
-          "CAD"
-        ],
+        "secondary_currency_codes": ["CAD"],
         "financial_instruments": {
           "banks": [
             {
@@ -18973,9 +18919,7 @@
           "current": []
         },
         "object": "activity",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680841422,
         "timestamp_micro": 1680841422482110,
@@ -19089,9 +19033,7 @@
           "current": []
         },
         "object": "deal",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680840600,
         "timestamp_micro": 1680840600460452,
@@ -19192,9 +19134,7 @@
           "current": []
         },
         "object": "organization",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680840510,
         "timestamp_micro": 1680840510932610,
@@ -19286,9 +19226,7 @@
           "current": []
         },
         "object": "person",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680840511,
         "timestamp_micro": 1680840511329055,
@@ -19388,9 +19326,7 @@
           "current": []
         },
         "object": "product",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680841164,
         "timestamp_micro": 1680841164749820,
@@ -19461,9 +19397,7 @@
           "current": []
         },
         "object": "activity",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680841432,
         "timestamp_micro": 1680841432612516,
@@ -19574,9 +19508,7 @@
           "current": []
         },
         "object": "person",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680841339,
         "timestamp_micro": 1680841339437193,
@@ -19675,9 +19607,7 @@
           "current": []
         },
         "object": "activity",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680841419,
         "timestamp_micro": 1680841419576234,
@@ -19881,9 +19811,7 @@
           "current": []
         },
         "object": "deal",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680840600,
         "timestamp_micro": 1680840600882126,
@@ -20047,9 +19975,7 @@
           "current": []
         },
         "object": "organization",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680841432,
         "timestamp_micro": 1680841432637031,
@@ -20191,9 +20117,7 @@
           "current": []
         },
         "object": "person",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680841432,
         "timestamp_micro": 1680841432652693,
@@ -20351,9 +20275,7 @@
           "current": []
         },
         "object": "product",
-        "permitted_user_ids": [
-          14542087
-        ],
+        "permitted_user_ids": [14542087],
         "pipedrive_service_name": false,
         "timestamp": 1680841165,
         "timestamp_micro": 1680841165016475,
@@ -20825,9 +20747,7 @@
       "multi_location_enabled": true,
       "setup_required": false,
       "pre_launch_enabled": false,
-      "enabled_presentment_currencies": [
-        "USD"
-      ],
+      "enabled_presentment_currencies": ["USD"],
       "marketing_sms_consent_enabled_at_checkout": false,
       "transactional_sms_disabled": false
     },
@@ -22126,10 +22046,7 @@
         "note": "Head Office Location",
         "buyer_experience_configuration": null,
         "admin_graphql_api_id": "gid://shopify/CompanyLocation/408372092144951419",
-        "tax_exemptions": [
-          "CA_BC_CONTRACTOR_EXEMPTION",
-          "CA_BC_RESELLER_EXEMPTION"
-        ],
+        "tax_exemptions": ["CA_BC_CONTRACTOR_EXEMPTION", "CA_BC_RESELLER_EXEMPTION"],
         "company": {
           "name": "Example Company",
           "note": "This is an example company",
@@ -22231,10 +22148,7 @@
         "note": "Head Office Location",
         "buyer_experience_configuration": null,
         "admin_graphql_api_id": "gid://shopify/CompanyLocation/408372092144951419",
-        "tax_exemptions": [
-          "CA_BC_CONTRACTOR_EXEMPTION",
-          "CA_BC_RESELLER_EXEMPTION"
-        ],
+        "tax_exemptions": ["CA_BC_CONTRACTOR_EXEMPTION", "CA_BC_RESELLER_EXEMPTION"],
         "company": {
           "name": "Example Company",
           "note": "This is an example company",
@@ -22425,10 +22339,7 @@
       "note": "Head Office Location",
       "buyer_experience_configuration": null,
       "admin_graphql_api_id": "gid://shopify/CompanyLocation/408372092144951419",
-      "tax_exemptions": [
-        "CA_BC_CONTRACTOR_EXEMPTION",
-        "CA_BC_RESELLER_EXEMPTION"
-      ],
+      "tax_exemptions": ["CA_BC_CONTRACTOR_EXEMPTION", "CA_BC_RESELLER_EXEMPTION"],
       "company": {
         "name": "Example Company",
         "note": "This is an example company",
@@ -22507,10 +22418,7 @@
       "note": "Head Office Location",
       "buyer_experience_configuration": null,
       "admin_graphql_api_id": "gid://shopify/CompanyLocation/408372092144951419",
-      "tax_exemptions": [
-        "CA_BC_CONTRACTOR_EXEMPTION",
-        "CA_BC_RESELLER_EXEMPTION"
-      ],
+      "tax_exemptions": ["CA_BC_CONTRACTOR_EXEMPTION", "CA_BC_RESELLER_EXEMPTION"],
       "company": {
         "name": "Example Company",
         "note": "This is an example company",
@@ -22589,10 +22497,7 @@
       "note": "Head Office Location",
       "buyer_experience_configuration": null,
       "admin_graphql_api_id": "gid://shopify/CompanyLocation/408372092144951419",
-      "tax_exemptions": [
-        "CA_BC_CONTRACTOR_EXEMPTION",
-        "CA_BC_RESELLER_EXEMPTION"
-      ],
+      "tax_exemptions": ["CA_BC_CONTRACTOR_EXEMPTION", "CA_BC_RESELLER_EXEMPTION"],
       "company": {
         "name": "Example Company",
         "note": "This is an example company",
@@ -23034,9 +22939,7 @@
       "status": "failed",
       "errors": [
         {
-          "customer_ids": [
-            1
-          ],
+          "customer_ids": [1],
           "field": "merge_in_progress",
           "message": "John Doe is currently being merged."
         }
@@ -24651,9 +24554,7 @@
         }
       ],
       "tracking_number": "1z827wk74630",
-      "tracking_numbers": [
-        "1z827wk74630"
-      ],
+      "tracking_numbers": ["1z827wk74630"],
       "tracking_url": "https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1z827wk74630",
       "tracking_urls": [
         "https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1z827wk74630"
@@ -24835,9 +24736,7 @@
         }
       ],
       "tracking_number": "1z827wk74630",
-      "tracking_numbers": [
-        "1z827wk74630"
-      ],
+      "tracking_numbers": ["1z827wk74630"],
       "tracking_url": "https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1z827wk74630",
       "tracking_urls": [
         "https://www.ups.com/WebTracking?loc=en_US&requester=ST&trackNums=1z827wk74630"
@@ -25562,10 +25461,7 @@
       "order_status_url": "https://jsmith.myshopify.com/548380009/orders/123456abcd/authenticate?key=abcdefg",
       "original_total_additional_fees_set": null,
       "original_total_duties_set": null,
-      "payment_gateway_names": [
-        "visa",
-        "bogus"
-      ],
+      "payment_gateway_names": ["visa", "bogus"],
       "phone": null,
       "po_number": null,
       "presentment_currency": "USD",
@@ -25975,10 +25871,7 @@
       "order_status_url": "https://jsmith.myshopify.com/548380009/orders/123456abcd/authenticate?key=abcdefg",
       "original_total_additional_fees_set": null,
       "original_total_duties_set": null,
-      "payment_gateway_names": [
-        "visa",
-        "bogus"
-      ],
+      "payment_gateway_names": ["visa", "bogus"],
       "phone": null,
       "po_number": null,
       "presentment_currency": "USD",
@@ -26463,10 +26356,7 @@
       "order_status_url": "https://jsmith.myshopify.com/548380009/orders/123456abcd/authenticate?key=abcdefg",
       "original_total_additional_fees_set": null,
       "original_total_duties_set": null,
-      "payment_gateway_names": [
-        "visa",
-        "bogus"
-      ],
+      "payment_gateway_names": ["visa", "bogus"],
       "phone": null,
       "po_number": null,
       "presentment_currency": "USD",
@@ -26876,10 +26766,7 @@
       "order_status_url": "https://jsmith.myshopify.com/548380009/orders/123456abcd/authenticate?key=abcdefg",
       "original_total_additional_fees_set": null,
       "original_total_duties_set": null,
-      "payment_gateway_names": [
-        "visa",
-        "bogus"
-      ],
+      "payment_gateway_names": ["visa", "bogus"],
       "phone": null,
       "po_number": null,
       "presentment_currency": "USD",
@@ -27289,10 +27176,7 @@
       "order_status_url": "https://jsmith.myshopify.com/548380009/orders/123456abcd/authenticate?key=abcdefg",
       "original_total_additional_fees_set": null,
       "original_total_duties_set": null,
-      "payment_gateway_names": [
-        "visa",
-        "bogus"
-      ],
+      "payment_gateway_names": ["visa", "bogus"],
       "phone": null,
       "po_number": null,
       "presentment_currency": "USD",
@@ -27751,10 +27635,7 @@
       "order_status_url": "https://jsmith.myshopify.com/548380009/orders/123456abcd/authenticate?key=abcdefg",
       "original_total_additional_fees_set": null,
       "original_total_duties_set": null,
-      "payment_gateway_names": [
-        "visa",
-        "bogus"
-      ],
+      "payment_gateway_names": ["visa", "bogus"],
       "phone": null,
       "po_number": null,
       "presentment_currency": "USD",
@@ -28280,21 +28161,14 @@
         "options": [
           {
             "name": "Title",
-            "values": [
-              "151cm",
-              "155cm",
-              "158cm"
-            ]
+            "values": ["151cm", "155cm", "158cm"]
           }
         ],
         "seo": {
           "title": "seo title",
           "description": "seo description"
         },
-        "tags": [
-          "tag1",
-          "tag2"
-        ],
+        "tags": ["tag1", "tag2"],
         "variants": {
           "edges": [
             {
@@ -28434,21 +28308,14 @@
         "options": [
           {
             "name": "Title",
-            "values": [
-              "151cm",
-              "155cm",
-              "158cm"
-            ]
+            "values": ["151cm", "155cm", "158cm"]
           }
         ],
         "seo": {
           "title": "seo title",
           "description": "seo description"
         },
-        "tags": [
-          "tag1",
-          "tag2"
-        ],
+        "tags": ["tag1", "tag2"],
         "variants": {
           "edges": [
             {
@@ -28612,10 +28479,7 @@
             "name": "Title",
             "product_id": 788032119674292900,
             "position": 1,
-            "values": [
-              "Small",
-              "Medium"
-            ]
+            "values": ["Small", "Medium"]
           }
         ]
       }
@@ -28743,10 +28607,7 @@
             "name": "Title",
             "product_id": 788032119674292900,
             "position": 1,
-            "values": [
-              "Small",
-              "Medium"
-            ]
+            "values": ["Small", "Medium"]
           }
         ]
       }
@@ -29820,10 +29681,7 @@
             "name": "Title",
             "product_id": 788032119674292900,
             "position": 1,
-            "values": [
-              "Small",
-              "Medium"
-            ]
+            "values": ["Small", "Medium"]
           }
         ]
       }
@@ -29951,10 +29809,7 @@
             "name": "Title",
             "product_id": 788032119674292900,
             "position": 1,
-            "values": [
-              "Small",
-              "Medium"
-            ]
+            "values": ["Small", "Medium"]
           }
         ]
       }
@@ -30056,17 +29911,13 @@
       "admin_graphql_api_app": "gid://shopify/App/2525000003",
       "app_id": null,
       "description": null,
-      "options": [
-        "Delivery every"
-      ],
+      "options": ["Delivery every"],
       "position": null,
       "summary": "1 delivery frequency,  discount",
       "selling_plans": [
         {
           "name": "Pay every month deliver every month",
-          "options": [
-            "month"
-          ],
+          "options": ["month"],
           "position": null,
           "description": null,
           "billing_policy": {
@@ -30136,17 +29987,13 @@
       "admin_graphql_api_app": "gid://shopify/App/2525000003",
       "app_id": null,
       "description": null,
-      "options": [
-        "Delivery every"
-      ],
+      "options": ["Delivery every"],
       "position": null,
       "summary": "1 delivery frequency,  discount",
       "selling_plans": [
         {
           "name": "Pay every month deliver every month",
-          "options": [
-            "month"
-          ],
+          "options": ["month"],
           "position": null,
           "description": null,
           "billing_policy": {
@@ -30278,9 +30125,7 @@
       "multi_location_enabled": true,
       "setup_required": false,
       "pre_launch_enabled": false,
-      "enabled_presentment_currencies": [
-        "USD"
-      ],
+      "enabled_presentment_currencies": ["USD"],
       "marketing_sms_consent_enabled_at_checkout": false,
       "transactional_sms_disabled": false
     },
@@ -31131,9 +30976,7 @@
           "payment_link": "plink_1MhUOwE0b6fckueSjmvf9Yea",
           "payment_method_collection": "always",
           "payment_method_options": {},
-          "payment_method_types": [
-            "card"
-          ],
+          "payment_method_types": ["card"],
           "payment_status": "paid",
           "phone_number_collection": {
             "enabled": false
@@ -31213,9 +31056,7 @@
           "name": "Martin",
           "next_invoice_sequence": 2,
           "phone": null,
-          "preferred_locales": [
-            "en-US"
-          ],
+          "preferred_locales": ["en-US"],
           "shipping": null,
           "tax_exempt": "none",
           "test_clock": null
@@ -31451,9 +31292,7 @@
           "name": "Martin",
           "next_invoice_sequence": 2,
           "phone": null,
-          "preferred_locales": [
-            "en-US"
-          ],
+          "preferred_locales": ["en-US"],
           "shipping": null,
           "tax_exempt": "none",
           "test_clock": null
@@ -32530,9 +32369,7 @@
             "generated_from": null,
             "last4": "4242",
             "networks": {
-              "available": [
-                "visa"
-              ],
+              "available": ["visa"],
               "preferred": null
             },
             "three_d_secure_usage": {
@@ -32598,9 +32435,7 @@
               "request_three_d_secure": "automatic"
             }
           },
-          "payment_method_types": [
-            "card"
-          ],
+          "payment_method_types": ["card"],
           "single_use_mandate": null,
           "status": "succeeded",
           "usage": "off_session"
@@ -32657,9 +32492,7 @@
               "request_three_d_secure": "automatic"
             }
           },
-          "payment_method_types": [
-            "card"
-          ],
+          "payment_method_types": ["card"],
           "single_use_mandate": null,
           "status": "succeeded",
           "usage": "off_session"
@@ -32902,10 +32735,7 @@
       "grouped_products": [],
       "menu_order": 0,
       "price_html": "<del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><bdi>200&nbsp;<span class=\"woocommerce-Price-currencySymbol\">CFA</span></bdi></span></del> <ins><span class=\"woocommerce-Price-amount amount\"><bdi>150&nbsp;<span class=\"woocommerce-Price-currencySymbol\">CFA</span></bdi></span></ins>",
-      "related_ids": [
-        13,
-        12
-      ],
+      "related_ids": [13, 12],
       "meta_data": [],
       "stock_status": "instock",
       "has_options": false,
@@ -33013,10 +32843,7 @@
       "grouped_products": [],
       "menu_order": 0,
       "price_html": "<del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><bdi>200&nbsp;<span class=\"woocommerce-Price-currencySymbol\">CFA</span></bdi></span></del> <ins><span class=\"woocommerce-Price-amount amount\"><bdi>150&nbsp;<span class=\"woocommerce-Price-currencySymbol\">CFA</span></bdi></span></ins>",
-      "related_ids": [
-        12,
-        13
-      ],
+      "related_ids": [12, 13],
       "meta_data": [],
       "stock_status": "instock",
       "has_options": false,

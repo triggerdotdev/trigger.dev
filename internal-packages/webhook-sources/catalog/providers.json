@@ -3,23 +3,10 @@
   "scope": "ai-agent-first",
   "updatedAt": null,
   "definitionOfDone": {
-    "first-class": [
-      "registryEntry",
-      "samples",
-      "roundTrip",
-      "producer"
-    ],
-    "sample-only": [
-      "registryEntry",
-      "samples"
-    ]
+    "first-class": ["registryEntry", "samples", "roundTrip", "producer"],
+    "sample-only": ["registryEntry", "samples"]
   },
-  "statusValues": [
-    "not-started",
-    "in-progress",
-    "complete",
-    "blocked"
-  ],
+  "statusValues": ["not-started", "in-progress", "complete", "blocked"],
   "providers": [
     {
       "id": "anthropic",

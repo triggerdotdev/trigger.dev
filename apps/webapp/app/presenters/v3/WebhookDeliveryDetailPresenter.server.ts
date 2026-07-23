@@ -6,6 +6,7 @@ import {
   type WebhookDeliveryStatus,
 } from "@trigger.dev/database";
 import { webhookReplica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { webhookDeliveriesRepository } from "~/services/webhookDeliveriesRepository/webhookDeliveriesRepository.server";
 
 export type WebhookDeliveryDetail = {
@@ -80,10 +81,7 @@ export class WebhookDeliveryDetailPresenter {
     let session: { friendlyId: string; externalId: string | null } | null = null;
     if (delivery.runId) {
       const [taskRun, sessionRun] = await Promise.all([
-        this.replica.taskRun.findFirst({
-          where: { id: delivery.runId },
-          select: { friendlyId: true },
-        }),
+        runStore.findRun({ id: delivery.runId }, { select: { friendlyId: true } }, this.replica),
         this.replica.sessionRun.findUnique({
           where: { runId: delivery.runId },
           select: { session: { select: { friendlyId: true, externalId: true } } },

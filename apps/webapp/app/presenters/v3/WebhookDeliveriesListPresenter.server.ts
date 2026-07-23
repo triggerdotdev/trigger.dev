@@ -2,6 +2,7 @@ import { type ClickHouse } from "@internal/clickhouse";
 import { type PrismaClientOrTransaction, type WebhookDeliveryStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
 import { webhookReplica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { webhookDeliveriesRepository } from "~/services/webhookDeliveriesRepository/webhookDeliveriesRepository.server";
 import {
   resolveDeliveryRunTargets,
@@ -77,10 +78,11 @@ export class WebhookDeliveriesListPresenter {
     // Resolve it, and force empty results when no run matches.
     let internalRunId: string | undefined;
     if (runId) {
-      const run = await this.replica.taskRun.findFirst({
-        where: { friendlyId: runId },
-        select: { id: true },
-      });
+      const run = await runStore.findRun(
+        { friendlyId: runId },
+        { select: { id: true } },
+        this.replica
+      );
       internalRunId = run?.id ?? "__none__";
     }
 

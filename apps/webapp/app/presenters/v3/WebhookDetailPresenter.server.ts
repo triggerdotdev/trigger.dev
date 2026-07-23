@@ -10,6 +10,7 @@ import parseDuration from "parse-duration";
 import { z } from "zod";
 import { type Direction } from "~/components/ListPagination";
 import { webhookReplica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { webhookDeliveriesRepository } from "~/services/webhookDeliveriesRepository/webhookDeliveriesRepository.server";
 import {
@@ -89,10 +90,10 @@ export async function resolveDeliveryRunTargets(
   if (runIds.length === 0) return { runFriendlyIdById, sessionByRunId };
 
   const [runs, sessionRuns] = await Promise.all([
-    replica.taskRun.findMany({
-      where: { id: { in: runIds } },
-      select: { id: true, friendlyId: true },
-    }),
+    runStore.findRuns(
+      { where: { id: { in: runIds } }, select: { id: true, friendlyId: true } },
+      replica
+    ),
     replica.sessionRun.findMany({
       where: { runId: { in: runIds } },
       select: { runId: true, session: { select: { friendlyId: true, externalId: true } } },

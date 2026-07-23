@@ -20,6 +20,9 @@
     "main": true,
     "module": true,
     "project": "./tsconfig.src.json",
+    "exclude": [
+      "./src/**/*.test.ts"
+    ],
     "exports": {
       "./package.json": "./package.json",
       ".": "./src/index.ts"
@@ -44,7 +47,7 @@
     "@trigger.dev/sdk": "workspace:^4.5.0-rc.7"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.15.4",
+    "@arethetypeswrong/cli": "^0.18.5",
     "@trigger.dev/sdk": "workspace:4.5.0-rc.7",
     "rimraf": "6.0.1",
     "tshy": "^3.0.2",

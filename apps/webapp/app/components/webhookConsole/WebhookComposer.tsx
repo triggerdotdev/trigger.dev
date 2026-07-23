@@ -449,8 +449,13 @@ function HeadersEditor({
   );
 }
 
+const UNSAFE_PATH_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function setPath(target: Record<string, unknown>, path: string, value: unknown) {
   const parts = path.split(".");
+  if (parts.some((part) => UNSAFE_PATH_KEYS.has(part))) {
+    return;
+  }
   let cursor = target;
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];

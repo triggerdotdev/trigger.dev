@@ -2148,8 +2148,8 @@ importers:
         version: link:../core
     devDependencies:
       '@arethetypeswrong/cli':
-        specifier: ^0.15.4
-        version: 0.15.4
+        specifier: ^0.18.5
+        version: 0.18.5
       '@trigger.dev/sdk':
         specifier: workspace:4.5.0-rc.7
         version: link:../trigger-sdk
@@ -2357,19 +2357,10 @@ packages:
   '@antfu/utils@9.3.0':
     resolution: {integrity: sha512-9hFT4RauhcUzqOE4f1+frMKLZrgNog5b06I7VmZQV1BkvwvqrbC8EBZf3L1eEL2AKb6rNKjER0sEvJiSP1FXEA==}
 
-  '@arethetypeswrong/cli@0.15.4':
-    resolution: {integrity: sha512-YDbImAi1MGkouT7f2yAECpUMFhhA1J0EaXzIqoC5GGtK0xDgauLtcsZezm8tNq7d3wOFXH7OnY+IORYcG212rw==}
-    engines: {node: '>=18'}
-    hasBin: true
-
   '@arethetypeswrong/cli@0.18.5':
     resolution: {integrity: sha512-gM+8vRsQOD/Uc7EnBedUhkG5OCsDWE4uoak5QvomGpMpaky0Eh41p04nIMgrWb8EOmqZUJGc6zz9hsP6E56R7g==}
     engines: {node: '>=20'}
     hasBin: true
-
-  '@arethetypeswrong/core@0.15.1':
-    resolution: {integrity: sha512-FYp6GBAgsNz81BkfItRz8RLZO03w5+BaeiPma1uCfmxTnxbtuMrI/dbzGiOk8VghO108uFI0oJo0OkewdSHw7g==}
-    engines: {node: '>=18'}
 
   '@arethetypeswrong/core@0.18.5':
     resolution: {integrity: sha512-9ytjzGwxjm9Uz7I9avfbt5vlQt6uk9uRRESzJjqrznl6WKvI6dwYTo+vJ3U02Wrq/mR3iql/PzhvHhKdJIAjDQ==}
@@ -14826,9 +14817,6 @@ packages:
       typescript:
         optional: true
 
-  ts-expose-internals-conditionally@1.0.0-empty.0:
-    resolution: {integrity: sha512-F8m9NOF6ZhdOClDVdlM8gj3fDCav4ZIFSs/EI3ksQbAAXVSCN/Jh5OCJDDZWBuBy9psFc6jULGDlPwjMYMhJDw==}
-
   ts-interface-checker@0.1.13:
     resolution: {integrity: sha512-Y/arvbn+rrz3JCKl9C4kVNfTfSm2/mEp5FSz5EsZSANGPSlQrpRI5M4PKF+mJnE52jOO90PnPSc3Ur3bTQw0gA==}
 
@@ -15884,16 +15872,6 @@ snapshots:
 
   '@antfu/utils@9.3.0': {}
 
-  '@arethetypeswrong/cli@0.15.4':
-    dependencies:
-      '@arethetypeswrong/core': 0.15.1
-      chalk: 4.1.2
-      cli-table3: 0.6.5
-      commander: 10.0.1
-      marked: 9.1.6
-      marked-terminal: 7.1.0(marked@9.1.6)
-      semver: 7.8.1
-
   '@arethetypeswrong/cli@0.18.5':
     dependencies:
       '@arethetypeswrong/core': 0.18.5
@@ -15903,15 +15881,6 @@ snapshots:
       marked: 9.1.6
       marked-terminal: 7.1.0(marked@9.1.6)
       semver: 7.8.1
-
-  '@arethetypeswrong/core@0.15.1':
-    dependencies:
-      '@andrewbranch/untar.js': 1.0.3
-      fflate: 0.8.3
-      semver: 7.8.1
-      ts-expose-internals-conditionally: 1.0.0-empty.0
-      typescript: 6.0.3
-      validate-npm-package-name: 5.0.0
 
   '@arethetypeswrong/core@0.18.5':
     dependencies:
@@ -30890,8 +30859,6 @@ snapshots:
   ts-essentials@10.0.1(typescript@6.0.3):
     optionalDependencies:
       typescript: 6.0.3
-
-  ts-expose-internals-conditionally@1.0.0-empty.0: {}
 
   ts-interface-checker@0.1.13: {}
 
