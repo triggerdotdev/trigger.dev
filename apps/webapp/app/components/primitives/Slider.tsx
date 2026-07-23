@@ -15,7 +15,7 @@ const variants = {
     // Matches the Switch thumb; the secondary-button hairline+shadow keeps the
     // white dot visible on the light track
     thumb:
-      "h-3 w-3 border border-border-bright/50 bg-white shadow-xs dark:border-transparent dark:bg-charcoal-200 dark:shadow-none",
+      "h-3 w-3 border border-border-bright bg-white shadow-sm dark:border-transparent dark:bg-charcoal-200 dark:shadow-none",
   },
   tertiary: {
     container: "h-6 gap-1 rounded-sm hover:bg-background-raised px-1",
