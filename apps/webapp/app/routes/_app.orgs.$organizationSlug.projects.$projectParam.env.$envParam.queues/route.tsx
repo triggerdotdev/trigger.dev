@@ -673,6 +673,7 @@ function QueuesWithMetricsView() {
                   <TableHeaderCell
                     alignment="right"
                     tooltipContentClassName="max-w-max"
+                    disableTooltipHoverableContent
                     tooltip={
                       <div className="max-w-max space-y-1 p-1 text-left text-xs text-text-dimmed">
                         <p>
@@ -697,12 +698,14 @@ function QueuesWithMetricsView() {
                   </TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
+                    disableTooltipHoverableContent
                     tooltip="How long runs waited before starting (95% were faster), over the selected time."
                   >
                     Delay p95
                   </TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
+                    disableTooltipHoverableContent
                     tooltip={
                       <>
                         How many runs were waiting, over the selected time. <WarningSwatch /> marks
