@@ -493,7 +493,8 @@ function QueuesWithMetricsView() {
               accessory={
                 <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                   <LinkButton
-                    variant="secondary/small-icon"
+                    variant="minimal/small"
+                    className="aspect-square px-1!"
                     LeadingIcon={RunsIcon}
                     leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
                     to={v3RunsPath(organization, project, env, {
@@ -526,7 +527,8 @@ function QueuesWithMetricsView() {
               accessory={
                 <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                   <LinkButton
-                    variant="secondary/small-icon"
+                    variant="minimal/small"
+                    className="aspect-square px-1!"
                     LeadingIcon={RunsIcon}
                     leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
                     to={v3RunsPath(organization, project, env, {
@@ -826,8 +828,8 @@ function QueuesWithMetricsView() {
                         >
                           {queue.concurrencyLimitOverridePercent !== null ? (
                             <>
-                              {limit}{" "}
-                              <span className="text-text-dimmed">
+                              {limit}
+                              <span className="ml-1 text-text-dimmed group-hover/table-row:text-text-bright">
                                 ({formatOverridePercent(queue.concurrencyLimitOverridePercent)}%)
                               </span>
                             </>
