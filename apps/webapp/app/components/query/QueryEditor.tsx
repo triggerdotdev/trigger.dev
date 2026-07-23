@@ -72,7 +72,7 @@ import type { action as titleAction } from "~/routes/resources.orgs.$organizatio
 import type { QueryScope } from "~/services/queryService.server";
 import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { organizationBillingPath } from "~/utils/pathBuilder";
-import { querySchemas } from "~/v3/querySchemas";
+import { visibleQuerySchemas } from "~/v3/querySchemas";
 
 /** Convert a Date or ISO string to ISO string format */
 function toISOString(value: Date | string): string {
@@ -245,7 +245,7 @@ const QueryEditorForm = forwardRef<
       <TSQLEditor
         defaultValue={query}
         onChange={setQuery}
-        schema={querySchemas}
+        schema={visibleQuerySchemas}
         linterEnabled={true}
         showCopyButton={true}
         showClearButton={true}

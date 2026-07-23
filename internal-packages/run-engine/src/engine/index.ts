@@ -218,6 +218,7 @@ export class RunEngine {
         callback: this.#concurrencySweeperCallback.bind(this),
       },
       shardCount: options.queue?.shardCount,
+      queueMetrics: options.queue?.queueMetrics,
       masterQueueConsumersDisabled: options.queue?.masterQueueConsumersDisabled,
       masterQueueConsumersIntervalMs: options.queue?.masterQueueConsumersIntervalMs,
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,
@@ -1611,9 +1612,26 @@ export class RunEngine {
 
   async lengthOfQueue(
     environment: MinimalAuthenticatedEnvironment,
-    queue: string
+    queue: string,
+    concurrencyKey?: string
   ): Promise<number> {
-    return this.runQueue.lengthOfQueue(environment, queue);
+    return this.runQueue.lengthOfQueue(environment, queue, concurrencyKey);
+  }
+
+  async currentConcurrencyOfQueue(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ): Promise<number> {
+    return this.runQueue.currentConcurrencyOfQueue(environment, queue, concurrencyKey);
+  }
+
+  async oldestMessageInQueue(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKey?: string
+  ): Promise<number | undefined> {
+    return this.runQueue.oldestMessageInQueue(environment, queue, concurrencyKey);
   }
 
   async concurrencyOfEnvQueue(environment: MinimalAuthenticatedEnvironment): Promise<number> {
@@ -1632,6 +1650,14 @@ export class RunEngine {
     queues: string[]
   ): Promise<Record<string, number>> {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
+  }
+
+  async concurrencyKeyBreakdown(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    options?: { limit?: number }
+  ) {
+    return this.runQueue.concurrencyKeyBreakdown(environment, queue, options);
   }
 
   async removeEnvironmentQueuesFromMasterQueue({

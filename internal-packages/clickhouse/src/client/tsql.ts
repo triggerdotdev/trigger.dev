@@ -108,6 +108,11 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
    * based on the span of the time range.
    */
   timeRange?: TimeRange;
+  /**
+   * Opt-in: emit rows for empty time buckets in a top-level time-bucketed query
+   * (counters zero-fill, gauges carry forward). Off by default.
+   */
+  fillGaps?: boolean;
 }
 
 /**
@@ -192,6 +197,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       fieldMappings: options.fieldMappings,
       whereClauseFallback: options.whereClauseFallback,
       timeRange: options.timeRange,
+      fillGaps: options.fillGaps,
     });
 
     generatedSql = sql;

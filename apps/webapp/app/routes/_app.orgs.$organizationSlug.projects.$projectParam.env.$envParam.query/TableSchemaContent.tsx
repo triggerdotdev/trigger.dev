@@ -4,7 +4,7 @@ import { Badge } from "~/components/primitives/Badge";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
-import { querySchemas } from "~/v3/querySchemas";
+import { visibleQuerySchemas } from "~/v3/querySchemas";
 
 function ColumnHelpItem({ col }: { col: ColumnSchema }) {
   return (
@@ -43,11 +43,11 @@ function ColumnHelpItem({ col }: { col: ColumnSchema }) {
   );
 }
 
-const tableOptions = querySchemas.map((s) => ({ label: s.name, value: s.name }));
+const tableOptions = visibleQuerySchemas.map((s) => ({ label: s.name, value: s.name }));
 
 export function TableSchemaContent() {
-  const [selectedTable, setSelectedTable] = useState(querySchemas[0].name);
-  const table = querySchemas.find((s) => s.name === selectedTable) ?? querySchemas[0];
+  const [selectedTable, setSelectedTable] = useState(visibleQuerySchemas[0].name);
+  const table = visibleQuerySchemas.find((s) => s.name === selectedTable) ?? visibleQuerySchemas[0];
 
   return (
     <div>

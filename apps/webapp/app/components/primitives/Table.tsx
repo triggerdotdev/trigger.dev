@@ -1,3 +1,4 @@
+import { ChevronDownIcon, ChevronUpDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
 import { ChevronRightIcon } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { ClipboardCheckIcon, ClipboardIcon } from "lucide-react";
@@ -181,6 +182,15 @@ type TableHeaderCellProps = TableCellBasicProps & {
   hiddenLabel?: boolean;
   tooltip?: ReactNode;
   disableTooltipHoverableContent?: boolean;
+  /**
+   * When set (together with `onSort`), the header renders a sort indicator and becomes clickable.
+   * `"asc"`/`"desc"` show the active direction; `null` shows the neutral (unsorted) affordance.
+   * This cell is presentational and fully controlled — the parent owns the sort state (see
+   * `useTableSort`).
+   */
+  sortDirection?: "asc" | "desc" | null;
+  /** Invoked when the header is clicked or activated via keyboard. Enables sorting when provided. */
+  onSort?: () => void;
 };
 
 export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellProps>(
@@ -193,6 +203,8 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
       hiddenLabel = false,
       tooltip,
       disableTooltipHoverableContent = false,
+      sortDirection,
+      onSort,
     },
     ref
   ) => {
@@ -207,12 +219,48 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         break;
     }
 
-    const [isHovered, setIsHovered] = useState(false);
+    const sortable = typeof onSort === "function";
+
+    const label = hiddenLabel ? <span className="sr-only">{children}</span> : children;
+
+    const tooltipNode = tooltip ? (
+      <InfoIconTooltip
+        content={tooltip}
+        contentClassName="normal-case tracking-normal"
+        disableHoverableContent={disableTooltipHoverableContent}
+      />
+    ) : null;
+
+    const sortIndicator = sortable ? (
+      <span className="ml-1 flex items-center">
+        {sortDirection === "asc" ? (
+          <ChevronUpIcon className="size-4 text-text-bright" />
+        ) : sortDirection === "desc" ? (
+          <ChevronDownIcon className="size-4 text-text-bright" />
+        ) : (
+          <ChevronUpDownIcon className="size-4 text-text-dimmed transition-colors group-hover/sort:text-text-bright" />
+        )}
+      </span>
+    ) : null;
+
+    const rowClassName = cn("flex items-center gap-1", {
+      "justify-center": alignment === "center",
+      "justify-end": alignment === "right",
+    });
 
     return (
       <th
         ref={ref}
         scope="col"
+        aria-sort={
+          sortable
+            ? sortDirection === "asc"
+              ? "ascending"
+              : sortDirection === "desc"
+                ? "descending"
+                : "none"
+            : undefined
+        }
         className={cn(
           "align-middle font-medium text-text-bright",
           variants[variant].headerCell,
@@ -221,28 +269,50 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         )}
         colSpan={colSpan}
         tabIndex={-1}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
       >
-        {hiddenLabel ? (
-          <span className="sr-only">{children}</span>
+        {sortable ? (
+          // Order is always title → info icon → sort arrows. The info trigger is itself a <button>,
+          // so it can't nest inside the sort <button> (invalid DOM). Without a tooltip the arrows
+          // ride inside the full-width label button (unchanged). With a tooltip, the info sits
+          // between the label and a separate arrows button — both buttons toggle the sort.
+          <div className={rowClassName}>
+            <button
+              type="button"
+              onClick={onSort}
+              className={cn(
+                "group/sort flex cursor-pointer select-none items-center gap-1 rounded-sm font-medium text-text-bright focus-custom",
+                tooltip
+                  ? undefined
+                  : cn("w-full", {
+                      "justify-center": alignment === "center",
+                      "justify-end": alignment === "right",
+                    })
+              )}
+            >
+              {label}
+              {!tooltip && sortIndicator}
+            </button>
+            {tooltip ? (
+              <>
+                {tooltipNode}
+                <button
+                  type="button"
+                  onClick={onSort}
+                  aria-label="Toggle sort"
+                  className="group/sort flex cursor-pointer select-none items-center rounded-sm focus-custom"
+                >
+                  {sortIndicator}
+                </button>
+              </>
+            ) : null}
+          </div>
         ) : tooltip ? (
-          <div
-            className={cn("flex items-center gap-1", {
-              "justify-center": alignment === "center",
-              "justify-end": alignment === "right",
-            })}
-          >
-            {children}
-            <InfoIconTooltip
-              content={tooltip}
-              contentClassName="normal-case tracking-normal"
-              enabled={isHovered}
-              disableHoverableContent={disableTooltipHoverableContent}
-            />
+          <div className={rowClassName}>
+            {label}
+            {tooltipNode}
           </div>
         ) : (
-          children
+          label
         )}
       </th>
     );
@@ -259,6 +329,14 @@ type TableCellProps = TableCellBasicProps & {
   isSelected?: boolean;
   isTabbableCell?: boolean;
   children?: ReactNode;
+  /**
+   * Content rendered beside the cell's link/button but OUTSIDE it, so interactive adornments
+   * (tooltip triggers, badges that are themselves buttons) don't nest inside the `<a>`/`<button>`
+   * — invalid DOM that fails a11y audits. Use for a `to`/`onClick` cell that also shows a tooltip.
+   * `leadingContent` renders before the link, `trailingContent` after.
+   */
+  leadingContent?: ReactNode;
+  trailingContent?: ReactNode;
   style?: React.CSSProperties;
 };
 
@@ -276,6 +354,8 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       isSticky = false,
       isSelected,
       isTabbableCell = false,
+      leadingContent,
+      trailingContent,
       style,
     },
     ref
@@ -324,21 +404,63 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
         style={style}
       >
         {to ? (
-          <Link
-            to={to}
-            className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
-            tabIndex={isTabbableCell ? 0 : -1}
-          >
-            {children}
-          </Link>
+          // With leading/trailing content, the link is content-sized and the adornments sit beside
+          // it (still inside the td) so interactive triggers never nest inside the <a>.
+          leadingContent || trailingContent ? (
+            <div className={cn(flexClasses, "gap-2")}>
+              {leadingContent}
+              <Link
+                to={to}
+                className={cn(
+                  "inline-flex items-center gap-2 focus:outline-hidden",
+                  actionClassName
+                )}
+                tabIndex={isTabbableCell ? 0 : -1}
+              >
+                {children}
+              </Link>
+              {trailingContent}
+            </div>
+          ) : (
+            <Link
+              to={to}
+              className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
+              tabIndex={isTabbableCell ? 0 : -1}
+            >
+              {children}
+            </Link>
+          )
         ) : onClick ? (
-          <button
-            onClick={onClick}
-            className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
-            tabIndex={isTabbableCell ? 0 : -1}
-          >
+          leadingContent || trailingContent ? (
+            <div className={cn(flexClasses, "gap-2")}>
+              {leadingContent}
+              <button
+                onClick={onClick}
+                className={cn(
+                  "inline-flex cursor-pointer items-center gap-2 focus:outline-hidden",
+                  actionClassName
+                )}
+                tabIndex={isTabbableCell ? 0 : -1}
+              >
+                {children}
+              </button>
+              {trailingContent}
+            </div>
+          ) : (
+            <button
+              onClick={onClick}
+              className={cn("cursor-pointer focus:outline-hidden", flexClasses, actionClassName)}
+              tabIndex={isTabbableCell ? 0 : -1}
+            >
+              {children}
+            </button>
+          )
+        ) : leadingContent || trailingContent ? (
+          <div className={cn(flexClasses, "gap-2")}>
+            {leadingContent}
             {children}
-          </button>
+            {trailingContent}
+          </div>
         ) : (
           <>{children}</>
         )}

@@ -98,10 +98,16 @@ export class EnqueueSystem {
       // Force development runs to use the environment id as the worker queue.
       const workerQueue = env.type === "DEVELOPMENT" ? env.id : run.workerQueue;
 
-      const timestamp = (run.queueTimestamp ?? run.createdAt).getTime() - run.priorityMs;
+      // Ordering keeps the run's original position; the scheduling-delay anchor is the
+      // trigger/delay time only on first enqueue (includeTtl). Re-enqueues anchor to now,
+      // else the wait metric absorbs the whole waitpoint/checkpoint duration.
+      const queuePositionMs = (run.queueTimestamp ?? run.createdAt).getTime();
+      const timestamp = queuePositionMs - run.priorityMs;
+      const eligibleAtMs = includeTtl ? queuePositionMs : Date.now();
 
-      // Include TTL only when explicitly requested (first enqueue from trigger).
-      // Re-enqueues (waitpoint, checkpoint, delayed, pending version) must not add TTL.
+      // Include TTL only when explicitly requested (first enqueue from trigger or the
+      // delayed-run system). Re-enqueues (waitpoint, checkpoint, pending version) must
+      // not add TTL.
       let ttlExpiresAt: number | undefined;
       if (includeTtl && run.ttl) {
         const expireAt = parseNaturalLanguageDuration(run.ttl);
@@ -124,6 +130,7 @@ export class EnqueueSystem {
           queue: run.queue,
           concurrencyKey: run.concurrencyKey ?? undefined,
           timestamp,
+          eligibleAtMs,
           attempt: 0,
           ttlExpiresAt,
         },

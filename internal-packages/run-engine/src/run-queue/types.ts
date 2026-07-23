@@ -13,6 +13,9 @@ export const InputPayload = z.object({
   queue: z.string(),
   concurrencyKey: z.string().optional(),
   timestamp: z.number(),
+  // Unix ms the run became eligible (delayUntil if set, else triggered-at), pre-priority.
+  // Dequeue scheduling delay = dequeueTime - eligibleAtMs. Optional for old-payload compat.
+  eligibleAtMs: z.number().optional(),
   attempt: z.number(),
   /** TTL expiration timestamp (unix ms). If set, run will be expired when this time is reached. */
   ttlExpiresAt: z.number().optional(),
