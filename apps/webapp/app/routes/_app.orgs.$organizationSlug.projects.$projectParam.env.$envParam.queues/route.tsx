@@ -1469,7 +1469,7 @@ function QueueEnvMetricChart({
   return (
     <ChartCard
       title={
-        <span className="flex flex-col gap-0.5">
+        <span className="flex flex-col gap-1">
           <span className="flex items-baseline gap-2">
             <span className="flex items-center gap-1.5">
               {tile.label}
@@ -1509,7 +1509,7 @@ function QueueEnvMetricChart({
                   className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
                 >
                   <span
-                    className="size-2.5 rounded-[3px]"
+                    className="size-2.5 rounded-[2px]"
                     style={{ backgroundColor: item.color }}
                   />
                   {item.label}
