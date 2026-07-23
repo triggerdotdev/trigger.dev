@@ -432,6 +432,7 @@ function OverviewCharts({
             </>
           }
           showLegend
+          extraLegend={[{ color: "var(--color-warning)", label: "Falling behind" }]}
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps

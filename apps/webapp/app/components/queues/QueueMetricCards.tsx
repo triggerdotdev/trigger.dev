@@ -227,6 +227,7 @@ export function QueueMetricChartCard({
   info,
   titleAccessory,
   className,
+  extraLegend,
   ...chart
 }: QueueMetricChartProps & {
   title: string;
@@ -234,6 +235,9 @@ export function QueueMetricChartCard({
   /** Extra content rendered after the info icon inside the title row (e.g. a live readout). */
   titleAccessory?: ReactNode;
   className?: string;
+  /** Extra legend entries appended after the series — e.g. a warning state that isn't its own
+   * series (the orange "over threshold" colour). */
+  extraLegend?: Array<{ color: string; label: string }>;
 }) {
   return (
     <div className={className ?? "h-64"}>
@@ -253,7 +257,7 @@ export function QueueMetricChartCard({
             </span>
             {/* Inline legend below the title (swatch + label per series), matching the list-page
                 charts — instead of the Chart.Root legend with per-series totals. */}
-            {chart.showLegend && chart.series.length > 0 ? (
+            {chart.showLegend && (chart.series.length > 0 || (extraLegend?.length ?? 0) > 0) ? (
               <span className="flex flex-wrap items-center gap-2">
                 {chart.series.map((s) => (
                   <span
@@ -265,6 +269,18 @@ export function QueueMetricChartCard({
                       style={{ backgroundColor: s.color }}
                     />
                     {s.label}
+                  </span>
+                ))}
+                {extraLegend?.map((e) => (
+                  <span
+                    key={e.label}
+                    className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
+                  >
+                    <span
+                      className="size-2.5 rounded-[2px]"
+                      style={{ backgroundColor: e.color }}
+                    />
+                    {e.label}
                   </span>
                 ))}
               </span>
