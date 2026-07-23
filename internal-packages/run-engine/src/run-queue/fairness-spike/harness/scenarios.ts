@@ -22,12 +22,12 @@ export const SCENARIOS: Record<string, WorkloadConfig> = {
     seed: "spike-1",
     envConcurrencyLimit: 5,
     tenants: [
-      { tenantId: "heavy", runCount: 500, queueCount: 50, holdMsMean: 30 },
-      { tenantId: "light-1", runCount: 20, holdMsMean: 30 },
-      { tenantId: "light-2", runCount: 20, holdMsMean: 30 },
-      { tenantId: "light-3", runCount: 20, holdMsMean: 30 },
-      { tenantId: "light-4", runCount: 20, holdMsMean: 30 },
-      { tenantId: "light-5", runCount: 20, holdMsMean: 30 },
+      { tenantId: "heavy", runCount: 250, queueCount: 30, holdMsMean: 25 },
+      { tenantId: "light-1", runCount: 20, holdMsMean: 25 },
+      { tenantId: "light-2", runCount: 20, holdMsMean: 25 },
+      { tenantId: "light-3", runCount: 20, holdMsMean: 25 },
+      { tenantId: "light-4", runCount: 20, holdMsMean: 25 },
+      { tenantId: "light-5", runCount: 20, holdMsMean: 25 },
     ],
   },
 
@@ -59,6 +59,19 @@ export const SCENARIOS: Record<string, WorkloadConfig> = {
       { tenantId: "slow-2", runCount: 40, holdMsMean: 500 },
       { tenantId: "fast-1", runCount: 40, holdMsMean: 20 },
       { tenantId: "fast-2", runCount: 40, holdMsMean: 20 },
+    ],
+  },
+
+  // A bulk backlog whose heads stay old, plus light tenants trickling in later
+  // whose runs then wait. This makes the baseline's age bias live and gives a
+  // CoDel wrapper divergent per-tenant sojourns to react to.
+  trickleStale: {
+    seed: "spike-1",
+    envConcurrencyLimit: 4,
+    tenants: [
+      { tenantId: "heavy", runCount: 300, queueCount: 20, holdMsMean: 25 },
+      { tenantId: "trickle-1", runCount: 30, arrival: "poisson", ratePerSec: 25, holdMsMean: 25 },
+      { tenantId: "trickle-2", runCount: 30, arrival: "poisson", ratePerSec: 25, holdMsMean: 25 },
     ],
   },
 };

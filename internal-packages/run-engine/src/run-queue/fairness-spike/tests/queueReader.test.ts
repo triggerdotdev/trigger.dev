@@ -3,7 +3,7 @@ import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { createRedisClient } from "@internal/redis";
 import { Decimal } from "@trigger.dev/database";
-import { describe } from "node:test";
+import { describe, expect } from "vitest";
 import { RunQueue } from "../../index.js";
 import { FairQueueSelectionStrategy } from "../../fairQueueSelectionStrategy.js";
 import { RunQueueFullKeyProducer } from "../../keyProducer.js";
