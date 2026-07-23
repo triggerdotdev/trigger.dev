@@ -7933,7 +7933,7 @@ function chatAgent<
             // losing it — critical when hydrateMessages disables boot-time tail
             // replay, so the recovery path can't reclaim it later. Empty for
             // non-stream failures (nothing buffered), preserving prior behavior.
-            const partialResponse: TUIMessage | undefined =
+            let partialResponse: TUIMessage | undefined =
               capturedPartialResponse ??
               ((await assemblePartialFromChunks(turnBufferedChunks)) as TUIMessage | undefined);
 
@@ -7942,9 +7942,13 @@ function chatAgent<
             // success path) instead of dropping it as a dup; otherwise append.
             // `erroredWireMessage` was already folded into `erroredUIMessages`
             // above when the pre-run merge hadn't happened.
-            const partialIdx = partialResponse?.id
+            let partialIdx = partialResponse?.id
               ? erroredUIMessages.findIndex((m) => m.id === partialResponse!.id)
               : -1;
+            if (partialResponse && capturedPartialResponse === undefined && partialIdx !== -1) {
+              partialResponse = undefined;
+              partialIdx = -1;
+            }
             const erroredUIMessagesWithPartial: TUIMessage[] = !partialResponse
               ? erroredUIMessages
               : partialIdx === -1
@@ -7977,8 +7981,6 @@ function chatAgent<
                 partialResponse != null &&
                 partialIdx === -1 &&
                 erroredUIMessages === accumulatedUIMessages;
-              accumulatedUIMessages = erroredUIMessagesWithPartial;
-              locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
               try {
                 if (partialResponse) {
                   erroredNewModelMessages = await toModelMessages([
@@ -7988,8 +7990,10 @@ function chatAgent<
                 if (onlyAppendedPartial) {
                   accumulatedMessages.push(...erroredNewModelMessages);
                 } else {
-                  accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                  accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
                 }
+                accumulatedUIMessages = erroredUIMessagesWithPartial;
+                locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
               } catch {
                 // Keep the prior model accumulator if conversion fails.
               }

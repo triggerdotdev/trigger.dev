@@ -233,6 +233,92 @@ describe("chat.agent managed loop — source-stream failure", () => {
       await harness.close();
     }
   });
+
+  it("does not clobber an existing message when a reconstructed fragment reuses its id", async () => {
+    let turn = 0;
+    let firstAssistantId: string | undefined;
+    const events: TurnCompleteEvent<unknown, UIMessage>[] = [];
+
+    const okModel = () =>
+      new MockLanguageModelV3({
+        doStream: async () => ({
+          stream: simulateReadableStream({
+            chunks: [
+              { type: "text-start", id: "t1" },
+              { type: "text-delta", id: "t1", delta: "first answer" },
+              { type: "text-end", id: "t1" },
+              {
+                type: "finish",
+                finishReason: { unified: "stop", raw: "stop" },
+                usage: {
+                  inputTokens: {
+                    total: 5,
+                    noCache: 5,
+                    cacheRead: undefined,
+                    cacheWrite: undefined,
+                  },
+                  outputTokens: { total: 5, text: 5, reasoning: undefined },
+                },
+              },
+            ] as LanguageModelV3StreamPart[],
+          }),
+        }),
+      });
+
+    const collidingErroringSource = (id: string) => ({
+      toUIMessageStream() {
+        const chunks = [
+          { type: "start", messageId: id },
+          { type: "text-start", id: "t2" },
+          { type: "text-delta", id: "t2", delta: "clobber" },
+        ];
+        let i = 0;
+        return new ReadableStream({
+          pull(controller) {
+            if (i < chunks.length) controller.enqueue(chunks[i++]);
+            else controller.error(new Error("UND_ERR_BODY_TIMEOUT"));
+          },
+        });
+      },
+    });
+
+    const agent = chat.agent({
+      id: "chatAgent.fragment-id-collision",
+      run: async ({ messages }) => {
+        turn++;
+        if (turn === 1) {
+          return streamText({ model: okModel(), messages });
+        }
+        return collidingErroringSource(firstAssistantId!) as never;
+      },
+      onTurnComplete: async (event) => {
+        events.push(event);
+        if (event.error == null && event.responseMessage) {
+          firstAssistantId = event.responseMessage.id;
+        }
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "cae-fragment-collision" });
+    try {
+      await harness.sendMessage(userMessage("hi", "u-1"));
+      await waitFor(() => firstAssistantId !== undefined);
+      await harness.sendMessage(userMessage("again", "u-2"));
+      await waitFor(() => events.some((e) => e.error != null));
+
+      const errorEvent = events.find((e) => e.error != null)!;
+      const preserved = (errorEvent.uiMessages as UIMessage[]).find(
+        (m) => m.id === firstAssistantId
+      );
+      expect(preserved).toBeDefined();
+      expect(extractText(preserved)).toBe("first answer");
+      expect(
+        (errorEvent.uiMessages as UIMessage[]).some((m) => extractText(m).includes("clobber"))
+      ).toBe(false);
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 describe("chat.createSession turn.complete() — source-stream failure", () => {
