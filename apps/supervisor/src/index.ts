@@ -22,7 +22,7 @@ import {
   isKubernetesEnvironment,
 } from "@trigger.dev/core/v3/serverOnly";
 import { createK8sApi, createApiserverMetricsFetcher } from "./clients/kubernetes.js";
-import { collectDefaultMetrics, Gauge, Histogram } from "prom-client";
+import { collectDefaultMetrics, Counter, Gauge, Histogram } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
@@ -57,6 +57,13 @@ const workloadCreateDuration = new Histogram({
   help: "Duration of workload manager create calls. A create may include backend-internal retries, so one observation can span multiple attempts.",
   labelNames: ["backend", "outcome"],
   buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
+  registers: [register],
+});
+
+const outboundRequestsTotal = new Counter({
+  name: "supervisor_outbound_request_total",
+  help: "Count of outbound HTTP requests from the supervisor, by target name, method, response status, and outcome (ok, http_error, invalid_response, network_error).",
+  labelNames: ["name", "method", "status", "outcome"],
   registers: [register],
 });
 
@@ -700,8 +707,15 @@ class ManagedSupervisor {
       });
 
       if (!res.ok) {
+        outboundRequestsTotal.inc({
+          name: "warm_start",
+          method: "POST",
+          status: String(res.status),
+          outcome: "http_error",
+        });
         this.logger.error("Warm start failed", {
           runId: dequeuedMessage.run.id,
+          statusCode: res.status,
         });
         return false;
       }
@@ -710,6 +724,12 @@ class ManagedSupervisor {
       const parsedData = z.object({ didWarmStart: z.boolean() }).safeParse(data);
 
       if (!parsedData.success) {
+        outboundRequestsTotal.inc({
+          name: "warm_start",
+          method: "POST",
+          status: String(res.status),
+          outcome: "invalid_response",
+        });
         this.logger.error("Warm start response invalid", {
           runId: dequeuedMessage.run.id,
           data,
@@ -717,8 +737,21 @@ class ManagedSupervisor {
         return false;
       }
 
+      outboundRequestsTotal.inc({
+        name: "warm_start",
+        method: "POST",
+        status: String(res.status),
+        outcome: "ok",
+      });
+
       return parsedData.data.didWarmStart;
     } catch (error) {
+      outboundRequestsTotal.inc({
+        name: "warm_start",
+        method: "POST",
+        status: "none",
+        outcome: "network_error",
+      });
       this.logger.error("Warm start error", {
         runId: dequeuedMessage.run.id,
         error,
