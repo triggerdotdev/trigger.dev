@@ -69,8 +69,8 @@ export function QueuePauseResumeButton({
                   className={
                     withQueueName
                       ? queue.paused
-                        ? "border-success/60 text-success hover:border-success"
-                        : "border-warning/60 text-warning hover:border-warning"
+                        ? "border-success/60 text-success [&_span]:text-success hover:border-success"
+                        : "border-warning/60 text-warning [&_span]:text-warning hover:border-warning"
                       : undefined
                   }
                 >
