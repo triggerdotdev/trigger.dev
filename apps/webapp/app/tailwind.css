@@ -244,9 +244,10 @@
   --color-success: var(--color-mint-600);
   --color-warning: var(--color-amber-600);
   /* Env hues move off orange/yellow: their unified mid-tones read muddy brown.
-     Sky and violet stay clean at this luminance and keep the env set distinct
-     (pink dev, green prod, sky staging, violet preview). */
-  --color-staging: var(--color-sky-600);
+     Blue, teal and violet stay clean at this luminance and keep the env set
+     distinct (blue dev, teal staging, violet preview, green prod). */
+  --color-dev: var(--color-blue-500);
+  --color-staging: var(--color-teal-600);
   --color-prod: var(--color-mint-600);
   --color-preview: var(--color-violet-500);
 
