@@ -888,12 +888,14 @@
    bars the sticky label overflows onto the page background, where the
    default dark-on-light text is correct. */
 [data-theme="light"] .timeline-span.bg-success,
-[data-theme="light"] .timeline-span.bg-error {
+[data-theme="light"] .timeline-span.bg-error,
+[data-theme="light"] .timeline-span.bg-blue-500 {
   container-type: inline-size;
 }
 @container (min-width: 3.5rem) {
   [data-theme="light"] .timeline-span.bg-success .text-shadow-custom,
-  [data-theme="light"] .timeline-span.bg-error .text-shadow-custom {
+  [data-theme="light"] .timeline-span.bg-error .text-shadow-custom,
+  [data-theme="light"] .timeline-span.bg-blue-500 .text-shadow-custom {
     color: #ffffff;
   }
 }
