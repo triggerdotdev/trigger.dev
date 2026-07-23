@@ -1042,13 +1042,13 @@ function EnvironmentPauseResumeButton({
                     leadingIconClassName={env.paused ? "text-success" : "text-warning"}
                     className={
                       env.paused
-                        ? "border-success/60 hover:border-success"
-                        : "border-warning/60 hover:border-warning"
+                        ? "border-success/60 text-success hover:border-success"
+                        : "border-warning/60 text-warning hover:border-warning"
                     }
                     aria-label={
                       env.paused
-                        ? `Resume processing runs in ${environmentFullTitle(env)}`
-                        : `Pause processing runs in ${environmentFullTitle(env)}`
+                        ? `Resumes ${environmentFullTitle(env)} so its runs can be dequeued again.`
+                        : `Pauses all runs from being dequeued in ${environmentFullTitle(env)}. Any executing runs will continue to run.`
                     }
                   >
                     {env.paused
@@ -1060,8 +1060,8 @@ function EnvironmentPauseResumeButton({
             </TooltipTrigger>
             <TooltipContent className={"text-xs"}>
               {env.paused
-                ? `Resume processing runs in ${environmentFullTitle(env)}`
-                : `Pause processing runs in ${environmentFullTitle(env)}`}
+                ? `Resumes ${environmentFullTitle(env)} so its runs can be dequeued again.`
+                : `Pauses all runs from being dequeued in ${environmentFullTitle(env)}. Any executing runs will continue to run.`}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

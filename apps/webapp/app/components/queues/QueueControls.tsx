@@ -48,8 +48,8 @@ export function QueuePauseResumeButton({
   const [isOpen, setIsOpen] = useState(false);
 
   const label = queue.paused
-    ? `Resume the "${queue.name}" queue so its runs can start again`
-    : `Pause the "${queue.name}" queue. Its runs wait until you resume it`;
+    ? `Resumes the "${queue.name}" queue so its runs can be dequeued again.`
+    : `Pauses all runs from being dequeued in the "${queue.name}" queue. Any executing runs will continue to run.`;
 
   const trigger = showTooltip ? (
     <div>
@@ -69,8 +69,8 @@ export function QueuePauseResumeButton({
                   className={
                     withQueueName
                       ? queue.paused
-                        ? "border-success/60 hover:border-success"
-                        : "border-warning/60 hover:border-warning"
+                        ? "border-success/60 text-success hover:border-success"
+                        : "border-warning/60 text-warning hover:border-warning"
                       : undefined
                   }
                 >
