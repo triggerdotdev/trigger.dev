@@ -1514,11 +1514,13 @@ function queueHealthLabel({ paused, running, queued, limit }: QueueHealth): Queu
   return "Idle";
 }
 
+// System themes fill the chip with the status color and drop to white text;
+// Classic keeps the outlined colored-text look.
 const QUEUE_HEALTH_STYLES: Record<QueueHealthLabel, string> = {
-  Paused: "text-warning",
-  "At capacity": "text-warning",
-  Backlogged: "text-blue-500",
-  Active: "text-success",
+  Paused: "text-warning system:border-transparent system:bg-warning system:text-white",
+  "At capacity": "text-warning system:border-transparent system:bg-warning system:text-white",
+  Backlogged: "text-blue-500 system:border-transparent system:bg-blue-500 system:text-white",
+  Active: "text-success system:border-transparent system:bg-success system:text-white",
   Idle: "text-text-dimmed",
 };
 

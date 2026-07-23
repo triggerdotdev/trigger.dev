@@ -412,6 +412,10 @@
    Classic and Dark are both dark-mode themes, so the variant matches both. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="classic"], [data-theme="dark"] *, [data-theme="classic"] *));
 
+/* system: matches the System preference themes (Dark and Light) but never
+   Classic - for restyles that must leave Classic untouched. */
+@custom-variant system (&:where([data-theme="dark"], [data-theme="light"], [data-theme="dark"] *, [data-theme="light"] *));
+
 @utility focus-custom {
   &:focus-visible {
     outline: 1px solid var(--color-text-link);

@@ -1082,7 +1082,7 @@ function ConcurrencyBlock({
               / {limit !== null ? limit.toLocaleString() : "∞"}
             </span>
             {limit !== null && limit > 0 && (
-              <span className={cn("text-xs", atLimit ? "text-warning" : "text-text-dimmed")}>
+              <span className={cn("text-xs", atLimit ? "system-mono-label text-warning" : "text-text-dimmed")}>
                 {/* Separator so the limit and the percentage don't read as one number
                     (e.g. "/ 25" + "44%" mashing into "2544%"). */}
                 <span className="mr-1 text-text-dimmed">·</span>
@@ -1091,7 +1091,7 @@ function ConcurrencyBlock({
             )}
           </div>
           {limit !== null && limit > 0 && (
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-charcoal-750">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/5 dark:bg-charcoal-750">
               <div
                 className={cn("h-full rounded-full", atLimit ? "bg-warning" : "bg-queues")}
                 style={{ width: `${pct}%` }}
