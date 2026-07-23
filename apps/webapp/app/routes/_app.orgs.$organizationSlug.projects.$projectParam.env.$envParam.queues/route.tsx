@@ -1444,7 +1444,11 @@ function QueueEnvMetricChart({
           <span className="flex items-baseline gap-2">
             <span className="flex items-center gap-1">
               {tile.label}
-              <InfoIconTooltip content={tile.description} contentClassName="max-w-[230px]" />
+              <InfoIconTooltip
+                content={tile.description}
+                contentClassName="max-w-[230px]"
+                disableHoverableContent
+              />
             </span>
             {peak != null ? (
               tile.totalTooltip && !showLoading ? (

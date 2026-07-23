@@ -206,7 +206,13 @@ export function QueueMetricChartCard({
           info || titleAccessory ? (
             <span className="flex items-center gap-1">
               {title}
-              {info ? <InfoIconTooltip content={info} contentClassName="max-w-[230px]" /> : null}
+              {info ? (
+                <InfoIconTooltip
+                  content={info}
+                  contentClassName="max-w-[230px]"
+                  disableHoverableContent
+                />
+              ) : null}
               {titleAccessory}
             </span>
           ) : (
@@ -337,6 +343,7 @@ export function QueueSparklineStat({
               </div>
             }
             contentClassName="max-w-[230px]"
+            disableHoverableContent
           />
         ) : null}
       </div>
