@@ -243,18 +243,16 @@
   /* Status */
   --color-success: var(--color-mint-600);
   --color-warning: var(--color-amber-600);
-  /* Env hues move off orange/yellow: their unified mid-tones read muddy brown.
-     Blue, teal and violet stay clean at this luminance and keep the env set
-     distinct (blue dev, teal staging, violet preview, green prod). */
-  --color-dev: var(--color-blue-500);
-  --color-staging: var(--color-teal-600);
+  /* Env set: pink dev and green prod as in Classic, preview moves to blue
+     (yellow's unified mid-tone reads muddy brown). Staging stays warm orange
+     and is the one per-mode env color - see the light block. */
   --color-prod: var(--color-mint-600);
-  --color-preview: var(--color-violet-500);
+  --color-preview: var(--color-blue-500);
 
   /* Icons */
   --color-schedules: var(--color-yellow-700);
   /* Matches the preview env color */
-  --color-previewBranches: var(--color-violet-500);
+  --color-previewBranches: var(--color-blue-500);
   --color-metrics: var(--color-green-600);
   --color-regions: var(--color-green-600);
   --color-aiMetrics: var(--color-green-600);
@@ -750,6 +748,10 @@
 
   /* Status/env/icon accents live in the unified dark+light block above;
      dev keeps its Classic pink-500, which passes on white too. */
+
+  /* Staging is the one per-mode env color: warm orange has no clean unified
+     mid-tone, so dark keeps Classic's bright orange-400 and light deepens it */
+  --color-staging: var(--color-orange-600);
 
   /* Neutral run statuses: soft light grays for sparkbars and charts */
   --color-run-pending: #ccd0d6;
