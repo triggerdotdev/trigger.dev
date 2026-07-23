@@ -190,11 +190,6 @@ export default function Page() {
           >
             Private connection docs
           </LinkButton>
-          {hasPrivateNetworking && canAdd && (
-            <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
-              Add Connection
-            </LinkButton>
-          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
@@ -291,6 +286,14 @@ export default function Page() {
                     </div>
                   </div>
                 ))}
+
+                {canAdd && (
+                  <div className="flex justify-center pt-2">
+                    <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
+                      Add Connection
+                    </LinkButton>
+                  </div>
+                )}
 
                 {!canAdd && (
                   <Paragraph variant="extra-small" className="text-text-dimmed">
