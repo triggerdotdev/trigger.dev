@@ -132,7 +132,6 @@ export function QueueMetricChart({
   defaultPeriod,
   warningOverlay,
   carryBackfill,
-  showLegend,
   thresholdStroke,
 }: QueueMetricChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(query, {
@@ -209,7 +208,6 @@ export function QueueMetricChart({
       series={series.map((s) => s.key)}
       state={state}
       fillContainer
-      showLegend={showLegend}
     >
       <Chart.Line
         lineType="monotone"
@@ -241,7 +239,7 @@ export function QueueMetricChartCard({
     <div className={className ?? "h-64"}>
       <ChartCard
         title={
-          info || titleAccessory ? (
+          <span className="flex flex-col gap-1">
             <span className="flex items-center gap-1">
               {title}
               {info ? (
@@ -253,9 +251,25 @@ export function QueueMetricChartCard({
               ) : null}
               {titleAccessory}
             </span>
-          ) : (
-            title
-          )
+            {/* Inline legend below the title (swatch + label per series), matching the list-page
+                charts — instead of the Chart.Root legend with per-series totals. */}
+            {chart.showLegend && chart.series.length > 0 ? (
+              <span className="flex flex-wrap items-center gap-2">
+                {chart.series.map((s) => (
+                  <span
+                    key={s.key}
+                    className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
+                  >
+                    <span
+                      className="size-2.5 rounded-[2px]"
+                      style={{ backgroundColor: s.color }}
+                    />
+                    {s.label}
+                  </span>
+                ))}
+              </span>
+            ) : null}
+          </span>
         }
       >
         <QueueMetricChart {...chart} />
