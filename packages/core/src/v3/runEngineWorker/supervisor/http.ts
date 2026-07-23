@@ -68,24 +68,39 @@ export class SupervisorHttpClient {
     requestInit?: RequestInit,
     options?: ZodFetchOptions<z.output<T>>
   ): Promise<ApiResult<z.infer<T>>> {
+    const start = performance.now();
     const result = await wrapZodFetch(schema, url, requestInit, options);
 
     if (this.onHttpRequestComplete) {
+      const durationMs = performance.now() - start;
       const method = requestInit?.method ?? "GET";
 
       if (result.success) {
-        this.onHttpRequestComplete({ name, method, status: "2xx", outcome: "ok" });
+        this.onHttpRequestComplete({ name, method, status: "2xx", outcome: "ok", durationMs });
       } else if (result.statusCode === 200) {
-        this.onHttpRequestComplete({ name, method, status: "200", outcome: "invalid_response" });
+        this.onHttpRequestComplete({
+          name,
+          method,
+          status: "200",
+          outcome: "invalid_response",
+          durationMs,
+        });
       } else if (typeof result.statusCode === "number") {
         this.onHttpRequestComplete({
           name,
           method,
           status: String(result.statusCode),
           outcome: "http_error",
+          durationMs,
         });
       } else {
-        this.onHttpRequestComplete({ name, method, status: "none", outcome: "network_error" });
+        this.onHttpRequestComplete({
+          name,
+          method,
+          status: "none",
+          outcome: "network_error",
+          durationMs,
+        });
       }
     }
 
