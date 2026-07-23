@@ -97,7 +97,9 @@ const theme = {
     icon: "text-white",
   },
   docs: {
-    textColor: "text-callout-docs-text/70 transition group-disabled/button:text-text-dimmed/80",
+    textColor:
+      // System themes: monochrome label, the book icon keeps the blue
+      "text-callout-docs-text/70 system:text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
       "bg-secondary border border-border-bright/50 shadow-xs group-hover/button:bg-background-raised group-disabled/button:bg-tertiary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
     shortcut:
