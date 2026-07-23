@@ -1,0 +1,303 @@
+{
+  "scenario": "ckTrickle",
+  "seeds": [
+    "seed-a",
+    "seed-b",
+    "seed-c"
+  ],
+  "weights": {
+    "bulk": 1,
+    "trickle-1": 1,
+    "trickle-2": 1
+  },
+  "perDiscipline": [
+    {
+      "selector": "baseline",
+      "contentionWorstShareOverWeight": {
+        "mean": 0.27872569582223233,
+        "min": 0.2542372881355932,
+        "max": 0.29096989966555187
+      },
+      "contentionJain": {
+        "mean": 0.4983343471106942,
+        "min": 0.4906272022551091,
+        "max": 0.5021879195384868
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 2.440677966101695,
+          "meanWait": 871.9875,
+          "waitP50": 875,
+          "waitP99": 1644,
+          "waitMax": 1646
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.3050847457627119,
+          "meanWait": 1338.6666666666667,
+          "waitP50": 1399,
+          "waitP99": 1705,
+          "waitMax": 1705
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.2542372881355932,
+          "meanWait": 1165.8666666666666,
+          "waitP50": 1162,
+          "waitP99": 1718,
+          "waitMax": 1718
+        }
+      ]
+    },
+    {
+      "selector": "sfq",
+      "contentionWorstShareOverWeight": {
+        "mean": 0.9092746009294808,
+        "min": 0.8910891089108911,
+        "max": 0.9183673469387755
+      },
+      "contentionJain": {
+        "mean": 0.9835072030385605,
+        "min": 0.9768265823996936,
+        "max": 0.9868475133579941
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 1.163265306122449,
+          "meanWait": 1237.4333333333334,
+          "waitP50": 1317,
+          "waitP99": 2139,
+          "waitMax": 2140
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.9183673469387755,
+          "meanWait": 23.933333333333334,
+          "waitP50": 13,
+          "waitP99": 96,
+          "waitMax": 96
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.9183673469387755,
+          "meanWait": 20.3,
+          "waitP50": 14,
+          "waitP99": 62,
+          "waitMax": 62
+        }
+      ]
+    },
+    {
+      "selector": "drr",
+      "contentionWorstShareOverWeight": {
+        "mean": 0.7900070943549204,
+        "min": 0.7692307692307692,
+        "max": 0.8181818181818181
+      },
+      "contentionJain": {
+        "mean": 0.9184573419314669,
+        "min": 0.9037433155080212,
+        "max": 0.937984496124031
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 1.4347826086956523,
+          "meanWait": 1235.5583333333334,
+          "waitP50": 1315,
+          "waitP99": 2139,
+          "waitMax": 2140
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.782608695652174,
+          "meanWait": 30.433333333333334,
+          "waitP50": 18,
+          "waitP99": 128,
+          "waitMax": 128
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.782608695652174,
+          "meanWait": 26.333333333333332,
+          "waitP50": 25,
+          "waitP99": 61,
+          "waitMax": 61
+        }
+      ]
+    },
+    {
+      "selector": "stride",
+      "contentionWorstShareOverWeight": {
+        "mean": 0.9092746009294808,
+        "min": 0.8910891089108911,
+        "max": 0.9183673469387755
+      },
+      "contentionJain": {
+        "mean": 0.9835072030385605,
+        "min": 0.9768265823996936,
+        "max": 0.9868475133579941
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 1.163265306122449,
+          "meanWait": 1237.4333333333334,
+          "waitP50": 1317,
+          "waitP99": 2139,
+          "waitMax": 2140
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.9183673469387755,
+          "meanWait": 23.933333333333334,
+          "waitP50": 13,
+          "waitP99": 96,
+          "waitMax": 96
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.9183673469387755,
+          "meanWait": 20.3,
+          "waitP50": 14,
+          "waitP99": 62,
+          "waitMax": 62
+        }
+      ]
+    },
+    {
+      "selector": "codel(sfq)",
+      "contentionWorstShareOverWeight": {
+        "mean": 0.9092746009294808,
+        "min": 0.8910891089108911,
+        "max": 0.9183673469387755
+      },
+      "contentionJain": {
+        "mean": 0.9835072030385605,
+        "min": 0.9768265823996936,
+        "max": 0.9868475133579941
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 1.163265306122449,
+          "meanWait": 1237.4333333333334,
+          "waitP50": 1317,
+          "waitP99": 2139,
+          "waitMax": 2140
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.9183673469387755,
+          "meanWait": 23.933333333333334,
+          "waitP50": 13,
+          "waitP99": 96,
+          "waitMax": 96
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.9183673469387755,
+          "meanWait": 20.3,
+          "waitP50": 14,
+          "waitP99": 62,
+          "waitMax": 62
+        }
+      ]
+    },
+    {
+      "selector": "codel(baseline)",
+      "contentionWorstShareOverWeight": {
+        "mean": 0.01818181818181818,
+        "min": 0,
+        "max": 0.05454545454545454
+      },
+      "contentionJain": {
+        "mean": 0.42049894668433757,
+        "min": 0.4153846153846154,
+        "max": 0.4307276092837818
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 2.6666666666666665,
+          "meanWait": 871.9875,
+          "waitP50": 875,
+          "waitP99": 1644,
+          "waitMax": 1646
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0,
+          "meanWait": 1487.9333333333334,
+          "waitP50": 1569,
+          "waitP99": 1903,
+          "waitMax": 1903
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.3333333333333333,
+          "meanWait": 1027.9333333333334,
+          "waitP50": 1014,
+          "waitP99": 1653,
+          "waitMax": 1653
+        }
+      ]
+    }
+  ]
+}
