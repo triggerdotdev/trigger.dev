@@ -1012,7 +1012,7 @@ function QueueStats({
         accessory={
           <LinkButton
             variant="secondary/small-icon"
-            className="system:border-indigo-400 system:bg-indigo-500 system:group-hover/button:border-indigo-300 system:group-hover/button:bg-indigo-400"
+            className="system:border-transparent system:bg-runs system:transition system:group-hover/button:brightness-110"
             LeadingIcon={RunsIcon}
             leadingIconClassName="text-runs system:text-white"
             to={queuedRunsPath}
