@@ -382,8 +382,8 @@ function OverviewCharts({
           title="Concurrency"
           info={
             <>
-              How many runs are going at once (<ColorSwatch color={COLORS.running} /> color) versus
-              the queue's limit (<ColorSwatch color={COLORS.limit} /> color). Turns{" "}
+              How many runs are executing at once (<ColorSwatch color={COLORS.running} />) versus
+              the queue's limit (<ColorSwatch color={COLORS.limit} />). Turns{" "}
               <ColorSwatch color="var(--color-warning)" /> color when it reaches the limit.
             </>
           }
@@ -413,12 +413,7 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Queue depth"
-          info={
-            <>
-              How many runs are waiting in this queue over time (
-              <ColorSwatch color={COLORS.queued} /> color).
-            </>
-          }
+          info="How many runs are waiting in this queue over time."
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -431,8 +426,8 @@ function OverviewCharts({
           title="Throughput"
           info={
             <>
-              Runs arriving (Enqueued, <ColorSwatch color={COLORS.limit} /> color) versus starting
-              (Started, <ColorSwatch color={COLORS.running} /> color). Turns{" "}
+              Runs arriving (<ColorSwatch color={COLORS.limit} /> Enqueued) versus starting
+              (<ColorSwatch color={COLORS.running} /> Started). Turns{" "}
               <ColorSwatch color="var(--color-warning)" /> color when Started falls behind.
             </>
           }
@@ -453,13 +448,7 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Scheduling delay"
-          info={
-            <>
-              How long runs wait before they start: p50 (<ColorSwatch color={COLORS.p50} /> color),
-              p95 (<ColorSwatch color={COLORS.p95} /> color), and p99 (
-              <ColorSwatch color={COLORS.p99} /> color).
-            </>
-          }
+          info="How long runs wait before they start."
           showLegend
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
