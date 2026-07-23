@@ -1,4 +1,11 @@
 import { appendFileSync } from "node:fs";
+import { EOL } from "node:os";
+
+function formatGithubActionsCommandFile(entries: Record<string, string>) {
+  const lines = Object.entries(entries).map(([key, value]) => `${key}=${value}`);
+
+  return lines.length > 0 ? `${lines.join(EOL)}${EOL}` : "";
+}
 
 export function setGithubActionsOutputAndEnvVars({
   envVars,
@@ -9,19 +16,11 @@ export function setGithubActionsOutputAndEnvVars({
 }) {
   // Set environment variables
   if (process.env.GITHUB_ENV) {
-    const contents = Object.entries(envVars)
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\n");
-
-    appendFileSync(process.env.GITHUB_ENV, contents);
+    appendFileSync(process.env.GITHUB_ENV, formatGithubActionsCommandFile(envVars));
   }
 
   // Set outputs
   if (process.env.GITHUB_OUTPUT) {
-    const contents = Object.entries(outputs)
-      .map(([key, value]) => `${key}=${value}`)
-      .join("\n");
-
-    appendFileSync(process.env.GITHUB_OUTPUT, contents);
+    appendFileSync(process.env.GITHUB_OUTPUT, formatGithubActionsCommandFile(outputs));
   }
 }
