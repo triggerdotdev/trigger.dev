@@ -553,7 +553,7 @@ function QueuesWithMetricsView() {
               valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
-                  <span className={cn(limitClassName, "system-mono-label flex items-center gap-1")}>
+                  <span className={cn(limitClassName, "system:text-text-dimmed flex items-center gap-1")}>
                     Including {envRunningLive - environment.concurrencyLimit} burst runs{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>
@@ -1643,7 +1643,7 @@ function ClassicQueuesView() {
               valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
-                  <span className={cn(limitClassName, "system-mono-label flex items-center gap-1")}>
+                  <span className={cn(limitClassName, "system:text-text-dimmed flex items-center gap-1")}>
                     Including {environment.running - environment.concurrencyLimit} burst runs{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>
@@ -1674,7 +1674,7 @@ function ClassicQueuesView() {
               valueClassName={limitClassName}
               suffix={
                 environment.burstFactor > 1 ? (
-                  <span className={cn(limitClassName, "system-mono-label flex items-center gap-1")}>
+                  <span className={cn(limitClassName, "system:text-text-dimmed flex items-center gap-1")}>
                     Burst limit {environment.burstFactor * environment.concurrencyLimit}{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>
