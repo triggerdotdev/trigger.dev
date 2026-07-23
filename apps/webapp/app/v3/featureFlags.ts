@@ -110,6 +110,35 @@ export function validatePartialFeatureFlags(values: Record<string, unknown>) {
 }
 
 // Utility types for catalog-driven UI rendering
+/**
+ * Resolve whether deployed runs should use the internal API origin, from the
+ * org's feature-flags JSON. Precedence: a per-org override wins in BOTH
+ * directions; the global default applies only when the org has not set the
+ * flag (or set it to something invalid).
+ */
+export function resolveInternalApiOriginEnabled({
+  orgFeatureFlags,
+  globalDefault,
+}: {
+  orgFeatureFlags: unknown;
+  globalDefault: boolean;
+}): boolean {
+  const override =
+    orgFeatureFlags && typeof orgFeatureFlags === "object" && !Array.isArray(orgFeatureFlags)
+      ? (orgFeatureFlags as Record<string, unknown>)[FEATURE_FLAG.internalApiOriginEnabled]
+      : undefined;
+
+  if (override !== undefined) {
+    const parsed = FeatureFlagCatalog[FEATURE_FLAG.internalApiOriginEnabled].safeParse(override);
+
+    if (parsed.success) {
+      return parsed.data;
+    }
+  }
+
+  return globalDefault;
+}
+
 export type FlagControlType =
   | { type: "boolean" }
   | { type: "enum"; options: string[] }

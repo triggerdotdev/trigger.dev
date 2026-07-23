@@ -7,7 +7,7 @@ import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
 import { removeBlacklistedVariables } from "../environmentVariableRules.server";
-import { FEATURE_FLAG, FeatureFlagCatalog } from "../featureFlags";
+import { FEATURE_FLAG, resolveInternalApiOriginEnabled } from "../featureFlags";
 import { flag } from "../featureFlags.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
@@ -1167,26 +1167,15 @@ async function resolveProdApiOrigin(
     select: { featureFlags: true },
   });
 
-  const orgFeatureFlags = organization?.featureFlags;
-  const override =
-    orgFeatureFlags && typeof orgFeatureFlags === "object" && !Array.isArray(orgFeatureFlags)
-      ? (orgFeatureFlags as Record<string, unknown>)[FEATURE_FLAG.internalApiOriginEnabled]
-      : undefined;
-
-  if (override !== undefined) {
-    const parsed = FeatureFlagCatalog[FEATURE_FLAG.internalApiOriginEnabled].safeParse(override);
-
-    if (parsed.success) {
-      return parsed.data ? env.INTERNAL_API_ORIGIN : publicOrigin;
-    }
-  }
-
-  const globalEnabled = await flag({
-    key: FEATURE_FLAG.internalApiOriginEnabled,
-    defaultValue: false,
+  const enabled = resolveInternalApiOriginEnabled({
+    orgFeatureFlags: organization?.featureFlags,
+    globalDefault: await flag({
+      key: FEATURE_FLAG.internalApiOriginEnabled,
+      defaultValue: false,
+    }),
   });
 
-  return globalEnabled ? env.INTERNAL_API_ORIGIN : publicOrigin;
+  return enabled ? env.INTERNAL_API_ORIGIN : publicOrigin;
 }
 
 async function resolveBuiltInProdVariables(
