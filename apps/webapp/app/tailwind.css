@@ -950,21 +950,23 @@
 [data-theme="light"] {
   /* Text deepens toward black */
   --color-text-bright: color-mix(in srgb, #1a1b1f, #000 calc(var(--theme-contrast, 0) * 100%));
-  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), #000 calc(var(--theme-contrast, 0) * 60%));
-  --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), #000 calc(var(--theme-contrast, 0) * 45%));
+  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), #000 calc(var(--theme-contrast, 0) * 85%));
+  --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), #000 calc(var(--theme-contrast, 0) * 70%));
 
-  /* Backgrounds lift toward white, keeping their relative order */
-  --color-background-deep: color-mix(in srgb, #f1f2f4, #fff calc(var(--theme-contrast, 0) * 40%));
-  --color-background-dimmed: color-mix(in srgb, #fbfbfc, #fff calc(var(--theme-contrast, 0) * 100%));
-  --color-background-hover: color-mix(in srgb, #f2f3f5, #fff calc(var(--theme-contrast, 0) * 30%));
+  /* On white the foregrounds carry the contrast: cards stay white while the
+     page-behind surfaces darken a touch so panels separate */
+  --color-background-deep: color-mix(in srgb, #f1f2f4, #000 calc(var(--theme-contrast, 0) * 10%));
+  --color-background-hover: color-mix(in srgb, #f2f3f5, #000 calc(var(--theme-contrast, 0) * 8%));
+  --color-background-raised: color-mix(in srgb, #e9eaee, #000 calc(var(--theme-contrast, 0) * 10%));
 
-  /* Controls and borders step up toward black */
-  --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 10%));
-  --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 12%));
-  --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 14%));
-  --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 14%));
-  --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 16%));
-  --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 20%));
-  --color-border-brighter: color-mix(in srgb, #b9bdc7, #000 calc(var(--theme-contrast, 0) * 24%));
-  --color-border-brightest: color-mix(in srgb, #9ba1ad, #000 calc(var(--theme-contrast, 0) * 28%));
+  /* Controls and borders push hard toward black - this is where light-mode
+     contrast is actually visible */
+  --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 25%));
+  --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 28%));
+  --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 32%));
+  --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 28%));
+  --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 32%));
+  --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 38%));
+  --color-border-brighter: color-mix(in srgb, #b9bdc7, #000 calc(var(--theme-contrast, 0) * 42%));
+  --color-border-brightest: color-mix(in srgb, #9ba1ad, #000 calc(var(--theme-contrast, 0) * 46%));
 }
