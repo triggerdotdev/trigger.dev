@@ -1168,7 +1168,7 @@ type TilePoint = { bucket: number; value: number };
 function WarningSwatch() {
   return (
     <span
-      className="mx-0.5 inline-block size-2.5 rounded-[3px] align-middle"
+      className="mx-0.5 inline-block size-2.5 -translate-y-px rounded-[2px] align-middle"
       style={{ backgroundColor: "var(--color-warning)" }}
       aria-label="yellow"
     />
