@@ -1,0 +1,367 @@
+{
+  "scenario": "ckTrickle",
+  "seeds": [
+    "seed-a",
+    "seed-b",
+    "seed-c"
+  ],
+  "envLimit": 4,
+  "perKeyCap": 2,
+  "totalCap": 2,
+  "lightKey": "trickle-1",
+  "weights": {
+    "bulk": 1,
+    "trickle-1": 1,
+    "trickle-2": 1
+  },
+  "perTreatment": [
+    {
+      "treatment": "baseline",
+      "lightWait": {
+        "mean": 1107.3222222222223,
+        "min": 836.3333333333334,
+        "max": 1338.6666666666667
+      },
+      "worstWait": {
+        "mean": 1133.6222222222223,
+        "min": 872.8,
+        "max": 1338.6666666666667
+      },
+      "makespan": {
+        "mean": 1940.3333333333333,
+        "min": 1821,
+        "max": 2142
+      },
+      "contentionWorst": {
+        "mean": 0.27872569582223233,
+        "min": 0.2542372881355932,
+        "max": 0.29096989966555187
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 2.440677966101695,
+          "meanWait": 871.9875,
+          "waitP50": 875,
+          "waitP99": 1644,
+          "waitMax": 1646
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.3050847457627119,
+          "meanWait": 1338.6666666666667,
+          "waitP50": 1399,
+          "waitP99": 1705,
+          "waitMax": 1705
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.2542372881355932,
+          "meanWait": 1165.8666666666666,
+          "waitP50": 1162,
+          "waitP99": 1718,
+          "waitMax": 1718
+        }
+      ]
+    },
+    {
+      "treatment": "perKeyCap",
+      "lightWait": {
+        "mean": 18.933333333333334,
+        "min": 8.8,
+        "max": 26.066666666666666
+      },
+      "worstWait": {
+        "mean": 1555.2430555555557,
+        "min": 1426.3708333333334,
+        "max": 1770.1916666666666
+      },
+      "makespan": {
+        "mean": 3038.3333333333335,
+        "min": 2863,
+        "max": 3309
+      },
+      "contentionWorst": {
+        "mean": 0.921778350515464,
+        "min": 0.9,
+        "max": 0.9375
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 1.2000000000000002,
+          "meanWait": 1770.1916666666666,
+          "waitP50": 1765,
+          "waitP99": 3293,
+          "waitMax": 3309
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.9,
+          "meanWait": 26.066666666666666,
+          "waitP50": 0,
+          "waitP99": 146,
+          "waitMax": 146
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.9,
+          "meanWait": 15.766666666666667,
+          "waitP50": 0,
+          "waitP99": 159,
+          "waitMax": 159
+        }
+      ]
+    },
+    {
+      "treatment": "totalCap",
+      "lightWait": {
+        "mean": 2851.788888888889,
+        "min": 2528.4666666666667,
+        "max": 3236.766666666667
+      },
+      "worstWait": {
+        "mean": 2860.7444444444445,
+        "min": 2535.3,
+        "max": 3236.766666666667
+      },
+      "makespan": {
+        "mean": 3904.6666666666665,
+        "min": 3653,
+        "max": 4342
+      },
+      "contentionWorst": {
+        "mean": 0.27872569582223233,
+        "min": 0.2542372881355932,
+        "max": 0.29096989966555187
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 2.440677966101695,
+          "meanWait": 1770.1916666666666,
+          "waitP50": 1765,
+          "waitP99": 3293,
+          "waitMax": 3309
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.3050847457627119,
+          "meanWait": 3236.766666666667,
+          "waitP50": 3266,
+          "waitP99": 3523,
+          "waitMax": 3523
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.2542372881355932,
+          "meanWait": 3129.5,
+          "waitP50": 3132,
+          "waitP99": 3536,
+          "waitMax": 3536
+        }
+      ]
+    },
+    {
+      "treatment": "sfq",
+      "lightWait": {
+        "mean": 17.444444444444443,
+        "min": 11.633333333333333,
+        "max": 23.933333333333334
+      },
+      "worstWait": {
+        "mean": 1070.3680555555557,
+        "min": 957.8,
+        "max": 1237.4333333333334
+      },
+      "makespan": {
+        "mean": 1942,
+        "min": 1818,
+        "max": 2140
+      },
+      "contentionWorst": {
+        "mean": 0.9092746009294808,
+        "min": 0.8910891089108911,
+        "max": 0.9183673469387755
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 1.163265306122449,
+          "meanWait": 1237.4333333333334,
+          "waitP50": 1317,
+          "waitP99": 2139,
+          "waitMax": 2140
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.9183673469387755,
+          "meanWait": 23.933333333333334,
+          "waitP50": 13,
+          "waitP99": 96,
+          "waitMax": 96
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.9183673469387755,
+          "meanWait": 20.3,
+          "waitP50": 14,
+          "waitP99": 62,
+          "waitMax": 62
+        }
+      ]
+    },
+    {
+      "treatment": "drr",
+      "lightWait": {
+        "mean": 22.755555555555556,
+        "min": 16.1,
+        "max": 30.433333333333334
+      },
+      "worstWait": {
+        "mean": 1068.9722222222222,
+        "min": 957.0166666666667,
+        "max": 1235.5583333333334
+      },
+      "makespan": {
+        "mean": 1941.3333333333333,
+        "min": 1818,
+        "max": 2140
+      },
+      "contentionWorst": {
+        "mean": 0.7900070943549204,
+        "min": 0.7692307692307692,
+        "max": 0.8181818181818181
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 1.4347826086956523,
+          "meanWait": 1235.5583333333334,
+          "waitP50": 1315,
+          "waitP99": 2139,
+          "waitMax": 2140
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.782608695652174,
+          "meanWait": 30.433333333333334,
+          "waitP50": 18,
+          "waitP99": 128,
+          "waitMax": 128
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 0.782608695652174,
+          "meanWait": 26.333333333333332,
+          "waitP50": 25,
+          "waitP99": 61,
+          "waitMax": 61
+        }
+      ]
+    },
+    {
+      "treatment": "perKeyCap+sfq",
+      "lightWait": {
+        "mean": 8.011111111111111,
+        "min": 3.6,
+        "max": 14.333333333333334
+      },
+      "worstWait": {
+        "mean": 1606.2347222222222,
+        "min": 1438.425,
+        "max": 1844.2416666666666
+      },
+      "makespan": {
+        "mean": 3097.3333333333335,
+        "min": 2876,
+        "max": 3387
+      },
+      "contentionWorst": {
+        "mean": 0.6577540106951871,
+        "min": 0.42857142857142855,
+        "max": 0.8823529411764707
+      },
+      "detailSeed0": [
+        {
+          "groupId": "bulk",
+          "dequeued": 240,
+          "weight": 1,
+          "share": 0.8,
+          "contentionShareOverWeight": 0.6623376623376623,
+          "meanWait": 1844.2416666666666,
+          "waitP50": 1843,
+          "waitP99": 3371,
+          "waitMax": 3387
+        },
+        {
+          "groupId": "trickle-1",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 1.168831168831169,
+          "meanWait": 14.333333333333334,
+          "waitP50": 0,
+          "waitP99": 96,
+          "waitMax": 96
+        },
+        {
+          "groupId": "trickle-2",
+          "dequeued": 30,
+          "weight": 1,
+          "share": 0.1,
+          "contentionShareOverWeight": 1.168831168831169,
+          "meanWait": 5.1,
+          "waitP50": 0,
+          "waitP99": 31,
+          "waitMax": 31
+        }
+      ]
+    }
+  ]
+}

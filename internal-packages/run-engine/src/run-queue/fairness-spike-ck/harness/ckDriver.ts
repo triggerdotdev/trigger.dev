@@ -32,6 +32,21 @@ export type CkDriverConfig = {
   discipline: CkDiscipline;
   workload: WorkloadSpec;
   maxLogicalMs?: number;
+  /**
+   * Phase-2 per-key limit, modelled with the REAL Lua gate: sets the base queue's
+   * concurrencyLimit so the CK-dequeue Lua caps EACH ck variant's in-flight at
+   * this and skips an at-limit variant (oldest-eligible-first). Uniform across
+   * variants (Phase 2's per-key HGET override would cap only the heavy key, but
+   * since a light key never approaches the cap the effect is equivalent here).
+   * Undefined = no per-key cap (env limit is the only per-variant ceiling).
+   */
+  perKeyCap?: number;
+  /**
+   * Phase-1 total cap, modelled at the driver: do not admit while total in-flight
+   * across all CK variants of the base queue (= :groupConcurrency SCARD) is at or
+   * above this. The real Lua has no group gate yet, so this one is driver-side.
+   */
+  totalCap?: number;
 };
 
 function authenticatedEnv(limit: number) {
@@ -72,6 +87,13 @@ export async function runCkScenario(config: CkDriverConfig): Promise<RunMetrics>
     redis: config.redis,
     queueSelectionStrategy: new FairQueueSelectionStrategy({ redis: config.redis, keys }),
   });
+
+  // Phase-2 per-key cap: set the real per-queue concurrency limit the CK Lua
+  // gates each variant against. Faithful (native gate, true age order, no rescore
+  // pollution).
+  if (config.perKeyCap !== undefined) {
+    await queue.updateQueueConcurrencyLimits(env, BASE_QUEUE, config.perKeyCap);
+  }
 
   const reader = new CkReader(admin, keys, config.redis.keyPrefix ?? "");
   config.discipline.reset();
@@ -118,13 +140,19 @@ export async function runCkScenario(config: CkDriverConfig): Promise<RunMetrics>
         await queue.enqueueMessage({ env, message, workerQueue: ENV, skipDequeueProcessing: true });
       }
 
+      const baseQueue = keys.queueKey(env, BASE_QUEUE, "any");
+      const totalCap = config.totalCap;
       let progressed = true;
       while (progressed) {
+        // Phase-1 total cap: refuse to admit while group in-flight is at the cap
+        // (models the :groupConcurrency SCARD gate). Wait for a completion.
+        if (totalCap !== undefined && holding.length >= totalCap) break;
+
         if (config.discipline.rescore) {
-          const active = await reader.readActiveCks(keys.queueKey(env, BASE_QUEUE, "any"));
+          const active = await reader.readActiveCks(baseQueue);
           if (active.length > 0) {
             const order = config.discipline.order(active, scoreBase + t);
-            await rescoreCkIndex(admin, keys, keys.queueKey(env, BASE_QUEUE, "any"), order, Date.now());
+            await rescoreCkIndex(admin, keys, baseQueue, order, Date.now());
           }
         }
 

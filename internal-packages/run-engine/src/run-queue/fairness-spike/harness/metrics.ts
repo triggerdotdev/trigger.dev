@@ -34,6 +34,12 @@ export type RunMetrics = {
   contentionWorstShareOverWeight: number;
   contentionJain: number;
   /**
+   * Logical time of the last dequeue (drain time). Work-conservation signal: on a
+   * fixed workload a non-work-conserving discipline (e.g. a static cap that idles
+   * slots when the capped tenant is alone) drains slower, so makespan is larger.
+   */
+  makespanMs: number;
+  /**
    * The largest per-group p99/max wait. NOTE: this is NOT an anti-staleness win
    * signal. It is dominated by the highest-volume tenant, which a fair selector
    * deliberately makes wait longer, so a fairer selector can score WORSE here.
@@ -172,6 +178,7 @@ export function computeMetrics(input: {
     wallClockMs: input.wallClockMs,
     contentionWorstShareOverWeight: cowVec.length ? Math.min(...cowVec) : 1,
     contentionJain: jain(cowVec),
+    makespanMs: events.length ? Math.max(...events.map((e) => e.dequeueAtMs)) : 0,
     worstWaitP99: perGroup.length ? Math.max(...perGroup.map((p) => p.waitP99)) : 0,
     worstWaitMax: perGroup.length ? Math.max(...perGroup.map((p) => p.waitMax)) : 0,
   };

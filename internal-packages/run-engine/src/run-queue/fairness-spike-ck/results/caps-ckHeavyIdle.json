@@ -1,0 +1,233 @@
+{
+  "scenario": "ckHeavyIdle",
+  "seeds": [
+    "seed-a",
+    "seed-b",
+    "seed-c"
+  ],
+  "envLimit": 4,
+  "perKeyCap": 2,
+  "totalCap": 2,
+  "lightKey": "heavy",
+  "weights": {
+    "heavy": 1
+  },
+  "perTreatment": [
+    {
+      "treatment": "baseline",
+      "lightWait": {
+        "mean": 632.8383333333334,
+        "min": 574.22,
+        "max": 702.875
+      },
+      "worstWait": {
+        "mean": 632.8383333333334,
+        "min": 574.22,
+        "max": 702.875
+      },
+      "makespan": {
+        "mean": 1240.3333333333333,
+        "min": 1159,
+        "max": 1311
+      },
+      "contentionWorst": {
+        "mean": 1,
+        "min": 1,
+        "max": 1
+      },
+      "detailSeed0": [
+        {
+          "groupId": "heavy",
+          "dequeued": 200,
+          "weight": 1,
+          "share": 1,
+          "contentionShareOverWeight": 0,
+          "meanWait": 702.875,
+          "waitP50": 723,
+          "waitP99": 1309,
+          "waitMax": 1311
+        }
+      ]
+    },
+    {
+      "treatment": "perKeyCap",
+      "lightWait": {
+        "mean": 1290.6516666666669,
+        "min": 1173.15,
+        "max": 1431.305
+      },
+      "worstWait": {
+        "mean": 1290.6516666666669,
+        "min": 1173.15,
+        "max": 1431.305
+      },
+      "makespan": {
+        "mean": 2507,
+        "min": 2344,
+        "max": 2638
+      },
+      "contentionWorst": {
+        "mean": 1,
+        "min": 1,
+        "max": 1
+      },
+      "detailSeed0": [
+        {
+          "groupId": "heavy",
+          "dequeued": 200,
+          "weight": 1,
+          "share": 1,
+          "contentionShareOverWeight": 0,
+          "meanWait": 1431.305,
+          "waitP50": 1501,
+          "waitP99": 2623,
+          "waitMax": 2638
+        }
+      ]
+    },
+    {
+      "treatment": "totalCap",
+      "lightWait": {
+        "mean": 1290.6516666666669,
+        "min": 1173.15,
+        "max": 1431.305
+      },
+      "worstWait": {
+        "mean": 1290.6516666666669,
+        "min": 1173.15,
+        "max": 1431.305
+      },
+      "makespan": {
+        "mean": 2507,
+        "min": 2344,
+        "max": 2638
+      },
+      "contentionWorst": {
+        "mean": 1,
+        "min": 1,
+        "max": 1
+      },
+      "detailSeed0": [
+        {
+          "groupId": "heavy",
+          "dequeued": 200,
+          "weight": 1,
+          "share": 1,
+          "contentionShareOverWeight": 0,
+          "meanWait": 1431.305,
+          "waitP50": 1501,
+          "waitP99": 2623,
+          "waitMax": 2638
+        }
+      ]
+    },
+    {
+      "treatment": "sfq",
+      "lightWait": {
+        "mean": 632.8383333333334,
+        "min": 574.22,
+        "max": 702.875
+      },
+      "worstWait": {
+        "mean": 632.8383333333334,
+        "min": 574.22,
+        "max": 702.875
+      },
+      "makespan": {
+        "mean": 1240.3333333333333,
+        "min": 1159,
+        "max": 1311
+      },
+      "contentionWorst": {
+        "mean": 1,
+        "min": 1,
+        "max": 1
+      },
+      "detailSeed0": [
+        {
+          "groupId": "heavy",
+          "dequeued": 200,
+          "weight": 1,
+          "share": 1,
+          "contentionShareOverWeight": 0,
+          "meanWait": 702.875,
+          "waitP50": 723,
+          "waitP99": 1309,
+          "waitMax": 1311
+        }
+      ]
+    },
+    {
+      "treatment": "drr",
+      "lightWait": {
+        "mean": 632.8383333333334,
+        "min": 574.22,
+        "max": 702.875
+      },
+      "worstWait": {
+        "mean": 632.8383333333334,
+        "min": 574.22,
+        "max": 702.875
+      },
+      "makespan": {
+        "mean": 1240.3333333333333,
+        "min": 1159,
+        "max": 1311
+      },
+      "contentionWorst": {
+        "mean": 1,
+        "min": 1,
+        "max": 1
+      },
+      "detailSeed0": [
+        {
+          "groupId": "heavy",
+          "dequeued": 200,
+          "weight": 1,
+          "share": 1,
+          "contentionShareOverWeight": 0,
+          "meanWait": 702.875,
+          "waitP50": 723,
+          "waitP99": 1309,
+          "waitMax": 1311
+        }
+      ]
+    },
+    {
+      "treatment": "perKeyCap+sfq",
+      "lightWait": {
+        "mean": 1290.6516666666669,
+        "min": 1173.15,
+        "max": 1431.305
+      },
+      "worstWait": {
+        "mean": 1290.6516666666669,
+        "min": 1173.15,
+        "max": 1431.305
+      },
+      "makespan": {
+        "mean": 2507,
+        "min": 2344,
+        "max": 2638
+      },
+      "contentionWorst": {
+        "mean": 1,
+        "min": 1,
+        "max": 1
+      },
+      "detailSeed0": [
+        {
+          "groupId": "heavy",
+          "dequeued": 200,
+          "weight": 1,
+          "share": 1,
+          "contentionShareOverWeight": 0,
+          "meanWait": 1431.305,
+          "waitP50": 1501,
+          "waitP99": 2623,
+          "waitMax": 2638
+        }
+      ]
+    }
+  ]
+}
