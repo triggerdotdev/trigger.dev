@@ -243,13 +243,17 @@
   /* Status */
   --color-success: var(--color-mint-600);
   --color-warning: var(--color-amber-600);
-  --color-staging: var(--color-orange-600);
+  /* Env hues move off orange/yellow: their unified mid-tones read muddy brown.
+     Sky and violet stay clean at this luminance and keep the env set distinct
+     (pink dev, green prod, sky staging, violet preview). */
+  --color-staging: var(--color-sky-600);
   --color-prod: var(--color-mint-600);
-  --color-preview: var(--color-yellow-700);
+  --color-preview: var(--color-violet-500);
 
   /* Icons */
   --color-schedules: var(--color-yellow-700);
-  --color-previewBranches: var(--color-yellow-700);
+  /* Matches the preview env color */
+  --color-previewBranches: var(--color-violet-500);
   --color-metrics: var(--color-green-600);
   --color-regions: var(--color-green-600);
   --color-aiMetrics: var(--color-green-600);
