@@ -7970,9 +7970,9 @@ function chatAgent<
             let erroredUIMessagesWithPartial: TUIMessage[] = !includePartial
               ? erroredUIMessages
               : partialIdx === -1
-                ? [...erroredUIMessages, partialResponse]
+                ? [...erroredUIMessages, partialResponse!]
                 : (erroredUIMessages.map((m, i) =>
-                    i === partialIdx ? partialResponse : m
+                    i === partialIdx ? partialResponse! : m
                   ) as TUIMessage[]);
 
             let erroredNewUIMessages: TUIMessage[] = erroredWireMessage ? [erroredWireMessage] : [];
