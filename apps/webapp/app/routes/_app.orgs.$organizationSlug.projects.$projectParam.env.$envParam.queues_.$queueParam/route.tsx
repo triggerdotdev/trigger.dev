@@ -348,6 +348,17 @@ export default function Page() {
   );
 }
 
+// Inline colour swatch for tooltip copy — matches the chart legend swatch (rounded-[2px]) and is
+// nudged up 1px so it sits on the text baseline.
+function ColorSwatch({ color }: { color: string }) {
+  return (
+    <span
+      className="mx-0.5 inline-block size-2.5 -translate-y-px rounded-[2px] align-middle"
+      style={{ backgroundColor: color }}
+    />
+  );
+}
+
 function OverviewCharts({
   ids,
   timeRange,
@@ -363,7 +374,14 @@ function OverviewCharts({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <QueueDetailChartCard
           title="Concurrency"
-          info="How many runs are going at once (purple) versus the queue's limit (grey). Turns yellow at the limit."
+          info={
+            <>
+              How many runs are going at once (<ColorSwatch color={COLORS.running} /> color) versus
+              the queue's limit (<ColorSwatch color={COLORS.limit} /> color). Turns{" "}
+              <ColorSwatch color="var(--color-warning)" /> color when it reaches the limit.
+            </>
+          }
+          showLegend
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -375,15 +393,26 @@ function OverviewCharts({
             { key: "limit", label: "Limit", color: COLORS.limit },
             { key: "running", label: "Running", color: COLORS.running },
           ]}
-          // Recolour Running warning where it reaches the limit (saturated), matching the tooltip.
-          warningOverlay={{ series: "running", atOrAbove: "limit" }}
+          // Recolour Running above the limit line with a gradient split, so it's orange only where
+          // it's actually over the limit — not on the way up. The threshold reads off the (roughly
+          // constant) limit series.
+          thresholdStroke={{
+            series: "running",
+            valueFromSeries: "limit",
+            aboveColor: "var(--color-warning)",
+          }}
           // The limit is a config value emitted only while the queue is active; back-fill its
           // leading zeros so the reference line doesn't start with a false 0→limit step.
           carryBackfill={["limit"]}
         />
         <QueueDetailChartCard
           title="Queue depth"
-          info="How many runs are waiting in this queue, over time."
+          info={
+            <>
+              How many runs are waiting in this queue over time (
+              <ColorSwatch color={COLORS.queued} /> color).
+            </>
+          }
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -394,7 +423,14 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Throughput"
-          info="Runs arriving (Enqueued, grey) versus starting (Started, purple). Turns yellow when Started falls behind."
+          info={
+            <>
+              Runs arriving (Enqueued, <ColorSwatch color={COLORS.limit} /> color) versus starting
+              (Started, <ColorSwatch color={COLORS.running} /> color). Turns{" "}
+              <ColorSwatch color="var(--color-warning)" /> color when Started falls behind.
+            </>
+          }
+          showLegend
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -411,7 +447,14 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Scheduling delay"
-          info="How long runs wait before they start (p50/p95/p99)."
+          info={
+            <>
+              How long runs wait before they start: p50 (<ColorSwatch color={COLORS.p50} /> color),
+              p95 (<ColorSwatch color={COLORS.p95} /> color), and p99 (
+              <ColorSwatch color={COLORS.p99} /> color).
+            </>
+          }
+          showLegend
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -427,7 +470,12 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Throttled"
-          info="How often runs were held back by a limit."
+          info={
+            <>
+              How often runs were held back by a limit (<ColorSwatch color={COLORS.throttled} />{" "}
+              color).
+            </>
+          }
           className="aspect-[2/1] sm:col-span-2 sm:aspect-[4/1]"
           query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -844,7 +892,12 @@ function KeyDrilldown({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <QueueDetailChartCard
           title={`Key ${keyName}: backlog and running`}
-          info="This key: waiting (Queued, purple) vs running (grey)."
+          info={
+            <>
+              This key: waiting (Queued, <ColorSwatch color={COLORS.queued} /> color) vs running (
+              <ColorSwatch color={COLORS.limit} /> color).
+            </>
+          }
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
           fillGaps

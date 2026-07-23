@@ -104,6 +104,20 @@ type QueueMetricChartProps = {
    * are config values that existed all along, so carry the first value backward instead.
    */
   carryBackfill?: string[];
+  /** Show the series legend below the chart (use for multi-series charts). */
+  showLegend?: boolean;
+  /**
+   * Recolour a series' stroke above a threshold with a gradient split (colour only above the
+   * line). `value` sets a constant threshold; `valueFromSeries` reads a (roughly constant)
+   * threshold off another series — e.g. the concurrency limit. `series` targets which line is
+   * recoloured; the others keep their own colour.
+   */
+  thresholdStroke?: {
+    aboveColor: string;
+    series?: string;
+    value?: number;
+    valueFromSeries?: string;
+  };
 };
 
 // Bare chart (no card chrome) so it can live inside a shared card, e.g. a tabbed panel.
@@ -118,6 +132,8 @@ export function QueueMetricChart({
   defaultPeriod,
   warningOverlay,
   carryBackfill,
+  showLegend,
+  thresholdStroke,
 }: QueueMetricChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(query, {
     ids,
@@ -163,6 +179,26 @@ export function QueueMetricChart({
     [data]
   );
 
+  // Resolve the threshold value: a constant, or the max of another series (e.g. the limit line,
+  // which is effectively constant). A gradient split then colours the target series only above it.
+  // `valueFromSeries` targets integer-count series (concurrency limit), so split half a unit below
+  // the limit — that way the line renders warning *at or above* the limit (saturated), matching
+  // "turns yellow at the limit", rather than only when it strictly exceeds it.
+  const resolvedThresholdStroke = useMemo(() => {
+    if (!thresholdStroke) return undefined;
+    let value = thresholdStroke.value;
+    if (value == null && thresholdStroke.valueFromSeries) {
+      let max = -Infinity;
+      for (const p of data) {
+        const v = Number(p[thresholdStroke.valueFromSeries]);
+        if (Number.isFinite(v) && v > max) max = v;
+      }
+      value = max > 0 ? max - 0.5 : undefined;
+    }
+    if (value == null || !Number.isFinite(value)) return undefined;
+    return { value, aboveColor: thresholdStroke.aboveColor, series: thresholdStroke.series };
+  }, [thresholdStroke, data]);
+
   const state: ChartState = showLoading ? "loading" : failed ? "invalid" : undefined;
 
   return (
@@ -173,6 +209,7 @@ export function QueueMetricChart({
       series={series.map((s) => s.key)}
       state={state}
       fillContainer
+      showLegend={showLegend}
     >
       <Chart.Line
         lineType="monotone"
@@ -181,6 +218,7 @@ export function QueueMetricChart({
         tooltipLabelFormatter={tooltipLabelFormatter}
         tooltipValueFormatter={valueFormat}
         warningOverlay={warningOverlay}
+        thresholdStroke={resolvedThresholdStroke}
       />
     </Chart.Root>
   );
