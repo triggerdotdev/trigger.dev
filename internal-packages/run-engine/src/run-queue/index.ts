@@ -214,6 +214,21 @@ export type RunQueueOptions = {
     /** Visibility timeout for TTL worker jobs (ms, default: 30000) */
     visibilityTimeoutMs?: number;
   };
+  /**
+   * Fair (virtual-time / SFQ) ordering across concurrency-key variants of a
+   * base queue. Off by default; when off, the exact pre-existing Lua commands
+   * run and no vtime keys are created. See docs/superpowers/plans/
+   * 2026-07-23-ck-virtual-time-scheduling-plan.md.
+   */
+  ckVirtualTimeScheduling?: {
+    enabled: boolean;
+    /** Virtual-time advance per serve (dimensionless). Default 1. */
+    quantum?: number;
+    /** Pass-1 candidate window = actualMaxCount * this. Default 3. */
+    scanWindowMultiplier?: number;
+    /** EXPIRE applied to ckVtime/ckVtimeFloor on every write. Default 86400. */
+    stateTtlSeconds?: number;
+  };
 };
 
 type ConcurrencySweeperCallback = (
@@ -298,10 +313,18 @@ export class RunQueue {
   private _observableWorkerQueues: Set<string> = new Set();
   private _meter: Meter;
   private _queueCooloffStates: Map<string, QueueCooloffState> = new Map();
+  readonly #ckVtimeEnabled: boolean;
+  readonly #ckVtimeQuantum: number;
+  readonly #ckVtimeWindowMultiplier: number;
+  readonly #ckVtimeStateTtl: number;
 
   constructor(public readonly options: RunQueueOptions) {
     this.shardCount = options.shardCount ?? 2;
     this.counterTtlSeconds = options.counterTtlSeconds ?? 86400;
+    this.#ckVtimeEnabled = options.ckVirtualTimeScheduling?.enabled ?? false;
+    this.#ckVtimeQuantum = options.ckVirtualTimeScheduling?.quantum ?? 1;
+    this.#ckVtimeWindowMultiplier = options.ckVirtualTimeScheduling?.scanWindowMultiplier ?? 3;
+    this.#ckVtimeStateTtl = options.ckVirtualTimeScheduling?.stateTtlSeconds ?? 86400;
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
       onError: (error) => {
