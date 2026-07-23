@@ -11,3 +11,10 @@ export function normalizeThemePreference(value: unknown): ThemePreference {
   const result = ThemePreference.safeParse(value);
   return result.success ? result.data : "classic";
 }
+
+/** Interface contrast for the System themes, 0 (default) to 100 (max). */
+export function normalizeThemeContrast(value: unknown): number {
+  const num = typeof value === "string" ? Number(value) : value;
+  if (typeof num !== "number" || !Number.isFinite(num)) return 0;
+  return Math.min(100, Math.max(0, Math.round(num)));
+}

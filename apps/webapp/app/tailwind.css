@@ -912,3 +912,71 @@
 [data-theme="light"] .suggest-region-cell > div > div {
   box-shadow: none;
 }
+
+/*
+  Interface contrast (System themes only). --theme-contrast is 0..1, set on
+  <html> from the dashboard preference. It pulls the monochrome scale apart:
+  text mixes toward the mode's foreground, borders step up. srgb mixing keeps
+  contrast 0 byte-identical to the base values. Classic never reads the
+  variable. These blocks must stay below the [data-theme="light"] theme block
+  so they win the cascade.
+*/
+[data-theme="dark"] {
+  --color-text-bright: color-mix(
+    in srgb,
+    var(--color-charcoal-200),
+    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.6)
+  );
+  --color-text-dimmed: color-mix(
+    in srgb,
+    var(--color-charcoal-400),
+    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.45)
+  );
+  --color-text-faint: color-mix(
+    in srgb,
+    var(--color-charcoal-500),
+    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.35)
+  );
+  --color-grid-dimmed: color-mix(
+    in srgb,
+    var(--color-charcoal-750),
+    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.15)
+  );
+  --color-grid-bright: color-mix(
+    in srgb,
+    var(--color-charcoal-700),
+    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.18)
+  );
+  --color-border-bright: color-mix(
+    in srgb,
+    var(--color-charcoal-600),
+    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.22)
+  );
+  --color-border-brighter: color-mix(
+    in srgb,
+    var(--color-charcoal-550),
+    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.25)
+  );
+}
+
+[data-theme="light"] {
+  --color-text-bright: color-mix(
+    in srgb,
+    #1a1b1f,
+    #000000 calc(var(--theme-contrast, 0) * 100% * 0.8)
+  );
+  --color-text-dimmed: color-mix(
+    in srgb,
+    var(--color-charcoal-500),
+    #000000 calc(var(--theme-contrast, 0) * 100% * 0.45)
+  );
+  --color-text-faint: color-mix(
+    in srgb,
+    var(--color-charcoal-400),
+    #000000 calc(var(--theme-contrast, 0) * 100% * 0.35)
+  );
+  --color-grid-dimmed: color-mix(in srgb, #eceef1, #000000 calc(var(--theme-contrast, 0) * 100% * 0.12));
+  --color-grid-bright: color-mix(in srgb, #e2e4e9, #000000 calc(var(--theme-contrast, 0) * 100% * 0.15));
+  --color-border-bright: color-mix(in srgb, #d2d5db, #000000 calc(var(--theme-contrast, 0) * 100% * 0.18));
+  --color-border-brighter: color-mix(in srgb, #b9bdc7, #000000 calc(var(--theme-contrast, 0) * 100% * 0.2));
+}

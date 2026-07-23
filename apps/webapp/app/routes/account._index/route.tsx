@@ -18,6 +18,7 @@ import {
 } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { Slider } from "~/components/primitives/Slider";
 import { FormError } from "~/components/primitives/FormError";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
@@ -29,8 +30,15 @@ import { prisma } from "~/db.server";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
-import { updateThemePreference } from "~/services/dashboardPreferences.server";
-import { normalizeThemePreference, type ThemePreference } from "~/utils/themePreference";
+import {
+  updateContrastPreference,
+  updateThemePreference,
+} from "~/services/dashboardPreferences.server";
+import {
+  normalizeThemeContrast,
+  normalizeThemePreference,
+  type ThemePreference,
+} from "~/utils/themePreference";
 import { flag } from "~/v3/featureFlags.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
@@ -133,6 +141,17 @@ export const action: ActionFunction = async ({ request }) => {
     return json({ success: true });
   }
 
+  if (formData.get("action") === "update-contrast") {
+    const showThemeSwitcher = await flag({ key: "hasThemeSwitcher", defaultValue: true });
+    if (!showThemeSwitcher) {
+      return json({ error: "Not available" }, { status: 404 });
+    }
+    const user = await requireUser(request);
+    const contrast = normalizeThemeContrast(formData.get("contrast"));
+    await updateContrastPreference({ user, contrast });
+    return json({ success: true });
+  }
+
   const formSchema = createSchema({
     isEmailUnique: async (email) => {
       const existingUser = await prisma.user.findFirst({
@@ -182,7 +201,13 @@ export default function Page() {
   const { showThemeSwitcher } = useLoaderData<typeof loader>();
   const lastSubmission = useActionData();
   const themeFetcher = useFetcher();
+  const contrastFetcher = useFetcher();
   const pendingTheme = themeFetcher.formData?.get("theme");
+  const pendingContrast = contrastFetcher.formData?.get("contrast");
+  const contrast =
+    typeof pendingContrast === "string"
+      ? normalizeThemeContrast(pendingContrast)
+      : normalizeThemeContrast(user.dashboardPreferences.contrast);
   const theme: ThemePreference =
     typeof pendingTheme === "string"
       ? normalizeThemePreference(pendingTheme)
@@ -307,6 +332,32 @@ export default function Page() {
                   }
                 </Select>
               </div>
+              {theme !== "classic" && (
+                <div className="mt-4 flex w-full items-center justify-between gap-4">
+                  <Label>Contrast</Label>
+                  <Slider
+                    variant="tertiary"
+                    className="w-44"
+                    min={0}
+                    max={100}
+                    step={5}
+                    defaultValue={[contrast]}
+                    onValueChange={(values) => {
+                      // Live preview before the preference persists
+                      document.documentElement.style.setProperty(
+                        "--theme-contrast",
+                        String((values[0] ?? 0) / 100)
+                      );
+                    }}
+                    onValueCommit={(values) =>
+                      contrastFetcher.submit(
+                        { action: "update-contrast", contrast: String(values[0] ?? 0) },
+                        { method: "post" }
+                      )
+                    }
+                  />
+                </div>
+              )}
             </>
           )}
         </MainHorizontallyCenteredContainer>
