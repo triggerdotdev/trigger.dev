@@ -915,68 +915,56 @@
 
 /*
   Interface contrast (System themes only). --theme-contrast is 0..1, set on
-  <html> from the dashboard preference. It pulls the monochrome scale apart:
-  text mixes toward the mode's foreground, borders step up. srgb mixing keeps
-  contrast 0 byte-identical to the base values. Classic never reads the
-  variable. These blocks must stay below the [data-theme="light"] theme block
-  so they win the cascade.
+  <html> from the dashboard preference. It pulls the whole monochrome scale
+  apart: text mixes toward the mode's foreground, backgrounds toward its
+  depth, borders step up. Accents are untouched. srgb mixing keeps contrast 0
+  byte-identical to the base values, and Classic never reads the variable.
+  These blocks must stay below the [data-theme="light"] theme block so they
+  win the cascade.
 */
 [data-theme="dark"] {
-  --color-text-bright: color-mix(
-    in srgb,
-    var(--color-charcoal-200),
-    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.6)
-  );
-  --color-text-dimmed: color-mix(
-    in srgb,
-    var(--color-charcoal-400),
-    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.45)
-  );
-  --color-text-faint: color-mix(
-    in srgb,
-    var(--color-charcoal-500),
-    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.35)
-  );
-  --color-grid-dimmed: color-mix(
-    in srgb,
-    var(--color-charcoal-750),
-    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.15)
-  );
-  --color-grid-bright: color-mix(
-    in srgb,
-    var(--color-charcoal-700),
-    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.18)
-  );
-  --color-border-bright: color-mix(
-    in srgb,
-    var(--color-charcoal-600),
-    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.22)
-  );
-  --color-border-brighter: color-mix(
-    in srgb,
-    var(--color-charcoal-550),
-    #ffffff calc(var(--theme-contrast, 0) * 100% * 0.25)
-  );
+  /* Text brightens toward white */
+  --color-text-bright: color-mix(in srgb, var(--color-charcoal-200), #fff calc(var(--theme-contrast, 0) * 100%));
+  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-400), #fff calc(var(--theme-contrast, 0) * 60%));
+  --color-text-faint: color-mix(in srgb, var(--color-charcoal-500), #fff calc(var(--theme-contrast, 0) * 45%));
+
+  /* Backgrounds deepen toward black, keeping their relative order */
+  --color-background-deep: color-mix(in srgb, var(--color-charcoal-900), #000 calc(var(--theme-contrast, 0) * 60%));
+  --color-background-dimmed: color-mix(in srgb, var(--color-charcoal-850), #000 calc(var(--theme-contrast, 0) * 55%));
+  --color-background-bright: color-mix(in srgb, var(--color-charcoal-800), #000 calc(var(--theme-contrast, 0) * 45%));
+  --color-background-hover: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
+  --color-background-raised: color-mix(in srgb, var(--color-charcoal-700), #000 calc(var(--theme-contrast, 0) * 25%));
+  --color-input-bg: color-mix(in srgb, var(--color-charcoal-750), #000 calc(var(--theme-contrast, 0) * 35%));
+
+  /* Controls and borders step up toward white */
+  --color-surface-control: color-mix(in srgb, var(--color-charcoal-600), #fff calc(var(--theme-contrast, 0) * 12%));
+  --color-surface-control-hover: color-mix(in srgb, var(--color-charcoal-550), #fff calc(var(--theme-contrast, 0) * 14%));
+  --color-surface-control-active: color-mix(in srgb, var(--color-charcoal-500), #fff calc(var(--theme-contrast, 0) * 16%));
+  --color-grid-dimmed: color-mix(in srgb, var(--color-charcoal-750), #fff calc(var(--theme-contrast, 0) * 18%));
+  --color-grid-bright: color-mix(in srgb, var(--color-charcoal-700), #fff calc(var(--theme-contrast, 0) * 20%));
+  --color-border-bright: color-mix(in srgb, var(--color-charcoal-600), #fff calc(var(--theme-contrast, 0) * 24%));
+  --color-border-brighter: color-mix(in srgb, var(--color-charcoal-550), #fff calc(var(--theme-contrast, 0) * 27%));
+  --color-border-brightest: color-mix(in srgb, var(--color-charcoal-500), #fff calc(var(--theme-contrast, 0) * 30%));
 }
 
 [data-theme="light"] {
-  --color-text-bright: color-mix(
-    in srgb,
-    #1a1b1f,
-    #000000 calc(var(--theme-contrast, 0) * 100% * 0.8)
-  );
-  --color-text-dimmed: color-mix(
-    in srgb,
-    var(--color-charcoal-500),
-    #000000 calc(var(--theme-contrast, 0) * 100% * 0.45)
-  );
-  --color-text-faint: color-mix(
-    in srgb,
-    var(--color-charcoal-400),
-    #000000 calc(var(--theme-contrast, 0) * 100% * 0.35)
-  );
-  --color-grid-dimmed: color-mix(in srgb, #eceef1, #000000 calc(var(--theme-contrast, 0) * 100% * 0.12));
-  --color-grid-bright: color-mix(in srgb, #e2e4e9, #000000 calc(var(--theme-contrast, 0) * 100% * 0.15));
-  --color-border-bright: color-mix(in srgb, #d2d5db, #000000 calc(var(--theme-contrast, 0) * 100% * 0.18));
-  --color-border-brighter: color-mix(in srgb, #b9bdc7, #000000 calc(var(--theme-contrast, 0) * 100% * 0.2));
+  /* Text deepens toward black */
+  --color-text-bright: color-mix(in srgb, #1a1b1f, #000 calc(var(--theme-contrast, 0) * 100%));
+  --color-text-dimmed: color-mix(in srgb, var(--color-charcoal-500), #000 calc(var(--theme-contrast, 0) * 60%));
+  --color-text-faint: color-mix(in srgb, var(--color-charcoal-400), #000 calc(var(--theme-contrast, 0) * 45%));
+
+  /* Backgrounds lift toward white, keeping their relative order */
+  --color-background-deep: color-mix(in srgb, #f1f2f4, #fff calc(var(--theme-contrast, 0) * 40%));
+  --color-background-dimmed: color-mix(in srgb, #fbfbfc, #fff calc(var(--theme-contrast, 0) * 100%));
+  --color-background-hover: color-mix(in srgb, #f2f3f5, #fff calc(var(--theme-contrast, 0) * 30%));
+
+  /* Controls and borders step up toward black */
+  --color-surface-control: color-mix(in srgb, #dcdee3, #000 calc(var(--theme-contrast, 0) * 10%));
+  --color-surface-control-hover: color-mix(in srgb, #cfd2d9, #000 calc(var(--theme-contrast, 0) * 12%));
+  --color-surface-control-active: color-mix(in srgb, #b8bcc6, #000 calc(var(--theme-contrast, 0) * 14%));
+  --color-grid-dimmed: color-mix(in srgb, #eceef1, #000 calc(var(--theme-contrast, 0) * 14%));
+  --color-grid-bright: color-mix(in srgb, #e2e4e9, #000 calc(var(--theme-contrast, 0) * 16%));
+  --color-border-bright: color-mix(in srgb, #d2d5db, #000 calc(var(--theme-contrast, 0) * 20%));
+  --color-border-brighter: color-mix(in srgb, #b9bdc7, #000 calc(var(--theme-contrast, 0) * 24%));
+  --color-border-brightest: color-mix(in srgb, #9ba1ad, #000 calc(var(--theme-contrast, 0) * 28%));
 }
