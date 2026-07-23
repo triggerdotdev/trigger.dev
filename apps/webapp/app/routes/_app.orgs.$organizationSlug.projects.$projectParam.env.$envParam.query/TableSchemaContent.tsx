@@ -10,7 +10,7 @@ function ColumnHelpItem({ col }: { col: ColumnSchema }) {
   return (
     <div className="pt-1">
       <div className="flex items-center gap-2">
-        <CopyableText value={col.name} className="text-sm text-indigo-400" />
+        <CopyableText value={col.name} className="text-sm text-indigo-400 [[data-theme=light]_&]:text-indigo-600" />
         <Badge className="font-mono text-xxs">{col.type}</Badge>
       </div>
       {col.description && (
