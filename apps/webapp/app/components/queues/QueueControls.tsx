@@ -237,7 +237,7 @@ export function QueueOverrideConcurrencyButton({
                     type="button"
                     variant="secondary/small"
                     LeadingIcon={AdjustmentsHorizontalIcon}
-                    leadingIconClassName="text-text-dimmed"
+                    leadingIconClassName="text-text-bright"
                     aria-label={
                       isOverridden ? "Edit concurrency override" : "Override concurrency limit"
                     }
