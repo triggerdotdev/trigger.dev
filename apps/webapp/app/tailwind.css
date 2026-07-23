@@ -293,11 +293,13 @@
   color: inherit;
 }
 
-/* Tinted status chips respond to the contrast control: the filter pushes the
-   soft tint and its colored text apart. No-op at contrast 0; Classic never
-   sets the variable. Marker set by the chip components. */
+/* Tinted status chips respond to the contrast control: a ring in the chip's
+   own text color fades in as contrast rises, so the soft tint keeps its
+   footprint but the chip gains definition. Transparent at contrast 0;
+   Classic never sets the variable. Marker set by the chip components. */
 :is([data-theme="dark"], [data-theme="light"]) .contrast-chip {
-  filter: contrast(calc(1 + var(--theme-contrast, 0) * 0.5)) saturate(calc(1 + var(--theme-contrast, 0) * 0.4));
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, currentColor calc(var(--theme-contrast, 0) * 70%), transparent);
 }
 
 /*
