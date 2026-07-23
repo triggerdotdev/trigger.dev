@@ -625,7 +625,7 @@ export default function PromptDetailPage() {
                   hasPermission={canWritePrompts}
                   noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
-                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200 system:border-transparent system:bg-warning system:text-white system:transition system:group-hover/button:brightness-110 system:group-hover/button:text-white"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200 system:border-transparent system:bg-warning system:text-white system:transition system:group-hover/button:bg-warning system:group-hover/button:brightness-90 system:group-hover/button:text-white"
                   onClick={() => setOverrideDialogOpen(true)}
                 >
                   <span className="mx-auto grow self-center truncate text-text-bright system:text-white">
@@ -636,13 +636,11 @@ export default function PromptDetailPage() {
                   hasPermission={canWritePrompts}
                   noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
-                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200 system:border-transparent system:bg-warning system:text-white system:transition system:group-hover/button:brightness-110 system:group-hover/button:text-white"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200 system:border-warning/60 system:bg-transparent system:transition system:group-hover/button:bg-warning/10"
                   onClick={() => fetcher.submit({ intent: "removeOverride" }, { method: "POST" })}
                   disabled={fetcher.state !== "idle"}
                 >
-                  <span className="mx-auto grow self-center truncate text-text-bright system:text-white">
-                    Remove
-                  </span>
+                  <span className="mx-auto grow self-center truncate text-text-bright">Remove</span>
                 </PermissionButton>
               </div>
             </motion.div>
