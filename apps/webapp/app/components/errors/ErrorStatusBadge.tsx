@@ -5,9 +5,12 @@ import { cn } from "~/utils/cn";
 // `bright` fills the chip with the status color in the System themes for
 // solitary placements (detail headers). Classic always uses the tinted look.
 const subtleStyles: Record<ErrorGroupStatus, string> = {
-  UNRESOLVED: "bg-error/10 text-error",
-  RESOLVED: "bg-success/10 text-success",
-  IGNORED: "bg-blue-500/10 text-blue-400 light:text-blue-600",
+  UNRESOLVED:
+    "bg-error/10 text-error system:border system:border-error/60 system:bg-transparent system:text-text-bright",
+  RESOLVED:
+    "bg-success/10 text-success system:border system:border-success/60 system:bg-transparent system:text-text-bright",
+  IGNORED:
+    "bg-blue-500/10 text-blue-400 system:border system:border-blue-500/60 system:bg-transparent system:text-text-bright",
 };
 
 const brightStyles: Record<ErrorGroupStatus, string> = {
