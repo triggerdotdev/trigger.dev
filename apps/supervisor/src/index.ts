@@ -329,6 +329,7 @@ class ManagedSupervisor {
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
       sendRunDebugLogs: env.SEND_RUN_DEBUG_LOGS,
+      onHttpRequestComplete: (metric) => outboundRequestsTotal.inc(metric),
       preDequeue: async () => {
         // Synchronous, hot-path-safe cached read; false when no monitors are active.
         const skipForBackpressure = this.backpressureMonitors.some((m) => m.shouldSkipDequeue());

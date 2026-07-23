@@ -1,5 +1,12 @@
 import type { MachineResources } from "../../schemas/runEngine.js";
 
+export type SupervisorHttpRequestMetric = {
+  name: string;
+  method: string;
+  status: string;
+  outcome: "ok" | "http_error" | "network_error";
+};
+
 export type SupervisorClientCommonOptions = {
   apiUrl: string;
   workerToken: string;
@@ -7,6 +14,7 @@ export type SupervisorClientCommonOptions = {
   deploymentId?: string;
   managedWorkerSecret?: string;
   sendRunDebugLogs?: boolean;
+  onHttpRequestComplete?: (metric: SupervisorHttpRequestMetric) => void;
 };
 
 export type PreDequeueFn = () => Promise<{
