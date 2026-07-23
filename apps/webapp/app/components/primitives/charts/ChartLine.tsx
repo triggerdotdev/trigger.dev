@@ -597,14 +597,14 @@ export function ChartLineRenderer({
         // Drawn after the base line so the warning colour sits on top. connectNulls={false} keeps
         // the mask to over-threshold stretches; excluded from the legend and (above) the tooltip.
         // Its active dot inherits the warning colour so the hover dot is yellow over yellow.
-        // Slightly wider than the base line so it fully covers it — otherwise the base colour peeks
-        // out along the edges and the warning stretch reads as an outlined line.
+        // Same 1px width as the base line so the warning stretch matches the other lines — it traces
+        // the same points over its over-threshold buckets, so it covers the base exactly.
         <Line
           key={WARNING_OVERLAY_KEY}
           dataKey={WARNING_OVERLAY_KEY}
           type={lineType}
           stroke={warningOverlay!.color ?? "var(--color-warning)"}
-          strokeWidth={2}
+          strokeWidth={1}
           dot={false}
           activeDot={{
             r: 4,
