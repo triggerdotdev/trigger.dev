@@ -5,8 +5,20 @@ export default defineConfig({
   format: ["cjs", "esm"],
   fixedExtension: false,
   tsconfig: "tsconfig.src.json",
-  dts: true,
+  dts: {
+    sourcemap: false,
+  },
   sourcemap: true,
+  // The CJS declarations are emitted in a separate pass, so their output can
+  // disable source maps without affecting the runtime bundle.
+  outputOptions(options, _format, { cjsDts }) {
+    if (!cjsDts) return;
+
+    return {
+      ...options,
+      sourcemap: false,
+    };
+  },
   clean: true,
   treeshake: true,
   minify: false,
@@ -31,6 +43,20 @@ export default defineConfig({
   // startup. Patch the helper to fall back to a valid path, matching the
   // fallback the previous tsup banner provided.
   plugins: [
+    // The ESM declarations share an output pass with the runtime bundle.
+    // Remove their dangling map comment while retaining runtime source maps.
+    {
+      name: "strip-declaration-sourcemap-comments",
+      generateBundle(_options, bundle) {
+        for (const output of Object.values(bundle)) {
+          if (output.type !== "chunk" || !/\.d\.(?:c|m)?ts$/.test(output.fileName)) {
+            continue;
+          }
+
+          output.code = output.code.replace(/\n?\/\/# sourceMappingURL=.*$/m, "");
+        }
+      },
+    },
     {
       name: "resilient-create-require",
       renderChunk(code: string) {
