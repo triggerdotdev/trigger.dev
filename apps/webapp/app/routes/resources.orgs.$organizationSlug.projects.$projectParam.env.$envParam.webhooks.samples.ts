@@ -7,9 +7,12 @@ import {
 } from "@internal/webhook-sources";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
+import { $replica } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { flag } from "~/v3/featureFlags.server";
 
 export type WebhookSampleMeta = {
   provider: string;
@@ -48,6 +51,19 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project)
     return typedjson({ kind: "error", error: "Project not found" } as WebhookSamplesData);
+
+  if (!user.admin && !user.isImpersonating) {
+    const org = await $replica.organization.findFirst({
+      where: { id: project.organizationId },
+      select: { featureFlags: true },
+    });
+    const enabled = await flag({
+      key: FEATURE_FLAG.hasWebhooksAccess,
+      defaultValue: false,
+      overrides: (org?.featureFlags as Record<string, unknown>) ?? {},
+    });
+    if (!enabled) throw new Response("Not found", { status: 404 });
+  }
 
   const url = new URL(request.url);
   const provider = url.searchParams.get("provider") ?? undefined;

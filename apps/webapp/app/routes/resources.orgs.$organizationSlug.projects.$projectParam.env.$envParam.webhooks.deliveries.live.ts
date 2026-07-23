@@ -5,6 +5,9 @@ import { $replica, webhookReplica } from "~/db.server";
 import { resolveDeliveryRunTargets } from "~/presenters/v3/WebhookDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { loadProjectEnvironmentFromRequest } from "~/services/loadProjectEnvironmentFromRequest.server";
+import { requireUser } from "~/services/session.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { flag } from "~/v3/featureFlags.server";
 import {
   type ListedWebhookDelivery,
   webhookDeliveriesRepository,
@@ -74,6 +77,20 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   const { project, environment } = await loadProjectEnvironmentFromRequest(request, params);
+
+  const user = await requireUser(request);
+  if (!user.admin && !user.isImpersonating) {
+    const org = await $replica.organization.findFirst({
+      where: { id: project.organizationId },
+      select: { featureFlags: true },
+    });
+    const enabled = await flag({
+      key: FEATURE_FLAG.hasWebhooksAccess,
+      defaultValue: false,
+      overrides: (org?.featureFlags as Record<string, unknown>) ?? {},
+    });
+    if (!enabled) throw new Response("Not found", { status: 404 });
+  }
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,

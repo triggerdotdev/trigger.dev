@@ -52,6 +52,8 @@ import {
 } from "~/presenters/v3/WebhookDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
+import { flag } from "~/v3/featureFlags.server";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -86,6 +88,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
     throw new Response("Environment not found", { status: 404 });
+  }
+
+  if (!user.admin && !user.isImpersonating) {
+    const org = await $replica.organization.findFirst({
+      where: { id: project.organizationId },
+      select: { featureFlags: true },
+    });
+    const enabled = await flag({
+      key: FEATURE_FLAG.hasWebhooksAccess,
+      defaultValue: false,
+      overrides: (org?.featureFlags as Record<string, unknown>) ?? {},
+    });
+    if (!enabled) throw new Response("Not found", { status: 404 });
   }
 
   const url = new URL(request.url);
