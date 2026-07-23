@@ -6,6 +6,8 @@ import type {
   SkillManifest,
   SkillMetadata,
   TaskManifest,
+  WebhookManifest,
+  WebhookMetadata,
   WorkerManifest,
 } from "../schemas/index.js";
 import type {
@@ -118,6 +120,28 @@ export class ResourceCatalogAPI {
 
   public getSkillManifest(id: string): SkillManifest | undefined {
     return this.#getCatalog().getSkillManifest(id);
+  }
+
+  public registerWebhookMetadata(webhook: WebhookMetadata): void {
+    this.#getCatalog().registerWebhookMetadata(webhook);
+  }
+  public listWebhookManifests(): Array<WebhookManifest> {
+    return this.#getCatalog().listWebhookManifests();
+  }
+  public getWebhookManifest(id: string): WebhookManifest | undefined {
+    return this.#getCatalog().getWebhookManifest(id);
+  }
+  public listWebhookIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return this.#getCatalog().listWebhookIdCollisions();
+  }
+  public registerDeclaredSessionWebhook(id: string): void {
+    this.#getCatalog().registerDeclaredSessionWebhook(id);
+  }
+  public markSessionWebhookClaimed(id: string): void {
+    this.#getCatalog().markSessionWebhookClaimed(id);
+  }
+  public listUnclaimedSessionWebhooks(): Array<string> {
+    return this.#getCatalog().listUnclaimedSessionWebhooks();
   }
 
   #getCatalog(): ResourceCatalog {

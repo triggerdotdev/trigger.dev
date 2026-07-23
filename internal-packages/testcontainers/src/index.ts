@@ -28,7 +28,11 @@ import {
   withContainerSetup,
 } from "./utils";
 
-export { assertNonNullable, createPostgresContainer } from "./utils";
+export {
+  assertNonNullable,
+  createPostgresContainer,
+  createStandalonePostgresContainer,
+} from "./utils";
 export { laggingReplica, type LaggingModel } from "./laggingReplica";
 export { logCleanup };
 export type { MinIOConnectionConfig };

@@ -62,6 +62,8 @@
     "@internal/schedule-engine": "workspace:*",
     "@internal/tracing": "workspace:*",
     "@internal/tsql": "workspace:*",
+    "@internal/webhook-engine": "workspace:*",
+    "@internal/webhook-sources": "workspace:*",
     "@internationalized/date": "^3.5.1",
     "@jsonhero/schema-infer": "^0.1.5",
     "@kapaai/react-sdk": "^0.1.3",

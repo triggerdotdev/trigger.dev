@@ -5,6 +5,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import { useFetcher, useNavigation, useRevalidator, useSubmit } from "@remix-run/react";
+import { WebhookIcon } from "~/assets/icons/WebhookIcon";
 import { LayoutGroup, motion } from "framer-motion";
 import {
   type CSSProperties,
@@ -122,6 +123,7 @@ import {
   v3SessionsPath,
   v3UsagePath,
   v3WaitpointTokensPath,
+  v3WebhooksPath,
 } from "~/utils/pathBuilder";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
@@ -879,6 +881,23 @@ export function SideMenu({
               user={user}
             />
           ),
+        },
+      ],
+    });
+  }
+
+  if (user.admin || user.isImpersonating || featureFlags.hasWebhooksAccess) {
+    staticSections.push({
+      id: "webhooks",
+      title: "Webhooks",
+      items: [
+        {
+          id: "webhook-deliveries",
+          name: "Deliveries",
+          icon: WebhookIcon,
+          activeIconColor: "text-webhooks",
+          to: v3WebhooksPath(organization, project, environment),
+          dataAction: "webhook-deliveries",
         },
       ],
     });

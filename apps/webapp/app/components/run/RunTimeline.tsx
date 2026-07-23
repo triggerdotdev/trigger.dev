@@ -13,11 +13,11 @@ import { LiveTimer } from "../runs/v3/LiveTimer";
 // Types for the RunTimeline component
 export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed";
 
-type TimelineLineVariant = "light" | "normal";
+export type TimelineLineVariant = "light" | "normal";
 
 type TimelineStyle = "normal" | "diminished";
 
-type TimelineEventVariant =
+export type TimelineEventVariant =
   | "start-cap"
   | "dot-hollow"
   | "dot-solid"
@@ -323,7 +323,7 @@ function buildTimelineItems(run: TimelineSpanRun): TimelineItem[] {
 export type RunTimelineEventProps = {
   title: ReactNode;
   subtitle?: ReactNode;
-  state?: "complete" | "error" | "inprogress";
+  state?: TimelineEventState;
   variant?: TimelineEventVariant;
   helpText?: string;
   style?: TimelineStyle;

@@ -47,6 +47,8 @@ Options for `chat.agent()`.
 | `hydrateMessages`             | `(event: HydrateMessagesEvent) => UIMessage[] \| Promise<UIMessage[]>` | —                 | Load message history from backend, replacing the linear accumulator. See [hydrateMessages](/ai-chat/lifecycle-hooks#hydratemessages) |
 | `actionSchema`                | `TaskSchema`                                                | —                              | Schema for validating custom actions sent via `transport.sendAction()`. See [Actions](/ai-chat/actions) |
 | `onAction`                    | `(event: ActionEvent) => Promise<unknown> \| unknown`       | —                              | Handle custom actions. Actions are not turns — only `hydrateMessages` + `onAction` fire. Return a `StreamTextResult` (or `string` / `UIMessage`) for a model response; return `void` for side-effect-only. See [Actions](/ai-chat/actions) |
+| `events`                      | `ChatEvent[]`                                               | —                              | Webhook event descriptors (from `chat.event()`) whose verified deliveries are routed to this agent as actions and handled in `onAction`. See [session routing](/webhooks/session-routing). |
+| `channels`                    | `ChannelConnector[]`                                        | —                              | Channel connectors (for example `slack()`) that turn an external chat surface into a frontend for the agent: inbound messages run as turns and the reply posts back. See [channels](/webhooks/channels). |
 | `onTurnStart`                 | `(event: TurnStartEvent) => Promise<void> \| void`          | —                              | Fires every turn before `run()`                                                                     |
 | `onBeforeTurnComplete`        | `(event: BeforeTurnCompleteEvent) => Promise<void> \| void` | —                              | Fires after response but before stream closes. Includes `writer`.                                   |
 | `onTurnComplete`              | `(event: TurnCompleteEvent) => Promise<void> \| void`       | —                              | Fires after each turn completes (stream closed)                                                     |
@@ -501,6 +503,8 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | Method                                      | Description                                                                                                                  |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `chat.agent(options)`                       | Create a chat agent                                                                                                          |
+| `chat.event(options)`                       | Declare an inbound webhook event descriptor an agent claims via `chat.agent({ events })`. See [session routing](/webhooks/session-routing). |
+| `chat.channels.custom(options)`             | Create a generic chat-frontend channel over any verified webhook source (you supply the egress). The `slack()` preset ships in `@trigger.dev/slack`. See [channels](/webhooks/channels). |
 | `chat.createSession(payload, options)`      | Create an async iterator for chat turns                                                                                      |
 | `chat.pipe(source, options?)`               | Pipe a stream to the frontend (from anywhere inside a task)                                                                  |
 | `chat.pipeAndCapture(source, options?)`     | Pipe and capture the response; returns `{ message, status, error }`                                                         |
@@ -529,6 +533,42 @@ All methods available on the `chat` object from `@trigger.dev/sdk/ai`.
 | `chat.MessageAccumulator`                   | Class that accumulates conversation messages across turns                                                                    |
 | `chat.withUIMessage(config?)`               | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed `UIMessage` subtype. See [Types](/ai-chat/types)            |
 | `chat.withClientData({ schema })`           | Returns a [ChatBuilder](/ai-chat/types#chatbuilder) with a fixed client data schema. See [Types](/ai-chat/types#typed-client-data-with-chatwithclientdata) |
+
+## `chat.event`
+
+Declare an inbound webhook event that an agent claims via [`events`](#chatagentoptions) on `chat.agent()`. It is a descriptor only, with no handler: it names a [source](/webhooks/sources) to verify, a `key` template that resolves each delivery to a durable [session](/ai-chat/sessions), and an optional `type` label (defaults to the descriptor `id`). Verified deliveries are routed to that session and arrive at `onAction` as a `{ type, event, source, headers, deliveryId }` envelope, not as a chat turn. See [session routing](/webhooks/session-routing).
+
+```ts
+import { webhooks } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+
+export const orderEvents = chat.event({
+  id: "order-events",
+  source: webhooks.stripe(),
+  key: "{body.data.object.customer}",
+  type: "order.event",
+});
+```
+
+## `chat.channels.custom`
+
+Create a generic chat-frontend channel over any verified [source](/webhooks/sources), claimed via [`channels`](#chatagentoptions) on `chat.agent()`. You supply the session `key`, the `inbound` map from event to turn message, and your own `send` egress that posts the reply back, so the whole round-trip is under your control. Inbound messages run as normal turns and the reply is posted back. The `slack()` preset ships in `@trigger.dev/slack` and wires the egress for you. See [channels](/webhooks/channels), and the interactive approvals layer at [human-in-the-loop](/webhooks/human-in-the-loop).
+
+```ts
+import { webhooks } from "@trigger.dev/sdk";
+import { chat } from "@trigger.dev/sdk/ai";
+
+export const mySurface = chat.channels.custom({
+  id: "my-surface",
+  source: webhooks.custom<MyEvent>({ /* verifier config */ }),
+  key: "{body.conversationId}",
+  inbound: (event) => event.text,
+  send: async (message, ctx) => {
+    const ref = await postToMySurface(ctx.event, message.text, ctx.previousRef);
+    return { ref };
+  },
+});
+```
 
 ## `chat.withUIMessage`
 

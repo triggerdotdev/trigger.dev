@@ -36,6 +36,12 @@ export interface LogicalReplicationClientOptions {
    */
   publicationName: string;
   /**
+   * Whether to create the publication with `publish_via_partition_root = true`.
+   * Required when the replicated table is a partitioned parent: without it, child
+   * partitions publish nothing and the slot stays silent (default: false).
+   */
+  publishViaPartitionRoot?: boolean;
+  /**
    * A connected Redis client instance for Redlock.
    */
   redisOptions: RedisOptions;
@@ -616,12 +622,18 @@ export class LogicalReplicationClient {
       return true;
     }
 
+    const publicationWithOptions: string[] = [];
+    if (this.options.publicationActions) {
+      publicationWithOptions.push(`publish = '${this.options.publicationActions.join(", ")}'`);
+    }
+    if (this.options.publishViaPartitionRoot) {
+      publicationWithOptions.push("publish_via_partition_root = true");
+    }
+
     const [createError] = await tryCatch(
       this.client.query(
         `CREATE PUBLICATION "${this.options.publicationName}" FOR TABLE "${this.options.table}" ${
-          this.options.publicationActions
-            ? `WITH (publish = '${this.options.publicationActions.join(", ")}')`
-            : ""
+          publicationWithOptions.length > 0 ? `WITH (${publicationWithOptions.join(", ")})` : ""
         };`
       )
     );

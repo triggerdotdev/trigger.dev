@@ -6,6 +6,8 @@ import {
   type PrismaReplicaClient,
   type PrismaTransactionClient,
   type PrismaTransactionOptions,
+  type WebhookDatabase,
+  type WebhookReplicaDatabase,
 } from "@trigger.dev/database";
 import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import { markReadReplicaClient } from "@internal/run-store";
@@ -36,6 +38,8 @@ export type {
   PrismaClientOrTransaction,
   PrismaTransactionOptions,
   PrismaReplicaClient,
+  WebhookDatabase,
+  WebhookReplicaDatabase,
 };
 
 // Boundary logger for transac(): skips an error the client extension already
@@ -177,6 +181,52 @@ export const $replica: PrismaReplicaClient = singleton("replica", () => {
   return replica
     ? markReadReplicaClient(captureInfrastructureErrors(tagDatasource("replica", replica)))
     : prisma;
+});
+
+/**
+ * Webhook feature data-plane seam. The whole webhook feature (WebhookEndpoint + WebhookDelivery)
+ * can run on a dedicated Postgres via WEBHOOK_DATABASE_URL; unset reuses the main prisma instance,
+ * so single-DB installs open no extra pool.
+ */
+export const webhookPrisma: WebhookDatabase = singleton("webhookPrisma", () => {
+  if (!env.WEBHOOK_DATABASE_URL) {
+    return prisma;
+  }
+  return captureInfrastructureErrors(
+    tagDatasource(
+      "writer",
+      buildWriterClient({
+        url: env.WEBHOOK_DATABASE_URL,
+        clientType: "webhook-writer",
+        connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+      })
+    )
+  );
+});
+
+/**
+ * Webhook reader chain: an explicit webhook replica, else the webhook writer once split (no
+ * separate replica yet), else the main $replica when the feature is not split.
+ */
+export const webhookReplica: WebhookReplicaDatabase = singleton("webhookReplica", () => {
+  if (env.WEBHOOK_DATABASE_READ_REPLICA_URL) {
+    return markReadReplicaClient(
+      captureInfrastructureErrors(
+        tagDatasource(
+          "replica",
+          buildReplicaClient({
+            url: env.WEBHOOK_DATABASE_READ_REPLICA_URL,
+            clientType: "webhook-reader",
+            connectionLimit: env.WEBHOOK_DATABASE_CONNECTION_LIMIT ?? env.DATABASE_CONNECTION_LIMIT,
+          })
+        )
+      )
+    );
+  }
+  if (env.WEBHOOK_DATABASE_URL) {
+    return webhookPrisma;
+  }
+  return $replica;
 });
 
 export type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
@@ -391,12 +441,14 @@ function getClient() {
 export function buildWriterClient({
   url,
   clientType,
+  connectionLimit = env.DATABASE_CONNECTION_LIMIT,
 }: {
   url: string;
   clientType: string;
+  connectionLimit?: number;
 }): PrismaClient {
   const databaseUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    connection_limit: connectionLimit.toString(),
     pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
     connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
     application_name: env.SERVICE_NAME,
@@ -538,12 +590,14 @@ function getReplicaClient() {
 export function buildReplicaClient({
   url,
   clientType,
+  connectionLimit = env.DATABASE_CONNECTION_LIMIT,
 }: {
   url: string;
   clientType: string;
+  connectionLimit?: number;
 }): PrismaClient {
   const replicaUrl = extendQueryParams(url, {
-    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    connection_limit: connectionLimit.toString(),
     pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
     connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
     application_name: env.SERVICE_NAME,
