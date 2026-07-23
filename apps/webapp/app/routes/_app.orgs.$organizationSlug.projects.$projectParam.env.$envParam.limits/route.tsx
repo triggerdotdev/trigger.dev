@@ -880,18 +880,15 @@ function SourceBadge({ source }: { source: "default" | "plan" | "override" }) {
   const variants: Record<typeof source, { label: string; className: string }> = {
     default: {
       label: "Default",
-      className:
-        "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 system:text-indigo-500",
+      className: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 system:text-indigo-500",
     },
     plan: {
       label: "Plan",
-      className:
-        "bg-purple-500/10 text-purple-600 dark:text-purple-400 system:text-purple-500",
+      className: "bg-purple-500/10 text-purple-600 dark:text-purple-400 system:text-purple-500",
     },
     override: {
       label: "Override",
-      className:
-        "bg-amber-500/10 text-amber-700 dark:text-amber-400 system:text-warning",
+      className: "bg-amber-500/10 text-amber-700 dark:text-amber-400 system:text-warning",
     },
   };
 
