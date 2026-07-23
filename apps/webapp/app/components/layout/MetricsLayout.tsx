@@ -275,9 +275,21 @@ function MetricsLayoutRoot({
  * standard page insets. Compose left/right clusters as child divs — `justify-between` spreads them
  * (a single child sits at the start).
  */
-function MetricsLayoutFilters({ children }: { children: ReactNode }) {
+function MetricsLayoutFilters({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  /** Override the baked horizontal padding (the two queue pages want slightly different insets). */
+  className?: string;
+}) {
   return (
-    <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-dimmed pl-2.5 pr-3">
+    <div
+      className={cn(
+        "flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-dimmed pl-2.5 pr-3",
+        className
+      )}
+    >
       {children}
     </div>
   );

@@ -244,7 +244,7 @@ export default function Page() {
         {/* Filters — search (concurrency keys) + time filter in one left cluster, above
             everything, like the Queues list. The time filter scopes the tab charts; search filters
             the keys table. The bar is pinned by the layout while the page scrolls. */}
-        <MetricsLayout.Filters>
+        <MetricsLayout.Filters className="pl-1.5 pr-2">
           <div className="pl-2">
             <TabContainer>
               <TabButton
@@ -270,9 +270,7 @@ export default function Page() {
             <TimeFilter
               defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
               labelName="Period"
-              hideLabel
               maxPeriodDays={maxPeriodDays}
-              valueClassName="text-text-bright"
               shortcut={{ key: "d" }}
             />
             <QueueOverrideConcurrencyButton

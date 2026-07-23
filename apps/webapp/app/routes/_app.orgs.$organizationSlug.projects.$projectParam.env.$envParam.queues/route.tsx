@@ -453,19 +453,17 @@ function QueuesWithMetricsView() {
         {/* Filters — pinned bar directly under the NavBar. Left cluster = search + period; right
             cluster = pagination. */}
         {success ? (
-          <MetricsLayout.Filters>
+          <MetricsLayout.Filters className="px-2">
             <div className="flex items-center gap-1.5">
               <QueueFilters />
+            </div>
+            <div className="flex items-center gap-1.5">
               <TimeFilter
                 defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
                 labelName="Period"
-                hideLabel
                 maxPeriodDays={maxPeriodDays}
-                valueClassName="text-text-bright"
                 shortcut={{ key: "d" }}
               />
-            </div>
-            <div className="flex items-center gap-1.5">
               {environment.runsEnabled &&
               env.pauseSource !== ENVIRONMENT_PAUSE_SOURCE_BILLING_LIMIT ? (
                 <EnvironmentPauseResumeButton env={env} />
