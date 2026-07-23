@@ -48,7 +48,6 @@ import { SearchInput } from "~/components/primitives/SearchInput";
 import { engine } from "~/v3/runEngine.server";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { useTableSort, type SortColumn } from "~/components/primitives/useTableSort";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { requireUserId } from "~/services/session.server";
@@ -776,20 +775,6 @@ function KeyStatsTable({
     [merged, query]
   );
 
-  const sortColumns = useMemo<SortColumn<(typeof merged)[number]>[]>(
-    () => [
-      { key: "key", type: "alpha", value: (r) => r.key },
-      { key: "queued", type: "number", value: (r) => r.queued },
-      { key: "running", type: "number", value: (r) => r.running },
-      { key: "oldestWait", type: "number", value: (r) => r.oldestWaitMs },
-      { key: "started", type: "number", value: (r) => r.range?.started },
-      { key: "peakBacklog", type: "number", value: (r) => r.range?.peakBacklog },
-      { key: "meanWait", type: "number", value: (r) => r.range?.meanWaitMs },
-    ],
-    []
-  );
-  const { sortedRows, getSortProps } = useTableSort(filtered, sortColumns);
-
   if (merged.length === 0) return null;
 
   return (
@@ -797,34 +782,22 @@ function KeyStatsTable({
     <Table containerClassName="border-t">
       <TableHeader>
         <TableRow>
-          <TableHeaderCell {...getSortProps("key")}>Key</TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("queued")}>
-            Queued now
-          </TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("running")}>
-            Running now
-          </TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("oldestWait")}>
-            Oldest wait
-          </TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("started")}>
-            Started
-          </TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("peakBacklog")}>
-            Peak backlog
-          </TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("meanWait")}>
-            Mean delay
-          </TableHeaderCell>
+          <TableHeaderCell>Key</TableHeaderCell>
+          <TableHeaderCell alignment="right">Queued now</TableHeaderCell>
+          <TableHeaderCell alignment="right">Running now</TableHeaderCell>
+          <TableHeaderCell alignment="right">Oldest wait</TableHeaderCell>
+          <TableHeaderCell alignment="right">Started</TableHeaderCell>
+          <TableHeaderCell alignment="right">Peak backlog</TableHeaderCell>
+          <TableHeaderCell alignment="right">Mean delay</TableHeaderCell>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {sortedRows.length === 0 ? (
+        {filtered.length === 0 ? (
           <TableBlankRow colSpan={7} className="text-text-dimmed">
             No keys match “{query}”
           </TableBlankRow>
         ) : null}
-        {sortedRows.map((row) => (
+        {filtered.map((row) => (
           <TableRow
             key={row.key}
             isSelected={selectedKey === row.key}
