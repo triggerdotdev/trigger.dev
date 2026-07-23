@@ -282,9 +282,10 @@
   color: var(--color-text-bright);
 }
 
-/* System themes: environment names follow the surrounding text color, only the
-   env icon keeps its tint. Classic colors both. Set in EnvironmentLabel. */
-:is([data-theme="dark"], [data-theme="light"]) .env-label-mono {
+/* System themes: status/env labels follow the surrounding text color, only the
+   icon keeps its tint. Classic colors both. Set in EnvironmentLabel and the
+   status combo components. */
+:is([data-theme="dark"], [data-theme="light"]) .system-mono-label {
   color: inherit;
 }
 

@@ -39,7 +39,10 @@ export function TaskRunAttemptStatusLabel({
   status: ExtendedTaskAttemptStatus | null;
 }) {
   return (
-    <span className={runAttemptStatusClassNameColor(status)}>{runAttemptStatusTitle(status)}</span>
+    // system-mono-label: System themes uncolor the label (see tailwind.css)
+    <span className={cn("system-mono-label", runAttemptStatusClassNameColor(status))}>
+      {runAttemptStatusTitle(status)}
+    </span>
   );
 }
 

@@ -149,7 +149,12 @@ export function TaskRunStatusReason({
 }
 
 export function TaskRunStatusLabel({ status }: { status: TaskRunStatus }) {
-  return <span className={runStatusClassNameColor(status)}>{runStatusTitle(status)}</span>;
+  // system-mono-label: System themes uncolor the label (see tailwind.css)
+  return (
+    <span className={cn("system-mono-label", runStatusClassNameColor(status))}>
+      {runStatusTitle(status)}
+    </span>
+  );
 }
 
 export function TaskRunStatusIcon({
