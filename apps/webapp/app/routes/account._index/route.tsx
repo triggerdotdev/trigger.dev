@@ -336,7 +336,7 @@ export default function Page() {
                 <div className="mt-4 flex w-full items-center justify-between gap-4">
                   <Label>Contrast</Label>
                   <Slider
-                    variant="tertiary"
+                    variant="settings"
                     className="w-44"
                     min={0}
                     max={100}
