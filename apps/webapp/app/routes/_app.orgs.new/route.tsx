@@ -1,6 +1,7 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import { parseWithZod } from "@conform-to/zod";
-import { BuildingOffice2Icon, GlobeAltIcon } from "@heroicons/react/20/solid";
+import { BuildingOffice2Icon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, redirect, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
@@ -140,7 +141,7 @@ export default function NewOrganizationPage() {
         onLoad={() => setFaviconError(false)}
       />
     ) : (
-      GlobeAltIcon
+      GlobeLinesIcon
     );
 
   return (

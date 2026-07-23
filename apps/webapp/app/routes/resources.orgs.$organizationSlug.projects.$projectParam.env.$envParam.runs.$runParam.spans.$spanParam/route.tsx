@@ -1,4 +1,5 @@
 import {
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
   ArrowPathIcon,
   BookOpenIcon,
   CheckIcon,
@@ -8,7 +9,6 @@ import {
   CloudArrowDownIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
-  GlobeAltIcon,
   KeyIcon,
   QueueListIcon,
   SignalIcon,
@@ -722,7 +722,7 @@ function RunBody({
                               </div>
                               <div>
                                 <div className="mb-1 flex items-center gap-1">
-                                  <GlobeAltIcon className="size-4 text-blue-500" />
+                                  <GlobeLinesIcon className="size-4 text-blue-500" />
                                   <Header3>Scope</Header3>
                                 </div>
                                 <div className="flex flex-col gap-0.5 text-sm text-text-dimmed">

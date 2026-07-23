@@ -1,9 +1,9 @@
 import * as Ariakit from "@ariakit/react";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
 import {
   CalendarIcon,
   CpuChipIcon,
   FingerPrintIcon,
-  GlobeAltIcon,
   PlusIcon,
   RectangleStackIcon,
   Squares2X2Icon,
@@ -282,7 +282,7 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
     case "queues":
       return <RectangleStackIcon className="size-4" />;
     case "regions":
-      return <GlobeAltIcon className="size-4" />;
+      return <GlobeLinesIcon className="size-4" />;
     case "machines":
       return <MachineDefaultIcon className="size-4" />;
     case "versions":
@@ -423,7 +423,7 @@ const filterTypes = [
   { name: "tags", title: "Tags", icon: <TagIcon className="size-4" /> },
   { name: "versions", title: "Versions", icon: <IconRotateClockwise2 className="size-4" /> },
   { name: "queues", title: "Queues", icon: <RectangleStackIcon className="size-4" /> },
-  { name: "regions", title: "Region", icon: <GlobeAltIcon className="size-4" /> },
+  { name: "regions", title: "Region", icon: <GlobeLinesIcon className="size-4" /> },
   { name: "machines", title: "Machines", icon: <MachineDefaultIcon className="size-4" /> },
   { name: "run", title: "Run ID", icon: <FingerPrintIcon className="size-4" /> },
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },

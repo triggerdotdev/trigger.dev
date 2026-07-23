@@ -1,10 +1,10 @@
 import {
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
   BoltIcon,
   BuildingOffice2Icon,
   CodeBracketSquareIcon,
   FaceSmileIcon,
   FireIcon,
-  GlobeAltIcon,
   RocketLaunchIcon,
   StarIcon,
 } from "@heroicons/react/20/solid";
@@ -193,7 +193,7 @@ function AvatarImage({ avatar, size }: { avatar: ImageAvatar; size: number }) {
   if (!avatar.url) {
     return (
       <span className="grid shrink-0 place-items-center" style={styleFromSize(size)}>
-        <GlobeAltIcon className="size-[90%] text-text-dimmed" />
+        <GlobeLinesIcon className="size-[90%] text-text-dimmed" />
       </span>
     );
   }
