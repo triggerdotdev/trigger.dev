@@ -555,7 +555,10 @@ export default function PromptDetailPage() {
                 <span className="text-xs text-text-dimmed">v{selectedVersion.version}</span>
                 {isCurrent && <Badge variant="extra-small">current</Badge>}
                 {selectedVersion.labels.includes("override") && (
-                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400 system:border-transparent system:bg-amber-600 system:text-white">
+                  <Badge
+                    variant="extra-small"
+                    className="border-amber-500/30 text-amber-400 system:border-transparent system:bg-amber-600 system:text-white"
+                  >
                     override
                   </Badge>
                 )}
@@ -2101,7 +2104,10 @@ function VersionsTab({
                 />
                 <span className="font-medium text-text-bright">v{v.version}</span>
                 {isOverride && (
-                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400 system:border-transparent system:bg-amber-600 system:text-white">
+                  <Badge
+                    variant="extra-small"
+                    className="border-amber-500/30 text-amber-400 system:border-transparent system:bg-amber-600 system:text-white"
+                  >
                     override
                   </Badge>
                 )}

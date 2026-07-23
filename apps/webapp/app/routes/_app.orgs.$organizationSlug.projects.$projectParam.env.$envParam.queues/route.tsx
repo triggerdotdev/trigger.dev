@@ -553,7 +553,12 @@ function QueuesWithMetricsView() {
               valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
-                  <span className={cn(limitClassName, "system:text-text-dimmed flex items-center gap-1")}>
+                  <span
+                    className={cn(
+                      limitClassName,
+                      "system:text-text-dimmed flex items-center gap-1"
+                    )}
+                  >
                     Including {envRunningLive - environment.concurrencyLimit} burst runs{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>
@@ -1067,10 +1072,16 @@ function EnvironmentPauseResumeButton({
                   <Button
                     type="button"
                     variant="secondary/small-icon"
-                    className={env.paused ? "system:border-mint-500 system:bg-mint-600 system:group-hover/button:border-mint-400 system:group-hover/button:bg-mint-500" : "system:border-amber-500 system:bg-amber-600 system:group-hover/button:border-amber-400 system:group-hover/button:bg-amber-500"}
+                    className={
+                      env.paused
+                        ? "system:border-mint-500 system:bg-mint-600 system:group-hover/button:border-mint-400 system:group-hover/button:bg-mint-500"
+                        : "system:border-amber-500 system:bg-amber-600 system:group-hover/button:border-amber-400 system:group-hover/button:bg-amber-500"
+                    }
                     LeadingIcon={env.paused ? PlayIcon : PauseIcon}
                     leadingIconClassName={
-                      env.paused ? "text-success system:text-white" : "text-warning system:text-white"
+                      env.paused
+                        ? "text-success system:text-white"
+                        : "text-warning system:text-white"
                     }
                     aria-label={
                       env.paused
@@ -1643,7 +1654,12 @@ function ClassicQueuesView() {
               valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
-                  <span className={cn(limitClassName, "system:text-text-dimmed flex items-center gap-1")}>
+                  <span
+                    className={cn(
+                      limitClassName,
+                      "system:text-text-dimmed flex items-center gap-1"
+                    )}
+                  >
                     Including {environment.running - environment.concurrencyLimit} burst runs{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>
@@ -1674,7 +1690,12 @@ function ClassicQueuesView() {
               valueClassName={limitClassName}
               suffix={
                 environment.burstFactor > 1 ? (
-                  <span className={cn(limitClassName, "system:text-text-dimmed flex items-center gap-1")}>
+                  <span
+                    className={cn(
+                      limitClassName,
+                      "system:text-text-dimmed flex items-center gap-1"
+                    )}
+                  >
                     Burst limit {environment.burstFactor * environment.concurrencyLimit}{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>

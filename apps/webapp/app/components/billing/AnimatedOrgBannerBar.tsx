@@ -40,7 +40,10 @@ export function AnimatedOrgBannerBar({
           <div className="flex items-center gap-2">
             <Icon
               icon={ExclamationCircleIcon}
-              className={cn("h-5 w-5", variant === "warning" ? "text-amber-400 light:text-amber-600" : "text-error")}
+              className={cn(
+                "h-5 w-5",
+                variant === "warning" ? "text-amber-400 light:text-amber-600" : "text-error"
+              )}
             />
             <Paragraph
               variant="small"

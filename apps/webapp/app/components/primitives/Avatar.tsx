@@ -1,5 +1,5 @@
-import {
 import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
+import {
   BoltIcon,
   BuildingOffice2Icon,
   CodeBracketSquareIcon,
