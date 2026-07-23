@@ -181,6 +181,8 @@ type TableCellBasicProps = {
 type TableHeaderCellProps = TableCellBasicProps & {
   hiddenLabel?: boolean;
   tooltip?: ReactNode;
+  /** Extra class merged onto the tooltip content — e.g. widen it past the default max-width. */
+  tooltipContentClassName?: string;
   disableTooltipHoverableContent?: boolean;
   /**
    * When set (together with `onSort`), the header renders a sort indicator and becomes clickable.
@@ -202,6 +204,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
       colSpan,
       hiddenLabel = false,
       tooltip,
+      tooltipContentClassName,
       disableTooltipHoverableContent = false,
       sortDirection,
       onSort,
@@ -226,7 +229,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
     const tooltipNode = tooltip ? (
       <InfoIconTooltip
         content={tooltip}
-        contentClassName="normal-case tracking-normal"
+        contentClassName={cn("normal-case tracking-normal", tooltipContentClassName)}
         disableHoverableContent={disableTooltipHoverableContent}
       />
     ) : null;

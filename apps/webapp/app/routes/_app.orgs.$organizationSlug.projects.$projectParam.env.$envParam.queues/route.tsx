@@ -670,8 +670,9 @@ function QueuesWithMetricsView() {
                   </TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
+                    tooltipContentClassName="max-w-max"
                     tooltip={
-                      <div className="max-w-xs space-y-1 p-1 text-left text-xs text-text-dimmed">
+                      <div className="max-w-max space-y-1 p-1 text-left text-xs text-text-dimmed">
                         <p>
                           <span className="text-text-bright">Environment</span>: uses the
                           environment limit of {environment.concurrencyLimit}.
