@@ -1311,7 +1311,7 @@ function YourModelsTab({
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHeaderCell className="w-[18%]">Model</TableHeaderCell>
+                <TableHeaderCell className="w-[24%]">Model</TableHeaderCell>
                 <TableHeaderCell className="w-[12%]">Provider</TableHeaderCell>
                 <TableHeaderCell className="w-[8%]" alignment="right">
                   Calls
@@ -1328,8 +1328,8 @@ function YourModelsTab({
                 <TableHeaderCell className="w-[11%]" alignment="right">
                   Avg tokens/sec
                 </TableHeaderCell>
-                <TableHeaderCell className="w-[12%]">Calls trend</TableHeaderCell>
-                <TableHeaderCell className="w-[12%]">Tokens trend</TableHeaderCell>
+                <TableHeaderCell className="w-[9%]">Calls trend</TableHeaderCell>
+                <TableHeaderCell className="w-[9%]">Tokens trend</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1351,7 +1351,9 @@ function YourModelsTab({
                     isSelected={!!catalogItem && selectedModelId === catalogItem.friendlyId}
                   >
                     <TableCell onClick={select} isTabbableCell={!!select}>
-                      {displayId}
+                      <span className="block truncate" title={displayId}>
+                        {displayId}
+                      </span>
                     </TableCell>
                     <TableCell onClick={select}>
                       <span className="flex items-center gap-1.5">
