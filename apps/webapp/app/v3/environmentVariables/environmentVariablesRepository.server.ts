@@ -7,6 +7,8 @@ import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
 import { removeBlacklistedVariables } from "../environmentVariableRules.server";
+import { FEATURE_FLAG, FeatureFlagCatalog } from "../featureFlags";
+import { flag } from "../featureFlags.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   type CreateEnvironmentVariables,
@@ -1146,10 +1148,53 @@ async function resolveOverridableOtelDevVariables(
   return result;
 }
 
+// Deployed runs normally get the public API origin. When INTERNAL_API_ORIGIN is
+// set and the org's internalApiOriginEnabled flag resolves on (org override wins
+// in both directions; the global default applies only when the org has not set
+// it), they get the internal origin instead. Resolved at attempt start, so flag
+// changes take effect on the next attempt without redeploys.
+async function resolveProdApiOrigin(
+  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
+): Promise<string> {
+  const publicOrigin = env.API_ORIGIN ?? env.APP_ORIGIN;
+
+  if (!env.INTERNAL_API_ORIGIN) {
+    return publicOrigin;
+  }
+
+  const organization = await prisma.organization.findFirst({
+    where: { id: runtimeEnvironment.organizationId },
+    select: { featureFlags: true },
+  });
+
+  const orgFeatureFlags = organization?.featureFlags;
+  const override =
+    orgFeatureFlags && typeof orgFeatureFlags === "object" && !Array.isArray(orgFeatureFlags)
+      ? (orgFeatureFlags as Record<string, unknown>)[FEATURE_FLAG.internalApiOriginEnabled]
+      : undefined;
+
+  if (override !== undefined) {
+    const parsed = FeatureFlagCatalog[FEATURE_FLAG.internalApiOriginEnabled].safeParse(override);
+
+    if (parsed.success) {
+      return parsed.data ? env.INTERNAL_API_ORIGIN : publicOrigin;
+    }
+  }
+
+  const globalEnabled = await flag({
+    key: FEATURE_FLAG.internalApiOriginEnabled,
+    defaultValue: false,
+  });
+
+  return globalEnabled ? env.INTERNAL_API_ORIGIN : publicOrigin;
+}
+
 async function resolveBuiltInProdVariables(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
   parentEnvironment?: RuntimeEnvironmentForEnvRepo
 ) {
+  const apiOrigin = await resolveProdApiOrigin(runtimeEnvironment);
+
   let result: Array<EnvironmentVariable> = [
     {
       key: "TRIGGER_SECRET_KEY",
@@ -1157,7 +1202,7 @@ async function resolveBuiltInProdVariables(
     },
     {
       key: "TRIGGER_API_URL",
-      value: env.API_ORIGIN ?? env.APP_ORIGIN,
+      value: apiOrigin,
     },
     {
       key: "TRIGGER_STREAM_URL",

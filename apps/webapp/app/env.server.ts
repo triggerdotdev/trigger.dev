@@ -233,6 +233,9 @@ const EnvironmentSchema = z
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     API_ORIGIN: z.string().optional(),
+    // Alternative API origin for deployed runs whose org has the
+    // internalApiOriginEnabled feature flag on. Unset = flag is a no-op.
+    INTERNAL_API_ORIGIN: z.string().optional(),
     STREAM_ORIGIN: z.string().optional(),
     ELECTRIC_ORIGIN: z.string().default("http://localhost:3060"),
     // A comma separated list of electric origins to shard into different electric instances by environmentId

@@ -12,6 +12,7 @@ export const FEATURE_FLAG = {
   hasSso: "hasSso",
   mollifierEnabled: "mollifierEnabled",
   workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
+  internalApiOriginEnabled: "internalApiOriginEnabled",
   realtimeBackend: "realtimeBackend",
   computeMigrationEnabled: "computeMigrationEnabled",
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
@@ -38,6 +39,11 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasSso]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
+  // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Controllable
+  // globally and per-org (org wins). No-op unless INTERNAL_API_ORIGIN is set.
+  // Strict z.boolean(): coercion turns the string "false" into true, which
+  // would silently enable the wrong orgs if written as a string.
+  [FEATURE_FLAG.internalApiOriginEnabled]: z.boolean(),
   // Which backend serves the realtime run feed. Controllable
   // globally and per-org (org wins). Defaults to "electric" when unset.
   // "shadow" serves Electric but diffs the native path in the background.
