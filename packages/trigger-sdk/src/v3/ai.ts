@@ -7936,6 +7936,9 @@ function chatAgent<
             let partialResponse: TUIMessage | undefined =
               capturedPartialResponse ??
               ((await assemblePartialFromChunks(turnBufferedChunks)) as TUIMessage | undefined);
+            if (partialResponse) {
+              partialResponse = cleanupAbortedParts(partialResponse);
+            }
 
             // Build the complete error UI state. A HITL/tool continuation partial
             // reuses an existing assistant id, so replace it in place (like the
@@ -7999,6 +8002,7 @@ function chatAgent<
                 locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
               } catch {
                 // Keep the prior model accumulator if conversion fails.
+                erroredNewModelMessages = [];
               }
             }
 
@@ -9840,17 +9844,8 @@ function createChatSession(
                 // Surface a genuine stream failure to the caller. A user stop
                 // (status "aborted") falls through so the partial is accumulated.
                 if (captured.status === "error") {
-                  // Preserve the partial the model streamed before the failure:
-                  // accumulate it (mirroring the stop path) so `turn.uiMessages`
-                  // reflects it and the caller can persist it after catching,
-                  // then rethrow. Without this the partial pipeAndCapture
-                  // reconstructed is silently dropped on rethrow. Fold in any
-                  // data parts queued via chat.response / writer.write() this
-                  // turn, same as the success path below. cleanupAbortedParts is
-                  // intentionally skipped: it only runs on a user stop, not on a
-                  // hard transport error (which is not an abort).
                   if (captured.message) {
-                    const partial = captured.message;
+                    const partial = cleanupAbortedParts(captured.message);
                     const queuedParts = locals.get(chatResponsePartsKey);
                     if (queuedParts && queuedParts.length > 0) {
                       (partial as any).parts = [...(partial.parts ?? []), ...queuedParts];

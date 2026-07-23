@@ -48,13 +48,17 @@ function erroringSource(errorMessage: string) {
     { type: "text-start", id: "t1" },
     { type: "text-delta", id: "t1", delta: "partial answer" },
   ];
+  return sourceFromChunks(partialChunks, errorMessage);
+}
+
+function sourceFromChunks(chunks: unknown[], errorMessage: string) {
   return {
     toUIMessageStream() {
       let i = 0;
       return new ReadableStream({
         pull(controller) {
-          if (i < partialChunks.length) {
-            controller.enqueue(partialChunks[i++]);
+          if (i < chunks.length) {
+            controller.enqueue(chunks[i++]);
           } else {
             controller.error(new Error(errorMessage));
           }
@@ -315,6 +319,48 @@ describe("chat.agent managed loop — source-stream failure", () => {
       expect(
         (errorEvent.uiMessages as UIMessage[]).some((m) => extractText(m).includes("clobber"))
       ).toBe(false);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("cleans dangling tool parts from the recovered partial while keeping its text", async () => {
+    const turnCompletes: TurnCompleteEvent<unknown, UIMessage>[] = [];
+
+    const agent = chat.agent({
+      id: "chatAgent.error-partial-cleanup",
+      run: async () =>
+        sourceFromChunks(
+          [
+            { type: "start", messageId: "a-tool" },
+            { type: "text-start", id: "t1" },
+            { type: "text-delta", id: "t1", delta: "thinking" },
+            { type: "text-end", id: "t1" },
+            { type: "tool-input-start", toolCallId: "tc1", toolName: "search" },
+            {
+              type: "tool-input-available",
+              toolCallId: "tc1",
+              toolName: "search",
+              input: { q: "x" },
+            },
+          ],
+          "UND_ERR_BODY_TIMEOUT"
+        ) as never,
+      onTurnComplete: async (event) => {
+        turnCompletes.push(event);
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "cae-partial-cleanup" });
+    try {
+      await harness.sendMessage(userMessage("hi", "u-1"));
+      await waitFor(() => turnCompletes.length >= 1);
+
+      const evt = turnCompletes[0]!;
+      expect(evt.responseMessage).toBeDefined();
+      const parts = evt.responseMessage!.parts as Array<{ type: string }>;
+      expect(extractText(evt.responseMessage)).toBe("thinking");
+      expect(parts.some((p) => p.type.startsWith("tool-"))).toBe(false);
     } finally {
       await harness.close();
     }
