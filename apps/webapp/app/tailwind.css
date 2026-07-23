@@ -275,6 +275,13 @@
   --color-run-timed-out: #ed5f74;
 }
 
+/* System themes keep the left nav monochrome: the active item's icon drops its
+   section accent and highlights with bright text instead. Classic keeps the
+   colored icons. Marker class set in SideMenuItem. */
+:is([data-theme="dark"], [data-theme="light"]) .side-menu-active-icon {
+  color: var(--color-text-bright);
+}
+
 /*
   Code syntax palette - the trigger-dark highlight theme, shared by the shiki
   theme (streamdown) and the prism theme (CodeBlock). Consumed from JS via
