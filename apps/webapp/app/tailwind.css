@@ -282,6 +282,12 @@
   color: var(--color-text-bright);
 }
 
+/* System themes: environment names follow the surrounding text color, only the
+   env icon keeps its tint. Classic colors both. Set in EnvironmentLabel. */
+:is([data-theme="dark"], [data-theme="light"]) .env-label-mono {
+  color: inherit;
+}
+
 /*
   Code syntax palette - the trigger-dark highlight theme, shared by the shiki
   theme (streamdown) and the prism theme (CodeBlock). Consumed from JS via
