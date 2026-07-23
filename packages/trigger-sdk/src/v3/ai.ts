@@ -7930,32 +7930,55 @@ function chatAgent<
               capturedPartialResponse ??
               ((await assemblePartialFromChunks(turnBufferedChunks)) as TUIMessage | undefined);
 
-            // Include the partial in the UI-message views too, so customers who
-            // persist from uiMessages / newUIMessages (not responseMessage) keep
-            // it as well. Dedup by id against the accumulator to be safe.
+            // Build the complete error UI state. A HITL/tool continuation partial
+            // reuses an existing assistant id, so replace it in place (like the
+            // success path) instead of dropping it as a dup; otherwise append.
+            // `erroredWireMessage` was already folded into `erroredUIMessages`
+            // above when the pre-run merge hadn't happened.
+            const partialIdx =
+              partialResponse?.id != null
+                ? erroredUIMessages.findIndex((m) => m.id === partialResponse!.id)
+                : -1;
+            const erroredUIMessagesWithPartial: TUIMessage[] = !partialResponse
+              ? erroredUIMessages
+              : partialIdx === -1
+                ? [...erroredUIMessages, partialResponse]
+                : (erroredUIMessages.map((m, i) =>
+                    i === partialIdx ? partialResponse : m
+                  ) as TUIMessage[]);
+
             const erroredNewUIMessages: TUIMessage[] = erroredWireMessage
               ? [erroredWireMessage]
               : [];
             if (partialResponse) {
               erroredNewUIMessages.push(partialResponse);
             }
-            const erroredUIMessagesWithPartial =
-              partialResponse && !erroredUIMessages.some((m) => m.id === partialResponse.id)
-                ? [...erroredUIMessages, partialResponse]
-                : erroredUIMessages;
 
-            // Commit the recovered partial to the canonical accumulator so the
-            // partial survives past this hook: the run stays alive after an
-            // error, so the next turn sees it, and the error-path snapshot below
-            // (the recovery source for non-hydrate apps) persists it for reboot.
-            // Matches the success path, which accumulates the response. Guard the
-            // model-message conversion so a secondary failure here can't crash
-            // the still-alive run.
-            if (partialResponse) {
-              accumulatedUIMessages = erroredUIMessagesWithPartial as TUIMessage[];
+            // Commit the complete error state to the canonical accumulator so the
+            // errored user message and any recovered partial survive past this
+            // hook: the run stays alive after an error, so the next turn sees
+            // them, and the error-path snapshot below (the recovery source for
+            // non-hydrate apps) persists them for reboot. Matches the success
+            // path. Skip when nothing changed so an errored turn never needlessly
+            // reconverts. When the only change is an appended partial, push just
+            // its model messages to preserve a prior turn's compaction (mirrors
+            // the success path's append branch); otherwise reconvert from UI.
+            // Guard the conversion so a secondary failure can't crash the run.
+            if (erroredUIMessagesWithPartial !== accumulatedUIMessages) {
+              const onlyAppendedPartial =
+                partialResponse != null &&
+                partialIdx === -1 &&
+                erroredUIMessages === accumulatedUIMessages;
+              accumulatedUIMessages = erroredUIMessagesWithPartial;
               locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
               try {
-                accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                if (onlyAppendedPartial) {
+                  accumulatedMessages.push(
+                    ...(await toModelMessages([stripProviderMetadata(partialResponse!)]))
+                  );
+                } else {
+                  accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+                }
               } catch {
                 // Keep the prior model accumulator if conversion fails.
               }
