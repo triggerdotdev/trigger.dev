@@ -6389,6 +6389,14 @@ function chatAgent<
           // Declared here so the finally can detach it — a handler leaked past
           // its turn duplicates every mid-stream message into the shared buffer.
           let turnMsgSub: { off: () => void } | undefined;
+          // Declared at turn scope (not inside the span callback) so the error
+          // handler below can recover the partial assistant output when a
+          // source-stream failure abandons the turn before onTurnComplete's
+          // success-path capture runs. `capturedPartialResponse` holds the
+          // onFinish message if it fired; otherwise the buffered chunks are
+          // reconstructed as the fallback (mirrors chat.pipeAndCapture).
+          let capturedPartialResponse: TUIMessage | undefined;
+          const turnBufferedChunks: UIMessageChunk[] = [];
           try {
             // Extract turn-level context before entering the span. Slim
             // wire: at most one delta message per record. `headStartMessages`
@@ -7175,11 +7183,17 @@ function chatAgent<
                           finishReason?: FinishReason;
                         }) => {
                           capturedResponseMessage = responseMessage as TUIMessage;
+                          capturedPartialResponse = responseMessage as TUIMessage;
                           capturedFinishReason = finishReason;
                           resolveOnFinish!();
                         },
                       });
-                      await pipeChat(uiStream, {
+                      // Buffer chunks as they flow to the pipe so a source-stream
+                      // transport failure — which abandons the UI stream before
+                      // onFinish fires — can still reconstruct the partial in the
+                      // error handler instead of dropping it. The happy path pays
+                      // nothing extra; reassembly only runs in the error fallback.
+                      await pipeChat(tapUIMessageChunks(uiStream, turnBufferedChunks), {
                         signal: combinedSignal,
                         spanName: "stream response",
                       });
@@ -7904,10 +7918,36 @@ function chatAgent<
                 ? [...accumulatedUIMessages, erroredWireMessage]
                 : accumulatedUIMessages;
 
+            // Recover the partial assistant output the model streamed before the
+            // failure. A source-stream transport error (e.g. UND_ERR_BODY_TIMEOUT)
+            // abandons the UI stream before onFinish fires, so fall back to
+            // reconstructing the partial from the buffered chunks. Surfacing it on
+            // the error-path event lets persistence keep the partial instead of
+            // losing it — critical when hydrateMessages disables boot-time tail
+            // replay, so the recovery path can't reclaim it later. Empty for
+            // non-stream failures (nothing buffered), preserving prior behavior.
+            const partialResponse: TUIMessage | undefined =
+              capturedPartialResponse ??
+              ((await assemblePartialFromChunks(turnBufferedChunks)) as TUIMessage | undefined);
+
+            // Include the partial in the UI-message views too, so customers who
+            // persist from uiMessages / newUIMessages (not responseMessage) keep
+            // it as well. Dedup by id against the accumulator to be safe.
+            const erroredNewUIMessages: TUIMessage[] = erroredWireMessage
+              ? [erroredWireMessage]
+              : [];
+            if (partialResponse) {
+              erroredNewUIMessages.push(partialResponse);
+            }
+            const erroredUIMessagesWithPartial =
+              partialResponse && !erroredUIMessages.some((m) => m.id === partialResponse.id)
+                ? [...erroredUIMessages, partialResponse]
+                : erroredUIMessages;
+
             // Fire onTurnComplete on the error path too — the docs promise it
             // runs "after every turn, successful or errored" so customers can
-            // mark the turn failed. `responseMessage` is undefined/partial and
-            // `error` carries the thrown value.
+            // mark the turn failed. `responseMessage` carries any partial
+            // recovered above and `error` carries the thrown value.
             if (onTurnComplete) {
               try {
                 await tracer.startActiveSpan(
@@ -7917,11 +7957,11 @@ function chatAgent<
                       ctx,
                       chatId: currentWirePayload.chatId,
                       messages: accumulatedMessages,
-                      uiMessages: erroredUIMessages,
+                      uiMessages: erroredUIMessagesWithPartial,
                       newMessages: [],
-                      newUIMessages: erroredWireMessage ? [erroredWireMessage] : [],
-                      responseMessage: undefined,
-                      rawResponseMessage: undefined,
+                      newUIMessages: erroredNewUIMessages,
+                      responseMessage: partialResponse,
+                      rawResponseMessage: partialResponse,
                       turn,
                       runId: ctx.run.id,
                       chatAccessToken: "",
@@ -9744,6 +9784,14 @@ function createChatSession(
                 // Surface a genuine stream failure to the caller. A user stop
                 // (status "aborted") falls through so the partial is accumulated.
                 if (captured.status === "error") {
+                  // Preserve the partial the model streamed before the failure:
+                  // accumulate it (mirroring the stop path) so `turn.uiMessages`
+                  // reflects it and the caller can persist it after catching,
+                  // then rethrow. Without this the partial pipeAndCapture
+                  // reconstructed is silently dropped on rethrow.
+                  if (captured.message) {
+                    await accumulator.addResponse(captured.message);
+                  }
                   throw captured.error;
                 }
                 response = captured.message;
