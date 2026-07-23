@@ -368,6 +368,35 @@ describe("chat.agent managed loop — source-stream failure", () => {
       await harness.close();
     }
   });
+
+  it("folds queued response data parts into the recovered partial", async () => {
+    const turnCompletes: TurnCompleteEvent<unknown, UIMessage>[] = [];
+
+    const agent = chat.agent({
+      id: "chatAgent.error-queued-parts",
+      run: async () => {
+        chat.response.write({ type: "data-marker", data: { kept: true } } as never);
+        return erroringSource("UND_ERR_BODY_TIMEOUT") as never;
+      },
+      onTurnComplete: async (event) => {
+        turnCompletes.push(event);
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "cae-error-queued-parts" });
+    try {
+      await harness.sendMessage(userMessage("hi", "u-1"));
+      await waitFor(() => turnCompletes.length >= 1);
+
+      const evt = turnCompletes[0]!;
+      expect(evt.responseMessage).toBeDefined();
+      const parts = evt.responseMessage!.parts as Array<{ type: string }>;
+      expect(extractText(evt.responseMessage)).toBe("partial answer");
+      expect(parts.some((p) => p.type === "data-marker")).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
 });
 
 describe("chat.createSession turn.complete() — source-stream failure", () => {

@@ -7956,6 +7956,16 @@ function chatAgent<
             if (partialResponse && !partialResponse.id) {
               partialResponse = { ...partialResponse, id: generateMessageId() } as TUIMessage;
             }
+            if (partialResponse && !responseCommitted) {
+              const queuedParts = locals.get(chatResponsePartsKey);
+              if (queuedParts && queuedParts.length > 0) {
+                partialResponse = {
+                  ...partialResponse,
+                  parts: [...partialResponse.parts, ...(queuedParts as UIMessage["parts"])],
+                } as TUIMessage;
+                locals.set(chatResponsePartsKey, []);
+              }
+            }
             const includePartial = partialResponse != null && !responseCommitted;
             let erroredUIMessagesWithPartial: TUIMessage[] = !includePartial
               ? erroredUIMessages
@@ -7991,7 +8001,9 @@ function chatAgent<
                 }
                 if (erroredUIMessagesWithPartial !== accumulatedUIMessages) {
                   if (partialIdx === -1) {
-                    const appended = erroredUIMessagesWithPartial.slice(accumulatedUIMessages.length);
+                    const appended = erroredUIMessagesWithPartial.slice(
+                      accumulatedUIMessages.length
+                    );
                     accumulatedMessages.push(
                       ...(await toModelMessages(appended.map((m) => stripProviderMetadata(m))))
                     );
