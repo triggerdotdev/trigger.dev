@@ -11,7 +11,7 @@ const variants = {
   "outline-rounded":
     "grid place-items-center rounded-full px-1 h-4 tracking-wider text-xxs border border-blue-500 text-blue-500 uppercase whitespace-nowrap",
   rounded:
-    "grid place-items-center rounded-full px-1.5 h-4 text-xxs border bg-blue-600 text-text-bright uppercase whitespace-nowrap",
+    "grid place-items-center rounded-full px-1.5 h-4 text-xxs border bg-blue-600 text-text-bright system:border-transparent system:text-white uppercase whitespace-nowrap",
 };
 
 type BadgeProps = React.HTMLAttributes<HTMLDivElement> & {
