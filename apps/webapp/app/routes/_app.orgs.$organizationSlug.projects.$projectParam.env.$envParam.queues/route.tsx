@@ -491,17 +491,19 @@ function QueuesWithMetricsView() {
               suffix={env.paused ? <span className="text-warning">paused</span> : undefined}
               animate
               accessory={
-                <LinkButton
-                  variant="secondary/small-icon"
-                  LeadingIcon={RunsIcon}
-                  leadingIconClassName="text-runs"
-                  to={v3RunsPath(organization, project, env, {
-                    statuses: ["PENDING"],
-                    period: "30d",
-                    rootOnly: false,
-                  })}
-                  tooltip="View queued runs"
-                />
+                <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  <LinkButton
+                    variant="secondary/small-icon"
+                    LeadingIcon={RunsIcon}
+                    leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
+                    to={v3RunsPath(organization, project, env, {
+                      statuses: ["PENDING"],
+                      period: "30d",
+                      rootOnly: false,
+                    })}
+                    tooltip="View queued runs"
+                  />
+                </span>
               }
               valueClassName={env.paused ? "text-warning tabular-nums" : "tabular-nums"}
               compactThreshold={1000000}
@@ -522,17 +524,19 @@ function QueuesWithMetricsView() {
                 ) : undefined
               }
               accessory={
-                <LinkButton
-                  variant="secondary/small-icon"
-                  LeadingIcon={RunsIcon}
-                  leadingIconClassName="text-runs"
-                  to={v3RunsPath(organization, project, env, {
-                    statuses: ["DEQUEUED", "EXECUTING"],
-                    period: "30d",
-                    rootOnly: false,
-                  })}
-                  tooltip="View in-progress runs"
-                />
+                <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  <LinkButton
+                    variant="secondary/small-icon"
+                    LeadingIcon={RunsIcon}
+                    leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
+                    to={v3RunsPath(organization, project, env, {
+                      statuses: ["DEQUEUED", "EXECUTING"],
+                      period: "30d",
+                      rootOnly: false,
+                    })}
+                    tooltip="View in-progress runs"
+                  />
+                </span>
               }
               compactThreshold={1000000}
             />
