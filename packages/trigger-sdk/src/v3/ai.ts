@@ -7408,6 +7408,7 @@ function chatAgent<
                   if (capturedResponseMessage) {
                     responseCommitted = true;
                     capturedPartialResponse = capturedResponseMessage;
+                    turnBufferedChunks.length = 0;
                   }
 
                   if (runSignal.aborted) return "exit";
