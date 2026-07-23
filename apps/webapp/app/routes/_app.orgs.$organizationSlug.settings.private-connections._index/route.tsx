@@ -124,7 +124,7 @@ const STATUS_COLORS: Record<PrivateLinkConnectionStatus, string> = {
 function StatusBadge({ status }: { status: PrivateLinkConnectionStatus }) {
   return (
     <span
-      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status]}`}
+      className={`contrast-chip inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status]}`}
     >
       {status}
     </span>

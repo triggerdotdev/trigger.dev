@@ -867,7 +867,7 @@ function RateLimitTypePill({ className, label }: { className: string; label: str
   return (
     <span
       className={cn(
-        "inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
+        "contrast-chip inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
         className
       )}
     >
@@ -900,7 +900,7 @@ function SourceBadge({ source }: { source: "default" | "plan" | "override" }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
+        "contrast-chip inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
         variant.className
       )}
     >

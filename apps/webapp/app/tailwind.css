@@ -293,6 +293,13 @@
   color: inherit;
 }
 
+/* Tinted status chips respond to the contrast control: the filter pushes the
+   soft tint and its colored text apart. No-op at contrast 0; Classic never
+   sets the variable. Marker set by the chip components. */
+:is([data-theme="dark"], [data-theme="light"]) .contrast-chip {
+  filter: contrast(calc(1 + var(--theme-contrast, 0) * 0.5)) saturate(calc(1 + var(--theme-contrast, 0) * 0.4));
+}
+
 /*
   Code syntax palette - the trigger-dark highlight theme, shared by the shiki
   theme (streamdown) and the prism theme (CodeBlock). Consumed from JS via

@@ -1546,7 +1546,7 @@ function QueueHealthBadge(health: QueueHealth) {
   return (
     <span
       className={cn(
-        "ml-auto inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
+        "contrast-chip ml-auto inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
         QUEUE_HEALTH_STYLES[label]
       )}
     >

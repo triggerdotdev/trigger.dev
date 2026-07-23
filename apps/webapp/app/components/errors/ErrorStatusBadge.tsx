@@ -34,7 +34,7 @@ export function ErrorStatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
+        "contrast-chip inline-flex items-center rounded px-2 py-0.5 text-xs font-medium",
         (prominence === "bright" ? brightStyles : subtleStyles)[status],
         className
       )}
