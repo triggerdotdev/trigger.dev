@@ -178,7 +178,7 @@ function MetricsLayoutMain({ children, scroll }: { children: ReactNode; scroll: 
       <div
         className={
           scroll === "page"
-            ? "flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto py-1.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+            ? "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
             : "flex min-h-0 flex-1 flex-col overflow-hidden"
         }
       >
@@ -318,7 +318,7 @@ function MetricsLayoutGrid({
   return (
     <div
       className={cn(
-        "grid gap-1.5 px-1.5",
+        "grid gap-3 px-3",
         // `shrink-0` is load-bearing: the grid sits in Root's flex-col scroll container, where the
         // default flex-shrink would collapse a fixed-height row whose chart cards have ~no
         // intrinsic height. Pin it so the charts keep their row height and the page scrolls past.
@@ -348,7 +348,7 @@ function MetricsLayoutContent({
   /** Pad the content into a column (page gutter) instead of letting it span edge to edge. */
   inset?: boolean;
 }) {
-  return <div className={cn("mt-1.5 flex flex-col gap-1.5", inset && "px-1.5")}>{children}</div>;
+  return <div className={cn("mt-3 flex flex-col gap-3", inset && "px-3")}>{children}</div>;
 }
 
 export const MetricsLayout = {
