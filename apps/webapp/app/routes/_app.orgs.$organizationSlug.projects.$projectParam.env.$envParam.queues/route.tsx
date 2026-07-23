@@ -1532,22 +1532,26 @@ function queueHealthLabel({ paused, running, queued, limit }: QueueHealth): Queu
   return "Idle";
 }
 
-// System themes fill the chip with the status color and drop to white text;
-// Classic keeps the outlined colored-text look.
+// Tint + colored text, sized like the error status chips (see ErrorStatusBadge).
 const QUEUE_HEALTH_STYLES: Record<QueueHealthLabel, string> = {
-  Paused: "text-warning system:border-transparent system:bg-warning system:text-white",
-  "At capacity": "text-warning system:border-transparent system:bg-warning system:text-white",
-  Backlogged: "text-blue-500 system:border-transparent system:bg-blue-500 system:text-white",
-  Active: "text-success system:border-transparent system:bg-success system:text-white",
-  Idle: "text-text-dimmed",
+  Paused: "bg-warning/10 text-warning",
+  "At capacity": "bg-warning/10 text-warning",
+  Backlogged: "bg-blue-500/10 text-blue-500",
+  Active: "bg-success/10 text-success",
+  Idle: "bg-charcoal-500/10 text-text-dimmed",
 };
 
 function QueueHealthBadge(health: QueueHealth) {
   const label = queueHealthLabel(health);
   return (
-    <Badge variant="extra-small" className={cn("ml-auto w-fit", QUEUE_HEALTH_STYLES[label])}>
+    <span
+      className={cn(
+        "ml-auto inline-flex w-fit items-center rounded px-2 py-0.5 text-xs font-medium",
+        QUEUE_HEALTH_STYLES[label]
+      )}
+    >
       {label}
-    </Badge>
+    </span>
   );
 }
 
