@@ -867,8 +867,9 @@
   --muted: #eceef1;
 }
 
-/* The timeline label shadow is a dark-theme legibility aid; drop it on light */
-[data-theme="light"] .text-shadow-custom {
+/* The timeline label shadow is a Classic legibility aid; the System themes
+   drop it entirely */
+:is([data-theme="dark"], [data-theme="light"]) .text-shadow-custom {
   text-shadow: none;
 }
 
@@ -894,7 +895,6 @@
   [data-theme="light"] .timeline-span.bg-success .text-shadow-custom,
   [data-theme="light"] .timeline-span.bg-error .text-shadow-custom {
     color: #ffffff;
-    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
   }
 }
 
