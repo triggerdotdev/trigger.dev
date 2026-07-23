@@ -488,7 +488,7 @@ export function ChartLineRenderer({
         <YAxis {...yAxisConfig} />
         {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
         <ChartTooltip
-          cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
+          cursor={{ stroke: SYNC_LINE_COLOR, strokeWidth: 1 }}
           content={stackedTooltipContent}
           labelFormatter={tooltipLabelFormatter}
           isAnimationActive={false}
@@ -536,7 +536,7 @@ export function ChartLineRenderer({
       <YAxis {...yAxisConfig} />
       {/* When legend is shown below, render tooltip with cursor only (no content popup) */}
       <ChartTooltip
-        cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
+        cursor={{ stroke: SYNC_LINE_COLOR, strokeWidth: 1 }}
         content={tooltipContent}
         labelFormatter={tooltipLabelFormatter}
         isAnimationActive={false}
