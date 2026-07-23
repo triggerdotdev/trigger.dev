@@ -11,7 +11,7 @@ const ParamsSchema = z.object({ endpointId: z.string() });
 
 // POST /api/v1/webhooks/endpoints/:endpointId/rotate-secret — mint a new signing secret and return
 // it ONCE. Only for schemes we generate (hmac / shared-secret); asymmetric endpoints set a public key.
-export const { action, loader } = createActionApiRoute(
+const { action, loader } = createActionApiRoute(
   {
     params: ParamsSchema,
     method: "POST",
@@ -49,3 +49,5 @@ export const { action, loader } = createActionApiRoute(
     return json({ id: endpoint.friendlyId, secretSet: true as const, secret });
   }
 );
+
+export { action, loader };

@@ -8,7 +8,7 @@ import { webhookEngine } from "~/v3/webhookEngine.server";
 const ParamsSchema = z.object({ endpointId: z.string() });
 
 // POST /api/v1/webhooks/endpoints/:endpointId/disable — pause an endpoint (ingress returns 404).
-export const { action, loader } = createActionApiRoute(
+const { action, loader } = createActionApiRoute(
   {
     params: ParamsSchema,
     method: "POST",
@@ -32,3 +32,5 @@ export const { action, loader } = createActionApiRoute(
     return json(await findWebhookEndpointResource(authentication, params.endpointId));
   }
 );
+
+export { action, loader };

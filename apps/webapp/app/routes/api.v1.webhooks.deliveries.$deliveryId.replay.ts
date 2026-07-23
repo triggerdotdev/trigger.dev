@@ -10,7 +10,7 @@ const ParamsSchema = z.object({ deliveryId: z.string() });
 
 // POST /api/v1/webhooks/deliveries/:deliveryId/replay — re-run the delivery's task from its stored
 // event as a NEW delivery (we don't keep the raw body, so this re-triggers rather than re-verifies).
-export const { action, loader } = createActionApiRoute(
+const { action, loader } = createActionApiRoute(
   {
     params: ParamsSchema,
     method: "POST",
@@ -56,3 +56,5 @@ export const { action, loader } = createActionApiRoute(
     }
   }
 );
+
+export { action, loader };

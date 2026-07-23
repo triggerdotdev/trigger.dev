@@ -14,7 +14,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest --run",
+    "test": "vitest",
     "ingest": "tsx src/ingest.ts",
     "catalog:status": "tsx catalog/status.ts",
     "catalog:aggregate": "tsx catalog/build-aggregates.ts"
