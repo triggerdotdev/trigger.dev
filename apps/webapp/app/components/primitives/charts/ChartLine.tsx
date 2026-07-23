@@ -118,11 +118,12 @@ export type ChartLineRendererProps = {
    * pinned so the gradient split lines up exactly with the plotted values and reference lines.
    * Single-series (non-stacked) line charts only.
    *
-   * Prefer {@link warningOverlay} when the threshold sits far below the data maximum: a gradient
-   * split whose boundary collapses onto the baseline paints zero/near-zero buckets the warning
-   * colour. The overlay retraces per-bucket instead, so under-threshold buckets always stay blue.
+   * The gradient offset is derived from the plotted line's own value range (objectBoundingBox maps
+   * 0..1 to the path's bounding box, not the y-axis), so the colour change lands exactly at the
+   * threshold value however the domain is padded for reference lines. `series` targets which line
+   * the gradient applies to (others keep their own colour); defaults to the first series.
    */
-  thresholdStroke?: { value: number; aboveColor: string };
+  thresholdStroke?: { value: number; aboveColor: string; series?: string };
   /**
    * Per-bucket warning recolour: a series is retraced in the warning colour only across buckets
    * where it crosses a limit — either strictly above a constant `threshold` (single-series case,
@@ -273,24 +274,36 @@ export function ChartLineRenderer({
 
   // A threshold stroke needs an exact, fixed y-domain so the gradient split aligns with the
   // plotted values and the reference lines. Compute it from the data + reference/threshold ys.
-  let thresholdDomain: [number, number] | undefined;
+  let thresholdActive = false;
   let thresholdOffset = 0;
   if (thresholdStroke && !stacked) {
-    let dataMax = thresholdStroke.value;
+    thresholdActive = true;
+    // The gradient is objectBoundingBox — its 0..1 maps to the plotted line's own bounding box
+    // (lineMax at the top, lineMin at the bottom), NOT the y-axis. So derive the split from the
+    // target line's value range: offset = (lineMax - threshold) / (lineMax - lineMin) lands the
+    // colour change exactly at the threshold value's pixel, whatever the axis domain is. That means
+    // we don't pin the domain (which coarsened the ticks) — it auto-scales as usual.
+    const gradientKey = thresholdStroke.series ?? visibleSeries[0];
+    let lineMin = Infinity;
+    let lineMax = -Infinity;
     for (const row of data) {
-      for (const key of visibleSeries) {
-        const v = Number(row[key]);
-        if (Number.isFinite(v) && v > dataMax) dataMax = v;
+      const v = Number(row[gradientKey]);
+      if (Number.isFinite(v)) {
+        if (v < lineMin) lineMin = v;
+        if (v > lineMax) lineMax = v;
       }
     }
-    for (const line of referenceLines ?? []) {
-      if (Number.isFinite(line.y) && line.y > dataMax) dataMax = line.y;
+    if (!Number.isFinite(lineMin)) {
+      lineMin = 0;
+      lineMax = thresholdStroke.value;
     }
-    const domainMax = dataMax > 0 ? dataMax * 1.1 : 1;
-    thresholdDomain = [0, domainMax];
-    // Gradient runs top (offset 0 = domainMax) to bottom (offset 1 = 0); the split sits where
-    // the threshold value falls within the domain.
-    thresholdOffset = Math.min(1, Math.max(0, (domainMax - thresholdStroke.value) / domainMax));
+    const range = lineMax - lineMin;
+    thresholdOffset =
+      range > 0
+        ? Math.min(1, Math.max(0, (lineMax - thresholdStroke.value) / range))
+        : lineMax >= thresholdStroke.value
+          ? 0
+          : 1;
   }
 
   // Per-bucket warning overlay: single-series line charts only. Retrace the primary series in the
@@ -339,7 +352,6 @@ export function ChartLineRenderer({
       style: { fontVariantNumeric: "tabular-nums" },
     },
     tickFormatter: yAxisTickFormatter,
-    ...(thresholdDomain ? { domain: thresholdDomain } : {}),
     ...yAxisPropsProp,
   };
 
@@ -523,11 +535,14 @@ export function ChartLineRenderer({
       margin={chartMargin}
       {...sharedMouseHandlers}
     >
-      {thresholdStroke && thresholdDomain ? (
+      {thresholdActive ? (
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset={thresholdOffset} stopColor={thresholdStroke.aboveColor} />
-            <stop offset={thresholdOffset} stopColor={config[visibleSeries[0]]?.color} />
+            <stop offset={thresholdOffset} stopColor={thresholdStroke!.aboveColor} />
+            <stop
+              offset={thresholdOffset}
+              stopColor={config[thresholdStroke!.series ?? visibleSeries[0]]?.color}
+            />
           </linearGradient>
         </defs>
       ) : null}
@@ -545,33 +560,39 @@ export function ChartLineRenderer({
       />
       {/* Note: Legend is now rendered by ChartRoot outside the chart container */}
       {referenceOverlays}
-      {visibleSeries.map((key) => (
-        <Line
-          key={key}
-          dataKey={key}
-          type={lineType}
-          stroke={thresholdStroke && thresholdDomain ? `url(#${gradientId})` : config[key]?.color}
-          strokeWidth={1}
-          dot={showDots ? { r: 1.5, fill: config[key]?.color, strokeWidth: 0 } : false}
-          // The hover dot matches the line colour under it: for a gradient (threshold) line it
-          // flips at the split; otherwise it's the series colour. The warning overlay draws its
-          // own dot on top where it's active.
-          activeDot={
-            thresholdStroke && thresholdDomain
-              ? (props: ActiveDotProps) => (
-                  <ThresholdActiveDot
-                    {...props}
-                    dataKey={key}
-                    threshold={thresholdStroke.value}
-                    aboveColor={thresholdStroke.aboveColor}
-                    baseColor={config[key]?.color ?? "var(--color-tasks)"}
-                  />
-                )
-              : { r: 4, fill: config[key]?.color, strokeWidth: 0 }
-          }
-          isAnimationActive={false}
-        />
-      ))}
+      {visibleSeries.map((key) => {
+        // The gradient stroke only applies to the threshold's target series (default: the first);
+        // other series (e.g. the grey limit line) keep their own colour.
+        const gradientLine =
+          thresholdActive && (thresholdStroke!.series == null || thresholdStroke!.series === key);
+        return (
+          <Line
+            key={key}
+            dataKey={key}
+            type={lineType}
+            stroke={gradientLine ? `url(#${gradientId})` : config[key]?.color}
+            strokeWidth={1}
+            dot={showDots ? { r: 1.5, fill: config[key]?.color, strokeWidth: 0 } : false}
+            // The hover dot matches the line colour under it: for a gradient (threshold) line it
+            // flips at the split; otherwise it's the series colour. The warning overlay draws its
+            // own dot on top where it's active.
+            activeDot={
+              gradientLine
+                ? (props: ActiveDotProps) => (
+                    <ThresholdActiveDot
+                      {...props}
+                      dataKey={key}
+                      threshold={thresholdStroke!.value}
+                      aboveColor={thresholdStroke!.aboveColor}
+                      baseColor={config[key]?.color ?? "var(--color-tasks)"}
+                    />
+                  )
+                : { r: 4, fill: config[key]?.color, strokeWidth: 0 }
+            }
+            isAnimationActive={false}
+          />
+        );
+      })}
       {overlayActive && (
         // Drawn after the base line so the warning colour sits on top. connectNulls={false} keeps
         // the mask to over-threshold stretches; excluded from the legend and (above) the tooltip.

@@ -627,23 +627,23 @@ function QueuesWithMetricsView() {
                         ]
                       : undefined
                   }
-                  // Saturation and p95 "step over the line": a per-bucket overlay retraces only
-                  // the over-threshold stretches in warning colour, so under-threshold values stay
-                  // blue. (A gradient split can't do this reliably — an SVG objectBoundingBox
-                  // gradient tracks the line's own bbox, not the y-axis, so a low/flat line reads
-                  // as entirely warning-coloured.)
-                  // All thresholded lines colour warning where they step over the threshold: the
-                  // per-bucket overlay retraces only the over-threshold stretches, so the colour
-                  // change tracks the axis crossing.
-                  warningOverlay={
+                  // Saturation recolours the line above its 100% limit with a gradient split, so
+                  // only the portion over the line is orange (the offset is derived from the line's
+                  // own value range, so the split lands exactly at 100% regardless of domain
+                  // padding). p95 and throttled use a per-bucket overlay: it retraces only the
+                  // over-threshold stretches, so under-threshold buckets stay blue.
+                  thresholdStroke={
                     tile.id === "saturation"
-                      ? { threshold: 100 }
-                      : tile.id === "p95"
-                        ? { threshold: 60_000 }
-                        : tile.id === "throttled"
-                          ? // Integer counts: threshold 0 warns once a bucket has ≥1 throttle.
-                            { threshold: 0 }
-                          : undefined
+                      ? { value: 100, aboveColor: "var(--color-warning)" }
+                      : undefined
+                  }
+                  warningOverlay={
+                    tile.id === "p95"
+                      ? { threshold: 60_000 }
+                      : tile.id === "throttled"
+                        ? // Integer counts: threshold 0 warns once a bucket has ≥1 throttle.
+                          { threshold: 0 }
+                        : undefined
                   }
                 />
               ))}
