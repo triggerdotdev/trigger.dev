@@ -11,6 +11,7 @@ import { Form, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
@@ -783,7 +784,7 @@ function QueuesWithMetricsView() {
                                     )}
                                   />
                                 ) : (
-                                  <RectangleStackIcon
+                                  <QueuesIcon
                                     className={cn(
                                       "size-[1.125rem] text-purple-500",
                                       queue.paused && "opacity-50"
