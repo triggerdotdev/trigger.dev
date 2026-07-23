@@ -112,6 +112,9 @@ describe("chat.agent managed loop — source-stream failure", () => {
         )
         .join("");
       expect(newAssistantText).toBe("partial answer");
+
+      expect((evt.newMessages as ModelMessage[]).some((m) => m.role === "user")).toBe(true);
+      expect((evt.newUIMessages as UIMessage[]).some((m) => m.role === "user")).toBe(true);
     } finally {
       await harness.close();
     }

@@ -7982,23 +7982,25 @@ function chatAgent<
             // its model messages to preserve a prior turn's compaction (mirrors
             // the success path's append branch); otherwise reconvert from UI.
             // Guard the conversion so a secondary failure can't crash the run.
-            if (!responseCommitted && erroredUIMessagesWithPartial !== accumulatedUIMessages) {
+            if (!responseCommitted) {
               try {
-                if (includePartial) {
-                  erroredNewModelMessages = await toModelMessages([
-                    stripProviderMetadata(partialResponse!),
-                  ]);
-                }
-                if (partialIdx === -1) {
-                  const appended = erroredUIMessagesWithPartial.slice(accumulatedUIMessages.length);
-                  accumulatedMessages.push(
-                    ...(await toModelMessages(appended.map((m) => stripProviderMetadata(m))))
+                if (erroredNewUIMessages.length > 0) {
+                  erroredNewModelMessages = await toModelMessages(
+                    erroredNewUIMessages.map((m) => stripProviderMetadata(m))
                   );
-                } else {
-                  accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
                 }
-                accumulatedUIMessages = erroredUIMessagesWithPartial;
-                locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                if (erroredUIMessagesWithPartial !== accumulatedUIMessages) {
+                  if (partialIdx === -1) {
+                    const appended = erroredUIMessagesWithPartial.slice(accumulatedUIMessages.length);
+                    accumulatedMessages.push(
+                      ...(await toModelMessages(appended.map((m) => stripProviderMetadata(m))))
+                    );
+                  } else {
+                    accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
+                  }
+                  accumulatedUIMessages = erroredUIMessagesWithPartial;
+                  locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                }
               } catch {
                 // Keep the prior model accumulator if conversion fails.
                 erroredNewModelMessages = [];
