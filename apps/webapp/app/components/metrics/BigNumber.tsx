@@ -56,7 +56,7 @@ export function BigNumber({
         ) : formattedValue !== undefined ? (
           <div className="flex flex-wrap items-baseline gap-2">
             {formattedValue}
-            {suffix && <div className={cn("text-xs", suffixClassName)}>{suffix}</div>}
+            {suffix && <div className={cn("text-xs tabular-nums", suffixClassName)}>{suffix}</div>}
           </div>
         ) : v !== undefined ? (
           <div className="flex flex-wrap items-baseline gap-2">
@@ -70,7 +70,7 @@ export function BigNumber({
             ) : (
               formatNumber(v)
             )}
-            {suffix && <div className={cn("text-xs", suffixClassName)}>{suffix}</div>}
+            {suffix && <div className={cn("text-xs tabular-nums", suffixClassName)}>{suffix}</div>}
           </div>
         ) : (
           "–"
