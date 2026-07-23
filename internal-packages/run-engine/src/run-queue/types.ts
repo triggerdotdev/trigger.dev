@@ -132,6 +132,8 @@ export interface RunQueueKeyProducer {
 
   // CK index methods
   ckIndexKeyFromQueue(queue: string): string;
+  ckVtimeKeyFromQueue(queue: string): string;
+  ckVtimeFloorKeyFromQueue(queue: string): string;
   baseQueueKeyFromQueue(queue: string): string;
   isCkWildcard(queue: string): boolean;
   toCkWildcard(queue: string): string;

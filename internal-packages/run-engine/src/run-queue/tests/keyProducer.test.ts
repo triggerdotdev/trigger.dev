@@ -432,4 +432,19 @@ describe("KeyProducer", () => {
       "{org:o1234}:proj:p1234:env:e1234:queue:task/foo:ck:*"
     );
   });
+
+  it("produces ckVtime keys from a CK variant queue name", () => {
+    const keys = new RunQueueFullKeyProducer();
+    const q = "{org:o1}:proj:p1:env:e1:queue:task/my-task:ck:tenant-a";
+    expect(keys.ckVtimeKeyFromQueue(q)).toBe(
+      "{org:o1}:proj:p1:env:e1:queue:task/my-task:ckVtime"
+    );
+    expect(keys.ckVtimeFloorKeyFromQueue(q)).toBe(
+      "{org:o1}:proj:p1:env:e1:queue:task/my-task:ckVtimeFloor"
+    );
+    // ck wildcard and base-queue inputs normalise the same way
+    expect(keys.ckVtimeKeyFromQueue(q.replace(":ck:tenant-a", ":ck:*"))).toBe(
+      keys.ckVtimeKeyFromQueue(q)
+    );
+  });
 });
