@@ -6,6 +6,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer, PageContainer } from "~/components/layout/AppLayout";
 import { MetricsLayout } from "~/components/layout/MetricsLayout";
+import { AnimatedOrgBannerBar } from "~/components/billing/AnimatedOrgBannerBar";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
@@ -239,6 +240,11 @@ export default function Page() {
       <NavBar>
         <PageTitle title={queue.name} backButton={{ to: backPath, text: "Queues" }} />
       </NavBar>
+      {/* Paused-queue banner — mirrors the environment-paused banner (OrgBanner) at the top of
+          the page when this individual queue is paused. */}
+      <AnimatedOrgBannerBar show={queue.paused} variant="warning">
+        {`"${queue.name}" queue paused. No new runs will be dequeued and executed.`}
+      </AnimatedOrgBannerBar>
       <MetricsLayout.Root>
         {/* Filters — search (concurrency keys) + time filter in one left cluster, above
             everything, like the Queues list. The time filter scopes the tab charts; search filters
@@ -1027,13 +1033,16 @@ function QueueStats({
         suffix={peakQueued > 0 ? `peak ${formatNumberCompact(peakQueued)}` : undefined}
         suffixClassName="text-text-dimmed"
         accessory={
-          <LinkButton
-            variant="secondary/small-icon"
-            LeadingIcon={RunsIcon}
-            leadingIconClassName="text-runs"
-            to={queuedRunsPath}
-            tooltip="View queued runs"
-          />
+          <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+            <LinkButton
+              variant="minimal/small"
+              className="aspect-square px-1!"
+              LeadingIcon={RunsIcon}
+              leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
+              to={queuedRunsPath}
+              tooltip="View queued runs"
+            />
+          </span>
         }
       />
       <BigNumber
