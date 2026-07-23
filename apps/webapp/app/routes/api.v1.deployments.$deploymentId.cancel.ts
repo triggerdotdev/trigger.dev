@@ -45,7 +45,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const deploymentService = new DeploymentService();
 
     return await deploymentService
-      .cancelDeployment(authenticatedEnv, deploymentId, {
+      .cancelDeployment({ id: authenticatedEnv.id }, deploymentId, {
         canceledReason: body.data.reason,
       })
       .match(

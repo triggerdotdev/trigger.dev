@@ -13,8 +13,8 @@ import { getShadowRealtimeClient } from "./shadowRealtimeClientInstance.server";
 
 type RealtimeBackend = "electric" | "native" | "shadow";
 
-// Two gates, both defaulting to the Electric path: the env master switch, then the
-// per-org `realtimeBackend` feature flag (cached so long-polls don't hit the DB per request).
+// Two gates: the env master switch, then the per-org `realtimeBackend` feature flag (cached so
+// long-polls don't hit the DB per request), falling back to REALTIME_BACKEND_DEFAULT.
 const nativeBackendEnabled = env.REALTIME_BACKEND_NATIVE_ENABLED === "1";
 
 const flag = singleton("realtimeBackendFlag", () => makeFlag($replica));
@@ -61,7 +61,7 @@ async function getRealtimeBackend(
     return cached;
   }
 
-  let backend: RealtimeBackend = "electric";
+  let backend: RealtimeBackend = env.REALTIME_BACKEND_DEFAULT;
 
   try {
     const overrides =
@@ -76,7 +76,7 @@ async function getRealtimeBackend(
 
     backend = await flag({
       key: FEATURE_FLAG.realtimeBackend,
-      defaultValue: "electric",
+      defaultValue: env.REALTIME_BACKEND_DEFAULT,
       overrides: (overrides as Record<string, unknown>) ?? {},
     });
   } catch (error) {
@@ -85,7 +85,7 @@ async function getRealtimeBackend(
       organizationId,
       error,
     });
-    backend = "electric";
+    backend = env.REALTIME_BACKEND_DEFAULT;
   }
 
   backendCache.set(organizationId, backend);

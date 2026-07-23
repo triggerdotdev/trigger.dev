@@ -1,15 +1,62 @@
 import { join } from "node:path";
 import { pathToFileURL } from "url";
-import { BuildRuntime } from "../schemas/build.js";
+import { BuildRuntime, ConfigRuntime } from "../schemas/build.js";
 import { dedupFlags } from "./flags.js";
 import { homedir } from "node:os";
 
 export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
 
+export type DeprecatedConfigRuntime = "experimental-node-24" | "experimental-node-26";
+
+export function isDeprecatedConfigRuntime(runtime: unknown): runtime is DeprecatedConfigRuntime {
+  return runtime === "experimental-node-24" || runtime === "experimental-node-26";
+}
+
+/** Maps a deprecated runtime alias to the runtime that should be used instead. */
+export function deprecatedRuntimeReplacement(runtime: DeprecatedConfigRuntime): BuildRuntime {
+  switch (runtime) {
+    case "experimental-node-24":
+      return "node-24";
+    case "experimental-node-26":
+      return "node-26";
+  }
+}
+
+/** @deprecated Renamed to {@link DeprecatedConfigRuntime}. */
+export type ExperimentalConfigRuntime = DeprecatedConfigRuntime;
+
+/** @deprecated Renamed to {@link isDeprecatedConfigRuntime}. */
+export const isExperimentalConfigRuntime = isDeprecatedConfigRuntime;
+
+export function resolveBuildRuntime(runtime: unknown): BuildRuntime {
+  const parsedRuntime = ConfigRuntime.safeParse(runtime);
+
+  if (!parsedRuntime.success) {
+    const value = typeof runtime === "string" ? `"${runtime}"` : String(runtime);
+
+    throw new Error(
+      `Unsupported runtime ${value} in trigger.config. Supported runtimes: ${ConfigRuntime.options.join(
+        ", "
+      )}.`
+    );
+  }
+
+  switch (parsedRuntime.data) {
+    case "experimental-node-24":
+      return "node-24";
+    case "experimental-node-26":
+      return "node-26";
+    default:
+      return parsedRuntime.data;
+  }
+}
+
 export function binaryForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
     case "node-22":
+    case "node-24":
+    case "node-26":
       return "node";
     case "bun":
       return "bun";
@@ -22,6 +69,8 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
     case "node-22":
+    case "node-24":
+    case "node-26":
       return process.execPath;
     case "bun":
       if (typeof process.env.BUN_INSTALL === "string") {
@@ -50,7 +99,9 @@ export function execOptionsForRuntime(
 ): string {
   switch (runtime) {
     case "node":
-    case "node-22": {
+    case "node-22":
+    case "node-24":
+    case "node-26": {
       const importEntryPoint = options.loaderEntryPoint
         ? `--import=${pathToFileURL(options.loaderEntryPoint).href}`
         : undefined;

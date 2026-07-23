@@ -10,6 +10,8 @@ import "non.geist";
 import "non.geist/mono";
 import tailwindStylesheetUrl from "~/tailwind.css?url";
 import { RouteErrorDisplay } from "./components/ErrorDisplay";
+import { GlobalShortcuts } from "./components/GlobalShortcuts";
+import { StaleAssetRecovery } from "./components/StaleAssetRecovery";
 import { AppContainer, MainCenteredContainer } from "./components/layout/AppLayout";
 import { ShortcutsProvider } from "./components/primitives/ShortcutsProvider";
 import { Toast } from "./components/primitives/Toast";
@@ -21,6 +23,11 @@ import { getUser } from "./services/session.server";
 import { flag } from "~/v3/featureFlags.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";
+
+// Derived here (not inside StaleAssetRecovery) so the shared component takes
+// the flag as a prop. NODE_ENV is statically replaced in browser bundles, and
+// the ErrorBoundary can't rely on loader data.
+const isProduction = process.env.NODE_ENV === "production";
 
 export const links: LinksFunction = () => {
   return [{ rel: "stylesheet", href: tailwindStylesheetUrl }];
@@ -112,6 +119,7 @@ export function ErrorBoundary() {
         <head>
           <meta charSet="utf-8" />
 
+          <StaleAssetRecovery isProduction={isProduction} />
           <Meta />
           <Links />
         </head>
@@ -145,12 +153,14 @@ export default function App() {
     <>
       <html lang="en" className="h-full" data-theme={theme}>
         <head>
+          <StaleAssetRecovery isProduction={isProduction} />
           <Meta />
           <Links />
         </head>
         <body className="h-full overflow-hidden bg-background-dimmed antialiased">
           <ShortcutsProvider>
             <TimezoneSetter />
+            <GlobalShortcuts />
             <Outlet />
             <Toast />
           </ShortcutsProvider>

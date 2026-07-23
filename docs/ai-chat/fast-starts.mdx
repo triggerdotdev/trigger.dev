@@ -589,10 +589,10 @@ if (turn === 0 && payload.trigger === "handover-prepare") {
       messages: conversation.modelMessages,
       stopWhen: stepCountIs(10),
     });
-    const response = await chat.pipeAndCapture(result, {
+    const { message } = await chat.pipeAndCapture(result, {
       originalMessages: conversation.uiMessages,
     });
-    if (response) await conversation.addResponse(response);
+    if (message) await conversation.addResponse(message);
   }
   await chat.writeTurnComplete(); // on isFinal the warm partial is already the response
   return;

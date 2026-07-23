@@ -134,7 +134,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
 
     if (!project) {
-      throw redirectWithErrorMessage(redirectPath, request, "Project not found");
+      throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
     }
 
     const currentPlan = await getCurrentPlan(project.organizationId);
@@ -242,7 +242,9 @@ export default function Page() {
               {branches.map((branch) => (
                 <Property.Item key={branch.id}>
                   <Property.Label>{branch.branchName}</Property.Label>
-                  <Property.Value>{branch.id}</Property.Value>
+                  <Property.Value>
+                    <CopyableText value={branch.id} asChild hideTooltip />
+                  </Property.Value>
                 </Property.Item>
               ))}
             </Property.Table>

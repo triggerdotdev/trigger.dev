@@ -94,7 +94,7 @@ Examples:
       )
       .option(
         "-r, --runtime <runtime>",
-        "Which runtime to use for the project. Currently only supports node and bun",
+        "Which runtime to use for the project. Supported: node, node-22, bun",
         "node"
       )
       .option("--skip-package-install", "Skip installing the @trigger.dev/sdk package")

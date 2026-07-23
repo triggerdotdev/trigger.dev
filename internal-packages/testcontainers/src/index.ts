@@ -437,6 +437,84 @@ export const heteroRunOpsPostgresTest = test.extend<HeteroRunOpsPostgresTestCont
   },
 });
 
+type ThreeDbRunOpsPostgresTestContext = {
+  // Control-plane DB — full @trigger.dev/database schema.
+  controlPlanePrisma: PrismaClient;
+  controlPlaneUri: string;
+  // Legacy runs DB — full @trigger.dev/database schema, its OWN physical database (a separate clone),
+  // proving Track 2's independent legacy client is no longer an alias of the control-plane DB.
+  legacyPrisma: PrismaClient;
+  legacyUri: string;
+  // New runs DB — the @internal/run-ops-database SUBSET schema on a separate PG17 container.
+  newPrisma: RunOpsPrismaClient;
+  newUri: string;
+};
+
+// Track 2 three-database topology: control-plane, legacy, and new are three DISTINCT physical
+// databases. Control-plane and legacy both carry the full control-plane schema (two separate clones of
+// the PG14 template), new carries the dedicated run-ops subset (a clone of the PG17 run-ops template).
+// Lets a test prove routed run reads/writes land on the LEGACY DB (cuid) vs the NEW DB (run-ops id)
+// while control-plane-model access stays on its own DB.
+export const threeDbRunOpsPostgresTest = test.extend<ThreeDbRunOpsPostgresTestContext>({
+  controlPlaneUri: async ({}, use) => {
+    const container = await getWorkerPostgresContainer();
+    const baseUri = container.getConnectionUri();
+    const cloneDb = `threeDbCp_${pgCloneCounter++}`;
+    await createDatabaseFromTemplate(baseUri, cloneDb);
+    try {
+      await use(postgresUriWithDatabase(baseUri, cloneDb));
+    } finally {
+      await dropCloneDatabase(baseUri, cloneDb);
+    }
+  },
+  legacyUri: async ({}, use) => {
+    const container = await getWorkerPostgresContainer();
+    const baseUri = container.getConnectionUri();
+    const cloneDb = `threeDbLegacy_${pgCloneCounter++}`;
+    await createDatabaseFromTemplate(baseUri, cloneDb);
+    try {
+      await use(postgresUriWithDatabase(baseUri, cloneDb));
+    } finally {
+      await dropCloneDatabase(baseUri, cloneDb);
+    }
+  },
+  newUri: async ({}, use) => {
+    const container = await getRunOpsWorkerPostgresContainer17();
+    const baseUri = container.getConnectionUri();
+    const cloneDb = `threeDbNew_${pgCloneCounter++}`;
+    await createDatabaseFromTemplate(baseUri, cloneDb);
+    try {
+      await use(postgresUriWithDatabase(baseUri, cloneDb));
+    } finally {
+      await dropCloneDatabase(baseUri, cloneDb);
+    }
+  },
+  controlPlanePrisma: async ({ controlPlaneUri }, use) => {
+    const prisma = new PrismaClient({ datasources: { db: { url: controlPlaneUri } } });
+    try {
+      await use(prisma);
+    } finally {
+      await prisma.$disconnect();
+    }
+  },
+  legacyPrisma: async ({ legacyUri }, use) => {
+    const prisma = new PrismaClient({ datasources: { db: { url: legacyUri } } });
+    try {
+      await use(prisma);
+    } finally {
+      await prisma.$disconnect();
+    }
+  },
+  newPrisma: async ({ newUri }, use) => {
+    const prisma = new RunOpsPrismaClient({ datasources: { db: { url: newUri } } });
+    try {
+      await use(prisma);
+    } finally {
+      await prisma.$disconnect();
+    }
+  },
+});
+
 export const redisContainer = async (
   { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedRedisContainer>

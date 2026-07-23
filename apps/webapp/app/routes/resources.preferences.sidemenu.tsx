@@ -15,6 +15,7 @@ const booleanFromFormData = z
 
 const RequestSchema = z.object({
   isCollapsed: booleanFromFormData,
+  width: z.coerce.number().int().positive().optional(),
   sectionId: SideMenuSectionIdSchema.optional(),
   sectionCollapsed: booleanFromFormData,
   // Generic item order fields
@@ -66,6 +67,7 @@ export async function action({ request }: ActionFunctionArgs) {
   await updateSideMenuPreferences({
     user,
     isCollapsed: result.data.isCollapsed,
+    width: result.data.width,
     sectionCollapsed,
   });
 

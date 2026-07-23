@@ -11,6 +11,7 @@ import { RegionsPresenter, type Region } from "~/presenters/v3/RegionsPresenter.
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getCachedUsage, getBillingLimit, getCurrentPlan } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
+import { ssoController } from "~/services/sso.server";
 import { canManageBillingLimits } from "~/services/routeBuilders/permissions.server";
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
@@ -31,6 +32,26 @@ export function useCurrentPlan(matches?: UIMatch[]) {
   });
 
   return data?.currentPlan;
+}
+
+/** Whether the optional RBAC plugin is installed (gates the Roles UI). */
+export function useIsUsingRbacPlugin(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof loader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+
+  return data?.isUsingRbacPlugin ?? false;
+}
+
+/** Whether the optional SSO plugin is installed (gates the SSO UI). */
+export function useIsUsingSsoPlugin(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof loader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+
+  return data?.isUsingSsoPlugin ?? false;
 }
 
 export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
@@ -98,7 +119,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const shouldLoadRegions = !!projectParam && !!environment && environment.type !== "DEVELOPMENT";
 
-  const [sessionAuth, plan, usage, billingLimit, customDashboards, regions] = await Promise.all([
+  const [
+    sessionAuth,
+    plan,
+    usage,
+    billingLimit,
+    customDashboards,
+    regions,
+    isUsingRbacPlugin,
+    isUsingSsoPlugin,
+  ] = await Promise.all([
     rbac
       .authenticateSession(request, {
         userId: user.id,
@@ -123,6 +153,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           .then(({ regions }) => regions)
           .catch(() => [] as Region[])
       : Promise.resolve([] as Region[]),
+    // Resolve which optional plugins (RBAC, SSO) are installed so the side menu can gate their
+    // items. Both calls are cheap and cached.
+    rbac.isUsingPlugin().catch(() => false),
+    ssoController.isUsingPlugin().catch(() => false),
   ]);
   const userCanManageBillingLimits = sessionAuth.ok
     ? canManageBillingLimits(sessionAuth.ability)
@@ -184,6 +218,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
     widgetLimitPerDashboard,
     canManageBillingLimits: userCanManageBillingLimits,
+    isUsingRbacPlugin,
+    isUsingSsoPlugin,
   });
 };
 

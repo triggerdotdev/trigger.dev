@@ -81,12 +81,15 @@ export function EnvironmentLabel({
   tooltipSideOffset = 34,
   tooltipSide = "right",
   disableTooltip = false,
+  truncate = true,
 }: {
   environment: Environment;
   className?: string;
   tooltipSideOffset?: number;
   tooltipSide?: "top" | "right" | "bottom" | "left";
   disableTooltip?: boolean;
+  /** When false, the label clips without an ellipsis (side menu fades it in place). Defaults true. */
+  truncate?: boolean;
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
   const [isTruncated, setIsTruncated] = useState(false);
@@ -113,7 +116,12 @@ export function EnvironmentLabel({
   const content = (
     <span
       ref={spanRef}
-      className={cn("truncate text-left", environmentTextClassName(environment), className)}
+      className={cn(
+        truncate ? "truncate" : "overflow-hidden whitespace-nowrap",
+        "text-left",
+        environmentTextClassName(environment),
+        className
+      )}
     >
       {text}
     </span>

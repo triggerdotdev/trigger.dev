@@ -63,6 +63,7 @@ function SimpleTooltip({
   buttonClassName,
   buttonStyle,
   asChild = false,
+  tabbable = false,
   sideOffset,
   open,
   onOpenChange,
@@ -78,6 +79,9 @@ function SimpleTooltip({
   buttonClassName?: string;
   buttonStyle?: React.CSSProperties;
   asChild?: boolean;
+  /** Set when the trigger wraps an interactive element that should stay tabbable; default removes
+   * it from the tab order (decorative tooltips add no tab stops). */
+  tabbable?: boolean;
   sideOffset?: number;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -88,7 +92,7 @@ function SimpleTooltip({
       <Tooltip open={open} onOpenChange={onOpenChange} delayDuration={delayDuration}>
         <TooltipTrigger
           type={asChild ? undefined : "button"}
-          tabIndex={-1}
+          tabIndex={tabbable ? undefined : -1}
           className={cn(!asChild && "h-fit", buttonClassName)}
           style={buttonStyle}
           asChild={asChild}

@@ -163,12 +163,14 @@ export async function publishClaim(input: {
   runId: string;
   ttlSeconds?: number;
   buffer?: MollifierBuffer | null;
-}): Promise<void> {
+}): Promise<boolean> {
   const buffer = input.buffer === undefined ? getMollifierBuffer() : input.buffer;
-  if (!buffer) return;
+  if (!buffer) return true;
   const ttlSeconds = input.ttlSeconds ?? DEFAULT_CLAIM_TTL_SECONDS;
   try {
-    await buffer.publishClaim({
+    // false = compare-and-set no-op: a stale claimant (our TTL expired) already moved in, so our
+    // publish did NOT set the winner. The caller decides how to converge.
+    return await buffer.publishClaim({
       envId: input.envId,
       taskIdentifier: input.taskIdentifier,
       idempotencyKey: input.idempotencyKey,
@@ -182,6 +184,8 @@ export async function publishClaim(input: {
       taskIdentifier: input.taskIdentifier,
       err: err instanceof Error ? err.message : String(err),
     });
+    // Unknown publish state (transient error) — the claim TTL is the safety net; don't signal a no-op.
+    return true;
   }
 }
 
@@ -210,6 +214,39 @@ export async function releaseClaim(input: {
     logger.warn("idempotency claim release failed", {
       err: err instanceof Error ? err.message : String(err),
     });
+  }
+}
+
+// Reopen a stale RESOLVED claim slot whose winner was cleared (expired /
+// failed), so the claim-loser reacquire path can re-serialise a cross-DB
+// recreate through a fresh claim. Compare-and-delete on the observed winner
+// runId (buffer-side) so a concurrent reacquirer's freshly published winner
+// is never wiped. Best-effort: on buffer-null / error we no-op and let the
+// reacquire's claimOrAwait proceed (fail-open — the caller caps attempts and
+// ultimately falls through to the create, PG unique index as backstop).
+export async function resetResolvedClaim(input: {
+  envId: string;
+  taskIdentifier: string;
+  idempotencyKey: string;
+  runId: string;
+  buffer?: MollifierBuffer | null;
+}): Promise<boolean> {
+  const buffer = input.buffer === undefined ? getMollifierBuffer() : input.buffer;
+  if (!buffer) return false;
+  try {
+    return await buffer.resetResolvedClaim({
+      envId: input.envId,
+      taskIdentifier: input.taskIdentifier,
+      idempotencyKey: input.idempotencyKey,
+      expectedRunId: input.runId,
+    });
+  } catch (err) {
+    logger.warn("idempotency resolved-claim reset failed", {
+      envId: input.envId,
+      taskIdentifier: input.taskIdentifier,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return false;
   }
 }
 

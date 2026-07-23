@@ -1,25 +1,31 @@
 ---
 title: "ClickHouse chat agent"
 sidebarTitle: "ClickHouse chat agent"
-description: "Build a chat agent that answers questions about your data by writing and running SQL against ClickHouse Cloud, using chat.agent() and the ClickHouse Node.js client."
+description: "Build a chat agent that answers questions about your ClickHouse data with charts, tables and maps instead of text, using chat.agent(), generative UI with json-render, and a Next.js frontend."
 ---
 
 ## Overview
 
-This example is a [chat agent](/ai-chat/overview) that answers natural-language questions about the data in a [ClickHouse Cloud](https://clickhouse.com/cloud) database. The agent discovers the schema, writes ClickHouse SQL, runs it through the official [ClickHouse Node.js client](https://clickhouse.com/docs/integrations/javascript), and streams back answers with markdown tables. Trigger.dev handles the chat session, turn loop, streaming, and resumability — the whole agent is one `chat.agent()` call and three tools.
+This example is a fullstack [chat agent](/ai-chat/overview) that answers natural-language questions about the data in a [ClickHouse Cloud](https://clickhouse.com/cloud) database — and presents the answers as **interactive charts, tables, stat cards and maps** instead of walls of text. The agent discovers the schema, writes ClickHouse SQL, runs it through the official [ClickHouse Node.js client](https://clickhouse.com/docs/integrations/javascript), then calls a `renderVisualization` tool with a [json-render](https://json-render.dev) spec that a Next.js chat UI renders live with [shadcn/ui](https://ui.shadcn.com) components.
 
 **Tech stack:**
 
-- **[Trigger.dev AI chat](/ai-chat/overview)** for the agent session, turn loop, and streaming
+- **[Trigger.dev AI chat](/ai-chat/overview)** for the agent session, turn loop, streaming and resumability
+- **[AI Prompts](/ai/prompts)** for a versioned system prompt with dashboard overrides and per-generation LLM observability
 - **[ClickHouse Node.js client](https://clickhouse.com/docs/integrations/javascript)** (`@clickhouse/client`) for queries over HTTPS
-- **[AI SDK](https://ai-sdk.dev/)** with Anthropic Claude for the model and tool calling
+- **[AI SDK](https://ai-sdk.dev/)** with Anthropic Claude for the model and tool calling, and `useChat` on the frontend
+- **[json-render](https://json-render.dev)** with the [`@json-render/shadcn`](https://www.npmjs.com/package/@json-render/shadcn) component library for generative UI
+- **Next.js** chat app using [`useTriggerChatTransport`](/ai-chat/frontend) — the browser talks directly to Trigger.dev, no API route to maintain
+- **shadcn charts** (Recharts) and **[mapcn](https://mapcn.dev)** (MapLibre GL, free CARTO tiles) for the chart and map components
 
 **Features:**
 
-- **Schema discovery tools**: `listTables` reads table names, engines, and row counts from `system.tables`; `describeTable` returns column names and types using a bound `Identifier` query param, so table names are never interpolated into SQL strings
+- **Generative UI**: a `renderVisualization` tool takes a json-render spec — bar/line/area/pie charts, data tables, stat-card KPI rows and point maps, composed in cards and grids — with the query results inlined. Specs are validated against the component catalog and errors are returned to the model, so it corrects the spec and retries.
+- **One shared catalog**: the same module generates the system-prompt component reference and validates tool calls, so the prompt and the renderer can't drift apart
+- **Versioned system prompt**: defined with `prompts.define()`, resolvable per-run, overridable from the dashboard without redeploying — and storing it via `chat.prompt.set()` wires up `experimental_telemetry`, so every model call appears in the run trace with token, cost and latency metrics
+- **Schema discovery tools**: `listTables` reads table names, engines and row counts from `system.tables`; `describeTable` returns column names and types using bound `Identifier` query params, so table names are never interpolated into SQL strings
 - **Read-only query tool**: `runQuery` accepts SELECT-style statements only, enforced in code and backed by ClickHouse settings — `readonly=2`, a 1,000-row result cap, and a 30 second execution timeout
 - **Self-correcting SQL**: query errors are returned to the model as tool output, so the agent reads the ClickHouse error, fixes its SQL, and retries
-- **Single environment variable**: the ClickHouse connection is one `CLICKHOUSE_URL` with the credentials embedded, set in the Trigger.dev dashboard
 
 ## GitHub repo
 
@@ -36,25 +42,53 @@ This example is a [chat agent](/ai-chat/overview) that answers natural-language 
 
 ### The agent
 
-The agent is defined with [`chat.agent()`](/ai-chat/overview). Tools are declared on the config so tool results survive history re-conversion across turns, and the `run` function returns a `streamText()` call:
+The agent is defined with [`chat.agent()`](/ai-chat/overview). The system prompt is a versioned [AI Prompt](/ai/prompts): the editable analyst guidance lives in the prompt template, while the json-render component reference is generated from the catalog at run time and injected as a template variable. Storing the resolved prompt with `chat.prompt.set()` lets `chat.toStreamTextOptions()` supply the system text, model, config and telemetry:
 
-```ts trigger/clickhouse-agent.ts
+```ts src/trigger/clickhouse-agent.ts
+import { prompts } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { stepCountIs, streamText } from "ai";
+import { createProviderRegistry, stepCountIs, streamText } from "ai";
+import { z } from "zod";
+import { catalogPromptSection } from "../lib/catalog";
+
+const registry = createProviderRegistry({ anthropic });
+
+const systemPrompt = prompts.define({
+  id: "clickhouse-analyst",
+  model: "anthropic:claude-opus-4-8",
+  variables: z.object({ componentReference: z.string() }),
+  content: `You are a ClickHouse data analyst. ...
+
+## renderVisualization spec reference
+
+{{componentReference}}`,
+});
 
 export const clickhouseAgent = chat.agent({
   id: "clickhouse-agent",
   idleTimeoutInSeconds: 300,
-  tools: { listTables, describeTable, runQuery },
+  // Declared on the config so tool results survive history re-conversion across turns
+  tools: { listTables, describeTable, runQuery, renderVisualization },
+
+  onChatStart: async () => {
+    // Latest prompt version (or an active dashboard override), with the
+    // component reference generated from the catalog so it always matches
+    // the deployed code.
+    const resolved = await systemPrompt.resolve({
+      componentReference: catalogPromptSection(),
+    });
+    chat.prompt.set(resolved);
+  },
+
   run: async ({ messages, tools, signal }) => {
     return streamText({
-      // Spread chat.toStreamTextOptions() FIRST — it wires up
-      // prepareStep (compaction, steering, background injection),
-      // the system prompt set via chat.prompt(), and telemetry.
-      ...chat.toStreamTextOptions(),
+      // Fallback model only — placed BEFORE the spread so the stored
+      // prompt's model (including dashboard overrides) wins when set.
       model: anthropic("claude-opus-4-8"),
-      system: SYSTEM_PROMPT,
+      // Wires up prepareStep (compaction, steering, background injection),
+      // plus the system prompt + model + config + telemetry from chat.prompt().
+      ...chat.toStreamTextOptions({ registry }),
       messages,
       tools,
       stopWhen: stepCountIs(15),
@@ -64,18 +98,127 @@ export const clickhouseAgent = chat.agent({
 });
 ```
 
-The system prompt tells the agent to explore the schema before querying, write ClickHouse SQL (not Postgres dialect), prefer aggregations, and present results as markdown tables.
+<Warning>
+  On AI SDK v5/v6, `experimental_telemetry` comes from the stored prompt via
+  `chat.toStreamTextOptions()` — without `chat.prompt.set()`, model calls don't appear as spans in
+  the run trace.
+</Warning>
+
+### Generative UI with one shared catalog
+
+A single module defines which components the model may use: `Table`, `Card`, `Grid`, `Badge` and friends from `@json-render/shadcn`, plus custom chart components (shadcn charts on Recharts), a `Stat` card, and a `PointMap` built on mapcn. The same catalog produces the system-prompt reference and validates tool calls:
+
+```ts src/lib/catalog.ts
+import { defineCatalog } from "@json-render/core";
+import { schema } from "@json-render/react/schema";
+import { shadcnComponentDefinitions } from "@json-render/shadcn/catalog";
+
+export const catalog = defineCatalog(schema, {
+  components: {
+    // Layout & text from the stock shadcn catalog
+    Card: shadcnComponentDefinitions.Card,
+    Grid: shadcnComponentDefinitions.Grid,
+    Table: shadcnComponentDefinitions.Table,
+    // ...plus custom BarChart, LineChart, AreaChart, PieChart, Stat, PointMap
+  },
+  actions: {},
+});
+
+// Generates a component reference (props as JSON schema, from the same zod
+// definitions) for the system prompt — the prompt can't drift from the code.
+export function catalogPromptSection(): string {
+  /* ... */
+}
+
+// Validates a spec against the catalog; errors are phrased for the model
+// to correct and retry.
+export function validateSpec(spec: VisualizationSpec) {
+  /* ... */
+}
+```
+
+The `renderVisualization` tool accepts a flat json-render spec with the data rows inlined from earlier `runQuery` results. Validation failures go back to the model as tool output:
+
+```ts src/trigger/clickhouse-agent.ts
+const renderVisualization = tool({
+  description:
+    "Render charts, tables and stat cards for the user, instead of describing data as text.",
+  inputSchema: z.object({
+    spec: z.object({
+      root: z.string(),
+      elements: z.record(
+        z.string(),
+        z.object({
+          type: z.string(),
+          props: z.record(z.string(), z.unknown()),
+          children: z.array(z.string()).optional(),
+        })
+      ),
+    }),
+  }),
+  execute: async ({ spec }) => {
+    const result = validateSpec(spec);
+    if (!result.ok) {
+      // The model reads these, fixes the spec, and calls the tool again
+      return { ok: false, errors: result.errors };
+    }
+    return { ok: true, note: "Rendered to the user. Add at most a one-sentence takeaway." };
+  },
+});
+```
+
+### The Next.js chat UI
+
+The frontend uses `useChat` with [`useTriggerChatTransport`](/ai-chat/frontend) — the browser subscribes to the session's streams directly, authenticated by two small server actions. `renderVisualization` tool parts in the message stream render through json-render's `<Renderer>` with the shadcn component registry:
+
+```tsx src/components/chat.tsx
+"use client";
+
+import { useChat } from "@ai-sdk/react";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import type { clickhouseAgent } from "@/trigger/clickhouse-agent";
+import { mintChatAccessToken, startChatSession } from "@/app/actions";
+
+export function Chat() {
+  const transport = useTriggerChatTransport<typeof clickhouseAgent>({
+    task: "clickhouse-agent",
+    accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+    startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
+  });
+
+  const { messages, sendMessage, stop, status } = useChat({ transport });
+  // Render text parts as markdown; render tool-renderVisualization parts
+  // with json-render's <Renderer spec={...} registry={registry} />
+}
+```
+
+The registry maps every catalog component to its React implementation — the stock `@json-render/shadcn` components plus the custom charts and map:
+
+```tsx src/lib/registry.tsx
+import { defineRegistry } from "@json-render/react";
+import { shadcnComponents } from "@json-render/shadcn";
+import { catalog } from "./catalog";
+
+export const { registry } = defineRegistry(catalog, {
+  components: {
+    Card: shadcnComponents.Card,
+    Table: shadcnComponents.Table,
+    // ...
+    BarChart: ({ props }) => <BarChartView {...props} />,
+    PointMap: ({ props }) => <PointMapView {...props} />,
+  },
+});
+```
 
 ### The query tool
 
 `runQuery` guards against writes twice: a statement allowlist in code, and ClickHouse settings on the request itself. Errors are returned to the model instead of thrown, which is what makes the agent self-correct:
 
-```ts trigger/clickhouse-agent.ts
+```ts src/trigger/clickhouse-agent.ts
 const READ_ONLY_STATEMENTS = /^\s*(select|with|show|describe|desc|explain|exists)\b/i;
 
 const runQuery = tool({
-  description:
-    "Run a read-only SQL query against ClickHouse and get the results as JSON rows.",
+  description: "Run a read-only SQL query against ClickHouse and get the results as JSON rows.",
   inputSchema: z.object({
     query: z.string().describe("The ClickHouse SQL query to run"),
   }),
@@ -106,34 +249,43 @@ const runQuery = tool({
 });
 ```
 
-### Connecting to ClickHouse
+### Running it
 
-The client reads a single `CLICKHOUSE_URL` environment variable — the HTTPS endpoint with credentials embedded — set in the Trigger.dev dashboard on the [Environment Variables page](/deploy-environment-variables):
+The example needs `CLICKHOUSE_URL` and `ANTHROPIC_API_KEY` set in the Trigger.dev dashboard on the [Environment Variables page](/deploy-environment-variables), and `TRIGGER_PROJECT_REF` plus `TRIGGER_SECRET_KEY` in the local `.env` for the Next.js server actions:
+
+```bash .env
+TRIGGER_PROJECT_REF=proj_xxxxxxxxxxxxxxxxxxxxxxxx
+TRIGGER_SECRET_KEY=tr_dev_xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Run the agent and the app in two terminals, then open [http://localhost:3000](http://localhost:3000):
 
 ```bash
-CLICKHOUSE_URL=https://default:YOUR_PASSWORD@YOUR_SERVICE.clickhouse.cloud:8443
+pnpm dev:trigger   # the agent
+pnpm dev           # the Next.js app
 ```
 
-```ts trigger/clickhouse-agent.ts
-import { createClient } from "@clickhouse/client";
-
-const clickhouse = createClient({ url: process.env.CLICKHOUSE_URL });
-```
-
-### Chatting with the agent
-
-Run `npx trigger.dev@latest dev`, then open the **AI agents** page in the dashboard and chat with `clickhouse-agent` in the playground. With a dataset like [NYC Taxi](https://clickhouse.com/docs/getting-started/example-datasets/nyc-taxi) loaded, asking "What were the top 5 busiest pickup days?" produces a `listTables` call, a `describeTable` call, a SQL aggregation, and a streamed markdown table of results.
+With a dataset like [NYC Taxi](https://clickhouse.com/docs/getting-started/example-datasets/nyc-taxi) loaded, asking for a dashboard of daily trip volume, hourly demand and revenue by payment type produces a stat-card KPI row, two charts and a pie in one composed card — and asking "Where do trips start and end?" produces two interactive maps with size-scaled markers.
 
 ## Relevant code
 
-- **Agent + tools**: [trigger/clickhouse-agent.ts](https://github.com/triggerdotdev/examples/blob/main/clickhouse-chat-agent/trigger/clickhouse-agent.ts): the `chat.agent()` definition, the three tools, the read-only guards, and the ClickHouse client
-- **Trigger config**: [trigger.config.ts](https://github.com/triggerdotdev/examples/blob/main/clickhouse-chat-agent/trigger.config.ts): project config pointing at the `trigger/` directory
+- **Agent + tools**: [src/trigger/clickhouse-agent.ts](https://github.com/triggerdotdev/examples/blob/main/clickhouse-chat-agent/src/trigger/clickhouse-agent.ts): the `chat.agent()` definition, the versioned prompt, the four tools, the read-only guards, and the ClickHouse client
+- **Shared catalog**: [src/lib/catalog.ts](https://github.com/triggerdotdev/examples/blob/main/clickhouse-chat-agent/src/lib/catalog.ts): component definitions, prompt-reference generation, and spec validation
+- **Component registry**: [src/lib/registry.tsx](https://github.com/triggerdotdev/examples/blob/main/clickhouse-chat-agent/src/lib/registry.tsx): maps catalog components to shadcn/Recharts/mapcn implementations
+- **Chat UI**: [src/components/chat.tsx](https://github.com/triggerdotdev/examples/blob/main/clickhouse-chat-agent/src/components/chat.tsx): `useChat` + `useTriggerChatTransport`, message parts, and visualization rendering
+- **Server actions**: [src/app/actions.ts](https://github.com/triggerdotdev/examples/blob/main/clickhouse-chat-agent/src/app/actions.ts): session creation and token minting
 
 ## Learn more
 
 <CardGroup cols={2}>
   <Card title="AI chat overview" icon="message-bot" href="/ai-chat/overview">
     How chat agents, sessions, and the turn loop work.
+  </Card>
+  <Card title="Frontend" icon="browser" href="/ai-chat/frontend">
+    The chat transport, session tokens, and reconnection.
+  </Card>
+  <Card title="AI Prompts" icon="file-lines" href="/ai/prompts">
+    Versioned prompts with dashboard overrides and generation tracking.
   </Card>
   <Card title="Tools" icon="wrench" href="/ai-chat/tools">
     Declaring tools on your agent and how they persist across turns.

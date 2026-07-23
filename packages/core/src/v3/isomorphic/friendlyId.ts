@@ -46,7 +46,7 @@ export function regionCharForRegion(region: string | undefined): string {
 
 // globalThis.crypto is absent on Node 18.20 (a supported engine) without a flag, so fall back to
 // node:crypto's webcrypto, loaded only when the global is missing to stay isomorphic.
-type RandomFiller = (array: Uint8Array) => void;
+type RandomFiller = (array: Uint8Array<ArrayBuffer>) => void;
 
 function resolveGetRandomValues(): RandomFiller {
   const globalCrypto = (globalThis as { crypto?: Crypto }).crypto;

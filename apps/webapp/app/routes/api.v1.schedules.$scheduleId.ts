@@ -5,7 +5,7 @@ import { UpdateScheduleOptions } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { Prisma, prisma } from "~/db.server";
 import { clientSafeErrorMessage } from "~/utils/prismaErrors";
-import { scheduleUniqWhereClause } from "~/models/schedules.server";
+import { getScheduleEnvVisibility, scheduleUniqWhereClause } from "~/models/schedules.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -38,6 +38,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   switch (method) {
     case "DELETE": {
+      const visibility = await getScheduleEnvVisibility(
+        prisma,
+        authenticationResult.environment.projectId,
+        parsedParams.data.scheduleId,
+        authenticationResult.environment.id
+      );
+      if (visibility.status !== "visible") {
+        return json({ error: "Schedule not found" }, { status: 404 });
+      }
+
       try {
         const deletedSchedule = await prisma.taskSchedule.delete({
           where: scheduleUniqWhereClause(
@@ -74,6 +84,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       if (!body.success) {
         return json({ error: "Invalid request body", issues: body.error.issues }, { status: 400 });
+      }
+
+      // Env-scoped API keys can't see or mutate a schedule whose
+      // instances live in a different environment. "hidden" → refuse;
+      // "missing" → fall through to the upsert's create path.
+      const visibility = await getScheduleEnvVisibility(
+        prisma,
+        authenticationResult.environment.projectId,
+        parsedParams.data.scheduleId,
+        authenticationResult.environment.id
+      );
+      if (visibility.status === "hidden") {
+        return json({ error: "Schedule not found" }, { status: 404 });
       }
 
       const service = new UpsertTaskScheduleService();
@@ -135,6 +158,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       { error: "Invalid request parameters", issues: parsedParams.error.issues },
       { status: 400 }
     );
+  }
+
+  const visibility = await getScheduleEnvVisibility(
+    prisma,
+    authenticationResult.environment.projectId,
+    parsedParams.data.scheduleId,
+    authenticationResult.environment.id
+  );
+  if (visibility.status !== "visible") {
+    return json({ error: "Schedule not found" }, { status: 404 });
   }
 
   const presenter = new ViewSchedulePresenter();

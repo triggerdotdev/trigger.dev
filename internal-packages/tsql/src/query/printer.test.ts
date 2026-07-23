@@ -823,6 +823,89 @@ describe("ClickHousePrinter", () => {
         expect(sql).toContain("output_text AS result");
       });
 
+      it("should use text column as the first arg of JSONExtract* on a bare JSON column", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery("SELECT JSONExtractInt(output, 'count') AS r FROM runs", ctx);
+
+        // JSONExtract* needs a String containing JSON, not the native JSON column.
+        expect(sql).toContain("JSONExtractInt(output_text,");
+        expect(sql).not.toMatch(/JSONExtractInt\(output,/);
+      });
+
+      it("should use text column for the whole JSONExtract* family and JSONHas/Length/Type", () => {
+        const ctx = createTextColumnContext();
+        const cases: Array<[string, string]> = [
+          ["JSONExtract", "SELECT JSONExtract(output, 'x', 'Int64') AS r FROM runs"],
+          ["JSONExtractUInt", "SELECT JSONExtractUInt(output, 'x') AS r FROM runs"],
+          ["JSONExtractFloat", "SELECT JSONExtractFloat(output, 'x') AS r FROM runs"],
+          ["JSONExtractBool", "SELECT JSONExtractBool(output, 'x') AS r FROM runs"],
+          ["JSONExtractString", "SELECT JSONExtractString(output, 'x') AS r FROM runs"],
+          ["JSONExtractRaw", "SELECT JSONExtractRaw(output, 'x') AS r FROM runs"],
+          ["JSONExtractArrayRaw", "SELECT JSONExtractArrayRaw(output, 'x') AS r FROM runs"],
+          [
+            "JSONExtractKeysAndValues",
+            "SELECT JSONExtractKeysAndValues(output, 'String') AS r FROM runs",
+          ],
+          ["JSONExtractKeys", "SELECT JSONExtractKeys(output) AS r FROM runs"],
+          ["JSONHas", "SELECT JSONHas(output, 'x') AS r FROM runs"],
+          ["JSONLength", "SELECT JSONLength(output) AS r FROM runs"],
+          ["JSONType", "SELECT JSONType(output, 'x') AS r FROM runs"],
+        ];
+
+        for (const [fn, query] of cases) {
+          const { sql } = printQuery(query, ctx);
+          expect(sql, `${fn} should read from output_text`).toContain(`${fn}(output_text`);
+          expect(sql, `${fn} should not read from the native JSON column`).not.toMatch(
+            new RegExp(`${fn}\\(output,`)
+          );
+        }
+      });
+
+      it("should NOT rewrite a JSONExtract* first arg that is a String literal", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery(`SELECT JSONExtractInt('{"a": 1}', 'a') AS r FROM runs`, ctx);
+
+        // String literals are parameterized, never swapped for the text column.
+        expect(sql).toMatch(/JSONExtractInt\(\{tsql_val_\d+: String\}/);
+        expect(sql).not.toContain("output_text");
+      });
+
+      it("should qualify the text column with the table alias inside JSONExtract*", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery(
+          "SELECT JSONExtractInt(runs.output, 'count') AS r FROM runs",
+          ctx
+        );
+
+        expect(sql).toContain("JSONExtractInt(runs.output_text,");
+      });
+
+      it("should reach through assumeNotNull() to swap the JSON field for its text column", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery(
+          "SELECT JSONExtractArrayRaw(assumeNotNull(output), 'losers') AS r FROM runs",
+          ctx
+        );
+
+        // The JSON field is wrapped in a value-preserving passthrough, so the swap
+        // has to descend into it: assumeNotNull(output) -> assumeNotNull(output_text).
+        expect(sql).toContain("JSONExtractArrayRaw(assumeNotNull(output_text),");
+        expect(sql).not.toContain("assumeNotNull(output)");
+      });
+
+      it("should NOT rewrite a JSON field consumed by toJSONString inside JSONExtract*", () => {
+        const ctx = createTextColumnContext();
+        const { sql } = printQuery(
+          "SELECT JSONExtractString(toJSONString(output), 'x') AS r FROM runs",
+          ctx
+        );
+
+        // toJSONString(output) is already a String and changes the value, so it must
+        // stay on the native column.
+        expect(sql).toContain("toJSONString(output)");
+        expect(sql).not.toContain("output_text");
+      });
+
       it("should use text column for table-qualified JSON columns in SELECT", () => {
         const ctx = createTextColumnContext();
         const { sql } = printQuery("SELECT runs.output FROM runs", ctx);

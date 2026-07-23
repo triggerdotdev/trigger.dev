@@ -10,5 +10,5 @@
     },
     "customConditions": []
   },
-  "exclude": ["**/*.test.ts", "**/*.test.tsx"]
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "test/setup-test-env.ts"]
 }

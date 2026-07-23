@@ -26,13 +26,14 @@
   "scripts": {
     "clean": "rimraf dist",
     "generate": "node ../../scripts/retry-prisma-generate.mjs",
-    "db:migrate:dev:create": "prisma migrate dev --create-only",
+    "db:migrate:dev:create": "pnpm run format:prisma && prisma migrate dev --create-only",
+    "format:prisma": "prisma format",
     "db:migrate:deploy": "node scripts/migrate.mjs deploy",
     "db:migrate:status": "node scripts/migrate.mjs status",
     "db:push": "prisma db push",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "pnpm run clean && tsc --noEmit false --outDir dist --declaration",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "dev": "tsc --noEmit false --outDir dist --declaration --watch",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset"

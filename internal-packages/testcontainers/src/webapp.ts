@@ -104,6 +104,11 @@ export async function startWebapp(
       SESSION_SECRET: "test-session-secret-for-e2e-tests",
       MAGIC_LINK_SECRET: "test-magic-link-secret-32chars!!",
       ENCRYPTION_KEY: "test-encryption-key-for-e2e!!!!!", // exactly 32 bytes
+      // Control-plane auth secrets are required (no defaults) and reject the
+      // known-insecure placeholder strings, so supply strong test values here.
+      PROVIDER_SECRET: "test-provider-secret-for-e2e-tests",
+      COORDINATOR_SECRET: "test-coordinator-secret-for-e2e-tests",
+      MANAGED_WORKER_SECRET: "test-managed-worker-secret-for-e2e-tests",
       CLICKHOUSE_URL: "http://localhost:19123", // dummy, auth paths never connect
       DEPLOY_REGISTRY_HOST: "registry.example.com", // dummy, not needed for auth tests
       ELECTRIC_ORIGIN: "http://localhost:3060",
@@ -116,7 +121,6 @@ export async function startWebapp(
       RUN_ENGINE_WORKER_ENABLED: "0", // disables run engine workers (checked === "0", default "1")
       SCHEDULE_WORKER_ENABLED: "0", // disables schedule engine worker (checked === "0")
       BATCH_QUEUE_WORKER_ENABLED: "false", // disables batch queue consumers (BoolEnv)
-      LEGACY_RUN_ENGINE_WORKER_ENABLED: "0", // disables legacy run engine worker
       COMMON_WORKER_ENABLED: "0", // disables common worker
       RUN_ENGINE_TTL_SYSTEM_DISABLED: "true", // disables TTL expiry system (BoolEnv)
       RUN_ENGINE_TTL_CONSUMERS_DISABLED: "true", // disables TTL consumers (BoolEnv)

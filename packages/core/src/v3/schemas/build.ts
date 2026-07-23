@@ -13,7 +13,20 @@ export const BuildTarget = z.enum(["dev", "deploy", "unmanaged"]);
 
 export type BuildTarget = z.infer<typeof BuildTarget>;
 
-export const BuildRuntime = z.enum(["node", "node-22", "bun"]);
+export const ConfigRuntime = z.enum([
+  "node",
+  "node-22",
+  "node-24",
+  "node-26",
+  // Deprecated aliases, kept for backwards compatibility. Use "node-24"/"node-26" instead.
+  "experimental-node-24",
+  "experimental-node-26",
+  "bun",
+]);
+
+export type ConfigRuntime = z.infer<typeof ConfigRuntime>;
+
+export const BuildRuntime = z.enum(["node", "node-22", "node-24", "node-26", "bun"]);
 
 export type BuildRuntime = z.infer<typeof BuildRuntime>;
 
@@ -53,6 +66,8 @@ export const BuildManifest = z.object({
       .object({
         env: z.record(z.string()).optional(),
         parentEnv: z.record(z.string()).optional(),
+        secretEnv: z.record(z.string()).optional(),
+        secretParentEnv: z.record(z.string()).optional(),
       })
       .optional(),
   }),

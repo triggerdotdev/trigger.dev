@@ -290,7 +290,7 @@ export class ApiRunListPresenter extends BasePresenter {
 
       const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
         organizationId,
-        "standard"
+        "runsList"
       );
       const presenter = new NextRunListPresenter(this._replica, clickhouse, this.readThroughDeps);
 

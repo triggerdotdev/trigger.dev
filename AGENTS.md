@@ -138,11 +138,10 @@ User API call -> Webapp routes -> Services -> RunEngine -> Redis Queue -> Superv
 - **internal-packages/redis**: Redis client creation utilities (ioredis)
 - **internal-packages/testcontainers**: Test helpers for Redis/PostgreSQL containers
 - **internal-packages/schedule-engine**: Durable cron scheduling
-- **internal-packages/zod-worker**: Graphile-worker wrapper (DEPRECATED - use redis-worker)
 
-### Legacy V1 Engine Code
+### v3 (engine V1) removed
 
-The `apps/webapp/app/v3/` directory name is misleading - most code there is actively used by V2. Only specific files are V1-only legacy (MarQS queue, triggerTaskV1, cancelTaskRunV1, etc.). See `apps/webapp/CLAUDE.md` for the exact list. When you encounter V1/V2 branching in services, only modify V2 code paths. All new work uses Run Engine 2.0 (`@internal/run-engine`) and redis-worker.
+v3 (engine V1: MarQS + Graphile worker) is end-of-life and its execution code has been removed. The `apps/webapp/app/v3/` directory name is historical - everything there now serves V2 (Run Engine 2.0, `@internal/run-engine` + redis-worker). There is no V1 execution path: a `RunEngineVersion` `V1` branch only rejects or finalizes gracefully so v3 clients get a clean 4xx, never a 5xx. Do not reintroduce V1. See `apps/webapp/CLAUDE.md` and `.claude/rules/legacy-v3-code.md`.
 
 ### Documentation
 

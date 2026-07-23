@@ -27,5 +27,18 @@ export const rbac = plugin.create(
   { primary: prisma, replica: $replica as PrismaClient },
   // SESSION_SECRET signs delegated user-actor tokens; the plugin verifies
   // them with it in authenticateUserActor.
-  { forceFallback: env.RBAC_FORCE_FALLBACK, userActorSecret: env.SESSION_SECRET }
+  {
+    forceFallback: env.RBAC_FORCE_FALLBACK,
+    userActorSecret: env.SESSION_SECRET,
+    // A plugin that owns its own database client gets the same
+    // writer/replica topology the webapp's Prisma clients use (see
+    // getClient/getReplicaClient in db.server.ts): control-plane URLs win,
+    // and with no replica configured reads share the writer.
+    database: {
+      writerUrl: env.CONTROL_PLANE_DATABASE_URL ?? env.DATABASE_URL,
+      readerUrl: env.CONTROL_PLANE_DATABASE_READ_REPLICA_URL ?? env.DATABASE_READ_REPLICA_URL,
+      writerConnectionLimit: env.RBAC_DATABASE_WRITER_CONNECTION_LIMIT,
+      readerConnectionLimit: env.RBAC_DATABASE_READER_CONNECTION_LIMIT,
+    },
+  }
 );

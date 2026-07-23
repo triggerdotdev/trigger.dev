@@ -21,6 +21,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import simplur from "simplur";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import {
@@ -155,7 +156,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   );
 
   if (!project) {
-    throw redirectWithErrorMessage(redirectPath, request, "Project not found");
+    throw await redirectWithErrorMessage(redirectPath, request, "Project not found");
   }
 
   const formData = await request.formData();
@@ -270,7 +271,9 @@ export default function Page() {
                     {environment.type}{" "}
                     {environment.branchName ? ` (${environment.branchName})` : ""}
                   </Property.Label>
-                  <Property.Value>{environment.id}</Property.Value>
+                  <Property.Value>
+                    <CopyableText value={environment.id} asChild hideTooltip />
+                  </Property.Value>
                 </Property.Item>
               ))}
             </Property.Table>

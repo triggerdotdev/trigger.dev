@@ -18,6 +18,7 @@ import { GitMetadata } from "~/components/GitMetadata";
 import { VercelLink } from "~/components/integrations/VercelLink";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -283,20 +284,28 @@ export default function Page() {
           <Property.Table>
             <Property.Item>
               <Property.Label>ID</Property.Label>
-              <Property.Value>{deployment.id}</Property.Value>
+              <Property.Value>
+                <CopyableText value={deployment.id} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Project ID</Property.Label>
-              <Property.Value>{deployment.projectId}</Property.Value>
+              <Property.Value>
+                <CopyableText value={deployment.projectId} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Org ID</Property.Label>
-              <Property.Value>{deployment.organizationId}</Property.Value>
+              <Property.Value>
+                <CopyableText value={deployment.organizationId} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             {deployment.imageReference && (
               <Property.Item>
                 <Property.Label>Image</Property.Label>
-                <Property.Value>{deployment.imageReference}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={deployment.imageReference} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
             )}
             <Property.Item>

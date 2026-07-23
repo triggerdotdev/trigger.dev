@@ -4,6 +4,10 @@ export type GenerateJWTOptions = {
   secretKey: string;
   payload: Record<string, any>;
   expirationTime?: number | Date | string;
+  // Skip the `iat` claim. Combined with an absolute `expirationTime`, this makes the signed token a
+  // pure function of its payload — the same claims mint byte-identical tokens. Off by default so
+  // ordinary short-lived tokens keep their issued-at.
+  omitIssuedAt?: boolean;
 };
 
 export const JWT_ALGORITHM = "HS256";
@@ -15,13 +19,17 @@ export async function generateJWT(options: GenerateJWTOptions): Promise<string> 
 
   const secret = new TextEncoder().encode(options.secretKey);
 
-  return new SignJWT(options.payload)
+  const jwt = new SignJWT(options.payload)
     .setIssuer(JWT_ISSUER)
     .setAudience(JWT_AUDIENCE)
     .setProtectedHeader({ alg: JWT_ALGORITHM })
-    .setIssuedAt()
-    .setExpirationTime(options.expirationTime ?? "15m")
-    .sign(secret);
+    .setExpirationTime(options.expirationTime ?? "15m");
+
+  if (!options.omitIssuedAt) {
+    jwt.setIssuedAt();
+  }
+
+  return jwt.sign(secret);
 }
 
 export type ValidationResult =

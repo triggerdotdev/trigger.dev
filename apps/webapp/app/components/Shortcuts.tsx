@@ -1,8 +1,8 @@
 import { KeyboardIcon } from "~/assets/icons/KeyboardIcon";
 import { useState } from "react";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { Button } from "./primitives/Buttons";
 import { Header3 } from "./primitives/Headers";
+import { SideMenuItemButton } from "./navigation/SideMenuItem";
 import { Paragraph } from "./primitives/Paragraph";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "./primitives/SheetV3";
 import { ShortcutKey } from "./primitives/ShortcutKey";
@@ -11,19 +11,12 @@ export function Shortcuts() {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button
-          variant="small-menu-item"
-          LeadingIcon={KeyboardIcon}
-          leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
+        <SideMenuItemButton
+          icon={KeyboardIcon}
+          name="Shortcuts"
           data-action="shortcuts"
-          fullWidth
-          textAlignLeft
-          shortcut={{ modifiers: ["shift"], key: "?", enabled: false }}
-          className="gap-x-0 pl-1.5"
-          iconSpacing="gap-x-1.5"
-        >
-          Shortcuts
-        </Button>
+          trailing={<ShortcutKey shortcut={{ modifiers: ["shift"], key: "?" }} variant="medium" />}
+        />
       </SheetTrigger>
       <ShortcutContent />
     </Sheet>

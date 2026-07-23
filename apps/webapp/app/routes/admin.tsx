@@ -27,10 +27,6 @@ export default function Page() {
               to: `/admin/orgs${searchSuffix}`,
             },
             {
-              label: "Concurrency",
-              to: "/admin/concurrency",
-            },
-            {
               label: "LLM Models",
               to: "/admin/llm-models",
             },

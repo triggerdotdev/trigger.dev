@@ -155,4 +155,33 @@ describe("removeTeamMember", () => {
       ).rejects.toThrow("Member not found in this organization");
     }
   );
+
+  containerTest(
+    "refuses to remove the sole member (last-member guard, locks the message)",
+    async ({ prisma }) => {
+      const slug = `orgsolo_${Math.random().toString(36).slice(2, 10)}`;
+      const soloUser = await prisma.user.create({
+        data: { email: `solo_${slug}@example.com`, authenticationMethod: "MAGIC_LINK" },
+      });
+      const organization = await prisma.organization.create({
+        data: {
+          title: slug,
+          slug,
+          members: { create: { userId: soloUser.id, role: "ADMIN" } },
+        },
+        include: { members: true },
+      });
+      const soloMember = organization.members[0];
+
+      await expect(
+        removeTeamMember(
+          { userId: soloUser.id, slug: organization.slug, memberId: soloMember.id },
+          prisma
+        )
+      ).rejects.toThrow("Cannot remove the last member of an organization");
+
+      const stillThere = await prisma.orgMember.findUnique({ where: { id: soloMember.id } });
+      expect(stillThere).not.toBeNull();
+    }
+  );
 });

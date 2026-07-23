@@ -365,8 +365,8 @@ for (let turn = 0; turn < 100; turn++) {
     stopWhen: stepCountIs(15),
   });
 
-  const response = await chat.pipeAndCapture(result);
-  if (response) await conversation.addResponse(response);
+  const { message } = await chat.pipeAndCapture(result);
+  if (message) await conversation.addResponse(message);
 
   // Outer-loop compaction
   const usage = await result.totalUsage;

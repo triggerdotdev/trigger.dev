@@ -23,7 +23,10 @@ import { isGithubAuthSupported, isGoogleAuthSupported } from "~/services/auth.se
 import { getLastAuthMethod } from "~/services/lastAuthMethod.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
-import { getUserSession } from "~/services/sessionStorage.server";
+import {
+  commitSession as commitUserSession,
+  getUserSession,
+} from "~/services/sessionStorage.server";
 import { ssoController } from "~/services/sso.server";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import { requestUrl } from "~/utils/requestUrl.server";
@@ -111,8 +114,36 @@ export async function loader({ request }: LoaderFunctionArgs) {
     showSsoAuth = (globalFlags as Record<string, unknown>).hasSso === true;
   }
 
+  // Read the flashed auth error and, when one exists, commit the session so
+  // the flash is consumed. Reading without committing leaves the flash in the
+  // cookie, so a stale error (e.g. a once-rejected email address) would
+  // resurface on every future /login visit and make later, successful login
+  // attempts look like they failed.
+  const userSession = await getUserSession(request);
+  const error = userSession.get("auth:error");
+  // get() only auto-clears flash-stored values. Sessions written before this
+  // fix stored the error with set(), which survives get() + commit — unset it
+  // explicitly so those sessions heal too instead of showing the stale error
+  // until the cookie's one-year maxAge runs out.
+  userSession.unset("auth:error");
+
+  let authError: string | undefined;
+  if (error) {
+    if ("message" in error) {
+      authError = error.message;
+    } else {
+      authError = JSON.stringify(error, null, 2);
+    }
+  }
+
+  const headers = new Headers();
+  if (error) {
+    headers.append("Set-Cookie", await commitUserSession(userSession));
+  }
+
   if (redirectTo) {
     const session = await setRedirectTo(request, redirectTo);
+    headers.append("Set-Cookie", await commitSession(session));
 
     return typedjson(
       {
@@ -121,39 +152,26 @@ export async function loader({ request }: LoaderFunctionArgs) {
         showGoogleAuth: isGoogleAuthSupported,
         showSsoAuth,
         lastAuthMethod,
-        authError: null,
+        authError,
         notice,
         isVercelMarketplace: redirectTo.startsWith("/vercel/callback"),
       },
-      {
-        headers: {
-          "Set-Cookie": await commitSession(session),
-        },
-      }
+      { headers }
     );
   } else {
-    const session = await getUserSession(request);
-    const error = session.get("auth:error");
-
-    let authError: string | undefined;
-    if (error) {
-      if ("message" in error) {
-        authError = error.message;
-      } else {
-        authError = JSON.stringify(error, null, 2);
-      }
-    }
-
-    return typedjson({
-      redirectTo: null,
-      showGithubAuth: isGithubAuthSupported,
-      showGoogleAuth: isGoogleAuthSupported,
-      showSsoAuth,
-      lastAuthMethod,
-      authError,
-      notice,
-      isVercelMarketplace: false,
-    });
+    return typedjson(
+      {
+        redirectTo: null,
+        showGithubAuth: isGithubAuthSupported,
+        showGoogleAuth: isGoogleAuthSupported,
+        showSsoAuth,
+        lastAuthMethod,
+        authError,
+        notice,
+        isVercelMarketplace: false,
+      },
+      { headers }
+    );
   }
 }
 

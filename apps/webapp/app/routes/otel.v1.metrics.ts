@@ -4,7 +4,7 @@ import {
   ExportMetricsServiceRequest,
   ExportMetricsServiceResponse,
 } from "@trigger.dev/otlp-importer";
-import { otlpExporter } from "~/v3/otlpExporter.server";
+import { otlpExporter, otlpTransformWorkerPoolEnabled } from "~/v3/otlpExporter.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
@@ -21,13 +21,27 @@ export async function action({ request }: ActionFunctionArgs) {
       const exporter = await otlpExporter;
       const buffer = await request.arrayBuffer();
 
+      if (otlpTransformWorkerPoolEnabled) {
+        await exporter.exportMetricsRaw(new Uint8Array(buffer));
+
+        return new Response(
+          ExportMetricsServiceResponse.encode(
+            ExportMetricsServiceResponse.create()
+          ).finish() as Uint8Array<ArrayBuffer>,
+          { status: 200 }
+        );
+      }
+
       const exportRequest = ExportMetricsServiceRequest.decode(new Uint8Array(buffer));
 
       const exportResponse = await exporter.exportMetrics(exportRequest);
 
-      return new Response(ExportMetricsServiceResponse.encode(exportResponse).finish(), {
-        status: 200,
-      });
+      return new Response(
+        ExportMetricsServiceResponse.encode(exportResponse).finish() as Uint8Array<ArrayBuffer>,
+        {
+          status: 200,
+        }
+      );
     } else {
       return new Response(
         "Unsupported content type. Must be either application/x-protobuf or application/json",
