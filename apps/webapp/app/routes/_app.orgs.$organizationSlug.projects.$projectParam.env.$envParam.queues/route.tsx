@@ -552,7 +552,7 @@ function QueuesWithMetricsView() {
               valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
-                  <span className={cn(limitClassName, "flex items-center gap-1")}>
+                  <span className={cn(limitClassName, "system-mono-label flex items-center gap-1")}>
                     Including {envRunningLive - environment.concurrencyLimit} burst runs{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>
@@ -925,7 +925,7 @@ function QueuesWithMetricsView() {
                             bucketStartMs={metrics?.bucketStartMs}
                             bucketIntervalMs={metrics?.bucketIntervalMs}
                             width={134}
-                            color="var(--color-queues)"
+                            color="var(--color-queues-chart)"
                             unitLabel={{ singular: "queued", plural: "queued" }}
                             showPeak={false}
                             formatPeak={(v) => v.toLocaleString()}
@@ -1246,7 +1246,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     id: "saturation",
     label: "Env saturation",
     description: "Running as a share of the environment limit. Yellow over 100% (burst headroom).",
-    color: "var(--color-queues)",
+    color: "var(--color-queues-chart)",
     // Numerator: running summed across the visible set. Denominator: the env-wide limit (same for
     // every queue in a bucket), so the line reads as the set's share of the environment capacity.
     query: `SELECT timeBucket() AS t,\n  queue,\n  max(max_running) AS running,\n  max(max_env_limit) AS env_limit\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
@@ -1267,7 +1267,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     id: "backlog",
     label: "Backlog",
     description: "Runs waiting across these queues over time.",
-    color: "var(--color-queues)",
+    color: "var(--color-queues-chart)",
     query: `SELECT timeBucket() AS t,\n  queue,\n  max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t, queue\nORDER BY t`,
     derive: (rows) => {
       const points = sumByBucket(rows, (r) => tileNumber(r.queued)).map(({ bucket, sum }) => ({
@@ -1283,7 +1283,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Scheduling delay p95",
     description: "p95 wait from eligible to dequeued. Yellow over 1 min.",
     totalTooltip: "The worst p95 in the selected window.",
-    color: "var(--color-queues)",
+    color: "var(--color-queues-chart)",
     // quantilesMerge over the set's rows in a bucket is the true p95 across the union of samples
     // (merging quantile states is valid; averaging per-queue percentiles would not be).
     query: `SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
@@ -1296,7 +1296,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
         points,
         total: worst,
         formatTotal: (v) => (v > 0 ? formatWaitMs(v) : "–"),
-        totalClassName: worst >= 60_000 ? "text-warning" : undefined,
+        totalClassName: worst >= 60_000 ? "system-mono-label text-warning" : undefined,
       };
     },
   },
@@ -1305,7 +1305,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Throttled",
     description: "Times dequeuing was blocked by a limit.",
     totalTooltip: "The share of the selected window with at least one blocked dequeue.",
-    color: "var(--color-queues)",
+    color: "var(--color-queues-chart)",
     query: `SELECT timeBucket() AS t,\n  sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`,
     derive: (rows) => {
       const points = rows.map((r) => ({
@@ -1322,7 +1322,7 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
         points,
         total: pct,
         formatTotal: (v) => `${v}% of window`,
-        totalClassName: pct > 0 ? "text-warning" : undefined,
+        totalClassName: pct > 0 ? "system-mono-label text-warning" : undefined,
       };
     },
   },
@@ -1634,7 +1634,7 @@ function ClassicQueuesView() {
               valueClassName={cn(limitClassName, "tabular-nums")}
               suffix={
                 limitStatus === "burst" ? (
-                  <span className={cn(limitClassName, "flex items-center gap-1")}>
+                  <span className={cn(limitClassName, "system-mono-label flex items-center gap-1")}>
                     Including {environment.running - environment.concurrencyLimit} burst runs{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>
@@ -1665,7 +1665,7 @@ function ClassicQueuesView() {
               valueClassName={limitClassName}
               suffix={
                 environment.burstFactor > 1 ? (
-                  <span className={cn(limitClassName, "flex items-center gap-1")}>
+                  <span className={cn(limitClassName, "system-mono-label flex items-center gap-1")}>
                     Burst limit {environment.burstFactor * environment.concurrencyLimit}{" "}
                     <BurstFactorTooltip environment={environment} />
                   </span>

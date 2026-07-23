@@ -261,6 +261,9 @@
   --color-errors: var(--color-amber-600);
   --color-apiKeys: var(--color-amber-600);
 
+  /* Queue charts read blue here; Classic keeps the queues purple */
+  --color-queues-chart: var(--color-blue-500);
+
   /* Callout accents (callout text/bg tints stay per-mode) */
   --color-callout-docs: var(--color-blue-500);
   --color-callout-pending: var(--color-blue-500);
@@ -354,6 +357,12 @@
   --color-editor-scrollbar-track-active: #131b2b;
   --color-editor-scrollbar-thumb: #293649;
   --color-editor-scrollbar-thumb-active: #3c4b62;
+}
+
+/* Queue chart series color - queues purple in Classic, overridden to blue in
+   the System themes. Consumed from JS via var(), so declared static. */
+@theme static {
+  --color-queues-chart: var(--color-queues);
 }
 
 /*

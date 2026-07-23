@@ -23,9 +23,9 @@ import { formatNumberCompact } from "~/utils/numberFormatter";
 // so pages render instantly; loaders only supply live counts and identifiers.
 
 export const QUEUE_METRIC_COLORS = {
-  running: "var(--color-queues)",
+  running: "var(--color-queues-chart)",
   limit: "#4D525B",
-  queued: "var(--color-queues)",
+  queued: "var(--color-queues-chart)",
   p50: "#22D3EE",
   p95: "#F59E0B",
   p99: "#EF4444",
