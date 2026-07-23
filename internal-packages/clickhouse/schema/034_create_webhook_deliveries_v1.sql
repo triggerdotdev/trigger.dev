@@ -27,7 +27,5 @@ CREATE TABLE IF NOT EXISTS trigger_dev.webhook_deliveries_v1
 ENGINE = ReplacingMergeTree(_version, _is_deleted)
 PARTITION BY toYYYYMM(created_at)
 ORDER BY (organization_id, project_id, environment_id, created_at, delivery_id)
--- 60d retention aligned with the Postgres partition retention. ttl_only_drop_parts makes expiry a
--- whole-part drop (monthly partitions); materialize_ttl_recalculate_only keeps TTL lightweight.
 TTL toDateTime(created_at) + INTERVAL 60 DAY
 SETTINGS ttl_only_drop_parts = 1, materialize_ttl_recalculate_only = 1;
