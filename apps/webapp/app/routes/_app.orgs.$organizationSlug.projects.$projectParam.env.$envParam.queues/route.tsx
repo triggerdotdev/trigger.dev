@@ -43,7 +43,6 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { useTableSort, type SortColumn } from "~/components/primitives/useTableSort";
 import {
   InfoIconTooltip,
   SimpleTooltip,
@@ -434,43 +433,6 @@ function QueuesWithMetricsView() {
   // Client-side, header-click sorting over the current page's rows. Server pagination and the
   // default busiest order are unchanged; clearing a sort returns to that server order.
   const queueRows = queues ?? [];
-  type QueueRow = (typeof queueRows)[number];
-  const sortColumns = useMemo<SortColumn<QueueRow>[]>(
-    () => [
-      { key: "name", type: "alpha", value: (q) => q.name },
-      { key: "queued", type: "number", value: (q) => q.queued },
-      { key: "running", type: "number", value: (q) => q.running },
-      {
-        key: "limit",
-        type: "number",
-        value: (q) => q.concurrencyLimit ?? environment.concurrencyLimit,
-      },
-      { key: "limitedBy", type: "alpha", value: (q) => queueLimitedByLabel(q) },
-      {
-        key: "health",
-        type: "alpha",
-        value: (q) =>
-          queueHealthLabel({
-            paused: q.paused,
-            running: q.running,
-            queued: q.queued,
-            limit: q.concurrencyLimit ?? environment.concurrencyLimit,
-          }),
-      },
-      {
-        key: "delayP95",
-        type: "number",
-        value: (q) => metricsByQueue[queueMetricsKey(q)]?.p95WaitMs ?? null,
-      },
-      {
-        key: "backlog",
-        type: "number",
-        value: (q) => metricsByQueue[queueMetricsKey(q)]?.peakQueued ?? null,
-      },
-    ],
-    [environment.concurrencyLimit, metricsByQueue]
-  );
-  const { sortedRows: sortedQueues, getSortProps } = useTableSort(queueRows, sortColumns);
 
   return (
     <PageContainer>
@@ -694,19 +656,18 @@ function QueuesWithMetricsView() {
             <Table containerClassName="border-t">
               <TableHeader>
                 <TableRow>
-                  <TableHeaderCell {...getSortProps("name")}>Name</TableHeaderCell>
-                  <TableHeaderCell alignment="right" {...getSortProps("queued")}>
+                  <TableHeaderCell>Name</TableHeaderCell>
+                  <TableHeaderCell alignment="right">
                     Queued
                   </TableHeaderCell>
-                  <TableHeaderCell alignment="right" {...getSortProps("running")}>
+                  <TableHeaderCell alignment="right">
                     Running
                   </TableHeaderCell>
-                  <TableHeaderCell alignment="right" {...getSortProps("limit")}>
+                  <TableHeaderCell alignment="right">
                     Limit
                   </TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
-                    {...getSortProps("limitedBy")}
                     tooltip={
                       <div className="max-w-xs space-y-1 p-1 text-left text-xs text-text-dimmed">
                         <p>
@@ -725,19 +686,17 @@ function QueuesWithMetricsView() {
                   >
                     Limited by
                   </TableHeaderCell>
-                  <TableHeaderCell alignment="right" {...getSortProps("health")}>
+                  <TableHeaderCell alignment="right">
                     Health
                   </TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
-                    {...getSortProps("delayP95")}
                     tooltip="p95 wait from eligible to dequeued, over the selected window."
                   >
                     Delay p95
                   </TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
-                    {...getSortProps("backlog")}
                     tooltip={
                       <>
                         Runs waiting over the selected window. <WarningSwatch /> where throttled.
@@ -752,8 +711,8 @@ function QueuesWithMetricsView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedQueues.length > 0 ? (
-                  sortedQueues.map((queue) => {
+                {queueRows.length > 0 ? (
+                  queueRows.map((queue) => {
                     const limit = queue.concurrencyLimit ?? environment.concurrencyLimit;
                     const isAtConcurrencyLimit = queue.running >= limit;
                     const isAtQueueLimit =
@@ -1600,16 +1559,6 @@ function QueueHealthBadge(health: QueueHealth) {
       {label}
     </Badge>
   );
-}
-
-// The label rendered in the "Limited by" cell, also used to sort that column.
-function queueLimitedByLabel(queue: {
-  concurrency?: { overriddenAt?: Date | string | null } | null;
-  concurrencyLimit?: number | null;
-}): "Override" | "User" | "Environment" {
-  if (queue.concurrency?.overriddenAt) return "Override";
-  if (queue.concurrencyLimit) return "User";
-  return "Environment";
 }
 
 // The `queue_metrics`-prefixed key a queue is stored under (task queues are prefixed `task/`).
