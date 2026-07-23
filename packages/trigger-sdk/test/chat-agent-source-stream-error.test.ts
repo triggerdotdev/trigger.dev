@@ -3,7 +3,10 @@
 import { mockChatAgent } from "../src/v3/test/index.js";
 
 import { describe, expect, it } from "vitest";
-import type { UIMessage } from "ai";
+import type { ModelMessage, UIMessage } from "ai";
+import { simulateReadableStream, streamText } from "ai";
+import { MockLanguageModelV3 } from "ai/test";
+import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { chat } from "../src/v3/ai.js";
 import type { TurnCompleteEvent } from "../src/v3/ai.js";
 
@@ -92,6 +95,67 @@ describe("chat.agent managed loop — source-stream failure", () => {
       // dropped (responseMessage: undefined).
       expect(evt.responseMessage).toBeDefined();
       expect(extractText(evt.responseMessage)).toBe("partial answer");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("carries the recovered partial into the next turn's accumulated messages", async () => {
+    let turn = 0;
+    let turn2Messages: ModelMessage[] | undefined;
+
+    const okStream = () =>
+      simulateReadableStream({
+        chunks: [
+          { type: "text-start", id: "t2" },
+          { type: "text-delta", id: "t2", delta: "second answer" },
+          { type: "text-end", id: "t2" },
+          {
+            type: "finish",
+            finishReason: { unified: "stop", raw: "stop" },
+            usage: {
+              inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+              outputTokens: { total: 5, text: 5, reasoning: undefined },
+            },
+          },
+        ] as LanguageModelV3StreamPart[],
+      });
+
+    const agent = chat.agent({
+      id: "chatAgent.source-stream-error-continuation",
+      run: async ({ messages }) => {
+        turn++;
+        if (turn === 1) {
+          return erroringSource("UND_ERR_BODY_TIMEOUT") as never;
+        }
+        // Second turn: the failed turn's partial assistant output must be in
+        // the accumulated history the model now sees.
+        turn2Messages = messages;
+        return streamText({
+          model: new MockLanguageModelV3({ doStream: async () => ({ stream: okStream() }) }),
+          messages,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "cae-source-error-cont" });
+    try {
+      await harness.sendMessage(userMessage("hi", "u-1"));
+      await harness.sendMessage(userMessage("still there?", "u-2"));
+      await waitFor(() => turn2Messages !== undefined);
+
+      const assistantText = turn2Messages!
+        .filter((m) => m.role === "assistant")
+        .map((m) =>
+          typeof m.content === "string"
+            ? m.content
+            : (m.content as Array<{ type: string; text?: string }>)
+                .filter((p) => p.type === "text")
+                .map((p) => p.text ?? "")
+                .join("")
+        )
+        .join("");
+      expect(assistantText).toContain("partial answer");
     } finally {
       await harness.close();
     }

@@ -7944,6 +7944,23 @@ function chatAgent<
                 ? [...erroredUIMessages, partialResponse]
                 : erroredUIMessages;
 
+            // Commit the recovered partial to the canonical accumulator so the
+            // partial survives past this hook: the run stays alive after an
+            // error, so the next turn sees it, and the error-path snapshot below
+            // (the recovery source for non-hydrate apps) persists it for reboot.
+            // Matches the success path, which accumulates the response. Guard the
+            // model-message conversion so a secondary failure here can't crash
+            // the still-alive run.
+            if (partialResponse) {
+              accumulatedUIMessages = erroredUIMessagesWithPartial as TUIMessage[];
+              locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+              try {
+                accumulatedMessages = await toModelMessages(accumulatedUIMessages);
+              } catch {
+                // Keep the prior model accumulator if conversion fails.
+              }
+            }
+
             // Fire onTurnComplete on the error path too — the docs promise it
             // runs "after every turn, successful or errored" so customers can
             // mark the turn failed. `responseMessage` carries any partial
@@ -8007,7 +8024,7 @@ function chatAgent<
                 await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                   version: 1,
                   savedAt: Date.now(),
-                  messages: erroredUIMessages,
+                  messages: erroredUIMessagesWithPartial,
                   lastOutEventId: errorTurnCompleteResult?.lastEventId,
                   lastInEventId:
                     errorSnapshotInCursor !== undefined ? String(errorSnapshotInCursor) : undefined,
@@ -9788,9 +9805,19 @@ function createChatSession(
                   // accumulate it (mirroring the stop path) so `turn.uiMessages`
                   // reflects it and the caller can persist it after catching,
                   // then rethrow. Without this the partial pipeAndCapture
-                  // reconstructed is silently dropped on rethrow.
+                  // reconstructed is silently dropped on rethrow. Fold in any
+                  // data parts queued via chat.response / writer.write() this
+                  // turn, same as the success path below. cleanupAbortedParts is
+                  // intentionally skipped: it only runs on a user stop, not on a
+                  // hard transport error (which is not an abort).
                   if (captured.message) {
-                    await accumulator.addResponse(captured.message);
+                    const partial = captured.message;
+                    const queuedParts = locals.get(chatResponsePartsKey);
+                    if (queuedParts && queuedParts.length > 0) {
+                      (partial as any).parts = [...(partial.parts ?? []), ...queuedParts];
+                      locals.set(chatResponsePartsKey, []);
+                    }
+                    await accumulator.addResponse(partial);
                   }
                   throw captured.error;
                 }
