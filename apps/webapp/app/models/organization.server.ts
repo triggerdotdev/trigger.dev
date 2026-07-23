@@ -6,6 +6,7 @@ import type {
   RuntimeEnvironment,
   User,
 } from "@trigger.dev/database";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { customAlphabet } from "nanoid";
 import { generate } from "random-words";
 import slug from "slug";
@@ -13,8 +14,14 @@ import { $replica, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
-import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
+import {
+  getDefaultEnvironmentConcurrencyLimit,
+  isBillingConfigured,
+  setBillingAlert,
+} from "~/services/platform.v3.server";
+import { buildDefaultBillingAlerts } from "~/services/billingAlertsDefaults.server";
 import { enqueueAttioWorkspaceSync } from "~/services/attio.server";
+import { logger } from "~/services/logger.server";
 import {
   applyBillingLimitPauseAfterEnvCreate,
   getInitialEnvPauseStateForBillingLimit,
@@ -122,7 +129,37 @@ export async function createOrganization(
     adminUserId: userId,
   });
 
+  // Awaited so the seed can't land after the user's first alert edit.
+  await seedDefaultBillingAlerts(organization.id);
+
   return { ...organization };
+}
+
+// The platform client has no request timeout; don't let a slow billing backend stall org creation.
+const SEED_ALERTS_TIMEOUT_MS = 5_000;
+
+/** Seed default billing alerts for a new org. Never fails org creation. */
+async function seedDefaultBillingAlerts(organizationId: string): Promise<void> {
+  if (!isBillingConfigured()) {
+    return;
+  }
+
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Timed out")), SEED_ALERTS_TIMEOUT_MS);
+  });
+
+  const [error] = await tryCatch(
+    Promise.race([setBillingAlert(organizationId, buildDefaultBillingAlerts()), timeout]).finally(
+      () => clearTimeout(timer)
+    )
+  );
+  if (error) {
+    logger.warn("Failed to seed default billing alerts for new org", {
+      organizationId,
+      error: error instanceof Error ? error.message : error,
+    });
+  }
 }
 
 export async function createEnvironment({

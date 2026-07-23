@@ -71,6 +71,16 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     unit: "rows",
   });
 
+  const emissionFeedDeliveries = meter.createCounter("realtime_native.emission_feed_deliveries", {
+    description:
+      "Matched (feed,run) rows resolved to feeds per batch, summed. Upper bound on per-feed wire serializations, since the client working-set diff drops already-seen rows before encoding. Divide by realtime_native.emission_distinct_runs for average feeds-per-run fan-out.",
+  });
+
+  const emissionDistinctRuns = meter.createCounter("realtime_native.emission_distinct_runs", {
+    description:
+      "Distinct (columnSig,run) among the deliveries per batch, summed. The serialize-once-per-batch floor: a shared-serialization step would encode at most this many rows, saving at most (feed_deliveries minus distinct_runs) encodings.",
+  });
+
   const backstops = meter.createCounter("realtime_native.backstops", {
     description:
       "Backstop full resolves by outcome. 'empty' is normal idle behavior; sustained 'delivered' means the notify/replay path missed changes — alert on it.",
@@ -166,6 +176,10 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     unsubscribeLingerMs: env.REALTIME_BACKEND_NATIVE_UNSUBSCRIBE_LINGER_MS,
     onReplay: (result) => replays.add(1, { result }),
     onReplayEviction: (reason) => replayEvictions.add(1, { reason }),
+    onEmissionFanout: ({ distinctRuns, deliveries }) => {
+      emissionFeedDeliveries.add(deliveries);
+      emissionDistinctRuns.add(distinctRuns);
+    },
     replicaLag: lagEstimator
       ? {
           getLagMs: () => lagEstimator.getLagMs(),

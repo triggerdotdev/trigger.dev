@@ -22,7 +22,7 @@ import {
   isKubernetesEnvironment,
 } from "@trigger.dev/core/v3/serverOnly";
 import { createK8sApi, createApiserverMetricsFetcher } from "./clients/kubernetes.js";
-import { collectDefaultMetrics, Gauge, Histogram } from "prom-client";
+import { collectDefaultMetrics, Counter, Gauge, Histogram } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
@@ -57,6 +57,21 @@ const workloadCreateDuration = new Histogram({
   help: "Duration of workload manager create calls. A create may include backend-internal retries, so one observation can span multiple attempts.",
   labelNames: ["backend", "outcome"],
   buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
+  registers: [register],
+});
+
+const outboundRequestsTotal = new Counter({
+  name: "supervisor_outbound_request_total",
+  help: "Count of outbound HTTP requests from the supervisor, by target name, method, response status, and outcome (ok, http_error, invalid_response, network_error).",
+  labelNames: ["name", "method", "status", "outcome"],
+  registers: [register],
+});
+
+const outboundRequestDuration = new Histogram({
+  name: "supervisor_outbound_request_duration_seconds",
+  help: "Duration of outbound HTTP requests from the supervisor, by target name and outcome. Includes the HTTP client's internal retries and backoff.",
+  labelNames: ["name", "outcome"],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 11, 12.5, 15, 20, 30, 60],
   registers: [register],
 });
 
@@ -322,6 +337,10 @@ class ManagedSupervisor {
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
       sendRunDebugLogs: env.SEND_RUN_DEBUG_LOGS,
+      onHttpRequestComplete: ({ name, method, status, outcome, durationMs }) => {
+        outboundRequestsTotal.inc({ name, method, status, outcome });
+        outboundRequestDuration.observe({ name, outcome }, durationMs / 1000);
+      },
       preDequeue: async () => {
         // Synchronous, hot-path-safe cached read; false when no monitors are active.
         const skipForBackpressure = this.backpressureMonitors.some((m) => m.shouldSkipDequeue());
@@ -692,6 +711,18 @@ class ManagedSupervisor {
       headers.traceparent = traceparent;
     }
 
+    const requestStart = performance.now();
+    const record = (
+      status: string,
+      outcome: "ok" | "http_error" | "invalid_response" | "network_error"
+    ) => {
+      outboundRequestsTotal.inc({ name: "warm_start", method: "POST", status, outcome });
+      outboundRequestDuration.observe(
+        { name: "warm_start", outcome },
+        (performance.now() - requestStart) / 1000
+      );
+    };
+
     try {
       const res = await fetch(warmStartUrlWithPath.href, {
         method: "POST",
@@ -700,8 +731,10 @@ class ManagedSupervisor {
       });
 
       if (!res.ok) {
+        record(String(res.status), "http_error");
         this.logger.error("Warm start failed", {
           runId: dequeuedMessage.run.id,
+          statusCode: res.status,
         });
         return false;
       }
@@ -710,6 +743,7 @@ class ManagedSupervisor {
       const parsedData = z.object({ didWarmStart: z.boolean() }).safeParse(data);
 
       if (!parsedData.success) {
+        record(String(res.status), "invalid_response");
         this.logger.error("Warm start response invalid", {
           runId: dequeuedMessage.run.id,
           data,
@@ -717,8 +751,11 @@ class ManagedSupervisor {
         return false;
       }
 
+      record(String(res.status), "ok");
+
       return parsedData.data.didWarmStart;
     } catch (error) {
+      record("none", "network_error");
       this.logger.error("Warm start error", {
         runId: dequeuedMessage.run.id,
         error,

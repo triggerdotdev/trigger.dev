@@ -301,12 +301,12 @@ export class RoutingRunStore implements RunStore {
     },
     client?: ReadClient
   ): Promise<unknown> {
-    // SPLIT-mode fan-out across NEW + LEGACY. A `findRuns` `where` can span ids of mixed
-    // residency, so we resolve each owning store and merge, preserving orderBy/take/skip.
-    // The caller's client is never forwarded verbatim (it is the control-plane client); its
-    // presence routes each leg to that store's OWN primary (read-your-writes), else each store
-    // reads its own replica as before. NEW wins on id collisions (the copy->fence migration
-    // window) so a half-migrated run is never double-reported.
+    // SPLIT-mode routing across NEW + LEGACY. A bounded id set is routed per id to its owning
+    // store by residency (#findRunsByIdSet); an open predicate with no id to route on unions both
+    // stores and dedupes NEW-wins (#findRunsOpen). Either way orderBy/take/skip are re-imposed
+    // globally over the merged rows. The caller's client is never forwarded verbatim (it is the
+    // control-plane client); its presence routes each leg to that store's OWN primary
+    // (read-your-writes), else each store reads its own replica as before.
     return this.#findRunsRouted(args, client);
   }
 
@@ -324,33 +324,27 @@ export class RoutingRunStore implements RunStore {
     return idList ? this.#findRunsByIdSet(args, idList, client) : this.#findRunsOpen(args, client);
   }
 
-  // Bounded id-set (the list hydrate + engine sweeps). Query NEW for the whole set first
-  // (it holds run-ops runs); probe LEGACY only for the ids NEW missed that could still live
-  // there (cuid). The two id sets are disjoint by construction, so the merge needs no dedupe.
+  // Bounded id-set (the list hydrate + engine sweeps). Residency is a total function of the id
+  // (classifyResidency), so route each id to its owning store and query each store only for its
+  // own ids, in parallel; never query NEW for a cuid or LEGACY for a run-ops id. The partitions
+  // are disjoint by construction, so the merge needs no dedupe. take/skip are never pushed per
+  // store (that would truncate a store's page before the merge knows membership); finalizeRows
+  // re-imposes orderBy/take/skip once, globally, over the merged rows.
   async #findRunsByIdSet(
     args: FindRunsArgs,
     ids: string[],
     client?: ReadClient
   ): Promise<unknown[]> {
     const { args: selArgs, addedFields } = ensureProjected(args);
-    // The id set already bounds the per-store result, so never push take/skip down — doing
-    // so would truncate a store's page before the merge knows membership and mis-attribute
-    // rows. take/skip are applied once, globally, in finalizeRows.
     const fan = { ...selArgs, take: undefined, skip: undefined };
+    const newIds = ids.filter((id) => this.#classifySafe(id) === "NEW");
+    const legacyIds = ids.filter((id) => this.#classifySafe(id) !== "NEW");
     const findNew = this.#findManyOn(this.#new, client);
     const findLegacy = this.#findManyOn(this.#legacy, client);
-
-    const newRows = await findNew(fan);
-    const foundIds = new Set(newRows.map((r) => r.id as string));
-
-    const toLegacy: string[] = [];
-    for (const id of ids) {
-      if (foundIds.has(id)) continue;
-      if (this.#classifySafe(id) === "NEW") continue; // run-ops id: cannot live on LEGACY
-      toLegacy.push(id);
-    }
-
-    const legacyRows = toLegacy.length > 0 ? await findLegacy(narrowToIds(fan, toLegacy)) : [];
+    const [newRows, legacyRows] = await Promise.all([
+      newIds.length > 0 ? findNew(narrowToIds(fan, newIds)) : [],
+      legacyIds.length > 0 ? findLegacy(narrowToIds(fan, legacyIds)) : [],
+    ]);
     return finalizeRows([...newRows, ...legacyRows], args, addedFields);
   }
 

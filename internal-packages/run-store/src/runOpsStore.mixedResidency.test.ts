@@ -262,11 +262,8 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
     }
   );
 
-  // ── Case 1b: NEW-wins on id collision in #findRunsByIdSet ──
-  // The copy→fence window can leave the same id on both DBs. The id-set path queries NEW first; an id
-  // already found on NEW must NOT be re-fetched from LEGACY, so the NEW copy wins.
   heteroRunOpsPostgresTest(
-    "case 1b: findRuns by id-set with a colliding id resolves to the NEW copy",
+    "case 1b: findRuns by id-set routes a cuid id to LEGACY only, ignoring any NEW copy",
     async ({ prisma14, prisma17 }) => {
       const { router } = makeSplitRouter(prisma14, prisma17);
       const env = await seedSharedEnv(prisma14, "m1b");
@@ -304,8 +301,8 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + run-ops id 
         where: { id: { in: [collidingId] } },
         select: { id: true, taskIdentifier: true },
       });
-      expect(rows).toHaveLength(1); // deduped, not double-reported
-      expect((rows[0] as any).taskIdentifier).toBe("new-copy-wins"); // NEW wins
+      expect(rows).toHaveLength(1);
+      expect((rows[0] as any).taskIdentifier).toBe("my-task");
     }
   );
 

@@ -1004,10 +1004,8 @@ describe("RoutingRunStore.findRuns split-mode fan-out + drain", () => {
     }
   );
 
-  // A run present on BOTH DBs (the copy->fence migration window) must be returned ONCE,
-  // and the NEW copy wins.
   heteroPostgresTest(
-    "id-set dedupes a run present on both DBs, preferring NEW",
+    "id-set routes a cuid id to its LEGACY owner and does not consult NEW",
     async ({ prisma14, prisma17 }) => {
       const legacyStore = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
       const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
@@ -1031,7 +1029,7 @@ describe("RoutingRunStore.findRuns split-mode fan-out + drain", () => {
         select: { id: true, taskIdentifier: true },
       })) as Array<{ id: string; taskIdentifier: string }>;
       expect(rows).toHaveLength(1);
-      expect(rows[0]!.taskIdentifier).toBe("from-new");
+      expect(rows[0]!.taskIdentifier).toBe("from-legacy");
     }
   );
 
