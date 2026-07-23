@@ -245,7 +245,7 @@ export default function Page() {
             everything, like the Queues list. The time filter scopes the tab charts; search filters
             the keys table. The bar is pinned by the layout while the page scrolls. */}
         <MetricsLayout.Filters className="pl-1.5 pr-2">
-          <div className="self-end pl-2">
+          <div className="translate-y-px self-end pl-2">
             <TabContainer>
               <TabButton
                 isActive={view === "overview"}
