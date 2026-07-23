@@ -1502,10 +1502,7 @@ importers:
         version: 0.2.2
       tsconfck:
         specifier: 3.1.3
-        version: 3.1.3(typescript@7.0.2)
-      typescript-legacy-api:
-        specifier: npm:typescript@6.0.3
-        version: typescript@6.0.3
+        version: 3.1.3(typescript@6.0.3)
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: ^0.18.5
@@ -1526,8 +1523,8 @@ importers:
         specifier: 4.17.0
         version: 4.17.0
       typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
+        specifier: 6.0.3
+        version: 6.0.3
 
   packages/cli-v3:
     dependencies:
@@ -31325,6 +31322,10 @@ snapshots:
   tsconfck@2.1.2(typescript@7.0.2):
     optionalDependencies:
       typescript: 7.0.2
+
+  tsconfck@3.1.3(typescript@6.0.3):
+    optionalDependencies:
+      typescript: 6.0.3
 
   tsconfck@3.1.3(typescript@7.0.2):
     optionalDependencies:
