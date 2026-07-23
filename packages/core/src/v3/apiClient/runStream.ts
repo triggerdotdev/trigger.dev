@@ -309,6 +309,7 @@ export class SSEStreamSubscription implements StreamSubscription {
         await self.connectStream(controller);
       },
       cancel() {
+        self.caughtUpTracker.end();
         self.options.onComplete?.();
       },
     });
@@ -373,6 +374,7 @@ export class SSEStreamSubscription implements StreamSubscription {
         );
         this.options.onError?.(error);
         if (this.nonRetryableStatuses.has(response.status)) {
+          this.caughtUpTracker.end();
           controller.error(error);
           return;
         }
@@ -514,6 +516,7 @@ export class SSEStreamSubscription implements StreamSubscription {
           if (this.options.signal?.aborted) {
             reader.cancel();
             reader.releaseLock();
+            this.caughtUpTracker.end();
             controller.close();
             this.options.onComplete?.();
             return;
@@ -529,6 +532,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     } catch (error) {
       if (this.options.signal?.aborted) {
         // User cancel — exit cleanly, don't retry.
+        this.caughtUpTracker.end();
         controller.close();
         this.options.onComplete?.();
         return;
@@ -555,6 +559,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     error?: Error
   ): Promise<void> {
     if (this.options.signal?.aborted) {
+      this.caughtUpTracker.end();
       controller.close();
       this.options.onComplete?.();
       return;
@@ -598,6 +603,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     this.retryNowController = null;
 
     if (this.options.signal?.aborted) {
+      this.caughtUpTracker.end();
       controller.close();
       this.options.onComplete?.();
       return;

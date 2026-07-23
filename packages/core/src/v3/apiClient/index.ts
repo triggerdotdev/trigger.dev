@@ -1475,7 +1475,10 @@ export class ApiClient {
 
     const stream = await subscription.subscribe();
     if (options?.onCaughtUp) {
-      subscription.caughtUp().then(options.onCaughtUp).catch(() => {});
+      subscription
+        .caughtUp()
+        .then(options.onCaughtUp)
+        .catch(() => {});
     }
     const onPart = options?.onPart;
     const onControl = options?.onControl;

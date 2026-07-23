@@ -609,7 +609,12 @@ describe("SSEStreamSubscription caught-up tracking", () => {
     vi.restoreAllMocks();
   });
 
-  type Rec = { body: string; seq_num: number; timestamp: number; headers?: Array<[string, string]> };
+  type Rec = {
+    body: string;
+    seq_num: number;
+    timestamp: number;
+    headers?: Array<[string, string]>;
+  };
   type Tail = { seq_num: number; timestamp: number };
 
   function dataRec(seq: number): Rec {
@@ -677,7 +682,9 @@ describe("SSEStreamSubscription caught-up tracking", () => {
   it("stays behind when the batch does not reach the tail", async () => {
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValue(makeEventsResponse([batchEvent([dataRec(0)], { seq_num: 3, timestamp: 1 })]));
+      .mockResolvedValue(
+        makeEventsResponse([batchEvent([dataRec(0)], { seq_num: 3, timestamp: 1 })])
+      );
     const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
     const stream = await sub.subscribe();
     await drain(stream);
@@ -703,7 +710,12 @@ describe("SSEStreamSubscription caught-up tracking", () => {
         batchEvent(
           [
             dataRec(0),
-            { body: "", seq_num: 1, timestamp: 1, headers: [["trigger-control", "turn-complete"]] },
+            {
+              body: "",
+              seq_num: 1,
+              timestamp: 1,
+              headers: [["trigger-control", "turn-complete"]],
+            },
             { body: "AAAAAAAAAAQ=", seq_num: 2, timestamp: 1, headers: [["", "trim"]] },
           ],
           { seq_num: 3, timestamp: 1 }
@@ -723,7 +735,9 @@ describe("SSEStreamSubscription caught-up tracking", () => {
   it("never reaches caught-up when the wire carries no tail (feature-detect fallback)", async () => {
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValue(makeEventsResponse([batchEvent([dataRec(0), dataRec(1), dataRec(2)]), pingEvent()]));
+      .mockResolvedValue(
+        makeEventsResponse([batchEvent([dataRec(0), dataRec(1), dataRec(2)]), pingEvent()])
+      );
     const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
     const stream = await sub.subscribe();
     await drain(stream);
