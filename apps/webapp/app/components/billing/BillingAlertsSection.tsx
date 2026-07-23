@@ -136,7 +136,8 @@ export function BillingAlertsSection({
   const alertPreviewLimitCents = getAlertPreviewLimitCents(
     alerts,
     effectiveLimitCents,
-    planLimitCents
+    planLimitCents,
+    isPercentageMode
   );
   const maxAlerts = isPercentageMode ? MAX_PERCENTAGE_ALERTS : MAX_ABSOLUTE_ALERTS;
 

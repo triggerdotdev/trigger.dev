@@ -15,6 +15,7 @@ import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import {
+  getBillingAlerts,
   getDefaultEnvironmentConcurrencyLimit,
   isBillingConfigured,
   setBillingAlert,
@@ -150,8 +151,8 @@ async function seedDefaultBillingAlerts(organizationId: string): Promise<void> {
   });
 
   const [error] = await tryCatch(
-    Promise.race([setBillingAlert(organizationId, buildDefaultBillingAlerts()), timeout]).finally(
-      () => clearTimeout(timer)
+    Promise.race([writeDefaultBillingAlertsIfUnset(organizationId), timeout]).finally(() =>
+      clearTimeout(timer)
     )
   );
   if (error) {
@@ -160,6 +161,19 @@ async function seedDefaultBillingAlerts(organizationId: string): Promise<void> {
       error: error instanceof Error ? error.message : error,
     });
   }
+}
+
+/**
+ * Only writes defaults when the org has no alerts yet. A slow seed that finishes
+ * after org creation returned would otherwise overwrite the user's first alert edit.
+ */
+async function writeDefaultBillingAlertsIfUnset(organizationId: string): Promise<void> {
+  const existing = await getBillingAlerts(organizationId);
+  if (existing && existing.alertLevels.length > 0) {
+    return;
+  }
+
+  await setBillingAlert(organizationId, buildDefaultBillingAlerts());
 }
 
 export async function createEnvironment({
