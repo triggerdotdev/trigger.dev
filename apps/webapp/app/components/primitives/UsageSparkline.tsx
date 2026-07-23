@@ -107,7 +107,7 @@ export function UsageSparkline({
         </ResponsiveContainer>
       </div>
       {hideTotal ? null : (
-        <span className={cn("-mt-1 text-xs tabular-nums", totalClassName)}>
+        <span className={cn("-mt-1 text-xs tabular-nums system-mono-label", totalClassName)}>
           {formatTotal ? formatTotal(total) : total.toLocaleString()}
         </span>
       )}
