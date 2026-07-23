@@ -122,6 +122,42 @@
       ]
     },
     {
+      "treatment": "total+perKey",
+      "lightWait": {
+        "mean": 1290.6516666666669,
+        "min": 1173.15,
+        "max": 1431.305
+      },
+      "worstWait": {
+        "mean": 1290.6516666666669,
+        "min": 1173.15,
+        "max": 1431.305
+      },
+      "makespan": {
+        "mean": 2507,
+        "min": 2344,
+        "max": 2638
+      },
+      "contentionWorst": {
+        "mean": 1,
+        "min": 1,
+        "max": 1
+      },
+      "detailSeed0": [
+        {
+          "groupId": "heavy",
+          "dequeued": 200,
+          "weight": 1,
+          "share": 1,
+          "contentionShareOverWeight": 0,
+          "meanWait": 1431.305,
+          "waitP50": 1501,
+          "waitP99": 2623,
+          "waitMax": 2638
+        }
+      ]
+    },
+    {
       "treatment": "sfq",
       "lightWait": {
         "mean": 632.8383333333334,
@@ -195,6 +231,42 @@
     },
     {
       "treatment": "perKeyCap+sfq",
+      "lightWait": {
+        "mean": 1290.6516666666669,
+        "min": 1173.15,
+        "max": 1431.305
+      },
+      "worstWait": {
+        "mean": 1290.6516666666669,
+        "min": 1173.15,
+        "max": 1431.305
+      },
+      "makespan": {
+        "mean": 2507,
+        "min": 2344,
+        "max": 2638
+      },
+      "contentionWorst": {
+        "mean": 1,
+        "min": 1,
+        "max": 1
+      },
+      "detailSeed0": [
+        {
+          "groupId": "heavy",
+          "dequeued": 200,
+          "weight": 1,
+          "share": 1,
+          "contentionShareOverWeight": 0,
+          "meanWait": 1431.305,
+          "waitP50": 1501,
+          "waitP99": 2623,
+          "waitMax": 2638
+        }
+      ]
+    },
+    {
+      "treatment": "total+perKey+sfq",
       "lightWait": {
         "mean": 1290.6516666666669,
         "min": 1173.15,

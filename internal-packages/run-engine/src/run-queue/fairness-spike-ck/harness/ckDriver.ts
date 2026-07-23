@@ -151,6 +151,12 @@ export async function runCkScenario(config: CkDriverConfig): Promise<RunMetrics>
         if (config.discipline.rescore) {
           const active = await reader.readActiveCks(baseQueue);
           if (active.length > 0) {
+            // NOTE: order() runs before every dequeue attempt, including the
+            // terminal iteration whose dequeue returns nothing, so it can advance
+            // a discipline's state with no matching onServiced. For the shipped
+            // SFQ/DRR this is idempotent (SFQ floor already at the min clock; DRR's
+            // winner already has deficit >= 1). A non-idempotent discipline dropped
+            // in here would need its accounting made robust to that speculative call.
             const order = config.discipline.order(active, scoreBase + t);
             await rescoreCkIndex(admin, keys, baseQueue, order, Date.now());
           }

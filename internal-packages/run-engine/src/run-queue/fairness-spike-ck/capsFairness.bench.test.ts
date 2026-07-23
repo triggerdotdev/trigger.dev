@@ -46,9 +46,13 @@ const TREATMENTS: Treatment[] = [
   { label: "baseline", makeDiscipline: () => new BaselineCk() },
   { label: "perKeyCap", makeDiscipline: () => new BaselineCk(), perKeyCap: PER_KEY_CAP },
   { label: "totalCap", makeDiscipline: () => new BaselineCk(), totalCap: TOTAL_CAP },
+  // the plan-of-record's shipped combined config: total cap AND per-key cap
+  { label: "total+perKey", makeDiscipline: () => new BaselineCk(), perKeyCap: PER_KEY_CAP, totalCap: TOTAL_CAP },
   { label: "sfq", makeDiscipline: () => new SfqCk() },
   { label: "drr", makeDiscipline: () => new DrrCk() },
   { label: "perKeyCap+sfq", makeDiscipline: () => new SfqCk(), perKeyCap: PER_KEY_CAP },
+  // both caps plus a fair order (the fully-layered end state)
+  { label: "total+perKey+sfq", makeDiscipline: () => new SfqCk(), perKeyCap: PER_KEY_CAP, totalCap: TOTAL_CAP },
 ];
 
 type CapScenario = {
@@ -95,18 +99,20 @@ const SCENARIOS: Record<string, CapScenario> = {
     },
   },
 
-  // sybil split: one attacker spreads its backlog across 10 concurrency keys, each
-  // with a large backlog that stays non-empty through the light key's whole
-  // arrival window. Each attacker key is under the same per-key cap, but the cap
-  // frees no aggregate slot (2 attacker keys fill env, and as one empties the next
-  // attacker key's old head is served before the newer light key). Only a fair
-  // order rescues the light key.
+  // sybil split: one attacker spreads its backlog across 20 concurrency keys, each
+  // with a backlog that stays non-empty through the light key's whole arrival
+  // window. Each attacker key is under the same per-key cap, but the cap frees no
+  // aggregate slot (attacker keys fill env, and as one empties the next attacker
+  // key's old head is served before the newer light key). The real CK Lua also
+  // only scans the 3 oldest-scored variants per call (ZRANGEBYSCORE ... LIMIT 0,
+  // maxCount*3), so with 20 attacker heads ahead of it the light head is never in
+  // the window. Only a fair order rescues the light key.
   ckSybil: {
     lightKey: "light",
     config: {
       envConcurrencyLimit: ENV_LIMIT,
       tenants: [
-        ...sybilHeavy(10, 30),
+        ...sybilHeavy(20, 15),
         { tenantId: "light", runCount: 20, arrival: "poisson", ratePerSec: 40, holdMsMean: 25 },
       ],
     },

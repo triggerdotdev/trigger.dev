@@ -34,9 +34,12 @@ export type RunMetrics = {
   contentionWorstShareOverWeight: number;
   contentionJain: number;
   /**
-   * Logical time of the last dequeue (drain time). Work-conservation signal: on a
-   * fixed workload a non-work-conserving discipline (e.g. a static cap that idles
-   * slots when the capped tenant is alone) drains slower, so makespan is larger.
+   * Logical time of the LAST dequeue (not completion; ~one holdMs before the final
+   * ack). Work-conservation signal, but read it ONLY on a service-bound workload
+   * with no late arrivals (e.g. ckHeavyIdle): there a non-work-conserving
+   * discipline that idles slots drains slower, so makespan is larger. On scenarios
+   * with poisson arrivals the last dequeue is partly set by the arrival tail, not
+   * the discipline, so makespan is arrival-confounded and not a clean signal there.
    */
   makespanMs: number;
   /**
