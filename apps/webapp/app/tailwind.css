@@ -416,6 +416,10 @@
    Classic - for restyles that must leave Classic untouched. */
 @custom-variant system (&:where([data-theme="dark"], [data-theme="light"], [data-theme="dark"] *, [data-theme="light"] *));
 
+/* light: the Light theme only - for values that are fine on every dark theme
+   but illegible on white. Classic is never matched. */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
 @utility focus-custom {
   &:focus-visible {
     outline: 1px solid var(--color-text-link);

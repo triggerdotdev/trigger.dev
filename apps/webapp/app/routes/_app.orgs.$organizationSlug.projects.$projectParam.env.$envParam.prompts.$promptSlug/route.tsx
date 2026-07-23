@@ -613,7 +613,7 @@ export default function PromptDetailPage() {
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2, ease: "easeInOut" }}
             >
-              <span className="py-1.5 text-xs text-amber-300">
+              <span className="py-1.5 text-xs text-amber-300 light:text-amber-800">
                 Override v{overrideVersion.version} is active. API calls resolve to this version
                 instead of the deployed prompt.
               </span>
@@ -622,7 +622,7 @@ export default function PromptDetailPage() {
                   hasPermission={canWritePrompts}
                   noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
-                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 light:border-amber-600/50 light:text-amber-800 light:group-hover/button:text-amber-900 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
                   onClick={() => setOverrideDialogOpen(true)}
                 >
                   Edit
@@ -631,7 +631,7 @@ export default function PromptDetailPage() {
                   hasPermission={canWritePrompts}
                   noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
-                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 light:border-amber-600/50 light:text-amber-800 light:group-hover/button:text-amber-900 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
                   onClick={() => fetcher.submit({ intent: "removeOverride" }, { method: "POST" })}
                   disabled={fetcher.state !== "idle"}
                 >
