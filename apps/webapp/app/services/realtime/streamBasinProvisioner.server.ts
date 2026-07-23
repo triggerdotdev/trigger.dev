@@ -185,7 +185,7 @@ type CreateBasinOptions = {
 };
 
 async function s2CreateBasin(name: string, opts: CreateBasinOptions): Promise<void> {
-  const url = `https://aws.s2.dev/v1/basins`;
+  const url = `https://a.s2.dev/v1/basins`;
   const body = {
     basin: name,
     config: {
@@ -222,7 +222,7 @@ type ReconfigureBasinOptions = {
 };
 
 async function s2ReconfigureBasin(name: string, opts: ReconfigureBasinOptions): Promise<void> {
-  const url = `https://aws.s2.dev/v1/basins/${encodeURIComponent(name)}`;
+  const url = `https://a.s2.dev/v1/basins/${encodeURIComponent(name)}`;
   const body = {
     default_stream_config: {
       retention_policy: { age: parseDuration(opts.retentionPolicy) },

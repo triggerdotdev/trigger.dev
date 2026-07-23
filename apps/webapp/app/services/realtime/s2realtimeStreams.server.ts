@@ -107,8 +107,8 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   constructor(opts: S2RealtimeStreamsOptions) {
     this.basin = opts.basin;
-    this.baseUrl = opts.endpoint ?? `https://${this.basin}.b.aws.s2.dev/v1`;
-    this.accountUrl = opts.endpoint ?? `https://aws.s2.dev/v1`;
+    this.baseUrl = opts.endpoint ?? `https://${this.basin}.b.s2.dev/v1`;
+    this.accountUrl = opts.endpoint ?? `https://a.s2.dev/v1`;
     this.endpoint = opts.endpoint;
     this.token = opts.accessToken;
     this.streamPrefix = opts.streamPrefix ?? "";

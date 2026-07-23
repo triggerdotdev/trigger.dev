@@ -1750,7 +1750,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               reader.releaseLock();
               return null;
             }
-            return { reader, primed: first.value };
+            return { reader, primed: first.value, subscription };
           } catch (readErr) {
             reader.releaseLock();
             throw readErr;
@@ -1764,6 +1764,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             timestamp: number;
           }>;
           let primed: { id: string; chunk: unknown; timestamp: number } | undefined;
+          let sub: SSEStreamSubscription | undefined;
 
           try {
             const opened = await connectSseOnce(state.publicAccessToken);
@@ -1773,6 +1774,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
             reader = opened.reader;
             primed = opened.primed;
+            sub = opened.subscription;
           } catch (e) {
             if (isAuthError(e)) {
               const fresh = await this.resolveAccessToken({ chatId });
@@ -1799,6 +1801,17 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             messageId: this.lastTurnSends.get(chatId)?.messageId,
           });
           let sawFirstChunk = false;
+
+          if (options?.peekSettled && sub) {
+            sub
+              .caughtUp()
+              .then(() => {
+                if (!sawFirstChunk && !combinedSignal.aborted) {
+                  internalAbort.abort();
+                }
+              })
+              .catch(() => {});
+          }
 
           while (true) {
             let value: {

@@ -600,3 +600,133 @@ describe("SSEStreamSubscription v2 batch parsing — record kinds", () => {
     expect((parts[1]!.chunk as any).delta).toBe("x");
   });
 });
+
+describe("SSEStreamSubscription caught-up tracking", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  type Rec = { body: string; seq_num: number; timestamp: number; headers?: Array<[string, string]> };
+  type Tail = { seq_num: number; timestamp: number };
+
+  function dataRec(seq: number): Rec {
+    return {
+      body: JSON.stringify({ data: { type: "text-delta", delta: "x" }, id: `p${seq}` }),
+      seq_num: seq,
+      timestamp: 1,
+      headers: [],
+    };
+  }
+
+  function batchEvent(records: Rec[], tail?: Tail): string {
+    const data = tail ? { records, tail } : { records };
+    return `event: batch\ndata: ${JSON.stringify(data)}\n\n`;
+  }
+
+  function pingEvent(tail?: Tail): string {
+    const data = tail ? { timestamp: 1, tail } : { timestamp: 1 };
+    return `event: ping\ndata: ${JSON.stringify(data)}\n\n`;
+  }
+
+  function makeEventsResponse(events: string[]) {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const e of events) controller.enqueue(new TextEncoder().encode(e));
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream", "X-Stream-Version": "v2" },
+    });
+  }
+
+  async function drain(stream: ReadableStream<{ id: string; chunk: unknown }>) {
+    const reader = stream.getReader();
+    const parts: Array<{ id: string; chunk: unknown }> = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        reader.releaseLock();
+        return parts;
+      }
+      parts.push(value);
+    }
+  }
+
+  it("resolves caughtUp() when a batch reaches the reported tail", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        makeEventsResponse([
+          batchEvent([dataRec(0), dataRec(1), dataRec(2)], { seq_num: 3, timestamp: 1 }),
+        ])
+      );
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const stream = await sub.subscribe();
+    const cu = sub.caughtUp();
+    await drain(stream);
+    const tail = await cu;
+    expect(tail.seqNum).toBe(3);
+    expect(sub.isCaughtUp()).toBe(true);
+  });
+
+  it("stays behind when the batch does not reach the tail", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(makeEventsResponse([batchEvent([dataRec(0)], { seq_num: 3, timestamp: 1 })]));
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const stream = await sub.subscribe();
+    await drain(stream);
+    expect(sub.isCaughtUp()).toBe(false);
+  });
+
+  it("resolves caughtUp() from a ping tail with an empty backlog (open-at-tail)", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(makeEventsResponse([pingEvent({ seq_num: 3, timestamp: 1 })]));
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const stream = await sub.subscribe();
+    const cu = sub.caughtUp();
+    await drain(stream);
+    const tail = await cu;
+    expect(tail.seqNum).toBe(3);
+    expect(sub.isCaughtUp()).toBe(true);
+  });
+
+  it("reaches caught-up when the tail is a trim command record (raw counts include it)", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      makeEventsResponse([
+        batchEvent(
+          [
+            dataRec(0),
+            { body: "", seq_num: 1, timestamp: 1, headers: [["trigger-control", "turn-complete"]] },
+            { body: "AAAAAAAAAAQ=", seq_num: 2, timestamp: 1, headers: [["", "trim"]] },
+          ],
+          { seq_num: 3, timestamp: 1 }
+        ),
+      ])
+    );
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const stream = await sub.subscribe();
+    const cu = sub.caughtUp();
+    const parts = await drain(stream);
+    const tail = await cu;
+    expect(tail.seqNum).toBe(3);
+    expect(sub.isCaughtUp()).toBe(true);
+    expect(parts).toHaveLength(2);
+  });
+
+  it("never reaches caught-up when the wire carries no tail (feature-detect fallback)", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(makeEventsResponse([batchEvent([dataRec(0), dataRec(1), dataRec(2)]), pingEvent()]));
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const stream = await sub.subscribe();
+    await drain(stream);
+    expect(sub.isCaughtUp()).toBe(false);
+  });
+});

@@ -95,7 +95,7 @@
     "@opentelemetry/resources": "2.7.1",
     "@opentelemetry/sdk-trace-node": "2.7.1",
     "@opentelemetry/semantic-conventions": "1.41.1",
-    "@s2-dev/streamstore": "^0.22.10",
+    "@s2-dev/streamstore": "^0.25.0",
     "@trigger.dev/build": "workspace:4.5.9",
     "@trigger.dev/core": "workspace:4.5.9",
     "@trigger.dev/schema-to-json": "workspace:4.5.9",

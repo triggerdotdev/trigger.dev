@@ -104,7 +104,7 @@
     "@remix-run/react": "2.17.5",
     "@remix-run/router": "^1.23.3",
     "@remix-run/server-runtime": "2.17.5",
-    "@s2-dev/streamstore": "^0.22.10",
+    "@s2-dev/streamstore": "^0.25.0",
     "@sentry/remix": "9.46.0",
     "@slack/web-api": "7.16.0",
     "@socket.io/redis-adapter": "^8.3.0",

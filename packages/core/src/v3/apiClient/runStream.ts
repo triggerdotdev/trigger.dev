@@ -14,6 +14,7 @@ import { conditionallyImportAndParsePacket, parsePacket } from "../utils/ioSeria
 import { ApiError, isTriggerRealtimeAuthError } from "./errors.js";
 import type { ApiClient } from "./index.js";
 import { zodShapeStream } from "./stream.js";
+import { CaughtUpTracker } from "@s2-dev/streamstore";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
@@ -197,6 +198,7 @@ export class SSEStreamSubscription implements StreamSubscription {
   private nonRetryableStatuses: ReadonlySet<number>;
   private retryNowController: AbortController | null = null;
   private internalAbort: AbortController | null = null;
+  private caughtUpTracker = new CaughtUpTracker();
 
   constructor(
     private url: string,
@@ -276,6 +278,26 @@ export class SSEStreamSubscription implements StreamSubscription {
   forceReconnect(): void {
     this.internalAbort?.abort();
     this.retryNowController?.abort();
+  }
+
+  /**
+   * True once this session has consumed everything up to the tail the server
+   * last reported (via a batch `tail` or a heartbeat `ping`). Resets to false
+   * on reconnect and while records remain before the reported tail. Backed by
+   * S2's `CaughtUpTracker`, fed from the v2 batch/ping wire signals.
+   */
+  isCaughtUp(): boolean {
+    return this.caughtUpTracker.isCaughtUp();
+  }
+
+  /**
+   * Resolves when this session reaches the live tail (backlog drained),
+   * carrying the last observed tail position. Resolves immediately if already
+   * caught up; call again after falling behind. Rejects if the stream ends
+   * before catching up. Stays pending across internal reconnects.
+   */
+  caughtUp(): ReturnType<CaughtUpTracker["caughtUp"]> {
+    return this.caughtUpTracker.caughtUp();
   }
 
   async subscribe(): Promise<ReadableStream<SSEStreamPart>> {
@@ -407,8 +429,17 @@ export class SSEStreamSubscription implements StreamSubscription {
                       timestamp: number;
                       headers?: Array<[string, string]>;
                     }>;
+                    tail?: { seq_num: number; timestamp: number };
                   };
                   if (!data || !Array.isArray(data.records)) return;
+
+                  const boundary = this.caughtUpTracker.observeBatch({
+                    recordCount: data.records.length,
+                    lastSeqNum: data.records.at(-1)?.seq_num,
+                    tail: data.tail
+                      ? { seqNum: data.tail.seq_num, timestamp: new Date(data.tail.timestamp) }
+                      : undefined,
+                  });
 
                   for (const record of data.records) {
                     // Always advance the resume cursor — even for records we
@@ -444,6 +475,22 @@ export class SSEStreamSubscription implements StreamSubscription {
                       headers: record.headers ?? [],
                     });
                   }
+
+                  boundary?.markDelivered();
+                } else if (chunk.event === "ping") {
+                  const ping = safeParseJSON(chunk.data) as
+                    | { tail?: { seq_num: number; timestamp: number } }
+                    | undefined;
+                  if (ping?.tail) {
+                    const pingBoundary = this.caughtUpTracker.observeBatch({
+                      recordCount: 0,
+                      tail: {
+                        seqNum: ping.tail.seq_num,
+                        timestamp: new Date(ping.tail.timestamp),
+                      },
+                    });
+                    pingBoundary?.markDelivered();
+                  }
                 }
               }
             },
@@ -458,6 +505,7 @@ export class SSEStreamSubscription implements StreamSubscription {
 
           if (done) {
             reader.releaseLock();
+            this.caughtUpTracker.end();
             controller.close();
             this.options.onComplete?.();
             return;
@@ -490,6 +538,7 @@ export class SSEStreamSubscription implements StreamSubscription {
         // `onError` was already invoked in the `!response.ok` branch above
         // (where the auth ApiError was originally constructed and thrown).
         // Auth errors are non-retryable: terminate the stream cleanly.
+        this.caughtUpTracker.end();
         controller.error(error as Error);
         return;
       }
@@ -513,6 +562,7 @@ export class SSEStreamSubscription implements StreamSubscription {
 
     if (this.retryCount >= this.maxRetries) {
       const finalError = error || new Error("Max retries reached");
+      this.caughtUpTracker.end();
       controller.error(finalError);
       this.options.onError?.(finalError);
       return;
@@ -554,6 +604,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     }
 
     // Reconnect
+    this.caughtUpTracker.reconnect();
     await this.connectStream(controller);
   }
 }
