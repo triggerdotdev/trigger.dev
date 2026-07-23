@@ -75,6 +75,8 @@ export class SupervisorHttpClient {
 
       if (result.success) {
         this.onHttpRequestComplete({ name, method, status: "2xx", outcome: "ok" });
+      } else if (result.statusCode === 200) {
+        this.onHttpRequestComplete({ name, method, status: "200", outcome: "invalid_response" });
       } else if (typeof result.statusCode === "number") {
         this.onHttpRequestComplete({
           name,

@@ -4,7 +4,7 @@ export type SupervisorHttpRequestMetric = {
   name: string;
   method: string;
   status: string;
-  outcome: "ok" | "http_error" | "network_error";
+  outcome: "ok" | "http_error" | "invalid_response" | "network_error";
 };
 
 export type SupervisorClientCommonOptions = {
