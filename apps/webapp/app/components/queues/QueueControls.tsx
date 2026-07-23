@@ -3,6 +3,7 @@ import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation } from "@remix-run/react";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import { useEffect, useState } from "react";
+import { cn } from "~/utils/cn";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -58,8 +59,18 @@ export function QueuePauseResumeButton({
                 <Button
                   type="button"
                   variant={variant}
+                  className={
+                    iconOnly
+                      ? queue.paused
+                        ? "system:border-transparent system:bg-success"
+                        : "system:border-transparent system:bg-amber-600"
+                      : undefined
+                  }
                   LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
-                  leadingIconClassName={queue.paused ? "text-success" : "text-warning"}
+                  leadingIconClassName={cn(
+                    queue.paused ? "text-success" : "text-warning",
+                    iconOnly && "system:text-white"
+                  )}
                   fullWidth={fullWidth}
                   textAlignLeft={fullWidth}
                   aria-label={label}

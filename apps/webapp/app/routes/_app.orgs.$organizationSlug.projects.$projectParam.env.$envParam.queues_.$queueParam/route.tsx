@@ -1012,8 +1012,9 @@ function QueueStats({
         accessory={
           <LinkButton
             variant="secondary/small-icon"
+            className="system:border-transparent system:bg-indigo-500"
             LeadingIcon={RunsIcon}
-            leadingIconClassName="text-runs"
+            leadingIconClassName="text-runs system:text-white"
             to={queuedRunsPath}
             tooltip="View queued runs"
           />
