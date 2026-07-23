@@ -386,19 +386,27 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           // With leading/trailing content, the link is content-sized and the adornments sit beside
           // it (still inside the td) so interactive triggers never nest inside the <a>.
           leadingContent || trailingContent ? (
-            <div className={cn(flexClasses, "gap-2")}>
-              {leadingContent}
+            // Stretched link: the <a> covers the whole cell via an inset ::before overlay, so the
+            // entire cell is clickable — not just the text. The interactive adornments (tooltip
+            // icons, badge buttons) sit above the overlay (relative z-10) and stay clickable, and
+            // never nest inside the <a>.
+            <div className={cn(flexClasses, "relative gap-2")}>
+              {leadingContent ? (
+                <span className="relative z-10 flex items-center">{leadingContent}</span>
+              ) : null}
               <Link
                 to={to}
                 className={cn(
-                  "inline-flex items-center gap-2 focus:outline-hidden",
+                  "inline-flex items-center gap-2 before:absolute before:inset-0 before:content-[''] focus:outline-hidden",
                   actionClassName
                 )}
                 tabIndex={isTabbableCell ? 0 : -1}
               >
                 {children}
               </Link>
-              {trailingContent}
+              {trailingContent ? (
+                <span className="relative z-10 flex items-center">{trailingContent}</span>
+              ) : null}
             </div>
           ) : (
             <Link
