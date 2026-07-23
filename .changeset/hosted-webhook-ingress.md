@@ -1,8 +1,8 @@
 ---
-"@trigger.dev/core": patch
-"@trigger.dev/sdk": patch
-"@trigger.dev/slack": patch
-"trigger.dev": patch
+"@trigger.dev/core": minor
+"@trigger.dev/sdk": minor
+"@trigger.dev/slack": minor
+"trigger.dev": minor
 ---
 
 Add hosted webhooks: receive and verify provider webhooks as a task, with no ingress or verification code of your own.
