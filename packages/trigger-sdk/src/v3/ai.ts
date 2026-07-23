@@ -7956,7 +7956,8 @@ function chatAgent<
             if (partialResponse && !partialResponse.id) {
               partialResponse = { ...partialResponse, id: generateMessageId() } as TUIMessage;
             }
-            const erroredUIMessagesWithPartial: TUIMessage[] = !partialResponse
+            const includePartial = partialResponse != null && !responseCommitted;
+            let erroredUIMessagesWithPartial: TUIMessage[] = !includePartial
               ? erroredUIMessages
               : partialIdx === -1
                 ? [...erroredUIMessages, partialResponse]
@@ -7964,11 +7965,9 @@ function chatAgent<
                     i === partialIdx ? partialResponse : m
                   ) as TUIMessage[]);
 
-            const erroredNewUIMessages: TUIMessage[] = erroredWireMessage
-              ? [erroredWireMessage]
-              : [];
-            if (partialResponse && !responseCommitted) {
-              erroredNewUIMessages.push(partialResponse);
+            let erroredNewUIMessages: TUIMessage[] = erroredWireMessage ? [erroredWireMessage] : [];
+            if (includePartial) {
+              erroredNewUIMessages.push(partialResponse!);
             }
 
             let erroredNewModelMessages: ModelMessage[] = [];
@@ -7984,18 +7983,17 @@ function chatAgent<
             // the success path's append branch); otherwise reconvert from UI.
             // Guard the conversion so a secondary failure can't crash the run.
             if (!responseCommitted && erroredUIMessagesWithPartial !== accumulatedUIMessages) {
-              const onlyAppendedPartial =
-                partialResponse != null &&
-                partialIdx === -1 &&
-                erroredUIMessages === accumulatedUIMessages;
               try {
-                if (partialResponse) {
+                if (includePartial) {
                   erroredNewModelMessages = await toModelMessages([
-                    stripProviderMetadata(partialResponse),
+                    stripProviderMetadata(partialResponse!),
                   ]);
                 }
-                if (onlyAppendedPartial) {
-                  accumulatedMessages.push(...erroredNewModelMessages);
+                if (partialIdx === -1) {
+                  const appended = erroredUIMessagesWithPartial.slice(accumulatedUIMessages.length);
+                  accumulatedMessages.push(
+                    ...(await toModelMessages(appended.map((m) => stripProviderMetadata(m))))
+                  );
                 } else {
                   accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
                 }
@@ -8004,6 +8002,8 @@ function chatAgent<
               } catch {
                 // Keep the prior model accumulator if conversion fails.
                 erroredNewModelMessages = [];
+                erroredUIMessagesWithPartial = erroredUIMessages;
+                erroredNewUIMessages = erroredWireMessage ? [erroredWireMessage] : [];
               }
             }
 
