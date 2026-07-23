@@ -8,7 +8,7 @@ import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
 import { removeBlacklistedVariables } from "../environmentVariableRules.server";
 import { FEATURE_FLAG, resolveInternalApiOriginEnabled } from "../featureFlags";
-import { flag } from "../featureFlags.server";
+import { globalFlagsRegistry } from "../globalFlagsRegistry.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   type CreateEnvironmentVariables,
@@ -1169,10 +1169,8 @@ async function resolveProdApiOrigin(
 
   const enabled = resolveInternalApiOriginEnabled({
     orgFeatureFlags: organization?.featureFlags,
-    globalDefault: await flag({
-      key: FEATURE_FLAG.internalApiOriginEnabled,
-      defaultValue: false,
-    }),
+    // Cached global snapshot; a cold read fails safe to the public origin.
+    globalDefault: globalFlagsRegistry.current()?.[FEATURE_FLAG.internalApiOriginEnabled] ?? false,
   });
 
   return enabled ? env.INTERNAL_API_ORIGIN : publicOrigin;
@@ -1194,6 +1192,8 @@ async function resolveBuiltInProdVariables(
       value: apiOrigin,
     },
     {
+      // Deliberately not switched by internalApiOriginEnabled: streams are
+      // long-lived connections served on their own path.
       key: "TRIGGER_STREAM_URL",
       value: env.STREAM_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN,
     },
