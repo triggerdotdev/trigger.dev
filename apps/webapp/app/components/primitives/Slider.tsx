@@ -12,7 +12,7 @@ const variants = {
     root: "h-4 grow",
     track: "h-1 bg-grid-bright",
     range: "bg-transparent",
-    thumb: "h-3 w-3 border-2 border-text-dimmed bg-grid-bright hover:border-text-bright",
+    thumb: "h-3 w-3 bg-text-dimmed hover:bg-text-bright",
   },
   tertiary: {
     container: "h-6 gap-1 rounded-sm hover:bg-background-raised px-1",
