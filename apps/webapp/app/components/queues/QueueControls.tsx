@@ -134,7 +134,7 @@ export function QueuePauseResumeButton({
               }
               cancelButton={
                 <DialogClose asChild>
-                  <Button type="button" variant="tertiary/medium">
+                  <Button type="button" variant="secondary/medium">
                     Cancel
                   </Button>
                 </DialogClose>
