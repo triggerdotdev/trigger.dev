@@ -20,15 +20,13 @@ export function descriptorFor(name: string): QueueDescriptor {
  * list of queue base-names currently present, each with a head score.
  */
 export function fakeRedis(active: Array<{ name: string; head: number }>): Redis {
-  const master = active.map((q) => queueKeyFor(q.name));
-  const headByKey = new Map(active.map((q) => [queueKeyFor(q.name), q.head]));
-
   return {
-    async zrange(key: string, _start: number, _stop: number, withScores?: string): Promise<string[]> {
-      if (headByKey.has(key)) {
-        return withScores ? ["member", String(headByKey.get(key))] : ["member"];
+    async zrange(_key: string, _start: number, _stop: number, withScores?: string): Promise<string[]> {
+      // Only the master-queue WITHSCORES read is used by the reader now.
+      if (withScores) {
+        return active.flatMap((q) => [queueKeyFor(q.name), String(q.head)]);
       }
-      return master;
+      return active.map((q) => queueKeyFor(q.name));
     },
   } as unknown as Redis;
 }

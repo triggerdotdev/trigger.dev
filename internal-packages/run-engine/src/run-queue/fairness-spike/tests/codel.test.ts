@@ -18,9 +18,8 @@ const stubBase: SpikeSelectionStrategy = {
 /** Mutable fake redis whose queue heads can change between calls. */
 function mutableRedis(state: { active: Array<{ name: string; head: number }> }): Redis {
   return {
-    async zrange(key: string, _s: number, _e: number, ws?: string): Promise<string[]> {
-      const match = state.active.find((q) => queueKeyFor(q.name) === key);
-      if (match) return ws ? ["member", String(match.head)] : ["member"];
+    async zrange(_key: string, _s: number, _e: number, ws?: string): Promise<string[]> {
+      if (ws) return state.active.flatMap((q) => [queueKeyFor(q.name), String(q.head)]);
       return state.active.map((q) => queueKeyFor(q.name));
     },
   } as unknown as Redis;

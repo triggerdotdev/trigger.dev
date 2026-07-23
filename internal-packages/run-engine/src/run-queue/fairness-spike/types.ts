@@ -73,23 +73,27 @@ export class SpikeQueueReader {
   ) {}
 
   async readActiveQueues(parentQueue: string): Promise<ActiveQueue[]> {
-    const queues = await this.redis.zrange(parentQueue, 0, -1);
+    // The master queue ZSET scores each queue by its earliest (head) message
+    // timestamp, so one WITHSCORES read gives us every active queue and its head
+    // age with no per-queue round trips. This mirrors how the real
+    // FairQueueSelectionStrategy reads ages.
+    const raw = await this.redis.zrange(parentQueue, 0, -1, "WITHSCORES");
     const out: ActiveQueue[] = [];
 
-    for (const queue of queues) {
+    for (let i = 0; i + 1 < raw.length; i += 2) {
+      const queue = raw[i];
+      const headScore = Number(raw[i + 1]);
+
       // Grain is base queues; a CK wildcard here means a workload leaked a
       // concurrency key, which the spike does not use.
       if (this.keys.isCkWildcard(queue)) continue;
-
-      const head = await this.redis.zrange(queue, 0, 0, "WITHSCORES");
-      if (head.length < 2) continue;
 
       const d = this.keys.descriptorFromQueue(queue);
       out.push({
         queue,
         env: { orgId: d.orgId, projectId: d.projectId, envId: d.envId },
         groupId: groupIdFromQueueName(d.queue),
-        headScore: Number(head[1]),
+        headScore,
       });
     }
 

@@ -7,7 +7,7 @@ import { RunQueueFullKeyProducer } from "../../keyProducer.js";
 import type { InputPayload, RunQueueSelectionStrategy } from "../../types.js";
 import { groupIdFromQueueName, type SpikeSelectionStrategy } from "../types.js";
 import { computeMetrics, type DequeueEvent, type RunMetrics } from "./metrics.js";
-import { expandEvents, weightsOf, type WorkloadSpec } from "./workload.js";
+import { expandEvents, totalsOf, weightsOf, type WorkloadSpec } from "./workload.js";
 
 const keys = new RunQueueFullKeyProducer();
 
@@ -154,6 +154,7 @@ export async function runScenario(config: DriverConfig): Promise<RunMetrics> {
     return computeMetrics({
       events,
       weights: weightsOf(config.workload),
+      totals: totalsOf(config.workload),
       redisOps: selectionRounds,
       wallClockMs: Date.now() - startedAt,
     });

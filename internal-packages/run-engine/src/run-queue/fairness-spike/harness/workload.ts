@@ -106,3 +106,7 @@ export function expandEvents(spec: WorkloadSpec): EnqueueEvent[] {
 export function weightsOf(spec: WorkloadSpec): Record<GroupId, number> {
   return Object.fromEntries(spec.tenants.map((t) => [t.tenantId, t.weight]));
 }
+
+export function totalsOf(spec: WorkloadSpec): Record<GroupId, number> {
+  return Object.fromEntries(spec.tenants.map((t) => [t.tenantId, t.runCount]));
+}
