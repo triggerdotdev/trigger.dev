@@ -7949,6 +7949,9 @@ function chatAgent<
               partialResponse = undefined;
               partialIdx = -1;
             }
+            if (partialResponse && !partialResponse.id) {
+              partialResponse = { ...partialResponse, id: generateMessageId() } as TUIMessage;
+            }
             const erroredUIMessagesWithPartial: TUIMessage[] = !partialResponse
               ? erroredUIMessages
               : partialIdx === -1
@@ -8982,28 +8985,26 @@ export type PipeAndCaptureResult = {
  * can return, and propagates a source error to the consumer after buffering
  * whatever streamed first. See {@link pipeChatAndCapture} for why.
  */
-async function* tapUIMessageChunks(
+function tapUIMessageChunks(
   source: AsyncIterable<unknown> | ReadableStream<unknown>,
   buffer: UIMessageChunk[]
-): AsyncGenerator<unknown> {
+): ReadableStream<unknown> | AsyncGenerator<unknown> {
   if (isReadableStream(source)) {
-    const reader = source.getReader();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer.push(value as UIMessageChunk);
-        yield value;
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  } else {
+    return source.pipeThrough(
+      new TransformStream<unknown, unknown>({
+        transform(chunk, controller) {
+          buffer.push(chunk as UIMessageChunk);
+          controller.enqueue(chunk);
+        },
+      })
+    );
+  }
+  return (async function* () {
     for await (const chunk of source) {
       buffer.push(chunk as UIMessageChunk);
       yield chunk;
     }
-  }
+  })();
 }
 
 /**
