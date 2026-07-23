@@ -555,7 +555,7 @@ export default function PromptDetailPage() {
                 <span className="text-xs text-text-dimmed">v{selectedVersion.version}</span>
                 {isCurrent && <Badge variant="extra-small">current</Badge>}
                 {selectedVersion.labels.includes("override") && (
-                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
+                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400 system:border-transparent system:bg-amber-600 system:text-white">
                     override
                   </Badge>
                 )}
@@ -622,7 +622,7 @@ export default function PromptDetailPage() {
                   hasPermission={canWritePrompts}
                   noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
-                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 light:border-amber-600/50 light:text-amber-800 light:group-hover/button:text-amber-900 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200 system:border-transparent system:bg-amber-600 system:text-white system:group-hover/button:bg-amber-700 system:group-hover/button:text-white"
                   onClick={() => setOverrideDialogOpen(true)}
                 >
                   Edit
@@ -631,7 +631,7 @@ export default function PromptDetailPage() {
                   hasPermission={canWritePrompts}
                   noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
-                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 light:border-amber-600/50 light:text-amber-800 light:group-hover/button:text-amber-900 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
+                  className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200 system:border-transparent system:bg-amber-600 system:text-white system:group-hover/button:bg-amber-700 system:group-hover/button:text-white"
                   onClick={() => fetcher.submit({ intent: "removeOverride" }, { method: "POST" })}
                   disabled={fetcher.state !== "idle"}
                 >
@@ -2097,7 +2097,7 @@ function VersionsTab({
                 />
                 <span className="font-medium text-text-bright">v{v.version}</span>
                 {isOverride && (
-                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400">
+                  <Badge variant="extra-small" className="border-amber-500/30 text-amber-400 system:border-transparent system:bg-amber-600 system:text-white">
                     override
                   </Badge>
                 )}
