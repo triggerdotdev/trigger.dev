@@ -429,7 +429,7 @@ function OverviewCharts({
         <QueueDetailChartCard
           title="Throttled"
           info="Times dequeuing was blocked by a limit."
-          className="aspect-[2/1]"
+          className="aspect-[2/1] sm:col-span-2 sm:aspect-[4/1]"
           query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
           ids={ids}
