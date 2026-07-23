@@ -42,6 +42,24 @@ describe("computeMetrics", () => {
     expect(m.contentionJain).toBeGreaterThan(0.95);
   });
 
+  it("does not count a tenant as contending before its runs arrive", () => {
+    // a runs and finishes entirely before b's runs are ever enqueued. They never
+    // actually compete, so b must not be scored as starved.
+    const events: DequeueEvent[] = [
+      ...Array.from({ length: 4 }, (_, i) => ev("a", `a${i}`, i + 1, 0)),
+      ...Array.from({ length: 2 }, (_, i) => ev("b", `b${i}`, 51 + i, 50)),
+    ];
+    const m = computeMetrics({
+      events,
+      weights: { a: 1, b: 1 },
+      totals: { a: 4, b: 2 },
+      redisOps: 0,
+      wallClockMs: 0,
+    });
+    // no instant had two tenants with arrived, unserved work
+    expect(m.contentionWorstShareOverWeight).toBe(1);
+  });
+
   it("reports per-group wait percentiles and the worst tail", () => {
     const waits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 100];
     const events = waits.map((w, i) => ev("a", `a${i}`, w));

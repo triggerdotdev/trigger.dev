@@ -52,6 +52,9 @@ export async function runScenario(config: DriverConfig): Promise<RunMetrics> {
   const env = authenticatedEnv(limit);
 
   const admin = createRedisClient(config.redis);
+  // NOTE: flushes the whole Redis DB, ignoring keyPrefix. Safe against the
+  // dedicated testcontainer this spike runs on; do not point config.redis at a
+  // shared instance.
   await admin.flushdb();
 
   const queue = new RunQueue({

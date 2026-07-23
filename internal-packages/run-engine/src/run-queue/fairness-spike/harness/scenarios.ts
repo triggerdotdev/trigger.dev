@@ -6,9 +6,8 @@ import type { WorkloadConfig } from "./workload.js";
  * scenario gives one tenant many queues, which is how the #2617 starvation
  * (a tenant multiplying its selection chances) shows up at the base-queue grain.
  */
-export const SCENARIOS: Record<string, WorkloadConfig> = {
+export const SCENARIOS: Record<string, Omit<WorkloadConfig, "seed">> = {
   balanced: {
-    seed: "spike-1",
     envConcurrencyLimit: 5,
     tenants: [
       { tenantId: "t-a", runCount: 50, holdMsMean: 30 },
@@ -19,7 +18,6 @@ export const SCENARIOS: Record<string, WorkloadConfig> = {
   },
 
   adversarialSkew: {
-    seed: "spike-1",
     envConcurrencyLimit: 5,
     tenants: [
       { tenantId: "heavy", runCount: 250, queueCount: 30, holdMsMean: 25 },
@@ -32,7 +30,6 @@ export const SCENARIOS: Record<string, WorkloadConfig> = {
   },
 
   weighted: {
-    seed: "spike-1",
     envConcurrencyLimit: 4,
     tenants: [
       { tenantId: "big", runCount: 300, weight: 3, holdMsMean: 30 },
@@ -41,7 +38,6 @@ export const SCENARIOS: Record<string, WorkloadConfig> = {
   },
 
   burst: {
-    seed: "spike-1",
     envConcurrencyLimit: 6,
     tenants: Array.from({ length: 6 }, (_, i) => ({
       tenantId: `burst-${i}`,
@@ -52,7 +48,6 @@ export const SCENARIOS: Record<string, WorkloadConfig> = {
   },
 
   longHold: {
-    seed: "spike-1",
     envConcurrencyLimit: 4,
     tenants: [
       { tenantId: "slow-1", runCount: 40, holdMsMean: 500 },
@@ -66,7 +61,6 @@ export const SCENARIOS: Record<string, WorkloadConfig> = {
   // whose runs then wait. This makes the baseline's age bias live and gives a
   // CoDel wrapper divergent per-tenant sojourns to react to.
   trickleStale: {
-    seed: "spike-1",
     envConcurrencyLimit: 4,
     tenants: [
       { tenantId: "heavy", runCount: 300, queueCount: 20, holdMsMean: 25 },

@@ -33,7 +33,12 @@ export type RunMetrics = {
    */
   contentionWorstShareOverWeight: number;
   contentionJain: number;
-  /** anti-staleness tail: the largest per-group p99 wait */
+  /**
+   * The largest per-group p99/max wait. NOTE: this is NOT an anti-staleness win
+   * signal. It is dominated by the highest-volume tenant, which a fair selector
+   * deliberately makes wait longer, so a fairer selector can score WORSE here.
+   * Read per-tenant waits (perGroup) for the anti-staleness story instead.
+   */
   worstWaitP99: number;
   worstWaitMax: number;
 };
@@ -53,30 +58,57 @@ function jain(values: number[]): number {
 }
 
 /**
- * Counts each group's dequeues that fall within the contention window: the
- * prefix of the dequeue timeline during which at least two groups still have
- * unfinished work. Once only one group has work left there is no contention to
- * be fair about, so those dequeues are excluded.
+ * Counts each group's dequeues that happen during genuine contention: a dequeue
+ * counts only if, at that instant, at least two groups have work that has
+ * already arrived (been enqueued) but not yet been served. This excludes both
+ * the drain tail (one group left) and, crucially, any stretch where a group's
+ * runs have not arrived yet under spread (poisson) arrival: a tenant only
+ * "contends" once its work exists, otherwise the metric would penalise it for
+ * the arrival process throttling its supply rather than the selector starving it.
  */
-function contentionCounts(
-  events: DequeueEvent[],
-  totals: Record<GroupId, number>
-): { counts: Map<GroupId, number>; windowSize: number; contended: Set<GroupId> } {
+function contentionCounts(events: DequeueEvent[]): {
+  counts: Map<GroupId, number>;
+  windowSize: number;
+  contended: Set<GroupId>;
+} {
   const ordered = [...events].sort((a, b) => a.dequeueAtMs - b.dequeueAtMs);
-  const remaining = new Map<GroupId, number>(Object.entries(totals));
+
+  // Per-group sorted arrival (enqueue) times, so we can ask how many of a
+  // group's runs have arrived by a given instant.
+  const arrivalsByGroup = new Map<GroupId, number[]>();
+  for (const e of events) {
+    const arr = arrivalsByGroup.get(e.groupId) ?? [];
+    arr.push(e.enqueueAtMs);
+    arrivalsByGroup.set(e.groupId, arr);
+  }
+  for (const arr of arrivalsByGroup.values()) arr.sort((a, b) => a - b);
+
+  const arrivedBy = (g: GroupId, t: number): number => {
+    const arr = arrivalsByGroup.get(g) ?? [];
+    let n = 0;
+    for (const a of arr) {
+      if (a <= t) n++;
+      else break;
+    }
+    return n;
+  };
+
+  const dequeuedSoFar = new Map<GroupId, number>();
   const counts = new Map<GroupId, number>();
   const contended = new Set<GroupId>();
   let windowSize = 0;
 
   for (const e of ordered) {
-    const withWork = [...remaining.entries()].filter(([, n]) => n > 0);
-    if (withWork.length < 2) break;
-    // Every group that still has work during this step is contending, whether
-    // or not it is the one being served (so a starved group counts as share 0).
-    for (const [g] of withWork) contended.add(g);
-    counts.set(e.groupId, (counts.get(e.groupId) ?? 0) + 1);
-    windowSize++;
-    remaining.set(e.groupId, (remaining.get(e.groupId) ?? 0) - 1);
+    const t = e.dequeueAtMs;
+    const withWork = [...arrivalsByGroup.keys()].filter(
+      (g) => arrivedBy(g, t) - (dequeuedSoFar.get(g) ?? 0) > 0
+    );
+    if (withWork.length >= 2) {
+      for (const g of withWork) contended.add(g);
+      counts.set(e.groupId, (counts.get(e.groupId) ?? 0) + 1);
+      windowSize++;
+    }
+    dequeuedSoFar.set(e.groupId, (dequeuedSoFar.get(e.groupId) ?? 0) + 1);
   }
 
   return { counts, windowSize, contended };
@@ -89,12 +121,11 @@ export function computeMetrics(input: {
   redisOps: number;
   wallClockMs: number;
 }): RunMetrics {
-  const { events, weights, totals } = input;
+  const { events, weights } = input;
   const groupIds = Object.keys(weights);
   const total = events.length;
-  const sumWeights = groupIds.reduce((a, g) => a + (weights[g] ?? 1), 0);
 
-  const { counts: windowCounts, windowSize, contended } = contentionCounts(events, totals);
+  const { counts: windowCounts, windowSize, contended } = contentionCounts(events);
   const sumWindowWeights = [...contended].reduce((a, g) => a + (weights[g] ?? 1), 0);
 
   const waitsByGroup = new Map<GroupId, number[]>();

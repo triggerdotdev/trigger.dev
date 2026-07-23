@@ -24,6 +24,7 @@ export class StrideStrategy implements SpikeSelectionStrategy {
   private readonly weight: WeightFn;
   private readonly stride1: number;
   private pass = new Map<GroupId, number>();
+  private floor = 0;
 
   constructor(opts: {
     redis: Redis;
@@ -38,20 +39,14 @@ export class StrideStrategy implements SpikeSelectionStrategy {
 
   reset(): void {
     this.pass = new Map();
+    this.floor = 0;
   }
 
-  private minPass(): number {
-    let min = Infinity;
-    for (const v of this.pass.values()) min = Math.min(min, v);
-    return Number.isFinite(min) ? min : 0;
-  }
-
+  // Effective pass: an over-served group keeps its high pass, but a new or
+  // returned-from-idle group is pulled up to the monotonic floor so it cannot
+  // monopolise service with a stale low counter.
   private passOf(groupId: GroupId): number {
-    const existing = this.pass.get(groupId);
-    if (existing !== undefined) return existing;
-    const seeded = this.minPass();
-    this.pass.set(groupId, seeded);
-    return seeded;
+    return Math.max(this.pass.get(groupId) ?? this.floor, this.floor);
   }
 
   async distributeFairQueuesFromParentQueue(
@@ -61,13 +56,12 @@ export class StrideStrategy implements SpikeSelectionStrategy {
     const active = await this.reader.readActiveQueues(parentQueue);
     if (active.length === 0) return [];
 
-    // Seed any new groups at the current minimum pass before ordering.
-    for (const a of active) this.passOf(a.groupId);
+    const activeGroups = new Set(active.map((a) => a.groupId));
+    let min = Infinity;
+    for (const g of activeGroups) min = Math.min(min, this.pass.get(g) ?? this.floor);
+    if (Number.isFinite(min)) this.floor = Math.max(this.floor, min);
 
-    return buildEnvQueues(
-      active,
-      (a, b) => (this.pass.get(a.groupId) ?? 0) - (this.pass.get(b.groupId) ?? 0)
-    );
+    return buildEnvQueues(active, (a, b) => this.passOf(a.groupId) - this.passOf(b.groupId));
   }
 
   onServiced(descriptor: QueueDescriptor): void {

@@ -27,6 +27,16 @@
         "min": 4314,
         "max": 4960
       },
+      "selectionRounds": {
+        "mean": 1137.6666666666667,
+        "min": 1126,
+        "max": 1144
+      },
+      "wallClockMs": {
+        "mean": 1915.3333333333333,
+        "min": 1703,
+        "max": 2121
+      },
       "detailSeed0": [
         {
           "groupId": "big",
@@ -68,6 +78,16 @@
         "mean": 4671.666666666667,
         "min": 4312,
         "max": 4959
+      },
+      "selectionRounds": {
+        "mean": 1148,
+        "min": 1144,
+        "max": 1151
+      },
+      "wallClockMs": {
+        "mean": 1418.3333333333333,
+        "min": 1290,
+        "max": 1588
       },
       "detailSeed0": [
         {
@@ -111,6 +131,16 @@
         "min": 4312,
         "max": 4959
       },
+      "selectionRounds": {
+        "mean": 1150.3333333333333,
+        "min": 1140,
+        "max": 1159
+      },
+      "wallClockMs": {
+        "mean": 1545.6666666666667,
+        "min": 1455,
+        "max": 1693
+      },
       "detailSeed0": [
         {
           "groupId": "big",
@@ -152,6 +182,16 @@
         "mean": 4671,
         "min": 4312,
         "max": 4959
+      },
+      "selectionRounds": {
+        "mean": 1149,
+        "min": 1140,
+        "max": 1160
+      },
+      "wallClockMs": {
+        "mean": 1589.3333333333333,
+        "min": 1448,
+        "max": 1685
       },
       "detailSeed0": [
         {
@@ -195,6 +235,16 @@
         "min": 4312,
         "max": 4959
       },
+      "selectionRounds": {
+        "mean": 1148,
+        "min": 1144,
+        "max": 1151
+      },
+      "wallClockMs": {
+        "mean": 1599.6666666666667,
+        "min": 1521,
+        "max": 1677
+      },
       "detailSeed0": [
         {
           "groupId": "big",
@@ -236,6 +286,16 @@
         "mean": 4671,
         "min": 4314,
         "max": 4960
+      },
+      "selectionRounds": {
+        "mean": 1137.6666666666667,
+        "min": 1126,
+        "max": 1144
+      },
+      "wallClockMs": {
+        "mean": 2081,
+        "min": 1844,
+        "max": 2285
       },
       "detailSeed0": [
         {

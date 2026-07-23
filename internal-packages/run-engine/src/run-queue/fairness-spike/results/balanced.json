@@ -29,6 +29,16 @@
         "min": 1126,
         "max": 1283
       },
+      "selectionRounds": {
+        "mean": 370.3333333333333,
+        "min": 365,
+        "max": 377
+      },
+      "wallClockMs": {
+        "mean": 930.3333333333334,
+        "min": 783,
+        "max": 1196
+      },
       "detailSeed0": [
         {
           "groupId": "t-a",
@@ -92,6 +102,16 @@
         "mean": 1193.3333333333333,
         "min": 1109,
         "max": 1271
+      },
+      "selectionRounds": {
+        "mean": 366.3333333333333,
+        "min": 357,
+        "max": 373
+      },
+      "wallClockMs": {
+        "mean": 734.3333333333334,
+        "min": 576,
+        "max": 874
       },
       "detailSeed0": [
         {
@@ -157,6 +177,16 @@
         "min": 1120,
         "max": 1279
       },
+      "selectionRounds": {
+        "mean": 364.6666666666667,
+        "min": 359,
+        "max": 368
+      },
+      "wallClockMs": {
+        "mean": 772,
+        "min": 550,
+        "max": 925
+      },
       "detailSeed0": [
         {
           "groupId": "t-a",
@@ -220,6 +250,16 @@
         "mean": 1193.3333333333333,
         "min": 1109,
         "max": 1271
+      },
+      "selectionRounds": {
+        "mean": 366.3333333333333,
+        "min": 357,
+        "max": 373
+      },
+      "wallClockMs": {
+        "mean": 757,
+        "min": 721,
+        "max": 819
       },
       "detailSeed0": [
         {
@@ -285,6 +325,16 @@
         "min": 1109,
         "max": 1271
       },
+      "selectionRounds": {
+        "mean": 366.3333333333333,
+        "min": 357,
+        "max": 373
+      },
+      "wallClockMs": {
+        "mean": 807.6666666666666,
+        "min": 721,
+        "max": 871
+      },
       "detailSeed0": [
         {
           "groupId": "t-a",
@@ -348,6 +398,16 @@
         "mean": 1201.3333333333333,
         "min": 1126,
         "max": 1283
+      },
+      "selectionRounds": {
+        "mean": 370.3333333333333,
+        "min": 365,
+        "max": 377
+      },
+      "wallClockMs": {
+        "mean": 883,
+        "min": 793,
+        "max": 1031
       },
       "detailSeed0": [
         {

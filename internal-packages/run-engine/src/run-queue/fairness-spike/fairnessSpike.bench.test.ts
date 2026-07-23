@@ -143,12 +143,18 @@ describe("fairness spike bench", () => {
           const runs = runsBySelector.get(name)!;
           const cwsw = stats(runs.map((r) => r.metrics.contentionWorstShareOverWeight));
           const jain = stats(runs.map((r) => r.metrics.contentionJain));
-          const lightWaitP99 = stats(runs.map((r) => r.metrics.worstWaitP99));
+          const worstWaitP99 = stats(runs.map((r) => r.metrics.worstWaitP99));
           return {
             selector: name,
             contentionWorstShareOverWeight: cwsw,
             contentionJain: jain,
-            worstWaitP99: lightWaitP99,
+            worstWaitP99: worstWaitP99,
+            // Rough cost proxies. redisOps here is the number of strategy
+            // invocations, which is NOT comparable across selectors (a candidate
+            // reads all queues per call; the baseline short-circuits when the env
+            // is at capacity), so treat as illustrative only.
+            selectionRounds: stats(runs.map((r) => r.metrics.redisOps)),
+            wallClockMs: stats(runs.map((r) => r.metrics.wallClockMs)),
             detailSeed0: runs[0].metrics.perGroup as GroupMetrics[],
           };
         });
