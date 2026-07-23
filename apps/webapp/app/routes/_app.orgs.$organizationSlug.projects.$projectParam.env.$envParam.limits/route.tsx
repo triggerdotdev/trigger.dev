@@ -197,7 +197,7 @@ function CurrentPlanSection({
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
-        <IconCardsFilled className="size-5 text-amber-400" />
+        <IconCardsFilled className="size-5 text-amber-400 system-mono-icon" />
         Current plan
       </Header2>
       <Table variant="bright/no-hover">
@@ -232,7 +232,7 @@ function ConcurrencySection({ concurrencyPath }: { concurrencyPath: string }) {
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1.5">
-        <ConcurrencyIcon className="size-5 text-orange-500" />
+        <ConcurrencyIcon className="size-5 text-orange-500 system-mono-icon" />
         Concurrency limits
         <InfoIconTooltip
           content="Concurrency limits control how many runs execute at the same time."
@@ -276,7 +276,7 @@ function RateLimitsSection({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <Header2 className="flex items-center gap-1.5">
-          <Gauge className="size-5 text-indigo-500" />
+          <Gauge className="size-5 text-indigo-500 system-mono-icon" />
           Rate limits
           <InfoIconTooltip
             content="Rate limits control how many API requests can be made within a time window. They are tracked per API key."
@@ -546,7 +546,7 @@ function QuotasSection({
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
-        <IconTallymark4 className="size-6 text-blue-500" />
+        <IconTallymark4 className="size-6 text-blue-500 system-mono-icon" />
         Quotas
         <InfoIconTooltip
           content="Quotas define the maximum resources available to your organization."
@@ -731,7 +731,7 @@ function FeaturesSection({
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1.5">
-        <IconDiamondFilled className="size-5 text-green-600" />
+        <IconDiamondFilled className="size-5 text-green-600 system-mono-icon" />
         Plan features
       </Header2>
       <Table variant="bright/no-hover">
