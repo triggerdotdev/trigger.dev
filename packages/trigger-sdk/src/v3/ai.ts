@@ -7960,6 +7960,8 @@ function chatAgent<
               erroredNewUIMessages.push(partialResponse);
             }
 
+            let erroredNewModelMessages: ModelMessage[] = [];
+
             // Commit the complete error state to the canonical accumulator so the
             // errored user message and any recovered partial survive past this
             // hook: the run stays alive after an error, so the next turn sees
@@ -7978,10 +7980,13 @@ function chatAgent<
               accumulatedUIMessages = erroredUIMessagesWithPartial;
               locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
               try {
+                if (partialResponse) {
+                  erroredNewModelMessages = await toModelMessages([
+                    stripProviderMetadata(partialResponse),
+                  ]);
+                }
                 if (onlyAppendedPartial) {
-                  accumulatedMessages.push(
-                    ...(await toModelMessages([stripProviderMetadata(partialResponse!)]))
-                  );
+                  accumulatedMessages.push(...erroredNewModelMessages);
                 } else {
                   accumulatedMessages = await toModelMessages(accumulatedUIMessages);
                 }
@@ -8004,7 +8009,7 @@ function chatAgent<
                       chatId: currentWirePayload.chatId,
                       messages: accumulatedMessages,
                       uiMessages: erroredUIMessagesWithPartial,
-                      newMessages: [],
+                      newMessages: erroredNewModelMessages,
                       newUIMessages: erroredNewUIMessages,
                       responseMessage: partialResponse,
                       rawResponseMessage: partialResponse,

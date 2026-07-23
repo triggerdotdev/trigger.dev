@@ -95,6 +95,19 @@ describe("chat.agent managed loop — source-stream failure", () => {
       // dropped (responseMessage: undefined).
       expect(evt.responseMessage).toBeDefined();
       expect(extractText(evt.responseMessage)).toBe("partial answer");
+
+      const newAssistantText = (evt.newMessages as ModelMessage[])
+        .filter((m) => m.role === "assistant")
+        .map((m) =>
+          typeof m.content === "string"
+            ? m.content
+            : (m.content as Array<{ type: string; text?: string }>)
+                .filter((p) => p.type === "text")
+                .map((p) => p.text ?? "")
+                .join("")
+        )
+        .join("");
+      expect(newAssistantText).toBe("partial answer");
     } finally {
       await harness.close();
     }
