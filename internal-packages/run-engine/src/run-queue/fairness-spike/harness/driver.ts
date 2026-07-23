@@ -22,6 +22,13 @@ export type DriverConfig = {
   workload: WorkloadSpec;
   /** ceiling on logical time (ms); the loop is event-driven so this only guards runaway starvation */
   maxLogicalMs?: number;
+  /**
+   * Per-base-queue concurrency limit, keyed by the workload queue name
+   * (e.g. `heavy~0`). Sets the real per-queue concurrency gate the dequeue Lua
+   * enforces. For a keyless task (one base queue) this IS the per-task total cap,
+   * so it models the plan's Phase-1 total cap for cross-task isolation.
+   */
+  perQueueCap?: Record<string, number>;
 };
 
 function authenticatedEnv(limit: number) {
@@ -71,6 +78,12 @@ export async function runScenario(config: DriverConfig): Promise<RunMetrics> {
   });
 
   await config.strategy.reset?.();
+
+  if (config.perQueueCap) {
+    for (const [queueName, cap] of Object.entries(config.perQueueCap)) {
+      await queue.updateQueueConcurrencyLimits(env, queueName, cap);
+    }
+  }
 
   const sorted = expandEvents(config.workload);
   const total = sorted.length;

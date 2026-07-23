@@ -119,13 +119,21 @@ contention metric is degenerate at 1.0; makespan is the signal there. ckSybil is
   in-task comparison is capacity-confounded. `totalCap=2` caps the whole task's
   aggregate at half of env=4, so it simply halves throughput: light's wait rises
   (ckSkew 1098 to 2840) for the same reason heavy's does (both now share half the
-  server), which is Little's-Law throughput loss, not a fairness effect. The total
-  cap's real purpose is cross-TASK isolation (reservation between base queues when
-  the sum of per-task caps is below the env limit), a different problem from
-  #2617's within-task cross-key starvation and one this single-base-queue harness
-  does not exercise (noted as future work). Do not read the "worse" numbers as
-  "total caps harm fairness"; read them as "wrong knob, and measured on a lower
-  ceiling."
+  server), which is Little's-Law throughput loss, not a fairness effect. It is the
+  wrong knob for cross-key starvation, measured on a lower ceiling; do not read
+  the "worse" numbers as "total caps harm fairness."
+- Total cap (Phase 1) at the cross-TASK grain: this IS its job, and it works.
+  Measured in a separate multi-base-queue bench (`crossTaskCaps.bench.test.ts`):
+  two keyless tasks share one env, a heavy task floods it, and capping the heavy
+  task (its per-queue concurrency limit, the real native gate, which for a keyless
+  task equals its total cap) cuts the light TASK's wait from 475 to 2 under the
+  production `FairQueueSelectionStrategy`. So the total cap protects a light task
+  from a heavy task, the reservation-isolation role the research describes. It is
+  still not work-conserving (makespan 2039 to 3039), and SFQ at the task grain
+  protects the light task too (wait 14) while staying work-conserving (2039). The
+  fidelity note: this models a KEYLESS task, so the per-queue limit is the total;
+  a task WITH concurrency keys needs the group SET to sum across variants (the
+  unbuilt Phase-1 gate).
 - Combined total + per-key (the shipped Phase-1+2 config): in this toy the total
   cap (2) is below a single per-key cap's reach, so it dominates and the per-key
   cap is non-binding (`total+perKey` equals `totalCap` to the digit). This toy
@@ -184,5 +192,7 @@ make caps alone insufficient. Not either/or.
 - Contention share is volume-confounded for low-volume keys, and for the per-key
   cap on the sharded case it is seed-noisy (0.07..0.71); wait is the trustworthy
   signal, share is directional.
-- Cross-task isolation (the total cap's real purpose) is argued from the research,
-  not measured; a multi-base-queue harness is future work.
+- Cross-task isolation (the total cap's real purpose) is now measured in
+  `crossTaskCaps.bench.test.ts` for KEYLESS tasks (per-queue limit = total cap).
+  A task with concurrency keys needs the unbuilt group-SET gate to sum across
+  variants; that batched, keyed path is still not exercised.
