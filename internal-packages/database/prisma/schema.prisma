@@ -1935,6 +1935,7 @@ model BatchTaskRun {
   @@index([dependentTaskAttemptId])
   // This is for the batch list dashboard page
   @@index([runtimeEnvironmentId, id(sort: Desc)])
+  @@index([runtimeEnvironmentId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 enum BatchTaskRunStatus {
