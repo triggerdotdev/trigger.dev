@@ -127,7 +127,8 @@ describe("CK virtual-time (SFQ) dequeue", () => {
       const lightVariant = variantName("light");
       const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(heavyVariant);
 
-      // Task 4 (enqueue registration) isn't done yet; seed both variants at tag 0.
+      // Explicit seed is redundant now that enqueue registers variants at the
+      // floor itself; kept as a belt-and-braces fixture.
       await queue.redis.zadd(ckVtimeKey, 0, heavyVariant, 0, lightVariant);
 
       const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
@@ -537,8 +538,9 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         const t0 = Date.now() - 100_000;
 
         // Enqueue on a variant but do NOT register it in ckVtime (simulating an
-        // enqueue from old code / before Task 4). Two messages so the variant
-        // survives its first serve and we can observe it was registered.
+        // enqueue from old code that predates enqueue-time registration, e.g.
+        // during a rolling deploy). Two messages so the variant survives its
+        // first serve and we can observe it was registered.
         for (let i = 0; i < 2; i++) {
           await queue.enqueueMessage({
             env: authenticatedEnvDev,
@@ -897,7 +899,11 @@ describe("CK virtual-time (SFQ) dequeue", () => {
           for (let i = 0; i < 3; i++) {
             await queue.enqueueMessage({
               env: authenticatedEnvDev,
-              message: makeMessage({ runId: `r-${ck}-${i}`, concurrencyKey: ck, timestamp: head + i }),
+              message: makeMessage({
+                runId: `r-${ck}-${i}`,
+                concurrencyKey: ck,
+                timestamp: head + i,
+              }),
               workerQueue: authenticatedEnvDev.id,
               skipDequeueProcessing: true,
             });
@@ -944,9 +950,9 @@ describe("CK virtual-time (SFQ) dequeue", () => {
 
         // After the whole mixed sequence (enqueues, batched dequeues, a nack,
         // acks, one message still in flight so the keyspace is non-empty) no
-        // vtime state exists at all: no :ckVtime, no :ckVtimeFloor. ioredis
-        // prepends the keyPrefix to the KEYS pattern, so this scans exactly
-        // this test's keyspace.
+        // vtime state exists at all: no :ckVtime, no :ckVtimeFloor. The KEYS
+        // scan is safe here because redisTest runs flushall before each test,
+        // so the DB only holds this test's keys.
         const allKeys = await queue.redis.keys("*");
         expect(allKeys.length).toBeGreaterThan(0);
         expect(allKeys.filter((k) => k.includes("ckVtime"))).toEqual([]);

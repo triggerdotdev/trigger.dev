@@ -250,86 +250,88 @@ describe("CK virtual-time fairness on the real batched dequeue path", () => {
   // The head-age starvation the spike measured appears on this path when env
   // capacity serializes the calls (limit 1): flag OFF then always picks the
   // globally oldest head, which is heavy for its whole backlog.
-  redisTest("ckSkew: light keys stop waiting behind the heavy backlog", async ({
-    redisContainer,
-  }) => {
-    const t0 = Date.now() - 500_000;
-    const messages: ScenarioMessage[] = [];
-    for (let i = 0; i < 120; i++) {
-      messages.push({ runId: `heavy-${i}`, ck: "heavy", timestamp: t0 });
-    }
-    for (let i = 0; i < 10; i++) {
-      for (let k = 0; k < 4; k++) {
-        messages.push({
-          runId: `light${k}-${i}`,
-          ck: `light${k}`,
-          timestamp: t0 + 10_000 + i * 4 + k,
-        });
+  redisTest(
+    "ckSkew: light keys stop waiting behind the heavy backlog",
+    async ({ redisContainer }) => {
+      const t0 = Date.now() - 500_000;
+      const messages: ScenarioMessage[] = [];
+      for (let i = 0; i < 120; i++) {
+        messages.push({ runId: `heavy-${i}`, ck: "heavy", timestamp: t0 });
       }
+      for (let i = 0; i < 10; i++) {
+        for (let k = 0; k < 4; k++) {
+          messages.push({
+            runId: `light${k}-${i}`,
+            ck: `light${k}`,
+            timestamp: t0 + 10_000 + i * 4 + k,
+          });
+        }
+      }
+      const scenario: Scenario = {
+        name: "ckSkew",
+        messages,
+        envConcurrencyLimit: 1,
+        holdSteps: 3,
+        maxSteps: 1_000,
+      };
+
+      const on = await runScenario(redisContainer, scenario, true);
+      const off = await runScenario(redisContainer, scenario, false);
+
+      assertConservation(scenario, on, off);
+
+      const isLight = (ck: string) => ck.startsWith("light");
+      const onWait = meanWait(on, isLight);
+      const offWait = meanWait(off, isLight);
+      debugLog("ckSkew", { onWait, offWait, ratio: onWait / offWait });
+
+      // Heavy's wait may rise under the fair order; that is expected and not
+      // asserted down.
+      expect(onWait).toBeLessThanOrEqual(0.3 * offWait);
     }
-    const scenario: Scenario = {
-      name: "ckSkew",
-      messages,
-      envConcurrencyLimit: 1,
-      holdSteps: 3,
-      maxSteps: 1_000,
-    };
-
-    const on = await runScenario(redisContainer, scenario, true);
-    const off = await runScenario(redisContainer, scenario, false);
-
-    assertConservation(scenario, on, off);
-
-    const isLight = (ck: string) => ck.startsWith("light");
-    const onWait = meanWait(on, isLight);
-    const offWait = meanWait(off, isLight);
-    debugLog("ckSkew", { onWait, offWait, ratio: onWait / offWait });
-
-    // Heavy's wait may rise under the fair order; that is expected and not
-    // asserted down.
-    expect(onWait).toBeLessThanOrEqual(0.3 * offWait);
-  });
+  );
 
   // ckTrickle (spike shape): one bulk key with a 120-message backlog on an old
   // shared head, two trickle keys with 15 messages each on later heads. Same
   // serialized contention regime as ckSkew, same assertion.
-  redisTest("ckTrickle: trickle keys stop waiting behind the bulk backlog", async ({
-    redisContainer,
-  }) => {
-    const t0 = Date.now() - 500_000;
-    const messages: ScenarioMessage[] = [];
-    for (let i = 0; i < 120; i++) {
-      messages.push({ runId: `bulk-${i}`, ck: "bulk", timestamp: t0 });
-    }
-    for (let i = 0; i < 15; i++) {
-      for (let k = 0; k < 2; k++) {
-        messages.push({
-          runId: `trickle${k}-${i}`,
-          ck: `trickle${k}`,
-          timestamp: t0 + 10_000 + i * 2 + k,
-        });
+  redisTest(
+    "ckTrickle: trickle keys stop waiting behind the bulk backlog",
+    async ({ redisContainer }) => {
+      const t0 = Date.now() - 500_000;
+      const messages: ScenarioMessage[] = [];
+      for (let i = 0; i < 120; i++) {
+        messages.push({ runId: `bulk-${i}`, ck: "bulk", timestamp: t0 });
       }
+      for (let i = 0; i < 15; i++) {
+        for (let k = 0; k < 2; k++) {
+          messages.push({
+            runId: `trickle${k}-${i}`,
+            ck: `trickle${k}`,
+            timestamp: t0 + 10_000 + i * 2 + k,
+          });
+        }
+      }
+      const scenario: Scenario = {
+        name: "ckTrickle",
+        messages,
+        envConcurrencyLimit: 1,
+        holdSteps: 3,
+        maxSteps: 1_000,
+      };
+
+      const on = await runScenario(redisContainer, scenario, true);
+      const off = await runScenario(redisContainer, scenario, false);
+
+      assertConservation(scenario, on, off);
+
+      const isTrickle = (ck: string) => ck.startsWith("trickle");
+      const onWait = meanWait(on, isTrickle);
+      const offWait = meanWait(off, isTrickle);
+      debugLog("ckTrickle", { onWait, offWait, ratio: onWait / offWait });
+
+      expect(onWait).toBeLessThanOrEqual(0.3 * offWait);
     }
-    const scenario: Scenario = {
-      name: "ckTrickle",
-      messages,
-      envConcurrencyLimit: 1,
-      holdSteps: 3,
-      maxSteps: 1_000,
-    };
-
-    const on = await runScenario(redisContainer, scenario, true);
-    const off = await runScenario(redisContainer, scenario, false);
-
-    assertConservation(scenario, on, off);
-
-    const isTrickle = (ck: string) => ck.startsWith("trickle");
-    const onWait = meanWait(on, isTrickle);
-    const offWait = meanWait(off, isTrickle);
-    debugLog("ckTrickle", { onWait, offWait, ratio: onWait / offWait });
-
-    expect(onWait).toBeLessThanOrEqual(0.3 * offWait);
-  });
+  );
 
   // ckSybil (spike shape, the case per-key caps cannot fix): 20 attacker keys
   // with 8 messages each, all on older heads, and 1 light key with 10 newer
@@ -337,9 +339,7 @@ describe("CK virtual-time fairness on the real batched dequeue path", () => {
   // properly: flag OFF walks the age order and only reaches the light key when
   // the attackers are nearly drained; flag ON serves the light key from the
   // floor on its first fair round.
-  redisTest("ckSybil: many attacker keys cannot starve a light key", async ({
-    redisContainer,
-  }) => {
+  redisTest("ckSybil: many attacker keys cannot starve a light key", async ({ redisContainer }) => {
     const t0 = Date.now() - 500_000;
     const messages: ScenarioMessage[] = [];
     for (let i = 0; i < 8; i++) {
@@ -397,72 +397,74 @@ describe("CK virtual-time fairness on the real batched dequeue path", () => {
 
   // ckBalanced (spike shape, no-harm check): 4 symmetric keys with 25 messages
   // each. The fair order must not make the symmetric case worse.
-  redisTest("ckBalanced: fair order does not hurt the symmetric case", async ({
-    redisContainer,
-  }) => {
-    const t0 = Date.now() - 500_000;
-    const cks = ["bal0", "bal1", "bal2", "bal3"];
-    const messages: ScenarioMessage[] = [];
-    for (let i = 0; i < 25; i++) {
-      for (let k = 0; k < cks.length; k++) {
-        messages.push({
-          runId: `${cks[k]}-${i}`,
-          ck: cks[k]!,
-          timestamp: t0 + i * 4 + k,
-        });
+  redisTest(
+    "ckBalanced: fair order does not hurt the symmetric case",
+    async ({ redisContainer }) => {
+      const t0 = Date.now() - 500_000;
+      const cks = ["bal0", "bal1", "bal2", "bal3"];
+      const messages: ScenarioMessage[] = [];
+      for (let i = 0; i < 25; i++) {
+        for (let k = 0; k < cks.length; k++) {
+          messages.push({
+            runId: `${cks[k]}-${i}`,
+            ck: cks[k]!,
+            timestamp: t0 + i * 4 + k,
+          });
+        }
       }
+      const scenario: Scenario = {
+        name: "ckBalanced",
+        messages,
+        envConcurrencyLimit: 4,
+        holdSteps: 3,
+        maxSteps: 500,
+      };
+
+      const on = await runScenario(redisContainer, scenario, true);
+      const off = await runScenario(redisContainer, scenario, false);
+
+      assertConservation(scenario, on, off);
+
+      const maxPerKeyMeanWait = (result: ScenarioResult) =>
+        Math.max(...cks.map((ck) => meanWait(result, (c) => c === ck)));
+
+      const onMax = maxPerKeyMeanWait(on);
+      const offMax = maxPerKeyMeanWait(off);
+      debugLog("ckBalanced", { onMax, offMax, ratio: onMax / offMax });
+
+      expect(onMax).toBeLessThanOrEqual(1.25 * offMax);
     }
-    const scenario: Scenario = {
-      name: "ckBalanced",
-      messages,
-      envConcurrencyLimit: 4,
-      holdSteps: 3,
-      maxSteps: 500,
-    };
-
-    const on = await runScenario(redisContainer, scenario, true);
-    const off = await runScenario(redisContainer, scenario, false);
-
-    assertConservation(scenario, on, off);
-
-    const maxPerKeyMeanWait = (result: ScenarioResult) =>
-      Math.max(...cks.map((ck) => meanWait(result, (c) => c === ck)));
-
-    const onMax = maxPerKeyMeanWait(on);
-    const offMax = maxPerKeyMeanWait(off);
-    debugLog("ckBalanced", { onMax, offMax, ratio: onMax / offMax });
-
-    expect(onMax).toBeLessThanOrEqual(1.25 * offMax);
-  });
+  );
 
   // ckHeavyIdle (spike shape, work conservation): a single key with 60
   // messages and nothing else contending. Any extra step to drain under the
   // fair order is a work-conservation bug, so the step counts must be exactly
   // equal.
-  redisTest("ckHeavyIdle: a lone key drains in exactly the same steps", async ({
-    redisContainer,
-  }) => {
-    const t0 = Date.now() - 500_000;
-    const messages: ScenarioMessage[] = [];
-    for (let i = 0; i < 60; i++) {
-      messages.push({ runId: `solo-${i}`, ck: "solo", timestamp: t0 + i });
+  redisTest(
+    "ckHeavyIdle: a lone key drains in exactly the same steps",
+    async ({ redisContainer }) => {
+      const t0 = Date.now() - 500_000;
+      const messages: ScenarioMessage[] = [];
+      for (let i = 0; i < 60; i++) {
+        messages.push({ runId: `solo-${i}`, ck: "solo", timestamp: t0 + i });
+      }
+      const scenario: Scenario = {
+        name: "ckHeavyIdle",
+        messages,
+        envConcurrencyLimit: 25,
+        holdSteps: 3,
+        maxSteps: 300,
+      };
+
+      const on = await runScenario(redisContainer, scenario, true);
+      const off = await runScenario(redisContainer, scenario, false);
+
+      assertConservation(scenario, on, off);
+
+      debugLog("ckHeavyIdle", { onDrainStep: on.drainStep, offDrainStep: off.drainStep });
+
+      expect(on.drainStep).toBeGreaterThanOrEqual(0);
+      expect(on.drainStep).toBe(off.drainStep);
     }
-    const scenario: Scenario = {
-      name: "ckHeavyIdle",
-      messages,
-      envConcurrencyLimit: 25,
-      holdSteps: 3,
-      maxSteps: 300,
-    };
-
-    const on = await runScenario(redisContainer, scenario, true);
-    const off = await runScenario(redisContainer, scenario, false);
-
-    assertConservation(scenario, on, off);
-
-    debugLog("ckHeavyIdle", { onDrainStep: on.drainStep, offDrainStep: off.drainStep });
-
-    expect(on.drainStep).toBeGreaterThanOrEqual(0);
-    expect(on.drainStep).toBe(off.drainStep);
-  });
+  );
 });
