@@ -124,6 +124,7 @@ export async function startWebapp(
       REDIS_HOST: redis.host,
       REDIS_PORT: String(redis.port),
       REDIS_TLS_DISABLED: "true", // all *_REDIS_TLS_DISABLED vars default to this; test Redis has no TLS
+      ...(options.extraEnv ?? {}),
       // Disable all background workers. Each worker has its own env var and its own
       // check idiom ("0" vs "false" vs boolean), so we set all of them explicitly.
       WORKER_ENABLED: "false", // disables workerQueue.initialize() (checked === "true")
@@ -143,7 +144,6 @@ export async function startWebapp(
       // to "0" so a local apps/webapp/.env that sets it to "1" doesn't
       // short-circuit the loader past the REQUIRE_PLUGINS check.
       ...(requirePlugins ? { REQUIRE_PLUGINS: "1", RBAC_FORCE_FALLBACK: "0" } : {}),
-      ...(options.extraEnv ?? {}),
       NODE_PATH: nodePath,
     },
     stdio: ["ignore", "pipe", "pipe"],

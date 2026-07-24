@@ -28,8 +28,6 @@ export interface StartedS2Container {
   container: StartedTestContainer;
   /** Base URL of the s2-lite HTTP API, e.g. `http://localhost:49xxx`. */
   endpoint: string;
-  /** In-network URL (for the spawned webapp on the same docker network). */
-  networkEndpoint: string;
   /** The single basin s2-lite is initialised with. */
   basin: string;
 }
@@ -64,7 +62,6 @@ export async function createS2Container(
   return {
     container,
     endpoint: `http://${container.getHost()}:${mappedPort}`,
-    networkEndpoint: "http://s2:80",
     basin,
   };
 }

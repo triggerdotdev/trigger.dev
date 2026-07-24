@@ -91,6 +91,7 @@ describe("session stream browser e2e", () => {
       const result = await page.evaluate(
         async ({ url, token }) => {
           const ac = new AbortController();
+          const deadlineTimer = setTimeout(() => ac.abort(), 8000);
           try {
             const res = await fetch(url, {
               headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
@@ -99,8 +100,7 @@ describe("session stream browser e2e", () => {
             const reader = (res.body as ReadableStream<Uint8Array>).getReader();
             const decoder = new TextDecoder();
             let text = "";
-            const deadline = Date.now() + 8000;
-            while (Date.now() < deadline) {
+            while (true) {
               const { done, value } = await reader.read();
               if (done) break;
               text += decoder.decode(value, { stream: true });
@@ -115,6 +115,8 @@ describe("session stream browser e2e", () => {
             };
           } catch (e) {
             return { error: String(e) };
+          } finally {
+            clearTimeout(deadlineTimer);
           }
         },
         { url: sseUrl, token }

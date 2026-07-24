@@ -209,6 +209,7 @@ export class SSEStreamSubscription implements StreamSubscription {
   private nonRetryableStatuses: ReadonlySet<number>;
   private retryNowController: AbortController | null = null;
   private internalAbort: AbortController | null = null;
+  private cancelledByConsumer = false;
   private caughtUpTracker = new CaughtUpTracker();
 
   constructor(
@@ -329,7 +330,9 @@ export class SSEStreamSubscription implements StreamSubscription {
         await self.connectStream(controller);
       },
       cancel() {
+        self.cancelledByConsumer = true;
         self.internalAbort?.abort();
+        self.retryNowController?.abort();
       },
     });
     const internalReader = internal.getReader();
@@ -362,6 +365,7 @@ export class SSEStreamSubscription implements StreamSubscription {
           }
         },
         cancel(reason) {
+          self.cancelledByConsumer = true;
           self.caughtUpTracker.end();
           self.options.onComplete?.();
           internalReader.cancel(reason).catch(() => {});
@@ -591,7 +595,7 @@ export class SSEStreamSubscription implements StreamSubscription {
         throw error;
       }
     } catch (error) {
-      if (this.options.signal?.aborted) {
+      if (this.options.signal?.aborted || this.cancelledByConsumer) {
         // User cancel — exit cleanly, don't retry.
         controller.close();
         return;
@@ -616,7 +620,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     controller: ReadableStreamDefaultController,
     error?: Error
   ): Promise<void> {
-    if (this.options.signal?.aborted) {
+    if (this.options.signal?.aborted || this.cancelledByConsumer) {
       controller.close();
       return;
     }
@@ -657,7 +661,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     });
     this.retryNowController = null;
 
-    if (this.options.signal?.aborted) {
+    if (this.options.signal?.aborted || this.cancelledByConsumer) {
       controller.close();
       return;
     }

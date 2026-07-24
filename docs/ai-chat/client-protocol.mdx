@@ -359,7 +359,7 @@ Decoded `data` payload:
 | `records[].timestamp` | Unix ms when the record was written to S2. |
 | `records[].body` | For data records: a JSON-encoded **string** wrapping `{ data: UIMessageChunk, id: string }`. For control records: an empty string (semantics live in `headers`). For S2 command records: opaque bytes. See [Records on session.out](#records-on-session-out). |
 | `records[].headers` | Optional `[name, value]` pairs. Empty for data records; a `trigger-control` entry for control records; a single empty-name `["", "<op>"]` entry for S2 command records. |
-| `tail.seq_num` | Latest known tail of the S2 stream, useful for detecting how far behind the live edge you are. When `last delivered seq_num + 1 === tail.seq_num` you have drained the backlog and are caught up to the live edge. The same `tail` also rides on `ping` events. Skip if you don't need it. |
+| `tail.seq_num` | Latest known tail of the S2 stream, useful for detecting how far behind the live edge you are. Track the **highest `seq_num` you have received**, counting every record in the batch (including the command records you skip, see below), not just the last application-visible one. When `highest received seq_num + 1 === tail.seq_num` you have drained the backlog and are caught up to the live edge. The same `tail` also rides on `ping` events. Skip if you don't need it. |
 | `tail.timestamp` | Timestamp of `tail.seq_num`. |
 
 ### Records on `session.out`
@@ -652,7 +652,7 @@ On **reconnect-on-reload** paths (resuming a chat where nothing may be streaming
 
 **Do not send `X-Peek-Settled` on the active-send response-stream path.** The peek would race the newly-triggered turn's first chunk — if the agent hasn't written the new turn's first record yet, the peek sees the prior turn's `turn-complete` and closes the SSE before the response lands on S2. The built-in `TriggerChatTransport.reconnectToStream` sets the header; `sendMessages → subscribeToStream` does not.
 
-If you use the TypeScript `SSEStreamSubscription` (or `useChat`, which builds on it), the client settles on its own too: on the reconnect path it watches the `tail` on batch and ping events and closes a resumed stream as soon as it reaches the live edge, so a settled idle reconnect closes promptly without waiting out the long poll. Hand-rolled clients can do the same by comparing their last processed `seq_num` to the ping/batch `tail`. On older self-hosted backends whose `ping` carries no `tail`, this falls back to the `X-Peek-Settled` behavior above.
+If you use `TriggerChatTransport` (or `useChat`, which builds on it), the transport settles the stream for you: on the reconnect path it watches the `tail` on batch and ping events via `SSEStreamSubscription.caughtUp()` and closes the resumed stream as soon as it reaches the live edge, so a settled idle reconnect closes promptly without waiting out the long poll. `SSEStreamSubscription` on its own only exposes the caught-up signal, it does not close itself: consuming it directly, call `caughtUp()` (or compare your last received `seq_num` to the ping/batch `tail`) and close your own stream. On older self-hosted backends whose `ping` carries no `tail`, this falls back to the `X-Peek-Settled` behavior above.
 
 ```ts
 // Reconnect path (page reload)
