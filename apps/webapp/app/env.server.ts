@@ -1111,10 +1111,10 @@ const EnvironmentSchema = z
 
     // Fair (virtual-time) ordering across concurrency-key variants of a base queue.
     // Off by default; when off the run queue behaves exactly as before.
-    RUN_ENGINE_CK_VTIME_SCHEDULING_ENABLED: z.string().default("0"),
-    RUN_ENGINE_CK_VTIME_QUANTUM: z.coerce.number().default(1),
-    RUN_ENGINE_CK_VTIME_WINDOW_MULTIPLIER: z.coerce.number().default(3),
-    RUN_ENGINE_CK_VTIME_STATE_TTL_SECONDS: z.coerce.number().default(86400),
+    RUN_ENGINE_CK_VTIME_SCHEDULING_ENABLED: BoolEnv.default(false),
+    RUN_ENGINE_CK_VTIME_QUANTUM: z.coerce.number().int().positive().default(1),
+    RUN_ENGINE_CK_VTIME_WINDOW_MULTIPLIER: z.coerce.number().int().positive().default(3),
+    RUN_ENGINE_CK_VTIME_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
 
     /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
      *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
