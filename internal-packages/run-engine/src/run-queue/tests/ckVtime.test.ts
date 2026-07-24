@@ -40,17 +40,23 @@ type VtimeOverrides = {
   stateTtlSeconds?: number;
 };
 
-function createQueue(redisContainer: any, vtime: VtimeOverrides = {}) {
+// vtime: overrides merged into an enabled ckVirtualTimeScheduling option, or
+// null to omit the option entirely (flag off, the production default).
+function createQueue(redisContainer: any, vtime: VtimeOverrides | null = {}) {
   return new RunQueue({
     ...testOptions,
     // These tests drive every op themselves (testDequeueFromMasterQueue + skipDequeueProcessing),
     // so the autonomous master-queue consumers and background worker must not race them.
     masterQueueConsumersDisabled: true,
     workerOptions: { disabled: true },
-    ckVirtualTimeScheduling: {
-      enabled: true,
-      ...vtime,
-    },
+    ...(vtime === null
+      ? {}
+      : {
+          ckVirtualTimeScheduling: {
+            enabled: true,
+            ...vtime,
+          },
+        }),
     queueSelectionStrategy: new FairQueueSelectionStrategy({
       redis: {
         keyPrefix: "runqueue:test:",
@@ -866,4 +872,91 @@ describe("CK virtual-time (SFQ) dequeue", () => {
       await queue.quit();
     }
   });
+
+  redisTest(
+    "flag off creates no vtime keys and matches head-timestamp order",
+    async ({ redisContainer }) => {
+      // ckVirtualTimeScheduling ABSENT: the off path calls the pre-existing
+      // command names (enqueueMessage*CkTracked, dequeueMessagesFromCkQueueTracked,
+      // nackMessageCkTracked) whose defineCommand script text this feature never
+      // edited, so the stronger same-script-SHA guarantee holds by construction.
+      // What a test CAN observe is asserted here: no vtime state is ever created,
+      // and the dequeue order is head-timestamp (age) order, matching the
+      // pre-existing ckIndex.test.ts expectation.
+      const queue = createQueue(redisContainer, null);
+      try {
+        const t0 = Date.now() - 100_000;
+
+        // 3 variants with distinct head ages: old < mid < new, 3 messages each.
+        const heads: Record<string, number> = {
+          old: t0,
+          mid: t0 + 10_000,
+          new: t0 + 20_000,
+        };
+        for (const [ck, head] of Object.entries(heads)) {
+          for (let i = 0; i < 3; i++) {
+            await queue.enqueueMessage({
+              env: authenticatedEnvDev,
+              message: makeMessage({ runId: `r-${ck}-${i}`, concurrencyKey: ck, timestamp: head + i }),
+              workerQueue: authenticatedEnvDev.id,
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+
+        // The off-path command serves at most one message per variant per call,
+        // visiting variants in ckIndex (head-timestamp) order: oldest head first.
+        const first = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 5);
+        expect(first.map((m) => m.message.concurrencyKey)).toEqual(["old", "mid", "new"]);
+
+        // nack old's head (immediate retry), ack the rest
+        const nackedId = first[0]!.messageId;
+        await queue.nackMessage({
+          orgId: authenticatedEnvDev.organization.id,
+          messageId: nackedId,
+          retryAt: Date.now(),
+          skipDequeueProcessing: true,
+        });
+        for (const m of first.slice(1)) {
+          await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+            skipDequeueProcessing: true,
+          });
+        }
+
+        // Two more batched calls drain the original heads in age order each time.
+        for (let call = 0; call < 2; call++) {
+          const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 5);
+          expect(messages.map((m) => m.message.concurrencyKey)).toEqual(["old", "mid", "new"]);
+          for (const m of messages) {
+            await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+
+        // Only the nacked message remains; it is re-served.
+        const last = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 5);
+        expect(last.length).toBe(1);
+        expect(last[0]!.messageId).toBe(nackedId);
+        expect(last[0]!.message.concurrencyKey).toBe("old");
+
+        // After the whole mixed sequence (enqueues, batched dequeues, a nack,
+        // acks, one message still in flight so the keyspace is non-empty) no
+        // vtime state exists at all: no :ckVtime, no :ckVtimeFloor. ioredis
+        // prepends the keyPrefix to the KEYS pattern, so this scans exactly
+        // this test's keyspace.
+        const allKeys = await queue.redis.keys("*");
+        expect(allKeys.length).toBeGreaterThan(0);
+        expect(allKeys.filter((k) => k.includes("ckVtime"))).toEqual([]);
+
+        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, nackedId, {
+          skipDequeueProcessing: true,
+        });
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 });
