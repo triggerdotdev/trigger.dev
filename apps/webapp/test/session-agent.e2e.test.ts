@@ -23,6 +23,8 @@ import {
   collectSessionOut,
   isTurnComplete,
   mintSessionToken,
+  subscribeSessionOut,
+  type CollectedPart,
 } from "./helpers/sessionStream";
 import { runRealChatAgent } from "./helpers/agentHarness";
 import { testChatAgent, testChatModelLocal } from "./helpers/testChatAgent";
@@ -126,6 +128,46 @@ function submitBody(addressingKey: string, message: unknown, metadata: unknown =
     kind: "message",
     payload: { message, chatId: addressingKey, trigger: "submit-message", metadata },
   });
+}
+
+function actionBody(addressingKey: string, action: unknown, metadata: unknown = {}) {
+  return JSON.stringify({
+    kind: "message",
+    payload: { chatId: addressingKey, trigger: "action", action, metadata },
+  });
+}
+
+const stopBody = JSON.stringify({ kind: "stop" });
+
+/**
+ * Streams `words` as separate text-delta chunks with a delay between each, so
+ * a stop signal sent after the first chunk reliably truncates the turn before
+ * the model finishes.
+ */
+function slowModel(words: string[], delayMs: number) {
+  const chunks = [
+    { type: "text-start", id: "t1" },
+    ...words.map((delta) => ({ type: "text-delta", id: "t1", delta })),
+    { type: "text-end", id: "t1" },
+    {
+      type: "finish",
+      finishReason: { unified: "stop", raw: "stop" },
+      usage: {
+        inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: words.length, text: words.length, reasoning: undefined },
+      },
+    },
+  ];
+  return new MockLanguageModelV3({
+    doStream: async () => ({
+      stream: simulateReadableStream({ chunks: chunks as never, chunkDelayInMs: delayMs }),
+    }),
+  });
+}
+
+function chunkType(part: CollectedPart): string | undefined {
+  const c = part.chunk as { type?: unknown } | null;
+  return c && typeof c === "object" && typeof c.type === "string" ? c.type : undefined;
 }
 
 describe("session agent e2e (real chat.agent loop)", () => {
@@ -254,6 +296,176 @@ describe("session agent e2e (real chat.agent loop)", () => {
         .join("");
       expect(text).toContain("HISTORY-MARKER");
       expect(text).toContain("current question");
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA4: onValidateMessages rejection writes an error chunk, keeps the run alive", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession();
+    const agent = runRealChatAgent({
+      agentId: testChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: textModel("should not appear"),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("this has a blocked-word in it", "u1")),
+      });
+
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+
+      const errorChunk = parts.find((p) => chunkType(p) === "error");
+      expect(errorChunk, "an error chunk should be written to .out").toBeTruthy();
+      expect(JSON.stringify((errorChunk as CollectedPart).chunk)).toContain("content filter");
+      expect(parts.some(isTurnComplete), "the turn still completes after the error").toBe(true);
+
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u2",
+        body: submitBody(addressingKey, userMessage("hello now", "u2")),
+      });
+      const follow = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.filter(isTurnComplete).length >= 2,
+        maxMs: 30_000,
+      });
+      expect(follow.parts.filter(isTurnComplete).length).toBeGreaterThanOrEqual(2);
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA5: a custom action fires onAction and completes without a turn", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession();
+    const agent = runRealChatAgent({
+      agentId: testChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: textModel("turn reply"),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("first", "u1")),
+      });
+      await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "act1",
+        body: actionBody(addressingKey, { type: "undo" }),
+      });
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.filter(isTurnComplete).length >= 2,
+        maxMs: 30_000,
+      });
+
+      expect(parts.filter(isTurnComplete).length).toBeGreaterThanOrEqual(2);
+      expect(
+        parts.find((p) => chunkType(p) === "error"),
+        "no error on the action"
+      ).toBeFalsy();
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA6: a stop signal aborts the turn mid-stream but still completes it", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession();
+    const words = Array.from({ length: 12 }, (_, i) => ` w${i}`);
+    const agent = runRealChatAgent({
+      agentId: testChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: slowModel(words, 250),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      const subscription = subscribeSessionOut({ baseUrl, addressingKey, token });
+      const stream = await subscription.subscribe();
+      const reader = stream.getReader();
+
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("stream something long", "u1")),
+      });
+
+      const parts: CollectedPart[] = [];
+      let sentStop = false;
+      const deadline = performance.now() + 40_000;
+      try {
+        while (performance.now() < deadline) {
+          const remaining = deadline - performance.now();
+          const next = await Promise.race([
+            reader.read(),
+            new Promise<"timeout">((r) => setTimeout(() => r("timeout"), remaining)),
+          ]);
+          if (next === "timeout" || next.done) break;
+          const part = next.value as CollectedPart;
+          parts.push(part);
+          if (!sentStop && chunkType(part) === "text-delta") {
+            sentStop = true;
+            await appendInput({
+              baseUrl,
+              addressingKey,
+              token,
+              partId: "stop1",
+              body: stopBody,
+            });
+          }
+          if (parts.some(isTurnComplete)) break;
+        }
+      } finally {
+        await reader.cancel().catch(() => {});
+      }
+
+      expect(sentStop, "a text-delta arrived so a stop could be sent").toBe(true);
+      expect(parts.some(isTurnComplete), "the aborted turn still writes turn-complete").toBe(true);
+      const deltas = parts.filter((p) => chunkType(p) === "text-delta").length;
+      expect(deltas, "generation was cut short before all deltas streamed").toBeLessThan(
+        words.length
+      );
     } finally {
       await agent.close();
     }
