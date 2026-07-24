@@ -24,7 +24,7 @@ function startTime(baseMs: number, offsetMs: number): string {
 
 describe("ClickhouseEventRepository JSON parse recovery", () => {
   clickhouseTest(
-    "lands every event (poison event keeps its span, attributes stripped) when one event has ClickHouse-unparseable attributes",
+    "lands the good events and skips the poison event when one event has ClickHouse-unparseable attributes",
     async ({ clickhouseContainer }) => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
@@ -99,7 +99,7 @@ describe("ClickhouseEventRepository JSON parse recovery", () => {
             const [queryError, resultRows] = await queryEvents({ env_id: environmentId });
             expect(queryError).toBeNull();
             const byId = new Map((resultRows ?? []).map((r) => [r.span_id, r]));
-            for (const id of [...goodSpanIds, poisonSpanId]) {
+            for (const id of goodSpanIds) {
               expect(byId.has(id)).toBe(true);
             }
             return byId;
@@ -111,12 +111,12 @@ describe("ClickhouseEventRepository JSON parse recovery", () => {
           expect(rowsById.get(id)!.attributes_json).toContain('"ok":true');
         }
 
-        expect(rowsById.get(poisonSpanId)!.attributes_json).toBe("{}");
+        expect(rowsById.has(poisonSpanId)).toBe(false);
 
         expect(repository.permanentlyDroppedBatches).toBe(0);
         expect(repository.permanentlyDroppedRows).toBe(0);
         expect(repository.rowIsolationRecoveries).toBeGreaterThanOrEqual(1);
-        expect(repository.rowsStripped).toBeGreaterThanOrEqual(1);
+        expect(repository.rowsStripped).toBe(0);
       } finally {
         await (repository as any)._flushScheduler?.shutdown?.();
       }

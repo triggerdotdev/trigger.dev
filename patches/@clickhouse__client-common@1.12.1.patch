@@ -1,0 +1,29 @@
+diff --git a/dist/error/error.d.ts b/dist/error/error.d.ts
+index fb04ebb65a8c7115c465093462edaafa14a814de..30b370bf2eb8ba7491c249db96d565a67fe367c6 100644
+--- a/dist/error/error.d.ts
++++ b/dist/error/error.d.ts
+@@ -7,6 +7,7 @@ interface ParsedClickHouseError {
+ export declare class ClickHouseError extends Error {
+     readonly code: string;
+     readonly type: string | undefined;
++    rawMessage?: string;
+     constructor({ message, code, type }: ParsedClickHouseError);
+ }
+ export declare function parseError(input: string | Error): ClickHouseError | Error;
+diff --git a/dist/error/error.js b/dist/error/error.js
+index e06fa4ab36537c2a448857c1b001e70cd771bfe5..9750bd7e1285ac8cf2c8095b592ed344126176b6 100644
+--- a/dist/error/error.js
++++ b/dist/error/error.js
+@@ -35,7 +35,11 @@ function parseError(input) {
+     const match = message.match(errorRe);
+     const groups = match?.groups;
+     if (groups) {
+-        return new ClickHouseError(groups);
++        const error = new ClickHouseError(groups);
++        if (!inputIsError && groups.message.startsWith("Cannot parse JSON object")) {
++            error.rawMessage = message;
++        }
++        return error;
+     }
+     else {
+         return inputIsError ? input : new Error(input);

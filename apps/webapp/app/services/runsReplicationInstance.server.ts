@@ -117,6 +117,7 @@ function initializeRunsReplicationInstance() {
     maxFlushConcurrency: env.RUN_REPLICATION_MAX_FLUSH_CONCURRENCY,
     flushIntervalMs: env.RUN_REPLICATION_FLUSH_INTERVAL_MS,
     flushBatchSize: env.RUN_REPLICATION_FLUSH_BATCH_SIZE,
+    maxPoisonStripsPerBatch: env.RUN_REPLICATION_MAX_POISON_STRIPS_PER_BATCH,
     leaderLockTimeoutMs: env.RUN_REPLICATION_LEADER_LOCK_TIMEOUT_MS,
     leaderLockExtendIntervalMs: env.RUN_REPLICATION_LEADER_LOCK_EXTEND_INTERVAL_MS,
     leaderLockAcquireAdditionalTimeMs: env.RUN_REPLICATION_LEADER_LOCK_ADDITIONAL_TIME_MS,

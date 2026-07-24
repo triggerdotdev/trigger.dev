@@ -7,7 +7,6 @@ import {
   composeTaskRunVersion,
   getPayloadField,
   getTaskRunField,
-  PAYLOAD_INDEX,
   TASK_RUN_INDEX,
 } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
@@ -44,7 +43,8 @@ import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { calculateErrorFingerprint } from "~/utils/errorFingerprinting";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
 import {
-  insertWithJsonParseRecovery,
+  insertWithBadRowSkip,
+  insertWithLimitedStrip,
   type JsonParseRecoveryOutcome,
 } from "~/v3/eventRepository/sanitizeRowsOnParseError.server";
 
@@ -114,6 +114,7 @@ export type RunsReplicationServiceOptions = {
   insertMaxDelayMs?: number;
   disablePayloadInsert?: boolean;
   disableErrorFingerprinting?: boolean;
+  maxPoisonStripsPerBatch?: number;
 };
 
 type PostgresTaskRun = TaskRun & { masterQueue: string };
@@ -1133,14 +1134,24 @@ export class RunsReplicationService {
         return insertResult;
       };
 
-      const outcome = await insertWithJsonParseRecovery({
+      const outcome = await insertWithLimitedStrip({
         rows: taskRunInserts,
         contextLabel: "task_runs_v2",
         logger: this.logger,
         logContext: { attempt },
         insert: (rows) => rawInsert(rows),
-        insertSync: (rows) => rawInsert(rows, { async_insert: 0 }),
+        insertSync: (rows) =>
+          rawInsert(rows, { async_insert: 0, input_format_parallel_parsing: 0 }),
+        insertAllowingBadRows: (rows) =>
+          rawInsert(rows, {
+            async_insert: 0,
+            input_format_parallel_parsing: 0,
+            input_format_allow_errors_num: String(rows.length),
+            input_format_allow_errors_ratio: 1,
+          }),
         stripJsonColumns: stripTaskRunJsonColumns,
+        maxPoisonStrips: this.options.maxPoisonStripsPerBatch,
+        hasMaterializedViews: true,
       });
       this.#recordRecoveryOutcome(outcome, "task_runs_v2", taskRunInserts.length);
       return outcome;
@@ -1176,14 +1187,20 @@ export class RunsReplicationService {
         return insertResult;
       };
 
-      const outcome = await insertWithJsonParseRecovery({
+      const outcome = await insertWithBadRowSkip({
         rows: payloadInserts,
         contextLabel: "raw_task_runs_payload_v1",
         logger: this.logger,
         logContext: { attempt },
         insert: (rows) => rawInsert(rows),
-        insertSync: (rows) => rawInsert(rows, { async_insert: 0 }),
-        stripJsonColumns: stripPayloadJsonColumns,
+        insertAllowingBadRows: (rows) =>
+          rawInsert(rows, {
+            async_insert: 0,
+            input_format_parallel_parsing: 0,
+            input_format_allow_errors_num: String(rows.length),
+            input_format_allow_errors_ratio: 1,
+          }),
+        hasMaterializedViews: false,
       });
       this.#recordRecoveryOutcome(outcome, "raw_task_runs_payload_v1", payloadInserts.length);
       return outcome;
@@ -1585,11 +1602,5 @@ function stripTaskRunJsonColumns(row: TaskRunInsertArray): TaskRunInsertArray {
   const stripped = [...row] as TaskRunInsertArray;
   stripped[TASK_RUN_INDEX.output] = STRIPPED_JSON;
   stripped[TASK_RUN_INDEX.error] = STRIPPED_JSON;
-  return stripped;
-}
-
-function stripPayloadJsonColumns(row: PayloadInsertArray): PayloadInsertArray {
-  const stripped = [...row] as PayloadInsertArray;
-  stripped[PAYLOAD_INDEX.payload] = STRIPPED_JSON;
   return stripped;
 }

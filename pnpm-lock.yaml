@@ -58,6 +58,9 @@ patchedDependencies:
   '@changesets/assemble-release-plan@5.2.4':
     hash: a7a12643e8d89a00d5322f750c292e8567b5ee0fc9c613a238a1184c25533e4b
     path: patches/@changesets__assemble-release-plan@5.2.4.patch
+  '@clickhouse/client-common@1.12.1':
+    hash: 870d9f887c4057af8fa50fb52936fb7e8463f62f5e88e70b804c3a7445c98b4d
+    path: patches/@clickhouse__client-common@1.12.1.patch
   '@kubernetes/client-node@1.0.0':
     hash: ba1a06f46256cdb8d6faf7167246692c0de2e7cd846a9dc0f13be0137e1c3745
     path: patches/@kubernetes__client-node@1.0.0.patch
@@ -17728,7 +17731,7 @@ snapshots:
 
   '@clickhouse/client-common@1.11.1': {}
 
-  '@clickhouse/client-common@1.12.1': {}
+  '@clickhouse/client-common@1.12.1(patch_hash=870d9f887c4057af8fa50fb52936fb7e8463f62f5e88e70b804c3a7445c98b4d)': {}
 
   '@clickhouse/client@1.11.1':
     dependencies:
@@ -17736,7 +17739,7 @@ snapshots:
 
   '@clickhouse/client@1.12.1':
     dependencies:
-      '@clickhouse/client-common': 1.12.1
+      '@clickhouse/client-common': 1.12.1(patch_hash=870d9f887c4057af8fa50fb52936fb7e8463f62f5e88e70b804c3a7445c98b4d)
 
   '@codemirror/autocomplete@6.4.0(@codemirror/language@6.3.2)(@codemirror/state@6.2.0)(@codemirror/view@6.7.2)(@lezer/common@1.3.0)':
     dependencies:

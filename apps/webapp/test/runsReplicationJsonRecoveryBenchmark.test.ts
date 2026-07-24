@@ -159,6 +159,7 @@ async function runScenario(
     maxFlushConcurrency: CONFIG.MAX_FLUSH_CONCURRENCY,
     flushIntervalMs: CONFIG.FLUSH_INTERVAL_MS,
     flushBatchSize: CONFIG.FLUSH_BATCH_SIZE,
+    maxPoisonStripsPerBatch: CONFIG.NUM_RUNS,
     leaderLockTimeoutMs: 10000,
     leaderLockExtendIntervalMs: 2000,
     ackIntervalSeconds: 10,

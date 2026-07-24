@@ -169,6 +169,14 @@ export function errorMessage(err: unknown): string {
     : String(err);
 }
 
+export function rawErrorMessage(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const raw = (err as { rawMessage?: unknown }).rawMessage;
+    if (typeof raw === "string" && raw.length > 0) return raw;
+  }
+  return errorMessage(err);
+}
+
 export type JsonParseRecoveryLogger = {
   info: (message: string, meta?: Record<string, unknown>) => void;
   warn: (message: string, meta?: Record<string, unknown>) => void;
@@ -180,53 +188,54 @@ export type JsonParseRecoveryOutcome =
   | { kind: "recovered"; rowsStripped: number; rowsDropped: number; capped: boolean };
 
 /**
- * Default per-batch ceiling on the number of isolation inserts. Bisecting a
- * batch tops out around ~3x its row count, so this leaves small batches (e.g.
- * the ~50-row run-replication flushes) to isolate precisely even when heavily
- * poisoned. It bites on the case that actually needs bounding: a large batch
- * (e.g. thousands of trace events) with many un-ingestable rows, where precise
- * isolation would otherwise run thousands of inserts and lag the shared
- * replication stream. Once exceeded, the remaining subtree is stripped in one
- * insert instead of bisected further.
+ * Default number of poison rows to isolate-and-strip precisely before bailing
+ * to a single `allow_errors` skip insert. One covers the common case (a single
+ * un-ingestable run in a flush) exactly, keeping that run's status. The bound
+ * matters because run-replication flushes are large (thousands of rows in prod)
+ * and stripping re-sends the whole batch once per poison row: without a small
+ * limit, a burst of un-ingestable runs in one flush would re-parse a large
+ * batch many times on the shared ClickHouse server.
  */
-export const DEFAULT_MAX_ISOLATION_INSERTS = 256;
-
-type IsolationBudget = { inserts: number; capped: boolean };
+export const DEFAULT_MAX_POISON_STRIPS = 1;
 
 /**
- * Shared ClickHouse insert recovery for `Cannot parse JSON object` rejections,
- * used by both ClickHouse writers (run replication and the trace/event
- * repository) so a single un-ingestable row never drops its whole batch.
+ * ClickHouse insert recovery for `Cannot parse JSON object` rejections on the
+ * runs table, where the poison run should KEEP its status (its row lands with
+ * its JSON column emptied) rather than be dropped.
  *
  *   1. Try the insert. Healthy batches pay zero recovery cost.
  *   2. On a parse error, `sanitizeRows` losslessly repairs what it can in place
- *      (lone UTF-16 surrogates, out-of-range integers) and retries once. A
- *      clean retry keeps every row untouched.
- *   3. If the sanitizer can't help, isolate the un-ingestable rows by
- *      bisection (`at row N` is unstable under parallel parsing) and re-insert
- *      each poison row with its JSON column(s) emptied via `stripJsonColumns`,
- *      so the row still lands (e.g. a run keeps its terminal status, a span
- *      keeps its place in the trace) and only the un-ingestable content is
- *      lost. Clean rows land in full. A row that can't parse even stripped is
- *      dropped and counted.
- *   4. Isolation is bounded by `maxIsolationInserts`. If a batch is so poisoned
- *      that it blows the budget, the remaining rows are stripped and landed in
- *      one insert (`capped`) rather than bisected further, so a poison flood
- *      degrades gracefully instead of lagging the whole stream.
- *   5. Non-parse errors propagate unchanged so the caller's transient-retry
- *      path still handles them.
+ *      (lone UTF-16 surrogates, out-of-range integers) and retries once.
+ *   3. If the sanitizer can't help, follow ClickHouse's `at row N` hint to the
+ *      un-ingestable row and re-insert with that row's JSON column(s) emptied
+ *      via `stripJsonColumns`, up to `maxPoisonStrips` rows. Each stripped run
+ *      still lands (keeps its terminal status); only its un-ingestable JSON is
+ *      lost. `insertSync` disables parallel parsing so `at row N` is reliable.
+ *   4. Cost bound: once `maxPoisonStrips` rows have been stripped and the batch
+ *      STILL fails (or the failing row can't be located), stop stripping and
+ *      land the batch with one `allow_errors` insert — the stripped rows and
+ *      every clean row land in a single pass and the remaining un-ingestable
+ *      rows are skipped. Recovery stays a fixed handful of inserts no matter how
+ *      large or poisoned the batch is (`capped` marks that the bail was taken).
+ *   5. Non-parse errors propagate unchanged.
  */
-export async function insertWithJsonParseRecovery<T extends object>(params: {
+export async function insertWithLimitedStrip<T extends object>(params: {
   rows: T[];
   contextLabel: string;
   logger: JsonParseRecoveryLogger;
   logContext?: Record<string, unknown>;
   insert: (rows: T[]) => Promise<unknown>;
   insertSync: (rows: T[]) => Promise<unknown>;
+  insertAllowingBadRows: (rows: T[]) => Promise<unknown>;
   stripJsonColumns: (row: T) => T;
-  maxIsolationInserts?: number;
+  maxPoisonStrips?: number;
+  hasMaterializedViews?: boolean;
 }): Promise<JsonParseRecoveryOutcome> {
-  const { rows, contextLabel, logger, logContext, insert, insertSync, stripJsonColumns } = params;
+  const { rows, contextLabel, logger, logContext, insert, insertSync, insertAllowingBadRows } =
+    params;
+  const stripJsonColumns = params.stripJsonColumns;
+  const maxPoisonStrips = params.maxPoisonStrips ?? DEFAULT_MAX_POISON_STRIPS;
+  const hasMaterializedViews = params.hasMaterializedViews ?? true;
 
   try {
     return { kind: "inserted", insertResult: await insert(rows) };
@@ -234,7 +243,6 @@ export async function insertWithJsonParseRecovery<T extends object>(params: {
     if (!isClickHouseJsonParseError(firstError)) throw firstError;
 
     const firstMessage = errorMessage(firstError);
-    const rowHint = parseRowNumberFromError(firstMessage);
     const { rowsTouched, fieldsSanitized } = sanitizeRows(rows);
 
     if (fieldsSanitized > 0) {
@@ -242,7 +250,6 @@ export async function insertWithJsonParseRecovery<T extends object>(params: {
         ...logContext,
         contextLabel,
         batchSize: rows.length,
-        clickhouseRowHint: rowHint,
         rowsTouched,
         fieldsSanitized,
         clickhouseError: firstMessage.split("\n")[0],
@@ -255,106 +262,170 @@ export async function insertWithJsonParseRecovery<T extends object>(params: {
       }
     }
 
-    const budget: IsolationBudget = {
-      inserts: params.maxIsolationInserts ?? DEFAULT_MAX_ISOLATION_INSERTS,
-      capped: false,
-    };
-    const { rowsStripped, rowsDropped } = await isolateAndStripPoisonRows(
-      rows,
-      insertSync,
-      stripJsonColumns,
-      budget
-    );
+    const working = rows.slice();
+    const stripped = new Array(working.length).fill(false);
+    let rowsStripped = 0;
 
-    const meta = {
-      ...logContext,
-      contextLabel,
-      batchSize: rows.length,
-      rowsStripped,
-      rowsDropped,
-      sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
-      clickhouseError: firstMessage.split("\n")[0],
-    };
-    if (budget.capped) {
-      logger.warn(
-        "Recovery cost cap hit — stripped the remaining rows in one insert (clean rows in the capped subtree also lost their JSON)",
-        meta
-      );
-    } else {
-      logger.info(
-        "Isolated un-ingestable rows after ClickHouse JSON parse error — landed the batch with poison JSON stripped",
-        meta
-      );
+    let guard = maxPoisonStrips + 2;
+    while (guard-- > 0) {
+      let parseError: unknown;
+      try {
+        await insertSync(working);
+        if (rowsStripped > 0) {
+          logger.info(
+            "Stripped un-ingestable rows after ClickHouse JSON parse error — batch landed with their JSON emptied",
+            {
+              ...logContext,
+              contextLabel,
+              batchSize: rows.length,
+              rowsStripped,
+              clickhouseError: firstMessage.split("\n")[0],
+            }
+          );
+        }
+        return { kind: "recovered", rowsStripped, rowsDropped: 0, capped: false };
+      } catch (error) {
+        if (!isClickHouseJsonParseError(error)) throw error;
+        parseError = error;
+      }
+
+      const hint = parseRowNumberFromError(rawErrorMessage(parseError));
+      const index = hint === null ? -1 : hint - 1;
+      const canStrip =
+        rowsStripped < maxPoisonStrips && index >= 0 && index < working.length && !stripped[index];
+
+      if (!canStrip) break;
+
+      working[index] = stripJsonColumns(working[index]);
+      stripped[index] = true;
+      rowsStripped += 1;
     }
 
-    return { kind: "recovered", rowsStripped, rowsDropped, capped: budget.capped };
+    const insertResult = await insertAllowingBadRows(working);
+    const rowsDropped = droppedRowCount(insertResult, working.length, hasMaterializedViews);
+
+    logger.warn(
+      "Hit the poison-row strip limit — landed the batch via allow_errors and skipped the remaining un-ingestable rows",
+      {
+        ...logContext,
+        contextLabel,
+        batchSize: rows.length,
+        rowsStripped,
+        rowsDropped,
+        landedRows: writtenRowCount(insertResult),
+        clickhouseError: firstMessage.split("\n")[0],
+      }
+    );
+
+    return { kind: "recovered", rowsStripped, rowsDropped, capped: true };
   }
 }
 
+function writtenRowCount(insertResult: unknown): number | null {
+  if (typeof insertResult === "object" && insertResult !== null) {
+    const summary = (insertResult as { summary?: { written_rows?: unknown } }).summary;
+    const written = summary?.written_rows;
+    if (typeof written === "number" && Number.isFinite(written)) return written;
+    if (typeof written === "string" && written.length > 0) {
+      const parsed = Number.parseInt(written, 10);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+}
+
 /**
- * Precondition: inserting `rows` as-is throws a `Cannot parse JSON object`
- * error. Bisects to isolate each un-ingestable row, lands clean rows in full,
- * and re-inserts each poison row with its JSON column(s) stripped so it still
- * lands. A row that can't parse even stripped is dropped. All inserts are
- * synchronous so each subset's parse error surfaces. The two halves are probed
- * concurrently so recovery wall-clock stays ~O(log n) round-trips rather than
- * O(n). When `budget.inserts` is exhausted the remaining subtree is stripped
- * and landed in a single insert (setting `budget.capped`) so a poison flood
- * cannot do unbounded work. Returns exact counts.
+ * Derives how many rows a `allow_errors` insert dropped, from the insert
+ * summary's `written_rows`. This is exact only when `written_rows` is a clean
+ * count of the target-table rows. On tables with row-multiplying materialized
+ * views, ClickHouse folds the MV-written rows into `written_rows` too, so a
+ * partial-drop count isn't derivable; the only reliable signal there is
+ * `written_rows === 0`, which means the whole batch was dropped (no base rows,
+ * so no MV rows either).
  */
-async function isolateAndStripPoisonRows<T extends object>(
-  rows: T[],
-  insertSync: (rows: T[]) => Promise<unknown>,
-  stripJsonColumns: (row: T) => T,
-  budget: IsolationBudget
-): Promise<{ rowsStripped: number; rowsDropped: number }> {
-  if (rows.length === 0) {
-    return { rowsStripped: 0, rowsDropped: 0 };
-  }
+function droppedRowCount(
+  insertResult: unknown,
+  batchSize: number,
+  hasMaterializedViews: boolean
+): number {
+  const written = writtenRowCount(insertResult);
+  if (written === null) return 0;
+  if (written === 0) return batchSize;
+  if (hasMaterializedViews) return 0;
+  return Math.max(0, batchSize - written);
+}
 
-  if (budget.inserts <= 0) {
-    budget.capped = true;
-    budget.inserts -= 1;
-    try {
-      await insertSync(rows.map(stripJsonColumns));
-      return { rowsStripped: rows.length, rowsDropped: 0 };
-    } catch (error) {
-      if (!isClickHouseJsonParseError(error)) throw error;
-      return { rowsStripped: 0, rowsDropped: rows.length };
+/**
+ * Shared ClickHouse insert recovery that SKIPS un-ingestable rows, for the
+ * high-volume append-only tables (trace events, run payloads) where dropping a
+ * single un-ingestable row is acceptable and precise row isolation isn't worth
+ * its re-parse cost on the shared ClickHouse server.
+ *
+ *   1. Try the insert. Healthy batches pay zero recovery cost.
+ *   2. On a parse error, `sanitizeRows` losslessly repairs what it can in place
+ *      and retries once, so a repairable row still lands in full.
+ *   3. If the sanitizer can't help, re-insert once with ClickHouse's
+ *      `input_format_allow_errors_*` so the good rows land in a single pass and
+ *      only the un-ingestable rows are skipped. A poison flood costs one extra
+ *      insert regardless of how many rows are bad.
+ *   4. Non-parse errors propagate unchanged.
+ *
+ * The batch-level recovery is always counted by the caller; the per-row dropped
+ * count is exact on tables without row-multiplying materialized views and
+ * whole-batch-only on tables that have them (see `droppedRowCount`).
+ */
+export async function insertWithBadRowSkip<T extends object>(params: {
+  rows: T[];
+  contextLabel: string;
+  logger: JsonParseRecoveryLogger;
+  logContext?: Record<string, unknown>;
+  insert: (rows: T[]) => Promise<unknown>;
+  insertAllowingBadRows: (rows: T[]) => Promise<unknown>;
+  hasMaterializedViews?: boolean;
+}): Promise<JsonParseRecoveryOutcome> {
+  const { rows, contextLabel, logger, logContext, insert, insertAllowingBadRows } = params;
+  const hasMaterializedViews = params.hasMaterializedViews ?? true;
+
+  try {
+    return { kind: "inserted", insertResult: await insert(rows) };
+  } catch (firstError) {
+    if (!isClickHouseJsonParseError(firstError)) throw firstError;
+
+    const firstMessage = errorMessage(firstError);
+    const { rowsTouched, fieldsSanitized } = sanitizeRows(rows);
+
+    if (fieldsSanitized > 0) {
+      logger.warn("Sanitizing batch after ClickHouse JSON parse error", {
+        ...logContext,
+        contextLabel,
+        batchSize: rows.length,
+        rowsTouched,
+        fieldsSanitized,
+        clickhouseError: firstMessage.split("\n")[0],
+      });
+
+      try {
+        return { kind: "sanitized", insertResult: await insert(rows) };
+      } catch (retryError) {
+        if (!isClickHouseJsonParseError(retryError)) throw retryError;
+      }
     }
+
+    const insertResult = await insertAllowingBadRows(rows);
+    const rowsDropped = droppedRowCount(insertResult, rows.length, hasMaterializedViews);
+
+    logger.info(
+      "Skipped un-ingestable rows after ClickHouse JSON parse error — landed the rest of the batch",
+      {
+        ...logContext,
+        contextLabel,
+        batchSize: rows.length,
+        rowsDropped,
+        landedRows: writtenRowCount(insertResult),
+        clickhouseError: firstMessage.split("\n")[0],
+      }
+    );
+
+    return { kind: "recovered", rowsStripped: 0, rowsDropped, capped: false };
   }
-
-  if (rows.length === 1) {
-    budget.inserts -= 1;
-    try {
-      await insertSync([stripJsonColumns(rows[0])]);
-      return { rowsStripped: 1, rowsDropped: 0 };
-    } catch (error) {
-      if (!isClickHouseJsonParseError(error)) throw error;
-      return { rowsStripped: 0, rowsDropped: 1 };
-    }
-  }
-
-  const mid = rows.length >> 1;
-
-  const recoverHalf = async (half: T[]) => {
-    budget.inserts -= 1;
-    try {
-      await insertSync(half);
-      return { rowsStripped: 0, rowsDropped: 0 };
-    } catch (error) {
-      if (!isClickHouseJsonParseError(error)) throw error;
-      return isolateAndStripPoisonRows(half, insertSync, stripJsonColumns, budget);
-    }
-  };
-
-  const [left, right] = await Promise.all([
-    recoverHalf(rows.slice(0, mid)),
-    recoverHalf(rows.slice(mid)),
-  ]);
-
-  return {
-    rowsStripped: left.rowsStripped + right.rowsStripped,
-    rowsDropped: left.rowsDropped + right.rowsDropped,
-  };
 }

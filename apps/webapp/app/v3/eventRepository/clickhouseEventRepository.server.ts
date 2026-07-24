@@ -67,7 +67,7 @@ import type {
   TraceSummary,
 } from "./eventRepository.types";
 import {
-  insertWithJsonParseRecovery,
+  insertWithBadRowSkip,
   type JsonParseRecoveryOutcome,
 } from "./sanitizeRowsOnParseError.server";
 
@@ -345,14 +345,19 @@ export class ClickhouseEventRepository implements IEventRepository {
         return insertResult;
       };
 
-      const outcome = await insertWithJsonParseRecovery({
+      const outcome = await insertWithBadRowSkip({
         rows: events,
         contextLabel,
         logger,
         logContext: { flushId, version: this._version },
         insert: (rows) => rawInsert(rows),
-        insertSync: (rows) => rawInsert(rows, { async_insert: 0 }),
-        stripJsonColumns: stripTaskEventJsonColumns,
+        insertAllowingBadRows: (rows) =>
+          rawInsert(rows, {
+            async_insert: 0,
+            input_format_parallel_parsing: 0,
+            input_format_allow_errors_num: String(rows.length),
+            input_format_allow_errors_ratio: 1,
+          }),
       });
       this.#recordRecoveryOutcome(outcome, contextLabel, events.length);
 
@@ -377,14 +382,19 @@ export class ClickhouseEventRepository implements IEventRepository {
       return insertResult;
     };
 
-    const outcome = await insertWithJsonParseRecovery({
+    const outcome = await insertWithBadRowSkip({
       rows,
       contextLabel: "llm_metrics_v1",
       logger,
       logContext: { flushId },
       insert: (batch) => rawInsert(batch),
-      insertSync: (batch) => rawInsert(batch, { async_insert: 0 }),
-      stripJsonColumns: (row) => row,
+      insertAllowingBadRows: (batch) =>
+        rawInsert(batch, {
+          async_insert: 0,
+          input_format_parallel_parsing: 0,
+          input_format_allow_errors_num: String(batch.length),
+          input_format_allow_errors_ratio: 1,
+        }),
     });
     this.#recordRecoveryOutcome(outcome, "llm_metrics_v1", rows.length);
 
@@ -2944,8 +2954,4 @@ function formatClickhouseUnsignedIntegerString(value: number | bigint): string {
   }
 
   return Math.floor(value).toString();
-}
-
-function stripTaskEventJsonColumns<T extends { attributes?: unknown }>(row: T): T {
-  return { ...row, attributes: {} };
 }

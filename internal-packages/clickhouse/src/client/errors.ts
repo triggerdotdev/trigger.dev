@@ -24,10 +24,12 @@ export abstract class BaseError<TContext extends ErrorContext = ErrorContext> ex
 export class InsertError extends BaseError {
   public readonly retry = true;
   public readonly name = InsertError.name;
-  constructor(message: string) {
+  public readonly rawMessage?: string;
+  constructor(message: string, options?: { rawMessage?: string }) {
     super({
       message,
     });
+    this.rawMessage = options?.rawMessage;
   }
 }
 export class QueryError extends BaseError<{ query: string }> {
