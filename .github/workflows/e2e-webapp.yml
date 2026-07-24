@@ -92,6 +92,9 @@ jobs:
       - name: 🏗️ Build Webapp
         run: pnpm run build --filter webapp
 
+      - name: 🎭 Install Playwright Chromium
+        run: cd apps/webapp && pnpm exec playwright install --with-deps chromium
+
       - name: 🧪 Run Webapp E2E Tests
         run: cd apps/webapp && pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default
         env:
