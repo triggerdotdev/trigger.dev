@@ -15,7 +15,7 @@ import {
   metrics,
   type Meter,
 } from "@opentelemetry/api";
-import { SentryContextManager } from "@sentry/remix";
+import sentryRemix from "@sentry/remix";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
@@ -220,9 +220,13 @@ function getResource() {
  * the request attributed to each Sentry event) from leaking between concurrent
  * requests. It extends `AsyncLocalStorageContextManager`, so OTel behaviour is
  * unchanged.
+ *
+ * Reached through the default export because `@sentry/remix` is CommonJS and
+ * Node's ESM loader does not detect this transitively re-exported name, so a
+ * named import resolves at build time and then fails when the server boots.
  */
 function createContextManager() {
-  return new SentryContextManager();
+  return new sentryRemix.SentryContextManager();
 }
 
 function setupTelemetry() {

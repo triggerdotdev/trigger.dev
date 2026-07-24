@@ -1,7 +1,7 @@
 import { context } from "@opentelemetry/api";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import * as Sentry from "@sentry/remix";
-import { SentryContextManager } from "@sentry/remix";
+import sentryRemix from "@sentry/remix";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 /**
@@ -42,7 +42,7 @@ describe("Sentry request isolation", () => {
   });
 
   it("keeps each request's isolation scope separate with SentryContextManager", async () => {
-    new NodeTracerProvider().register({ contextManager: new SentryContextManager() });
+    new NodeTracerProvider().register({ contextManager: new sentryRemix.SentryContextManager() });
 
     const observed = await raceTwoRequests();
 
