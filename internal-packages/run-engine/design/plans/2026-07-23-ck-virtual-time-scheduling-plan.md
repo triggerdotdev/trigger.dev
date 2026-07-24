@@ -4,7 +4,7 @@ Implementation and testing plan for the recommendation out of three fairness
 spikes. The spike harness and benchmark code are archived on the remote branch
 `chore/fair-queueing-spike` (throwaway, never merged); the findings and research
 they produced are kept alongside this plan as references:
-`docs/superpowers/references/run-queue-fairness-ck-findings.md`,
+`internal-packages/run-engine/design/references/run-queue-fairness-ck-findings.md`,
 `.../run-queue-fairness-caps-vs-scheduling-findings.md`, and
 `.../run-queue-fairness-research.md`.
 
@@ -298,7 +298,7 @@ File: `index.ts` (RunQueueOptions, ~line 60).
 /**
  * Fair (virtual-time / SFQ) ordering across concurrency-key variants of a
  * base queue. Off by default; when off, the exact pre-existing Lua commands
- * run and no vtime keys are created. See docs/superpowers/plans/
+ * run and no vtime keys are created. See internal-packages/run-engine/design/plans/
  * 2026-07-23-ck-virtual-time-scheduling-plan.md.
  */
 ckVirtualTimeScheduling?: {
