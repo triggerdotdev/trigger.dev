@@ -209,6 +209,8 @@ export class RunsReplicationService {
   private _payloadsInsertedCounter: Counter;
   private _insertRetriesCounter: Counter;
   private _eventsProcessedCounter: Counter;
+  private _rowIsolatedBatchesCounter: Counter;
+  private _droppedBatchesCounter: Counter;
   private _flushDurationHistogram: Histogram;
 
   public readonly events: EventEmitter<RunsReplicationServiceEvents>;
@@ -260,6 +262,20 @@ export class RunsReplicationService {
 
     this._eventsProcessedCounter = this._meter.createCounter("runs_replication.events_processed", {
       description: "Replication events processed (inserts, updates, deletes)",
+    });
+
+    this._rowIsolatedBatchesCounter = this._meter.createCounter(
+      "runs_replication.batches_row_isolated",
+      {
+        description:
+          "Batches recovered by isolating un-ingestable rows (landed the rest) after a ClickHouse JSON parse error",
+        unit: "batches",
+      }
+    );
+
+    this._droppedBatchesCounter = this._meter.createCounter("runs_replication.batches_dropped", {
+      description: "Batches permanently dropped after an unrecoverable ClickHouse JSON parse error",
+      unit: "batches",
     });
 
     this._flushDurationHistogram = this._meter.createHistogram(
@@ -1187,7 +1203,13 @@ export class RunsReplicationService {
         }
       }
 
-      return await this.#insertIsolatingBadRows(rows, doInsert, contextLabel, attempt, firstMessage);
+      return await this.#insertIsolatingBadRows(
+        rows,
+        doInsert,
+        contextLabel,
+        attempt,
+        firstMessage
+      );
     }
   }
 
@@ -1214,6 +1236,7 @@ export class RunsReplicationService {
       });
 
       this._rowIsolationRecoveries += 1;
+      this._rowIsolatedBatchesCounter.add(1, { table: contextLabel });
       const writtenRows = extractWrittenRows(insertResult);
       const rowsSkipped = writtenRows === null ? null : Math.max(0, rows.length - writtenRows);
       if (rowsSkipped !== null) {
@@ -1239,6 +1262,7 @@ export class RunsReplicationService {
       if (!isClickHouseJsonParseError(isolationError)) throw isolationError;
 
       this._permanentlyDroppedBatches += 1;
+      this._droppedBatchesCounter.add(1, { table: contextLabel });
       this.logger.error(
         "Dropped batch — row-isolation insert failed after ClickHouse JSON parse error",
         {

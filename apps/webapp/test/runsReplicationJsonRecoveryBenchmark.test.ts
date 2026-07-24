@@ -213,10 +213,21 @@ async function runScenario(
   console.log(`Row-isolation recoveries: ${service.rowIsolationRecoveries}`);
   console.log(`Dropped rows (best-effort): ${service.permanentlyDroppedRows}`);
   console.log(`Dropped batches (whole): ${service.permanentlyDroppedBatches}`);
-  console.log(`ELU mean=${eluStats.mean.toFixed(2)}% p50=${eluStats.p50.toFixed(2)}% p95=${eluStats.p95.toFixed(2)}% p99=${eluStats.p99.toFixed(2)}% (${eluStats.samples} samples)`);
+  console.log(
+    `ELU mean=${eluStats.mean.toFixed(2)}% p50=${eluStats.p50.toFixed(2)}% p95=${eluStats.p95.toFixed(2)}% p99=${eluStats.p99.toFixed(2)}% (${eluStats.samples} samples)`
+  );
   console.log(`${"=".repeat(72)}\n`);
 
-  return { name, poisonRate, producerStats, replication, eluStats, throughput, expectedLanded, service };
+  return {
+    name,
+    poisonRate,
+    producerStats,
+    replication,
+    eluStats,
+    throughput,
+    expectedLanded,
+    service,
+  };
 }
 
 describe("RunsReplicationService JSON-recovery ELU benchmark", () => {
