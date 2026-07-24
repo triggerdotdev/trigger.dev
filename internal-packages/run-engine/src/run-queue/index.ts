@@ -217,8 +217,8 @@ export type RunQueueOptions = {
   /**
    * Fair (virtual-time / SFQ) ordering across concurrency-key variants of a
    * base queue. Off by default; when off, the exact pre-existing Lua commands
-   * run and no vtime keys are created. See docs/superpowers/plans/
-   * 2026-07-23-ck-virtual-time-scheduling-plan.md.
+   * run and no vtime keys are created. See the CK virtual-time scheduling
+   * design for the ordering model.
    */
   ckVirtualTimeScheduling?: {
     enabled: boolean;
@@ -322,9 +322,19 @@ export class RunQueue {
     this.shardCount = options.shardCount ?? 2;
     this.counterTtlSeconds = options.counterTtlSeconds ?? 86400;
     this.#ckVtimeEnabled = options.ckVirtualTimeScheduling?.enabled ?? false;
-    this.#ckVtimeQuantum = options.ckVirtualTimeScheduling?.quantum ?? 1;
-    this.#ckVtimeWindowMultiplier = options.ckVirtualTimeScheduling?.scanWindowMultiplier ?? 3;
-    this.#ckVtimeStateTtl = options.ckVirtualTimeScheduling?.stateTtlSeconds ?? 86400;
+    // Defense-in-depth: clamp so a directly-constructed RunQueue can't get bad
+    // values that would freeze tags (quantum <= 0) or force an O(N) scan /
+    // EX 0 error (multiplier / ttl <= 0).
+    const resolvedQuantum = options.ckVirtualTimeScheduling?.quantum ?? 1;
+    this.#ckVtimeQuantum = resolvedQuantum > 0 ? resolvedQuantum : 1;
+    this.#ckVtimeWindowMultiplier = Math.max(
+      1,
+      Math.floor(options.ckVirtualTimeScheduling?.scanWindowMultiplier ?? 3)
+    );
+    this.#ckVtimeStateTtl = Math.max(
+      1,
+      Math.floor(options.ckVirtualTimeScheduling?.stateTtlSeconds ?? 86400)
+    );
     this.retryOptions = options.retryOptions ?? defaultRetrySettings;
     this.redis = createRedisClient(options.redis, {
       onError: (error) => {
@@ -4276,6 +4286,7 @@ end
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName)
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
+redis.call('EXPIRE', ckVtimeFloorKey, stateTtl)
 
 -- Rebalance master queue with ck:* member
 local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
@@ -4408,6 +4419,7 @@ end
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName)
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
+redis.call('EXPIRE', ckVtimeFloorKey, stateTtl)
 
 -- Rebalance master queue with ck:* member
 local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
@@ -5213,7 +5225,7 @@ local function tryServe(ckQueueName)
           local weight = 1
           local tag = tonumber(redis.call('ZSCORE', ckVtimeKey, ckQueueName) or floor)
           if tag < floor then tag = floor end
-          redis.call('ZADD', ckVtimeKey, tag + (quantum / weight), ckQueueName)
+          redis.call('ZADD', ckVtimeKey, tostring(tag + (quantum / weight)), ckQueueName)
         end
       else
         redis.call('ZREM', fullQueueKey, messageId)
@@ -5989,6 +6001,7 @@ end
 local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
 redis.call('ZADD', ckVtimeKey, 'NX', vfloor, messageQueueName)
 redis.call('EXPIRE', ckVtimeKey, stateTtl)
+redis.call('EXPIRE', ckVtimeFloorKey, stateTtl)
 
 -- Rebalance master queue with ck:* member
 local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
