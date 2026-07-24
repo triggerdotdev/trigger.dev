@@ -12,7 +12,12 @@ import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.serv
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().int().positive().optional(),
-  perPage: z.coerce.number().int().positive().optional(),
+  perPage: z.coerce
+    .number()
+    .int()
+    .positive()
+    .transform((n) => Math.min(n, 100))
+    .optional(),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
