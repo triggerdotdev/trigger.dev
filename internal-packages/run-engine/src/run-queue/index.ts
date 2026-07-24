@@ -2523,28 +2523,61 @@ export class RunQueue {
 
       const metricsGaugeArg = this.#queueMetricsGaugeArg();
 
-      const reply = await this.redis.dequeueMessagesFromCkQueueTracked(
-        //keys
-        ckIndexKey,
-        queueConcurrencyLimitKey,
-        envConcurrencyLimitKey,
-        envConcurrencyLimitBurstFactorKey,
-        envCurrentConcurrencyKey,
-        messageKeyPrefix,
-        envQueueKey,
-        masterQueueKey,
-        ttlQueueKey,
-        lengthCounterKey,
-        runningCounterKey,
-        //args
-        ckWildcardQueue,
-        String(Date.now()),
-        String(this.options.defaultEnvConcurrency),
-        String(this.options.defaultEnvConcurrencyBurstFactor ?? 1),
-        this.options.redis.keyPrefix ?? "",
-        String(maxCount),
-        metricsGaugeArg
-      );
+      if (this.#ckVtimeEnabled) {
+        span.setAttribute("ck_vtime_enabled", true);
+      }
+
+      const reply = this.#ckVtimeEnabled
+        ? await this.redis.dequeueMessagesFromCkQueueVtimeTracked(
+            //keys
+            ckIndexKey,
+            queueConcurrencyLimitKey,
+            envConcurrencyLimitKey,
+            envConcurrencyLimitBurstFactorKey,
+            envCurrentConcurrencyKey,
+            messageKeyPrefix,
+            envQueueKey,
+            masterQueueKey,
+            ttlQueueKey,
+            lengthCounterKey,
+            runningCounterKey,
+            this.keys.ckVtimeKeyFromQueue(ckWildcardQueue),
+            this.keys.ckVtimeFloorKeyFromQueue(ckWildcardQueue),
+            //args
+            ckWildcardQueue,
+            String(Date.now()),
+            String(this.options.defaultEnvConcurrency),
+            String(this.options.defaultEnvConcurrencyBurstFactor ?? 1),
+            this.options.redis.keyPrefix ?? "",
+            String(maxCount),
+            String(this.#ckVtimeQuantum),
+            String(this.#ckVtimeWindowMultiplier),
+            String(this.#ckVtimeStateTtl),
+            // Must stay last: the gauge fragment reads ARGV[#ARGV].
+            metricsGaugeArg
+          )
+        : await this.redis.dequeueMessagesFromCkQueueTracked(
+            //keys
+            ckIndexKey,
+            queueConcurrencyLimitKey,
+            envConcurrencyLimitKey,
+            envConcurrencyLimitBurstFactorKey,
+            envCurrentConcurrencyKey,
+            messageKeyPrefix,
+            envQueueKey,
+            masterQueueKey,
+            ttlQueueKey,
+            lengthCounterKey,
+            runningCounterKey,
+            //args
+            ckWildcardQueue,
+            String(Date.now()),
+            String(this.options.defaultEnvConcurrency),
+            String(this.options.defaultEnvConcurrencyBurstFactor ?? 1),
+            this.options.redis.keyPrefix ?? "",
+            String(maxCount),
+            metricsGaugeArg
+          );
 
       // Reply is [flatMessages|null, gauge|null]; the CK aggregate gauge rides here.
       const gauge = reply?.[1] ?? null;
@@ -4675,6 +4708,201 @@ return __qmret(results)
       `,
     });
 
+    // Virtual-time (SFQ) variant of dequeueMessagesFromCkQueueTracked.
+    // Flag-selected via ckVirtualTimeScheduling. Orders concurrency-key variants
+    // by virtual-time tag (ckVtime ZSET) instead of head timestamp, layered under
+    // the existing per-variant concurrency gate. Two passes: pass 1 serves in fair
+    // (lowest-tag) order; pass 2 fills the batch + discovers unregistered variants
+    // in the existing age order (work conservation, mixed-deploy safety). Only the
+    // :ckVtime / :ckVtimeFloor keys hold virtual times; ckIndex and the master
+    // queue keep their timestamp score domain. The per-candidate serve body is a
+    // verbatim copy of dequeueMessagesFromCkQueueTracked's, with the marked NEW
+    // lines added (tag advance on serve, ZREM ckVtime on GC).
+    this.redis.defineCommand("dequeueMessagesFromCkQueueVtimeTracked", {
+      numberOfKeys: 13,
+      lua: `
+local ckIndexKey = KEYS[1]
+local queueConcurrencyLimitKey = KEYS[2]
+local envConcurrencyLimitKey = KEYS[3]
+local envConcurrencyLimitBurstFactorKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local messageKeyPrefix = KEYS[6]
+local envQueueKey = KEYS[7]
+local masterQueueKey = KEYS[8]
+local ttlQueueKey = KEYS[9]
+local lengthCounterKey = KEYS[10]
+local runningCounterKey = KEYS[11]
+local ckVtimeKey = KEYS[12]
+local ckVtimeFloorKey = KEYS[13]
+
+local ckWildcardName = ARGV[1]
+local currentTime = tonumber(ARGV[2])
+local defaultEnvConcurrencyLimit = ARGV[3]
+local defaultEnvConcurrencyBurstFactor = ARGV[4]
+local keyPrefix = ARGV[5]
+local maxCount = tonumber(ARGV[6] or '1')
+local quantum = tonumber(ARGV[7] or '1')
+local windowMultiplier = tonumber(ARGV[8] or '3')
+local stateTtl = tonumber(ARGV[9] or '86400')
+${QUEUE_METRICS_GAUGE_PRELUDE}
+${QUEUE_METRICS_CK_DEQUEUE_GAUGE_LUA}
+
+local function decrLengthCounter()
+  if tonumber(redis.call('GET', lengthCounterKey) or '0') > 0 then
+    redis.call('DECR', lengthCounterKey)
+  end
+end
+
+-- Check env concurrency
+local envCurrentConcurrency = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+local envConcurrencyLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+local envConcurrencyLimitBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+local envConcurrencyLimitWithBurstFactor = math.floor(envConcurrencyLimit * envConcurrencyLimitBurstFactor)
+
+if envCurrentConcurrency >= envConcurrencyLimitWithBurstFactor then
+  return __qmret(nil)
+end
+
+local queueConcurrencyLimit = math.min(tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'), envConcurrencyLimit)
+
+local envAvailableCapacity = envConcurrencyLimitWithBurstFactor - envCurrentConcurrency
+local actualMaxCount = math.min(maxCount, envAvailableCapacity)
+
+if actualMaxCount <= 0 then
+  return __qmret(nil)
+end
+
+local window = actualMaxCount * windowMultiplier
+
+-- Monotonic floor, advanced to the minimum stored virtual-time tag
+local floor = tonumber(redis.call('GET', ckVtimeFloorKey) or '0')
+local minEntry = redis.call('ZRANGE', ckVtimeKey, 0, 0, 'WITHSCORES')
+if #minEntry > 0 then
+  local minTag = tonumber(minEntry[2])
+  if minTag > floor then
+    floor = minTag
+  end
+end
+
+local results = {}
+local dequeuedCount = 0
+local attempted = {}
+
+-- Per-candidate serve. Body is dequeueMessagesFromCkQueueTracked's per-candidate
+-- block, verbatim, with the marked NEW lines added.
+local function tryServe(ckQueueName)
+  attempted[ckQueueName] = true
+  local fullQueueKey = keyPrefix .. ckQueueName
+
+  local ckConcurrencyKey = fullQueueKey .. ':currentConcurrency'
+  local ckCurrentConcurrency = tonumber(redis.call('SCARD', ckConcurrencyKey) or '0')
+
+  if ckCurrentConcurrency < queueConcurrencyLimit then
+    local messages = redis.call('ZRANGEBYSCORE', fullQueueKey, '-inf', tostring(currentTime), 'WITHSCORES', 'LIMIT', 0, 1)
+
+    if #messages >= 2 then
+      local messageId = messages[1]
+      local messageScore = messages[2]
+
+      local messageKey = messageKeyPrefix .. messageId
+      local messagePayload = redis.call('GET', messageKey)
+
+      if messagePayload then
+        local messageData = cjson.decode(messagePayload)
+        local ttlExpiresAt = messageData and messageData.ttlExpiresAt
+
+        if ttlExpiresAt and ttlExpiresAt <= currentTime then
+          redis.call('ZREM', fullQueueKey, messageId)
+          redis.call('ZREM', envQueueKey, messageId)
+          decrLengthCounter()
+        else
+          redis.call('ZREM', fullQueueKey, messageId)
+          redis.call('ZREM', envQueueKey, messageId)
+          decrLengthCounter()
+          redis.call('SADD', ckConcurrencyKey, messageId)
+          redis.call('SADD', envCurrentConcurrencyKey, messageId)
+
+          if ttlQueueKey and ttlQueueKey ~= '' and ttlExpiresAt then
+            local ttlMember = ckQueueName .. '|' .. messageId .. '|' .. (messageData.orgId or '')
+            redis.call('ZREM', ttlQueueKey, ttlMember)
+          end
+
+          table.insert(results, messageId)
+          table.insert(results, messageScore)
+          table.insert(results, messagePayload)
+
+          dequeuedCount = dequeuedCount + 1
+
+          -- NEW: advance this variant's virtual time (weight hook: fixed 1 today)
+          local weight = 1
+          local tag = tonumber(redis.call('ZSCORE', ckVtimeKey, ckQueueName) or floor)
+          if tag < floor then tag = floor end
+          redis.call('ZADD', ckVtimeKey, tag + (quantum / weight), ckQueueName)
+        end
+      else
+        redis.call('ZREM', fullQueueKey, messageId)
+        redis.call('ZREM', envQueueKey, messageId)
+        decrLengthCounter()
+      end
+
+      local earliest = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
+      if #earliest == 0 then
+        redis.call('ZREM', ckIndexKey, ckQueueName)
+        redis.call('ZREM', ckVtimeKey, ckQueueName) -- NEW
+      else
+        redis.call('ZADD', ckIndexKey, earliest[2], ckQueueName)
+      end
+    else
+      local any = redis.call('ZRANGE', fullQueueKey, 0, 0, 'WITHSCORES')
+      if #any == 0 then
+        redis.call('ZREM', ckIndexKey, ckQueueName)
+        redis.call('ZREM', ckVtimeKey, ckQueueName) -- NEW
+      else
+        redis.call('ZADD', ckIndexKey, any[2], ckQueueName)
+      end
+    end
+  end
+end
+
+-- Pass 1: fair order (lowest virtual start tag first)
+local vtimeCandidates = redis.call('ZRANGE', ckVtimeKey, 0, window - 1)
+for _, ckQueueName in ipairs(vtimeCandidates) do
+  if dequeuedCount >= actualMaxCount then break end
+  tryServe(ckQueueName)
+end
+
+-- Pass 2: fill + discovery in age order (work conservation, mixed-deploy safety).
+-- Never runs when pass 1 filled the batch.
+if dequeuedCount < actualMaxCount then
+  -- Clamp to at least 3x so pass 2 never scans fewer index variants than the old command, preserving work conservation regardless of the configured multiplier
+  local pass2Window = math.max(window, actualMaxCount * 3)
+  local ckQueues = redis.call('ZRANGEBYSCORE', ckIndexKey, '-inf', tostring(currentTime), 'LIMIT', 0, pass2Window)
+  for _, ckQueueName in ipairs(ckQueues) do
+    if dequeuedCount >= actualMaxCount then break end
+    if not attempted[ckQueueName] then
+      tryServe(ckQueueName)
+    end
+  end
+end
+
+-- NEW: persist floor and refresh TTLs
+redis.call('SET', ckVtimeFloorKey, tostring(floor), 'EX', stateTtl)
+if redis.call('EXISTS', ckVtimeKey) == 1 then
+  redis.call('EXPIRE', ckVtimeKey, stateTtl)
+end
+
+-- Rebalance master queue (ckIndex keeps its timestamp domain)
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+return __qmret(results)
+      `,
+    });
+
     this.redis.defineCommand("dequeueMessageFromWorkerQueueNonBlocking", {
       numberOfKeys: 1,
       lua: `
@@ -6033,6 +6261,33 @@ declare module "@internal/redis" {
       defaultEnvConcurrencyBurstFactor: string,
       keyPrefix: string,
       maxCount: string,
+      metricsEnabled: string,
+      callback?: Callback<[string[] | null, number[] | null]>
+    ): Result<[string[] | null, number[] | null], Context>;
+
+    dequeueMessagesFromCkQueueVtimeTracked(
+      ckIndexKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
+      envCurrentConcurrencyKey: string,
+      messageKeyPrefix: string,
+      envQueueKey: string,
+      masterQueueKey: string,
+      ttlQueueKey: string,
+      lengthCounterKey: string,
+      runningCounterKey: string,
+      ckVtimeKey: string,
+      ckVtimeFloorKey: string,
+      ckWildcardName: string,
+      currentTime: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      keyPrefix: string,
+      maxCount: string,
+      quantum: string,
+      windowMultiplier: string,
+      stateTtlSeconds: string,
       metricsEnabled: string,
       callback?: Callback<[string[] | null, number[] | null]>
     ): Result<[string[] | null, number[] | null], Context>;
