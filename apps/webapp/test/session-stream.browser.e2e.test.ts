@@ -29,13 +29,17 @@ import {
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 240_000 });
 
 let server: SessionStreamTestServer;
-let browser: Browser;
+let browser: Browser | undefined;
 let origin: Server;
 let originUrl: string;
 
 beforeAll(async () => {
   server = await startSessionStreamTestServer();
-  browser = await chromium.launch();
+  try {
+    browser = await chromium.launch();
+  } catch (error) {
+    console.warn("[browser-e2e] Chromium unavailable, leg will skip:", String(error));
+  }
   origin = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "text/html" });
     res.end("<!doctype html><html><body>origin</body></html>");
@@ -53,7 +57,11 @@ afterAll(async () => {
 }, 120_000);
 
 describe("session stream browser e2e", () => {
-  it("EB1: a cross-origin browser subscribes to .out and streams records", async () => {
+  it("EB1: a cross-origin browser subscribes to .out and streams records", async (ctx) => {
+    if (!browser) {
+      ctx.skip();
+      return;
+    }
     const { organization, environment, apiKey } = await seedTestEnvironment(server.prisma);
     const addressingKey = `sess-${randomBytes(6).toString("hex")}`;
     const token = await mintSessionToken({ apiKey, envId: environment.id, addressingKey });
