@@ -162,3 +162,151 @@ export function sanitizeRows<T extends object>(rows: T[]): SanitizeResult {
 
   return result;
 }
+
+export function errorMessage(err: unknown): string {
+  return typeof err === "object" && err !== null && "message" in err
+    ? String((err as { message?: unknown }).message ?? "")
+    : String(err);
+}
+
+export type JsonParseRecoveryLogger = {
+  info: (message: string, meta?: Record<string, unknown>) => void;
+  warn: (message: string, meta?: Record<string, unknown>) => void;
+};
+
+export type JsonParseRecoveryOutcome =
+  | { kind: "inserted"; insertResult: unknown }
+  | { kind: "sanitized"; insertResult: unknown }
+  | { kind: "recovered"; rowsStripped: number; rowsDropped: number };
+
+/**
+ * Shared ClickHouse insert recovery for `Cannot parse JSON object` rejections,
+ * used by both ClickHouse writers (run replication and the trace/event
+ * repository) so a single un-ingestable row never drops its whole batch.
+ *
+ *   1. Try the insert. Healthy batches pay zero recovery cost.
+ *   2. On a parse error, `sanitizeRows` losslessly repairs what it can in place
+ *      (lone UTF-16 surrogates, out-of-range integers) and retries once. A
+ *      clean retry keeps every row untouched.
+ *   3. If the sanitizer can't help, isolate the un-ingestable rows by
+ *      bisection (`at row N` is unstable under parallel parsing) and re-insert
+ *      each poison row with its JSON column(s) emptied via `stripJsonColumns`,
+ *      so the row still lands (e.g. a run keeps its terminal status, a span
+ *      keeps its place in the trace) and only the un-ingestable content is
+ *      lost. Clean rows land in full. A row that can't parse even stripped is
+ *      dropped and counted.
+ *   4. Non-parse errors propagate unchanged so the caller's transient-retry
+ *      path still handles them.
+ */
+export async function insertWithJsonParseRecovery<T extends object>(params: {
+  rows: T[];
+  contextLabel: string;
+  logger: JsonParseRecoveryLogger;
+  logContext?: Record<string, unknown>;
+  insert: (rows: T[]) => Promise<unknown>;
+  insertSync: (rows: T[]) => Promise<unknown>;
+  stripJsonColumns: (row: T) => T;
+}): Promise<JsonParseRecoveryOutcome> {
+  const { rows, contextLabel, logger, logContext, insert, insertSync, stripJsonColumns } = params;
+
+  try {
+    return { kind: "inserted", insertResult: await insert(rows) };
+  } catch (firstError) {
+    if (!isClickHouseJsonParseError(firstError)) throw firstError;
+
+    const firstMessage = errorMessage(firstError);
+    const rowHint = parseRowNumberFromError(firstMessage);
+    const { rowsTouched, fieldsSanitized } = sanitizeRows(rows);
+
+    if (fieldsSanitized > 0) {
+      logger.warn("Sanitizing batch after ClickHouse JSON parse error", {
+        ...logContext,
+        contextLabel,
+        batchSize: rows.length,
+        clickhouseRowHint: rowHint,
+        rowsTouched,
+        fieldsSanitized,
+        clickhouseError: firstMessage.split("\n")[0],
+      });
+
+      try {
+        return { kind: "sanitized", insertResult: await insert(rows) };
+      } catch (retryError) {
+        if (!isClickHouseJsonParseError(retryError)) throw retryError;
+      }
+    }
+
+    const { rowsStripped, rowsDropped } = await isolateAndStripPoisonRows(
+      rows,
+      insertSync,
+      stripJsonColumns
+    );
+
+    logger.info(
+      "Isolated un-ingestable rows after ClickHouse JSON parse error — landed the batch with poison JSON stripped",
+      {
+        ...logContext,
+        contextLabel,
+        batchSize: rows.length,
+        rowsStripped,
+        rowsDropped,
+        sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
+        clickhouseError: firstMessage.split("\n")[0],
+      }
+    );
+
+    return { kind: "recovered", rowsStripped, rowsDropped };
+  }
+}
+
+/**
+ * Precondition: inserting `rows` as-is throws a `Cannot parse JSON object`
+ * error. Bisects to isolate each un-ingestable row, lands clean rows in full,
+ * and re-inserts each poison row with its JSON column(s) stripped so it still
+ * lands. A row that can't parse even stripped is dropped. All inserts are
+ * synchronous so each subset's parse error surfaces. The two halves are probed
+ * concurrently so recovery wall-clock stays ~O(log n) round-trips rather than
+ * O(n), which matters when a poison burst would otherwise lag the shared
+ * replication stream. Returns exact counts.
+ */
+async function isolateAndStripPoisonRows<T extends object>(
+  rows: T[],
+  insertSync: (rows: T[]) => Promise<unknown>,
+  stripJsonColumns: (row: T) => T
+): Promise<{ rowsStripped: number; rowsDropped: number }> {
+  if (rows.length === 0) {
+    return { rowsStripped: 0, rowsDropped: 0 };
+  }
+
+  if (rows.length === 1) {
+    try {
+      await insertSync([stripJsonColumns(rows[0])]);
+      return { rowsStripped: 1, rowsDropped: 0 };
+    } catch (error) {
+      if (!isClickHouseJsonParseError(error)) throw error;
+      return { rowsStripped: 0, rowsDropped: 1 };
+    }
+  }
+
+  const mid = rows.length >> 1;
+
+  const recoverHalf = async (half: T[]) => {
+    try {
+      await insertSync(half);
+      return { rowsStripped: 0, rowsDropped: 0 };
+    } catch (error) {
+      if (!isClickHouseJsonParseError(error)) throw error;
+      return isolateAndStripPoisonRows(half, insertSync, stripJsonColumns);
+    }
+  };
+
+  const [left, right] = await Promise.all([
+    recoverHalf(rows.slice(0, mid)),
+    recoverHalf(rows.slice(mid)),
+  ]);
+
+  return {
+    rowsStripped: left.rowsStripped + right.rowsStripped,
+    rowsDropped: left.rowsDropped + right.rowsDropped,
+  };
+}

@@ -187,7 +187,7 @@ async function runScenario(
       poisonDepth: 1500,
     });
 
-    const expectedLanded = producerStats.created - producerStats.poisoned;
+    const expectedLanded = producerStats.created;
     replication = await waitForCount(
       clickhouse,
       organization.id,
@@ -201,7 +201,7 @@ async function runScenario(
   }
 
   const throughput = (replication.count / replication.duration) * 1000;
-  const expectedLanded = producerStats.created - producerStats.poisoned;
+  const expectedLanded = producerStats.created;
 
   console.log(`\n${"=".repeat(72)}`);
   console.log(`SCENARIO: ${name}  (poison rate ${(poisonRate * 100).toFixed(1)}%)`);
@@ -211,7 +211,8 @@ async function runScenario(
   console.log(`Repl dur:     ${replication.duration.toFixed(0)}ms`);
   console.log(`Throughput:   ${throughput.toFixed(0)} runs/sec`);
   console.log(`Row-isolation recoveries: ${service.rowIsolationRecoveries}`);
-  console.log(`Dropped rows (best-effort): ${service.permanentlyDroppedRows}`);
+  console.log(`Rows stripped (kept row, lost JSON): ${service.rowsStripped}`);
+  console.log(`Rows dropped (unrecoverable): ${service.permanentlyDroppedRows}`);
   console.log(`Dropped batches (whole): ${service.permanentlyDroppedBatches}`);
   console.log(
     `ELU mean=${eluStats.mean.toFixed(2)}% p50=${eluStats.p50.toFixed(2)}% p95=${eluStats.p95.toFixed(2)}% p99=${eluStats.p99.toFixed(2)}% (${eluStats.samples} samples)`
@@ -268,11 +269,14 @@ describe("RunsReplicationService JSON-recovery ELU benchmark", () => {
 
       expect(healthy.replication.count).toBe(healthy.expectedLanded);
       expect(healthy.service.rowIsolationRecoveries).toBe(0);
+      expect(healthy.service.rowsStripped).toBe(0);
       expect(healthy.service.permanentlyDroppedBatches).toBe(0);
 
       expect(poisoned.replication.count).toBe(poisoned.expectedLanded);
       expect(poisoned.service.permanentlyDroppedBatches).toBe(0);
+      expect(poisoned.service.permanentlyDroppedRows).toBe(0);
       expect(poisoned.service.rowIsolationRecoveries).toBeGreaterThanOrEqual(1);
+      expect(poisoned.service.rowsStripped).toBe(poisoned.producerStats.poisoned);
     }
   );
 });

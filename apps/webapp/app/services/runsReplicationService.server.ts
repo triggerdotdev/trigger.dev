@@ -7,6 +7,8 @@ import {
   composeTaskRunVersion,
   getPayloadField,
   getTaskRunField,
+  PAYLOAD_INDEX,
+  TASK_RUN_INDEX,
 } from "@internal/clickhouse";
 import { type RedisOptions } from "@internal/redis";
 import {
@@ -42,9 +44,8 @@ import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { calculateErrorFingerprint } from "~/utils/errorFingerprinting";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
 import {
-  isClickHouseJsonParseError,
-  parseRowNumberFromError,
-  sanitizeRows,
+  insertWithJsonParseRecovery,
+  type JsonParseRecoveryOutcome,
 } from "~/v3/eventRepository/sanitizeRowsOnParseError.server";
 
 interface TransactionEvent<T = any> {
@@ -176,28 +177,30 @@ export class RunsReplicationService {
   private _disableErrorFingerprinting: boolean;
 
   /**
-   * Counts batches dropped whole because even the row-isolation retry failed
-   * to insert anything (an unexpected terminal case). The common recovery now
-   * isolates the un-ingestable rows and lands the rest, so this should stay at
-   * zero in practice. Counter only — does not gate behaviour.
+   * Counts batches where every row was un-ingestable even with its JSON
+   * stripped, so nothing landed. Row isolation lands anything strippable, so
+   * this should stay at zero; a non-zero value means the recovery itself is
+   * failing. Counter only, does not gate behaviour.
    */
   private _permanentlyDroppedBatches = 0;
 
   /**
-   * Counts batches that took the row-isolation recovery path — a
+   * Counts batches that took the row-isolation recovery path: a
    * `Cannot parse JSON object` failure the sanitizer could not repair, where we
-   * re-inserted with `input_format_allow_errors_*` so ClickHouse skipped the
-   * un-ingestable rows and landed the rest. Reliable per-event signal that user
-   * data is hitting the ceiling.
+   * bisected to the poison rows and landed the batch with their JSON stripped.
+   * Reliable per-event signal that user data is hitting the ceiling.
    */
   private _rowIsolationRecoveries = 0;
 
   /**
-   * Best-effort count of individual rows ClickHouse skipped across those
-   * row-isolation retries, derived from the insert summary's `written_rows`
-   * when the client surfaces it (it is not always populated under concurrent
-   * inserts, so treat this as a lower bound; `_rowIsolationRecoveries` is the
-   * dependable event count).
+   * Counts rows that landed with their un-ingestable JSON column(s) stripped
+   * (the run kept its status, only the output/payload content was lost).
+   */
+  private _rowsStripped = 0;
+
+  /**
+   * Counts rows dropped entirely because they could not be parsed even with
+   * their JSON stripped. The true data-loss signal; expected to stay near zero.
    */
   private _permanentlyDroppedRows = 0;
 
@@ -210,6 +213,8 @@ export class RunsReplicationService {
   private _insertRetriesCounter: Counter;
   private _eventsProcessedCounter: Counter;
   private _rowIsolatedBatchesCounter: Counter;
+  private _rowsStrippedCounter: Counter;
+  private _rowsDroppedCounter: Counter;
   private _droppedBatchesCounter: Counter;
   private _flushDurationHistogram: Histogram;
 
@@ -273,8 +278,20 @@ export class RunsReplicationService {
       }
     );
 
+    this._rowsStrippedCounter = this._meter.createCounter("runs_replication.rows_stripped", {
+      description:
+        "Rows landed with their un-ingestable JSON stripped (kept the row, lost only the JSON content)",
+      unit: "rows",
+    });
+
+    this._rowsDroppedCounter = this._meter.createCounter("runs_replication.rows_dropped", {
+      description:
+        "Rows dropped entirely because they could not parse even with their JSON stripped",
+      unit: "rows",
+    });
+
     this._droppedBatchesCounter = this._meter.createCounter("runs_replication.batches_dropped", {
-      description: "Batches permanently dropped after an unrecoverable ClickHouse JSON parse error",
+      description: "Batches where every row was un-ingestable even with its JSON stripped",
       unit: "batches",
     });
 
@@ -445,7 +462,7 @@ export class RunsReplicationService {
     });
   }
 
-  /** Exposed for tests and metrics — total batches lost to unrecoverable parse errors. */
+  /** Exposed for tests and metrics — batches where nothing landed even after stripping JSON. */
   get permanentlyDroppedBatches() {
     return this._permanentlyDroppedBatches;
   }
@@ -455,7 +472,12 @@ export class RunsReplicationService {
     return this._rowIsolationRecoveries;
   }
 
-  /** Exposed for tests and metrics — best-effort count of individual rows ClickHouse skipped during row-isolation retries. */
+  /** Exposed for tests and metrics — rows that landed with their un-ingestable JSON stripped. */
+  get rowsStripped() {
+    return this._rowsStripped;
+  }
+
+  /** Exposed for tests and metrics — rows dropped entirely (could not parse even stripped). */
   get permanentlyDroppedRows() {
     return this._permanentlyDroppedRows;
   }
@@ -914,10 +936,10 @@ export class RunsReplicationService {
           payloadError = plErr;
         }
 
-        if (!trErr && trOutcome && trOutcome.kind !== "dropped") {
+        if (!trErr && trOutcome) {
           this._taskRunsInsertedCounter.add(landedRowCount(group.taskRunInserts.length, trOutcome));
         }
-        if (!plErr && plOutcome && plOutcome.kind !== "dropped") {
+        if (!plErr && plOutcome) {
           this._payloadsInsertedCounter.add(landedRowCount(group.payloadInserts.length, plOutcome));
         }
       }
@@ -1074,15 +1096,12 @@ export class RunsReplicationService {
       return;
     }
     return await startSpan(this._tracer, "insertTaskRunsInserts", async (span) => {
-      const doInsert = async (extraSettings?: ClickHouseSettings) => {
-        const [insertError, insertResult] = await clickhouse.taskRuns.insertCompactArrays(
-          taskRunInserts,
-          {
-            params: {
-              clickhouse_settings: { ...this.#getClickhouseInsertSettings(), ...extraSettings },
-            },
-          }
-        );
+      const rawInsert = async (rows: TaskRunInsertArray[], extraSettings?: ClickHouseSettings) => {
+        const [insertError, insertResult] = await clickhouse.taskRuns.insertCompactArrays(rows, {
+          params: {
+            clickhouse_settings: { ...this.#getClickhouseInsertSettings(), ...extraSettings },
+          },
+        });
         if (insertError) {
           this.logger.error("Error inserting task run inserts attempt", {
             error: insertError,
@@ -1094,12 +1113,17 @@ export class RunsReplicationService {
         return insertResult;
       };
 
-      return await this.#insertWithJsonParseRecovery(
-        taskRunInserts,
-        doInsert,
-        "task_runs_v2",
-        attempt
-      );
+      const outcome = await insertWithJsonParseRecovery({
+        rows: taskRunInserts,
+        contextLabel: "task_runs_v2",
+        logger: this.logger,
+        logContext: { attempt },
+        insert: (rows) => rawInsert(rows),
+        insertSync: (rows) => rawInsert(rows, { async_insert: 0 }),
+        stripJsonColumns: stripTaskRunJsonColumns,
+      });
+      this.#recordRecoveryOutcome(outcome, "task_runs_v2");
+      return outcome;
     });
   }
 
@@ -1112,9 +1136,9 @@ export class RunsReplicationService {
       return;
     }
     return await startSpan(this._tracer, "insertPayloadInserts", async (span) => {
-      const doInsert = async (extraSettings?: ClickHouseSettings) => {
+      const rawInsert = async (rows: PayloadInsertArray[], extraSettings?: ClickHouseSettings) => {
         const [insertError, insertResult] = await clickhouse.taskRuns.insertPayloadsCompactArrays(
-          payloadInserts,
+          rows,
           {
             params: {
               clickhouse_settings: { ...this.#getClickhouseInsertSettings(), ...extraSettings },
@@ -1132,150 +1156,40 @@ export class RunsReplicationService {
         return insertResult;
       };
 
-      return await this.#insertWithJsonParseRecovery(
-        payloadInserts,
-        doInsert,
-        "raw_task_runs_payload_v1",
-        attempt
-      );
+      const outcome = await insertWithJsonParseRecovery({
+        rows: payloadInserts,
+        contextLabel: "raw_task_runs_payload_v1",
+        logger: this.logger,
+        logContext: { attempt },
+        insert: (rows) => rawInsert(rows),
+        insertSync: (rows) => rawInsert(rows, { async_insert: 0 }),
+        stripJsonColumns: stripPayloadJsonColumns,
+      });
+      this.#recordRecoveryOutcome(outcome, "raw_task_runs_payload_v1");
+      return outcome;
     });
   }
 
-  /**
-   * Wraps a ClickHouse insert with recovery for `Cannot parse JSON object`
-   * rejections so one un-ingestable row never drops its whole batch. Builds on
-   * the sanitize pattern from `ClickhouseEventRepository.#insertWithJsonParseRecovery`
-   * (#3659) and adds a final row-isolation fallback:
-   *
-   *   1. Try the insert. Healthy batches pay zero recovery cost.
-   *   2. On a parse error, walk the batch via `sanitizeRows` and losslessly
-   *      repair what we can in place (lone UTF-16 surrogates → `"[invalid-utf16]"`,
-   *      out-of-range integers → their string form), then retry once. A clean
-   *      retry keeps every row.
-   *   3. If the sanitizer found nothing to fix, or the retry still hits the same
-   *      parse error (a structurally un-ingestable row, e.g. JSON nested past
-   *      ClickHouse's `input_format_json_max_depth`), retry once more with
-   *      `input_format_allow_errors_*` so ClickHouse skips only the un-parseable
-   *      rows and lands the rest. Verified against ClickHouse 26.2 (the cloud
-   *      version): the good rows land, the JSONCompactEachRowWithNames header is
-   *      unaffected, both sync and async.
-   *   4. Only if that row-isolation insert itself fails do we drop the batch,
-   *      and never rethrow a parse error — otherwise the surrounding
-   *      `#insertWithRetry` layer would spin on the same deterministic failure.
-   *   5. Non-parse errors propagate unchanged so the transient-retry path still
-   *      handles them.
-   */
-  async #insertWithJsonParseRecovery<T extends object>(
-    rows: T[],
-    doInsert: (extraSettings?: ClickHouseSettings) => Promise<unknown>,
-    contextLabel: string,
-    attempt: number
-  ): Promise<
-    | { kind: "inserted"; insertResult: unknown }
-    | { kind: "sanitized"; insertResult: unknown }
-    | { kind: "isolated"; insertResult: unknown; rowsSkipped: number | null }
-    | { kind: "dropped" }
-  > {
-    try {
-      return { kind: "inserted", insertResult: await doInsert() };
-    } catch (firstError) {
-      if (!isClickHouseJsonParseError(firstError)) throw firstError;
-
-      const firstMessage = errorMessage(firstError);
-      const rowHint = parseRowNumberFromError(firstMessage);
-      const { rowsTouched, fieldsSanitized } = sanitizeRows(rows);
-
-      if (fieldsSanitized > 0) {
-        this.logger.warn("Sanitizing batch after ClickHouse JSON parse error", {
-          contextLabel,
-          attempt,
-          batchSize: rows.length,
-          clickhouseRowHint: rowHint,
-          rowsTouched,
-          fieldsSanitized,
-          clickhouseError: firstMessage.split("\n")[0],
-        });
-
-        try {
-          return { kind: "sanitized", insertResult: await doInsert() };
-        } catch (retryError) {
-          if (!isClickHouseJsonParseError(retryError)) throw retryError;
-        }
-      }
-
-      return await this.#insertIsolatingBadRows(
-        rows,
-        doInsert,
-        contextLabel,
-        attempt,
-        firstMessage
-      );
+  #recordRecoveryOutcome(outcome: JsonParseRecoveryOutcome, contextLabel: string) {
+    if (outcome.kind !== "recovered") {
+      return;
     }
-  }
 
-  /**
-   * Last-resort recovery: re-run the insert with `input_format_allow_errors_*`
-   * so ClickHouse skips the rows it cannot parse and lands the rest, rather than
-   * aborting the whole INSERT. Forces a synchronous insert so `written_rows`
-   * reflects exactly what landed and we can count what was lost.
-   */
-  async #insertIsolatingBadRows<T extends object>(
-    rows: T[],
-    doInsert: (extraSettings?: ClickHouseSettings) => Promise<unknown>,
-    contextLabel: string,
-    attempt: number,
-    firstMessage: string
-  ): Promise<
-    { kind: "isolated"; insertResult: unknown; rowsSkipped: number | null } | { kind: "dropped" }
-  > {
-    try {
-      const insertResult = await doInsert({
-        input_format_allow_errors_num: String(rows.length),
-        input_format_allow_errors_ratio: 1,
-        async_insert: 0,
-      });
+    this._rowIsolationRecoveries += 1;
+    this._rowIsolatedBatchesCounter.add(1, { table: contextLabel });
 
-      this._rowIsolationRecoveries += 1;
-      this._rowIsolatedBatchesCounter.add(1, { table: contextLabel });
-      const writtenRows = extractWrittenRows(insertResult);
-      const rowsSkipped = writtenRows === null ? null : Math.max(0, rows.length - writtenRows);
-      if (rowsSkipped !== null) {
-        this._permanentlyDroppedRows += rowsSkipped;
+    if (outcome.rowsStripped > 0) {
+      this._rowsStripped += outcome.rowsStripped;
+      this._rowsStrippedCounter.add(outcome.rowsStripped, { table: contextLabel });
+    }
+
+    if (outcome.rowsDropped > 0) {
+      this._permanentlyDroppedRows += outcome.rowsDropped;
+      this._rowsDroppedCounter.add(outcome.rowsDropped, { table: contextLabel });
+      if (outcome.rowsStripped === 0) {
+        this._permanentlyDroppedBatches += 1;
+        this._droppedBatchesCounter.add(1, { table: contextLabel });
       }
-
-      this.logger.info(
-        "Isolated un-ingestable rows after ClickHouse JSON parse error — landed the rest of the batch",
-        {
-          contextLabel,
-          attempt,
-          batchSize: rows.length,
-          rowsSkipped,
-          rowIsolationRecoveries: this._rowIsolationRecoveries,
-          permanentlyDroppedRows: this._permanentlyDroppedRows,
-          sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
-          clickhouseError: firstMessage.split("\n")[0],
-        }
-      );
-
-      return { kind: "isolated", insertResult, rowsSkipped };
-    } catch (isolationError) {
-      if (!isClickHouseJsonParseError(isolationError)) throw isolationError;
-
-      this._permanentlyDroppedBatches += 1;
-      this._droppedBatchesCounter.add(1, { table: contextLabel });
-      this.logger.error(
-        "Dropped batch — row-isolation insert failed after ClickHouse JSON parse error",
-        {
-          contextLabel,
-          attempt,
-          batchSize: rows.length,
-          permanentlyDroppedBatches: this._permanentlyDroppedBatches,
-          sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
-          firstError: firstMessage.split("\n")[0],
-          isolationError: errorMessage(isolationError).split("\n")[0],
-        }
-      );
-      return { kind: "dropped" };
     }
   }
 
@@ -1629,26 +1543,24 @@ function lsnToUInt64(lsn: string): bigint {
   return (BigInt("0x" + seg) << 32n) | BigInt("0x" + off);
 }
 
-function errorMessage(err: unknown): string {
-  return typeof err === "object" && err !== null && "message" in err
-    ? String((err as { message?: unknown }).message ?? "")
-    : String(err);
-}
-
-function landedRowCount(
-  groupSize: number,
-  outcome: { kind: string; rowsSkipped?: number | null }
-): number {
-  if (outcome.kind === "isolated" && typeof outcome.rowsSkipped === "number") {
-    return Math.max(0, groupSize - outcome.rowsSkipped);
+function landedRowCount(groupSize: number, outcome: JsonParseRecoveryOutcome): number {
+  if (outcome.kind === "recovered") {
+    return Math.max(0, groupSize - outcome.rowsDropped);
   }
   return groupSize;
 }
 
-function extractWrittenRows(insertResult: unknown): number | null {
-  const written = (insertResult as { summary?: { written_rows?: string } } | null | undefined)
-    ?.summary?.written_rows;
-  if (written === undefined) return null;
-  const parsed = Number(written);
-  return Number.isFinite(parsed) ? parsed : null;
+const STRIPPED_JSON: { data: unknown } = { data: undefined };
+
+function stripTaskRunJsonColumns(row: TaskRunInsertArray): TaskRunInsertArray {
+  const stripped = [...row] as TaskRunInsertArray;
+  stripped[TASK_RUN_INDEX.output] = STRIPPED_JSON;
+  stripped[TASK_RUN_INDEX.error] = STRIPPED_JSON;
+  return stripped;
+}
+
+function stripPayloadJsonColumns(row: PayloadInsertArray): PayloadInsertArray {
+  const stripped = [...row] as PayloadInsertArray;
+  stripped[PAYLOAD_INDEX.payload] = STRIPPED_JSON;
+  return stripped;
 }

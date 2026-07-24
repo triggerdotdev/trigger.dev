@@ -17,7 +17,7 @@ function deeplyNested(depth: number): Record<string, unknown> {
 
 describe("RunsReplicationService (part 10/10) — JSON parse recovery", () => {
   replicationContainerTest(
-    "lands the good runs when one run in the batch has ClickHouse-unparseable JSON output",
+    "lands every run (poison run keeps its status, output stripped) when one run has ClickHouse-unparseable JSON output",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
 
@@ -111,31 +111,37 @@ describe("RunsReplicationService (part 10/10) — JSON parse recovery", () => {
       const queryRuns = clickhouse.reader.query({
         name: "runs-replication-batchdrop",
         query:
-          "SELECT run_id FROM trigger_dev.task_runs_v2 WHERE organization_id = {org_id:String}",
-        schema: z.object({ run_id: z.string() }),
+          "SELECT run_id, status, toJSONString(output) AS output_json FROM trigger_dev.task_runs_v2 FINAL WHERE organization_id = {org_id:String}",
+        schema: z.object({ run_id: z.string(), status: z.string(), output_json: z.string() }),
         params: z.object({ org_id: z.string() }),
       });
 
-      const landedIds = await vi.waitFor(
+      const rowsById = await vi.waitFor(
         async () => {
           const [queryError, rows] = await queryRuns({ org_id: organization.id });
           expect(queryError).toBeNull();
-          const ids = new Set((rows ?? []).map((r) => r.run_id));
-          for (const id of goodRunIds) {
-            expect(ids.has(id)).toBe(true);
+          const byId = new Map((rows ?? []).map((r) => [r.run_id, r]));
+          for (const id of [...goodRunIds, poisonRunId]) {
+            expect(byId.has(id)).toBe(true);
           }
-          return ids;
+          return byId;
         },
         { timeout: 30_000, interval: 250 }
       );
 
       for (const id of goodRunIds) {
-        expect(landedIds.has(id)).toBe(true);
+        const row = rowsById.get(id)!;
+        expect(row.output_json).toContain('"ok":true');
       }
-      expect(landedIds.has(poisonRunId)).toBe(false);
+
+      const poison = rowsById.get(poisonRunId)!;
+      expect(poison.status).toBe("COMPLETED_SUCCESSFULLY");
+      expect(poison.output_json).toBe("{}");
 
       expect(runsReplicationService.permanentlyDroppedBatches).toBe(0);
+      expect(runsReplicationService.permanentlyDroppedRows).toBe(0);
       expect(runsReplicationService.rowIsolationRecoveries).toBeGreaterThanOrEqual(1);
+      expect(runsReplicationService.rowsStripped).toBeGreaterThanOrEqual(1);
 
       await runsReplicationService.stop();
     }

@@ -24,7 +24,7 @@ function startTime(baseMs: number, offsetMs: number): string {
 
 describe("ClickhouseEventRepository JSON parse recovery", () => {
   clickhouseTest(
-    "lands the good events when one event in the batch has ClickHouse-unparseable attributes",
+    "lands every event (poison event keeps its span, attributes stripped) when one event has ClickHouse-unparseable attributes",
     async ({ clickhouseContainer }) => {
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),
@@ -89,31 +89,34 @@ describe("ClickhouseEventRepository JSON parse recovery", () => {
         const queryEvents = clickhouse.reader.query({
           name: "event-recovery-check",
           query:
-            "SELECT span_id FROM trigger_dev.task_events_v2 WHERE environment_id = {env_id:String}",
-          schema: z.object({ span_id: z.string() }),
+            "SELECT span_id, toJSONString(attributes) AS attributes_json FROM trigger_dev.task_events_v2 WHERE environment_id = {env_id:String}",
+          schema: z.object({ span_id: z.string(), attributes_json: z.string() }),
           params: z.object({ env_id: z.string() }),
         });
 
-        const landedIds = await vi.waitFor(
+        const rowsById = await vi.waitFor(
           async () => {
             const [queryError, resultRows] = await queryEvents({ env_id: environmentId });
             expect(queryError).toBeNull();
-            const ids = new Set((resultRows ?? []).map((r) => r.span_id));
-            for (const id of goodSpanIds) {
-              expect(ids.has(id)).toBe(true);
+            const byId = new Map((resultRows ?? []).map((r) => [r.span_id, r]));
+            for (const id of [...goodSpanIds, poisonSpanId]) {
+              expect(byId.has(id)).toBe(true);
             }
-            return ids;
+            return byId;
           },
           { timeout: 30_000, interval: 250 }
         );
 
         for (const id of goodSpanIds) {
-          expect(landedIds.has(id)).toBe(true);
+          expect(rowsById.get(id)!.attributes_json).toContain('"ok":true');
         }
-        expect(landedIds.has(poisonSpanId)).toBe(false);
+
+        expect(rowsById.get(poisonSpanId)!.attributes_json).toBe("{}");
 
         expect(repository.permanentlyDroppedBatches).toBe(0);
+        expect(repository.permanentlyDroppedRows).toBe(0);
         expect(repository.rowIsolationRecoveries).toBeGreaterThanOrEqual(1);
+        expect(repository.rowsStripped).toBeGreaterThanOrEqual(1);
       } finally {
         await (repository as any)._flushScheduler?.shutdown?.();
       }
