@@ -211,6 +211,7 @@ async function runScenario(
   console.log(`Repl dur:     ${replication.duration.toFixed(0)}ms`);
   console.log(`Throughput:   ${throughput.toFixed(0)} runs/sec`);
   console.log(`Row-isolation recoveries: ${service.rowIsolationRecoveries}`);
+  console.log(`Recovery cap hits: ${service.recoveryCapHits}`);
   console.log(`Rows stripped (kept row, lost JSON): ${service.rowsStripped}`);
   console.log(`Rows dropped (unrecoverable): ${service.permanentlyDroppedRows}`);
   console.log(`Dropped batches (whole): ${service.permanentlyDroppedBatches}`);
@@ -275,6 +276,7 @@ describe("RunsReplicationService JSON-recovery ELU benchmark", () => {
       expect(poisoned.replication.count).toBe(poisoned.expectedLanded);
       expect(poisoned.service.permanentlyDroppedBatches).toBe(0);
       expect(poisoned.service.permanentlyDroppedRows).toBe(0);
+      expect(poisoned.service.recoveryCapHits).toBe(0);
       expect(poisoned.service.rowIsolationRecoveries).toBeGreaterThanOrEqual(1);
       expect(poisoned.service.rowsStripped).toBe(poisoned.producerStats.poisoned);
     }

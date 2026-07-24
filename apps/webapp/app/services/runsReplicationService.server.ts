@@ -193,6 +193,14 @@ export class RunsReplicationService {
   private _rowIsolationRecoveries = 0;
 
   /**
+   * Counts batches whose isolation blew the per-batch insert budget (a poison
+   * flood), so the remaining rows were stripped in one insert instead of
+   * bisected further. A burst signal; clean rows in those batches also lose
+   * their JSON.
+   */
+  private _recoveryCapHits = 0;
+
+  /**
    * Counts rows that landed with their un-ingestable JSON column(s) stripped
    * (the run kept its status, only the output/payload content was lost).
    */
@@ -213,6 +221,7 @@ export class RunsReplicationService {
   private _insertRetriesCounter: Counter;
   private _eventsProcessedCounter: Counter;
   private _rowIsolatedBatchesCounter: Counter;
+  private _recoveryCapHitsCounter: Counter;
   private _rowsStrippedCounter: Counter;
   private _rowsDroppedCounter: Counter;
   private _droppedBatchesCounter: Counter;
@@ -277,6 +286,12 @@ export class RunsReplicationService {
         unit: "batches",
       }
     );
+
+    this._recoveryCapHitsCounter = this._meter.createCounter("runs_replication.recovery_cap_hits", {
+      description:
+        "Batches whose row isolation hit the per-batch insert budget and stripped the remainder in one insert (poison-flood signal)",
+      unit: "batches",
+    });
 
     this._rowsStrippedCounter = this._meter.createCounter("runs_replication.rows_stripped", {
       description:
@@ -470,6 +485,11 @@ export class RunsReplicationService {
   /** Exposed for tests and metrics — batches that took the row-isolation recovery path. */
   get rowIsolationRecoveries() {
     return this._rowIsolationRecoveries;
+  }
+
+  /** Exposed for tests and metrics — batches whose isolation hit the per-batch insert budget. */
+  get recoveryCapHits() {
+    return this._recoveryCapHits;
   }
 
   /** Exposed for tests and metrics — rows that landed with their un-ingestable JSON stripped. */
@@ -1177,6 +1197,11 @@ export class RunsReplicationService {
 
     this._rowIsolationRecoveries += 1;
     this._rowIsolatedBatchesCounter.add(1, { table: contextLabel });
+
+    if (outcome.capped) {
+      this._recoveryCapHits += 1;
+      this._recoveryCapHitsCounter.add(1, { table: contextLabel });
+    }
 
     if (outcome.rowsStripped > 0) {
       this._rowsStripped += outcome.rowsStripped;

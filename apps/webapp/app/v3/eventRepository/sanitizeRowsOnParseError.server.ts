@@ -177,7 +177,21 @@ export type JsonParseRecoveryLogger = {
 export type JsonParseRecoveryOutcome =
   | { kind: "inserted"; insertResult: unknown }
   | { kind: "sanitized"; insertResult: unknown }
-  | { kind: "recovered"; rowsStripped: number; rowsDropped: number };
+  | { kind: "recovered"; rowsStripped: number; rowsDropped: number; capped: boolean };
+
+/**
+ * Default per-batch ceiling on the number of isolation inserts. Bisecting a
+ * batch tops out around ~3x its row count, so this leaves small batches (e.g.
+ * the ~50-row run-replication flushes) to isolate precisely even when heavily
+ * poisoned. It bites on the case that actually needs bounding: a large batch
+ * (e.g. thousands of trace events) with many un-ingestable rows, where precise
+ * isolation would otherwise run thousands of inserts and lag the shared
+ * replication stream. Once exceeded, the remaining subtree is stripped in one
+ * insert instead of bisected further.
+ */
+export const DEFAULT_MAX_ISOLATION_INSERTS = 256;
+
+type IsolationBudget = { inserts: number; capped: boolean };
 
 /**
  * Shared ClickHouse insert recovery for `Cannot parse JSON object` rejections,
@@ -195,7 +209,11 @@ export type JsonParseRecoveryOutcome =
  *      keeps its place in the trace) and only the un-ingestable content is
  *      lost. Clean rows land in full. A row that can't parse even stripped is
  *      dropped and counted.
- *   4. Non-parse errors propagate unchanged so the caller's transient-retry
+ *   4. Isolation is bounded by `maxIsolationInserts`. If a batch is so poisoned
+ *      that it blows the budget, the remaining rows are stripped and landed in
+ *      one insert (`capped`) rather than bisected further, so a poison flood
+ *      degrades gracefully instead of lagging the whole stream.
+ *   5. Non-parse errors propagate unchanged so the caller's transient-retry
  *      path still handles them.
  */
 export async function insertWithJsonParseRecovery<T extends object>(params: {
@@ -206,6 +224,7 @@ export async function insertWithJsonParseRecovery<T extends object>(params: {
   insert: (rows: T[]) => Promise<unknown>;
   insertSync: (rows: T[]) => Promise<unknown>;
   stripJsonColumns: (row: T) => T;
+  maxIsolationInserts?: number;
 }): Promise<JsonParseRecoveryOutcome> {
   const { rows, contextLabel, logger, logContext, insert, insertSync, stripJsonColumns } = params;
 
@@ -236,26 +255,39 @@ export async function insertWithJsonParseRecovery<T extends object>(params: {
       }
     }
 
+    const budget: IsolationBudget = {
+      inserts: params.maxIsolationInserts ?? DEFAULT_MAX_ISOLATION_INSERTS,
+      capped: false,
+    };
     const { rowsStripped, rowsDropped } = await isolateAndStripPoisonRows(
       rows,
       insertSync,
-      stripJsonColumns
+      stripJsonColumns,
+      budget
     );
 
-    logger.info(
-      "Isolated un-ingestable rows after ClickHouse JSON parse error — landed the batch with poison JSON stripped",
-      {
-        ...logContext,
-        contextLabel,
-        batchSize: rows.length,
-        rowsStripped,
-        rowsDropped,
-        sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
-        clickhouseError: firstMessage.split("\n")[0],
-      }
-    );
+    const meta = {
+      ...logContext,
+      contextLabel,
+      batchSize: rows.length,
+      rowsStripped,
+      rowsDropped,
+      sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
+      clickhouseError: firstMessage.split("\n")[0],
+    };
+    if (budget.capped) {
+      logger.warn(
+        "Recovery cost cap hit — stripped the remaining rows in one insert (clean rows in the capped subtree also lost their JSON)",
+        meta
+      );
+    } else {
+      logger.info(
+        "Isolated un-ingestable rows after ClickHouse JSON parse error — landed the batch with poison JSON stripped",
+        meta
+      );
+    }
 
-    return { kind: "recovered", rowsStripped, rowsDropped };
+    return { kind: "recovered", rowsStripped, rowsDropped, capped: budget.capped };
   }
 }
 
@@ -266,19 +298,34 @@ export async function insertWithJsonParseRecovery<T extends object>(params: {
  * lands. A row that can't parse even stripped is dropped. All inserts are
  * synchronous so each subset's parse error surfaces. The two halves are probed
  * concurrently so recovery wall-clock stays ~O(log n) round-trips rather than
- * O(n), which matters when a poison burst would otherwise lag the shared
- * replication stream. Returns exact counts.
+ * O(n). When `budget.inserts` is exhausted the remaining subtree is stripped
+ * and landed in a single insert (setting `budget.capped`) so a poison flood
+ * cannot do unbounded work. Returns exact counts.
  */
 async function isolateAndStripPoisonRows<T extends object>(
   rows: T[],
   insertSync: (rows: T[]) => Promise<unknown>,
-  stripJsonColumns: (row: T) => T
+  stripJsonColumns: (row: T) => T,
+  budget: IsolationBudget
 ): Promise<{ rowsStripped: number; rowsDropped: number }> {
   if (rows.length === 0) {
     return { rowsStripped: 0, rowsDropped: 0 };
   }
 
+  if (budget.inserts <= 0) {
+    budget.capped = true;
+    budget.inserts -= 1;
+    try {
+      await insertSync(rows.map(stripJsonColumns));
+      return { rowsStripped: rows.length, rowsDropped: 0 };
+    } catch (error) {
+      if (!isClickHouseJsonParseError(error)) throw error;
+      return { rowsStripped: 0, rowsDropped: rows.length };
+    }
+  }
+
   if (rows.length === 1) {
+    budget.inserts -= 1;
     try {
       await insertSync([stripJsonColumns(rows[0])]);
       return { rowsStripped: 1, rowsDropped: 0 };
@@ -291,12 +338,13 @@ async function isolateAndStripPoisonRows<T extends object>(
   const mid = rows.length >> 1;
 
   const recoverHalf = async (half: T[]) => {
+    budget.inserts -= 1;
     try {
       await insertSync(half);
       return { rowsStripped: 0, rowsDropped: 0 };
     } catch (error) {
       if (!isClickHouseJsonParseError(error)) throw error;
-      return isolateAndStripPoisonRows(half, insertSync, stripJsonColumns);
+      return isolateAndStripPoisonRows(half, insertSync, stripJsonColumns, budget);
     }
   };
 

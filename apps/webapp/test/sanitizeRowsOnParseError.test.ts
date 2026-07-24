@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   INVALID_UTF16_SENTINEL,
+  insertWithJsonParseRecovery,
   isClickHouseJsonParseError,
   parseRowNumberFromError,
   sanitizeRows,
@@ -9,6 +10,32 @@ import {
 
 const HIGH_SURROGATE = "\uD800";
 const LOW_SURROGATE = "\uDC00";
+
+type FakeRow = { id: number; poison?: boolean; unstrippable?: boolean; stripped?: boolean };
+
+const silentLogger = { info: () => {}, warn: () => {} };
+
+function parseError() {
+  return new Error("Cannot parse JSON object here: {...}: (at row 1)");
+}
+
+/**
+ * Builds insert doubles for `insertWithJsonParseRecovery`: a synchronous insert
+ * that throws a parse error if any row is still poison/unstrippable and
+ * otherwise records the rows as landed, plus a strip that clears the poison
+ * marker (but cannot fix an `unstrippable` row).
+ */
+function makeHarness() {
+  const landed: FakeRow[] = [];
+  const insertSync = async (rows: FakeRow[]) => {
+    if (rows.some((r) => r.poison || r.unstrippable)) throw parseError();
+    landed.push(...rows);
+    return undefined;
+  };
+  const stripJsonColumns = (row: FakeRow): FakeRow =>
+    row.unstrippable ? row : { ...row, poison: false, stripped: true };
+  return { landed, insertSync, stripJsonColumns };
+}
 
 describe("isClickHouseJsonParseError", () => {
   it("recognises ClickHouse's parse-error string", () => {
@@ -292,5 +319,104 @@ describe("sanitizeRows", () => {
     expect(rows[0].attributes.bigint).toBe("117039831458782870000");
     expect(rows[0].attributes.safe).toBe(42);
     expect(rows[1].attributes.bigint).toBe("-100000000000000000000");
+  });
+});
+
+describe("insertWithJsonParseRecovery", () => {
+  const clean = (id: number): FakeRow => ({ id });
+
+  it("inserts a healthy batch with no recovery", async () => {
+    const { landed, insertSync, stripJsonColumns } = makeHarness();
+    const rows = [clean(0), clean(1), clean(2)];
+
+    const outcome = await insertWithJsonParseRecovery({
+      rows,
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      stripJsonColumns,
+    });
+
+    expect(outcome.kind).toBe("inserted");
+    expect(landed).toHaveLength(3);
+  });
+
+  it("isolates a poison row, strips it, and lands the rest in full", async () => {
+    const { landed, insertSync, stripJsonColumns } = makeHarness();
+    const rows = [clean(0), clean(1), { id: 2, poison: true }, clean(3), clean(4)];
+
+    const outcome = await insertWithJsonParseRecovery({
+      rows,
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      stripJsonColumns,
+    });
+
+    expect(outcome).toEqual({ kind: "recovered", rowsStripped: 1, rowsDropped: 0, capped: false });
+    expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
+    expect(landed.find((r) => r.id === 2)?.stripped).toBe(true);
+    expect(landed.filter((r) => r.id !== 2).every((r) => !r.stripped)).toBe(true);
+  });
+
+  it("drops a row that cannot parse even after stripping", async () => {
+    const { landed, insertSync, stripJsonColumns } = makeHarness();
+    const rows = [clean(0), { id: 1, unstrippable: true }, clean(2)];
+
+    const outcome = await insertWithJsonParseRecovery({
+      rows,
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      stripJsonColumns,
+    });
+
+    expect(outcome).toEqual({ kind: "recovered", rowsStripped: 0, rowsDropped: 1, capped: false });
+    expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 2]);
+  });
+
+  it("caps recovery cost on a poison flood by stripping the remainder in one insert", async () => {
+    const { landed, insertSync, stripJsonColumns } = makeHarness();
+    const rows = Array.from({ length: 8 }, (_, id) => ({ id, poison: true as const }));
+
+    const outcome = await insertWithJsonParseRecovery({
+      rows,
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      stripJsonColumns,
+      maxIsolationInserts: 2,
+    });
+
+    expect(outcome.kind).toBe("recovered");
+    if (outcome.kind === "recovered") {
+      expect(outcome.capped).toBe(true);
+      expect(outcome.rowsStripped).toBe(8);
+      expect(outcome.rowsDropped).toBe(0);
+    }
+    expect(landed).toHaveLength(8);
+    expect(landed.every((r) => r.stripped)).toBe(true);
+  });
+
+  it("rethrows non-parse errors so the caller's transient-retry path handles them", async () => {
+    const stripJsonColumns = (row: FakeRow): FakeRow => row;
+    const insert = async () => {
+      throw new Error("Connection refused");
+    };
+
+    await expect(
+      insertWithJsonParseRecovery({
+        rows: [clean(0)],
+        contextLabel: "test",
+        logger: silentLogger,
+        insert,
+        insertSync: insert,
+        stripJsonColumns,
+      })
+    ).rejects.toThrow("Connection refused");
   });
 });

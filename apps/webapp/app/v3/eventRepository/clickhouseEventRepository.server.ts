@@ -138,6 +138,13 @@ export class ClickhouseEventRepository implements IEventRepository {
   private readonly _rowIsolatedBatchesCounter: Counter;
 
   /**
+   * Counts batches whose isolation blew the per-batch insert budget (a poison
+   * flood), so the remaining rows were stripped in one insert. A burst signal.
+   */
+  private _recoveryCapHits = 0;
+  private readonly _recoveryCapHitsCounter: Counter;
+
+  /**
    * Counts rows that landed with their un-ingestable JSON stripped (the span
    * kept its place in the trace, only the attributes content was lost).
    */
@@ -165,6 +172,11 @@ export class ClickhouseEventRepository implements IEventRepository {
     this._rowIsolatedBatchesCounter = meter.createCounter("ingest.flush.batches_row_isolated", {
       description:
         "Batches recovered by isolating un-ingestable rows (landed the rest) after a ClickHouse JSON parse error",
+      unit: "batches",
+    });
+    this._recoveryCapHitsCounter = meter.createCounter("ingest.flush.recovery_cap_hits", {
+      description:
+        "Batches whose row isolation hit the per-batch insert budget and stripped the remainder in one insert (poison-flood signal)",
       unit: "batches",
     });
     this._rowsStrippedCounter = meter.createCounter("ingest.flush.rows_stripped", {
@@ -234,6 +246,11 @@ export class ClickhouseEventRepository implements IEventRepository {
   /** Exposed for tests and metrics — batches that took the row-isolation recovery path. */
   get rowIsolationRecoveries() {
     return this._rowIsolationRecoveries;
+  }
+
+  /** Exposed for tests and metrics — batches whose isolation hit the per-batch insert budget. */
+  get recoveryCapHits() {
+    return this._recoveryCapHits;
   }
 
   /** Exposed for tests and metrics — rows that landed with their un-ingestable JSON stripped. */
@@ -384,6 +401,11 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     this._rowIsolationRecoveries += 1;
     this._rowIsolatedBatchesCounter.add(1, { table: contextLabel });
+
+    if (outcome.capped) {
+      this._recoveryCapHits += 1;
+      this._recoveryCapHitsCounter.add(1, { table: contextLabel });
+    }
 
     if (outcome.rowsStripped > 0) {
       this._rowsStripped += outcome.rowsStripped;
