@@ -12,8 +12,32 @@ type PendingWait = {
   session: string;
   io: "in" | "out";
   lastSeqNum?: number;
+  timeout?: string;
   abort: AbortController;
 };
+
+const TIMED_OUT = Symbol("session-waitpoint-timeout");
+
+function parseTimeoutMs(timeout: string | undefined): number | undefined {
+  if (!timeout) {
+    return undefined;
+  }
+  const match = /^(\d+)(ms|s|m|h)$/.exec(timeout.trim());
+  if (!match) {
+    return undefined;
+  }
+  const value = Number(match[1]);
+  switch (match[2]) {
+    case "ms":
+      return value;
+    case "s":
+      return value * 1_000;
+    case "m":
+      return value * 60_000;
+    default:
+      return value * 3_600_000;
+  }
+}
 
 /**
  * In-process stand-in for the run-engine's session-stream waitpoint machinery.
@@ -45,6 +69,7 @@ export class SessionWaitpointBackend {
       session: body.session,
       io: body.io,
       lastSeqNum: body.lastSeqNum,
+      timeout: body.timeout,
       abort: new AbortController(),
     });
     return { waitpointId, isCached: false };
@@ -57,9 +82,31 @@ export class SessionWaitpointBackend {
     }
     this.pending.delete(waitpointFriendlyId);
 
+    const timeoutMs = parseTimeoutMs(pending.timeout);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
     try {
-      const record = await this.readNextRecord(pending);
-      const output = typeof record === "string" ? record : JSON.stringify(record);
+      const recordPromise = this.readNextRecord(pending);
+      const result =
+        timeoutMs === undefined
+          ? await recordPromise
+          : await Promise.race([
+              recordPromise,
+              new Promise<typeof TIMED_OUT>((resolve) => {
+                timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs);
+              }),
+            ]);
+
+      if (result === TIMED_OUT) {
+        pending.abort.abort();
+        return {
+          ok: false,
+          output: JSON.stringify({ message: "Timed out" }),
+          outputType: "application/json",
+        };
+      }
+
+      const output = typeof result === "string" ? result : JSON.stringify(result);
       return { ok: true, output, outputType: "application/json" };
     } catch {
       return {
@@ -67,6 +114,10 @@ export class SessionWaitpointBackend {
         output: JSON.stringify({ message: "Session stream wait ended before a record arrived" }),
         outputType: "application/json",
       };
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
     }
   }
 

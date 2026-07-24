@@ -32,6 +32,12 @@ export type RunRealChatAgentOptions = {
    * suspend/resume path in a test.
    */
   idleTimeoutInSeconds?: number;
+  /**
+   * `ctx.attempt.number`. A value greater than 1 makes the boot treat the run
+   * as a retry (`couldHavePriorState`), restoring from the snapshot + `.in`
+   * replay. Used to model an OOM retry re-dispatch.
+   */
+  attemptNumber?: number;
 };
 
 export type RunningAgent = {
@@ -90,7 +96,14 @@ export function runRealChatAgent(opts: RunRealChatAgentOptions): RunningAgent {
           : { chatId: opts.addressingKey, trigger: "preload", metadata: {}, ...idle };
         await runFn(payload, { ctx: drivers.ctx, signal: runSignal.signal });
       },
-      { ctx: { run: { id: runId } }, sessionStreamManager: manager, runtimeManager }
+      {
+        ctx: {
+          run: { id: runId },
+          ...(opts.attemptNumber !== undefined ? { attempt: { number: opts.attemptNumber } } : {}),
+        },
+        sessionStreamManager: manager,
+        runtimeManager,
+      }
     ) as Promise<void>
   ).finally(restore);
 

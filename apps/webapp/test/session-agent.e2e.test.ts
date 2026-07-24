@@ -29,6 +29,7 @@ import {
 } from "./helpers/sessionStream";
 import { runChatAgentSession, runRealChatAgent } from "./helpers/agentHarness";
 import {
+  suspendResumeEvents,
   testApprovalChatAgent,
   testChatAgent,
   testChatModelLocal,
@@ -36,7 +37,10 @@ import {
   testHitlChatAgent,
   testHitlIdleChatAgent,
   testIdleChatAgent,
+  testOomChatAgent,
   testPlainChatAgent,
+  testSuspendHooksChatAgent,
+  testTimeoutChatAgent,
   testToolChatAgent,
   testUpgradeChatAgent,
   testUpgradeOnceChatAgent,
@@ -1348,6 +1352,168 @@ describe("session agent e2e (real chat.agent loop)", () => {
       expect(session.runCount()).toBeGreaterThanOrEqual(3);
     } finally {
       await session.close();
+    }
+  });
+
+  it("EA20: onChatSuspend and onChatResume fire around a suspend/resume", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(
+      testSuspendHooksChatAgent.id
+    );
+    const agent = runRealChatAgent({
+      agentId: testSuspendHooksChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: sequenceModel(["turn-a", "turn-b"]),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("first", "u1")),
+      });
+      await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+
+      await new Promise((r) => setTimeout(r, 2500));
+
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u2",
+        body: submitBody(addressingKey, userMessage("second", "u2")),
+      });
+      await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => joinChunks(p).includes("turn-b"),
+        maxMs: 30_000,
+      });
+
+      const mine = suspendResumeEvents.filter((e) => e.chatId === addressingKey);
+      expect(
+        mine.some((e) => e.kind === "suspend"),
+        "onChatSuspend fired when the run suspended"
+      ).toBe(true);
+      expect(
+        mine.some((e) => e.kind === "resume"),
+        "onChatResume fired when the next message resumed it"
+      ).toBe(true);
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA21: an OOM fails the run; the attempt-2 retry recovers the message", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testOomChatAgent.id);
+    const runId = `run_oom_${addressingKey}`;
+
+    const attempt1 = runRealChatAgent({
+      agentId: testOomChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: echoModel(),
+      modelLocal: testChatModelLocal,
+      runId,
+      attemptNumber: 1,
+    });
+    let attempt1Error: unknown;
+    attempt1.done.catch((e) => {
+      attempt1Error = e;
+    });
+
+    await appendInput({
+      baseUrl,
+      addressingKey,
+      token,
+      partId: "u1",
+      body: submitBody(addressingKey, userMessage("OOM-THEN-OK", "u1")),
+    });
+    await waitFor(() => attempt1Error !== undefined, 15_000);
+    expect(
+      String(attempt1Error),
+      "attempt 1 fails with an OOM so the runtime can swap machines"
+    ).toMatch(/OutOfMemory/i);
+
+    const attempt2 = runRealChatAgent({
+      agentId: testOomChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: echoModel(),
+      modelLocal: testChatModelLocal,
+      runId,
+      attemptNumber: 2,
+      continuation: true,
+    });
+    try {
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => joinChunks(p).includes("OOM-THEN-OK"),
+        maxMs: 30_000,
+      });
+      expect(
+        joinChunks(parts),
+        "the attempt-2 retry restored the unprocessed message and ran it"
+      ).toContain("OOM-THEN-OK");
+    } finally {
+      await attempt2.close();
+    }
+  });
+
+  it("EA22: the idle wait times out and ends the run when no message arrives", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testTimeoutChatAgent.id);
+    const agent = runRealChatAgent({
+      agentId: testTimeoutChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: textModel("turn one"),
+      modelLocal: testChatModelLocal,
+    });
+
+    let ended = false;
+    agent.done.then(() => {
+      ended = true;
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("hello", "u1")),
+      });
+      await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+
+      await waitFor(() => ended, 20_000);
+      expect(
+        ended,
+        "with no next message the between-turns wait times out and the run exits itself"
+      ).toBe(true);
+    } finally {
+      await agent.close();
     }
   });
 });

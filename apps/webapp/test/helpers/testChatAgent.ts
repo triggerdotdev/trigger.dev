@@ -1,5 +1,5 @@
 import { chat } from "@trigger.dev/sdk/ai";
-import { locals } from "@trigger.dev/core/v3";
+import { locals, OutOfMemoryError } from "@trigger.dev/core/v3";
 import { stepCountIs, streamText, tool, type LanguageModel, type UIMessage } from "ai";
 import { z } from "zod";
 
@@ -61,6 +61,79 @@ export const testChatAgent = chat
       return streamText({ model, messages, abortSignal: signal });
     },
   });
+
+/**
+ * Records suspend/resume lifecycle-hook fires (keyed by chatId so tests can
+ * filter to their own session). Appended to by {@link testSuspendHooksChatAgent}.
+ */
+export const suspendResumeEvents: Array<{
+  chatId: string;
+  kind: "suspend" | "resume";
+  phase: string;
+}> = [];
+
+/**
+ * Short-idle agent that records `onChatSuspend` / `onChatResume` fires, so a
+ * test can assert the lifecycle hooks run around a real suspend/resume.
+ */
+export const testSuspendHooksChatAgent = chat.agent({
+  id: "e2e-test-chat-suspend-hooks",
+  idleTimeoutInSeconds: 1,
+  preloadIdleTimeoutInSeconds: 1,
+  onChatSuspend: async ({ chatId, phase }) => {
+    suspendResumeEvents.push({ chatId, kind: "suspend", phase });
+  },
+  onChatResume: async ({ chatId, phase }) => {
+    suspendResumeEvents.push({ chatId, kind: "resume", phase });
+  },
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({ model, messages, abortSignal: signal });
+  },
+});
+
+/**
+ * Throws `OutOfMemoryError` on the first attempt so the run fails the way the
+ * runtime detects for a machine swap, then succeeds on attempt 2 (the retry
+ * boots through the restore path because `ctx.attempt.number > 1`).
+ */
+export const testOomChatAgent = chat.agent({
+  id: "e2e-test-chat-oom",
+  idleTimeoutInSeconds: 1,
+  preloadIdleTimeoutInSeconds: 1,
+  run: async ({ messages, signal, ctx }) => {
+    if (ctx.attempt.number === 1) {
+      throw new OutOfMemoryError();
+    }
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({ model, messages, abortSignal: signal });
+  },
+});
+
+/**
+ * Short idle window and a short `turnTimeout`, so a run with no incoming
+ * message suspends and then times out on the waitpoint, ending the run.
+ */
+export const testTimeoutChatAgent = chat.agent({
+  id: "e2e-test-chat-timeout",
+  idleTimeoutInSeconds: 1,
+  preloadIdleTimeoutInSeconds: 1,
+  turnTimeout: "3s",
+  preloadTimeout: "3s",
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({ model, messages, abortSignal: signal });
+  },
+});
 
 /**
  * A minimal agent with no lifecycle hooks. With `hydrateMessages` absent, the
