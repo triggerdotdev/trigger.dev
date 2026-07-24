@@ -1660,6 +1660,14 @@ export class RunEngine {
     return this.runQueue.concurrencyKeyBreakdown(environment, queue, options);
   }
 
+  async concurrencyKeyLiveStats(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKeys: string[]
+  ) {
+    return this.runQueue.concurrencyKeyLiveStats(environment, queue, concurrencyKeys);
+  }
+
   async removeEnvironmentQueuesFromMasterQueue({
     runtimeEnvironmentId,
     organizationId,
