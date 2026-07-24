@@ -730,6 +730,15 @@ clickhouse:
     timeoutSeconds: 5
     failureThreshold: 5
     successThreshold: 1
+  # Generous startup window: first boot on a large adopted data volume can
+  # spend a while loading metadata before the HTTP listener answers.
+  startupProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 60
+    successThreshold: 1
 
   # External ClickHouse connection (when deploy: false)
   external:

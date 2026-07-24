@@ -131,6 +131,17 @@ spec:
             failureThreshold: {{ .Values.clickhouse.readinessProbe.failureThreshold }}
             successThreshold: {{ .Values.clickhouse.readinessProbe.successThreshold }}
           {{- end }}
+          {{- if .Values.clickhouse.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: {{ .Values.clickhouse.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.clickhouse.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.clickhouse.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.clickhouse.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.clickhouse.startupProbe.successThreshold }}
+          {{- end }}
           resources:
             {{- toYaml .Values.clickhouse.resources | nindent 12 }}
           volumeMounts:
