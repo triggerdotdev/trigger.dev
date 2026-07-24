@@ -1415,7 +1415,7 @@ describe("session agent e2e (real chat.agent loop)", () => {
     }
   });
 
-  it("EA21: an OOM fails the run; the attempt-2 retry recovers the message", async () => {
+  it("EA21: a preloaded run's OOM retry recovers the in-flight message", async () => {
     const { addressingKey, token, apiKey, baseUrl } = await setupSession(testOomChatAgent.id);
     const runId = `run_oom_${addressingKey}`;
 
@@ -1456,7 +1456,6 @@ describe("session agent e2e (real chat.agent loop)", () => {
       modelLocal: testChatModelLocal,
       runId,
       attemptNumber: 2,
-      continuation: true,
     });
     try {
       const { parts } = await collectSessionOut({
