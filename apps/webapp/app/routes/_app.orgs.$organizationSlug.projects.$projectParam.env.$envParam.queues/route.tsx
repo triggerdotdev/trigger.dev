@@ -1484,7 +1484,7 @@ function QueueEnvMetricChart({
               )
             ) : null}
           </span>
-          {tile.legend ? (
+          {tile.legend && (showLoading || hasData) ? (
             <span className="flex items-center gap-2">
               {tile.legend.map((item) => (
                 <span

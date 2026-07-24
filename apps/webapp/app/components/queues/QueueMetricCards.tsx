@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import {
   Chart,
@@ -118,6 +118,9 @@ type QueueMetricChartProps = {
     value?: number;
     valueFromSeries?: string;
   };
+  /** Reports whether the chart has data to plot (false once it settles on the "no activity" state),
+   * so a wrapping card can hide the legend to match. */
+  onHasDataChange?: (hasData: boolean) => void;
 };
 
 // Bare chart (no card chrome) so it can live inside a shared card, e.g. a tabbed panel.
@@ -133,6 +136,7 @@ export function QueueMetricChart({
   warningOverlay,
   carryBackfill,
   thresholdStroke,
+  onHasDataChange,
 }: QueueMetricChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(query, {
     ids,
@@ -200,6 +204,12 @@ export function QueueMetricChart({
 
   const state: ChartState = showLoading ? "loading" : failed ? "invalid" : undefined;
 
+  // Report data presence so a wrapping card can hide its legend when the chart settles on the
+  // "no activity" state. Only report once loaded, so the legend stays put while loading.
+  useEffect(() => {
+    if (!showLoading) onHasDataChange?.(!failed && data.length > 0);
+  }, [showLoading, failed, data.length, onHasDataChange]);
+
   return (
     <Chart.Root
       config={chartConfig}
@@ -239,6 +249,8 @@ export function QueueMetricChartCard({
    * series (the orange "over threshold" colour). */
   extraLegend?: Array<{ color: string; label: string }>;
 }) {
+  // Hide the legend once the chart settles on the "no activity" state (reported by the chart).
+  const [hasData, setHasData] = useState(true);
   return (
     <div className={className ?? "h-64"}>
       <ChartCard
@@ -257,7 +269,9 @@ export function QueueMetricChartCard({
             </span>
             {/* Inline legend below the title (swatch + label per series), matching the list-page
                 charts — instead of the Chart.Root legend with per-series totals. */}
-            {chart.showLegend && (chart.series.length > 0 || (extraLegend?.length ?? 0) > 0) ? (
+            {chart.showLegend &&
+            hasData &&
+            (chart.series.length > 0 || (extraLegend?.length ?? 0) > 0) ? (
               <span className="flex flex-wrap items-center gap-2">
                 {chart.series.map((s) => (
                   <span
@@ -288,7 +302,7 @@ export function QueueMetricChartCard({
           </span>
         }
       >
-        <QueueMetricChart {...chart} />
+        <QueueMetricChart {...chart} onHasDataChange={setHasData} />
       </ChartCard>
     </div>
   );
