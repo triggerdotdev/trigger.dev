@@ -15,6 +15,13 @@ export type RunRealChatAgentOptions = {
   model: LanguageModel;
   modelLocal: LocalsKey<LanguageModel>;
   runId?: string;
+  /**
+   * Boot as a continuation of a previous run for the same session. Gates the
+   * snapshot + `.out`/`.in` replay boot path, so the agent restores prior
+   * history instead of treating the chat as brand new.
+   */
+  continuation?: boolean;
+  previousRunId?: string;
 };
 
 export type RunningAgent = {
@@ -54,10 +61,15 @@ export function runRealChatAgent(opts: RunRealChatAgentOptions): RunningAgent {
   const done = runInMockTaskContext(
     async (drivers) => {
       drivers.locals.set(opts.modelLocal, opts.model);
-      await runFn(
-        { chatId: opts.addressingKey, trigger: "preload", metadata: {} },
-        { ctx: drivers.ctx, signal: runSignal.signal }
-      );
+      const payload = opts.continuation
+        ? {
+            chatId: opts.addressingKey,
+            continuation: true,
+            metadata: {},
+            ...(opts.previousRunId ? { previousRunId: opts.previousRunId } : {}),
+          }
+        : { chatId: opts.addressingKey, trigger: "preload", metadata: {} };
+      await runFn(payload, { ctx: drivers.ctx, signal: runSignal.signal });
     },
     { ctx: { run: { id: runId } }, sessionStreamManager: manager }
   ) as Promise<void>;

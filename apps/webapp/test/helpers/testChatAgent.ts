@@ -1,6 +1,6 @@
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals } from "@trigger.dev/core/v3";
-import { streamText, type LanguageModel, type UIMessage } from "ai";
+import { stepCountIs, streamText, tool, type LanguageModel, type UIMessage } from "ai";
 import { z } from "zod";
 
 /**
@@ -61,3 +61,73 @@ export const testChatAgent = chat
       return streamText({ model, messages, abortSignal: signal });
     },
   });
+
+/**
+ * A minimal agent with no lifecycle hooks. With `hydrateMessages` absent, the
+ * default snapshot + `.out`/`.in` replay boot path is what restores prior
+ * history on a continuation run.
+ */
+export const testPlainChatAgent = chat.agent({
+  id: "e2e-test-chat-plain",
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({ model, messages, abortSignal: signal });
+  },
+});
+
+/**
+ * A tool with a server-side `execute`: the agent runs it automatically and
+ * feeds the result back to the model, so a single turn covers the whole
+ * tool loop.
+ */
+const weatherTool = tool({
+  description: "Get the current weather for a city.",
+  inputSchema: z.object({ city: z.string() }),
+  execute: async ({ city }) => ({ city, tempC: 21, summary: "clear" }),
+});
+
+export const testToolChatAgent = chat.agent({
+  id: "e2e-test-chat-tool",
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({
+      model,
+      messages,
+      tools: { getWeather: weatherTool },
+      stopWhen: stepCountIs(5),
+      abortSignal: signal,
+    });
+  },
+});
+
+/**
+ * A tool with no `execute`: the model's call parks the turn on a
+ * human-in-the-loop round-trip. The client supplies the tool output on the
+ * next message and the agent continues from there.
+ */
+const askUserTool = tool({
+  description: "Ask the user a question and wait for their answer.",
+  inputSchema: z.object({ question: z.string() }),
+});
+
+export const testHitlChatAgent = chat.agent({
+  id: "e2e-test-chat-hitl",
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({
+      model,
+      messages,
+      tools: { askUser: askUserTool },
+      abortSignal: signal,
+    });
+  },
+});

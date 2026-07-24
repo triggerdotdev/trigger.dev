@@ -27,7 +27,13 @@ import {
   type CollectedPart,
 } from "./helpers/sessionStream";
 import { runRealChatAgent } from "./helpers/agentHarness";
-import { testChatAgent, testChatModelLocal } from "./helpers/testChatAgent";
+import {
+  testChatAgent,
+  testChatModelLocal,
+  testHitlChatAgent,
+  testPlainChatAgent,
+  testToolChatAgent,
+} from "./helpers/testChatAgent";
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 240_000 });
 
@@ -60,7 +66,7 @@ function textModel(text: string) {
   });
 }
 
-async function setupSession() {
+async function setupSession(agentId: string = testChatAgent.id) {
   const { organization, project, environment, apiKey } = await seedTestEnvironment(server.prisma);
   const addressingKey = `chat-${randomBytes(6).toString("hex")}`;
   await server.prisma.session.create({
@@ -72,7 +78,7 @@ async function setupSession() {
       runtimeEnvironmentId: environment.id,
       environmentType: environment.type,
       organizationId: organization.id,
-      taskIdentifier: testChatAgent.id,
+      taskIdentifier: agentId,
       triggerConfig: { basePayload: {} },
     },
   });
@@ -168,6 +174,62 @@ function slowModel(words: string[], delayMs: number) {
 function chunkType(part: CollectedPart): string | undefined {
   const c = part.chunk as { type?: unknown } | null;
   return c && typeof c === "object" && typeof c.type === "string" ? c.type : undefined;
+}
+
+const FINISH_STOP = {
+  type: "finish",
+  finishReason: { unified: "stop", raw: "stop" },
+  usage: {
+    inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+    outputTokens: { total: 5, text: 5, reasoning: undefined },
+  },
+};
+
+/**
+ * A stateful model that emits a tool-call on its first `doStream` and a plain
+ * text response on every call after that. Drives both the automatic
+ * tool-execute loop (one turn) and the HITL round-trip (two turns).
+ */
+function toolCallThenText(opts: {
+  toolName: string;
+  toolCallId: string;
+  input: Record<string, unknown>;
+  finalText: string;
+}) {
+  const inputJson = JSON.stringify(opts.input);
+  const call1 = [
+    { type: "tool-input-start", id: opts.toolCallId, toolName: opts.toolName },
+    { type: "tool-input-delta", id: opts.toolCallId, delta: inputJson },
+    { type: "tool-input-end", id: opts.toolCallId },
+    { type: "tool-call", toolCallId: opts.toolCallId, toolName: opts.toolName, input: inputJson },
+    {
+      type: "finish",
+      finishReason: { unified: "tool-calls", raw: "tool_calls" },
+      usage: {
+        inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: 5, text: 0, reasoning: undefined },
+      },
+    },
+  ];
+  const call2 = [
+    { type: "text-start", id: "t1" },
+    { type: "text-delta", id: "t1", delta: opts.finalText },
+    { type: "text-end", id: "t1" },
+    FINISH_STOP,
+  ];
+  let idx = 0;
+  return new MockLanguageModelV3({
+    doStream: async () => ({
+      stream: simulateReadableStream({ chunks: (idx++ === 0 ? call1 : call2) as never }),
+    }),
+  });
+}
+
+function joinChunks(parts: CollectedPart[]): string {
+  return parts
+    .filter((p) => p.chunk != null)
+    .map((p) => JSON.stringify(p.chunk))
+    .join("");
 }
 
 describe("session agent e2e (real chat.agent loop)", () => {
@@ -468,6 +530,191 @@ describe("session agent e2e (real chat.agent loop)", () => {
       );
     } finally {
       await agent.close();
+    }
+  });
+
+  it("EA7: the agent runs a server-side tool and streams the final answer", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testToolChatAgent.id);
+    const agent = runRealChatAgent({
+      agentId: testToolChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: toolCallThenText({
+        toolName: "getWeather",
+        toolCallId: "tc_weather_e2e",
+        input: { city: "Paris" },
+        finalText: "It is 21C and clear in Paris",
+      }),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("what is the weather in Paris?", "u1")),
+      });
+
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 40_000,
+      });
+
+      const blob = joinChunks(parts);
+      expect(blob, "the tool call is streamed to .out").toContain("getWeather");
+      expect(blob, "the tool result feeds a final answer").toContain(
+        "It is 21C and clear in Paris"
+      );
+      expect(parts.some(isTurnComplete)).toBe(true);
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA8: a HITL tool round-trip parks on the call and resumes from the client answer", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testHitlChatAgent.id);
+    const toolCallId = "tc_ask_e2e";
+    const agent = runRealChatAgent({
+      agentId: testHitlChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: toolCallThenText({
+        toolName: "askUser",
+        toolCallId,
+        input: { question: "what color?" },
+        finalText: "blue it is",
+      }),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("pick a color", "u1")),
+      });
+      const turn1 = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+      const blob1 = joinChunks(turn1.parts);
+      expect(blob1, "turn 1 streams the tool call").toContain("askUser");
+      expect(blob1).toContain(toolCallId);
+
+      const answer = {
+        id: "a-answer",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-askUser",
+            toolCallId,
+            state: "output-available",
+            input: { question: "what color?" },
+            output: { color: "blue" },
+          },
+        ],
+      };
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u2",
+        body: submitBody(addressingKey, answer),
+      });
+      const turn2 = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.filter(isTurnComplete).length >= 2,
+        maxMs: 30_000,
+      });
+      expect(joinChunks(turn2.parts), "turn 2 resumes with the final answer").toContain(
+        "blue it is"
+      );
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA9: a continuation run restores prior history from the persisted snapshot", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testPlainChatAgent.id);
+    const runId1 = `run_persist_1_${addressingKey}`;
+    const runId2 = `run_persist_2_${addressingKey}`;
+
+    const firstRun = runRealChatAgent({
+      agentId: testPlainChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: textModel("assistant acknowledges"),
+      modelLocal: testChatModelLocal,
+      runId: runId1,
+    });
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("REMEMBER-THIS-42", "u1")),
+      });
+      await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+    } finally {
+      await firstRun.close();
+    }
+
+    await appendInput({
+      baseUrl,
+      addressingKey,
+      token,
+      partId: "u2",
+      body: submitBody(addressingKey, userMessage("second question", "u2")),
+    });
+
+    const secondRun = runRealChatAgent({
+      agentId: testPlainChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: echoModel(),
+      modelLocal: testChatModelLocal,
+      runId: runId2,
+      continuation: true,
+      previousRunId: runId1,
+    });
+    try {
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.filter(isTurnComplete).length >= 2,
+        maxMs: 40_000,
+      });
+      const blob = joinChunks(parts);
+      expect(blob, "the restored prior user message is back in the model prompt").toContain(
+        "REMEMBER-THIS-42"
+      );
+      expect(blob, "the new turn also ran").toContain("second question");
+    } finally {
+      await secondRun.close();
     }
   });
 });
