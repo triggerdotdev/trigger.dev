@@ -7,6 +7,7 @@ import {
   hasAccessToEnvironment,
 } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
+import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { engine } from "~/v3/runEngine.server";
 
 // One page of a queue's concurrency keys. The ClickHouse tier (queue_metrics_ck_v1) is the
@@ -96,6 +97,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { success: false, error: "Environment not found" },
       { status: 404 }
     );
+  }
+
+  // Gate on the per-org Queue Metrics UI flag, matching the queue detail page and run inspector, so
+  // this endpoint's data isn't reachable for orgs that can't see the UI. 404 (not 403) to hide it.
+  if (
+    !(await canAccessQueueMetricsUi({
+      userId,
+      organizationSlug: environment.organization.slug,
+    }))
+  ) {
+    return json<ConcurrencyKeysResponse>({ success: false, error: "Not found" }, { status: 404 });
   }
 
   const range = timeFilterFromTo({
