@@ -248,8 +248,8 @@ export function QueueOverrideConcurrencyButton({
               </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-[230px] text-xs">
-              Give this queue its own concurrency limit instead of the environment default. Set it as
-              a number or a percentage of the environment limit.
+              Give this queue its own concurrency limit instead of the environment default. Set it
+              as a number or a percentage of the environment limit.
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

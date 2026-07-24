@@ -661,15 +661,9 @@ function QueuesWithMetricsView() {
               <TableHeader>
                 <TableRow>
                   <TableHeaderCell>Name</TableHeaderCell>
-                  <TableHeaderCell alignment="right">
-                    Queued
-                  </TableHeaderCell>
-                  <TableHeaderCell alignment="right">
-                    Running
-                  </TableHeaderCell>
-                  <TableHeaderCell alignment="right">
-                    Limit
-                  </TableHeaderCell>
+                  <TableHeaderCell alignment="right">Queued</TableHeaderCell>
+                  <TableHeaderCell alignment="right">Running</TableHeaderCell>
+                  <TableHeaderCell alignment="right">Limit</TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
                     tooltipContentClassName="max-w-max"
@@ -685,17 +679,15 @@ function QueuesWithMetricsView() {
                           code.
                         </p>
                         <p>
-                          <span className="text-text-bright">Override</span>: a limit you set here or
-                          via the API.
+                          <span className="text-text-bright">Override</span>: a limit you set here
+                          or via the API.
                         </p>
                       </div>
                     }
                   >
                     Limited by
                   </TableHeaderCell>
-                  <TableHeaderCell alignment="right">
-                    Health
-                  </TableHeaderCell>
+                  <TableHeaderCell alignment="right">Health</TableHeaderCell>
                   <TableHeaderCell
                     alignment="right"
                     disableTooltipHoverableContent
@@ -844,10 +836,7 @@ function QueuesWithMetricsView() {
                           to={queueDetailPath}
                           alignment="right"
                           actionClassName="pl-16"
-                          className={cn(
-                            "w-[1%]",
-                            queue.paused ? "opacity-50" : undefined
-                          )}
+                          className={cn("w-[1%]", queue.paused ? "opacity-50" : undefined)}
                           // Keep the whole row navigable: the override explainer is a tooltip
                           // button, so it renders beside the link (trailing) rather than nested
                           // inside the <a>, and the label itself stays the link.
@@ -870,13 +859,11 @@ function QueuesWithMetricsView() {
                             ) : undefined
                           }
                         >
-                          {queue.concurrency?.overriddenAt ? (
-                            "Override"
-                          ) : queue.concurrencyLimit ? (
-                            "User"
-                          ) : (
-                            "Environment"
-                          )}
+                          {queue.concurrency?.overriddenAt
+                            ? "Override"
+                            : queue.concurrencyLimit
+                              ? "User"
+                              : "Environment"}
                         </TableCell>
                         <TableCell
                           to={queueDetailPath}
@@ -1258,8 +1245,8 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Env saturation",
     description: (
       <>
-        How much of the environment's concurrency these queues are using. Turns{" "}
-        <WarningSwatch /> above 100%, when they're into burst capacity.
+        How much of the environment's concurrency these queues are using. Turns <WarningSwatch />{" "}
+        above 100%, when they're into burst capacity.
       </>
     ),
     color: "var(--color-queues)",
@@ -1303,8 +1290,8 @@ const QUEUE_HEADER_TILES: QueueHeaderTile[] = [
     label: "Scheduling delay p95",
     description: (
       <>
-        How long runs wait before they start (95% start faster than this). Turns{" "}
-        <WarningSwatch /> above 1 minute.
+        How long runs wait before they start (95% start faster than this). Turns <WarningSwatch />{" "}
+        above 1 minute.
       </>
     ),
     totalTooltip: "The worst p95 in the selected window.",
@@ -1476,7 +1463,10 @@ function QueueEnvMetricChart({
                 />
               ) : (
                 <span
-                  className={cn("text-xs font-normal tabular-nums text-text-dimmed", totalClassName)}
+                  className={cn(
+                    "text-xs font-normal tabular-nums text-text-dimmed",
+                    totalClassName
+                  )}
                 >
                   {peak}
                 </span>

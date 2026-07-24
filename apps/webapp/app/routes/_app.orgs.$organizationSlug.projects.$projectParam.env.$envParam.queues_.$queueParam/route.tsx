@@ -276,7 +276,11 @@ export default function Page() {
           </div>
           <div className="flex items-center gap-1.5">
             {view === "keys" && hasKeys ? (
-              <SearchInput placeholder="Search keys…" paramName="query" resetParams={["key", "page"]} />
+              <SearchInput
+                placeholder="Search keys…"
+                paramName="query"
+                resetParams={["key", "page"]}
+              />
             ) : null}
             <TimeFilter
               defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
@@ -383,8 +387,8 @@ function OverviewCharts({
           info={
             <>
               How many runs are executing at once (<ColorSwatch color={COLORS.running} />) versus
-              the queue's limit (<ColorSwatch color={COLORS.limit} />). Turns{" "}
-              <ColorSwatch color="var(--color-warning)" /> color when it reaches the limit.
+              the queue's limit (<ColorSwatch color={COLORS.limit} />
+              ). Turns <ColorSwatch color="var(--color-warning)" /> color when it reaches the limit.
             </>
           }
           showLegend
@@ -426,8 +430,8 @@ function OverviewCharts({
           title="Throughput"
           info={
             <>
-              Runs arriving (<ColorSwatch color={COLORS.limit} /> Enqueued) versus starting
-              (<ColorSwatch color={COLORS.running} /> Started). Turns{" "}
+              Runs arriving (<ColorSwatch color={COLORS.limit} /> Enqueued) versus starting (
+              <ColorSwatch color={COLORS.running} /> Started). Turns{" "}
               <ColorSwatch color="var(--color-warning)" /> color when Started falls behind.
             </>
           }
@@ -1166,7 +1170,10 @@ function ConcurrencyBlock({
             </span>
             {limit !== null && limit > 0 && (
               <span
-                className={cn("text-xs tabular-nums", atLimit ? "text-warning" : "text-text-dimmed")}
+                className={cn(
+                  "text-xs tabular-nums",
+                  atLimit ? "text-warning" : "text-text-dimmed"
+                )}
               >
                 {/* Separator so the limit and the percentage don't read as one number
                     (e.g. "/ 25" + "44%" mashing into "2544%"). */}

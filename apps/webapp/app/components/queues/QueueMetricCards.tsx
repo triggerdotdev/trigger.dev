@@ -278,10 +278,7 @@ export function QueueMetricChartCard({
                     key={s.key}
                     className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
                   >
-                    <span
-                      className="size-2.5 rounded-[2px]"
-                      style={{ backgroundColor: s.color }}
-                    />
+                    <span className="size-2.5 rounded-[2px]" style={{ backgroundColor: s.color }} />
                     {s.label}
                   </span>
                 ))}
@@ -290,10 +287,7 @@ export function QueueMetricChartCard({
                     key={e.label}
                     className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
                   >
-                    <span
-                      className="size-2.5 rounded-[2px]"
-                      style={{ backgroundColor: e.color }}
-                    />
+                    <span className="size-2.5 rounded-[2px]" style={{ backgroundColor: e.color }} />
                     {e.label}
                   </span>
                 ))}

@@ -2,10 +2,7 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
-import {
-  findEnvironmentById,
-  hasAccessToEnvironment,
-} from "~/models/runtimeEnvironment.server";
+import { findEnvironmentById, hasAccessToEnvironment } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { engine } from "~/v3/runEngine.server";
@@ -72,7 +69,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const submission = Body.safeParse(await request.json());
   if (!submission.success) {
-    return json<ConcurrencyKeysResponse>({ success: false, error: "Invalid input" }, { status: 400 });
+    return json<ConcurrencyKeysResponse>(
+      { success: false, error: "Invalid input" },
+      { status: 400 }
+    );
   }
   const { organizationId, projectId, environmentId, queueName, period, from, to, search, page } =
     submission.data;
@@ -120,7 +120,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const endTime = formatClickhouseDateTime(new Date(ceilToMinute(range.to.getTime())));
 
   try {
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "query");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "query"
+    );
 
     const [rankingError, rankingRows] = await clickhouse.queueMetrics.concurrencyKeyRanking({
       organizationId,
