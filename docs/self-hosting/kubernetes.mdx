@@ -286,7 +286,14 @@ redis:
   automatically adopts the existing data volume, so no manual migration is needed. If you render
   manifests without cluster access (for example with GitOps tools that use `helm template`), set
   `clickhouse.persistence.existingClaim` to the old PVC name
-  (`data-<release>-clickhouse-shard0-0`) to keep your data.
+  (`data-<release>-clickhouse-shard0-0`) to keep your data — auto-detection can't run there, and
+  skipping this starts ClickHouse on a fresh empty volume.
+</Note>
+
+<Note>
+  On storage that doesn't support `fsGroup` ownership changes (for example NFS or hostPath), set
+  `clickhouse.volumePermissions.enabled: true` so a one-time init container fixes the data
+  volume's ownership for the non-root ClickHouse server.
 </Note>
 
 **Direct configuration:**

@@ -667,6 +667,22 @@ clickhouse:
     runAsUser: 101
     runAsGroup: 101
 
+  # One-time root init container that chowns the data volume to the ClickHouse
+  # uid. Only needed on storage that doesn't support fsGroup ownership changes
+  # (e.g. NFS, hostPath); on such storage a data volume carried over from the
+  # Bitnami-based chart is otherwise unreadable by the non-root server.
+  volumePermissions:
+    enabled: false
+    image:
+      registry: docker.io
+      repository: busybox
+      tag: "1.35"
+      pullPolicy: IfNotPresent
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
   service:
     type: ClusterIP
     ports:
@@ -689,9 +705,16 @@ clickhouse:
 
   ## ClickHouse resource requests and limits
   ## ref: http://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
-  ## ClickHouse can be very resource intensive. Setting explicit limits and
-  ## requests is strongly recommended for production (see values-production-example.yaml).
-  resources: {}
+  ## ClickHouse can be very resource intensive. The defaults below match the
+  ## resource preset the chart previously applied; size them to your workload
+  ## for production (see values-production-example.yaml).
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 3Gi
+    limits:
+      cpu: 3000m
+      memory: 6Gi
 
   livenessProbe:
     enabled: true

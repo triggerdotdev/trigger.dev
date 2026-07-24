@@ -365,6 +365,13 @@ We patch the latest released version line only, so keep an eye on new releases t
 You can also lock the versions of the bundled services, for example with `CLICKHOUSE_IMAGE_TAG`. If you do, or if you bring your own ClickHouse via `CLICKHOUSE_URL`, note that Trigger.dev requires ClickHouse 25.8 or newer.
 
 <Note>
+  The bundled ClickHouse now uses the official `clickhouse/clickhouse-server` image. Your existing
+  data volume carries over automatically. If you previously pinned `CLICKHOUSE_IMAGE_TAG` to a
+  Bitnami tag (for example `25.7.5-debian-12-r0`), update it to an official image tag such as
+  `26.2` — Bitnami tags don't exist in the official repository.
+</Note>
+
+<Note>
   Trigger.dev 4.5.0 is the last version we officially support for running v3 (SDK v3) tasks. If
   you still have v3 tasks, pin `TRIGGER_IMAGE_TAG` to exactly `v4.5.0` or [migrate to
   v4](/migrating-from-v3). 4.5.1 and later reject v3 triggers and deploys with an upgrade message.

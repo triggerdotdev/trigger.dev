@@ -48,7 +48,12 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ printf "%s\n%s" (include "trigger-v4.clickhouse.dataPathsConfig" .) (.Values.clickhouse.configdFiles | toYaml) | sha256sum }}
+        {{- /* Restart on pinned-password changes; when the password is
+               auto-generated it lives in the retained datastore secret and
+               never rotates on upgrade, so there is nothing to hash. */}}
+        {{- if .Values.clickhouse.auth.password }}
         checksum/secret: {{ .Values.clickhouse.auth.password | sha256sum }}
+        {{- end }}
         {{- with .Values.clickhouse.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -62,6 +67,19 @@ spec:
       {{- with .Values.clickhouse.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.clickhouse.volumePermissions.enabled }}
+      initContainers:
+        - name: volume-permissions
+          image: "{{ .Values.global.imageRegistry | default .Values.clickhouse.volumePermissions.image.registry }}/{{ .Values.clickhouse.volumePermissions.image.repository }}:{{ .Values.clickhouse.volumePermissions.image.tag }}"
+          imagePullPolicy: {{ .Values.clickhouse.volumePermissions.image.pullPolicy }}
+          command: ["sh", "-c", "chown -R 101:101 /var/lib/clickhouse"]
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
       {{- end }}
       containers:
         - name: clickhouse
@@ -134,6 +152,18 @@ spec:
               mountPath: /etc/clickhouse-server/config.d/{{ $filename }}
               subPath: {{ $filename }}
             {{- end }}
+      {{- with .Values.clickhouse.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.clickhouse.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.clickhouse.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       volumes:
         - name: config
           configMap:
