@@ -346,10 +346,10 @@ describe("CK virtual-time concurrency and op-count budget", () => {
       expect(off.served).toBe(cks.length * perKey);
       expect(on.served).toBe(cks.length * perKey);
 
-      // Per dequeue call the vtime path adds at worst: GET floor, ZRANGE min,
-      // ZRANGE window, SET floor, EXPIRE, the pass-2 ZRANGEBYSCORE, plus per
-      // serve one ZSCORE and one ZADD.
-      const budget = dequeueCalls * (6 + 2 * maxCount);
+      // Per dequeue call the vtime path adds at worst 7 fixed ops: GET floor,
+      // ZRANGE min, ZRANGE window, the pass-2 ZRANGEBYSCORE, SET floor,
+      // EXISTS ckVtime, EXPIRE ckVtime — plus per serve one ZSCORE and one ZADD.
+      const budget = dequeueCalls * (7 + 2 * maxCount);
       expect(
         on.totalCalls,
         `on_total ${on.totalCalls} exceeds off_total ${off.totalCalls} + budget ${budget}`

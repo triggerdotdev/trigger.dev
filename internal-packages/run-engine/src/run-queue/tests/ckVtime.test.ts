@@ -397,6 +397,99 @@ describe("CK virtual-time (SFQ) dequeue", () => {
     }
   );
 
+  // H1 regression: the floor key must not be allowed to expire while ckVtime
+  // survives. Before the fix, only the dequeue command refreshed the floor
+  // key's TTL, so a dequeue-quiescent + enqueue-active base queue let the floor
+  // key expire underneath a live ckVtime; a brand-new variant then read a
+  // missing floor as 0 and jumped ahead of the whole established backlog. The
+  // enqueue/nack registration paths now refresh the floor key TTL too.
+  redisTest(
+    "enqueue refreshes the floor key TTL and a new variant registers at the current floor",
+    async ({ redisContainer }) => {
+      const stateTtlSeconds = 3600;
+      const queue = createQueue(redisContainer, { stateTtlSeconds });
+      try {
+        const t0 = Date.now() - 100_000;
+        const cks = ["a", "b"];
+
+        for (const ck of cks) {
+          for (let i = 0; i < 25; i++) {
+            await queue.enqueueMessage({
+              env: authenticatedEnvDev,
+              message: makeMessage({
+                runId: `r-${ck}-${i}`,
+                concurrencyKey: ck,
+                timestamp: t0 + i,
+              }),
+              workerQueue: authenticatedEnvDev.id,
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName("a"));
+        const ckVtimeFloorKey = testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("a"));
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+
+        // Drive tags and the floor above 0 with a run of serves.
+        for (let call = 0; call < 20; call++) {
+          const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 2);
+          for (const m of messages) {
+            await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+
+        const floor = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
+        expect(floor).toBeGreaterThan(10);
+        expect(await queue.redis.exists(ckVtimeKey)).toBe(1);
+
+        // Simulate the floor key's TTL decaying toward expiry while dequeues are
+        // quiescent. Without the fix, only a dequeue would ever bump it back.
+        await queue.redis.pexpire(ckVtimeFloorKey, 2_000);
+
+        // WITHOUT dequeuing, enqueue several more messages on an existing
+        // variant. The enqueue registration path must refresh the floor key TTL.
+        for (let i = 0; i < 5; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r-a-more-${i}`,
+              concurrencyKey: "a",
+              timestamp: t0 + 500 + i,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        // The floor key TTL was pushed back up to (about) stateTtl, well above
+        // the 2s decay we forced.
+        const floorPttl = await queue.redis.pttl(ckVtimeFloorKey);
+        expect(floorPttl).toBeGreaterThan(2_000);
+        expect(floorPttl).toBeLessThanOrEqual(stateTtlSeconds * 1000);
+
+        // Enqueue-only activity does not move the floor value itself.
+        const floorAfter = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
+        expect(floorAfter).toBe(floor);
+
+        // A brand-new variant enqueued now registers at the CURRENT floor, so it
+        // cannot leapfrog the established backlog back to 0.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r-fresh", concurrencyKey: "fresh", timestamp: t0 }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+        const freshTag = Number(await queue.redis.zscore(ckVtimeKey, variantName("fresh")));
+        expect(freshTag).toBe(floor);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
   redisTest("no service, no advance", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer);
     try {

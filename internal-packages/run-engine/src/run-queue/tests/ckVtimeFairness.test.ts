@@ -432,7 +432,68 @@ describe("CK virtual-time fairness on the real batched dequeue path", () => {
       const offMax = maxPerKeyMeanWait(off);
       debugLog("ckBalanced", { onMax, offMax, ratio: onMax / offMax });
 
-      expect(onMax).toBeLessThanOrEqual(1.25 * offMax);
+      // Observed ratio is 1.0 (the fair order is neutral on the symmetric case),
+      // so allow only modest headroom rather than the original 1.25.
+      expect(onMax).toBeLessThanOrEqual(1.1 * offMax);
+    }
+  );
+
+  // ckManyKeys (sharding coverage): cardinality ABOVE the pass-1 fair window.
+  // The batched dequeue uses maxCount 10, so window = actualMaxCount * 3 = 30.
+  // With ~60 attacker keys (all on the same old head) plus 1 light key on a
+  // newer head, 61 variants sit above the 30-wide pass-1 ZRANGE window, so no
+  // single fair pass can even see every key. The property to hold is that this
+  // does NOT permanently starve the light key: as attackers advance their tags
+  // out of the bottom of the window, the light key (still at the floor) rises
+  // into it and gets served, and every message drains exactly once. A bounded
+  // first-serve delay is fine; permanent starvation or a stuck drain is not.
+  redisTest(
+    "ckManyKeys: light key is not starved when cardinality exceeds the fair window",
+    async ({ redisContainer }) => {
+      const t0 = Date.now() - 500_000;
+      const messages: ScenarioMessage[] = [];
+      const attackerCount = 60;
+      for (let i = 0; i < 8; i++) {
+        for (let k = 0; k < attackerCount; k++) {
+          const ck = `att${String(k).padStart(2, "0")}`;
+          // All attackers share the same old head timestamp (tied heads).
+          messages.push({ runId: `${ck}-${i}`, ck, timestamp: t0 });
+        }
+      }
+      for (let i = 0; i < 10; i++) {
+        messages.push({ runId: `light-${i}`, ck: "light", timestamp: t0 + 50_000 + i });
+      }
+      const scenario: Scenario = {
+        name: "ckManyKeys",
+        messages,
+        envConcurrencyLimit: 25,
+        holdSteps: 3,
+        maxSteps: 1_000,
+      };
+
+      const on = await runScenario(redisContainer, scenario, true);
+      const off = await runScenario(redisContainer, scenario, false);
+
+      // No loss and no double-serve in either run: the run terminates and every
+      // message (attackers + light) is served exactly once within maxSteps.
+      assertConservation(scenario, on, off);
+
+      const isLight = (ck: string) => ck === "light";
+
+      // The light key IS eventually served (no permanent starvation) in both
+      // runs, and drains fully.
+      const onFirstServe = firstServeStep(on, isLight);
+      const offFirstServe = firstServeStep(off, isLight);
+      expect(on.drainStep).toBeGreaterThanOrEqual(0);
+      expect(off.drainStep).toBeGreaterThanOrEqual(0);
+
+      debugLog("ckManyKeys", {
+        variants: attackerCount + 1,
+        onFirstServe,
+        offFirstServe,
+        onDrainStep: on.drainStep,
+        offDrainStep: off.drainStep,
+      });
     }
   );
 
