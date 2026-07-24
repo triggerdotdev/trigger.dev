@@ -256,6 +256,13 @@ async function remoteBuildImage(options: DepotBuildImageOptions): Promise<BuildI
       DEPOT_PROJECT_ID: options.buildProjectId,
       DEPOT_NO_SUMMARY_LINK: "1",
       DEPOT_NO_UPDATE_NOTIFIER: "1",
+      // Prevent ambient OTEL env vars (e.g. OTEL_EXPORTER_OTLP_ENDPOINT) from
+      // leaking into the depot child process. The depot CLI initialises its own
+      // OTel exporter and fails during telemetry init when it inherits an
+      // endpoint it can't reach — silently killing the build with a misleading
+      // "Error building image" message. See: triggerdotdev/trigger.dev#4321
+      OTEL_SDK_DISABLED: "1",
+      OTEL_EXPORTER_OTLP_ENDPOINT: "",
     },
   });
 
