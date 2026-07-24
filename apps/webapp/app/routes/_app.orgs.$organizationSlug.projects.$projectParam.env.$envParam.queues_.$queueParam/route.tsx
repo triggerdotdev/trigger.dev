@@ -867,6 +867,16 @@ function KeyStatsTable({
   // Only show a skeleton before the first response; keep prior rows visible while revalidating.
   const showLoading = isLoading && !data;
 
+  // Recover from a page past the end: narrowing the time range (or a stale bookmarked URL) can
+  // leave `page` beyond the result set, which comes back empty with the pagination control — shown
+  // only when there's >1 page — hidden, stranding the reader. Once a response settles empty on a
+  // page > 1, snap back to page 1 (whose data is fetched fresh) so there's always a way out.
+  useEffect(() => {
+    if (!isLoading && data?.success && data.rows.length === 0 && page > 1) {
+      del("page");
+    }
+  }, [isLoading, data, page, del]);
+
   return (
     <div className="flex flex-col">
       {/* Title bar above the table, shown only when there's more than one page: the section title
