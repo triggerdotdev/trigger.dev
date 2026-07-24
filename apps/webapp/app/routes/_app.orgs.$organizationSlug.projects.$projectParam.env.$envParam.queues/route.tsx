@@ -846,8 +846,7 @@ function QueuesWithMetricsView() {
                           actionClassName="pl-16"
                           className={cn(
                             "w-[1%]",
-                            queue.paused ? "opacity-50" : undefined,
-                            queue.concurrency?.overriddenAt && "font-medium text-text-bright"
+                            queue.paused ? "opacity-50" : undefined
                           )}
                           // Keep the whole row navigable: the override explainer is a tooltip
                           // button, so it renders beside the link (trailing) rather than nested
@@ -872,7 +871,7 @@ function QueuesWithMetricsView() {
                           }
                         >
                           {queue.concurrency?.overriddenAt ? (
-                            <span className="text-text-bright">Override</span>
+                            "Override"
                           ) : queue.concurrencyLimit ? (
                             "User"
                           ) : (
