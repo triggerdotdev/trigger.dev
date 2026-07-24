@@ -89,14 +89,10 @@ describe("chat.agent managed loop — source-stream failure", () => {
 
       const evt = turnCompletes[0]!;
 
-      // The turn is reported as errored, carrying the thrown transport error.
       expect(evt.finishReason).toBe("error");
       expect(evt.error).toBeInstanceOf(Error);
       expect((evt.error as Error).message).toBe("UND_ERR_BODY_TIMEOUT");
 
-      // The partial assistant output that streamed before the failure must be
-      // preserved so persistence / recovery can keep it, instead of being
-      // dropped (responseMessage: undefined).
       expect(evt.responseMessage).toBeDefined();
       expect(extractText(evt.responseMessage)).toBe("partial answer");
 
@@ -148,8 +144,6 @@ describe("chat.agent managed loop — source-stream failure", () => {
         if (turn === 1) {
           return erroringSource("UND_ERR_BODY_TIMEOUT") as never;
         }
-        // Second turn: the failed turn's partial assistant output must be in
-        // the accumulated history the model now sees.
         turn2Messages = messages;
         return streamText({
           model: new MockLanguageModelV3({ doStream: async () => ({ stream: okStream() }) }),
@@ -416,8 +410,6 @@ describe("chat.createSession turn.complete() — source-stream failure", () => {
             await turn.complete(erroringSource("UND_ERR_BODY_TIMEOUT") as never);
           } catch (err) {
             caughtError = err;
-            // The partial must be accumulated so persistence from the session
-            // state keeps it, rather than being lost on the rethrow.
             uiMessagesAfterError = [...turn.uiMessages];
             await turn.done();
           }

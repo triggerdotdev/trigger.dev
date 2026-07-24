@@ -6389,12 +6389,6 @@ function chatAgent<
           // Declared here so the finally can detach it — a handler leaked past
           // its turn duplicates every mid-stream message into the shared buffer.
           let turnMsgSub: { off: () => void } | undefined;
-          // Declared at turn scope (not inside the span callback) so the error
-          // handler below can recover the partial assistant output when a
-          // source-stream failure abandons the turn before onTurnComplete's
-          // success-path capture runs. `capturedPartialResponse` holds the
-          // onFinish message if it fired; otherwise the buffered chunks are
-          // reconstructed as the fallback (mirrors chat.pipeAndCapture).
           let capturedPartialResponse: TUIMessage | undefined;
           let responseCommitted = false;
           const turnBufferedChunks: UIMessageChunk[] = [];
@@ -7189,11 +7183,6 @@ function chatAgent<
                           resolveOnFinish!();
                         },
                       });
-                      // Buffer chunks as they flow to the pipe so a source-stream
-                      // transport failure — which abandons the UI stream before
-                      // onFinish fires — can still reconstruct the partial in the
-                      // error handler instead of dropping it. The happy path pays
-                      // nothing extra; reassembly only runs in the error fallback.
                       await pipeChat(tapUIMessageChunks(uiStream, turnBufferedChunks), {
                         signal: combinedSignal,
                         spanName: "stream response",
@@ -7926,14 +7915,6 @@ function chatAgent<
                 ? [...accumulatedUIMessages, erroredWireMessage]
                 : accumulatedUIMessages;
 
-            // Recover the partial assistant output the model streamed before the
-            // failure. A source-stream transport error (e.g. UND_ERR_BODY_TIMEOUT)
-            // abandons the UI stream before onFinish fires, so fall back to
-            // reconstructing the partial from the buffered chunks. Surfacing it on
-            // the error-path event lets persistence keep the partial instead of
-            // losing it — critical when hydrateMessages disables boot-time tail
-            // replay, so the recovery path can't reclaim it later. Empty for
-            // non-stream failures (nothing buffered), preserving prior behavior.
             let partialResponse: TUIMessage | undefined =
               capturedPartialResponse ??
               ((await assemblePartialFromChunks(turnBufferedChunks)) as TUIMessage | undefined);
@@ -7941,11 +7922,6 @@ function chatAgent<
               partialResponse = cleanupAbortedParts(partialResponse);
             }
 
-            // Build the complete error UI state. A HITL/tool continuation partial
-            // reuses an existing assistant id, so replace it in place (like the
-            // success path) instead of dropping it as a dup; otherwise append.
-            // `erroredWireMessage` was already folded into `erroredUIMessages`
-            // above when the pre-run merge hadn't happened.
             let partialIdx = partialResponse?.id
               ? erroredUIMessages.findIndex((m) => m.id === partialResponse!.id)
               : -1;
@@ -7982,16 +7958,6 @@ function chatAgent<
 
             let erroredNewModelMessages: ModelMessage[] = [];
 
-            // Commit the complete error state to the canonical accumulator so the
-            // errored user message and any recovered partial survive past this
-            // hook: the run stays alive after an error, so the next turn sees
-            // them, and the error-path snapshot below (the recovery source for
-            // non-hydrate apps) persists them for reboot. Matches the success
-            // path. Skip when nothing changed so an errored turn never needlessly
-            // reconverts. When the only change is an appended partial, push just
-            // its model messages to preserve a prior turn's compaction (mirrors
-            // the success path's append branch); otherwise reconvert from UI.
-            // Guard the conversion so a secondary failure can't crash the run.
             if (!responseCommitted) {
               try {
                 if (erroredNewUIMessages.length > 0) {
@@ -8014,17 +7980,12 @@ function chatAgent<
                   locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                 }
               } catch {
-                // Keep the prior model accumulator if conversion fails.
                 erroredNewModelMessages = [];
                 erroredUIMessagesWithPartial = erroredUIMessages;
                 erroredNewUIMessages = erroredWireMessage ? [erroredWireMessage] : [];
               }
             }
 
-            // Fire onTurnComplete on the error path too — the docs promise it
-            // runs "after every turn, successful or errored" so customers can
-            // mark the turn failed. `responseMessage` carries any partial
-            // recovered above and `error` carries the thrown value.
             if (onTurnComplete) {
               try {
                 await tracer.startActiveSpan(
