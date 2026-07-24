@@ -368,7 +368,9 @@ You can also lock the versions of the bundled services, for example with `CLICKH
   The bundled ClickHouse now uses the official `clickhouse/clickhouse-server` image. Your existing
   data volume carries over automatically. If you previously pinned `CLICKHOUSE_IMAGE_TAG` to a
   Bitnami tag (for example `25.7.5-debian-12-r0`), update it to an official image tag such as
-  `26.2` — Bitnami tags don't exist in the official repository.
+  `26.2` — Bitnami tags don't exist in the official repository. Note the switch is one-way: the
+  official image takes ownership of the data files, so rolling back to the Bitnami image requires
+  manually restoring their previous owner (`chown -R 1001:1001` on the volume).
 </Note>
 
 <Note>

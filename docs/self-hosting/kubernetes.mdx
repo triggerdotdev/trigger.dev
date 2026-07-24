@@ -287,7 +287,16 @@ redis:
   manifests without cluster access (for example with GitOps tools that use `helm template`), set
   `clickhouse.persistence.existingClaim` to the old PVC name
   (`data-<release>-clickhouse-shard0-0`) to keep your data — auto-detection can't run there, and
-  skipping this starts ClickHouse on a fresh empty volume.
+  skipping this starts ClickHouse on a fresh empty volume. If that happened, your old data is
+  still on the old PVC: delete the ClickHouse StatefulSet with `--cascade=orphan` (its volume
+  configuration is immutable), set `existingClaim`, and sync again.
+</Note>
+
+<Note>
+  If you pinned `clickhouse.image` to a Bitnami repository or tag in your values, update it to
+  the official `clickhouse/clickhouse-server` image — Bitnami tags don't exist there. The
+  bundled ClickHouse is single-node: the old Bitnami subchart keys (`shards`, `replicaCount`,
+  `keeper`) are no longer supported, so use an external ClickHouse for clustered setups.
 </Note>
 
 <Note>
