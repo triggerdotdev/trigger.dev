@@ -14,6 +14,7 @@ import { conditionallyImportAndParsePacket, parsePacket } from "../utils/ioSeria
 import { ApiError, isTriggerRealtimeAuthError } from "./errors.js";
 import type { ApiClient } from "./index.js";
 import { zodShapeStream } from "./stream.js";
+import type { CaughtUpBoundary } from "@s2-dev/streamstore";
 import { CaughtUpTracker } from "@s2-dev/streamstore";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
@@ -185,6 +186,16 @@ export type SSEStreamPart<TChunk = unknown> = {
   headers?: Array<[string, string]>;
 };
 
+/**
+ * Internal item flowing from the decode transform to the consumer-facing
+ * stream. A `boundary` entry is emitted after the visible records of the batch
+ * (or ping) it belongs to, so the wrapper marks it delivered only once the
+ * consumer has drained past those records.
+ */
+type PumpItem =
+  | { type: "part"; part: SSEStreamPart }
+  | { type: "boundary"; boundary: CaughtUpBoundary };
+
 // Real implementation for production
 export class SSEStreamSubscription implements StreamSubscription {
   private lastEventId: string | undefined;
@@ -300,23 +311,68 @@ export class SSEStreamSubscription implements StreamSubscription {
     return this.caughtUpTracker.caughtUp();
   }
 
+  /**
+   * The transport pumps decoded items (records and caught-up boundaries) into
+   * an internal stream; the returned stream drains it on demand. It uses
+   * `highWaterMark: 0` so each consumer read pulls exactly one item, which lets
+   * a caught-up boundary be marked delivered only once every visible record
+   * preceding it has actually been consumed. The terminal `end()` fires here,
+   * after that drain, so a caught-up `caughtUp()` resolves rather than being
+   * rejected by an early end from the transport.
+   */
   async subscribe(): Promise<ReadableStream<SSEStreamPart>> {
     // eslint-disable-next-line no-this-alias
     const self = this;
 
-    return new ReadableStream({
+    const internal = new ReadableStream<PumpItem>({
       async start(controller) {
         await self.connectStream(controller);
       },
       cancel() {
-        self.caughtUpTracker.end();
-        self.options.onComplete?.();
+        self.internalAbort?.abort();
       },
     });
+    const internalReader = internal.getReader();
+
+    return new ReadableStream<SSEStreamPart>(
+      {
+        async pull(controller) {
+          while (true) {
+            let result: ReadableStreamReadResult<PumpItem>;
+            try {
+              result = await internalReader.read();
+            } catch (err) {
+              self.caughtUpTracker.end();
+              controller.error(err);
+              return;
+            }
+            if (result.done) {
+              self.caughtUpTracker.end();
+              self.options.onComplete?.();
+              controller.close();
+              return;
+            }
+            const item = result.value;
+            if (item.type === "boundary") {
+              item.boundary.markDelivered();
+              continue;
+            }
+            controller.enqueue(item.part);
+            return;
+          }
+        },
+        cancel(reason) {
+          self.caughtUpTracker.end();
+          self.options.onComplete?.();
+          internalReader.cancel(reason).catch(() => {});
+        },
+      },
+      { highWaterMark: 0 }
+    );
   }
 
   private async connectStream(
-    controller: ReadableStreamDefaultController<SSEStreamPart>
+    controller: ReadableStreamDefaultController<PumpItem>
   ): Promise<void> {
     // Two abort sources flow through `internalAbort.signal`:
     //   - this.options.signal: caller cancel — bypass retry, exit cleanly.
@@ -374,7 +430,6 @@ export class SSEStreamSubscription implements StreamSubscription {
         );
         this.options.onError?.(error);
         if (this.nonRetryableStatuses.has(response.status)) {
-          this.caughtUpTracker.end();
           controller.error(error);
           return;
         }
@@ -410,7 +465,7 @@ export class SSEStreamSubscription implements StreamSubscription {
         .pipeThrough(new TextDecoderStream())
         .pipeThrough(new EventSourceParserStream())
         .pipeThrough(
-          new TransformStream<EventSourceMessage, SSEStreamPart>({
+          new TransformStream<EventSourceMessage, PumpItem>({
             transform: (chunk, chunkController) => {
               if (streamVersion === "v1") {
                 if (chunk.id) {
@@ -418,9 +473,12 @@ export class SSEStreamSubscription implements StreamSubscription {
                 }
                 const timestamp = parseRedisStreamIdTimestamp(chunk.id);
                 chunkController.enqueue({
-                  id: chunk.id ?? "unknown",
-                  chunk: safeParseJSON(chunk.data),
-                  timestamp,
+                  type: "part",
+                  part: {
+                    id: chunk.id ?? "unknown",
+                    chunk: safeParseJSON(chunk.data),
+                    timestamp,
+                  },
                 });
               } else {
                 if (chunk.event === "batch") {
@@ -471,14 +529,19 @@ export class SSEStreamSubscription implements StreamSubscription {
                       rememberSeen(parsedBody.id);
                     }
                     chunkController.enqueue({
-                      id: record.seq_num.toString(),
-                      chunk: parsedBody?.data,
-                      timestamp: record.timestamp,
-                      headers: record.headers ?? [],
+                      type: "part",
+                      part: {
+                        id: record.seq_num.toString(),
+                        chunk: parsedBody?.data,
+                        timestamp: record.timestamp,
+                        headers: record.headers ?? [],
+                      },
                     });
                   }
 
-                  boundary?.markDelivered();
+                  if (boundary) {
+                    chunkController.enqueue({ type: "boundary", boundary });
+                  }
                 } else if (chunk.event === "ping") {
                   const ping = safeParseJSON(chunk.data) as
                     | { tail?: { seq_num: number; timestamp: number } }
@@ -491,7 +554,9 @@ export class SSEStreamSubscription implements StreamSubscription {
                         timestamp: new Date(ping.tail.timestamp),
                       },
                     });
-                    pingBoundary?.markDelivered();
+                    if (pingBoundary) {
+                      chunkController.enqueue({ type: "boundary", boundary: pingBoundary });
+                    }
                   }
                 }
               }
@@ -507,18 +572,14 @@ export class SSEStreamSubscription implements StreamSubscription {
 
           if (done) {
             reader.releaseLock();
-            this.caughtUpTracker.end();
             controller.close();
-            this.options.onComplete?.();
             return;
           }
 
           if (this.options.signal?.aborted) {
             reader.cancel();
             reader.releaseLock();
-            this.caughtUpTracker.end();
             controller.close();
-            this.options.onComplete?.();
             return;
           }
 
@@ -532,9 +593,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     } catch (error) {
       if (this.options.signal?.aborted) {
         // User cancel — exit cleanly, don't retry.
-        this.caughtUpTracker.end();
         controller.close();
-        this.options.onComplete?.();
         return;
       }
 
@@ -542,7 +601,6 @@ export class SSEStreamSubscription implements StreamSubscription {
         // `onError` was already invoked in the `!response.ok` branch above
         // (where the auth ApiError was originally constructed and thrown).
         // Auth errors are non-retryable: terminate the stream cleanly.
-        this.caughtUpTracker.end();
         controller.error(error as Error);
         return;
       }
@@ -559,15 +617,12 @@ export class SSEStreamSubscription implements StreamSubscription {
     error?: Error
   ): Promise<void> {
     if (this.options.signal?.aborted) {
-      this.caughtUpTracker.end();
       controller.close();
-      this.options.onComplete?.();
       return;
     }
 
     if (this.retryCount >= this.maxRetries) {
       const finalError = error || new Error("Max retries reached");
-      this.caughtUpTracker.end();
       controller.error(finalError);
       this.options.onError?.(finalError);
       return;
@@ -603,9 +658,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     this.retryNowController = null;
 
     if (this.options.signal?.aborted) {
-      this.caughtUpTracker.end();
       controller.close();
-      this.options.onComplete?.();
       return;
     }
 

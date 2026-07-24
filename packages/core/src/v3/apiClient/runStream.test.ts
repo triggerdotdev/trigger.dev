@@ -743,4 +743,63 @@ describe("SSEStreamSubscription caught-up tracking", () => {
     await drain(stream);
     expect(sub.isCaughtUp()).toBe(false);
   });
+
+  it("does not resolve caughtUp() until the consumer drains the tail", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        makeEventsResponse([
+          batchEvent([dataRec(0), dataRec(1), dataRec(2)], { seq_num: 3, timestamp: 1 }),
+        ])
+      );
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const stream = await sub.subscribe();
+    const cu = sub.caughtUp();
+    let resolved = false;
+    cu.then(() => {
+      resolved = true;
+    }).catch(() => {});
+
+    await new Promise((r) => setTimeout(r, 20));
+    expect(resolved).toBe(false);
+    expect(sub.isCaughtUp()).toBe(false);
+
+    const parts = await drain(stream);
+    const tail = await cu;
+    expect(tail.seqNum).toBe(3);
+    expect(parts).toHaveLength(3);
+    expect(sub.isCaughtUp()).toBe(true);
+  });
+
+  it("holds caughtUp() until the final record before the tail is consumed", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        makeEventsResponse([
+          batchEvent([dataRec(0), dataRec(1), dataRec(2)], { seq_num: 3, timestamp: 1 }),
+        ])
+      );
+    const sub = new SSEStreamSubscription("http://x", { maxRetries: 0 });
+    const stream = await sub.subscribe();
+    const cu = sub.caughtUp();
+    let resolved = false;
+    cu.then(() => {
+      resolved = true;
+    }).catch(() => {});
+    const reader = stream.getReader();
+
+    const first = await reader.read();
+    expect(first.value?.id).toBe("0");
+    await reader.read();
+    await reader.read();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(resolved).toBe(false);
+
+    const done = await reader.read();
+    expect(done.done).toBe(true);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(resolved).toBe(true);
+    expect(sub.isCaughtUp()).toBe(true);
+    reader.releaseLock();
+  });
 });

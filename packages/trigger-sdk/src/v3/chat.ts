@@ -1725,6 +1725,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               );
             }) as typeof fetch)
           : undefined;
+        let sawFirstChunk = false;
+
         const connectSseOnce = async (token: string) => {
           const subscription = new SSEStreamSubscription(streamUrl, {
             headers: {
@@ -1744,6 +1746,22 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           currentSubscription = subscription;
           const sseStream = await subscription.subscribe();
           const reader = sseStream.getReader();
+          /**
+           * Register the caught-up close before the priming read below. A
+           * quiescent reconnect delivers only a tail-bearing ping, which
+           * yields no visible record, so waiting for the first visible read
+           * here would mean caught-up is never observed.
+           */
+          if (options?.peekSettled) {
+            subscription
+              .caughtUp()
+              .then(() => {
+                if (!sawFirstChunk && !combinedSignal.aborted) {
+                  internalAbort.abort();
+                }
+              })
+              .catch(() => {});
+          }
           try {
             const first = await reader.read();
             if (first.done) {
@@ -1764,7 +1782,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             timestamp: number;
           }>;
           let primed: { id: string; chunk: unknown; timestamp: number } | undefined;
-          let sub: SSEStreamSubscription | undefined;
 
           try {
             const opened = await connectSseOnce(state.publicAccessToken);
@@ -1774,7 +1791,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             }
             reader = opened.reader;
             primed = opened.primed;
-            sub = opened.subscription;
           } catch (e) {
             if (isAuthError(e)) {
               const fresh = await this.resolveAccessToken({ chatId });
@@ -1800,18 +1816,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             lastEventId: state.lastEventId,
             messageId: this.lastTurnSends.get(chatId)?.messageId,
           });
-          let sawFirstChunk = false;
-
-          if (options?.peekSettled && sub) {
-            sub
-              .caughtUp()
-              .then(() => {
-                if (!sawFirstChunk && !combinedSignal.aborted) {
-                  internalAbort.abort();
-                }
-              })
-              .catch(() => {});
-          }
 
           while (true) {
             let value: {
