@@ -138,6 +138,30 @@ export const testUpgradeChatAgent = chat.agent({
 });
 
 /**
+ * Requests an upgrade only on the fresh (non-continuation) run. The first run
+ * defers the message via `upgrade-required`; the continuation run treats it as
+ * the "new version" and processes the deferred message instead of upgrading
+ * again (which would loop).
+ */
+export const testUpgradeOnceChatAgent = chat.agent({
+  id: "e2e-test-chat-upgrade-once",
+  idleTimeoutInSeconds: 2,
+  preloadIdleTimeoutInSeconds: 2,
+  onTurnStart: async ({ continuation }) => {
+    if (!continuation) {
+      chat.requestUpgrade();
+    }
+  },
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({ model, messages, abortSignal: signal });
+  },
+});
+
+/**
  * A tool with a server-side `execute`: the agent runs it automatically and
  * feeds the result back to the model, so a single turn covers the whole
  * tool loop.
@@ -177,6 +201,29 @@ const askUserTool = tool({
 
 export const testHitlChatAgent = chat.agent({
   id: "e2e-test-chat-hitl",
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({
+      model,
+      messages,
+      tools: { askUser: askUserTool },
+      abortSignal: signal,
+    });
+  },
+});
+
+/**
+ * Same HITL tool but with a 1-second idle window, so the run suspends on the
+ * waitpoint while waiting for the human's tool answer. Exercises a HITL
+ * round-trip that crosses a suspend/resume boundary.
+ */
+export const testHitlIdleChatAgent = chat.agent({
+  id: "e2e-test-chat-hitl-idle",
+  idleTimeoutInSeconds: 1,
+  preloadIdleTimeoutInSeconds: 1,
   run: async ({ messages, signal }) => {
     const model = locals.get(testChatModelLocal);
     if (!model) {

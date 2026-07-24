@@ -34,10 +34,12 @@ import {
   testChatModelLocal,
   testEndRunChatAgent,
   testHitlChatAgent,
+  testHitlIdleChatAgent,
   testIdleChatAgent,
   testPlainChatAgent,
   testToolChatAgent,
   testUpgradeChatAgent,
+  testUpgradeOnceChatAgent,
 } from "./helpers/testChatAgent";
 
 async function waitFor(predicate: () => boolean, maxMs: number): Promise<void> {
@@ -1114,6 +1116,238 @@ describe("session agent e2e (real chat.agent loop)", () => {
       expect(exitedOnItsOwn, "the run exits itself after requesting the upgrade").toBe(true);
     } finally {
       await agent.close();
+    }
+  });
+
+  it("EA16: a HITL tool approval survives a suspend/resume boundary", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testHitlIdleChatAgent.id);
+    const toolCallId = "tc_ask_suspend";
+    const agent = runRealChatAgent({
+      agentId: testHitlIdleChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: toolCallThenText({
+        toolName: "askUser",
+        toolCallId,
+        input: { question: "what color?" },
+        finalText: "blue it is",
+      }),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("pick a color", "u1")),
+      });
+      const turn1 = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+      expect(joinChunks(turn1.parts), "turn 1 parks on the tool call").toContain("askUser");
+
+      await new Promise((r) => setTimeout(r, 2500));
+
+      const answer = {
+        id: "a-answer",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-askUser",
+            toolCallId,
+            state: "output-available",
+            input: { question: "what color?" },
+            output: { color: "blue" },
+          },
+        ],
+      };
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u2",
+        body: submitBody(addressingKey, answer),
+      });
+      const turn2 = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => joinChunks(p).includes("blue it is"),
+        maxMs: 30_000,
+      });
+      expect(
+        joinChunks(turn2.parts),
+        "the answer sent after the idle window resumed the suspended run"
+      ).toContain("blue it is");
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA17: the run suspends and resumes across multiple turns", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testIdleChatAgent.id);
+    const replies = ["reply-one", "reply-two", "reply-three"];
+    const agent = runRealChatAgent({
+      agentId: testIdleChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: sequenceModel(replies),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      for (let i = 0; i < replies.length; i++) {
+        await new Promise((r) => setTimeout(r, i === 0 ? 1500 : 2000));
+        await appendInput({
+          baseUrl,
+          addressingKey,
+          token,
+          partId: `u${i + 1}`,
+          body: submitBody(addressingKey, userMessage(`turn ${i + 1}`, `u${i + 1}`)),
+        });
+        const { parts } = await collectSessionOut({
+          baseUrl,
+          addressingKey,
+          token,
+          until: (p) => joinChunks(p).includes(replies[i]!),
+          maxMs: 30_000,
+        });
+        expect(
+          joinChunks(parts),
+          `turn ${i + 1} resumed from a suspend and produced its reply`
+        ).toContain(replies[i]!);
+      }
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA18: requestUpgrade defers the message; the upgraded run processes it", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(
+      testUpgradeOnceChatAgent.id
+    );
+    const session = runChatAgentSession({
+      agentId: testUpgradeOnceChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: echoModel(),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("DEFER-ME", "u1")),
+      });
+      const turn1 = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isUpgradeRequired),
+        maxMs: 30_000,
+      });
+      expect(
+        turn1.parts.some(isUpgradeRequired),
+        "the fresh run defers the message with upgrade-required"
+      ).toBe(true);
+
+      await waitFor(() => session.runCount() >= 2, 10_000);
+
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => joinChunks(p).includes("DEFER-ME"),
+        maxMs: 30_000,
+      });
+      expect(
+        joinChunks(parts),
+        "the continuation run processed the deferred message instead of upgrading again"
+      ).toContain("DEFER-ME");
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("EA19: endRun continuation restores history across multiple hops", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testEndRunChatAgent.id);
+    const session = runChatAgentSession({
+      agentId: testEndRunChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: echoModel(),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("HOP-MARKER", "u1")),
+      });
+      await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+
+      await waitFor(() => session.runCount() >= 2, 10_000);
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u2",
+        body: submitBody(addressingKey, userMessage("second hop", "u2")),
+      });
+      await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => joinChunks(p).includes("second hop"),
+        maxMs: 30_000,
+      });
+
+      await waitFor(() => session.runCount() >= 3, 10_000);
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u3",
+        body: submitBody(addressingKey, userMessage("third hop", "u3")),
+      });
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => joinChunks(p).includes("third hop"),
+        maxMs: 30_000,
+      });
+
+      const blob = joinChunks(parts);
+      expect(blob, "history from the first hop is restored two continuations later").toContain(
+        "HOP-MARKER"
+      );
+      expect(blob).toContain("third hop");
+      expect(session.runCount()).toBeGreaterThanOrEqual(3);
+    } finally {
+      await session.close();
     }
   });
 });
