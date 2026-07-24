@@ -12,7 +12,7 @@ import { NoopRuntimeManager } from "../runtime/noopRuntimeManager.js";
 import { unregisterGlobal } from "../utils/globals.js";
 import type { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
 import type { LocalsKey } from "../locals/types.js";
-import type { SessionChannelIO } from "../sessionStreams/types.js";
+import type { SessionChannelIO, SessionStreamManager } from "../sessionStreams/types.js";
 import { TestInputStreamManager } from "./test-input-stream-manager.js";
 import { TestRealtimeStreamsManager } from "./test-realtime-streams-manager.js";
 import { TestRunMetadataManager } from "./test-run-metadata-manager.js";
@@ -45,6 +45,13 @@ export type MockTaskContextOptions = {
   worker?: Partial<ServerBackgroundWorker>;
   /** Whether this is a warm start. */
   isWarmStart?: boolean;
+  /**
+   * Session-streams manager installed as the `session-streams` global. Defaults
+   * to an in-memory {@link TestSessionStreamManager}. Pass a real
+   * `StandardSessionStreamManager` (with an ApiClient pointed at a running
+   * webapp) to drive the task's `.in`/`.out` against real streams.
+   */
+  sessionStreamManager?: SessionStreamManager;
 };
 
 /**
@@ -219,7 +226,7 @@ export async function runInMockTaskContext<T>(
   const metadataManager = new TestRunMetadataManager();
   const inputManager = new TestInputStreamManager();
   const outputManager = new TestRealtimeStreamsManager();
-  const sessionStreamManager = new TestSessionStreamManager();
+  const sessionStreamManager = options?.sessionStreamManager ?? new TestSessionStreamManager();
 
   // Unregister any previously-installed managers so `setGlobal*` wins —
   // `registerGlobal` returns false silently if an entry already exists.
@@ -263,8 +270,16 @@ export async function runInMockTaskContext<T>(
     sessions: {
       in: {
         send: (sessionId, data, io = "in") =>
-          sessionStreamManager.__sendFromTest(sessionId, io, data),
-        close: (sessionId, io = "in") => sessionStreamManager.__closeFromTest(sessionId, io),
+          sessionStreamManager instanceof TestSessionStreamManager
+            ? sessionStreamManager.__sendFromTest(sessionId, io, data)
+            : Promise.reject(
+                new Error("drivers.sessions.in.send requires the default TestSessionStreamManager")
+              ),
+        close: (sessionId, io = "in") => {
+          if (sessionStreamManager instanceof TestSessionStreamManager) {
+            sessionStreamManager.__closeFromTest(sessionId, io);
+          }
+        },
       },
     },
     ctx,
@@ -286,7 +301,9 @@ export async function runInMockTaskContext<T>(
     localsManager.reset();
     inputManager.reset();
     outputManager.reset();
-    sessionStreamManager.reset();
+    if (sessionStreamManager instanceof TestSessionStreamManager) {
+      sessionStreamManager.reset();
+    }
     metadataManager.reset();
   }
 }

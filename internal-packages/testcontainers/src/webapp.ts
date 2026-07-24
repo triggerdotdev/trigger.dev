@@ -3,8 +3,9 @@ import { createServer } from "net";
 import { delimiter, resolve } from "path";
 import { Network } from "testcontainers";
 import { PrismaClient } from "@trigger.dev/database";
-import { createPostgresContainer, createRedisContainer } from "./utils";
+import { createPostgresContainer, createRedisContainer, withCiResourceLimits } from "./utils";
 import { createS2Container, type StartedS2Container } from "./s2";
+import { MinIOContainer, type StartedMinIOContainer } from "./minio";
 
 const WEBAPP_ROOT = resolve(__dirname, "../../../apps/webapp");
 // pnpm hoists transitive deps to node_modules/.pnpm/node_modules but does NOT symlink them
@@ -270,6 +271,7 @@ export type { StartedS2Container } from "./s2";
 
 export interface SessionStreamTestServer extends TestServer {
   s2: StartedS2Container;
+  minio: StartedMinIOContainer;
 }
 
 /**
@@ -285,6 +287,7 @@ export async function startSessionStreamTestServer(): Promise<SessionStreamTestS
   let pgUrl: string | undefined;
   let redisContainer: Awaited<ReturnType<typeof createRedisContainer>>["container"] | undefined;
   let s2: StartedS2Container | undefined;
+  let minio: StartedMinIOContainer | undefined;
   let prisma: PrismaClient | undefined;
   let stopWebapp: (() => Promise<void>) | undefined;
   let webapp: WebappInstance;
@@ -298,6 +301,8 @@ export async function startSessionStreamTestServer(): Promise<SessionStreamTestS
     redisContainer = rc;
 
     s2 = await createS2Container(network);
+    minio = await withCiResourceLimits(new MinIOContainer()).withNetwork(network).start();
+    const minioConfig = minio.getConnectionConfig();
 
     prisma = new PrismaClient({ datasources: { db: { url: pg.url } } });
     await prisma.$connect();
@@ -311,6 +316,11 @@ export async function startSessionStreamTestServer(): Promise<SessionStreamTestS
           REALTIME_STREAMS_S2_ENDPOINT: `${s2.endpoint}/v1`,
           REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: "true",
           REALTIME_STREAMS_DEFAULT_VERSION: "v2",
+          OBJECT_STORE_BASE_URL: minioConfig.baseUrl,
+          OBJECT_STORE_BUCKET: "packets",
+          OBJECT_STORE_ACCESS_KEY_ID: minioConfig.accessKeyId,
+          OBJECT_STORE_SECRET_ACCESS_KEY: minioConfig.secretAccessKey,
+          OBJECT_STORE_REGION: minioConfig.region,
         },
       }
     );
@@ -319,6 +329,7 @@ export async function startSessionStreamTestServer(): Promise<SessionStreamTestS
   } catch (err) {
     await stopWebapp?.().catch(() => {});
     await prisma?.$disconnect().catch(() => {});
+    await minio?.stop().catch(() => {});
     await s2?.container.stop().catch(() => {});
     await pgContainer?.stop().catch(() => {});
     await redisContainer?.stop().catch(() => {});
@@ -329,11 +340,12 @@ export async function startSessionStreamTestServer(): Promise<SessionStreamTestS
   const stop = async () => {
     await stopWebapp!().catch((err) => console.error("stopWebapp failed:", err));
     await prisma!.$disconnect().catch((err) => console.error("prisma.$disconnect failed:", err));
+    await minio!.stop().catch((err) => console.error("minio.stop failed:", err));
     await s2!.container.stop().catch((err) => console.error("s2.stop failed:", err));
     await pgContainer!.stop().catch((err) => console.error("pgContainer.stop failed:", err));
     await redisContainer!.stop().catch((err) => console.error("redisContainer.stop failed:", err));
     await network.stop().catch((err) => console.error("network.stop failed:", err));
   };
 
-  return { webapp, prisma: prisma!, databaseUrl: pgUrl!, s2: s2!, stop };
+  return { webapp, prisma: prisma!, databaseUrl: pgUrl!, s2: s2!, minio: minio!, stop };
 }
