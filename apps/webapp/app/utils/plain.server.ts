@@ -31,8 +31,8 @@ export async function sendToPlain({
     apiKey: env.PLAIN_API_KEY,
   });
 
-  // Best-effort support side-effect: the new client throws on failure, so we swallow and log
-  // rather than break the user action that triggered it.
+  // Best-effort support side-effect. Only transport/auth errors throw (caught below); business
+  // and validation failures come back in each mutation's `result.error`, so we check those inline.
   try {
     const upsertCustomerRes = await client.mutation.upsertCustomer({
       input: {
@@ -58,11 +58,11 @@ export async function sendToPlain({
       },
     });
 
-    const customerId = upsertCustomerRes.customer?.id;
-    if (!customerId) {
-      console.error("Failed to upsert customer in Plain", upsertCustomerRes.result);
+    if (upsertCustomerRes.error || !upsertCustomerRes.customer?.id) {
+      console.error("Failed to upsert customer in Plain", upsertCustomerRes.error);
       return;
     }
+    const customerId = upsertCustomerRes.customer.id;
 
     // Attribute the thread to the org so support data can be rolled up per org: the tenant is
     // keyed by externalId = org_id. Isolated in its own try/catch, and the thread's
@@ -73,26 +73,37 @@ export async function sendToPlain({
     let tenantLinked = false;
     if (organizationId) {
       try {
-        await client.mutation.upsertTenant({
+        const tenantRes = await client.mutation.upsertTenant({
           input: {
             identifier: { externalId: organizationId },
             externalId: organizationId,
             name: organizationName ?? organizationId,
           },
         });
-        await client.mutation.addCustomerToTenants({
-          input: {
-            customerIdentifier: { customerId },
-            tenantIdentifiers: [{ externalId: organizationId }],
-          },
-        });
-        tenantLinked = true;
+        // Only link + attribute if the tenant genuinely upserted — a mutation error comes back in
+        // `.error` (not thrown), and stamping the thread with a tenant that wasn't created would
+        // make createThread itself fail.
+        const membershipRes = tenantRes.error
+          ? undefined
+          : await client.mutation.addCustomerToTenants({
+              input: {
+                customerIdentifier: { customerId },
+                tenantIdentifiers: [{ externalId: organizationId }],
+              },
+            });
+        if (tenantRes.error) {
+          console.error("Failed to upsert Plain tenant", tenantRes.error);
+        } else if (membershipRes?.error) {
+          console.error("Failed to link Plain customer to tenant", membershipRes.error);
+        } else {
+          tenantLinked = true;
+        }
       } catch (error) {
         console.error("Failed to link Plain customer to org tenant", error);
       }
     }
 
-    await client.mutation.createThread({
+    const threadRes = await client.mutation.createThread({
       input: {
         customerIdentifier: {
           customerId,
@@ -103,6 +114,9 @@ export async function sendToPlain({
         tenantIdentifier: tenantLinked ? { externalId: organizationId } : undefined,
       },
     });
+    if (threadRes.error) {
+      console.error("Failed to create Plain thread", threadRes.error);
+    }
   } catch (error) {
     console.error("Failed to send to Plain", error);
   }
