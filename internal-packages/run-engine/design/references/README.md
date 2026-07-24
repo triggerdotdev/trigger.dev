@@ -1,7 +1,7 @@
 # Run-queue multi-tenant fairness: spike references
 
 Reference material for the implementation plan
-`docs/superpowers/plans/2026-07-23-ck-virtual-time-scheduling-plan.md`. These are
+`internal-packages/run-engine/design/plans/2026-07-23-ck-virtual-time-scheduling-plan.md`. These are
 the findings and the queueing-theory research produced by three throwaway spikes
 on RunQueue tenant fairness (#2617). The spikes' harness, bench, and results code
 was throwaway and is NOT on this branch; it is archived on the remote branch
