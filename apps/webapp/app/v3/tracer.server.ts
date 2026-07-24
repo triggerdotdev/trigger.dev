@@ -1,6 +1,7 @@
 import {
   type Attributes,
   type Context,
+  context as otelContext,
   createContextKey,
   DiagConsoleLogger,
   DiagLogLevel,
@@ -14,6 +15,7 @@ import {
   metrics,
   type Meter,
 } from "@opentelemetry/api";
+import { SentryContextManager } from "@sentry/remix";
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
@@ -209,9 +211,27 @@ function getResource() {
   return baseResource.merge(detectedResource);
 }
 
+/**
+ * Sentry's `withIsolationScope` only marks the OTel context; the fork itself is
+ * done by Sentry's context manager. We pass `skipOpenTelemetrySetup: true` to
+ * `Sentry.init` because we run our own OTel pipeline, which also skips the
+ * `setGlobalContextManager(new SentryContextManager())` that Sentry would
+ * otherwise do. Registering it here is what keeps per-request scopes (and so
+ * the request attributed to each Sentry event) from leaking between concurrent
+ * requests. It extends `AsyncLocalStorageContextManager`, so OTel behaviour is
+ * unchanged.
+ */
+function createContextManager() {
+  return new SentryContextManager();
+}
+
 function setupTelemetry() {
   if (env.INTERNAL_OTEL_TRACE_DISABLED === "1") {
     console.log(`🔦 Tracer disabled, returning a noop tracer`);
+
+    const contextManager = createContextManager();
+    contextManager.enable();
+    otelContext.setGlobalContextManager(contextManager);
 
     return {
       tracer: trace.getTracer("trigger.dev", "3.3.12"),
@@ -300,7 +320,7 @@ function setupTelemetry() {
     );
   }
 
-  provider.register();
+  provider.register({ contextManager: createContextManager() });
 
   let instrumentations: Instrumentation[] = [
     new AwsSdkInstrumentation({

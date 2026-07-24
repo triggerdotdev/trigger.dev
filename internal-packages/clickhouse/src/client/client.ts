@@ -171,13 +171,19 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         );
 
         if (clickhouseError) {
-          this.logger.error("Error querying clickhouse", {
+          const errorLogFields = {
             name: req.name,
             error: clickhouseError,
             query: req.query,
             params,
             queryId,
-          });
+          };
+
+          if (isClickhouseQuotaError(clickhouseError)) {
+            this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
+          } else {
+            this.logger.error("Error querying clickhouse", errorLogFields);
+          }
 
           recordClickhouseError(span, clickhouseError);
 
@@ -260,6 +266,11 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
      * These will be merged with the default settings.
      */
     settings?: ClickHouseSettings;
+    /**
+     * Extra fields to attach to the error log if the query fails. Use this to
+     * record what produced the SQL, e.g. the TSQL a caller actually wrote.
+     */
+    logFields?: Record<string, unknown>;
   }): ClickhouseQueryWithStatsFunction<z.input<TIn>, z.output<TOut>> {
     return async (params, options) => {
       const queryId = randomUUID();
@@ -320,13 +331,20 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         );
 
         if (clickhouseError) {
-          this.logger.error("Error querying clickhouse", {
+          const errorLogFields = {
             name: req.name,
             error: clickhouseError,
             query: req.query,
             params,
             queryId,
-          });
+            ...req.logFields,
+          };
+
+          if (isClickhouseQuotaError(clickhouseError)) {
+            this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
+          } else {
+            this.logger.error("Error querying clickhouse", errorLogFields);
+          }
 
           recordClickhouseError(span, clickhouseError);
 
@@ -453,13 +471,19 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         );
 
         if (clickhouseError) {
-          this.logger.error("Error querying clickhouse", {
+          const errorLogFields = {
             name: req.name,
             error: clickhouseError,
             query: req.query,
             params,
             queryId,
-          });
+          };
+
+          if (isClickhouseQuotaError(clickhouseError)) {
+            this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
+          } else {
+            this.logger.error("Error querying clickhouse", errorLogFields);
+          }
 
           recordClickhouseError(span, clickhouseError);
 
@@ -999,6 +1023,29 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
       });
     };
   }
+}
+
+/**
+ * ClickHouse error types raised by a query that is valid but asks for more than
+ * the caller is allowed to spend. The caller gets a 4xx and there is nothing on
+ * our side to fix, so these are logged at warn rather than error.
+ */
+const CLICKHOUSE_QUOTA_ERROR_TYPES = new Set([
+  "MEMORY_LIMIT_EXCEEDED",
+  "TIMEOUT_EXCEEDED",
+  "TOO_SLOW",
+  "TOO_MANY_ROWS",
+  "TOO_MANY_BYTES",
+  "TOO_MANY_ROWS_OR_BYTES",
+  "QUERY_WAS_CANCELLED",
+]);
+
+function isClickhouseQuotaError(error: Error): boolean {
+  return (
+    error instanceof ClickHouseError &&
+    error.type !== undefined &&
+    CLICKHOUSE_QUOTA_ERROR_TYPES.has(error.type)
+  );
 }
 
 function recordClickhouseError(span: Span, error: Error): void {

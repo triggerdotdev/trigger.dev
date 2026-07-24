@@ -1,4 +1,5 @@
 import { clickhouseTest } from "@internal/testcontainers";
+import type { MockInstance } from "vitest";
 import { z } from "zod";
 import { ClickhouseClient } from "./client/client.js";
 import { executeTSQL, createTSQLExecutor, type TableSchema } from "./client/tsql.js";
@@ -1607,5 +1608,117 @@ describe("Field Mapping Tests", () => {
     expect(error).toBeNull();
     expect(result?.rows).toHaveLength(2);
     expect(result?.rows?.map((r) => r.run_id).sort()).toEqual(["run_fm_in1", "run_fm_in2"]);
+  });
+});
+
+describe("TSQL Error Log Levels", () => {
+  let warnSpy: MockInstance<typeof console.warn>;
+  let errorSpy: MockInstance<typeof console.error>;
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function logged(spy: MockInstance<typeof console.warn>): string {
+    return spy.mock.calls.map(([line]) => String(line)).join("\n");
+  }
+
+  clickhouseTest("logs an unknown column as a warning", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const [error] = await executeTSQL(client, {
+      name: "test-unknown-column",
+      query: "SELECT nope FROM task_runs",
+      schema: z.object({ nope: z.string() }),
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+      },
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error).not.toBeNull();
+    expect(logged(warnSpy)).toContain("[TSQL] Invalid query");
+    expect(logged(errorSpy)).not.toContain("[TSQL] Query error");
+  });
+
+  clickhouseTest("logs a syntax error as a warning", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    const [error] = await executeTSQL(client, {
+      name: "test-syntax-error",
+      query: "SELECT FROM WHERE",
+      schema: z.object({ run_id: z.string() }),
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+      },
+      tableSchema: [taskRunsSchema],
+    });
+
+    expect(error).not.toBeNull();
+    expect(logged(warnSpy)).toContain("[TSQL] Invalid query");
+    expect(logged(errorSpy)).not.toContain("[TSQL] Query error");
+  });
+
+  clickhouseTest(
+    "logs a query ClickHouse rejects at execution as an error, with the TSQL that produced it",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const [error] = await executeTSQL(client, {
+        name: "test-execution-error",
+        query: "SELECT toDateTime(tags) AS bad FROM task_runs",
+        schema: z.object({ bad: z.string() }),
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+        },
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error).not.toBeNull();
+      expect(logged(errorSpy)).toContain("Error querying clickhouse");
+      expect(logged(errorSpy)).toContain("SELECT toDateTime(tags) AS bad FROM task_runs");
+    }
+  );
+
+  clickhouseTest("logs a ClickHouse limit breach as a warning", async ({ clickhouseContainer }) => {
+    const client = new ClickhouseClient({
+      name: "test",
+      url: clickhouseContainer.getConnectionUrl(),
+    });
+
+    await insertTaskRuns(client, { async_insert: 0 })([
+      createTaskRun({ run_id: "run_limit1" }),
+      createTaskRun({ run_id: "run_limit2" }),
+      createTaskRun({ run_id: "run_limit3" }),
+    ]);
+
+    const [error] = await executeTSQL(client, {
+      name: "test-resource-limit",
+      query: "SELECT run_id FROM task_runs",
+      schema: z.object({ run_id: z.string() }),
+      enforcedWhereClause: {
+        organization_id: { op: "eq", value: "org_tenant1" },
+      },
+      tableSchema: [taskRunsSchema],
+      clickhouseSettings: { max_rows_to_read: "1" },
+    });
+
+    expect(error).not.toBeNull();
+    expect(logged(warnSpy)).toContain("Query exceeded a ClickHouse limit");
+    expect(logged(errorSpy)).not.toContain("Error querying clickhouse");
   });
 });

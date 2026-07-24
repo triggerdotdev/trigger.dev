@@ -135,6 +135,11 @@ export interface ClickhouseReader {
      * These will be merged with the default settings.
      */
     settings?: ClickHouseSettings;
+    /**
+     * Extra fields to attach to the error log if the query fails. Use this to
+     * record what produced the SQL, e.g. the TSQL a caller actually wrote.
+     */
+    logFields?: Record<string, unknown>;
   }): ClickhouseQueryWithStatsFunction<z.input<TIn>, z.output<TOut>>;
 
   queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {

@@ -8,6 +8,7 @@
 import type { ClickHouseSettings } from "@clickhouse/client";
 import {
   compileTSQL,
+  ExposedTSQLError,
   type OutputColumnMetadata,
   sanitizeErrorMessage,
   transformResults,
@@ -213,6 +214,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       // EXPLAIN returns rows with an 'explain' column
       schema: isExplain ? z.object({ explain: z.string() }) : options.schema,
       settings: options.clickhouseSettings,
+      logFields: { tsql: options.query },
     });
 
     const [error, result] = await queryFn(params);
@@ -303,14 +305,21 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
-    // Log TSQL compilation or unexpected errors (with original message for debugging)
-    logger.error("[TSQL] Query error", {
+    const logFields = {
       name: options.name,
       error: errorMessage,
       tsql: options.query,
       generatedSql: generatedSql ?? "(compilation failed)",
       generatedParams: generatedParams ?? {},
-    });
+    };
+
+    const callerWroteABadQuery = error instanceof ExposedTSQLError;
+
+    if (callerWroteABadQuery) {
+      logger.warn("[TSQL] Invalid query", logFields);
+    } else {
+      logger.error("[TSQL] Query error", logFields);
+    }
 
     // Sanitize error message to show TSQL names instead of ClickHouse internals
     const sanitizedMessage = sanitizeErrorMessage(errorMessage, options.tableSchema);
