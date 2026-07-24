@@ -32,6 +32,7 @@ export function QueuePauseResumeButton({
   fullWidth = false,
   showTooltip = true,
   iconOnly = false,
+  withQueueName = false,
 }: {
   /** The "id" here is a friendlyId */
   queue: { id: string; name: string; paused: boolean };
@@ -41,12 +42,14 @@ export function QueuePauseResumeButton({
   /** Icon-only trigger (label moves to the tooltip). For compact placements like the detail-page
    * live blocks. */
   iconOnly?: boolean;
+  /** Render the full "Pause/Resume {name} queue" label instead of the short "Pause"/"Resume". */
+  withQueueName?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
   const label = queue.paused
-    ? `Resume processing runs in queue "${queue.name}"`
-    : `Pause processing runs in queue "${queue.name}"`;
+    ? `Resumes the "${queue.name}" queue so its runs can be dequeued again.`
+    : `Pauses all runs from being dequeued in the "${queue.name}" queue. Any executing runs will continue to run.`;
 
   const trigger = showTooltip ? (
     <div>
@@ -63,8 +66,23 @@ export function QueuePauseResumeButton({
                   fullWidth={fullWidth}
                   textAlignLeft={fullWidth}
                   aria-label={label}
+                  className={
+                    withQueueName
+                      ? queue.paused
+                        ? "border-success/60 text-success [&_span]:text-success hover:border-success"
+                        : "border-warning/60 text-warning [&_span]:text-warning hover:border-warning"
+                      : undefined
+                  }
                 >
-                  {iconOnly ? undefined : queue.paused ? "Resume" : "Pause"}
+                  {iconOnly
+                    ? undefined
+                    : withQueueName
+                      ? queue.paused
+                        ? "Resume this queue…"
+                        : "Pause this queue…"
+                      : queue.paused
+                        ? "Resume"
+                        : "Pause"}
                 </Button>
               </DialogTrigger>
             </div>
@@ -116,7 +134,7 @@ export function QueuePauseResumeButton({
               }
               cancelButton={
                 <DialogClose asChild>
-                  <Button type="button" variant="tertiary/medium">
+                  <Button type="button" variant="secondary/medium">
                     Cancel
                   </Button>
                 </DialogClose>
@@ -209,24 +227,38 @@ export function QueueOverrideConcurrencyButton({
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
+      ) : trigger === "button" ? (
+        <TooltipProvider disableHoverableContent={true}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="cursor-pointer [&_button]:cursor-pointer">
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="secondary/small"
+                    LeadingIcon={AdjustmentsHorizontalIcon}
+                    leadingIconClassName="text-text-bright"
+                    aria-label={
+                      isOverridden ? "Edit concurrency override" : "Override concurrency limit"
+                    }
+                  >
+                    {isOverridden ? "Edit override" : "Override limit"}
+                  </Button>
+                </DialogTrigger>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-[230px] text-xs">
+              Give this queue its own concurrency limit instead of the environment default. Set it
+              as a number or a percentage of the environment limit.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       ) : (
         <DialogTrigger asChild>
-          {trigger === "button" ? (
-            <Button
-              type="button"
-              variant="minimal/small"
-              LeadingIcon={AdjustmentsHorizontalIcon}
-              leadingIconClassName="text-text-dimmed"
-              aria-label={isOverridden ? "Edit concurrency override" : "Override concurrency limit"}
-            >
-              {isOverridden ? "Edit override" : "Override"}
-            </Button>
-          ) : (
-            <PopoverMenuItem
-              icon={AdjustmentsHorizontalIcon}
-              title={isOverridden ? "Edit override…" : "Override limit…"}
-            />
-          )}
+          <PopoverMenuItem
+            icon={AdjustmentsHorizontalIcon}
+            title={isOverridden ? "Edit override…" : "Override limit…"}
+          />
         </DialogTrigger>
       )}
       <DialogContent>
@@ -235,7 +267,7 @@ export function QueueOverrideConcurrencyButton({
         </DialogHeader>
         <div className="flex flex-col gap-3 pt-3">
           {isOverridden ? (
-            <Paragraph>
+            <Paragraph variant="small">
               This queue's concurrency limit is currently overridden to {currentLimit}.
               {typeof queue.concurrency?.base === "number" &&
                 ` The original limit set in code was ${queue.concurrency.base}.`}{" "}
@@ -246,7 +278,7 @@ export function QueueOverrideConcurrencyButton({
               .
             </Paragraph>
           ) : (
-            <Paragraph>
+            <Paragraph variant="small">
               Override this queue's concurrency limit. The current limit is {currentLimit}, which is
               set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
             </Paragraph>
@@ -255,13 +287,43 @@ export function QueueOverrideConcurrencyButton({
             <input type="hidden" name="friendlyId" value={queue.id} />
             <input type="hidden" name="mode" value={mode} />
             <InputGroup fullWidth>
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor={mode === "percent" ? "percent" : "concurrencyLimit"}>
-                  Concurrency limit
-                </Label>
+              <Label htmlFor={mode === "percent" ? "percent" : "concurrencyLimit"}>
+                Concurrency limit
+              </Label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  {mode === "percent" ? (
+                    <Input
+                      type="number"
+                      name="percent"
+                      id="percent"
+                      min="1"
+                      max="100"
+                      step="0.01"
+                      value={percent}
+                      onChange={(e) => setPercent(e.target.value)}
+                      placeholder="100"
+                      autoFocus
+                      accessory={<span className="pr-1 text-text-dimmed">%</span>}
+                    />
+                  ) : (
+                    <Input
+                      type="number"
+                      name="concurrencyLimit"
+                      id="concurrencyLimit"
+                      min="0"
+                      max={environmentConcurrencyLimit}
+                      value={concurrencyLimit}
+                      onChange={(e) => setConcurrencyLimit(e.target.value)}
+                      placeholder={currentLimit.toString()}
+                      autoFocus
+                    />
+                  )}
+                </div>
                 <SegmentedControl
                   name="unit"
                   value={mode}
+                  className="h-8"
                   options={[
                     { label: "Number", value: "absolute" },
                     { label: "Percent", value: "percent" },
@@ -270,46 +332,19 @@ export function QueueOverrideConcurrencyButton({
                 />
               </div>
               {mode === "percent" ? (
-                <>
-                  <Input
-                    type="number"
-                    name="percent"
-                    id="percent"
-                    min="1"
-                    max="100"
-                    step="0.01"
-                    value={percent}
-                    onChange={(e) => setPercent(e.target.value)}
-                    placeholder="100"
-                    autoFocus
-                  />
-                  <Hint>
-                    {materializedFromPercent !== null
-                      ? `${percentNumber}% = ${materializedFromPercent} concurrent ${
-                          materializedFromPercent === 1 ? "run" : "runs"
-                        } of the environment's ${environmentConcurrencyLimit}. Recalculates automatically when the environment limit changes.`
-                      : "Enter a percentage between 1 and 100."}
-                  </Hint>
-                </>
+                <Hint className="tabular-nums">
+                  {materializedFromPercent !== null
+                    ? `${percentNumber}% = ${materializedFromPercent} concurrent ${
+                        materializedFromPercent === 1 ? "run" : "runs"
+                      } of the environment's ${environmentConcurrencyLimit}. Recalculates automatically when the environment limit changes.`
+                    : "Enter a percentage between 1 and 100."}
+                </Hint>
               ) : (
-                <>
-                  <Input
-                    type="number"
-                    name="concurrencyLimit"
-                    id="concurrencyLimit"
-                    min="0"
-                    max={environmentConcurrencyLimit}
-                    value={concurrencyLimit}
-                    onChange={(e) => setConcurrencyLimit(e.target.value)}
-                    placeholder={currentLimit.toString()}
-                    autoFocus
-                  />
-                  <Hint className={limitOverCap ? "text-warning" : undefined}>
-                    {limitOverCap
-                      ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
-                      : `Up to the environment limit of ${environmentConcurrencyLimit}.`}
-                  </Hint>
-                </>
+                <Hint className={limitOverCap ? "text-warning tabular-nums" : "tabular-nums"}>
+                  {limitOverCap
+                    ? `Can't exceed the environment limit of ${environmentConcurrencyLimit}.`
+                    : `The most concurrent runs this queue can use at once. It can't exceed the environment limit of ${environmentConcurrencyLimit}.`}
+                </Hint>
               )}
             </InputGroup>
 
@@ -346,7 +381,7 @@ export function QueueOverrideConcurrencyButton({
                     </Button>
                   )}
                   <DialogClose asChild>
-                    <Button type="button" variant="tertiary/medium">
+                    <Button type="button" variant="secondary/medium">
                       Cancel
                     </Button>
                   </DialogClose>

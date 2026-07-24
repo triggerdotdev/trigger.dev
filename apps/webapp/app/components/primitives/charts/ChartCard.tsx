@@ -88,7 +88,9 @@ export function ChartCard({
       {maximizable && (
         <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
           <DialogContent fullscreen className="flex flex-col bg-background-bright">
-            <DialogHeader>{title}</DialogHeader>
+            {/* In fullscreen, space the title's legend (the flex-col title node) further from the
+                title — gap-6 instead of the card's gap-1. */}
+            <DialogHeader className="[&>span]:gap-6">{title}</DialogHeader>
             <div className="min-h-0 w-full flex-1 overflow-hidden pt-4">
               {parentSync ? (
                 <ChartSyncProvider onZoom={parentSync.onZoom}>

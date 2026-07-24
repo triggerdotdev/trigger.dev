@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import {
   Chart,
@@ -104,6 +104,23 @@ type QueueMetricChartProps = {
    * are config values that existed all along, so carry the first value backward instead.
    */
   carryBackfill?: string[];
+  /** Show the series legend below the chart (use for multi-series charts). */
+  showLegend?: boolean;
+  /**
+   * Recolour a series' stroke above a threshold with a gradient split (colour only above the
+   * line). `value` sets a constant threshold; `valueFromSeries` reads a (roughly constant)
+   * threshold off another series — e.g. the concurrency limit. `series` targets which line is
+   * recoloured; the others keep their own colour.
+   */
+  thresholdStroke?: {
+    aboveColor: string;
+    series?: string;
+    value?: number;
+    valueFromSeries?: string;
+  };
+  /** Reports whether the chart has data to plot (false once it settles on the "no activity" state),
+   * so a wrapping card can hide the legend to match. */
+  onHasDataChange?: (hasData: boolean) => void;
 };
 
 // Bare chart (no card chrome) so it can live inside a shared card, e.g. a tabbed panel.
@@ -118,6 +135,8 @@ export function QueueMetricChart({
   defaultPeriod,
   warningOverlay,
   carryBackfill,
+  thresholdStroke,
+  onHasDataChange,
 }: QueueMetricChartProps) {
   const { rows, showLoading, failed } = useQueueMetric(query, {
     ids,
@@ -163,7 +182,33 @@ export function QueueMetricChart({
     [data]
   );
 
+  // Resolve the threshold value: a constant, or the max of another series (e.g. the limit line,
+  // which is effectively constant). A gradient split then colours the target series only above it.
+  // `valueFromSeries` targets integer-count series (concurrency limit), so split half a unit below
+  // the limit — that way the line renders warning *at or above* the limit (saturated), matching
+  // "turns yellow at the limit", rather than only when it strictly exceeds it.
+  const resolvedThresholdStroke = useMemo(() => {
+    if (!thresholdStroke) return undefined;
+    let value = thresholdStroke.value;
+    if (value == null && thresholdStroke.valueFromSeries) {
+      let max = -Infinity;
+      for (const p of data) {
+        const v = Number(p[thresholdStroke.valueFromSeries]);
+        if (Number.isFinite(v) && v > max) max = v;
+      }
+      value = max > 0 ? max - 0.5 : undefined;
+    }
+    if (value == null || !Number.isFinite(value)) return undefined;
+    return { value, aboveColor: thresholdStroke.aboveColor, series: thresholdStroke.series };
+  }, [thresholdStroke, data]);
+
   const state: ChartState = showLoading ? "loading" : failed ? "invalid" : undefined;
+
+  // Report data presence so a wrapping card can hide its legend when the chart settles on the
+  // "no activity" state. Only report once loaded, so the legend stays put while loading.
+  useEffect(() => {
+    if (!showLoading) onHasDataChange?.(!failed && data.length > 0);
+  }, [showLoading, failed, data.length, onHasDataChange]);
 
   return (
     <Chart.Root
@@ -181,6 +226,7 @@ export function QueueMetricChart({
         tooltipLabelFormatter={tooltipLabelFormatter}
         tooltipValueFormatter={valueFormat}
         warningOverlay={warningOverlay}
+        thresholdStroke={resolvedThresholdStroke}
       />
     </Chart.Root>
   );
@@ -191,6 +237,7 @@ export function QueueMetricChartCard({
   info,
   titleAccessory,
   className,
+  extraLegend,
   ...chart
 }: QueueMetricChartProps & {
   title: string;
@@ -198,23 +245,58 @@ export function QueueMetricChartCard({
   /** Extra content rendered after the info icon inside the title row (e.g. a live readout). */
   titleAccessory?: ReactNode;
   className?: string;
+  /** Extra legend entries appended after the series — e.g. a warning state that isn't its own
+   * series (the orange "over threshold" colour). */
+  extraLegend?: Array<{ color: string; label: string }>;
 }) {
+  // Hide the legend once the chart settles on the "no activity" state (reported by the chart).
+  const [hasData, setHasData] = useState(true);
   return (
     <div className={className ?? "h-64"}>
       <ChartCard
         title={
-          info || titleAccessory ? (
-            <span className="flex items-center gap-1.5">
+          <span className="flex flex-col gap-1">
+            <span className="flex items-center gap-1">
               {title}
-              {info ? <InfoIconTooltip content={info} contentClassName="max-w-xs" /> : null}
+              {info ? (
+                <InfoIconTooltip
+                  content={info}
+                  contentClassName="max-w-[230px]"
+                  disableHoverableContent
+                />
+              ) : null}
               {titleAccessory}
             </span>
-          ) : (
-            title
-          )
+            {/* Inline legend below the title (swatch + label per series), matching the list-page
+                charts — instead of the Chart.Root legend with per-series totals. */}
+            {chart.showLegend &&
+            hasData &&
+            (chart.series.length > 0 || (extraLegend?.length ?? 0) > 0) ? (
+              <span className="flex flex-wrap items-center gap-2">
+                {chart.series.map((s) => (
+                  <span
+                    key={s.key}
+                    className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
+                  >
+                    <span className="size-2.5 rounded-[2px]" style={{ backgroundColor: s.color }} />
+                    {s.label}
+                  </span>
+                ))}
+                {extraLegend?.map((e) => (
+                  <span
+                    key={e.label}
+                    className="flex items-center gap-1 text-xs font-normal text-text-dimmed"
+                  >
+                    <span className="size-2.5 rounded-[2px]" style={{ backgroundColor: e.color }} />
+                    {e.label}
+                  </span>
+                ))}
+              </span>
+            ) : null}
+          </span>
         }
       >
-        <QueueMetricChart {...chart} />
+        <QueueMetricChart {...chart} onHasDataChange={setHasData} />
       </ChartCard>
     </div>
   );
@@ -322,7 +404,7 @@ export function QueueSparklineStat({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1">
         <Header3 className="leading-6">{title}</Header3>
         {info || (data.length > 0 && peak > 0) ? (
           <InfoIconTooltip
@@ -336,7 +418,8 @@ export function QueueSparklineStat({
                 ) : null}
               </div>
             }
-            contentClassName="max-w-xs"
+            contentClassName="max-w-[230px]"
+            disableHoverableContent
           />
         ) : null}
       </div>

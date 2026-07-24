@@ -181,6 +181,8 @@ type TableCellBasicProps = {
 type TableHeaderCellProps = TableCellBasicProps & {
   hiddenLabel?: boolean;
   tooltip?: ReactNode;
+  /** Extra class merged onto the tooltip content — e.g. widen it past the default max-width. */
+  tooltipContentClassName?: string;
   disableTooltipHoverableContent?: boolean;
   /**
    * When set (together with `onSort`), the header renders a sort indicator and becomes clickable.
@@ -202,6 +204,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
       colSpan,
       hiddenLabel = false,
       tooltip,
+      tooltipContentClassName,
       disableTooltipHoverableContent = false,
       sortDirection,
       onSort,
@@ -226,7 +229,7 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
     const tooltipNode = tooltip ? (
       <InfoIconTooltip
         content={tooltip}
-        contentClassName="normal-case tracking-normal"
+        contentClassName={cn("normal-case tracking-normal", tooltipContentClassName)}
         disableHoverableContent={disableTooltipHoverableContent}
       />
     ) : null;
@@ -271,40 +274,19 @@ export const TableHeaderCell = forwardRef<HTMLTableCellElement, TableHeaderCellP
         tabIndex={-1}
       >
         {sortable ? (
-          // Order is always title → info icon → sort arrows. The info trigger is itself a <button>,
-          // so it can't nest inside the sort <button> (invalid DOM). Without a tooltip the arrows
-          // ride inside the full-width label button (unchanged). With a tooltip, the info sits
-          // between the label and a separate arrows button — both buttons toggle the sort.
+          // Only the sort arrows toggle sorting — the label (and info tooltip) are not clickable, so
+          // clicking the header text does nothing. Order is always title → info icon → sort arrows.
           <div className={rowClassName}>
+            {label}
+            {tooltip ? tooltipNode : null}
             <button
               type="button"
               onClick={onSort}
-              className={cn(
-                "group/sort flex cursor-pointer select-none items-center gap-1 rounded-sm font-medium text-text-bright focus-custom",
-                tooltip
-                  ? undefined
-                  : cn("w-full", {
-                      "justify-center": alignment === "center",
-                      "justify-end": alignment === "right",
-                    })
-              )}
+              aria-label="Toggle sort"
+              className="group/sort flex cursor-pointer select-none items-center rounded-sm focus-custom"
             >
-              {label}
-              {!tooltip && sortIndicator}
+              {sortIndicator}
             </button>
-            {tooltip ? (
-              <>
-                {tooltipNode}
-                <button
-                  type="button"
-                  onClick={onSort}
-                  aria-label="Toggle sort"
-                  className="group/sort flex cursor-pointer select-none items-center rounded-sm focus-custom"
-                >
-                  {sortIndicator}
-                </button>
-              </>
-            ) : null}
           </div>
         ) : tooltip ? (
           <div className={rowClassName}>
@@ -407,19 +389,27 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
           // With leading/trailing content, the link is content-sized and the adornments sit beside
           // it (still inside the td) so interactive triggers never nest inside the <a>.
           leadingContent || trailingContent ? (
-            <div className={cn(flexClasses, "gap-2")}>
-              {leadingContent}
+            // Stretched link: the <a> covers the whole cell via an inset ::before overlay, so the
+            // entire cell is clickable — not just the text. The interactive adornments (tooltip
+            // icons, badge buttons) sit above the overlay (relative z-10) and stay clickable, and
+            // never nest inside the <a>.
+            <div className={cn(flexClasses, "relative gap-2")}>
+              {leadingContent ? (
+                <span className="relative z-10 flex items-center">{leadingContent}</span>
+              ) : null}
               <Link
                 to={to}
                 className={cn(
-                  "inline-flex items-center gap-2 focus:outline-hidden",
+                  "inline-flex items-center gap-2 before:absolute before:inset-0 before:content-[''] focus:outline-hidden",
                   actionClassName
                 )}
                 tabIndex={isTabbableCell ? 0 : -1}
               >
                 {children}
               </Link>
-              {trailingContent}
+              {trailingContent ? (
+                <span className="relative z-10 flex items-center">{trailingContent}</span>
+              ) : null}
             </div>
           ) : (
             <Link

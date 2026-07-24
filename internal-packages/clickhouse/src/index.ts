@@ -40,6 +40,7 @@ import {
   getQueueRanking,
   getQueueRankingNames,
   getQueueRankingCount,
+  getConcurrencyKeyRanking,
 } from "./queueMetrics.js";
 import {
   getSessionTagsQueryBuilder,
@@ -279,6 +280,7 @@ export class ClickHouse {
       ranking: getQueueRanking(this.reader),
       rankingNames: getQueueRankingNames(this.reader),
       rankingCount: getQueueRankingCount(this.reader),
+      concurrencyKeyRanking: getConcurrencyKeyRanking(this.reader),
     };
   }
 

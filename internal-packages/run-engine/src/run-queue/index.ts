@@ -613,6 +613,50 @@ export class RunQueue {
     return { totalBackloggedKeys, keys };
   }
 
+  /**
+   * Live "now" stats for a specific set of concurrency keys — the current page of the paginated
+   * per-key table. Unlike concurrencyKeyBreakdown (which reads the top of the ckIndex), this
+   * targets exactly the given keys, so the table can enrich its ClickHouse-ranked page without
+   * scanning the whole index: O(keys) via one pipeline, independent of total key cardinality.
+   * Keys with no live backlog come back as zeros with a null oldest-enqueue time.
+   */
+  public async concurrencyKeyLiveStats(
+    env: MinimalAuthenticatedEnvironment,
+    queue: string,
+    concurrencyKeys: string[]
+  ): Promise<Map<string, { queued: number; running: number; oldestEnqueuedAt: number | null }>> {
+    const result = new Map<
+      string,
+      { queued: number; running: number; oldestEnqueuedAt: number | null }
+    >();
+    if (concurrencyKeys.length === 0) return result;
+
+    const ckIndexKey = this.keys.ckIndexKeyFromQueue(this.keys.queueKey(env, queue));
+
+    const pipeline = this.redis.pipeline();
+    for (const concurrencyKey of concurrencyKeys) {
+      const member = this.keys.queueKey(env, queue, concurrencyKey);
+      pipeline.zcard(member); // queued in this key's subqueue
+      pipeline.scard(this.keys.queueCurrentConcurrencyKeyFromQueue(member)); // running
+      pipeline.zscore(ckIndexKey, member); // oldest-enqueued score (null once the key drains)
+    }
+    const res = await pipeline.exec();
+    if (!res) return result;
+
+    concurrencyKeys.forEach((concurrencyKey, i) => {
+      const queuedResult = res[i * 3];
+      const runningResult = res[i * 3 + 1];
+      const scoreResult = res[i * 3 + 2];
+      const queued = queuedResult && !queuedResult[0] ? ((queuedResult[1] as number) ?? 0) : 0;
+      const running = runningResult && !runningResult[0] ? ((runningResult[1] as number) ?? 0) : 0;
+      const rawScore = scoreResult && !scoreResult[0] ? scoreResult[1] : null;
+      const oldestEnqueuedAt = rawScore != null ? Number(rawScore) : null;
+      result.set(concurrencyKey, { queued, running, oldestEnqueuedAt });
+    });
+
+    return result;
+  }
+
   public async lengthOfEnvQueue(env: MinimalAuthenticatedEnvironment) {
     return this.redis.zcard(this.keys.envQueueKey(env));
   }

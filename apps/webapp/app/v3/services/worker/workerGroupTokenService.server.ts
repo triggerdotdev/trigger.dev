@@ -62,12 +62,20 @@ if (workloadCreatedAtGateEnabled && !workloadTokenCutoff) {
 
 type WorkloadGateAction = "start" | "complete" | "continue" | "snapshots_since";
 
-const workloadAuthGateCounter = new Counter({
-  name: "workload_auth_gate_total",
-  help: "Deployment token authorization outcomes on worker actions",
-  labelNames: ["outcome", "action"] as const,
-  registers: [metricsRegister],
-});
+// Wrapped in singleton() so a dev HMR re-eval of this module reuses the existing counter instead
+// of calling `new Counter` again — prom-client throws "already registered" on the second
+// registration, which crashes the dev server. Matches authenticatedWorkerInstanceCache above; a
+// no-op in prod (the module evaluates once).
+const workloadAuthGateCounter = singleton(
+  "workloadAuthGateCounter",
+  () =>
+    new Counter({
+      name: "workload_auth_gate_total",
+      help: "Deployment token authorization outcomes on worker actions",
+      labelNames: ["outcome", "action"] as const,
+      registers: [metricsRegister],
+    })
+);
 
 function createAuthenticatedWorkerInstanceCache() {
   return createCache({

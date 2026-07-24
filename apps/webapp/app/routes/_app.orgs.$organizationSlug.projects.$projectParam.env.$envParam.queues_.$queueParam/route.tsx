@@ -1,11 +1,12 @@
 import { type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainCenteredContainer, PageContainer } from "~/components/layout/AppLayout";
 import { MetricsLayout } from "~/components/layout/MetricsLayout";
+import { AnimatedOrgBannerBar } from "~/components/billing/AnimatedOrgBannerBar";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
@@ -48,7 +49,12 @@ import { SearchInput } from "~/components/primitives/SearchInput";
 import { engine } from "~/v3/runEngine.server";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { useTableSort, type SortColumn } from "~/components/primitives/useTableSort";
+import { useInterval } from "~/hooks/useInterval";
+import { PaginationControls } from "~/components/primitives/Pagination";
+import type {
+  ConcurrencyKeyRow,
+  ConcurrencyKeysResponse,
+} from "~/routes/resources.queues.concurrency-keys";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { requireUserId } from "~/services/session.server";
@@ -240,22 +246,57 @@ export default function Page() {
       <NavBar>
         <PageTitle title={queue.name} backButton={{ to: backPath, text: "Queues" }} />
       </NavBar>
+      {/* Paused-queue banner — mirrors the environment-paused banner (OrgBanner) at the top of
+          the page when this individual queue is paused. */}
+      <AnimatedOrgBannerBar show={queue.paused} variant="warning">
+        {`"${queue.name}" queue paused. No new runs will be dequeued and executed.`}
+      </AnimatedOrgBannerBar>
       <MetricsLayout.Root>
         {/* Filters — search (concurrency keys) + time filter in one left cluster, above
             everything, like the Queues list. The time filter scopes the tab charts; search filters
             the keys table. The bar is pinned by the layout while the page scrolls. */}
-        <MetricsLayout.Filters>
-          <div className="flex items-center gap-2">
+        <MetricsLayout.Filters className="pl-1.5 pr-2">
+          <div className="translate-y-px self-end pl-2">
+            <TabContainer>
+              <TabButton
+                isActive={view === "overview"}
+                layoutId="queue-detail-view"
+                onClick={() => replace({ view: undefined, key: undefined })}
+              >
+                Overview
+              </TabButton>
+              <TabButton
+                isActive={view === "keys"}
+                layoutId="queue-detail-view"
+                onClick={() => replace({ view: "keys" })}
+              >
+                Concurrency keys
+              </TabButton>
+            </TabContainer>
+          </div>
+          <div className="flex items-center gap-1.5">
             {view === "keys" && hasKeys ? (
-              <SearchInput placeholder="Search keys…" paramName="query" resetParams={["key"]} />
+              <SearchInput
+                placeholder="Search keys…"
+                paramName="query"
+                resetParams={["key", "page"]}
+              />
             ) : null}
             <TimeFilter
               defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
               labelName="Period"
-              hideLabel
               maxPeriodDays={maxPeriodDays}
-              valueClassName="text-text-bright"
               shortcut={{ key: "d" }}
+            />
+            <QueueOverrideConcurrencyButton
+              queue={queue}
+              environmentConcurrencyLimit={environmentConcurrencyLimit}
+              trigger="button"
+            />
+            <QueuePauseResumeButton
+              queue={{ id: queue.id, name: queue.name, paused: queue.paused }}
+              variant="secondary/small"
+              withQueueName
             />
           </div>
         </MetricsLayout.Filters>
@@ -275,23 +316,6 @@ export default function Page() {
         {/* Tabs + charts share the padded (inset) column. Both tabs always render; the keys tab
             shows an empty state when the queue has no concurrency keys. */}
         <MetricsLayout.Content inset>
-          <TabContainer>
-            <TabButton
-              isActive={view === "overview"}
-              layoutId="queue-detail-view"
-              onClick={() => replace({ view: undefined, key: undefined })}
-            >
-              Overview
-            </TabButton>
-            <TabButton
-              isActive={view === "keys"}
-              layoutId="queue-detail-view"
-              onClick={() => replace({ view: "keys" })}
-            >
-              Concurrency keys
-            </TabButton>
-          </TabContainer>
-
           {view === "keys" ? (
             hasKeys ? (
               <ConcurrencyKeyCharts
@@ -315,13 +339,7 @@ export default function Page() {
         {view === "keys" && hasKeys ? (
           <>
             <MetricsLayout.Content>
-              <KeyStatsTable
-                breakdown={ckBreakdown}
-                loadedAt={loadedAt}
-                ids={ids}
-                timeRange={timeRange}
-                queueName={fullName}
-              />
+              <KeyStatsTable ids={ids} timeRange={timeRange} queueName={fullName} />
             </MetricsLayout.Content>
             {selectedKey ? (
               <MetricsLayout.Content inset>
@@ -340,6 +358,17 @@ export default function Page() {
   );
 }
 
+// Inline colour swatch for tooltip copy — matches the chart legend swatch (rounded-[2px]) and is
+// nudged up 1px so it sits on the text baseline.
+function ColorSwatch({ color }: { color: string }) {
+  return (
+    <span
+      className="mx-0.5 inline-block size-2.5 -translate-y-px rounded-[2px] align-middle"
+      style={{ backgroundColor: color }}
+    />
+  );
+}
+
 function OverviewCharts({
   ids,
   timeRange,
@@ -355,7 +384,14 @@ function OverviewCharts({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <QueueDetailChartCard
           title="Concurrency"
-          info="Running (purple) against the queue's concurrency limit (grey). Yellow when at the limit."
+          info={
+            <>
+              How many runs are executing at once (<ColorSwatch color={COLORS.running} />) versus
+              the queue's limit (<ColorSwatch color={COLORS.limit} />
+              ). Turns <ColorSwatch color="var(--color-warning)" /> color when it reaches the limit.
+            </>
+          }
+          showLegend
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_running) AS running, max(max_limit) AS limit\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -367,15 +403,21 @@ function OverviewCharts({
             { key: "limit", label: "Limit", color: COLORS.limit },
             { key: "running", label: "Running", color: COLORS.running },
           ]}
-          // Recolour Running warning where it reaches the limit (saturated), matching the tooltip.
-          warningOverlay={{ series: "running", atOrAbove: "limit" }}
+          // Recolour Running above the limit line with a gradient split, so it's orange only where
+          // it's actually over the limit — not on the way up. The threshold reads off the (roughly
+          // constant) limit series.
+          thresholdStroke={{
+            series: "running",
+            valueFromSeries: "limit",
+            aboveColor: "var(--color-warning)",
+          }}
           // The limit is a config value emitted only while the queue is active; back-fill its
           // leading zeros so the reference line doesn't start with a false 0→limit step.
           carryBackfill={["limit"]}
         />
         <QueueDetailChartCard
           title="Queue depth"
-          info="Runs waiting in this queue over time."
+          info="How many runs are waiting in this queue over time."
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -386,7 +428,15 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Throughput"
-          info="Runs entering the queue (Enqueued, grey) versus leaving it (Started, purple). Yellow when Started falls behind."
+          info={
+            <>
+              Runs arriving (<ColorSwatch color={COLORS.limit} /> Enqueued) versus starting (
+              <ColorSwatch color={COLORS.running} /> Started). Turns{" "}
+              <ColorSwatch color="var(--color-warning)" /> color when Started falls behind.
+            </>
+          }
+          showLegend
+          extraLegend={[{ color: "var(--color-warning)", label: "Falling behind" }]}
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  deltaSumTimestampMerge(enqueue_delta) AS enqueued,\n  deltaSumTimestampMerge(started_delta) AS started\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -403,7 +453,8 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Scheduling delay"
-          info="Wait from eligible to dequeued (p50/p95/p99)."
+          info="How long runs wait before they start."
+          showLegend
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[1]) AS p50,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[3]) AS p95,\n  round(quantilesMerge(0.5, 0.9, 0.95, 0.99)(wait_quantiles)[4]) AS p99\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -419,8 +470,13 @@ function OverviewCharts({
         />
         <QueueDetailChartCard
           title="Throttled"
-          info="Times dequeuing was blocked by a limit."
-          className="aspect-[2/1]"
+          info={
+            <>
+              How often runs were held back by a limit (<ColorSwatch color={COLORS.throttled} />{" "}
+              color).
+            </>
+          }
+          className="aspect-[2/1] sm:col-span-2 sm:aspect-[4/1]"
           query={`SELECT timeBucket() AS t, sum(throttled_count) AS throttled\nFROM queue_metrics\nGROUP BY t\nORDER BY t`}
           fillGaps
           ids={ids}
@@ -592,7 +648,7 @@ function chartTitleWithInfo(title: string, info: string) {
   return (
     <span className="flex items-center gap-1.5">
       {title}
-      <InfoIconTooltip content={info} contentClassName="max-w-xs" />
+      <InfoIconTooltip content={info} contentClassName="max-w-[230px]" />
     </span>
   );
 }
@@ -704,143 +760,184 @@ function GroupedKeySeries({
   );
 }
 
-type KeyRangeStats = { started: number; peakBacklog: number; meanWaitMs: number };
+// One page of the paginated per-key table. The ClickHouse tier is the authority (ranked by peak
+// backlog over the window, with the total on every row so page + count are a single scan); each
+// page's keys are enriched with live "now" counts from Redis server-side. Fetched per page rather
+// than capped at 50, so high-cardinality queues (tens of thousands of keys) page through instead
+// of silently truncating. See resources.queues.concurrency-keys.
+function useConcurrencyKeys(opts: {
+  ids: Ids;
+  timeRange: TimeRangeParams;
+  queueName: string;
+  search: string;
+  page: number;
+}) {
+  const { ids, timeRange, queueName, search, page } = opts;
+  const [data, setData] = useState<ConcurrencyKeysResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const abortRef = useRef<AbortController | null>(null);
 
-// Live breakdown (queued/running now, oldest wait) merged with per-key range stats from
-// the history tier; keys with history but no live backlog still appear. Clicking a key
-// pins the drill-down charts via the `key` search param.
+  const body = useMemo(
+    () =>
+      JSON.stringify({
+        organizationId: ids.organizationId,
+        projectId: ids.projectId,
+        environmentId: ids.environmentId,
+        queueName,
+        period: timeRange.period,
+        from: timeRange.from,
+        to: timeRange.to,
+        search,
+        page,
+      }),
+    [
+      ids.organizationId,
+      ids.projectId,
+      ids.environmentId,
+      queueName,
+      timeRange.period,
+      timeRange.from,
+      timeRange.to,
+      search,
+      page,
+    ]
+  );
+
+  const load = useCallback(() => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setIsLoading(true);
+    fetch("/resources/queues/concurrency-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: controller.signal,
+    })
+      .then((res) => res.json() as Promise<ConcurrencyKeysResponse>)
+      .then((res) => {
+        if (controller.signal.aborted) return;
+        setData(res);
+        setIsLoading(false);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (!controller.signal.aborted) {
+          setData({ success: false, error: error?.message ?? "Network error" });
+          setIsLoading(false);
+        }
+      });
+  }, [body]);
+
+  useEffect(() => {
+    load();
+    return () => abortRef.current?.abort();
+  }, [load]);
+
+  // Keep the live "now" counts fresh without a manual reload.
+  useInterval({
+    interval: 30_000,
+    onLoad: false,
+    onFocus: true,
+    pauseWhenHidden: true,
+    callback: load,
+  });
+
+  return { data, isLoading };
+}
+
+// Paginated per-key table: which keys hold the backlog / do the work. Clicking a key pins the
+// drill-down charts via the `key` search param.
 function KeyStatsTable({
-  breakdown,
-  loadedAt,
   ids,
   timeRange,
   queueName,
 }: {
-  breakdown: CkBreakdown;
-  loadedAt: number;
   ids: Ids;
   timeRange: TimeRangeParams;
   queueName: string;
 }) {
   const { value, replace, del } = useSearchParams();
   const selectedKey = value("key");
+  const search = value("query")?.trim() ?? "";
+  const page = Math.max(1, Number(value("page")) || 1);
 
-  const { rows, showLoading } = useQueueMetric(
-    `SELECT concurrency_key,\n  deltaSumTimestampMerge(started_delta) AS started,\n  max(max_queued) AS peak_backlog,\n  if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS mean_wait\nFROM queue_metrics_by_key\nGROUP BY concurrency_key\nORDER BY peak_backlog DESC\nLIMIT 50`,
-    { ids, timeRange, queueName }
-  );
+  const { data, isLoading } = useConcurrencyKeys({ ids, timeRange, queueName, search, page });
 
-  const merged = useMemo(() => {
-    const range = new Map<string, KeyRangeStats>();
-    for (const r of rows) {
-      range.set(String(r.concurrency_key), {
-        started: toNumber(r.started),
-        peakBacklog: toNumber(r.peak_backlog),
-        meanWaitMs: toNumber(r.mean_wait),
-      });
+  const rows: ConcurrencyKeyRow[] = data?.success ? data.rows : [];
+  const total = data?.success ? data.total : 0;
+  const perPage = data?.success ? data.perPage : 25;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  // Only show a skeleton before the first response; keep prior rows visible while revalidating.
+  const showLoading = isLoading && !data;
+
+  // Recover from a page past the end: narrowing the time range (or a stale bookmarked URL) can
+  // leave `page` beyond the result set, which comes back empty with the pagination control — shown
+  // only when there's >1 page — hidden, stranding the reader. Once a response settles empty on a
+  // page > 1, snap back to page 1 (whose data is fetched fresh) so there's always a way out.
+  useEffect(() => {
+    if (!isLoading && data?.success && data.rows.length === 0 && page > 1) {
+      del("page");
     }
-    const liveKeys = new Set(breakdown.keys.map((k) => k.concurrencyKey));
-    const live = breakdown.keys.map((k) => ({
-      key: k.concurrencyKey,
-      queued: k.queued,
-      running: k.running,
-      oldestWaitMs: Math.max(0, loadedAt - k.oldestEnqueuedAt),
-      range: range.get(k.concurrencyKey),
-    }));
-    const historyOnly = [...range.entries()]
-      .filter(([key]) => !liveKeys.has(key))
-      .map(([key, stats]) => ({
-        key,
-        queued: 0,
-        running: 0,
-        oldestWaitMs: null as number | null,
-        range: stats,
-      }));
-    return [...live, ...historyOnly].slice(0, 50);
-  }, [rows, breakdown, loadedAt]);
-
-  // The top-bar search filters the key list by substring (case-insensitive), the same idea as the
-  // Queues page search over queue names.
-  const query = value("query")?.trim().toLowerCase();
-  const filtered = useMemo(
-    () => (query ? merged.filter((r) => r.key.toLowerCase().includes(query)) : merged),
-    [merged, query]
-  );
-
-  const sortColumns = useMemo<SortColumn<(typeof merged)[number]>[]>(
-    () => [
-      { key: "key", type: "alpha", value: (r) => r.key },
-      { key: "queued", type: "number", value: (r) => r.queued },
-      { key: "running", type: "number", value: (r) => r.running },
-      { key: "oldestWait", type: "number", value: (r) => r.oldestWaitMs },
-      { key: "started", type: "number", value: (r) => r.range?.started },
-      { key: "peakBacklog", type: "number", value: (r) => r.range?.peakBacklog },
-      { key: "meanWait", type: "number", value: (r) => r.range?.meanWaitMs },
-    ],
-    []
-  );
-  const { sortedRows, getSortProps } = useTableSort(filtered, sortColumns);
-
-  if (merged.length === 0) return null;
+  }, [isLoading, data, page, del]);
 
   return (
-    // Full-bleed, edge-to-edge like the Queues list table: a top border, no rounded side box.
-    <Table containerClassName="border-t">
-      <TableHeader>
-        <TableRow>
-          <TableHeaderCell {...getSortProps("key")}>Key</TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("queued")}>
-            Queued now
-          </TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("running")}>
-            Running now
-          </TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("oldestWait")}>
-            Oldest wait
-          </TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("started")}>
-            Started
-          </TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("peakBacklog")}>
-            Peak backlog
-          </TableHeaderCell>
-          <TableHeaderCell alignment="right" {...getSortProps("meanWait")}>
-            Mean delay
-          </TableHeaderCell>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {sortedRows.length === 0 ? (
-          <TableBlankRow colSpan={7} className="text-text-dimmed">
-            No keys match “{query}”
-          </TableBlankRow>
-        ) : null}
-        {sortedRows.map((row) => (
-          <TableRow
-            key={row.key}
-            isSelected={selectedKey === row.key}
-            className="cursor-pointer"
-            onClick={() => (selectedKey === row.key ? del("key") : replace({ key: row.key }))}
-          >
-            <TableCell>{row.key}</TableCell>
-            <TableCell alignment="right">{row.queued.toLocaleString()}</TableCell>
-            <TableCell alignment="right">{row.running.toLocaleString()}</TableCell>
-            <TableCell alignment="right">
-              {row.oldestWaitMs === null ? "–" : formatWaitMs(row.oldestWaitMs)}
-            </TableCell>
-            <TableCell alignment="right">
-              {row.range ? row.range.started.toLocaleString() : showLoading ? "…" : "–"}
-            </TableCell>
-            <TableCell alignment="right">
-              {row.range ? row.range.peakBacklog.toLocaleString() : showLoading ? "…" : "–"}
-            </TableCell>
-            <TableCell alignment="right">
-              {row.range && row.range.meanWaitMs > 0 ? formatWaitMs(row.range.meanWaitMs) : "–"}
-            </TableCell>
+    <div className="flex flex-col">
+      {/* Title bar above the table, shown only when there's more than one page: the section title
+          on the left, prev/next pagination on the right. Hidden entirely for a single page. */}
+      {totalPages > 1 ? (
+        <div className="flex items-center justify-between border-t px-3 py-2">
+          <Header3>Concurrency keys</Header3>
+          <PaginationControls currentPage={page} totalPages={totalPages} showPageNumbers={false} />
+        </div>
+      ) : null}
+      {/* Full-bleed, edge-to-edge like the Queues list table: a top border, no rounded side box. */}
+      <Table containerClassName="border-t">
+        <TableHeader>
+          <TableRow>
+            <TableHeaderCell>Key</TableHeaderCell>
+            <TableHeaderCell alignment="right">Queued now</TableHeaderCell>
+            <TableHeaderCell alignment="right">Running now</TableHeaderCell>
+            <TableHeaderCell alignment="right">Oldest wait</TableHeaderCell>
+            <TableHeaderCell alignment="right">Started</TableHeaderCell>
+            <TableHeaderCell alignment="right">Peak backlog</TableHeaderCell>
+            <TableHeaderCell alignment="right">Mean delay</TableHeaderCell>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {showLoading ? (
+            <TableBlankRow colSpan={7} className="text-text-dimmed">
+              Loading…
+            </TableBlankRow>
+          ) : rows.length === 0 ? (
+            <TableBlankRow colSpan={7} className="text-text-dimmed">
+              {search ? `No keys match “${search}”` : "No concurrency keys"}
+            </TableBlankRow>
+          ) : (
+            rows.map((row) => (
+              <TableRow
+                key={row.key}
+                isSelected={selectedKey === row.key}
+                className="cursor-pointer"
+                onClick={() => (selectedKey === row.key ? del("key") : replace({ key: row.key }))}
+              >
+                <TableCell>{row.key}</TableCell>
+                <TableCell alignment="right">{row.queued.toLocaleString()}</TableCell>
+                <TableCell alignment="right">{row.running.toLocaleString()}</TableCell>
+                <TableCell alignment="right">
+                  {row.oldestWaitMs === null ? "–" : formatWaitMs(row.oldestWaitMs)}
+                </TableCell>
+                <TableCell alignment="right">{row.started.toLocaleString()}</TableCell>
+                <TableCell alignment="right">{row.peakBacklog.toLocaleString()}</TableCell>
+                <TableCell alignment="right">
+                  {row.meanWaitMs > 0 ? formatWaitMs(row.meanWaitMs) : "–"}
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -862,7 +959,12 @@ function KeyDrilldown({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <QueueDetailChartCard
           title={`Key ${keyName}: backlog and running`}
-          info="This key: waiting (Queued, purple) vs running (grey)."
+          info={
+            <>
+              This key: waiting (Queued, <ColorSwatch color={COLORS.queued} /> color) vs running (
+              <ColorSwatch color={COLORS.limit} /> color).
+            </>
+          }
           className="aspect-[2/1]"
           query={`SELECT timeBucket() AS t, max(max_queued) AS queued, max(max_running) AS running\nFROM queue_metrics_by_key\nWHERE ${pin}\nGROUP BY t\nORDER BY t`}
           fillGaps
@@ -983,25 +1085,7 @@ function QueueStats({
 
   return (
     <MetricsLayout.Grid>
-      <ConcurrencyBlock
-        running={runningDisplay}
-        limit={limitDisplay}
-        paused={queue.paused}
-        accessory={
-          <div className="flex items-center gap-1">
-            <QueuePauseResumeButton
-              queue={{ id: queue.id, name: queue.name, paused: queue.paused }}
-              variant="secondary/small-icon"
-              iconOnly
-            />
-            <QueueOverrideConcurrencyButton
-              queue={queue}
-              environmentConcurrencyLimit={environmentConcurrencyLimit}
-              trigger="icon"
-            />
-          </div>
-        }
-      />
+      <ConcurrencyBlock running={runningDisplay} limit={limitDisplay} paused={queue.paused} />
       <BigNumber
         title="Queued"
         value={queuedDisplay}
@@ -1010,13 +1094,16 @@ function QueueStats({
         suffix={peakQueued > 0 ? `peak ${formatNumberCompact(peakQueued)}` : undefined}
         suffixClassName="text-text-dimmed"
         accessory={
-          <LinkButton
-            variant="secondary/small-icon"
-            LeadingIcon={RunsIcon}
-            leadingIconClassName="text-runs"
-            to={queuedRunsPath}
-            tooltip="View queued runs"
-          />
+          <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+            <LinkButton
+              variant="minimal/small"
+              className="aspect-square px-1!"
+              LeadingIcon={RunsIcon}
+              leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
+              to={queuedRunsPath}
+              tooltip="View queued runs"
+            />
+          </span>
         }
       />
       <BigNumber
@@ -1057,7 +1144,7 @@ function ConcurrencyBlock({
   const atLimit = limit !== null && limit > 0 && running >= limit;
   const pct = limit && limit > 0 ? Math.min(100, Math.round((running / limit) * 100)) : 0;
   return (
-    <div className="flex flex-col justify-between gap-4 rounded-sm border border-grid-dimmed bg-background-bright p-4">
+    <div className="flex flex-col justify-between gap-4 rounded-lg border border-grid-bright bg-background-bright p-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Header3 className="leading-6">Concurrency</Header3>
@@ -1082,7 +1169,12 @@ function ConcurrencyBlock({
               / {limit !== null ? limit.toLocaleString() : "∞"}
             </span>
             {limit !== null && limit > 0 && (
-              <span className={cn("text-xs", atLimit ? "text-warning" : "text-text-dimmed")}>
+              <span
+                className={cn(
+                  "text-xs tabular-nums",
+                  atLimit ? "text-warning" : "text-text-dimmed"
+                )}
+              >
                 {/* Separator so the limit and the percentage don't read as one number
                     (e.g. "/ 25" + "44%" mashing into "2544%"). */}
                 <span className="mr-1 text-text-dimmed">·</span>

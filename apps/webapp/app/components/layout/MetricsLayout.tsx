@@ -178,7 +178,7 @@ function MetricsLayoutMain({ children, scroll }: { children: ReactNode; scroll: 
       <div
         className={
           scroll === "page"
-            ? "flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+            ? "flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto py-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
             : "flex min-h-0 flex-1 flex-col overflow-hidden"
         }
       >
@@ -275,9 +275,21 @@ function MetricsLayoutRoot({
  * standard page insets. Compose left/right clusters as child divs — `justify-between` spreads them
  * (a single child sits at the start).
  */
-function MetricsLayoutFilters({ children }: { children: ReactNode }) {
+function MetricsLayoutFilters({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  /** Override the baked horizontal padding (the two queue pages want slightly different insets). */
+  className?: string;
+}) {
   return (
-    <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-dimmed pl-2.5 pr-3">
+    <div
+      className={cn(
+        "flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-dimmed pl-2.5 pr-3",
+        className
+      )}
+    >
       {children}
     </div>
   );
@@ -306,7 +318,7 @@ function MetricsLayoutGrid({
   return (
     <div
       className={cn(
-        "grid gap-3 px-3",
+        "grid gap-2.5 px-2.5",
         // `shrink-0` is load-bearing: the grid sits in Root's flex-col scroll container, where the
         // default flex-shrink would collapse a fixed-height row whose chart cards have ~no
         // intrinsic height. Pin it so the charts keep their row height and the page scrolls past.
@@ -325,8 +337,8 @@ function MetricsLayoutGrid({
 /**
  * The content region below the tiles (tabs / table / list). Full-bleed by default so a list table
  * spans edge to edge with its own top border; pass `inset` for a padded column (the detail page's
- * tabs + charts). Either way Content bakes a doubled separation above it, so the tile blocks read
- * as a distinct band from the content below.
+ * tabs + charts). Separation from the tiles above comes from the scroll column's gap alone (no
+ * extra top margin), so the tile → content step matches the gap between tile rows.
  */
 function MetricsLayoutContent({
   children,
@@ -336,7 +348,7 @@ function MetricsLayoutContent({
   /** Pad the content into a column (page gutter) instead of letting it span edge to edge. */
   inset?: boolean;
 }) {
-  return <div className={cn("mt-3 flex flex-col gap-3", inset && "px-3")}>{children}</div>;
+  return <div className={cn("flex flex-col gap-2.5", inset && "px-2.5")}>{children}</div>;
 }
 
 export const MetricsLayout = {

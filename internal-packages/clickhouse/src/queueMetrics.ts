@@ -219,4 +219,76 @@ export function getQueueRankingCount(reader: ClickhouseReader) {
   });
 }
 
+// --- Per-concurrency-key ranking (the queue detail "Concurrency keys" table) ---
+
+const ConcurrencyKeyRankingParams = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
+  environmentId: z.string(),
+  queueName: z.string(),
+  startTime: z.string(),
+  endTime: z.string(),
+  /** Case-insensitive substring filter on the key ('' = no filter). */
+  nameContains: z.string(),
+  limit: z.number(),
+  offset: z.number(),
+});
+
+const ConcurrencyKeyRankingRow = z.object({
+  concurrency_key: z.string(),
+  started: z.coerce.number(),
+  peak_backlog: z.coerce.number(),
+  peak_running: z.coerce.number(),
+  mean_wait_ms: z.coerce.number(),
+  ranked_total: z.coerce.number(),
+});
+
+// The per-key table (queue_metrics_ck_v1) is activity-bound and its ORDER BY starts with the
+// tenant + queue, so filtering to one queue prunes to a contiguous index range — the aggregate
+// is bounded by real activity, never by total key cardinality. There is no per-key 5m rollup,
+// so this reads the 10s tier directly (the pre-existing LIMIT-50 query did the same).
+const CK_RANKING_WHERE = `organization_id = {organizationId: String}
+        AND project_id = {projectId: String}
+        AND environment_id = {environmentId: String}
+        AND queue_name = {queueName: String}
+        AND bucket_start >= {startTime: DateTime}
+        AND bucket_start < {endTime: DateTime}
+        AND ({nameContains: String} = '' OR positionCaseInsensitive(concurrency_key, {nameContains: String}) > 0)`;
+
+/**
+ * One page of a queue's concurrency keys ranked by peak backlog over the window, with the total
+ * ranked-key count on every row (window function) so page + count cost a single scan — the same
+ * shape as getQueueRanking. The `concurrency_key ASC` tiebreak makes OFFSET paging stable across
+ * keys that share a peak. Range stats (started/peak_backlog/peak_running/mean wait) come back on
+ * the same rows; live "now" counts are enriched per page from Redis by the caller.
+ */
+export function getConcurrencyKeyRanking(reader: ClickhouseReader) {
+  return reader.query({
+    name: "getConcurrencyKeyRanking",
+    query: `SELECT
+        concurrency_key,
+        started,
+        peak_backlog,
+        peak_running,
+        mean_wait_ms,
+        count() OVER () AS ranked_total
+      FROM (
+        SELECT
+          concurrency_key,
+          deltaSumTimestampMerge(started_delta) AS started,
+          max(max_queued) AS peak_backlog,
+          max(max_running) AS peak_running,
+          if(sum(wait_ms_count) > 0, round(sum(wait_ms_sum) / sum(wait_ms_count)), 0) AS mean_wait_ms
+        FROM trigger_dev.queue_metrics_ck_v1
+        WHERE ${CK_RANKING_WHERE}
+        GROUP BY concurrency_key
+        ORDER BY peak_backlog DESC, concurrency_key ASC
+      )
+      LIMIT {limit: UInt32} OFFSET {offset: UInt32}`,
+    params: ConcurrencyKeyRankingParams,
+    schema: ConcurrencyKeyRankingRow,
+    settings: QUEUE_METRICS_CACHE_SETTINGS,
+  });
+}
+
 // (per-queue detail series is now fetched via TRQL + fillGaps from the metric resource route)
