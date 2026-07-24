@@ -27,9 +27,11 @@ class ELUMonitor {
 
   start(intervalMs = 100) {
     this.samples = [];
-    performance.eventLoopUtilization();
+    let last = performance.eventLoopUtilization();
     this.interval = setInterval(() => {
-      this.samples.push(performance.eventLoopUtilization().utilization * 100);
+      const current = performance.eventLoopUtilization();
+      this.samples.push(performance.eventLoopUtilization(current, last).utilization * 100);
+      last = current;
     }, intervalMs);
   }
 

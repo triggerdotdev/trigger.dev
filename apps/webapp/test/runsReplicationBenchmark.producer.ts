@@ -19,12 +19,13 @@ interface ProducerConfig {
   poisonDepth?: number;
 }
 
-function deeplyNestedOutput(depth: number): Record<string, unknown> {
-  let node: Record<string, unknown> = { leaf: 1 };
-  for (let i = 0; i < depth; i++) {
-    node = { [`k${i}`]: node };
+function deeplyNestedJson(depth: number): string {
+  const safeDepth = Number.isSafeInteger(depth) && depth >= 0 ? depth : 0;
+  const open: string[] = [];
+  for (let i = 0; i < safeDepth; i++) {
+    open.push(`{"k${i}":`);
   }
-  return node;
+  return open.join("") + '{"leaf":1}' + "}".repeat(safeDepth);
 }
 
 // Error templates for realistic variety
@@ -158,7 +159,7 @@ async function runProducer(config: ProducerConfig) {
         }
 
         if (isPoison) {
-          runData.output = JSON.stringify(deeplyNestedOutput(poisonDepth));
+          runData.output = deeplyNestedJson(poisonDepth);
           runData.outputType = "application/json";
           poisoned++;
         }
