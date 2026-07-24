@@ -92,6 +92,10 @@ export function isTurnComplete(part: CollectedPart): boolean {
   return (part.headers ?? []).some(([k, v]) => k === "trigger-control" && v === "turn-complete");
 }
 
+export function isUpgradeRequired(part: CollectedPart): boolean {
+  return (part.headers ?? []).some(([k, v]) => k === "trigger-control" && v === "upgrade-required");
+}
+
 export type SubscribeOptions = {
   baseUrl: string;
   addressingKey: string;

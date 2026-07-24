@@ -9,6 +9,7 @@ import { runtime } from "../runtime-api.js";
 import { StandardLocalsManager } from "../locals/manager.js";
 import { StandardLifecycleHooksManager } from "../lifecycleHooks/manager.js";
 import { NoopRuntimeManager } from "../runtime/noopRuntimeManager.js";
+import type { RuntimeManager } from "../runtime/manager.js";
 import { unregisterGlobal } from "../utils/globals.js";
 import type { ServerBackgroundWorker, TaskRunContext } from "../schemas/index.js";
 import type { LocalsKey } from "../locals/types.js";
@@ -52,6 +53,13 @@ export type MockTaskContextOptions = {
    * webapp) to drive the task's `.in`/`.out` against real streams.
    */
   sessionStreamManager?: SessionStreamManager;
+  /**
+   * Runtime manager installed as the `runtime` global. Defaults to a
+   * {@link NoopRuntimeManager}. Pass a `TestRuntimeManager` (wired to a
+   * {@link SessionWaitpointBackend}) to make `session.in.wait()` suspend and
+   * resume in place against real streams, without the run-engine.
+   */
+  runtimeManager?: RuntimeManager;
 };
 
 /**
@@ -222,7 +230,7 @@ export async function runInMockTaskContext<T>(
 
   const localsManager = new StandardLocalsManager();
   const lifecycleManager = new StandardLifecycleHooksManager();
-  const runtimeManager = new NoopRuntimeManager();
+  const runtimeManager = options?.runtimeManager ?? new NoopRuntimeManager();
   const metadataManager = new TestRunMetadataManager();
   const inputManager = new TestInputStreamManager();
   const outputManager = new TestRealtimeStreamsManager();

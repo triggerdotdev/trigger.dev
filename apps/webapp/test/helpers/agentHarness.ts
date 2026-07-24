@@ -1,7 +1,11 @@
 import { apiClientManager, resourceCatalog } from "@trigger.dev/core/v3";
 import type { LocalsKey } from "@trigger.dev/core/v3";
 import type { LanguageModel } from "ai";
-import { runInMockTaskContext, StandardSessionStreamManager } from "@trigger.dev/core/v3/test";
+import {
+  installSessionWaitpointBackend,
+  runInMockTaskContext,
+  StandardSessionStreamManager,
+} from "@trigger.dev/core/v3/test";
 
 export type RunRealChatAgentOptions = {
   agentId: string;
@@ -22,6 +26,12 @@ export type RunRealChatAgentOptions = {
    */
   continuation?: boolean;
   previousRunId?: string;
+  /**
+   * Idle window (seconds) before the turn loop falls through from the SSE
+   * once() to the suspending `session.in.wait()`. Set this low to force the
+   * suspend/resume path in a test.
+   */
+  idleTimeoutInSeconds?: number;
 };
 
 export type RunningAgent = {
@@ -45,9 +55,11 @@ export function runRealChatAgent(opts: RunRealChatAgentOptions): RunningAgent {
   });
   const apiClient = apiClientManager.clientOrThrow();
   const manager = new StandardSessionStreamManager(apiClient, opts.baseUrl);
+  const { runtimeManager, restore } = installSessionWaitpointBackend(apiClient);
 
   const taskEntry = resourceCatalog.getTask(opts.agentId);
   if (!taskEntry) {
+    restore();
     throw new Error(`runRealChatAgent: agent "${opts.agentId}" is not registered`);
   }
   const runFn = taskEntry.fns.run as (
@@ -58,21 +70,29 @@ export function runRealChatAgent(opts: RunRealChatAgentOptions): RunningAgent {
   const runSignal = new AbortController();
   const runId = opts.runId ?? `run_${opts.addressingKey}`;
 
-  const done = runInMockTaskContext(
-    async (drivers) => {
-      drivers.locals.set(opts.modelLocal, opts.model);
-      const payload = opts.continuation
-        ? {
-            chatId: opts.addressingKey,
-            continuation: true,
-            metadata: {},
-            ...(opts.previousRunId ? { previousRunId: opts.previousRunId } : {}),
-          }
-        : { chatId: opts.addressingKey, trigger: "preload", metadata: {} };
-      await runFn(payload, { ctx: drivers.ctx, signal: runSignal.signal });
-    },
-    { ctx: { run: { id: runId } }, sessionStreamManager: manager }
-  ) as Promise<void>;
+  const idle =
+    opts.idleTimeoutInSeconds !== undefined
+      ? { idleTimeoutInSeconds: opts.idleTimeoutInSeconds }
+      : {};
+
+  const done = (
+    runInMockTaskContext(
+      async (drivers) => {
+        drivers.locals.set(opts.modelLocal, opts.model);
+        const payload = opts.continuation
+          ? {
+              chatId: opts.addressingKey,
+              continuation: true,
+              metadata: {},
+              ...idle,
+              ...(opts.previousRunId ? { previousRunId: opts.previousRunId } : {}),
+            }
+          : { chatId: opts.addressingKey, trigger: "preload", metadata: {}, ...idle };
+        await runFn(payload, { ctx: drivers.ctx, signal: runSignal.signal });
+      },
+      { ctx: { run: { id: runId } }, sessionStreamManager: manager, runtimeManager }
+    ) as Promise<void>
+  ).finally(restore);
 
   return {
     done,
@@ -99,6 +119,64 @@ export function runRealChatAgent(opts: RunRealChatAgentOptions): RunningAgent {
         done.catch(() => {}),
         new Promise((resolve) => setTimeout(resolve, 10_000)),
       ]);
+    },
+  };
+}
+
+export type ChatAgentSessionOptions = Omit<
+  RunRealChatAgentOptions,
+  "runId" | "continuation" | "previousRunId"
+>;
+
+export type ChatAgentSession = {
+  /** How many runs the session has spawned so far (1 fresh + N continuations). */
+  runCount: () => number;
+  /** Close the currently-active run and stop spawning continuations. */
+  close: () => Promise<void>;
+};
+
+/**
+ * A session-scoped orchestrator that stands in for the run-engine's run
+ * lifecycle: it starts a run, and whenever that run exits on its own
+ * (`chat.endRun()` / `chat.requestUpgrade()`), spawns the next run as a
+ * continuation (new run id, `continuation: true`, `previousRunId` threaded)
+ * for the same session. That mirrors the server triggering a fresh run on the
+ * next append after the previous run went terminal, and lets each continuation
+ * restore prior history from the persisted snapshot. Runs never overlap: the
+ * next spawn is chained on the previous run's `done` (after its manager
+ * teardown), so the process-global managers are never installed twice at once.
+ */
+export function runChatAgentSession(opts: ChatAgentSessionOptions): ChatAgentSession {
+  let closed = false;
+  let index = 0;
+  let current: RunningAgent | undefined;
+  let previousRunId: string | undefined;
+
+  const spawn = () => {
+    index += 1;
+    const runId = `run_${opts.addressingKey}_${index}`;
+    current = runRealChatAgent({
+      ...opts,
+      runId,
+      continuation: index > 1,
+      previousRunId,
+    });
+    previousRunId = runId;
+    const settle = () => {
+      if (!closed) {
+        spawn();
+      }
+    };
+    current.done.then(settle, settle);
+  };
+
+  spawn();
+
+  return {
+    runCount: () => index,
+    close: async () => {
+      closed = true;
+      await current?.close();
     },
   };
 }

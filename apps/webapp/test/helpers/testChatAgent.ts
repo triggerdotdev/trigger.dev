@@ -79,6 +79,65 @@ export const testPlainChatAgent = chat.agent({
 });
 
 /**
+ * A plain agent with a 1-second idle window, so the turn loop falls through to
+ * the suspending `session.in.wait()` almost immediately instead of catching the
+ * next message in the warm once() window. Used to exercise the suspend/resume
+ * waitpoint path.
+ */
+export const testIdleChatAgent = chat.agent({
+  id: "e2e-test-chat-idle",
+  idleTimeoutInSeconds: 1,
+  preloadIdleTimeoutInSeconds: 1,
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({ model, messages, abortSignal: signal });
+  },
+});
+
+/**
+ * Ends the run after every turn via `chat.endRun()`. The next message on the
+ * same chat starts a fresh continuation run (the orchestrator drives that).
+ */
+export const testEndRunChatAgent = chat.agent({
+  id: "e2e-test-chat-endrun",
+  idleTimeoutInSeconds: 2,
+  preloadIdleTimeoutInSeconds: 2,
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    const result = streamText({ model, messages, abortSignal: signal });
+    chat.endRun();
+    return result;
+  },
+});
+
+/**
+ * Requests an upgrade from `onTurnStart` (the pre-turn path): `run()` is
+ * skipped, an `upgrade-required` control record lands on `.out`, and the run
+ * exits so a fresh run on the new version handles the message.
+ */
+export const testUpgradeChatAgent = chat.agent({
+  id: "e2e-test-chat-upgrade",
+  idleTimeoutInSeconds: 2,
+  preloadIdleTimeoutInSeconds: 2,
+  onTurnStart: async () => {
+    chat.requestUpgrade();
+  },
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({ model, messages, abortSignal: signal });
+  },
+});
+
+/**
  * A tool with a server-side `execute`: the agent runs it automatically and
  * feeds the result back to the model, so a single turn covers the whole
  * tool loop.

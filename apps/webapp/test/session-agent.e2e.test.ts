@@ -22,19 +22,31 @@ import {
   appendInput,
   collectSessionOut,
   isTurnComplete,
+  isUpgradeRequired,
   mintSessionToken,
   subscribeSessionOut,
   type CollectedPart,
 } from "./helpers/sessionStream";
-import { runRealChatAgent } from "./helpers/agentHarness";
+import { runChatAgentSession, runRealChatAgent } from "./helpers/agentHarness";
 import {
   testApprovalChatAgent,
   testChatAgent,
   testChatModelLocal,
+  testEndRunChatAgent,
   testHitlChatAgent,
+  testIdleChatAgent,
   testPlainChatAgent,
   testToolChatAgent,
+  testUpgradeChatAgent,
 } from "./helpers/testChatAgent";
+
+async function waitFor(predicate: () => boolean, maxMs: number): Promise<void> {
+  const deadline = performance.now() + maxMs;
+  while (performance.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 240_000 });
 
@@ -964,5 +976,144 @@ describe("session agent e2e (real chat.agent loop)", () => {
     expect(outA, "A's stream never sees B's output").not.toContain("answer-for-B");
     expect(outB).toContain("answer-for-B");
     expect(outB, "B's stream never sees A's output").not.toContain("answer-for-A");
+  });
+
+  it("EA13: the run suspends on the idle waitpoint, then the next message resumes it in place", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testIdleChatAgent.id);
+    const agent = runRealChatAgent({
+      agentId: testIdleChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: textModel("resumed after suspend"),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await new Promise((r) => setTimeout(r, 2500));
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("hi after idle", "u1")),
+      });
+
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+
+      expect(
+        joinChunks(parts),
+        "a message sent well after the idle window still produces a turn, so the waitpoint resume delivered it"
+      ).toContain("resumed after suspend");
+      expect(parts.some(isTurnComplete)).toBe(true);
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA14: chat.endRun() ends the run; the next message continues on a fresh run", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testEndRunChatAgent.id);
+    const session = runChatAgentSession({
+      agentId: testEndRunChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: echoModel(),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("MARKER-ONE", "u1")),
+      });
+      await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+
+      await waitFor(() => session.runCount() >= 2, 10_000);
+      expect(
+        session.runCount(),
+        "endRun exited run 1, so the orchestrator spawned a continuation"
+      ).toBeGreaterThanOrEqual(2);
+
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u2",
+        body: submitBody(addressingKey, userMessage("second msg", "u2")),
+      });
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.filter(isTurnComplete).length >= 2,
+        maxMs: 30_000,
+      });
+
+      const blob = joinChunks(parts);
+      expect(blob, "the continuation run restored run 1's history").toContain("MARKER-ONE");
+      expect(blob, "the continuation run ran the new turn").toContain("second msg");
+    } finally {
+      await session.close();
+    }
+  });
+
+  it("EA15: chat.requestUpgrade() emits upgrade-required on .out and exits the run", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testUpgradeChatAgent.id);
+    const agent = runRealChatAgent({
+      agentId: testUpgradeChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: echoModel(),
+      modelLocal: testChatModelLocal,
+    });
+
+    let exitedOnItsOwn = false;
+    agent.done.then(() => {
+      exitedOnItsOwn = true;
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("upgrade me", "u1")),
+      });
+      const { parts } = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isUpgradeRequired),
+        maxMs: 30_000,
+      });
+
+      expect(
+        parts.some(isUpgradeRequired),
+        "an upgrade-required control record is written to .out"
+      ).toBe(true);
+
+      await waitFor(() => exitedOnItsOwn, 10_000);
+      expect(exitedOnItsOwn, "the run exits itself after requesting the upgrade").toBe(true);
+    } finally {
+      await agent.close();
+    }
   });
 });
