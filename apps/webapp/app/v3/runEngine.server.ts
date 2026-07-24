@@ -109,7 +109,7 @@ function createRunEngine() {
         batchMaxWaitMs: env.RUN_ENGINE_TTL_WORKER_BATCH_MAX_WAIT_MS,
       },
       ckVirtualTimeScheduling:
-        env.RUN_ENGINE_CK_VTIME_SCHEDULING_ENABLED === "1"
+        env.RUN_ENGINE_CK_VTIME_SCHEDULING_ENABLED
           ? {
               enabled: true,
               quantum: env.RUN_ENGINE_CK_VTIME_QUANTUM,
