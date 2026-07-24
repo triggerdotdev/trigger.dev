@@ -1,7 +1,7 @@
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { ArrowDownCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
-import { uiComponent } from "@team-plain/typescript-sdk";
+import { uiComponent } from "@team-plain/ui-components";
 import {
   type AddOnPricing,
   type FreePlanDefinition,

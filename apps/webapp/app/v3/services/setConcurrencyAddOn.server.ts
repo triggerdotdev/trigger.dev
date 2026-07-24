@@ -4,7 +4,7 @@ import { tryCatch } from "@trigger.dev/core";
 import { setConcurrencyAddOn } from "~/services/platform.v3.server";
 import assertNever from "assert-never";
 import { sendToPlain } from "~/utils/plain.server";
-import { uiComponent } from "@team-plain/typescript-sdk";
+import { uiComponent } from "@team-plain/ui-components";
 
 type Input = {
   userId: string;

@@ -1,5 +1,5 @@
-import type { uiComponent } from "@team-plain/typescript-sdk";
-import { PlainClient } from "@team-plain/typescript-sdk";
+import { PlainClient } from "@team-plain/graphql";
+import type { uiComponent } from "@team-plain/ui-components";
 import { env } from "~/env.server";
 
 type Input = {
@@ -20,43 +20,50 @@ export async function sendToPlain({ userId, email, name, title, components, labe
     apiKey: env.PLAIN_API_KEY,
   });
 
-  const upsertCustomerRes = await client.upsertCustomer({
-    identifier: {
-      emailAddress: email,
-    },
-    onCreate: {
-      externalId: userId,
-      fullName: name,
-      email: {
-        email: email,
-        isVerified: true,
+  // Best-effort support side-effect: the new client throws on failure, so we swallow and log
+  // rather than break the user action that triggered it.
+  try {
+    const upsertCustomerRes = await client.mutation.upsertCustomer({
+      input: {
+        identifier: {
+          emailAddress: email,
+        },
+        onCreate: {
+          externalId: userId,
+          fullName: name,
+          email: {
+            email: email,
+            isVerified: true,
+          },
+        },
+        onUpdate: {
+          externalId: { value: userId },
+          fullName: { value: name },
+          email: {
+            email: email,
+            isVerified: true,
+          },
+        },
       },
-    },
-    onUpdate: {
-      externalId: { value: userId },
-      fullName: { value: name },
-      email: {
-        email: email,
-        isVerified: true,
+    });
+
+    const customerId = upsertCustomerRes.customer?.id;
+    if (!customerId) {
+      console.error("Failed to upsert customer in Plain", upsertCustomerRes.result);
+      return;
+    }
+
+    await client.mutation.createThread({
+      input: {
+        customerIdentifier: {
+          customerId,
+        },
+        title: title,
+        components: components,
+        labelTypeIds,
       },
-    },
-  });
-
-  if (upsertCustomerRes.error) {
-    console.error("Failed to upsert customer in Plain", upsertCustomerRes.error);
-    return;
-  }
-
-  const createThreadRes = await client.createThread({
-    customerIdentifier: {
-      customerId: upsertCustomerRes.data.customer.id,
-    },
-    title: title,
-    components: components,
-    labelTypeIds,
-  });
-
-  if (createThreadRes.error) {
-    console.error("Failed to create thread in Plain", createThreadRes.error);
+    });
+  } catch (error) {
+    console.error("Failed to send to Plain", error);
   }
 }
