@@ -862,13 +862,21 @@ function KeyStatsTable({
 
   const rows: ConcurrencyKeyRow[] = data?.success ? data.rows : [];
   const total = data?.success ? data.total : 0;
-  const perPage = data?.success ? data.perPage : 50;
+  const perPage = data?.success ? data.perPage : 25;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   // Only show a skeleton before the first response; keep prior rows visible while revalidating.
   const showLoading = isLoading && !data;
 
   return (
     <div className="flex flex-col">
+      {/* Title bar above the table, shown only when there's more than one page: the section title
+          on the left, prev/next pagination on the right. Hidden entirely for a single page. */}
+      {totalPages > 1 ? (
+        <div className="flex items-center justify-between border-t px-3 py-2">
+          <Header3>Concurrency keys</Header3>
+          <PaginationControls currentPage={page} totalPages={totalPages} showPageNumbers={false} />
+        </div>
+      ) : null}
       {/* Full-bleed, edge-to-edge like the Queues list table: a top border, no rounded side box. */}
       <Table containerClassName="border-t">
         <TableHeader>
@@ -915,11 +923,6 @@ function KeyStatsTable({
           )}
         </TableBody>
       </Table>
-      {totalPages > 1 ? (
-        <div className="flex justify-end px-3 py-2">
-          <PaginationControls currentPage={page} totalPages={totalPages} />
-        </div>
-      ) : null}
     </div>
   );
 }

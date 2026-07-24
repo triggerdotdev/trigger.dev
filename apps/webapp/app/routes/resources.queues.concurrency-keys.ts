@@ -13,7 +13,7 @@ import { engine } from "~/v3/runEngine.server";
 // paginated authority — ranked by peak backlog over the window with the total on every row
 // (single scan) — and the ≤PER_PAGE keys on the page are enriched with live "now" counts from
 // Redis (O(page), independent of total key cardinality). This replaces the old top-50 cap.
-export const CONCURRENCY_KEYS_PER_PAGE = 50;
+export const CONCURRENCY_KEYS_PER_PAGE = 25;
 
 // Matches QUEUE_METRICS_DEFAULT_PERIOD (the detail page's TimeFilter default).
 const DEFAULT_PERIOD = "1d";
