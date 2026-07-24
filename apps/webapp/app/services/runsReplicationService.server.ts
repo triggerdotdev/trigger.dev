@@ -1142,7 +1142,7 @@ export class RunsReplicationService {
         insertSync: (rows) => rawInsert(rows, { async_insert: 0 }),
         stripJsonColumns: stripTaskRunJsonColumns,
       });
-      this.#recordRecoveryOutcome(outcome, "task_runs_v2");
+      this.#recordRecoveryOutcome(outcome, "task_runs_v2", taskRunInserts.length);
       return outcome;
     });
   }
@@ -1185,12 +1185,16 @@ export class RunsReplicationService {
         insertSync: (rows) => rawInsert(rows, { async_insert: 0 }),
         stripJsonColumns: stripPayloadJsonColumns,
       });
-      this.#recordRecoveryOutcome(outcome, "raw_task_runs_payload_v1");
+      this.#recordRecoveryOutcome(outcome, "raw_task_runs_payload_v1", payloadInserts.length);
       return outcome;
     });
   }
 
-  #recordRecoveryOutcome(outcome: JsonParseRecoveryOutcome, contextLabel: string) {
+  #recordRecoveryOutcome(
+    outcome: JsonParseRecoveryOutcome,
+    contextLabel: string,
+    batchSize: number
+  ) {
     if (outcome.kind !== "recovered") {
       return;
     }
@@ -1211,7 +1215,7 @@ export class RunsReplicationService {
     if (outcome.rowsDropped > 0) {
       this._permanentlyDroppedRows += outcome.rowsDropped;
       this._rowsDroppedCounter.add(outcome.rowsDropped, { table: contextLabel });
-      if (outcome.rowsStripped === 0) {
+      if (outcome.rowsDropped === batchSize) {
         this._permanentlyDroppedBatches += 1;
         this._droppedBatchesCounter.add(1, { table: contextLabel });
       }

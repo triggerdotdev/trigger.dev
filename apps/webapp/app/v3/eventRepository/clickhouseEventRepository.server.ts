@@ -354,7 +354,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         insertSync: (rows) => rawInsert(rows, { async_insert: 0 }),
         stripJsonColumns: stripTaskEventJsonColumns,
       });
-      this.#recordRecoveryOutcome(outcome, contextLabel);
+      this.#recordRecoveryOutcome(outcome, contextLabel, events.length);
 
       logger.debug("ClickhouseEventRepository.flushBatch Inserted batch into clickhouse", {
         events: events.length,
@@ -386,7 +386,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       insertSync: (batch) => rawInsert(batch, { async_insert: 0 }),
       stripJsonColumns: (row) => row,
     });
-    this.#recordRecoveryOutcome(outcome, "llm_metrics_v1");
+    this.#recordRecoveryOutcome(outcome, "llm_metrics_v1", rows.length);
 
     logger.debug("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
       rows: rows.length,
@@ -394,7 +394,11 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
   }
 
-  #recordRecoveryOutcome(outcome: JsonParseRecoveryOutcome, contextLabel: string) {
+  #recordRecoveryOutcome(
+    outcome: JsonParseRecoveryOutcome,
+    contextLabel: string,
+    batchSize: number
+  ) {
     if (outcome.kind !== "recovered") {
       return;
     }
@@ -415,7 +419,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     if (outcome.rowsDropped > 0) {
       this._permanentlyDroppedRows += outcome.rowsDropped;
       this._rowsDroppedCounter.add(outcome.rowsDropped, { table: contextLabel });
-      if (outcome.rowsStripped === 0) {
+      if (outcome.rowsDropped === batchSize) {
         this._permanentlyDroppedBatches += 1;
         this._droppedBatchesCounter.add(1, { table: contextLabel });
       }

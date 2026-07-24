@@ -27,14 +27,16 @@ function parseError() {
  */
 function makeHarness() {
   const landed: FakeRow[] = [];
+  let insertCalls = 0;
   const insertSync = async (rows: FakeRow[]) => {
+    insertCalls += 1;
     if (rows.some((r) => r.poison || r.unstrippable)) throw parseError();
     landed.push(...rows);
     return undefined;
   };
   const stripJsonColumns = (row: FakeRow): FakeRow =>
     row.unstrippable ? row : { ...row, poison: false, stripped: true };
-  return { landed, insertSync, stripJsonColumns };
+  return { landed, insertSync, stripJsonColumns, insertCalls: () => insertCalls };
 }
 
 describe("isClickHouseJsonParseError", () => {
@@ -379,7 +381,7 @@ describe("insertWithJsonParseRecovery", () => {
   });
 
   it("caps recovery cost on a poison flood by stripping the remainder in one insert", async () => {
-    const { landed, insertSync, stripJsonColumns } = makeHarness();
+    const { landed, insertSync, stripJsonColumns, insertCalls } = makeHarness();
     const rows = Array.from({ length: 8 }, (_, id) => ({ id, poison: true as const }));
 
     const outcome = await insertWithJsonParseRecovery({
@@ -400,6 +402,7 @@ describe("insertWithJsonParseRecovery", () => {
     }
     expect(landed).toHaveLength(8);
     expect(landed.every((r) => r.stripped)).toBe(true);
+    expect(insertCalls()).toBeLessThanOrEqual(6);
   });
 
   it("rethrows non-parse errors so the caller's transient-retry path handles them", async () => {
