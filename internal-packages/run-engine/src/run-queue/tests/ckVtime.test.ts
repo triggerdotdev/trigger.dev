@@ -334,7 +334,8 @@ describe("CK virtual-time (SFQ) dequeue", () => {
 
         const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName("a"));
         const ckVtimeFloorKey = testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("a"));
-        await queue.redis.zadd(ckVtimeKey, 0, variantName("a"), 0, variantName("b"));
+        // No direct ZADD seeding: the enqueues above register a and b at the
+        // initial floor (0) themselves.
 
         const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
 
@@ -351,8 +352,8 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         const floor = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
         expect(floor).toBeGreaterThan(10);
 
-        // Register a fresh variant at the current floor (ZADD NX simulates
-        // enqueue-time registration, which is a later task).
+        // A fresh variant registers itself at the current floor via the
+        // enqueue-time registration (ZADD NX in the enqueue script).
         const freshVariant = variantName("fresh");
         // two messages so the fresh variant isn't GC'd on its first serve
         for (let i = 0; i < 2; i++) {
@@ -363,7 +364,6 @@ describe("CK virtual-time (SFQ) dequeue", () => {
             skipDequeueProcessing: true,
           });
         }
-        await queue.redis.zadd(ckVtimeKey, "NX", floor, freshVariant);
 
         const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
         const served = messages.some((m) => m.message.concurrencyKey === "fresh");
@@ -579,6 +579,114 @@ describe("CK virtual-time (SFQ) dequeue", () => {
 
       const futureTag = Number(await queue.redis.zscore(ckVtimeKey, futureVariant));
       expect(futureTag).toBe(5);
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("enqueue registers the variant at the current floor with NX", async ({
+    redisContainer,
+  }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const t0 = Date.now() - 100_000;
+
+      // two variants with enough messages that the drive loop never drains them
+      for (const ck of ["a", "b"]) {
+        for (let i = 0; i < 10; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({ runId: `r-${ck}-${i}`, concurrencyKey: ck, timestamp: t0 + i }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+      }
+
+      const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName("a"));
+      const ckVtimeFloorKey = testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("a"));
+
+      // enqueue registered both variants at the initial floor (0), before any dequeue
+      expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("a")))).toBe(0);
+      expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("b")))).toBe(0);
+
+      const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+
+      // drive the floor up to ~5 via serves
+      for (let call = 0; call < 8; call++) {
+        const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 2);
+        for (const m of messages) {
+          await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+            skipDequeueProcessing: true,
+          });
+        }
+      }
+
+      const floor = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
+      expect(floor).toBeGreaterThanOrEqual(5);
+
+      // a fresh key enqueued now lands exactly at the floor (no dequeue in between)
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({ runId: "r-fresh-0", concurrencyKey: "fresh", timestamp: t0 }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+      expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("fresh")))).toBe(floor);
+
+      // NX: enqueueing on a key whose tag is already 9 never rewinds it
+      await queue.redis.zadd(ckVtimeKey, 9, variantName("nine"));
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({ runId: "r-nine-0", concurrencyKey: "nine", timestamp: t0 }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+      expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("nine")))).toBe(9);
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("fast path leaves vtime state untouched", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const aVariant = variantName("a");
+      const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(aVariant);
+
+      // empty variant + free capacity: the fast path fires and skips the
+      // variant zset entirely
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({ runId: "r-fast", concurrencyKey: "a" }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+        enableFastPath: true,
+      });
+
+      // fast-path proof: nothing landed in the variant zset..
+      expect(await queue.redis.zcard(aVariant)).toBe(0);
+      // ..and no vtime registration happened
+      expect(await queue.redis.zscore(ckVtimeKey, aVariant)).toBeNull();
+
+      // saturate capacity so the next enqueue takes the slow path
+      await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, QUEUE, 1);
+      await queue.redis.sadd(
+        testOptions.keys.queueCurrentConcurrencyKeyFromQueue(aVariant),
+        "occupant"
+      );
+
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({ runId: "r-slow", concurrencyKey: "a" }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+        enableFastPath: true,
+      });
+
+      // slow path taken and the variant is registered
+      expect(await queue.redis.zcard(aVariant)).toBe(1);
+      expect(await queue.redis.zscore(ckVtimeKey, aVariant)).not.toBeNull();
     } finally {
       await queue.quit();
     }

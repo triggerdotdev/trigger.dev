@@ -2205,74 +2205,151 @@ export class RunQueue {
       const ckKeyPrefix = this.options.redis.keyPrefix ?? "";
 
       if (ttlInfo) {
-        result = await this.redis.enqueueMessageWithTtlCkTracked(
-          // keys
-          masterQueueKey,
-          queueKey,
-          messageKey,
-          queueCurrentConcurrencyKey,
-          envCurrentConcurrencyKey,
-          queueCurrentDequeuedKey,
-          envCurrentDequeuedKey,
-          envQueueKey,
-          ttlInfo.ttlQueueKey,
-          ckIndexKey,
-          workerQueueKey,
-          queueConcurrencyLimitKey,
-          envConcurrencyLimitKey,
-          envConcurrencyLimitBurstFactorKey,
-          lengthCounterKey,
-          baseQueueKey,
-          // args
-          queueName,
-          messageId,
-          messageData,
-          messageScore,
-          ttlInfo.ttlMember,
-          String(ttlInfo.ttlExpiresAt),
-          ckWildcardName,
-          messageKeyValue,
-          defaultEnvConcurrencyLimit,
-          defaultEnvConcurrencyBurstFactor,
-          currentTime,
-          enableFastPathArg,
-          ckKeyPrefix,
-          String(this.counterTtlSeconds),
-          metricsGaugeArg
-        );
+        result = this.#ckVtimeEnabled
+          ? await this.redis.enqueueMessageWithTtlCkVtimeTracked(
+              // keys
+              masterQueueKey,
+              queueKey,
+              messageKey,
+              queueCurrentConcurrencyKey,
+              envCurrentConcurrencyKey,
+              queueCurrentDequeuedKey,
+              envCurrentDequeuedKey,
+              envQueueKey,
+              ttlInfo.ttlQueueKey,
+              ckIndexKey,
+              workerQueueKey,
+              queueConcurrencyLimitKey,
+              envConcurrencyLimitKey,
+              envConcurrencyLimitBurstFactorKey,
+              lengthCounterKey,
+              baseQueueKey,
+              this.keys.ckVtimeKeyFromQueue(message.queue),
+              this.keys.ckVtimeFloorKeyFromQueue(message.queue),
+              // args
+              queueName,
+              messageId,
+              messageData,
+              messageScore,
+              ttlInfo.ttlMember,
+              String(ttlInfo.ttlExpiresAt),
+              ckWildcardName,
+              messageKeyValue,
+              defaultEnvConcurrencyLimit,
+              defaultEnvConcurrencyBurstFactor,
+              currentTime,
+              enableFastPathArg,
+              ckKeyPrefix,
+              String(this.counterTtlSeconds),
+              String(this.#ckVtimeStateTtl),
+              // Must stay last: the gauge fragment reads ARGV[#ARGV].
+              metricsGaugeArg
+            )
+          : await this.redis.enqueueMessageWithTtlCkTracked(
+              // keys
+              masterQueueKey,
+              queueKey,
+              messageKey,
+              queueCurrentConcurrencyKey,
+              envCurrentConcurrencyKey,
+              queueCurrentDequeuedKey,
+              envCurrentDequeuedKey,
+              envQueueKey,
+              ttlInfo.ttlQueueKey,
+              ckIndexKey,
+              workerQueueKey,
+              queueConcurrencyLimitKey,
+              envConcurrencyLimitKey,
+              envConcurrencyLimitBurstFactorKey,
+              lengthCounterKey,
+              baseQueueKey,
+              // args
+              queueName,
+              messageId,
+              messageData,
+              messageScore,
+              ttlInfo.ttlMember,
+              String(ttlInfo.ttlExpiresAt),
+              ckWildcardName,
+              messageKeyValue,
+              defaultEnvConcurrencyLimit,
+              defaultEnvConcurrencyBurstFactor,
+              currentTime,
+              enableFastPathArg,
+              ckKeyPrefix,
+              String(this.counterTtlSeconds),
+              metricsGaugeArg
+            );
       } else {
-        result = await this.redis.enqueueMessageCkTracked(
-          // keys
-          masterQueueKey,
-          queueKey,
-          messageKey,
-          queueCurrentConcurrencyKey,
-          envCurrentConcurrencyKey,
-          queueCurrentDequeuedKey,
-          envCurrentDequeuedKey,
-          envQueueKey,
-          ckIndexKey,
-          workerQueueKey,
-          queueConcurrencyLimitKey,
-          envConcurrencyLimitKey,
-          envConcurrencyLimitBurstFactorKey,
-          lengthCounterKey,
-          baseQueueKey,
-          // args
-          queueName,
-          messageId,
-          messageData,
-          messageScore,
-          ckWildcardName,
-          messageKeyValue,
-          defaultEnvConcurrencyLimit,
-          defaultEnvConcurrencyBurstFactor,
-          currentTime,
-          enableFastPathArg,
-          ckKeyPrefix,
-          String(this.counterTtlSeconds),
-          metricsGaugeArg
-        );
+        result = this.#ckVtimeEnabled
+          ? await this.redis.enqueueMessageCkVtimeTracked(
+              // keys
+              masterQueueKey,
+              queueKey,
+              messageKey,
+              queueCurrentConcurrencyKey,
+              envCurrentConcurrencyKey,
+              queueCurrentDequeuedKey,
+              envCurrentDequeuedKey,
+              envQueueKey,
+              ckIndexKey,
+              workerQueueKey,
+              queueConcurrencyLimitKey,
+              envConcurrencyLimitKey,
+              envConcurrencyLimitBurstFactorKey,
+              lengthCounterKey,
+              baseQueueKey,
+              this.keys.ckVtimeKeyFromQueue(message.queue),
+              this.keys.ckVtimeFloorKeyFromQueue(message.queue),
+              // args
+              queueName,
+              messageId,
+              messageData,
+              messageScore,
+              ckWildcardName,
+              messageKeyValue,
+              defaultEnvConcurrencyLimit,
+              defaultEnvConcurrencyBurstFactor,
+              currentTime,
+              enableFastPathArg,
+              ckKeyPrefix,
+              String(this.counterTtlSeconds),
+              String(this.#ckVtimeStateTtl),
+              // Must stay last: the gauge fragment reads ARGV[#ARGV].
+              metricsGaugeArg
+            )
+          : await this.redis.enqueueMessageCkTracked(
+              // keys
+              masterQueueKey,
+              queueKey,
+              messageKey,
+              queueCurrentConcurrencyKey,
+              envCurrentConcurrencyKey,
+              queueCurrentDequeuedKey,
+              envCurrentDequeuedKey,
+              envQueueKey,
+              ckIndexKey,
+              workerQueueKey,
+              queueConcurrencyLimitKey,
+              envConcurrencyLimitKey,
+              envConcurrencyLimitBurstFactorKey,
+              lengthCounterKey,
+              baseQueueKey,
+              // args
+              queueName,
+              messageId,
+              messageData,
+              messageScore,
+              ckWildcardName,
+              messageKeyValue,
+              defaultEnvConcurrencyLimit,
+              defaultEnvConcurrencyBurstFactor,
+              currentTime,
+              enableFastPathArg,
+              ckKeyPrefix,
+              String(this.counterTtlSeconds),
+              metricsGaugeArg
+            );
       }
     } else if (ttlInfo) {
       // Use the TTL-aware enqueue that atomically adds to both queues
@@ -4048,6 +4125,277 @@ redis.call('SREM', queueCurrentConcurrencyKey, messageId)
 redis.call('SREM', envCurrentConcurrencyKey, messageId)
 redis.call('SREM', queueCurrentDequeuedKey, messageId)
 redis.call('SREM', envCurrentDequeuedKey, messageId)
+${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
+
+return __qmret(0)
+      `,
+    });
+
+    // Vtime variant of enqueueMessageCkTracked (feature-flagged via
+    // ckVirtualTimeScheduling.enabled). Identical script body, plus slow-path
+    // registration of the variant into the :ckVtime ZSET at the floor (NX), so a
+    // brand-new key is present in the fair order from its first enqueue. The
+    // fast path (direct-to-worker-queue) neither registers nor advances.
+    this.redis.defineCommand("enqueueMessageCkVtimeTracked", {
+      numberOfKeys: 17,
+      lua: `
+local masterQueueKey = KEYS[1]
+local queueKey = KEYS[2]
+local messageKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ckIndexKey = KEYS[9]
+-- Fast-path keys (KEYS 10-13)
+local workerQueueKey = KEYS[10]
+local queueConcurrencyLimitKey = KEYS[11]
+local envConcurrencyLimitKey = KEYS[12]
+local envConcurrencyLimitBurstFactorKey = KEYS[13]
+-- Counter keys (KEYS 14-15)
+local lengthCounterKey = KEYS[14]
+local baseQueueKey = KEYS[15]
+-- Virtual-time keys (KEYS 16-17)
+local ckVtimeKey = KEYS[16]
+local ckVtimeFloorKey = KEYS[17]
+
+local queueName = ARGV[1]
+local messageId = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = ARGV[4]
+local ckWildcardName = ARGV[5]
+-- Fast-path args (ARGV 6-10)
+local messageKeyValue = ARGV[6]
+local defaultEnvConcurrencyLimit = ARGV[7]
+local defaultEnvConcurrencyBurstFactor = ARGV[8]
+local currentTime = ARGV[9]
+local enableFastPath = ARGV[10]
+-- keyPrefix for prepending to variant names stored as values in ckIndex
+local keyPrefix = ARGV[11]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[12]
+-- TTL (seconds) applied to ckVtime on registration
+local stateTtl = ARGV[13]
+
+${QUEUE_METRICS_GAUGE_PRELUDE}
+
+-- Fast path: check if we can skip the queue and go directly to worker queue
+if enableFastPath == '1' then
+  local available = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'LIMIT', 0, 1)
+  if #available == 0 then
+    local envCurrent = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+    local envLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+    local envBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+    local envLimitWithBurst = math.floor(envLimit * envBurstFactor)
+
+    if envCurrent < envLimitWithBurst then
+      local queueCurrent = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+      local queueLimit = math.min(
+        tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
+        envLimit
+      )
+
+      if queueCurrent < queueLimit then
+        redis.call('SET', messageKey, messageData)
+        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+        redis.call('SADD', envCurrentConcurrencyKey, messageId)
+        redis.call('RPUSH', workerQueueKey, messageKeyValue)
+        -- Fast-path skips the CK variant zset entirely; lengthCounter is unchanged.
+        -- runningCounter is bumped later by dequeueMessageFromKeyTracked when the
+        -- worker pulls the message from the worker queue.
+${QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA}
+        return __qmret(1)
+      end
+    end
+  end
+end
+
+-- Slow path: normal enqueue
+redis.call('SET', messageKey, messageData)
+
+-- Lazy-init lengthCounter from existing ckIndex variants (once per base queue per 24h).
+-- The 24h TTL means the counter periodically re-anchors to truth, bounding any drift
+-- that accumulated during rolling-deploy overlap windows.
+-- Run BEFORE the ZADD so we capture pre-state; the subsequent INCR accounts for the new message.
+-- The counter tracks ONLY CK-variant messages — the read path adds ZCARD(base) separately,
+-- so the base zset is intentionally excluded here.
+if redis.call('EXISTS', lengthCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
+  end
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
+end
+
+-- INCR is gated on ZADD returning 1 (new entry). A duplicate enqueue (same messageId
+-- already in the variant zset) returns 0 and must not bump the counter.
+local added = redis.call('ZADD', queueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+if added == 1 then
+  redis.call('INCR', lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], queueName)
+end
+
+-- Register this variant in the virtual-time index at the floor. NX means an
+-- already-advanced tag is never rewound.
+local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
+redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName)
+redis.call('EXPIRE', ckVtimeKey, stateTtl)
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx > 0 then
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, queueName)
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
+
+return __qmret(0)
+      `,
+    });
+
+    // Vtime variant of enqueueMessageWithTtlCkTracked. Same slow-path-only
+    // registration as enqueueMessageCkVtimeTracked above.
+    this.redis.defineCommand("enqueueMessageWithTtlCkVtimeTracked", {
+      numberOfKeys: 18,
+      lua: `
+local masterQueueKey = KEYS[1]
+local queueKey = KEYS[2]
+local messageKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ttlQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+-- Fast-path keys (KEYS 11-14)
+local workerQueueKey = KEYS[11]
+local queueConcurrencyLimitKey = KEYS[12]
+local envConcurrencyLimitKey = KEYS[13]
+local envConcurrencyLimitBurstFactorKey = KEYS[14]
+-- Counter keys (KEYS 15-16)
+local lengthCounterKey = KEYS[15]
+local baseQueueKey = KEYS[16]
+-- Virtual-time keys (KEYS 17-18)
+local ckVtimeKey = KEYS[17]
+local ckVtimeFloorKey = KEYS[18]
+
+local queueName = ARGV[1]
+local messageId = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = ARGV[4]
+local ttlMember = ARGV[5]
+local ttlScore = ARGV[6]
+local ckWildcardName = ARGV[7]
+-- Fast-path args (ARGV 8-12)
+local messageKeyValue = ARGV[8]
+local defaultEnvConcurrencyLimit = ARGV[9]
+local defaultEnvConcurrencyBurstFactor = ARGV[10]
+local currentTime = ARGV[11]
+local enableFastPath = ARGV[12]
+-- keyPrefix for prepending to variant names stored as values in ckIndex
+local keyPrefix = ARGV[13]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[14]
+-- TTL (seconds) applied to ckVtime on registration
+local stateTtl = ARGV[15]
+
+${QUEUE_METRICS_GAUGE_PRELUDE}
+
+-- Fast path: check if we can skip the queue and go directly to worker queue
+if enableFastPath == '1' then
+  local available = redis.call('ZRANGEBYSCORE', queueKey, '-inf', currentTime, 'LIMIT', 0, 1)
+  if #available == 0 then
+    local envCurrent = tonumber(redis.call('SCARD', envCurrentConcurrencyKey) or '0')
+    local envLimit = tonumber(redis.call('GET', envConcurrencyLimitKey) or defaultEnvConcurrencyLimit)
+    local envBurstFactor = tonumber(redis.call('GET', envConcurrencyLimitBurstFactorKey) or defaultEnvConcurrencyBurstFactor)
+    local envLimitWithBurst = math.floor(envLimit * envBurstFactor)
+
+    if envCurrent < envLimitWithBurst then
+      local queueCurrent = tonumber(redis.call('SCARD', queueCurrentConcurrencyKey) or '0')
+      local queueLimit = math.min(
+        tonumber(redis.call('GET', queueConcurrencyLimitKey) or '1000000'),
+        envLimit
+      )
+
+      if queueCurrent < queueLimit then
+        redis.call('SET', messageKey, messageData)
+        redis.call('SADD', queueCurrentConcurrencyKey, messageId)
+        redis.call('SADD', envCurrentConcurrencyKey, messageId)
+        redis.call('RPUSH', workerQueueKey, messageKeyValue)
+${QUEUE_METRICS_CK_ENQUEUE_FASTPATH_GAUGE_LUA}
+        return __qmret(1)
+      end
+    end
+  end
+end
+
+-- Slow path: normal enqueue
+redis.call('SET', messageKey, messageData)
+
+-- Lazy-init lengthCounter from existing ckIndex variants (once per base queue per 24h).
+-- See enqueueMessageCkTracked for the TTL rationale.
+if redis.call('EXISTS', lengthCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
+  end
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
+end
+
+-- INCR is gated on ZADD returning 1 (new entry).
+local added = redis.call('ZADD', queueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+redis.call('ZADD', ttlQueueKey, ttlScore, ttlMember)
+if added == 1 then
+  redis.call('INCR', lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', queueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], queueName)
+end
+
+-- Register this variant in the virtual-time index at the floor. NX means an
+-- already-advanced tag is never rewound.
+local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
+redis.call('ZADD', ckVtimeKey, 'NX', vfloor, queueName)
+redis.call('EXPIRE', ckVtimeKey, stateTtl)
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx > 0 then
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, queueName)
+
+-- Update the concurrency keys
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
 ${QUEUE_METRICS_CK_ENQUEUE_GAUGE_LUA}
 
 return __qmret(0)
@@ -6239,6 +6587,79 @@ declare module "@internal/redis" {
       enableFastPath: string,
       keyPrefix: string,
       counterTtl: string,
+      metricsEnabled: string,
+      callback?: Callback<[number, number[] | null]>
+    ): Result<[number, number[] | null], Context>;
+
+    enqueueMessageCkVtimeTracked(
+      masterQueueKey: string,
+      queue: string,
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ckIndexKey: string,
+      workerQueueKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
+      lengthCounterKey: string,
+      baseQueueKey: string,
+      ckVtimeKey: string,
+      ckVtimeFloorKey: string,
+      queueName: string,
+      messageId: string,
+      messageData: string,
+      messageScore: string,
+      ckWildcardName: string,
+      messageKeyValue: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      currentTime: string,
+      enableFastPath: string,
+      keyPrefix: string,
+      counterTtl: string,
+      stateTtl: string,
+      metricsEnabled: string,
+      callback?: Callback<[number, number[] | null]>
+    ): Result<[number, number[] | null], Context>;
+
+    enqueueMessageWithTtlCkVtimeTracked(
+      masterQueueKey: string,
+      queue: string,
+      messageKey: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ttlQueueKey: string,
+      ckIndexKey: string,
+      workerQueueKey: string,
+      queueConcurrencyLimitKey: string,
+      envConcurrencyLimitKey: string,
+      envConcurrencyLimitBurstFactorKey: string,
+      lengthCounterKey: string,
+      baseQueueKey: string,
+      ckVtimeKey: string,
+      ckVtimeFloorKey: string,
+      queueName: string,
+      messageId: string,
+      messageData: string,
+      messageScore: string,
+      ttlMember: string,
+      ttlScore: string,
+      ckWildcardName: string,
+      messageKeyValue: string,
+      defaultEnvConcurrencyLimit: string,
+      defaultEnvConcurrencyBurstFactor: string,
+      currentTime: string,
+      enableFastPath: string,
+      keyPrefix: string,
+      counterTtl: string,
+      stateTtl: string,
       metricsEnabled: string,
       callback?: Callback<[number, number[] | null]>
     ): Result<[number, number[] | null], Context>;
