@@ -43,6 +43,10 @@ type VtimeOverrides = {
 function createQueue(redisContainer: any, vtime: VtimeOverrides = {}) {
   return new RunQueue({
     ...testOptions,
+    // These tests drive every op themselves (testDequeueFromMasterQueue + skipDequeueProcessing),
+    // so the autonomous master-queue consumers and background worker must not race them.
+    masterQueueConsumersDisabled: true,
+    workerOptions: { disabled: true },
     ckVirtualTimeScheduling: {
       enabled: true,
       ...vtime,
@@ -325,7 +329,11 @@ describe("CK virtual-time (SFQ) dequeue", () => {
           for (let i = 0; i < 25; i++) {
             await queue.enqueueMessage({
               env: authenticatedEnvDev,
-              message: makeMessage({ runId: `r-${ck}-${i}`, concurrencyKey: ck, timestamp: t0 + i }),
+              message: makeMessage({
+                runId: `r-${ck}-${i}`,
+                concurrencyKey: ck,
+                timestamp: t0 + i,
+              }),
               workerQueue: authenticatedEnvDev.id,
               skipDequeueProcessing: true,
             });
@@ -359,7 +367,11 @@ describe("CK virtual-time (SFQ) dequeue", () => {
         for (let i = 0; i < 2; i++) {
           await queue.enqueueMessage({
             env: authenticatedEnvDev,
-            message: makeMessage({ runId: `r-fresh-${i}`, concurrencyKey: "fresh", timestamp: t0 + i }),
+            message: makeMessage({
+              runId: `r-fresh-${i}`,
+              concurrencyKey: "fresh",
+              timestamp: t0 + i,
+            }),
             workerQueue: authenticatedEnvDev.id,
             skipDequeueProcessing: true,
           });
@@ -435,42 +447,45 @@ describe("CK virtual-time (SFQ) dequeue", () => {
     }
   });
 
-  redisTest("GC on empty variant removes it from ckIndex and ckVtime", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer);
-    try {
-      const t0 = Date.now() - 100_000;
+  redisTest(
+    "GC on empty variant removes it from ckIndex and ckVtime",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
 
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: makeMessage({ runId: "r-a", concurrencyKey: "a", timestamp: t0 }),
-        workerQueue: authenticatedEnvDev.id,
-        skipDequeueProcessing: true,
-      });
-      // second variant so ckVtime/ckIndex don't fully disappear, keeping the test focused
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: makeMessage({ runId: "r-b", concurrencyKey: "b", timestamp: t0 }),
-        workerQueue: authenticatedEnvDev.id,
-        skipDequeueProcessing: true,
-      });
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r-a", concurrencyKey: "a", timestamp: t0 }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+        // second variant so ckVtime/ckIndex don't fully disappear, keeping the test focused
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r-b", concurrencyKey: "b", timestamp: t0 }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
 
-      const aVariant = variantName("a");
-      const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(aVariant);
-      const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(aVariant);
-      await queue.redis.zadd(ckVtimeKey, 0, aVariant, 0, variantName("b"));
+        const aVariant = variantName("a");
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(aVariant);
+        const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(aVariant);
+        await queue.redis.zadd(ckVtimeKey, 0, aVariant, 0, variantName("b"));
 
-      const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
-      const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
-      expect(messages.some((m) => m.message.concurrencyKey === "a")).toBe(true);
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
+        expect(messages.some((m) => m.message.concurrencyKey === "a")).toBe(true);
 
-      const inVtime = await queue.redis.zscore(ckVtimeKey, aVariant);
-      const inIndex = await queue.redis.zscore(ckIndexKey, aVariant);
-      expect(inVtime).toBeNull();
-      expect(inIndex).toBeNull();
-    } finally {
-      await queue.quit();
+        const inVtime = await queue.redis.zscore(ckVtimeKey, aVariant);
+        const inIndex = await queue.redis.zscore(ckIndexKey, aVariant);
+        expect(inVtime).toBeNull();
+        expect(inIndex).toBeNull();
+      } finally {
+        await queue.quit();
+      }
     }
-  });
+  );
 
   redisTest("TTL is set and refreshed on ckVtime and ckVtimeFloor", async ({ redisContainer }) => {
     const stateTtlSeconds = 3600;
@@ -508,41 +523,42 @@ describe("CK virtual-time (SFQ) dequeue", () => {
     }
   });
 
-  redisTest("pass 2 fill serves unregistered variants and registers them", async ({
-    redisContainer,
-  }) => {
-    const queue = createQueue(redisContainer);
-    try {
-      const t0 = Date.now() - 100_000;
+  redisTest(
+    "pass 2 fill serves unregistered variants and registers them",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
 
-      // Enqueue on a variant but do NOT register it in ckVtime (simulating an
-      // enqueue from old code / before Task 4). Two messages so the variant
-      // survives its first serve and we can observe it was registered.
-      for (let i = 0; i < 2; i++) {
-        await queue.enqueueMessage({
-          env: authenticatedEnvDev,
-          message: makeMessage({ runId: `r-a-${i}`, concurrencyKey: "a", timestamp: t0 + i }),
-          workerQueue: authenticatedEnvDev.id,
-          skipDequeueProcessing: true,
-        });
+        // Enqueue on a variant but do NOT register it in ckVtime (simulating an
+        // enqueue from old code / before Task 4). Two messages so the variant
+        // survives its first serve and we can observe it was registered.
+        for (let i = 0; i < 2; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({ runId: `r-a-${i}`, concurrencyKey: "a", timestamp: t0 + i }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        const aVariant = variantName("a");
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(aVariant);
+        // ensure no ckVtime entry exists for it
+        await queue.redis.zrem(ckVtimeKey, aVariant);
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
+
+        expect(messages.some((m) => m.message.concurrencyKey === "a")).toBe(true);
+
+        const tag = await queue.redis.zscore(ckVtimeKey, aVariant);
+        expect(tag).not.toBeNull();
+      } finally {
+        await queue.quit();
       }
-
-      const aVariant = variantName("a");
-      const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(aVariant);
-      // ensure no ckVtime entry exists for it
-      await queue.redis.zrem(ckVtimeKey, aVariant);
-
-      const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
-      const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
-
-      expect(messages.some((m) => m.message.concurrencyKey === "a")).toBe(true);
-
-      const tag = await queue.redis.zscore(ckVtimeKey, aVariant);
-      expect(tag).not.toBeNull();
-    } finally {
-      await queue.quit();
     }
-  });
+  );
 
   redisTest("future-scheduled variants are skipped without advance", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer);
@@ -584,69 +600,74 @@ describe("CK virtual-time (SFQ) dequeue", () => {
     }
   });
 
-  redisTest("enqueue registers the variant at the current floor with NX", async ({
-    redisContainer,
-  }) => {
-    const queue = createQueue(redisContainer);
-    try {
-      const t0 = Date.now() - 100_000;
+  redisTest(
+    "enqueue registers the variant at the current floor with NX",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
 
-      // two variants with enough messages that the drive loop never drains them
-      for (const ck of ["a", "b"]) {
-        for (let i = 0; i < 10; i++) {
-          await queue.enqueueMessage({
-            env: authenticatedEnvDev,
-            message: makeMessage({ runId: `r-${ck}-${i}`, concurrencyKey: ck, timestamp: t0 + i }),
-            workerQueue: authenticatedEnvDev.id,
-            skipDequeueProcessing: true,
-          });
+        // two variants with enough messages that the drive loop never drains them
+        for (const ck of ["a", "b"]) {
+          for (let i = 0; i < 10; i++) {
+            await queue.enqueueMessage({
+              env: authenticatedEnvDev,
+              message: makeMessage({
+                runId: `r-${ck}-${i}`,
+                concurrencyKey: ck,
+                timestamp: t0 + i,
+              }),
+              workerQueue: authenticatedEnvDev.id,
+              skipDequeueProcessing: true,
+            });
+          }
         }
-      }
 
-      const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName("a"));
-      const ckVtimeFloorKey = testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("a"));
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName("a"));
+        const ckVtimeFloorKey = testOptions.keys.ckVtimeFloorKeyFromQueue(variantName("a"));
 
-      // enqueue registered both variants at the initial floor (0), before any dequeue
-      expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("a")))).toBe(0);
-      expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("b")))).toBe(0);
+        // enqueue registered both variants at the initial floor (0), before any dequeue
+        expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("a")))).toBe(0);
+        expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("b")))).toBe(0);
 
-      const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
 
-      // drive the floor up to ~5 via serves
-      for (let call = 0; call < 8; call++) {
-        const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 2);
-        for (const m of messages) {
-          await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
-            skipDequeueProcessing: true,
-          });
+        // drive the floor up to ~5 via serves
+        for (let call = 0; call < 8; call++) {
+          const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 2);
+          for (const m of messages) {
+            await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+              skipDequeueProcessing: true,
+            });
+          }
         }
+
+        const floor = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
+        expect(floor).toBeGreaterThanOrEqual(5);
+
+        // a fresh key enqueued now lands exactly at the floor (no dequeue in between)
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r-fresh-0", concurrencyKey: "fresh", timestamp: t0 }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+        expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("fresh")))).toBe(floor);
+
+        // NX: enqueueing on a key whose tag is already 9 never rewinds it
+        await queue.redis.zadd(ckVtimeKey, 9, variantName("nine"));
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r-nine-0", concurrencyKey: "nine", timestamp: t0 }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+        expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("nine")))).toBe(9);
+      } finally {
+        await queue.quit();
       }
-
-      const floor = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
-      expect(floor).toBeGreaterThanOrEqual(5);
-
-      // a fresh key enqueued now lands exactly at the floor (no dequeue in between)
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: makeMessage({ runId: "r-fresh-0", concurrencyKey: "fresh", timestamp: t0 }),
-        workerQueue: authenticatedEnvDev.id,
-        skipDequeueProcessing: true,
-      });
-      expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("fresh")))).toBe(floor);
-
-      // NX: enqueueing on a key whose tag is already 9 never rewinds it
-      await queue.redis.zadd(ckVtimeKey, 9, variantName("nine"));
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: makeMessage({ runId: "r-nine-0", concurrencyKey: "nine", timestamp: t0 }),
-        workerQueue: authenticatedEnvDev.id,
-        skipDequeueProcessing: true,
-      });
-      expect(Number(await queue.redis.zscore(ckVtimeKey, variantName("nine")))).toBe(9);
-    } finally {
-      await queue.quit();
     }
-  });
+  );
 
   redisTest("fast path leaves vtime state untouched", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer);
@@ -687,6 +708,160 @@ describe("CK virtual-time (SFQ) dequeue", () => {
       // slow path taken and the variant is registered
       expect(await queue.redis.zcard(aVariant)).toBe(1);
       expect(await queue.redis.zscore(ckVtimeKey, aVariant)).not.toBeNull();
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("nack re-registers a GC'd variant", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const t0 = Date.now() - 100_000;
+
+      // one message on ck:a, plenty on ck:b so serves keep flowing and the floor rises
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({ runId: "r-a-0", concurrencyKey: "a", timestamp: t0 }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+      for (let i = 0; i < 10; i++) {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: `r-b-${i}`, concurrencyKey: "b", timestamp: t0 + i }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+      }
+
+      const aVariant = variantName("a");
+      const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(aVariant);
+      const ckVtimeFloorKey = testOptions.keys.ckVtimeFloorKeyFromQueue(aVariant);
+      const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(aVariant);
+      const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+
+      // first dequeue serves a's only message: a is drained and GC'd from both indexes
+      let aMessageId: string | undefined;
+      const first = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 2);
+      for (const m of first) {
+        if (m.message.concurrencyKey === "a") {
+          aMessageId = m.messageId;
+        } else {
+          await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+            skipDequeueProcessing: true,
+          });
+        }
+      }
+      expect(aMessageId).toBeDefined();
+      expect(await queue.redis.zscore(ckVtimeKey, aVariant)).toBeNull();
+      expect(await queue.redis.zscore(ckIndexKey, aVariant)).toBeNull();
+
+      // drive the floor up via b serves
+      for (let call = 0; call < 6; call++) {
+        const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
+        for (const m of messages) {
+          await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+            skipDequeueProcessing: true,
+          });
+        }
+      }
+      const floor = Number((await queue.redis.get(ckVtimeFloorKey)) ?? "0");
+      expect(floor).toBeGreaterThan(0);
+
+      // nack with an immediate retry score so the revived message is servable now
+      await queue.nackMessage({
+        orgId: authenticatedEnvDev.organization.id,
+        messageId: aMessageId!,
+        retryAt: Date.now(),
+        skipDequeueProcessing: true,
+      });
+
+      // the variant is back in ckIndex AND in ckVtime at the floor
+      expect(await queue.redis.zscore(ckIndexKey, aVariant)).not.toBeNull();
+      expect(Number(await queue.redis.zscore(ckVtimeKey, aVariant))).toBe(floor);
+
+      // and a subsequent dequeue serves it
+      const after = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
+      expect(after.some((m) => m.messageId === aMessageId)).toBe(true);
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("ckVtime membership tracks ckIndex membership", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const cks = ["a", "b", "c", "d", "e", "f", "g", "h"];
+      const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(variantName("a"));
+      const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName("a"));
+      const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+
+      // deterministic LCG so failures reproduce
+      let seed = 123456789;
+      const rand = () => {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        return seed / 2147483648;
+      };
+      const pick = (n: number) => Math.floor(rand() * n);
+
+      const inFlight: string[] = [];
+      let nextRun = 0;
+
+      for (let step = 0; step < 200; step++) {
+        const op = pick(4);
+        let opName = "noop";
+
+        if (op === 0) {
+          opName = "enqueue";
+          const ck = cks[pick(cks.length)]!;
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r${nextRun++}`,
+              concurrencyKey: ck,
+              timestamp: Date.now() - 100_000,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        } else if (op === 1) {
+          opName = "dequeue";
+          const messages = await queue.testDequeueFromMasterQueue(
+            shard,
+            authenticatedEnvDev.id,
+            1 + pick(4)
+          );
+          for (const m of messages) {
+            inFlight.push(m.messageId);
+          }
+        } else if (op === 2 && inFlight.length > 0) {
+          opName = "ack";
+          const [id] = inFlight.splice(pick(inFlight.length), 1);
+          await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, id!, {
+            skipDequeueProcessing: true,
+          });
+        } else if (op === 3 && inFlight.length > 0) {
+          opName = "nack";
+          const [id] = inFlight.splice(pick(inFlight.length), 1);
+          await queue.nackMessage({
+            orgId: authenticatedEnvDev.organization.id,
+            messageId: id!,
+            retryAt: Date.now(),
+            skipDequeueProcessing: true,
+          });
+        }
+
+        // closure invariant: every ckIndex member is a ckVtime member. The
+        // converse may transiently not hold (stale ckVtime entries GC on scan).
+        const members = await queue.redis.zrange(ckIndexKey, 0, -1);
+        for (const member of members) {
+          const tag = await queue.redis.zscore(ckVtimeKey, member);
+          expect(
+            tag,
+            `step ${step} (${opName}): ${member} in ckIndex but not ckVtime`
+          ).not.toBeNull();
+        }
+      }
     } finally {
       await queue.quit();
     }
