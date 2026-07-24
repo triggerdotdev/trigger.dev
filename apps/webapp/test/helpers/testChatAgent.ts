@@ -131,3 +131,32 @@ export const testHitlChatAgent = chat.agent({
     });
   },
 });
+
+/**
+ * A tool that both executes and requires approval. The model's call parks on
+ * an approval request; the client approves (or denies) before the `execute`
+ * runs.
+ */
+const deleteResourceTool = tool({
+  description: "Delete a resource. Requires human approval before running.",
+  inputSchema: z.object({ resource: z.string() }),
+  needsApproval: true,
+  execute: async ({ resource }) => ({ deleted: resource }),
+});
+
+export const testApprovalChatAgent = chat.agent({
+  id: "e2e-test-chat-approval",
+  run: async ({ messages, signal }) => {
+    const model = locals.get(testChatModelLocal);
+    if (!model) {
+      throw new Error("test model not injected via locals");
+    }
+    return streamText({
+      model,
+      messages,
+      tools: { deleteResource: deleteResourceTool },
+      stopWhen: stepCountIs(5),
+      abortSignal: signal,
+    });
+  },
+});

@@ -28,6 +28,7 @@ import {
 } from "./helpers/sessionStream";
 import { runRealChatAgent } from "./helpers/agentHarness";
 import {
+  testApprovalChatAgent,
   testChatAgent,
   testChatModelLocal,
   testHitlChatAgent,
@@ -230,6 +231,43 @@ function joinChunks(parts: CollectedPart[]): string {
     .filter((p) => p.chunk != null)
     .map((p) => JSON.stringify(p.chunk))
     .join("");
+}
+
+/** A model that returns `texts[i]` on its i-th `doStream` call. */
+function sequenceModel(texts: string[]) {
+  let idx = 0;
+  return new MockLanguageModelV3({
+    doStream: async () => {
+      const text = texts[Math.min(idx, texts.length - 1)]!;
+      idx++;
+      const chunks = [
+        { type: "text-start", id: "t1" },
+        { type: "text-delta", id: "t1", delta: text },
+        { type: "text-end", id: "t1" },
+        FINISH_STOP,
+      ];
+      return { stream: simulateReadableStream({ chunks: chunks as never }) };
+    },
+  });
+}
+
+function regenerateBody(addressingKey: string) {
+  return JSON.stringify({
+    kind: "message",
+    payload: { chatId: addressingKey, trigger: "regenerate-message", metadata: {} },
+  });
+}
+
+function findApprovalRequest(
+  parts: CollectedPart[]
+): { approvalId: string; toolCallId: string } | undefined {
+  for (const p of parts) {
+    const c = p.chunk as { type?: string; approvalId?: string; toolCallId?: string } | null;
+    if (c && c.type === "tool-approval-request" && c.approvalId && c.toolCallId) {
+      return { approvalId: c.approvalId, toolCallId: c.toolCallId };
+    }
+  }
+  return undefined;
 }
 
 describe("session agent e2e (real chat.agent loop)", () => {
@@ -716,5 +754,215 @@ describe("session agent e2e (real chat.agent loop)", () => {
     } finally {
       await secondRun.close();
     }
+  });
+
+  it("EA10: regenerate re-runs the last user turn with a fresh model call", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testPlainChatAgent.id);
+    const agent = runRealChatAgent({
+      agentId: testPlainChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: sequenceModel(["first-answer", "regenerated-answer"]),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("explain it", "u1")),
+      });
+      const first = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+      expect(joinChunks(first.parts)).toContain("first-answer");
+
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "regen1",
+        body: regenerateBody(addressingKey),
+      });
+      const second = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.filter(isTurnComplete).length >= 2,
+        maxMs: 30_000,
+      });
+      expect(joinChunks(second.parts), "the regenerated turn produced a fresh answer").toContain(
+        "regenerated-answer"
+      );
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA11: a needsApproval tool parks on an approval request and runs once approved", async () => {
+    const { addressingKey, token, apiKey, baseUrl } = await setupSession(testApprovalChatAgent.id);
+    const toolCallId = "tc_delete_e2e";
+    const agent = runRealChatAgent({
+      agentId: testApprovalChatAgent.id,
+      baseUrl,
+      addressingKey,
+      secretKey: apiKey,
+      model: toolCallThenText({
+        toolName: "deleteResource",
+        toolCallId,
+        input: { resource: "widget-1" },
+        finalText: "deleted widget-1",
+      }),
+      modelLocal: testChatModelLocal,
+    });
+
+    try {
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u1",
+        body: submitBody(addressingKey, userMessage("delete widget-1", "u1")),
+      });
+      const turn1 = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+      const approval = findApprovalRequest(turn1.parts);
+      expect(approval, "turn 1 emits an approval request instead of executing").toBeTruthy();
+      expect(joinChunks(turn1.parts), "the tool did not execute before approval").not.toContain(
+        "deleted widget-1"
+      );
+
+      const answer = {
+        id: "a-approval",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-deleteResource",
+            toolCallId: approval!.toolCallId,
+            state: "approval-responded",
+            approval: { id: approval!.approvalId, approved: true },
+          },
+        ],
+      };
+      await appendInput({
+        baseUrl,
+        addressingKey,
+        token,
+        partId: "u2",
+        body: submitBody(addressingKey, answer),
+      });
+      const turn2 = await collectSessionOut({
+        baseUrl,
+        addressingKey,
+        token,
+        until: (p) => p.filter(isTurnComplete).length >= 2,
+        maxMs: 30_000,
+      });
+      expect(
+        joinChunks(turn2.parts),
+        "after approval the tool runs and the agent answers"
+      ).toContain("deleted widget-1");
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it("EA12: two chats stay isolated - neither run bleeds into the other's .out", async () => {
+    const chatA = await setupSession(testPlainChatAgent.id);
+    const chatB = await setupSession(testPlainChatAgent.id);
+
+    const agentA = runRealChatAgent({
+      agentId: testPlainChatAgent.id,
+      baseUrl: chatA.baseUrl,
+      addressingKey: chatA.addressingKey,
+      secretKey: chatA.apiKey,
+      model: textModel("answer-for-A"),
+      modelLocal: testChatModelLocal,
+    });
+    try {
+      await appendInput({
+        baseUrl: chatA.baseUrl,
+        addressingKey: chatA.addressingKey,
+        token: chatA.token,
+        partId: "a1",
+        body: submitBody(chatA.addressingKey, userMessage("hi from A", "a1")),
+      });
+      await collectSessionOut({
+        baseUrl: chatA.baseUrl,
+        addressingKey: chatA.addressingKey,
+        token: chatA.token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+    } finally {
+      await agentA.close();
+    }
+
+    const agentB = runRealChatAgent({
+      agentId: testPlainChatAgent.id,
+      baseUrl: chatB.baseUrl,
+      addressingKey: chatB.addressingKey,
+      secretKey: chatB.apiKey,
+      model: textModel("answer-for-B"),
+      modelLocal: testChatModelLocal,
+    });
+    try {
+      await appendInput({
+        baseUrl: chatB.baseUrl,
+        addressingKey: chatB.addressingKey,
+        token: chatB.token,
+        partId: "b1",
+        body: submitBody(chatB.addressingKey, userMessage("hi from B", "b1")),
+      });
+      await collectSessionOut({
+        baseUrl: chatB.baseUrl,
+        addressingKey: chatB.addressingKey,
+        token: chatB.token,
+        until: (p) => p.some(isTurnComplete),
+        maxMs: 30_000,
+      });
+    } finally {
+      await agentB.close();
+    }
+
+    const outA = joinChunks(
+      (
+        await collectSessionOut({
+          baseUrl: chatA.baseUrl,
+          addressingKey: chatA.addressingKey,
+          token: chatA.token,
+          until: (p) => p.some(isTurnComplete),
+          maxMs: 15_000,
+        })
+      ).parts
+    );
+    const outB = joinChunks(
+      (
+        await collectSessionOut({
+          baseUrl: chatB.baseUrl,
+          addressingKey: chatB.addressingKey,
+          token: chatB.token,
+          until: (p) => p.some(isTurnComplete),
+          maxMs: 15_000,
+        })
+      ).parts
+    );
+
+    expect(outA).toContain("answer-for-A");
+    expect(outA, "A's stream never sees B's output").not.toContain("answer-for-B");
+    expect(outB).toContain("answer-for-B");
+    expect(outB, "B's stream never sees A's output").not.toContain("answer-for-A");
   });
 });
