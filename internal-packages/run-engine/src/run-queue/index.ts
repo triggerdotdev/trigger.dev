@@ -3018,28 +3018,56 @@ export class RunQueue {
       const lengthCounterKey = this.keys.queueLengthCounterKeyFromQueue(message.queue);
       const runningCounterKey = this.keys.queueRunningCounterKeyFromQueue(message.queue);
 
-      await this.redis.nackMessageCkTracked(
-        //keys
-        masterQueueKey,
-        messageKey,
-        messageQueue,
-        queueCurrentConcurrencyKey,
-        envCurrentConcurrencyKey,
-        queueCurrentDequeuedKey,
-        envCurrentDequeuedKey,
-        envQueueKey,
-        ckIndexKey,
-        lengthCounterKey,
-        runningCounterKey,
-        //args
-        messageId,
-        messageQueue,
-        JSON.stringify(message),
-        String(messageScore),
-        ckWildcardName,
-        this.options.redis.keyPrefix ?? "",
-        String(this.counterTtlSeconds)
-      );
+      if (this.#ckVtimeEnabled) {
+        await this.redis.nackMessageCkVtimeTracked(
+          //keys
+          masterQueueKey,
+          messageKey,
+          messageQueue,
+          queueCurrentConcurrencyKey,
+          envCurrentConcurrencyKey,
+          queueCurrentDequeuedKey,
+          envCurrentDequeuedKey,
+          envQueueKey,
+          ckIndexKey,
+          lengthCounterKey,
+          runningCounterKey,
+          this.keys.ckVtimeKeyFromQueue(message.queue),
+          this.keys.ckVtimeFloorKeyFromQueue(message.queue),
+          //args
+          messageId,
+          messageQueue,
+          JSON.stringify(message),
+          String(messageScore),
+          ckWildcardName,
+          this.options.redis.keyPrefix ?? "",
+          String(this.counterTtlSeconds),
+          String(this.#ckVtimeStateTtl)
+        );
+      } else {
+        await this.redis.nackMessageCkTracked(
+          //keys
+          masterQueueKey,
+          messageKey,
+          messageQueue,
+          queueCurrentConcurrencyKey,
+          envCurrentConcurrencyKey,
+          queueCurrentDequeuedKey,
+          envCurrentDequeuedKey,
+          envQueueKey,
+          ckIndexKey,
+          lengthCounterKey,
+          runningCounterKey,
+          //args
+          messageId,
+          messageQueue,
+          JSON.stringify(message),
+          String(messageScore),
+          ckWildcardName,
+          this.options.redis.keyPrefix ?? "",
+          String(this.counterTtlSeconds)
+        );
+      }
     } else {
       await this.redis.nackMessage(
         //keys
@@ -5872,6 +5900,109 @@ end
 `,
     });
 
+    // Vtime variant of nackMessageCkTracked (feature-flagged via
+    // ckVirtualTimeScheduling.enabled). Identical script body, plus registration
+    // of the variant into the :ckVtime ZSET at the floor (NX), so a GC'd variant
+    // that a nack revives rejoins the fair order.
+    this.redis.defineCommand("nackMessageCkVtimeTracked", {
+      numberOfKeys: 13,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local ckIndexKey = KEYS[9]
+local lengthCounterKey = KEYS[10]
+local runningCounterKey = KEYS[11]
+-- Virtual-time keys (KEYS 12-13)
+local ckVtimeKey = KEYS[12]
+local ckVtimeFloorKey = KEYS[13]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageData = ARGV[3]
+local messageScore = tonumber(ARGV[4])
+local ckWildcardName = ARGV[5]
+-- keyPrefix for prepending to variant names stored as values in ckIndex (lazy-init only)
+local keyPrefix = ARGV[6]
+-- TTL (seconds) applied to counter lazy-init SETs
+local counterTtl = ARGV[7]
+-- TTL (seconds) applied to ckVtime on registration
+local stateTtl = ARGV[8]
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+-- Update the message data
+redis.call('SET', messageKey, messageData)
+
+-- Update the concurrency keys. nack only DECRs runningCounter, never INCRs it,
+-- so we skip the eager lazy-init here (unlike releaseConcurrencyTracked, which
+-- mirrors the same DECR pattern with init). A post-TTL nack's floored DECR
+-- no-ops; the next dequeueMessageFromKeyTracked reseeds from current state.
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+if removedFromDequeued == 1 then
+  decrFloored(runningCounterKey)
+end
+
+-- Lazy-init lengthCounter if missing (e.g. expired via 24h TTL). nack re-queues a
+-- message, which means lengthCounter must be present before we INCR. Without this,
+-- a nack after counter expiry would create the counter at 1 and stay drifted until
+-- next reset.
+if redis.call('EXISTS', lengthCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
+  end
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
+end
+
+-- Enqueue the message back into the CK-specific queue. INCR lengthCounter only if
+-- it's a new entry (ZADD returns 1).
+local added = redis.call('ZADD', messageQueueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+if added == 1 then
+  redis.call('INCR', lengthCounterKey)
+end
+
+-- Rebalance CK index
+local earliest = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
+end
+
+-- Register this variant in the virtual-time index at the floor. NX means an
+-- already-advanced tag is never rewound.
+local vfloor = redis.call('GET', ckVtimeFloorKey) or '0'
+redis.call('ZADD', ckVtimeKey, 'NX', vfloor, messageQueueName)
+redis.call('EXPIRE', ckVtimeKey, stateTtl)
+
+-- Rebalance master queue with ck:* member
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+-- Remove old-format entry from master queue (transition cleanup)
+redis.call('ZREM', masterQueueKey, messageQueueName)
+`,
+    });
+
     // Tracked variant: same as moveToDeadLetterQueueCk. ZREM may DECR
     // lengthCounter (defensive); SREM currentDequeued may DECR runningCounter.
     this.redis.defineCommand("moveToDeadLetterQueueCkTracked", {
@@ -6760,6 +6891,31 @@ declare module "@internal/redis" {
       ckWildcardName: string,
       keyPrefix: string,
       counterTtl: string,
+      callback?: Callback<void>
+    ): Result<void, Context>;
+
+    nackMessageCkVtimeTracked(
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      ckIndexKey: string,
+      lengthCounterKey: string,
+      runningCounterKey: string,
+      ckVtimeKey: string,
+      ckVtimeFloorKey: string,
+      messageId: string,
+      messageQueueName: string,
+      messageData: string,
+      messageScore: string,
+      ckWildcardName: string,
+      keyPrefix: string,
+      counterTtl: string,
+      stateTtl: string,
       callback?: Callback<void>
     ): Result<void, Context>;
 
