@@ -949,7 +949,7 @@ function QueuesWithMetricsView() {
 
                               <PopoverMenuItem
                                 icon={RunsIcon}
-                                leadingIconClassName="text-runs"
+                                leadingIconClassName="text-runs size-[1.125rem]"
                                 title="View all runs"
                                 to={v3RunsPath(organization, project, env, {
                                   queues: [queueFilterableName],
@@ -959,7 +959,7 @@ function QueuesWithMetricsView() {
                               />
                               <PopoverMenuItem
                                 icon={QueuesIcon}
-                                leadingIconClassName="text-queues"
+                                leadingIconClassName="text-queues size-[1.125rem]"
                                 title="View queued runs"
                                 to={v3RunsPath(organization, project, env, {
                                   queues: [queueFilterableName],
