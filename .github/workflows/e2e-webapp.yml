@@ -81,6 +81,7 @@ jobs:
           docker pull redis:7.2
           docker pull testcontainers/ryuk:0.11.0
           docker pull ghcr.io/s2-streamstore/s2:0.40.0@sha256:b26249e2ede0949755f5af8028185dc2bcfc3aa2db21eb9610543d144eb6ee9d
+          docker pull minio/minio:latest
           echo "Image pre-pull complete"
 
       - name: 📥 Download deps
