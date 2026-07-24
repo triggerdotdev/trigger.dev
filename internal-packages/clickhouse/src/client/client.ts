@@ -332,12 +332,12 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
         if (clickhouseError) {
           const errorLogFields = {
+            ...req.logFields,
             name: req.name,
             error: clickhouseError,
             query: req.query,
             params,
             queryId,
-            ...req.logFields,
           };
 
           if (isClickhouseQuotaError(clickhouseError)) {
@@ -623,13 +623,19 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
         span.setAttributes({ "clickhouse.rows": rowCount });
       } catch (error) {
-        self.logger.error("Error streaming clickhouse", {
+        const errorLogFields = {
           name: req.name,
           error,
           query: req.query,
           params,
           queryId,
-        });
+        };
+
+        if (error instanceof Error && isClickhouseQuotaError(error)) {
+          self.logger.warn("Streamed query exceeded a ClickHouse limit", errorLogFields);
+        } else {
+          self.logger.error("Error streaming clickhouse", errorLogFields);
+        }
 
         if (error instanceof Error) {
           recordClickhouseError(span, error);

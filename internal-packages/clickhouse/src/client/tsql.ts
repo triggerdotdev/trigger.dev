@@ -248,6 +248,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
             params: z.record(z.any()),
             schema: z.object({ explain: z.string() }),
             settings: options.clickhouseSettings,
+            logFields: { tsql: options.query },
           });
 
           const [additionalError, additionalResult] = await additionalQueryFn(params);
