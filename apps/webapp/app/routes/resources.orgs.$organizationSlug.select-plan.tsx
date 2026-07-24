@@ -95,6 +95,8 @@ export const action = dashboardAction(
               email: user.email,
               name: user.name ?? "",
               title: "Plan cancelation feedback",
+              organizationId: organization.id,
+              organizationName: organization.title,
               components: [
                 uiComponent.text({
                   text: `${user.name} (${user.email}) just canceled their plan.`,

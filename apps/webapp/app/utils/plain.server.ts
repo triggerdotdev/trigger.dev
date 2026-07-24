@@ -9,9 +9,20 @@ type Input = {
   title: string;
   components: ReturnType<typeof uiComponent.text>[];
   labelTypeIds?: string[];
+  organizationId?: string;
+  organizationName?: string;
 };
 
-export async function sendToPlain({ userId, email, name, title, components, labelTypeIds }: Input) {
+export async function sendToPlain({
+  userId,
+  email,
+  name,
+  title,
+  components,
+  labelTypeIds,
+  organizationId,
+  organizationName,
+}: Input) {
   if (!env.PLAIN_API_KEY) {
     return;
   }
@@ -53,6 +64,34 @@ export async function sendToPlain({ userId, email, name, title, components, labe
       return;
     }
 
+    // Attribute the thread to the org so support data can be rolled up per org: the tenant is
+    // keyed by externalId = org_id. Isolated in its own try/catch, and the thread's
+    // tenantIdentifier is gated on success — so a tenant failure (e.g. an API key without
+    // tenant scope) downgrades to "no attribution" instead of dropping the thread. The
+    // customer's own externalId (User.id, used by the customer cards + impersonation link) is
+    // left untouched.
+    let tenantLinked = false;
+    if (organizationId) {
+      try {
+        await client.mutation.upsertTenant({
+          input: {
+            identifier: { externalId: organizationId },
+            externalId: organizationId,
+            name: organizationName ?? organizationId,
+          },
+        });
+        await client.mutation.addCustomerToTenants({
+          input: {
+            customerIdentifier: { customerId },
+            tenantIdentifiers: [{ externalId: organizationId }],
+          },
+        });
+        tenantLinked = true;
+      } catch (error) {
+        console.error("Failed to link Plain customer to org tenant", error);
+      }
+    }
+
     await client.mutation.createThread({
       input: {
         customerIdentifier: {
@@ -61,6 +100,7 @@ export async function sendToPlain({ userId, email, name, title, components, labe
         title: title,
         components: components,
         labelTypeIds,
+        tenantIdentifier: tenantLinked ? { externalId: organizationId } : undefined,
       },
     });
   } catch (error) {

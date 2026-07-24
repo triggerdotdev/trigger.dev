@@ -74,6 +74,8 @@ export class SetBranchesAddOnService extends BaseService {
             email: user.email,
             name: user.name ?? user.displayName ?? user.email,
             title: `Preview branches quota request: ${amount}`,
+            organizationId,
+            organizationName: organization?.title,
             components: [
               uiComponent.text({
                 text: `Org: ${organization?.title} (${organizationId})`,

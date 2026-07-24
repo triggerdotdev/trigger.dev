@@ -74,6 +74,8 @@ export class SetSchedulesAddOnService extends BaseService {
             email: user.email,
             name: user.name ?? user.displayName ?? user.email,
             title: `Schedules quota request: ${amount}`,
+            organizationId,
+            organizationName: organization?.title,
             components: [
               uiComponent.text({
                 text: `Org: ${organization?.title} (${organizationId})`,

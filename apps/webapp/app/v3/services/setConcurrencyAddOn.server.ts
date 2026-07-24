@@ -106,6 +106,8 @@ export class SetConcurrencyAddOnService extends BaseService {
             email: user.email,
             name: user.name ?? user.displayName ?? user.email,
             title: `Concurrency quota request: ${totalExtraConcurrency}`,
+            organizationId,
+            organizationName: organization?.title,
             components: [
               uiComponent.text({
                 text: `Org: ${organization?.title} (${organizationId})`,

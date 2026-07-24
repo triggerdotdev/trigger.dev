@@ -74,6 +74,8 @@ export class SetSeatsAddOnService extends BaseService {
             email: user.email,
             name: user.name ?? user.displayName ?? user.email,
             title: `Seats quota request: ${amount}`,
+            organizationId,
+            organizationName: organization?.title,
             components: [
               uiComponent.text({
                 text: `Org: ${organization?.title} (${organizationId})`,
