@@ -99,10 +99,84 @@ export type SubscribeOptions = {
   lastEventId?: string;
   timeoutInSeconds?: number;
   peekSettled?: boolean;
+  io?: "out" | "in";
 };
 
+function sessionChannelUrl(baseUrl: string, addressingKey: string, io: "out" | "in"): string {
+  return `${baseUrl}/realtime/v1/sessions/${encodeURIComponent(addressingKey)}/${io}`;
+}
+
+/**
+ * Append a record to a session's `.in` channel through the webapp route the
+ * browser uses (client -> agent). Returns the status, the reflected
+ * Access-Control-Allow-Origin (when an Origin was sent), and the parsed body.
+ */
+export async function appendInput(opts: {
+  baseUrl: string;
+  addressingKey: string;
+  token: string;
+  body: string;
+  partId?: string;
+  origin?: string;
+}): Promise<{ status: number; acao: string | null; json: unknown }> {
+  const url = `${sessionChannelUrl(opts.baseUrl, opts.addressingKey, "in")}/append`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${opts.token}`,
+      "Content-Type": "application/json",
+      ...(opts.partId ? { "X-Part-Id": opts.partId } : {}),
+      ...(opts.origin ? { Origin: opts.origin } : {}),
+    },
+    body: opts.body,
+  });
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch {}
+  return { status: res.status, acao: res.headers.get("access-control-allow-origin"), json };
+}
+
+/**
+ * Raw SSE GET against a session channel, exposing the response status +
+ * headers (which `SSEStreamSubscription` hides). Reads the body to close and
+ * reports how long that took, for asserting the server-side peek fast-close.
+ */
+export async function openChannelRaw(
+  opts: SubscribeOptions & { maxMs?: number }
+): Promise<{ status: number; sessionSettled: string | null; closedMs: number; body: string }> {
+  const url = sessionChannelUrl(opts.baseUrl, opts.addressingKey, opts.io ?? "out");
+  const started = performance.now();
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${opts.token}`,
+      Accept: "text/event-stream",
+      ...(opts.lastEventId ? { "Last-Event-ID": opts.lastEventId } : {}),
+      ...(opts.timeoutInSeconds ? { "Timeout-Seconds": String(opts.timeoutInSeconds) } : {}),
+      ...(opts.peekSettled ? { "X-Peek-Settled": "1" } : {}),
+    },
+  });
+  const sessionSettled = res.headers.get("x-session-settled");
+  let body = "";
+  if (res.body) {
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    const deadline = started + (opts.maxMs ?? 15_000);
+    try {
+      while (performance.now() < deadline) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        body += decoder.decode(value, { stream: true });
+      }
+    } finally {
+      await reader.cancel().catch(() => {});
+    }
+  }
+  return { status: res.status, sessionSettled, closedMs: performance.now() - started, body };
+}
+
 export function subscribeSessionOut(opts: SubscribeOptions): SSEStreamSubscription {
-  const url = `${opts.baseUrl}/realtime/v1/sessions/${encodeURIComponent(opts.addressingKey)}/out`;
+  const url = sessionChannelUrl(opts.baseUrl, opts.addressingKey, opts.io ?? "out");
   return new SSEStreamSubscription(url, {
     headers: {
       Authorization: `Bearer ${opts.token}`,

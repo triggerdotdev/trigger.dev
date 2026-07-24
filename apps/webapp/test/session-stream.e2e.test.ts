@@ -16,10 +16,12 @@ import type { SessionStreamTestServer } from "@internal/testcontainers/webapp";
 import { startSessionStreamTestServer } from "@internal/testcontainers/webapp";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import {
+  appendInput,
   collectSessionOut,
   collectUntilCaughtUp,
   isTurnComplete,
   mintSessionToken,
+  openChannelRaw,
   SessionStreamProducer,
   sessionStreamName,
 } from "./helpers/sessionStream";
@@ -37,8 +39,21 @@ afterAll(async () => {
 }, 120_000);
 
 async function setupSession() {
-  const { organization, environment, apiKey } = await seedTestEnvironment(server.prisma);
+  const { organization, project, environment, apiKey } = await seedTestEnvironment(server.prisma);
   const addressingKey = `sess-${randomBytes(6).toString("hex")}`;
+  await server.prisma.session.create({
+    data: {
+      friendlyId: `session_${randomBytes(8).toString("hex")}`,
+      externalId: addressingKey,
+      type: "chat.agent",
+      projectId: project.id,
+      runtimeEnvironmentId: environment.id,
+      environmentType: environment.type,
+      organizationId: organization.id,
+      taskIdentifier: "chat-agent",
+      triggerConfig: {},
+    },
+  });
   const token = await mintSessionToken({ apiKey, envId: environment.id, addressingKey });
   const streamName = sessionStreamName({
     orgId: organization.id,
@@ -212,5 +227,82 @@ describe("session stream e2e", () => {
       .map((p) => (p.chunk as { n: number }).n);
     expect(dataChunks).toEqual([0, 1, 2]);
     expect(parts.some(isTurnComplete)).toBe(true);
+  });
+
+  it("E8 in/append 413 for an oversized body still carries CORS headers", async () => {
+    const { addressingKey, token, baseUrl } = await setupSession();
+
+    const oversized = "x".repeat(2 * 1024 * 1024);
+    const { status, acao } = await appendInput({
+      baseUrl,
+      addressingKey,
+      token,
+      origin: "http://example.com",
+      body: JSON.stringify({ kind: "message", payload: { big: oversized } }),
+    });
+
+    expect(status).toBe(413);
+    expect(acao).not.toBeNull();
+  });
+
+  it("E9 server peek fast-closes at a turn-complete tail with X-Session-Settled", async () => {
+    const { addressingKey, token, producer, baseUrl } = await setupSession();
+
+    await producer.appendData({ n: 0 }, "p0");
+    const tc = await producer.appendTurnComplete();
+
+    const { status, sessionSettled, closedMs } = await openChannelRaw({
+      baseUrl,
+      addressingKey,
+      token,
+      lastEventId: String(tc),
+      peekSettled: true,
+      timeoutInSeconds: 30,
+      maxMs: 10_000,
+    });
+
+    expect(status).toBe(200);
+    expect(sessionSettled).toBe("true");
+    expect(closedMs).toBeLessThan(5_000);
+  });
+
+  it("E11 in/append delivers the record on the .in channel", async () => {
+    const { addressingKey, token, baseUrl } = await setupSession();
+
+    const payload = JSON.stringify({ kind: "message", text: "hello from client" });
+    const appended = await appendInput({
+      baseUrl,
+      addressingKey,
+      token,
+      partId: "in-0",
+      body: payload,
+    });
+    expect(appended.status).toBe(200);
+
+    const { parts } = await collectSessionOut({
+      baseUrl,
+      addressingKey,
+      token,
+      io: "in",
+      until: (p) => p.some((x) => x.chunk != null),
+      maxMs: 15_000,
+    });
+
+    const got = parts.find((p) => p.chunk != null);
+    expect(got).toBeTruthy();
+    expect(String(got?.chunk)).toContain("hello from client");
+  });
+
+  it("E12 subscribe with an invalid token is rejected", async () => {
+    const { addressingKey, baseUrl } = await setupSession();
+
+    const { status } = await openChannelRaw({
+      baseUrl,
+      addressingKey,
+      token: "tr_pub_invalid_not_a_real_token",
+      maxMs: 5_000,
+    });
+
+    expect([401, 403]).toContain(status);
   });
 });
