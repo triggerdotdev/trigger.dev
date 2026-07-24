@@ -121,6 +121,10 @@ const QUEUE_METRICS_DEFAULT_PERIOD = "1d";
 const QUEUE_LIVE_BLOCKS_PERIOD = "15m";
 const QUEUE_LIVE_BLOCKS_QUERY =
   "SELECT timeBucket() AS t, max(max_env_queued) AS env_queued, max(max_env_running) AS env_running FROM env_metrics GROUP BY t ORDER BY t";
+// Trust the ClickHouse gauge only while its newest bucket is this recent; otherwise fall back to
+// the loader's Redis-exact live values (matches LIVE_GAUGE_FRESH_MS on the queue detail page / run
+// inspector).
+const LIVE_GAUGE_FRESH_MS = 90_000;
 
 export const meta: MetaFunction = () => {
   return [
@@ -408,11 +412,21 @@ function QueuesWithMetricsView() {
   });
   const lastLiveBlockRow =
     liveBlockRows.length > 0 ? liveBlockRows[liveBlockRows.length - 1] : null;
-  const envQueuedLive = lastLiveBlockRow
-    ? tileNumber(lastLiveBlockRow.env_queued)
+  // Only trust the gauge while its newest bucket is fresh. A row painted from the hook's cache on
+  // client-side nav-back (responseCache), or a quiet env whose latest bucket is minutes old, must
+  // not override the loader's Redis-exact live values with a stale count.
+  const lastLiveBucketMs = lastLiveBlockRow ? tileTimeToMs(lastLiveBlockRow.t) : NaN;
+  const freshLiveBlockRow =
+    lastLiveBlockRow &&
+    Number.isFinite(lastLiveBucketMs) &&
+    Date.now() - lastLiveBucketMs < LIVE_GAUGE_FRESH_MS
+      ? lastLiveBlockRow
+      : null;
+  const envQueuedLive = freshLiveBlockRow
+    ? tileNumber(freshLiveBlockRow.env_queued)
     : environment.queued;
-  const envRunningLive = lastLiveBlockRow
-    ? tileNumber(lastLiveBlockRow.env_running)
+  const envRunningLive = freshLiveBlockRow
+    ? tileNumber(freshLiveBlockRow.env_running)
     : environment.running;
 
   // Allocation summary tiles. The presenter computes the env-wide allocated total (sum of
