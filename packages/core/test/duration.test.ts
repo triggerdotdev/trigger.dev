@@ -1,10 +1,35 @@
 import {
   parseNaturalLanguageDuration,
+  parseNaturalLanguageDurationInMs,
   safeParseNaturalLanguageDuration,
   parseNaturalLanguageDurationAgo,
   safeParseNaturalLanguageDurationAgo,
   stringifyDuration,
 } from "../src/v3/isomorphic/duration.js";
+
+describe("parseNaturalLanguageDurationInMs", () => {
+  const MINUTE = 60 * 1000;
+  const HOUR = 60 * MINUTE;
+
+  it("parses single and combined units in any order", () => {
+    expect(parseNaturalLanguageDurationInMs("15m")).toBe(15 * MINUTE);
+    expect(parseNaturalLanguageDurationInMs("1h30m")).toBe(HOUR + 30 * MINUTE);
+    expect(parseNaturalLanguageDurationInMs("30m1h")).toBe(HOUR + 30 * MINUTE);
+    expect(parseNaturalLanguageDurationInMs("2hr")).toBe(2 * HOUR);
+  });
+
+  it("sums a unit that appears more than once", () => {
+    // The valid-pattern accepts repeated units, but reading each unit with a
+    // single match only counted the first, so "1h2h" used to return 1h.
+    expect(parseNaturalLanguageDurationInMs("1h2h")).toBe(3 * HOUR);
+    expect(parseNaturalLanguageDurationInMs("2m3m")).toBe(5 * MINUTE);
+  });
+
+  it("returns undefined for input that is not a duration", () => {
+    expect(parseNaturalLanguageDurationInMs("notaduration")).toBeUndefined();
+    expect(parseNaturalLanguageDurationInMs("")).toBeUndefined();
+  });
+});
 
 describe("parseNaturalLanguageDuration", () => {
   let baseTime: Date;
