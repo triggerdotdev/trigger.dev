@@ -32,9 +32,9 @@ export function FavoritePageButton({ pageTitle }: { pageTitle?: string }) {
   const url = location.pathname + stripFavoriteSearchParam(location.search);
   const existing = favorites.find((favorite) => favorite.url === url);
   const isFavorited = existing !== undefined;
-  // A renamed favorite keeps its custom name in the tooltip
-  const pageName =
-    existing?.label ?? (pageTitle?.trim() || resolvePageMeta(location.pathname).name);
+  // The tooltip names the favorite: its custom name once saved, else the label saving would use
+  // (which includes detail-page ids, e.g. "Run: 05hrqq9n")
+  const pageName = existing?.label ?? buildFavoriteLabel(location.pathname, pageTitle);
 
   const toggle = () => {
     if (existing) {

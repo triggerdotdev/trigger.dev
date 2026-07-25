@@ -239,18 +239,40 @@ export function resolvePageMeta(pathname: string): PageMeta {
 const MAX_LABEL_LENGTH = 50;
 
 /**
+ * Short id for a detail page whose last URL segment is a friendly id ("run_cmryyza…05hrqq9n").
+ * Uses the same 8-character tail the dashboard tables display, so the label matches what the
+ * user sees elsewhere.
+ */
+function detailIdFromPath(pathname: string): string | undefined {
+  const segments = pathname.split("/").filter(Boolean);
+  const last = segments[segments.length - 1];
+  if (last && /^(run|batch|session|deployment|schedule|waitpoint)_[a-z0-9]{8,}$/i.test(last)) {
+    return last.slice(-8);
+  }
+  return undefined;
+}
+
+/**
  * Compose the default side menu label for a favorited page. List pages keep their nav name
- * ("Queues"); detail pages get an identifying prefix ("Queue: email-queue"). Users can rename.
+ * ("Queues"); detail pages get an identifying prefix ("Queue: email-queue", or the short id for
+ * friendly-id pages: "Run: 05hrqq9n"). Users can rename.
  */
 export function buildFavoriteLabel(pathname: string, pageTitle: string | undefined): string {
   const meta = resolvePageMeta(pathname);
   const title = pageTitle?.trim();
+  const prefix = meta.singular ?? meta.name;
 
-  if (!title || title.toLowerCase() === meta.name.toLowerCase()) {
-    return meta.name;
+  // Generic titles ("Runs", "Run") identify nothing on a detail page; prefer the short id
+  const isGenericTitle =
+    !title ||
+    title.toLowerCase() === meta.name.toLowerCase() ||
+    title.toLowerCase() === prefix.toLowerCase();
+
+  if (isGenericTitle) {
+    const detailId = detailIdFromPath(pathname);
+    return detailId ? `${prefix}: ${detailId}` : meta.name;
   }
 
-  const prefix = meta.singular ?? meta.name;
   const label = title.toLowerCase().startsWith(prefix.toLowerCase())
     ? title
     : `${prefix}: ${title}`;
@@ -281,9 +303,10 @@ export function useFavorites(): FavoritePage[] {
         const icon = fetcher.formData.get("icon");
         if (typeof url !== "string" || typeof label !== "string") break;
         if (!favorites.some((f) => f.url === url)) {
+          // Newest favorites go to the top of the section (matches addFavorite server-side)
           favorites = [
-            ...favorites,
             { id, url, label, icon: typeof icon === "string" ? icon : undefined },
+            ...favorites,
           ];
         }
         break;
