@@ -222,6 +222,7 @@ describe("RunsReplicationService (part 10/10) — JSON parse recovery", () => {
       expect(runsReplicationService.permanentlyDroppedBatches).toBe(0);
       expect(runsReplicationService.rowsStripped).toBeGreaterThanOrEqual(1);
       expect(runsReplicationService.recoveryCapHits).toBeGreaterThanOrEqual(1);
+      expect(runsReplicationService.permanentlyDroppedRows).toBeGreaterThanOrEqual(1);
 
       await runsReplicationService.stop();
     }

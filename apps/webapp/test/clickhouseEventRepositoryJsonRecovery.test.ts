@@ -114,9 +114,8 @@ describe("ClickhouseEventRepository JSON parse recovery", () => {
         expect(rowsById.has(poisonSpanId)).toBe(false);
 
         expect(repository.permanentlyDroppedBatches).toBe(0);
-        expect(repository.permanentlyDroppedRows).toBe(0);
         expect(repository.rowIsolationRecoveries).toBeGreaterThanOrEqual(1);
-        expect(repository.rowsStripped).toBe(0);
+        expect(repository.permanentlyDroppedRows).toBeGreaterThanOrEqual(1);
       } finally {
         await (repository as any)._flushScheduler?.shutdown?.();
       }

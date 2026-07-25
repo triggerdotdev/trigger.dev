@@ -387,7 +387,13 @@ describe("insertWithLimitedStrip", () => {
       stripJsonColumns,
     });
 
-    expect(outcome).toEqual({ kind: "recovered", rowsStripped: 1, rowsDropped: 0, capped: false });
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 1,
+      rowsDropped: 0,
+      rowsDroppedExact: true,
+      capped: false,
+    });
     expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
     expect(landed.find((r) => r.id === 2)?.stripped).toBe(true);
     expect(landed.filter((r) => r.id !== 2).every((r) => !r.stripped)).toBe(true);
@@ -411,7 +417,14 @@ describe("insertWithLimitedStrip", () => {
       hasMaterializedViews: false,
     });
 
-    expect(outcome).toEqual({ kind: "recovered", rowsStripped: 1, rowsDropped: 1, capped: true });
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 1,
+      rowsDropped: 1,
+      rowsDroppedExact: true,
+      capped: true,
+      bailReason: "strip_budget_spent",
+    });
     expect(allowCalls()).toBe(1);
     expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 1, 2, 4]);
     expect(landed.find((r) => r.id === 1)?.stripped).toBe(true);
@@ -434,7 +447,13 @@ describe("insertWithLimitedStrip", () => {
       maxPoisonStrips: 3,
     });
 
-    expect(outcome).toEqual({ kind: "recovered", rowsStripped: 2, rowsDropped: 0, capped: false });
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 2,
+      rowsDropped: 0,
+      rowsDroppedExact: true,
+      capped: false,
+    });
     expect(allowCalls()).toBe(0);
     expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 1, 2, 3]);
   });
@@ -467,7 +486,14 @@ describe("insertWithLimitedStrip", () => {
       hasMaterializedViews: false,
     });
 
-    expect(outcome).toEqual({ kind: "recovered", rowsStripped: 0, rowsDropped: 1, capped: true });
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 1,
+      rowsDroppedExact: true,
+      capped: true,
+      bailReason: "row_not_locatable",
+    });
     expect(allowCalls).toBe(1);
     expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 2]);
   });
@@ -555,13 +581,19 @@ describe("insertWithBadRowSkip", () => {
       hasMaterializedViews: false,
     });
 
-    expect(outcome).toEqual({ kind: "recovered", rowsStripped: 0, rowsDropped: 2, capped: false });
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 2,
+      rowsDroppedExact: true,
+      capped: false,
+    });
     expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 2, 4]);
     expect(insertCalls()).toBe(1);
     expect(allowCalls()).toBe(1);
   });
 
-  it("counts only whole-batch drops on a table with materialized views (partial drop uncountable)", async () => {
+  it("floors a partial drop at one on a table with materialized views, and counts a whole-batch drop exactly", async () => {
     const inflatedSummary = (goodCount: number) => ({
       summary: { written_rows: String(goodCount * 3) },
     });
@@ -580,7 +612,13 @@ describe("insertWithBadRowSkip", () => {
       insertAllowingBadRows,
       hasMaterializedViews: true,
     });
-    expect(partial).toEqual({ kind: "recovered", rowsStripped: 0, rowsDropped: 0, capped: false });
+    expect(partial).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 1,
+      rowsDroppedExact: false,
+      capped: false,
+    });
 
     const wholeBatch = await insertWithBadRowSkip({
       rows: [
@@ -597,6 +635,7 @@ describe("insertWithBadRowSkip", () => {
       kind: "recovered",
       rowsStripped: 0,
       rowsDropped: 2,
+      rowsDroppedExact: true,
       capped: false,
     });
   });
@@ -635,7 +674,7 @@ describe("insertWithBadRowSkip", () => {
     expect(rows[0].msg).toBe(INVALID_UTF16_SENTINEL);
   });
 
-  it("reports zero dropped when the summary has no written_rows count", async () => {
+  it("floors the dropped count at one when the summary has no written_rows count", async () => {
     const insert = async (rows: FakeRow[]) => {
       if (rows.some((r) => r.poison)) throw parseErrorAtRow(1);
       return undefined;
@@ -650,7 +689,13 @@ describe("insertWithBadRowSkip", () => {
       insertAllowingBadRows,
     });
 
-    expect(outcome).toEqual({ kind: "recovered", rowsStripped: 0, rowsDropped: 0, capped: false });
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 1,
+      rowsDroppedExact: false,
+      capped: false,
+    });
   });
 
   it("rethrows non-parse errors so the caller's transient-retry path handles them", async () => {

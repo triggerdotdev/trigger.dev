@@ -181,23 +181,26 @@ export class RunsReplicationService {
    * Counts batches where every row was un-ingestable even with its JSON
    * stripped, so nothing landed. Row isolation lands anything strippable, so
    * this should stay at zero; a non-zero value means the recovery itself is
-   * failing. Counter only, does not gate behaviour.
+   * failing. Only incremented when ClickHouse's summary says so exactly
+   * (`written_rows === 0`). Counter only, does not gate behaviour.
    */
   private _permanentlyDroppedBatches = 0;
 
   /**
    * Counts batches that took the row-isolation recovery path: a
    * `Cannot parse JSON object` failure the sanitizer could not repair, where we
-   * bisected to the poison rows and landed the batch with their JSON stripped.
-   * Reliable per-event signal that user data is hitting the ceiling.
+   * followed ClickHouse's `at row N` hint to the poison rows and landed the batch
+   * with their JSON stripped. Reliable per-event signal that user data is hitting
+   * the ceiling.
    */
   private _rowIsolationRecoveries = 0;
 
   /**
-   * Counts batches whose isolation blew the per-batch insert budget (a poison
-   * flood), so the remaining rows were stripped in one insert instead of
-   * bisected further. A burst signal; clean rows in those batches also lose
-   * their JSON.
+   * Counts batches that gave up on isolating rows precisely and fell back to a
+   * single `allow_errors` insert, either because the per-batch strip budget was
+   * spent (a poison flood) or because ClickHouse gave no usable row hint. The
+   * remaining un-ingestable rows are skipped; `bailReason` in the log line says
+   * which cause it was.
    */
   private _recoveryCapHits = 0;
 
@@ -210,6 +213,8 @@ export class RunsReplicationService {
   /**
    * Counts rows dropped entirely because they could not be parsed even with
    * their JSON stripped. The true data-loss signal; expected to stay near zero.
+   * A lower bound on `task_runs_v2`, whose materialized views make the exact
+   * count underivable from ClickHouse's insert summary (see `droppedRowCount`).
    */
   private _permanentlyDroppedRows = 0;
 
@@ -290,7 +295,7 @@ export class RunsReplicationService {
 
     this._recoveryCapHitsCounter = this._meter.createCounter("runs_replication.recovery_cap_hits", {
       description:
-        "Batches whose row isolation hit the per-batch insert budget and stripped the remainder in one insert (poison-flood signal)",
+        "Batches that fell back to a single allow_errors insert instead of isolating rows, because the per-batch strip budget was spent or ClickHouse gave no usable row hint",
       unit: "batches",
     });
 
@@ -302,7 +307,7 @@ export class RunsReplicationService {
 
     this._rowsDroppedCounter = this._meter.createCounter("runs_replication.rows_dropped", {
       description:
-        "Rows dropped entirely because they could not parse even with their JSON stripped",
+        "Rows dropped entirely because they could not parse even with their JSON stripped; a lower bound on task_runs_v2, whose materialized views make the exact count underivable from ClickHouse's insert summary",
       unit: "rows",
     });
 
@@ -1232,7 +1237,7 @@ export class RunsReplicationService {
     if (outcome.rowsDropped > 0) {
       this._permanentlyDroppedRows += outcome.rowsDropped;
       this._rowsDroppedCounter.add(outcome.rowsDropped, { table: contextLabel });
-      if (outcome.rowsDropped === batchSize) {
+      if (outcome.rowsDroppedExact && outcome.rowsDropped === batchSize) {
         this._permanentlyDroppedBatches += 1;
         this._droppedBatchesCounter.add(1, { table: contextLabel });
       }

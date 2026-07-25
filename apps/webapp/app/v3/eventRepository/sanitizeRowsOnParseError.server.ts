@@ -182,10 +182,35 @@ export type JsonParseRecoveryLogger = {
   warn: (message: string, meta?: Record<string, unknown>) => void;
 };
 
+/**
+ * Why recovery stopped isolating rows and fell back to a single `allow_errors`
+ * insert. Both causes land the same way, so they share the `capped` flag and its
+ * counter; this distinguishes them in logs.
+ */
+export type RecoveryBailReason =
+  /** The per-batch strip budget (`maxPoisonStrips`) was spent. A poison flood. */
+  | "strip_budget_spent"
+  /** ClickHouse gave no usable `at row N` hint, so there was no row to strip. */
+  | "row_not_locatable"
+  /** The loop guard tripped without either of the above. Should not happen. */
+  | "strip_attempts_exhausted";
+
 export type JsonParseRecoveryOutcome =
   | { kind: "inserted"; insertResult: unknown }
   | { kind: "sanitized"; insertResult: unknown }
-  | { kind: "recovered"; rowsStripped: number; rowsDropped: number; capped: boolean };
+  | {
+      kind: "recovered";
+      rowsStripped: number;
+      rowsDropped: number;
+      /**
+       * False when `rowsDropped` is a floor rather than an exact count, which is
+       * the case on tables with row-multiplying materialized views. Callers
+       * should read `rowsDropped` as "at least this many" when this is false.
+       */
+      rowsDroppedExact: boolean;
+      capped: boolean;
+      bailReason?: RecoveryBailReason;
+    };
 
 /**
  * Default number of poison rows to isolate-and-strip precisely before bailing
@@ -265,6 +290,7 @@ export async function insertWithLimitedStrip<T extends object>(params: {
     const working = rows.slice();
     const stripped = new Array(working.length).fill(false);
     let rowsStripped = 0;
+    let bailReason: RecoveryBailReason = "strip_attempts_exhausted";
 
     let guard = maxPoisonStrips + 2;
     while (guard-- > 0) {
@@ -283,18 +309,30 @@ export async function insertWithLimitedStrip<T extends object>(params: {
             }
           );
         }
-        return { kind: "recovered", rowsStripped, rowsDropped: 0, capped: false };
+        return {
+          kind: "recovered",
+          rowsStripped,
+          rowsDropped: 0,
+          rowsDroppedExact: true,
+          capped: false,
+        };
       } catch (error) {
         if (!isClickHouseJsonParseError(error)) throw error;
         parseError = error;
       }
 
+      if (rowsStripped >= maxPoisonStrips) {
+        bailReason = "strip_budget_spent";
+        break;
+      }
+
       const hint = parseRowNumberFromError(rawErrorMessage(parseError));
       const index = hint === null ? -1 : hint - 1;
-      const canStrip =
-        rowsStripped < maxPoisonStrips && index >= 0 && index < working.length && !stripped[index];
 
-      if (!canStrip) break;
+      if (index < 0 || index >= working.length || stripped[index]) {
+        bailReason = "row_not_locatable";
+        break;
+      }
 
       working[index] = stripJsonColumns(working[index]);
       stripped[index] = true;
@@ -302,22 +340,28 @@ export async function insertWithLimitedStrip<T extends object>(params: {
     }
 
     const insertResult = await insertAllowingBadRows(working);
-    const rowsDropped = droppedRowCount(insertResult, working.length, hasMaterializedViews);
+    const dropped = droppedRowCount(insertResult, working.length, hasMaterializedViews);
 
-    logger.warn(
-      "Hit the poison-row strip limit — landed the batch via allow_errors and skipped the remaining un-ingestable rows",
-      {
-        ...logContext,
-        contextLabel,
-        batchSize: rows.length,
-        rowsStripped,
-        rowsDropped,
-        landedRows: writtenRowCount(insertResult),
-        clickhouseError: firstMessage.split("\n")[0],
-      }
-    );
+    logger.warn("Landed the batch via allow_errors and skipped the remaining un-ingestable rows", {
+      ...logContext,
+      contextLabel,
+      bailReason,
+      batchSize: rows.length,
+      rowsStripped,
+      rowsDropped: dropped.rows,
+      rowsDroppedExact: dropped.exact,
+      landedRows: writtenRowCount(insertResult),
+      clickhouseError: firstMessage.split("\n")[0],
+    });
 
-    return { kind: "recovered", rowsStripped, rowsDropped, capped: true };
+    return {
+      kind: "recovered",
+      rowsStripped,
+      rowsDropped: dropped.rows,
+      rowsDroppedExact: dropped.exact,
+      capped: true,
+      bailReason,
+    };
   }
 }
 
@@ -335,24 +379,36 @@ function writtenRowCount(insertResult: unknown): number | null {
 }
 
 /**
- * Derives how many rows a `allow_errors` insert dropped, from the insert
- * summary's `written_rows`. This is exact only when `written_rows` is a clean
- * count of the target-table rows. On tables with row-multiplying materialized
- * views, ClickHouse folds the MV-written rows into `written_rows` too, so a
- * partial-drop count isn't derivable; the only reliable signal there is
- * `written_rows === 0`, which means the whole batch was dropped (no base rows,
- * so no MV rows either).
+ * Reaching an `allow_errors` insert means the batch still failed to parse after
+ * everything cheaper was tried, so at least one row is un-ingestable and will be
+ * skipped. This is the floor we report when the exact count isn't derivable —
+ * reporting 0 there would read as "no data lost", which is the opposite of what
+ * happened.
+ */
+const MINIMUM_DROPPED_ROWS = 1;
+
+/**
+ * Derives how many rows an `allow_errors` insert dropped, from the insert
+ * summary's `written_rows`.
+ *
+ * Exact only when `written_rows` is a clean count of the target-table rows. On
+ * tables with row-multiplying materialized views ClickHouse folds the MV-written
+ * rows into `written_rows` too, so a partial-drop count isn't derivable; the only
+ * exact signal there is `written_rows === 0`, meaning the whole batch was dropped
+ * (no base rows, so no MV rows either). Everywhere else on such a table the
+ * result is the `MINIMUM_DROPPED_ROWS` floor flagged `exact: false`, so callers
+ * can say "at least one" instead of a confident zero.
  */
 function droppedRowCount(
   insertResult: unknown,
   batchSize: number,
   hasMaterializedViews: boolean
-): number {
+): { rows: number; exact: boolean } {
   const written = writtenRowCount(insertResult);
-  if (written === null) return 0;
-  if (written === 0) return batchSize;
-  if (hasMaterializedViews) return 0;
-  return Math.max(0, batchSize - written);
+  if (written === null) return { rows: MINIMUM_DROPPED_ROWS, exact: false };
+  if (written === 0) return { rows: batchSize, exact: true };
+  if (hasMaterializedViews) return { rows: MINIMUM_DROPPED_ROWS, exact: false };
+  return { rows: Math.max(0, batchSize - written), exact: true };
 }
 
 /**
@@ -370,9 +426,12 @@ function droppedRowCount(
  *      insert regardless of how many rows are bad.
  *   4. Non-parse errors propagate unchanged.
  *
- * The batch-level recovery is always counted by the caller; the per-row dropped
- * count is exact on tables without row-multiplying materialized views and
- * whole-batch-only on tables that have them (see `droppedRowCount`).
+ * The batch-level recovery is always counted by the caller. The per-row dropped
+ * count is exact on tables without row-multiplying materialized views; on tables
+ * that have them it is a floor of one flagged `rowsDroppedExact: false`, since
+ * ClickHouse's summary can't separate skipped base rows from MV rows (see
+ * `droppedRowCount`). Reaching the skip insert always means real data loss, so it
+ * logs at warn.
  */
 export async function insertWithBadRowSkip<T extends object>(params: {
   rows: T[];
@@ -412,20 +471,27 @@ export async function insertWithBadRowSkip<T extends object>(params: {
     }
 
     const insertResult = await insertAllowingBadRows(rows);
-    const rowsDropped = droppedRowCount(insertResult, rows.length, hasMaterializedViews);
+    const dropped = droppedRowCount(insertResult, rows.length, hasMaterializedViews);
 
-    logger.info(
+    logger.warn(
       "Skipped un-ingestable rows after ClickHouse JSON parse error — landed the rest of the batch",
       {
         ...logContext,
         contextLabel,
         batchSize: rows.length,
-        rowsDropped,
+        rowsDropped: dropped.rows,
+        rowsDroppedExact: dropped.exact,
         landedRows: writtenRowCount(insertResult),
         clickhouseError: firstMessage.split("\n")[0],
       }
     );
 
-    return { kind: "recovered", rowsStripped: 0, rowsDropped, capped: false };
+    return {
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: dropped.rows,
+      rowsDroppedExact: dropped.exact,
+      capped: false,
+    };
   }
 }

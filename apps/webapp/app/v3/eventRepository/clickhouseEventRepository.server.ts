@@ -121,39 +121,28 @@ export class ClickhouseEventRepository implements IEventRepository {
   private _tracer: Tracer;
   private _version: "v1" | "v2";
   /**
-   * Counts batches where every row was un-ingestable even with its JSON
-   * stripped, so nothing landed. Row isolation lands anything strippable, so
-   * this should stay at zero; a non-zero value means the recovery is failing.
+   * Counts batches where every row was un-ingestable, so nothing landed. Only
+   * incremented when ClickHouse's summary says so exactly (`written_rows === 0`);
+   * expected to stay at zero, since a whole batch of un-ingestable events means
+   * something upstream is broken rather than one bad payload.
    */
   private _permanentlyDroppedBatches = 0;
   private readonly _droppedBatchesCounter: Counter;
 
   /**
-   * Counts batches that took the row-isolation recovery path: a
-   * `Cannot parse JSON object` failure the sanitizer could not repair, where we
-   * bisected to the poison rows and landed the batch with their JSON stripped.
-   * Reliable per-event signal.
+   * Counts batches that took the bad-row-skip recovery path: a
+   * `Cannot parse JSON object` failure the sanitizer could not repair, where one
+   * `allow_errors` insert landed the good rows and skipped the un-ingestable
+   * ones. Every such batch lost at least one row, so this is the alertable
+   * signal for these tables.
    */
   private _rowIsolationRecoveries = 0;
   private readonly _rowIsolatedBatchesCounter: Counter;
 
   /**
-   * Counts batches whose isolation blew the per-batch insert budget (a poison
-   * flood), so the remaining rows were stripped in one insert. A burst signal.
-   */
-  private _recoveryCapHits = 0;
-  private readonly _recoveryCapHitsCounter: Counter;
-
-  /**
-   * Counts rows that landed with their un-ingestable JSON stripped (the span
-   * kept its place in the trace, only the attributes content was lost).
-   */
-  private _rowsStripped = 0;
-  private readonly _rowsStrippedCounter: Counter;
-
-  /**
-   * Counts rows dropped entirely because they could not parse even with their
-   * JSON stripped. The true data-loss signal; expected to stay near zero.
+   * Counts rows skipped as un-ingestable. A floor, not an exact count: these
+   * tables carry row-multiplying materialized views, so ClickHouse's insert
+   * summary can't separate skipped base rows from MV rows (see `droppedRowCount`).
    */
   private _permanentlyDroppedRows = 0;
   private readonly _rowsDroppedCounter: Counter;
@@ -171,22 +160,12 @@ export class ClickhouseEventRepository implements IEventRepository {
     });
     this._rowIsolatedBatchesCounter = meter.createCounter("ingest.flush.batches_row_isolated", {
       description:
-        "Batches recovered by isolating un-ingestable rows (landed the rest) after a ClickHouse JSON parse error",
+        "Batches recovered by skipping un-ingestable rows (landed the rest) after a ClickHouse JSON parse error; each lost at least one row",
       unit: "batches",
-    });
-    this._recoveryCapHitsCounter = meter.createCounter("ingest.flush.recovery_cap_hits", {
-      description:
-        "Batches whose row isolation hit the per-batch insert budget and stripped the remainder in one insert (poison-flood signal)",
-      unit: "batches",
-    });
-    this._rowsStrippedCounter = meter.createCounter("ingest.flush.rows_stripped", {
-      description:
-        "Rows landed with their un-ingestable JSON stripped (kept the row, lost only the JSON content)",
-      unit: "rows",
     });
     this._rowsDroppedCounter = meter.createCounter("ingest.flush.rows_dropped", {
       description:
-        "Rows dropped entirely because they could not parse even with their JSON stripped",
+        "Rows skipped as un-ingestable, as a lower bound: these tables' materialized views make the exact count underivable from ClickHouse's insert summary",
       unit: "rows",
     });
 
@@ -243,22 +222,12 @@ export class ClickhouseEventRepository implements IEventRepository {
     return this._permanentlyDroppedBatches;
   }
 
-  /** Exposed for tests and metrics — batches that took the row-isolation recovery path. */
+  /** Exposed for tests and metrics — batches that took the bad-row-skip recovery path. */
   get rowIsolationRecoveries() {
     return this._rowIsolationRecoveries;
   }
 
-  /** Exposed for tests and metrics — batches whose isolation hit the per-batch insert budget. */
-  get recoveryCapHits() {
-    return this._recoveryCapHits;
-  }
-
-  /** Exposed for tests and metrics — rows that landed with their un-ingestable JSON stripped. */
-  get rowsStripped() {
-    return this._rowsStripped;
-  }
-
-  /** Exposed for tests and metrics — rows dropped entirely (could not parse even stripped). */
+  /** Exposed for tests and metrics — rows skipped as un-ingestable (a lower bound). */
   get permanentlyDroppedRows() {
     return this._permanentlyDroppedRows;
   }
@@ -416,20 +385,10 @@ export class ClickhouseEventRepository implements IEventRepository {
     this._rowIsolationRecoveries += 1;
     this._rowIsolatedBatchesCounter.add(1, { table: contextLabel });
 
-    if (outcome.capped) {
-      this._recoveryCapHits += 1;
-      this._recoveryCapHitsCounter.add(1, { table: contextLabel });
-    }
-
-    if (outcome.rowsStripped > 0) {
-      this._rowsStripped += outcome.rowsStripped;
-      this._rowsStrippedCounter.add(outcome.rowsStripped, { table: contextLabel });
-    }
-
     if (outcome.rowsDropped > 0) {
       this._permanentlyDroppedRows += outcome.rowsDropped;
       this._rowsDroppedCounter.add(outcome.rowsDropped, { table: contextLabel });
-      if (outcome.rowsDropped === batchSize) {
+      if (outcome.rowsDroppedExact && outcome.rowsDropped === batchSize) {
         this._permanentlyDroppedBatches += 1;
         this._droppedBatchesCounter.add(1, { table: contextLabel });
       }
