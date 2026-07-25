@@ -6,6 +6,7 @@ import ReactGridLayout, { type Layout, useContainerWidth } from "react-grid-layo
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { DialogContent, DialogFooter, DialogHeader } from "../primitives/Dialog";
+import { FormError } from "../primitives/FormError";
 import { Header3 } from "../primitives/Headers";
 import { Icon, type RenderIcon } from "../primitives/Icon";
 import { Input } from "../primitives/Input";
@@ -141,7 +142,15 @@ export function CustomizeSidebarDialog({
     setState((current) => ({ ...current, labels: { ...current.labels, [itemId]: label } }));
   };
 
-  const reset = () => setState(buildState(sections, undefined));
+  // Reset restores the default layout (positions + visibility) but never touches favorite names
+  const reset = () =>
+    setState((current) => ({ ...buildState(sections, undefined), labels: current.labels }));
+
+  const hasBlankLabels = sections.some((section) =>
+    section.items.some(
+      (item) => item.isFavorite && (state.labels[item.id] ?? item.name).trim().length === 0
+    )
+  );
 
   const confirm = () => {
     const defaults = buildState(sections, undefined);
@@ -193,7 +202,9 @@ export function CustomizeSidebarDialog({
   return (
     <DialogContent className="sm:max-w-md">
       <DialogHeader>Customize sidebar</DialogHeader>
-      <div className="max-h-[60vh] space-y-6 overflow-y-auto pr-2 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+      {/* Bleeds through the container's right padding (-mr-4/pr-4) so the scrollbar sits at the
+          modal edge while the content keeps its visual inset */}
+      <div className="-mr-4 max-h-[60vh] space-y-6 overflow-y-auto pr-4 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {orderedSections.map((section, index) => (
           <div key={section.id}>
             <div className="flex items-center justify-between border-b border-grid-dimmed pb-1.5">
@@ -227,7 +238,8 @@ export function CustomizeSidebarDialog({
           </div>
         ))}
       </div>
-      <DialogFooter>
+      {/* Negative margins stretch the top divider across the modal's full width */}
+      <DialogFooter className="-mx-4 px-4">
         <div className="flex items-center gap-2">
           <DialogClose asChild>
             <Button variant="secondary/medium">Cancel</Button>
@@ -236,7 +248,7 @@ export function CustomizeSidebarDialog({
             Reset
           </Button>
         </div>
-        <Button variant="primary/medium" onClick={confirm}>
+        <Button variant="primary/medium" onClick={confirm} disabled={hasBlankLabels}>
           Confirm
         </Button>
       </DialogFooter>
@@ -367,14 +379,19 @@ function ModalItemRow({
       >
         <Icon icon={item.icon} className="size-5 shrink-0 text-text-dimmed" />
         {item.isFavorite ? (
-          <Input
-            value={label ?? item.name}
-            onChange={(e) => onLabelChange(e.target.value)}
-            variant="small"
-            maxLength={64}
-            containerClassName="max-w-60"
-            aria-label={`Rename ${item.name}`}
-          />
+          <>
+            <Input
+              value={label ?? item.name}
+              onChange={(e) => onLabelChange(e.target.value)}
+              variant="medium"
+              maxLength={64}
+              containerClassName="max-w-60"
+              aria-label={`Rename ${item.name}`}
+            />
+            {(label ?? item.name).trim().length === 0 && (
+              <FormError className="shrink-0">Name can't be blank</FormError>
+            )}
+          </>
         ) : (
           <span className="truncate text-sm text-text-bright">{item.name}</span>
         )}

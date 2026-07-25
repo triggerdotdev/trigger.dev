@@ -1,6 +1,7 @@
 import { BeakerIcon, ClockIcon } from "@heroicons/react/24/outline";
 import { useFetchers } from "@remix-run/react";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
+import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
 import { BatchesIcon } from "~/assets/icons/BatchesIcon";
@@ -8,6 +9,7 @@ import { BellIcon } from "~/assets/icons/BellIcon";
 import { Box3DIcon } from "~/assets/icons/Box3DIcon";
 import { BugIcon } from "~/assets/icons/BugIcon";
 import { ChainLinkIcon } from "~/assets/icons/ChainLinkIcon";
+import { ChartArrowIcon } from "~/assets/icons/ChartArrowIcon";
 import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
 import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
@@ -41,52 +43,95 @@ import { type RenderIcon } from "../primitives/Icon";
 export const FAVORITES_ACTION_PATH = "/resources/preferences/favorites";
 
 /**
- * Icons a favorited page can be saved with, keyed by a stable string so preferences never store
- * component references. Unknown keys fall back to the star.
+ * Marker search param appended to favorite links. It makes a favorited URL distinct from its
+ * plain counterpart, so only the favorite (never the matching main menu item) highlights as
+ * active, and the marker identifies WHICH favorite when several share a pathname.
  */
-const FAVORITE_PAGE_ICONS: Record<string, RenderIcon> = {
-  tasks: TasksIcon,
-  runs: RunsIcon,
-  sessions: AIChatIcon,
-  prompts: AIPenIcon,
-  models: Box3DIcon,
-  logs: LogsIcon,
-  errors: BugIcon,
-  query: CodeSquareIcon,
-  queues: QueuesIcon,
-  dashboards: ChartBarIcon,
-  deployments: DeploymentsIcon,
-  "environment-variables": IDIcon,
-  branches: BranchEnvironmentIconSmall,
-  regions: GlobeLinesIcon,
-  waitpoints: WaitpointTokenIcon,
-  batches: BatchesIcon,
-  "bulk-actions": ListCheckedIcon,
-  apikeys: KeyIcon,
-  alerts: BellIcon,
-  concurrency: ConcurrencyIcon,
-  limits: DialIcon,
-  schedules: ClockIcon,
-  test: BeakerIcon,
-  "project-settings": SlidersIcon,
-  integrations: IntegrationsIcon,
-  slack: SlackIcon,
-  project: FolderOpenIcon,
-  "org-settings": SlidersIcon,
-  team: UserGroupIcon,
-  billing: CreditCardIcon,
-  usage: UsageIcon,
-  roles: RolesIcon,
-  sso: PadlockIcon,
-  "private-connections": ChainLinkIcon,
-  account: AvatarCircleIcon,
-  tokens: ShieldIcon,
-  security: PadlockIcon,
-  page: StarIcon,
+export const FAVORITE_SEARCH_PARAM = "fav";
+
+/**
+ * Icons a favorited page can be saved with, keyed by a stable string so preferences never store
+ * component references, plus the icon color used when the favorite is the active page. Unknown
+ * keys fall back to the star.
+ */
+const FAVORITE_PAGE_ICONS: Record<string, { icon: RenderIcon; activeColor: string }> = {
+  tasks: { icon: TasksIcon, activeColor: "text-tasks" },
+  runs: { icon: RunsIcon, activeColor: "text-runs" },
+  sessions: { icon: AIChatIcon, activeColor: "text-sessions" },
+  prompts: { icon: AIPenIcon, activeColor: "text-aiPrompts" },
+  models: { icon: Box3DIcon, activeColor: "text-models" },
+  logs: { icon: LogsIcon, activeColor: "text-logs" },
+  errors: { icon: BugIcon, activeColor: "text-errors" },
+  query: { icon: CodeSquareIcon, activeColor: "text-query" },
+  queues: { icon: QueuesIcon, activeColor: "text-queues" },
+  dashboards: { icon: ChartBarIcon, activeColor: "text-metrics" },
+  "run-metrics": { icon: ChartArrowIcon, activeColor: "text-runs" },
+  "ai-metrics": { icon: AIMetricsIcon, activeColor: "text-aiMetrics" },
+  deployments: { icon: DeploymentsIcon, activeColor: "text-deployments" },
+  "environment-variables": { icon: IDIcon, activeColor: "text-environmentVariables" },
+  branches: { icon: BranchEnvironmentIconSmall, activeColor: "text-previewBranches" },
+  regions: { icon: GlobeLinesIcon, activeColor: "text-regions" },
+  waitpoints: { icon: WaitpointTokenIcon, activeColor: "text-sky-500" },
+  batches: { icon: BatchesIcon, activeColor: "text-batches" },
+  "bulk-actions": { icon: ListCheckedIcon, activeColor: "text-text-bright" },
+  apikeys: { icon: KeyIcon, activeColor: "text-text-bright" },
+  alerts: { icon: BellIcon, activeColor: "text-text-bright" },
+  concurrency: { icon: ConcurrencyIcon, activeColor: "text-text-bright" },
+  limits: { icon: DialIcon, activeColor: "text-text-bright" },
+  schedules: { icon: ClockIcon, activeColor: "text-schedules" },
+  test: { icon: BeakerIcon, activeColor: "text-text-bright" },
+  "project-settings": { icon: SlidersIcon, activeColor: "text-text-bright" },
+  integrations: { icon: IntegrationsIcon, activeColor: "text-text-bright" },
+  slack: { icon: SlackIcon, activeColor: "text-text-bright" },
+  project: { icon: FolderOpenIcon, activeColor: "text-text-bright" },
+  "org-settings": { icon: SlidersIcon, activeColor: "text-text-bright" },
+  team: { icon: UserGroupIcon, activeColor: "text-text-bright" },
+  billing: { icon: CreditCardIcon, activeColor: "text-text-bright" },
+  usage: { icon: UsageIcon, activeColor: "text-text-bright" },
+  roles: { icon: RolesIcon, activeColor: "text-text-bright" },
+  sso: { icon: PadlockIcon, activeColor: "text-text-bright" },
+  "private-connections": { icon: ChainLinkIcon, activeColor: "text-text-bright" },
+  account: { icon: AvatarCircleIcon, activeColor: "text-text-bright" },
+  tokens: { icon: ShieldIcon, activeColor: "text-text-bright" },
+  security: { icon: PadlockIcon, activeColor: "text-text-bright" },
+  page: { icon: StarIcon, activeColor: "text-text-bright" },
 };
 
 export function favoritePageIcon(iconKey: string | undefined): RenderIcon {
-  return (iconKey ? FAVORITE_PAGE_ICONS[iconKey] : undefined) ?? StarIcon;
+  return (iconKey ? FAVORITE_PAGE_ICONS[iconKey]?.icon : undefined) ?? StarIcon;
+}
+
+export function favoritePageActiveColor(iconKey: string | undefined): string {
+  return (iconKey ? FAVORITE_PAGE_ICONS[iconKey]?.activeColor : undefined) ?? "text-text-bright";
+}
+
+/** Href for a favorite: its saved URL plus the marker param (see FAVORITE_SEARCH_PARAM). */
+export function favoriteLinkTo(favorite: FavoritePage): string {
+  const [path, search = ""] = favorite.url.split("?");
+  const params = new URLSearchParams(search);
+  params.set(FAVORITE_SEARCH_PARAM, favorite.id);
+  return `${path}?${params.toString()}`;
+}
+
+/** The current location's search string without the favorite marker, for saving/matching URLs. */
+export function stripFavoriteSearchParam(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete(FAVORITE_SEARCH_PARAM);
+  const result = params.toString();
+  return result.length > 0 ? `?${result}` : "";
+}
+
+/** A favorite is active when its marker param is in the URL and the pathname still matches. */
+export function isFavoriteActive(
+  favorite: FavoritePage,
+  pathname: string,
+  search: string
+): boolean {
+  const favoritePath = favorite.url.split("?")[0];
+  return (
+    pathname === favoritePath &&
+    new URLSearchParams(search).get(FAVORITE_SEARCH_PARAM) === favorite.id
+  );
 }
 
 type PageMeta = {
@@ -153,6 +198,11 @@ export function resolvePageMeta(pathname: string): PageMeta {
       return segments[1] === "integrations"
         ? { icon: "integrations", name: "Integrations" }
         : { icon: "project-settings", name: "Project settings" };
+    }
+    if (first === "dashboards") {
+      // The built-in metric dashboards have their own identities (and icons)
+      if (segments[1] === "overview") return { icon: "run-metrics", name: "Run metrics" };
+      if (segments[1] === "llm") return { icon: "ai-metrics", name: "AI metrics" };
     }
     return ENV_PAGE_META[first] ?? { icon: "page", name: "Page" };
   }

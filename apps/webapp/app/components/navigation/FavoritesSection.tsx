@@ -1,5 +1,5 @@
 import { EllipsisHorizontalIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
-import { useFetcher, useLocation, useNavigation } from "@remix-run/react";
+import { useLocation, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
 import { cn } from "~/utils/cn";
@@ -10,23 +10,35 @@ import {
   PopoverCustomTrigger,
   PopoverMenuItem,
 } from "../primitives/Popover";
-import { favoritePageIcon, FAVORITES_ACTION_PATH } from "./favoritePages";
+import {
+  favoriteLinkTo,
+  favoritePageActiveColor,
+  favoritePageIcon,
+  isFavoriteActive,
+} from "./favoritePages";
 import { SideMenuItem } from "./SideMenuItem";
+import { SIDE_MENU_POPOVER_ITEM_ICON, SIDE_MENU_POPOVER_ITEM_LABEL } from "./sideMenuTypes";
 
 /**
  * A favorited page in the side menu. Renders like a normal menu item, with an ellipsis menu
  * (Rename/Remove) that appears on hover, and an inline-editable label while renaming.
+ *
+ * Mutations are submitted by the SideMenu (not here): removing a favorite unmounts this item
+ * optimistically, and a fetcher owned by an unmounting component gets its request aborted.
  */
 export function FavoriteMenuItem({
   favorite,
   isCollapsed,
+  onRemove,
+  onRename,
 }: {
   favorite: FavoritePage;
   isCollapsed: boolean;
+  onRemove: (id: string) => void;
+  onRename: (id: string, label: string) => void;
 }) {
   const location = useLocation();
   const navigation = useNavigation();
-  const fetcher = useFetcher();
   const [isEditing, setIsEditing] = useState(false);
   const [isMenuOpen, setMenuOpen] = useState(false);
 
@@ -35,24 +47,14 @@ export function FavoriteMenuItem({
   }, [navigation.location?.pathname]);
 
   const icon = favoritePageIcon(favorite.icon);
-  const isActive = location.pathname + location.search === favorite.url;
+  const isActive = isFavoriteActive(favorite, location.pathname, location.search);
 
   const submitRename = (value: string) => {
     setIsEditing(false);
     const label = value.trim();
     // An empty or unchanged submit reverts to the saved label
     if (label.length === 0 || label === favorite.label) return;
-    fetcher.submit(
-      { intent: "rename", id: favorite.id, label },
-      { method: "POST", action: FAVORITES_ACTION_PATH }
-    );
-  };
-
-  const remove = () => {
-    fetcher.submit(
-      { intent: "remove", id: favorite.id },
-      { method: "POST", action: FAVORITES_ACTION_PATH }
-    );
+    onRename(favorite.id, label);
   };
 
   if (isEditing && !isCollapsed) {
@@ -70,9 +72,9 @@ export function FavoriteMenuItem({
     <SideMenuItem
       name={favorite.label}
       icon={icon}
-      activeIconColor="text-text-bright"
+      activeIconColor={favoritePageActiveColor(favorite.icon)}
       inactiveIconColor="text-text-dimmed"
-      to={favorite.url}
+      to={favoriteLinkTo(favorite)}
       isCollapsed={isCollapsed}
       isActive={isActive}
       data-action="favorite"
@@ -99,7 +101,8 @@ export function FavoriteMenuItem({
                 <PopoverMenuItem
                   icon={PencilSquareIcon}
                   title="Rename"
-                  leadingIconClassName="size-4 text-text-dimmed"
+                  leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+                  className={SIDE_MENU_POPOVER_ITEM_LABEL}
                   onClick={() => {
                     setMenuOpen(false);
                     setIsEditing(true);
@@ -109,10 +112,11 @@ export function FavoriteMenuItem({
                   icon={TrashIcon}
                   title="Remove"
                   danger
-                  leadingIconClassName="size-4"
+                  leadingIconClassName="h-5 w-5"
+                  className={SIDE_MENU_POPOVER_ITEM_LABEL}
                   onClick={() => {
                     setMenuOpen(false);
-                    remove();
+                    onRemove(favorite.id);
                   }}
                 />
               </div>

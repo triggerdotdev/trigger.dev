@@ -59,8 +59,9 @@ export function SideMenuSection({
         <button
           type="button"
           // A real button for native keyboard toggle + focus ring. Out of the tab order when the
-          // menu is collapsed (the header is hidden and can't be toggled).
-          className="group/section flex w-full cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 hover:bg-background-hover focus-custom"
+          // menu is collapsed (the header is hidden and can't be toggled). Hover styles key off
+          // the wrapper group so the header stays highlighted while hovering the overlaid menu.
+          className="group/section flex w-full cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 group-hover/sectionheader:bg-background-hover focus-custom"
           onClick={isSideMenuCollapsed ? undefined : handleToggle}
           tabIndex={isSideMenuCollapsed ? -1 : undefined}
           aria-expanded={!isCollapsed}
@@ -69,7 +70,7 @@ export function SideMenuSection({
             cursor: isSideMenuCollapsed ? "default" : "pointer",
           }}
         >
-          <div className="flex items-center gap-1 text-text-dimmed group-hover/section:text-text-bright">
+          <div className="flex items-center gap-1 text-text-dimmed group-hover/sectionheader:text-text-bright">
             <h2 className="whitespace-nowrap text-xs">{title}</h2>
             <motion.div
               initial={isCollapsed}

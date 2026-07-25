@@ -156,14 +156,25 @@ import {
 import { CreateDashboardButton } from "./DashboardDialogs";
 import { DashboardList } from "./DashboardList";
 import { EnvironmentSelector } from "./EnvironmentSelector";
-import { favoritePageIcon, useFavorites } from "./favoritePages";
+import {
+  FAVORITES_ACTION_PATH,
+  favoriteLinkTo,
+  favoritePageIcon,
+  useFavorites,
+} from "./favoritePages";
 import { FavoriteMenuItem } from "./FavoritesSection";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { NotificationPanel } from "./NotificationPanel";
 import { SideMenuHeader } from "./SideMenuHeader";
-import { SideMenuItem } from "./SideMenuItem";
+import { SideMenuItem, SideMenuLabel } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { isItemHidden, orderByPreference, type SideMenuSectionId } from "./sideMenuTypes";
+import {
+  isItemHidden,
+  orderByPreference,
+  SIDE_MENU_POPOVER_ITEM_ICON,
+  SIDE_MENU_POPOVER_ITEM_LABEL,
+  type SideMenuSectionId,
+} from "./sideMenuTypes";
 
 /** Get the collapsed state for a specific side menu section from user preferences */
 function getSectionCollapsed(
@@ -197,11 +208,6 @@ type SideMenuSectionConfig = {
   title: string;
   items: SideMenuItemConfig[];
 };
-
-// Size popover items (org/project menus) to match the side-menu items, overriding the smaller
-// small-menu-item defaults via tailwind-merge; icon carries the default dimmed color.
-const SIDE_MENU_POPOVER_ITEM_ICON = "h-5 w-5 text-text-dimmed";
-const SIDE_MENU_POPOVER_ITEM_LABEL = "text-[0.90625rem] font-medium tracking-[-0.01em]";
 
 // Impersonation accent (menu border + "Stop impersonating"). Full class strings so Tailwind's
 // static scanner picks them up.
@@ -394,6 +400,21 @@ export function SideMenu({
     customizationFetcher.submit(
       { customization: JSON.stringify(payload) },
       { method: "POST", action: "/resources/preferences/sidemenu" }
+    );
+  };
+  // Same ownership rule: removing a favorite optimistically unmounts its menu item (and, for the
+  // last favorite, the whole section), which would abort an item-owned fetcher mid-request.
+  const favoriteActionsFetcher = useFetcher();
+  const removeFavorite = (id: string) => {
+    favoriteActionsFetcher.submit(
+      { intent: "remove", id },
+      { method: "POST", action: FAVORITES_ACTION_PATH }
+    );
+  };
+  const renameFavorite = (id: string, label: string) => {
+    favoriteActionsFetcher.submit(
+      { intent: "rename", id, label },
+      { method: "POST", action: FAVORITES_ACTION_PATH }
     );
   };
 
@@ -1123,6 +1144,9 @@ export function SideMenu({
                     initialCollapsed={getSectionCollapsed(sideMenuPrefs, "favorites")}
                     onCollapseToggle={handleSectionToggle("favorites")}
                     headerMenu={sectionHeaderMenu}
+                    onCustomize={() => setCustomizeOpen(true)}
+                    onRemoveFavorite={removeFavorite}
+                    onRenameFavorite={renameFavorite}
                   />
                 );
               }
@@ -1140,6 +1164,7 @@ export function SideMenu({
                   initialCollapsed={getSectionCollapsed(sideMenuPrefs, section.id)}
                   onCollapseToggle={handleSectionToggle(section.id)}
                   headerMenu={sectionHeaderMenu}
+                  onCustomize={() => setCustomizeOpen(true)}
                 />
               );
             })}
@@ -1218,6 +1243,7 @@ function CustomizableSideMenuSection({
   initialCollapsed,
   onCollapseToggle,
   headerMenu,
+  onCustomize,
 }: {
   section: SideMenuSectionConfig;
   itemOrder: string[] | undefined;
@@ -1226,6 +1252,7 @@ function CustomizableSideMenuSection({
   initialCollapsed: boolean;
   onCollapseToggle: (collapsed: boolean) => void;
   headerMenu: ReactNode;
+  onCustomize: () => void;
 }) {
   const orderedItems = orderByPreference(section.items, itemOrder);
   const visibleItems = orderedItems.filter((item) => !isItemHidden(item, hiddenItems));
@@ -1266,6 +1293,7 @@ function CustomizableSideMenuSection({
             to: item.to,
           }))}
           isCollapsed={isCollapsed}
+          onCustomize={onCustomize}
         />
       )}
     </SideMenuSection>
@@ -1280,6 +1308,9 @@ function FavoritesSideMenuSection({
   initialCollapsed,
   onCollapseToggle,
   headerMenu,
+  onCustomize,
+  onRemoveFavorite,
+  onRenameFavorite,
 }: {
   favorites: FavoritePage[];
   hiddenItems: Record<string, boolean> | undefined;
@@ -1287,6 +1318,9 @@ function FavoritesSideMenuSection({
   initialCollapsed: boolean;
   onCollapseToggle: (collapsed: boolean) => void;
   headerMenu: ReactNode;
+  onCustomize: () => void;
+  onRemoveFavorite: (id: string) => void;
+  onRenameFavorite: (id: string, label: string) => void;
 }) {
   const visible = favorites.filter((favorite) => !(hiddenItems?.[favorite.id] ?? false));
   const hidden = favorites.filter((favorite) => hiddenItems?.[favorite.id] ?? false);
@@ -1301,7 +1335,13 @@ function FavoritesSideMenuSection({
       headerMenu={headerMenu}
     >
       {visible.map((favorite) => (
-        <FavoriteMenuItem key={favorite.id} favorite={favorite} isCollapsed={isCollapsed} />
+        <FavoriteMenuItem
+          key={favorite.id}
+          favorite={favorite}
+          isCollapsed={isCollapsed}
+          onRemove={onRemoveFavorite}
+          onRename={onRenameFavorite}
+        />
       ))}
       {hidden.length > 0 && (
         <SideMenuMoreItem
@@ -1309,9 +1349,10 @@ function FavoritesSideMenuSection({
             id: favorite.id,
             name: favorite.label,
             icon: favoritePageIcon(favorite.icon),
-            to: favorite.url,
+            to: favoriteLinkTo(favorite),
           }))}
           isCollapsed={isCollapsed}
+          onCustomize={onCustomize}
         />
       )}
     </SideMenuSection>
@@ -1325,9 +1366,11 @@ function FavoritesSideMenuSection({
 function SideMenuMoreItem({
   items,
   isCollapsed,
+  onCustomize,
 }: {
   items: Array<{ id: string; name: string; icon: RenderIcon; to: string }>;
   isCollapsed: boolean;
+  onCustomize: () => void;
 }) {
   const [isOpen, setOpen] = useState(false);
   const navigation = useNavigation();
@@ -1342,12 +1385,12 @@ function SideMenuMoreItem({
         button={
           <PopoverTrigger className="flex h-8 w-full items-center gap-2 overflow-hidden rounded pl-1.75 pr-2 text-text-dimmed hover:bg-background-hover hover:text-text-bright focus-custom data-[state=open]:bg-background-hover data-[state=open]:text-text-bright">
             <EllipsisHorizontalIcon className="size-5 shrink-0" />
-            <span
-              className="min-w-0 flex-1 select-none truncate text-left text-[0.90625rem] font-medium tracking-[-0.01em]"
+            <SideMenuLabel
+              className="min-w-0 flex-1 select-none text-left text-[0.90625rem] font-medium tracking-[-0.01em]"
               style={{ opacity: "var(--sm-label-opacity, 1)" }}
             >
               More
-            </span>
+            </SideMenuLabel>
           </PopoverTrigger>
         }
         content="More"
@@ -1358,8 +1401,8 @@ function SideMenuMoreItem({
         tabbable
         disableHoverableContent
       />
-      <PopoverContent className="min-w-44 p-1" side="right" align="start" sideOffset={4}>
-        <div className="flex flex-col gap-1">
+      <PopoverContent className="min-w-44 p-0" side="right" align="start" sideOffset={4}>
+        <div className="flex flex-col gap-1 p-1">
           {items.map((item) => (
             <PopoverMenuItem
               key={item.id}
@@ -1370,6 +1413,18 @@ function SideMenuMoreItem({
               className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           ))}
+        </div>
+        <div className="border-t border-grid-bright p-1">
+          <PopoverMenuItem
+            icon={PencilSquareIcon}
+            title="Customize sidebar"
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
+            onClick={() => {
+              setOpen(false);
+              onCustomize();
+            }}
+          />
         </div>
       </PopoverContent>
     </Popover>
@@ -1392,7 +1447,8 @@ function SectionHeaderMenu({ onCustomize }: { onCustomize: () => void }) {
         <PopoverMenuItem
           icon={PencilSquareIcon}
           title="Customize sidebar"
-          leadingIconClassName="size-4 text-text-dimmed"
+          leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+          className={SIDE_MENU_POPOVER_ITEM_LABEL}
           onClick={() => {
             setOpen(false);
             onCustomize();

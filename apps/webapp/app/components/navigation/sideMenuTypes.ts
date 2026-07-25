@@ -14,6 +14,11 @@ export const SideMenuSectionIdSchema = z.enum([
 // Inferred type from the schema
 export type SideMenuSectionId = z.infer<typeof SideMenuSectionIdSchema>;
 
+// Size popover items to match the side-menu items, overriding the smaller small-menu-item
+// defaults via tailwind-merge; icon carries the default dimmed color.
+export const SIDE_MENU_POPOVER_ITEM_ICON = "h-5 w-5 text-text-dimmed";
+export const SIDE_MENU_POPOVER_ITEM_LABEL = "text-[0.90625rem] font-medium tracking-[-0.01em]";
+
 /** Default top-to-bottom order of the customizable side menu sections. */
 export const DEFAULT_SECTION_ORDER: SideMenuSectionId[] = [
   "favorites",

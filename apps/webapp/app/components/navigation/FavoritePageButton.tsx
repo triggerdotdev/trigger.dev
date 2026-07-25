@@ -12,6 +12,7 @@ import {
   buildFavoriteLabel,
   FAVORITES_ACTION_PATH,
   resolvePageMeta,
+  stripFavoriteSearchParam,
   useFavorites,
 } from "./favoritePages";
 
@@ -27,10 +28,13 @@ export function FavoritePageButton({ pageTitle }: { pageTitle?: string }) {
   const fetcher = useFetcher();
   const { areShortcutsEnabled } = useShortcuts();
 
-  const url = location.pathname + location.search;
+  // The favorite marker param is presentation-only, so it never counts toward URL identity
+  const url = location.pathname + stripFavoriteSearchParam(location.search);
   const existing = favorites.find((favorite) => favorite.url === url);
   const isFavorited = existing !== undefined;
-  const pageName = pageTitle?.trim() || resolvePageMeta(location.pathname).name;
+  // A renamed favorite keeps its custom name in the tooltip
+  const pageName =
+    existing?.label ?? (pageTitle?.trim() || resolvePageMeta(location.pathname).name);
 
   const toggle = () => {
     if (existing) {
@@ -119,7 +123,7 @@ export function FavoritePageButton({ pageTitle }: { pageTitle?: string }) {
               isFavorited ? (
                 <StarIconSolid className="size-4 text-yellow-500" />
               ) : (
-                <StarIconOutline className="size-4 text-text-dimmed" />
+                <StarIconOutline className="size-4 text-text-dimmed transition-colors group-hover/button:text-text-bright" />
               )
             }
           />
