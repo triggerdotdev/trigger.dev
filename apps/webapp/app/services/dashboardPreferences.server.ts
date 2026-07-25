@@ -130,6 +130,16 @@ export async function updateCurrentProjectEnvironmentId({
     return;
   }
 
+  // Fast path: this runs on nearly every navigation (env layout loader), so skip the locked
+  // transaction when the session snapshot already matches. The in-transaction check below stays
+  // authoritative for the rare stale-snapshot case.
+  if (
+    user.dashboardPreferences.currentProjectId === projectId &&
+    user.dashboardPreferences.projects[projectId]?.currentEnvironment?.id === environmentId
+  ) {
+    return;
+  }
+
   return mutateDashboardPreferences(user.id, (prefs) => {
     //only update if the existing preferences are different
     if (

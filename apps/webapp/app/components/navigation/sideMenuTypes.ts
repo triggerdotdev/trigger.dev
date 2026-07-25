@@ -41,7 +41,8 @@ export function orderByPreference<T extends { id: string }>(
   if (!savedOrder || savedOrder.length === 0) return entries;
 
   const defaultIndex = new Map(entries.map((entry, index) => [entry.id, index]));
-  const orderedIds = savedOrder.filter((id) => defaultIndex.has(id));
+  // Set-dedupe: a corrupted saved order with duplicate ids must not render an entry twice
+  const orderedIds = [...new Set(savedOrder.filter((id) => defaultIndex.has(id)))];
   const missingIds = entries.map((entry) => entry.id).filter((id) => !orderedIds.includes(id));
 
   for (const id of missingIds) {

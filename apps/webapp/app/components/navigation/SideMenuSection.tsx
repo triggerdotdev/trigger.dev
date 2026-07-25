@@ -90,7 +90,8 @@ export function SideMenuSection({
               className="absolute right-1 top-1/2 -translate-y-1/2"
               style={{ opacity: "var(--sm-label-opacity, 1)" }}
             >
-              <div className="opacity-0 has-[[data-state=open]]:opacity-100 group-hover/sectionheader:opacity-100">
+              {/* focus-within keeps the trigger visible for keyboard users tabbing onto it */}
+              <div className="opacity-0 focus-within:opacity-100 has-[[data-state=open]]:opacity-100 group-hover/sectionheader:opacity-100">
                 {headerMenu}
               </div>
             </div>

@@ -45,9 +45,10 @@ export function FavoriteMenuItem({
   const [isEditing, setIsEditing] = useState(false);
   const [isMenuOpen, setMenuOpen] = useState(false);
 
+  // Watch search too: navigating to a favorite can change only the search on the same pathname
   useEffect(() => {
     setMenuOpen(false);
-  }, [navigation.location?.pathname]);
+  }, [navigation.location?.pathname, navigation.location?.search]);
 
   const icon = favoritePageIcon(favorite.icon);
   const isActive = isFavoriteActive(favorite, location.pathname, location.search);

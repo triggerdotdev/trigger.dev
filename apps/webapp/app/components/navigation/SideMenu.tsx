@@ -406,15 +406,18 @@ export function SideMenu({
   };
   // Same ownership rule: removing a favorite optimistically unmounts its menu item (and, for the
   // last favorite, the whole section), which would abort an item-owned fetcher mid-request.
-  const favoriteActionsFetcher = useFetcher();
+  // Separate fetchers per mutation: fetchers are single-flight, so a shared one would cancel an
+  // in-flight rename when a remove follows quickly (or vice versa).
+  const removeFavoriteFetcher = useFetcher();
+  const renameFavoriteFetcher = useFetcher();
   const removeFavorite = (id: string) => {
-    favoriteActionsFetcher.submit(
+    removeFavoriteFetcher.submit(
       { intent: "remove", id },
       { method: "POST", action: FAVORITES_ACTION_PATH }
     );
   };
   const renameFavorite = (id: string, label: string) => {
-    favoriteActionsFetcher.submit(
+    renameFavoriteFetcher.submit(
       { intent: "rename", id, label },
       { method: "POST", action: FAVORITES_ACTION_PATH }
     );
@@ -1379,9 +1382,10 @@ function SideMenuMoreItem({
   const [isOpen, setOpen] = useState(false);
   const navigation = useNavigation();
 
+  // Watch search too: navigating to a favorite can change only the search on the same pathname
   useEffect(() => {
     setOpen(false);
-  }, [navigation.location?.pathname]);
+  }, [navigation.location?.pathname, navigation.location?.search]);
 
   return (
     <Popover open={isOpen} onOpenChange={setOpen}>
