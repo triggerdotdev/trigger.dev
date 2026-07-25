@@ -8,6 +8,7 @@ import {
   removeOrgMemberForDirectory,
 } from "~/models/orgMember.server";
 import { createPlatformNotification } from "~/services/platformNotifications.server";
+import { getSsoEntitlement, type SsoEntitlement } from "~/services/platform.v3.server";
 
 const LAST_OWNER_NOTIFICATION_TITLE = "Directory Sync: last Owner protected";
 
@@ -145,8 +146,37 @@ async function applyEffect(effect: DirectorySyncEffect): Promise<void> {
   }
 }
 
+/**
+ * Applies membership effects, skipping any org that isn't entitled to SSO.
+ *
+ * An unreadable entitlement throws rather than skipping: effects are
+ * idempotent and the worker retries, so retrying is lossless where dropping
+ * would silently lose a directory change.
+ */
 export async function applyDirectorySyncEffects(effects: DirectorySyncEffect[]): Promise<void> {
+  const entitlements = new Map<string, SsoEntitlement>();
+
   for (const effect of effects) {
+    let entitlement = entitlements.get(effect.organizationId);
+    if (entitlement === undefined) {
+      entitlement = await getSsoEntitlement(effect.organizationId);
+      entitlements.set(effect.organizationId, entitlement);
+    }
+
+    if (entitlement === "unknown") {
+      throw retryableEffectError(
+        `directory sync: could not read the SSO entitlement for organization ${effect.organizationId}`
+      );
+    }
+
+    if (entitlement === "not_entitled") {
+      logger.warn("Directory Sync: skipping effect for org without the SSO entitlement", {
+        organizationId: effect.organizationId,
+        kind: effect.kind,
+      });
+      continue;
+    }
+
     await applyEffect(effect);
   }
 }

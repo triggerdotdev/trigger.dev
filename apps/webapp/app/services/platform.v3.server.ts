@@ -196,6 +196,11 @@ function initializePlatformCache() {
       fresh: 60_000,
       stale: 120_000,
     }),
+    ssoEntitlement: new Namespace<boolean>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: 60_000,
+      stale: 120_000,
+    }),
   });
 
   return cache;
@@ -206,6 +211,7 @@ const platformCache = singleton("platformCache", initializePlatformCache);
 function invalidateBillingLimitCaches(organizationId: string) {
   platformCache.billingLimit.remove(organizationId).catch(() => {});
   platformCache.entitlement.remove(organizationId).catch(() => {});
+  platformCache.ssoEntitlement.remove(organizationId).catch(() => {});
 }
 
 export function bustBillingLimitCaches(organizationId: string) {
@@ -755,6 +761,45 @@ export async function getEntitlement(
   }
 
   return result.val;
+}
+
+export type SsoEntitlement = "entitled" | "not_entitled" | "unknown";
+
+/**
+ * Whether an org may configure and use SSO / Directory Sync.
+ *
+ * `unknown` means billing was configured but unreadable — callers decide:
+ * read paths show the upsell, mutations refuse, and the directory-sync
+ * worker throws so the effect is retried rather than silently dropped.
+ *
+ * Self-hosted deployments have no billing service, so the plugin's presence
+ * (plus the kill switch) is the only gate and this returns `entitled`.
+ *
+ * Loader errors are swallowed inside the loader for the same reason as
+ * `getEntitlement`: @unkey/cache passes the loader promise to waitUntil()
+ * with no .catch(), and returning undefined stops a transient billing
+ * failure from being cached as an access decision.
+ */
+export async function getSsoEntitlement(organizationId: string): Promise<SsoEntitlement> {
+  if (!client) return "entitled";
+
+  const result = await platformCache.ssoEntitlement.swr(organizationId, async () => {
+    try {
+      const response = await client.currentPlan(organizationId);
+      if (!response.success) {
+        recordPlatformFailure("getSsoEntitlement", "no_success");
+        return undefined;
+      }
+      return response.v3Subscription?.plan?.limits?.hasSso === true;
+    } catch (_e) {
+      recordPlatformFailure("getSsoEntitlement", "caught");
+      return undefined;
+    }
+  });
+
+  if (result.err || result.val === undefined) return "unknown";
+
+  return result.val ? "entitled" : "not_entitled";
 }
 
 export type PromoCreditsData = {

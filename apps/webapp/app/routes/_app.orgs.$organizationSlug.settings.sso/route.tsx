@@ -39,7 +39,7 @@ import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
-import { getCurrentPlan } from "~/services/platform.v3.server";
+import { getSsoEntitlement } from "~/services/platform.v3.server";
 import type { DirectorySyncEffect, DirectorySyncStatus, Role } from "@trigger.dev/plugins";
 import { applyDirectorySyncEffects } from "~/services/directorySyncEffects.server";
 import { flag } from "~/v3/featureFlags.server";
@@ -64,15 +64,15 @@ async function resolveOrg(slug: string) {
 
 function planAllowsSso(plan: unknown): boolean {
   if (!plan || typeof plan !== "object") return false;
-  const subscription = (plan as { v3Subscription?: { plan?: { code?: string } } }).v3Subscription;
-  return subscription?.plan?.code === "enterprise";
+  const subscription = (plan as { v3Subscription?: { plan?: { limits?: { hasSso?: boolean } } } })
+    .v3Subscription;
+  return subscription?.plan?.limits?.hasSso === true;
 }
 
 // Client-side upsell is cosmetic; gate real IdP mutations server-side.
 async function requireSsoEntitlement(orgId: string): Promise<void> {
-  const plan = await getCurrentPlan(orgId);
-  if (!planAllowsSso(plan)) {
-    throw new Response("SSO requires an Enterprise plan", { status: 403 });
+  if ((await getSsoEntitlement(orgId)) !== "entitled") {
+    throw new Response("This organization is not entitled to SSO", { status: 403 });
   }
 }
 
@@ -142,10 +142,7 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    // Not Enterprise: render the upsell for every role, skip role check +
-    // queries, return empty data.
-    const plan = await getCurrentPlan(orgId);
-    if (!planAllowsSso(plan)) {
+    if ((await getSsoEntitlement(orgId)) !== "entitled") {
       return typedjson({
         status: EMPTY_SSO_STATUS,
         orgTitle: context.orgTitle,
