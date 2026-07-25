@@ -61,7 +61,7 @@ export function runRealChatAgent(opts: RunRealChatAgentOptions): RunningAgent {
   });
   const apiClient = apiClientManager.clientOrThrow();
   const manager = new StandardSessionStreamManager(apiClient, opts.baseUrl);
-  const { runtimeManager, restore } = installSessionWaitpointBackend(apiClient);
+  const { backend, runtimeManager, restore } = installSessionWaitpointBackend(apiClient);
 
   const taskEntry = resourceCatalog.getTask(opts.agentId);
   if (!taskEntry) {
@@ -74,6 +74,11 @@ export function runRealChatAgent(opts: RunRealChatAgentOptions): RunningAgent {
   ) => Promise<unknown>;
 
   const runSignal = new AbortController();
+  runSignal.signal.addEventListener("abort", () => {
+    try {
+      backend.disable();
+    } catch {}
+  });
   const runId = opts.runId ?? `run_${opts.addressingKey}`;
 
   const idle =
@@ -128,10 +133,7 @@ export function runRealChatAgent(opts: RunRealChatAgentOptions): RunningAgent {
         );
       } catch {}
       runSignal.abort();
-      await Promise.race([
-        done.catch(() => {}),
-        new Promise((resolve) => setTimeout(resolve, 10_000)),
-      ]);
+      await done.catch(() => {});
     },
   };
 }

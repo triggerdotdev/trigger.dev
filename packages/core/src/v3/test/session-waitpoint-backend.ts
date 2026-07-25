@@ -58,6 +58,7 @@ function parseTimeoutMs(timeout: string | undefined): number | undefined {
  */
 export class SessionWaitpointBackend {
   private readonly pending = new Map<string, PendingWait>();
+  private disabled = false;
 
   constructor(private readonly apiClient: ApiClient) {}
 
@@ -76,11 +77,17 @@ export class SessionWaitpointBackend {
   }
 
   async wait(waitpointFriendlyId: string): Promise<WaitpointTokenResult> {
+    if (this.disabled) {
+      return {
+        ok: false,
+        output: JSON.stringify({ message: "Session waitpoint backend disabled" }),
+        outputType: "application/json",
+      };
+    }
     const pending = this.pending.get(waitpointFriendlyId);
     if (!pending) {
       return { ok: true };
     }
-    this.pending.delete(waitpointFriendlyId);
 
     const timeoutMs = parseTimeoutMs(pending.timeout);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -118,10 +125,12 @@ export class SessionWaitpointBackend {
       if (timer) {
         clearTimeout(timer);
       }
+      this.pending.delete(waitpointFriendlyId);
     }
   }
 
   disable(): void {
+    this.disabled = true;
     for (const pending of this.pending.values()) {
       pending.abort.abort();
     }
