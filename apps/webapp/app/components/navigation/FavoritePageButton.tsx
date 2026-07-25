@@ -1,6 +1,6 @@
 import { StarIcon as StarIconOutline } from "@heroicons/react/24/outline";
 import { StarIcon as StarIconSolid } from "@heroicons/react/20/solid";
-import { useFetcher, useLocation } from "@remix-run/react";
+import { useFetcher, useLocation, useSearchParams } from "@remix-run/react";
 import { useEffect, useRef } from "react";
 import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
@@ -10,6 +10,7 @@ import { useShortcuts } from "../primitives/ShortcutsProvider";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import {
   buildFavoriteLabel,
+  FAVORITE_SEARCH_PARAM,
   FAVORITES_ACTION_PATH,
   resolvePageMeta,
   stripFavoriteSearchParam,
@@ -27,9 +28,28 @@ export function FavoritePageButton({ pageTitle }: { pageTitle?: string }) {
   const favorites = useFavorites();
   const fetcher = useFetcher();
   const { areShortcutsEnabled } = useShortcuts();
+  const [, setSearchParams] = useSearchParams();
 
   // The favorite marker param is presentation-only, so it never counts toward URL identity
   const url = location.pathname + stripFavoriteSearchParam(location.search);
+
+  // A marker that isn't one of this user's favorites came from a shared link (or a favorite
+  // that's since been removed): clean it from the URL so the page behaves like a normal visit.
+  const marker = new URLSearchParams(location.search).get(FAVORITE_SEARCH_PARAM);
+  const hasForeignMarker =
+    user !== undefined && marker !== null && !favorites.some((f) => f.id === marker);
+
+  useEffect(() => {
+    if (!hasForeignMarker) return;
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete(FAVORITE_SEARCH_PARAM);
+        return next;
+      },
+      { replace: true, preventScrollReset: true }
+    );
+  }, [hasForeignMarker, setSearchParams]);
   const existing = favorites.find((favorite) => favorite.url === url);
   const isFavorited = existing !== undefined;
   // The tooltip names the favorite: its custom name once saved, else the label saving would use

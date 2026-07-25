@@ -203,8 +203,9 @@ export function CustomizeSidebarDialog({
     <DialogContent className="sm:max-w-md">
       <DialogHeader>Customize sidebar</DialogHeader>
       {/* Bleeds through the container's right padding (-mr-4/pr-4) so the scrollbar sits at the
-          modal edge while the content keeps its visual inset */}
-      <div className="-mr-4 max-h-[60vh] space-y-6 overflow-y-auto pr-4 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          modal edge, and through the vertical grid gaps (-mt-1.25/-mb-4) so content scrolls flush
+          against the header divider and the footer's top border */}
+      <div className="-mb-4 -mr-4 -mt-1.25 max-h-[60vh] space-y-6 overflow-y-auto pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {orderedSections.map((section, index) => (
           <div key={section.id}>
             <div className="flex items-center justify-between border-b border-grid-dimmed pb-1.5">

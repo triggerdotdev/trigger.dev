@@ -1,5 +1,5 @@
 import { BeakerIcon, ClockIcon } from "@heroicons/react/24/outline";
-import { useFetchers } from "@remix-run/react";
+import { useFetchers, useLocation } from "@remix-run/react";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
@@ -132,6 +132,21 @@ export function isFavoriteActive(
     pathname === favoritePath &&
     new URLSearchParams(search).get(FAVORITE_SEARCH_PARAM) === favorite.id
   );
+}
+
+/**
+ * The id of the favorite driving the current view: the URL's marker param, but only when it
+ * belongs to one of the current user's favorites. A marker arriving via someone else's shared
+ * link (or a removed favorite's stale link) resolves to undefined, so the page loads with
+ * regular menu highlighting instead of suppressing it.
+ */
+export function useActiveFavoriteId(): string | undefined {
+  const location = useLocation();
+  const favorites = useFavorites();
+
+  const marker = new URLSearchParams(location.search).get(FAVORITE_SEARCH_PARAM);
+  if (!marker) return undefined;
+  return favorites.some((favorite) => favorite.id === marker) ? marker : undefined;
 }
 
 type PageMeta = {

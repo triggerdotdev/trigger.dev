@@ -7,13 +7,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useLocation } from "@remix-run/react";
+import { Link } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { type RenderIcon, Icon } from "../primitives/Icon";
 import { SimpleTooltip } from "../primitives/Tooltip";
-import { FAVORITE_SEARCH_PARAM } from "./favoritePages";
+import { useActiveFavoriteId } from "./favoritePages";
 
 /** Right-edge fade shown instead of a hard clip, only while the label actually overflows. */
 const LABEL_OVERFLOW_MASK = "linear-gradient(to right, black calc(100% - 1.5rem), transparent)";
@@ -108,10 +108,10 @@ export function SideMenuItem({
   "data-action"?: string;
 }) {
   const pathName = usePathName();
-  const { search } = useLocation();
-  // A favorite marker in the URL means a favorite owns the active state (see favoriteLinkTo)
-  const hasFavoriteMarker = new URLSearchParams(search).has(FAVORITE_SEARCH_PARAM);
-  const isActive = isActiveOverride ?? (pathName === to && !hasFavoriteMarker);
+  // When one of the user's OWN favorites owns the current view (via its marker param), it takes
+  // the active state; markers from shared links don't count (see useActiveFavoriteId).
+  const activeFavoriteId = useActiveFavoriteId();
+  const isActive = isActiveOverride ?? (pathName === to && activeFavoriteId === undefined);
 
   const isIndented = indented && !isCollapsed;
 

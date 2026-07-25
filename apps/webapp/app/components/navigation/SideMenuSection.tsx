@@ -87,7 +87,7 @@ export function SideMenuSection({
             // Outer div fades with the labels (inline style would defeat the hover opacity classes
             // on the inner div, so they're split).
             <div
-              className="absolute right-0.5 top-1/2 -translate-y-1/2"
+              className="absolute right-1 top-1/2 -translate-y-1/2"
               style={{ opacity: "var(--sm-label-opacity, 1)" }}
             >
               <div className="opacity-0 transition-opacity duration-150 has-[[data-state=open]]:opacity-100 group-hover/sectionheader:opacity-100">
