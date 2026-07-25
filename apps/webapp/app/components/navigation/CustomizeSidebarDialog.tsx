@@ -1,9 +1,11 @@
 import { DialogClose } from "@radix-ui/react-dialog";
-import { ArrowDownIcon, ArrowUpIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
+import { ArrowDownIcon, ArrowUpIcon } from "@heroicons/react/20/solid";
 import { GripVerticalIcon } from "lucide-react";
 import { useState } from "react";
 import ReactGridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
 import { CrossIcon } from "~/assets/icons/CrossIcon";
+import { EyeClosedIcon } from "~/assets/icons/EyeClosedIcon";
+import { EyeOpenIcon } from "~/assets/icons/EyeOpenIcon";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { DialogContent, DialogFooter, DialogHeader } from "../primitives/Dialog";
@@ -456,7 +458,7 @@ function ModalItemRow({
           aria-pressed={isHidden}
           className="flex size-7 items-center justify-center rounded text-text-dimmed transition-colors hover:bg-surface-control hover:text-text-bright focus-custom"
         >
-          {isHidden ? <EyeSlashIcon className="size-4" /> : <EyeIcon className="size-4" />}
+          {isHidden ? <EyeClosedIcon className="size-4" /> : <EyeOpenIcon className="size-4" />}
         </button>
         {draggable ? (
           <div className="customize-drag-handle flex size-7 cursor-grab items-center justify-center rounded text-text-dimmed transition-colors hover:text-text-bright active:cursor-grabbing">
