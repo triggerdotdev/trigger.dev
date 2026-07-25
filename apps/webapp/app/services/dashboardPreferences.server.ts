@@ -275,6 +275,41 @@ export async function removeFavorite({ user, id }: { user: UserFromSession; id: 
   });
 }
 
+/**
+ * Remove any favorites whose URL contains the given substring. Used when the favorited entity
+ * itself is deleted (e.g. a custom dashboard's friendly id) so the side menu doesn't keep a
+ * dead link.
+ */
+export async function removeFavoritesByUrlSubstring({
+  user,
+  substring,
+}: {
+  user: UserFromSession;
+  substring: string;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  return mutateDashboardPreferences(user.id, (prefs) => {
+    const currentSideMenu = SideMenuPreferences.parse(prefs.sideMenu ?? {});
+    const favorites = currentSideMenu.favorites ?? [];
+    const remaining = favorites.filter((favorite) => !favorite.url.includes(substring));
+
+    if (remaining.length === favorites.length) {
+      return undefined;
+    }
+
+    return {
+      ...prefs,
+      sideMenu: {
+        ...currentSideMenu,
+        favorites: remaining.length > 0 ? remaining : undefined,
+      },
+    };
+  });
+}
+
 export async function renameFavorite({
   user,
   id,

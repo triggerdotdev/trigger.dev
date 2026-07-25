@@ -4,6 +4,7 @@ import { useFetcher, useLocation, useSearchParams } from "@remix-run/react";
 import { useEffect, useRef } from "react";
 import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useOptionalUser } from "~/hooks/useUser";
+import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { useShortcuts } from "../primitives/ShortcutsProvider";
@@ -21,7 +22,13 @@ import {
  * The star in the page header that favorites the current page (full URL, including filters and
  * tabs) to the side menu. Toggled by click or Option+F.
  */
-export function FavoritePageButton({ pageTitle }: { pageTitle?: string }) {
+export function FavoritePageButton({
+  pageTitle,
+  className,
+}: {
+  pageTitle?: string;
+  className?: string;
+}) {
   const user = useOptionalUser();
   const isImpersonating = useIsImpersonating();
   const location = useLocation();
@@ -132,7 +139,7 @@ export function FavoritePageButton({ pageTitle }: { pageTitle?: string }) {
       button={
         // Span wrapper: Button drops the pointer-event props Radix injects via asChild, so the
         // tooltip trigger has to be a plain element (same pattern as CollapseMenuButton).
-        <span className="flex">
+        <span className={cn("flex", className)}>
           <Button
             variant="minimal/small"
             className="aspect-square h-6 p-1"

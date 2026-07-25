@@ -74,7 +74,9 @@ export function PageTitle({ title, backButton, accessory }: PageTitleProps) {
         ) : (
           accessory
         ))}
-      <FavoritePageButton pageTitle={titleText} />
+      {/* -ml-1 cancels the row gap: the star's own inner padding then provides the visual gap,
+          matching the title-to-accessory spacing while the button box stays flush for hover */}
+      <FavoritePageButton pageTitle={titleText} className="-ml-1" />
     </div>
   );
 }

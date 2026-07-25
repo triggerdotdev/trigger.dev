@@ -90,7 +90,7 @@ export function SideMenuSection({
               className="absolute right-1 top-1/2 -translate-y-1/2"
               style={{ opacity: "var(--sm-label-opacity, 1)" }}
             >
-              <div className="opacity-0 transition-opacity duration-150 has-[[data-state=open]]:opacity-100 group-hover/sectionheader:opacity-100">
+              <div className="opacity-0 has-[[data-state=open]]:opacity-100 group-hover/sectionheader:opacity-100">
                 {headerMenu}
               </div>
             </div>

@@ -84,7 +84,8 @@ export function FavoriteMenuItem({
             <PopoverCustomTrigger
               aria-label={`Favorite options for ${favorite.label}`}
               className={cn(
-                "flex h-full w-full items-center justify-center justify-items-center rounded p-0 hover:bg-surface-control",
+                // transition-none: the trigger base has `transition`, which fades the reveal in
+                "flex h-full w-full items-center justify-center justify-items-center rounded p-0 transition-none hover:bg-surface-control",
                 // Hidden until the row is hovered (or while this menu is open)
                 "opacity-0 group-hover/menuitem:opacity-100 data-[state=open]:opacity-100"
               )}
