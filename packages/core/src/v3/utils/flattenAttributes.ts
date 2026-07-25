@@ -119,8 +119,9 @@ class AttributeFlattener {
     if (obj instanceof Map) {
       for (const [key, value] of obj) {
         if (!this.canAddMoreAttributes()) break;
-        // Use the key directly if it's a string, otherwise convert it
-        const keyStr = typeof key === "string" ? key : String(key);
+        // Use the key directly if it's a string, otherwise convert it.
+        // Escape dots so keys containing "." are not mistaken for path separators.
+        const keyStr = typeof key === "string" ? key.replace(/\./g, "\\.") : String(key);
         this.#processValue(value, `${prefix || "map"}.${keyStr}`, depth);
       }
       return;
@@ -204,7 +205,10 @@ class AttributeFlattener {
         break;
       }
 
-      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
+      // Escape dots in string keys so they are not mistaken for path separators
+      // when unflattening. Array indices use bracket notation and need no escaping.
+      const escapedKey = Array.isArray(obj) ? `[${key}]` : key.replace(/\./g, "\\.");
+      const newPrefix = `${prefix ? `${prefix}.` : ""}${escapedKey}`;
 
       if (Array.isArray(value)) {
         for (let i = 0; i < value.length; i++) {
@@ -248,6 +252,31 @@ class AttributeFlattener {
     }
   }
 }
+/**
+ * Splits a flattened attribute key on dots that are NOT escaped with a backslash,
+ * then unescapes any `\.` sequences in each part back to `.`.
+ *
+ * This allows object keys that contain literal dots (e.g. "Key 0.002mm") to
+ * round-trip through flatten/unflatten without being treated as path separators.
+ */
+function splitOnUnescapedDots(key: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  for (let i = 0; i < key.length; i++) {
+    if (key[i] === "\\" && i + 1 < key.length && key[i + 1] === ".") {
+      current += ".";
+      i++; // skip the escaped dot
+    } else if (key[i] === ".") {
+      parts.push(current);
+      current = "";
+    } else {
+      current += key[i];
+    }
+  }
+  parts.push(current);
+  return parts;
+}
+
 export function unflattenAttributes(
   obj: Attributes,
   filteredKeys?: string[],
@@ -277,7 +306,7 @@ export function unflattenAttributes(
       continue;
     }
 
-    const parts = key.split(".").reduce(
+    const parts = splitOnUnescapedDots(key).reduce(
       (acc, part) => {
         if (part.startsWith("[") && part.endsWith("]")) {
           // Handle array indices more precisely

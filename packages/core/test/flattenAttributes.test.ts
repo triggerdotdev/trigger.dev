@@ -1,6 +1,21 @@
 import { flattenAttributes, unflattenAttributes } from "../src/v3/utils/flattenAttributes.js";
 
 describe("flattenAttributes", () => {
+  it("round-trips object keys that contain dots", () => {
+    // Keys with dots were previously split on the dot, turning "Key 0.002mm" into
+    // a nested path { "Key 0": { "002mm": ... } } on unflatten.
+    const input = { "Key 0.002mm": 31.4 };
+    const flattened = flattenAttributes(input);
+    expect(flattened).toEqual({ "Key 0\\.002mm": 31.4 });
+    expect(unflattenAttributes(flattened)).toEqual(input);
+
+    // Nested object where an intermediate key contains a dot
+    const nested = { outer: { "a.b": { inner: 1 } } };
+    const flatNested = flattenAttributes(nested);
+    expect(flatNested).toEqual({ "outer.a\\.b.inner": 1 });
+    expect(unflattenAttributes(flatNested)).toEqual(nested);
+  });
+
   it("handles number keys correctly", () => {
     expect(flattenAttributes({ bar: { "25": "foo" } })).toEqual({ "bar.25": "foo" });
     expect(unflattenAttributes({ "bar.25": "foo" })).toEqual({ bar: { "25": "foo" } });
