@@ -1,6 +1,8 @@
-import { EllipsisHorizontalIcon, PencilSquareIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import { useLocation, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
+import { CrossIcon } from "~/assets/icons/CrossIcon";
+import { RenameIcon } from "~/assets/icons/RenameIcon";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
 import { cn } from "~/utils/cn";
 import { Icon, type RenderIcon } from "../primitives/Icon";
@@ -14,6 +16,7 @@ import {
   favoriteLinkTo,
   favoritePageActiveColor,
   favoritePageIcon,
+  favoritePageIconClassName,
   isFavoriteActive,
 } from "./favoritePages";
 import { SideMenuItem } from "./SideMenuItem";
@@ -62,6 +65,7 @@ export function FavoriteMenuItem({
       <FavoriteRenameRow
         label={favorite.label}
         icon={icon}
+        iconClassName={favoritePageIconClassName(favorite.icon)}
         onSubmit={submitRename}
         onCancel={() => setIsEditing(false)}
       />
@@ -72,6 +76,7 @@ export function FavoriteMenuItem({
     <SideMenuItem
       name={favorite.label}
       icon={icon}
+      iconClassName={favoritePageIconClassName(favorite.icon)}
       activeIconColor={favoritePageActiveColor(favorite.icon)}
       inactiveIconColor="text-text-dimmed"
       to={favoriteLinkTo(favorite)}
@@ -100,7 +105,7 @@ export function FavoriteMenuItem({
             >
               <div className="flex flex-col gap-1">
                 <PopoverMenuItem
-                  icon={PencilSquareIcon}
+                  icon={RenameIcon}
                   title="Rename"
                   leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
                   className={SIDE_MENU_POPOVER_ITEM_LABEL}
@@ -110,7 +115,7 @@ export function FavoriteMenuItem({
                   }}
                 />
                 <PopoverMenuItem
-                  icon={TrashIcon}
+                  icon={CrossIcon}
                   title="Remove"
                   danger
                   leadingIconClassName="h-5 w-5"
@@ -136,11 +141,13 @@ export function FavoriteMenuItem({
 function FavoriteRenameRow({
   label,
   icon,
+  iconClassName,
   onSubmit,
   onCancel,
 }: {
   label: string;
   icon: RenderIcon;
+  iconClassName?: string;
   onSubmit: (value: string) => void;
   onCancel: () => void;
 }) {
@@ -155,7 +162,7 @@ function FavoriteRenameRow({
 
   return (
     <div className="flex h-8 w-full items-center gap-2 rounded bg-background-hover pl-1.75 pr-2">
-      <Icon icon={icon} className="size-5 shrink-0 text-text-dimmed" />
+      <Icon icon={icon} className={cn("size-5 shrink-0 text-text-dimmed", iconClassName)} />
       <input
         ref={inputRef}
         autoFocus

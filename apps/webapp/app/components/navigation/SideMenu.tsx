@@ -3,7 +3,7 @@ import {
   ChevronRightIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
-import { EllipsisHorizontalIcon, PencilSquareIcon } from "@heroicons/react/20/solid";
+import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 import { useFetcher, useNavigation, useSubmit } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
 import {
@@ -48,6 +48,7 @@ import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { ShieldIcon } from "~/assets/icons/ShieldIcon";
+import { SidebarCustomizeIcon } from "~/assets/icons/SidebarCustomizeIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
@@ -160,6 +161,7 @@ import {
   FAVORITES_ACTION_PATH,
   favoriteLinkTo,
   favoritePageIcon,
+  favoritePageIconClassName,
   useFavorites,
 } from "./favoritePages";
 import { FavoriteMenuItem } from "./FavoritesSection";
@@ -971,6 +973,7 @@ export function SideMenu({
               id: favorite.id,
               name: favorite.label,
               icon: favoritePageIcon(favorite.icon),
+              iconClassName: favoritePageIconClassName(favorite.icon),
               isFavorite: true,
             })),
           },
@@ -1349,6 +1352,7 @@ function FavoritesSideMenuSection({
             id: favorite.id,
             name: favorite.label,
             icon: favoritePageIcon(favorite.icon),
+            iconClassName: favoritePageIconClassName(favorite.icon),
             to: favoriteLinkTo(favorite),
           }))}
           isCollapsed={isCollapsed}
@@ -1368,7 +1372,7 @@ function SideMenuMoreItem({
   isCollapsed,
   onCustomize,
 }: {
-  items: Array<{ id: string; name: string; icon: RenderIcon; to: string }>;
+  items: Array<{ id: string; name: string; icon: RenderIcon; iconClassName?: string; to: string }>;
   isCollapsed: boolean;
   onCustomize: () => void;
 }) {
@@ -1409,7 +1413,7 @@ function SideMenuMoreItem({
               to={item.to}
               title={item.name}
               icon={item.icon}
-              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, item.iconClassName)}
               className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           ))}
@@ -1417,7 +1421,7 @@ function SideMenuMoreItem({
         {/* flex-col blockifies the inline-block menu item, avoiding stray line-box space below */}
         <div className="flex flex-col border-t border-grid-bright p-1">
           <PopoverMenuItem
-            icon={PencilSquareIcon}
+            icon={SidebarCustomizeIcon}
             title="Customize sidebar"
             leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
             className={SIDE_MENU_POPOVER_ITEM_LABEL}
@@ -1448,7 +1452,7 @@ function SectionHeaderMenu({ onCustomize }: { onCustomize: () => void }) {
         {/* flex-col blockifies the inline-block menu item, avoiding stray line-box space below */}
         <div className="flex flex-col p-1">
           <PopoverMenuItem
-            icon={PencilSquareIcon}
+            icon={SidebarCustomizeIcon}
             title="Customize sidebar"
             leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
             className={SIDE_MENU_POPOVER_ITEM_LABEL}

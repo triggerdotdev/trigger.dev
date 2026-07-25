@@ -348,6 +348,7 @@ export async function updateSideMenuCustomization({
   hiddenItems,
   sectionItemOrder,
   favorites,
+  removedFavoriteIds,
 }: {
   user: UserFromSession;
   /** undefined = leave unchanged, null = reset to default */
@@ -358,6 +359,8 @@ export async function updateSideMenuCustomization({
   sectionItemOrder?: Record<string, string[]> | null;
   /** Full favorites arrangement: new order + labels. undefined = leave unchanged. */
   favorites?: Array<{ id: string; label: string }>;
+  /** Favorites deleted from the customize modal. */
+  removedFavoriteIds?: string[];
 }) {
   if (user.isImpersonating) {
     return;
@@ -381,12 +384,13 @@ export async function updateSideMenuCustomization({
         sectionItemOrder && Object.keys(sectionItemOrder).length > 0 ? sectionItemOrder : undefined;
     }
 
-    if (favorites !== undefined) {
-      const current = currentSideMenu.favorites ?? [];
+    if (favorites !== undefined || removedFavoriteIds !== undefined) {
+      const removed = new Set(removedFavoriteIds ?? []);
+      const current = (currentSideMenu.favorites ?? []).filter((f) => !removed.has(f.id));
       const byId = new Map(current.map((f) => [f.id, f]));
       const rearranged: FavoritePage[] = [];
 
-      for (const { id, label } of favorites) {
+      for (const { id, label } of favorites ?? []) {
         const existing = byId.get(id);
         if (!existing) continue;
         const trimmed = label.trim();

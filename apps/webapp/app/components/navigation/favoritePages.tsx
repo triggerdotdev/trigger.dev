@@ -1,4 +1,5 @@
 import { BeakerIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { IconChartHistogram } from "@tabler/icons-react";
 import { useFetchers, useLocation } from "@remix-run/react";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
@@ -36,6 +37,7 @@ import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { useOptionalUser } from "~/hooks/useUser";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
 import { type RenderIcon } from "../primitives/Icon";
@@ -51,10 +53,14 @@ export const FAVORITE_SEARCH_PARAM = "fav";
 
 /**
  * Icons a favorited page can be saved with, keyed by a stable string so preferences never store
- * component references, plus the icon color used when the favorite is the active page. Unknown
- * keys fall back to the star.
+ * component references, plus the icon color used when the favorite is the active page and an
+ * optional size override for icons drawn without internal padding (brand logos). Unknown keys
+ * fall back to the star.
  */
-const FAVORITE_PAGE_ICONS: Record<string, { icon: RenderIcon; activeColor: string }> = {
+const FAVORITE_PAGE_ICONS: Record<
+  string,
+  { icon: RenderIcon; activeColor: string; className?: string }
+> = {
   tasks: { icon: TasksIcon, activeColor: "text-tasks" },
   runs: { icon: RunsIcon, activeColor: "text-runs" },
   sessions: { icon: AIChatIcon, activeColor: "text-sessions" },
@@ -67,6 +73,7 @@ const FAVORITE_PAGE_ICONS: Record<string, { icon: RenderIcon; activeColor: strin
   dashboards: { icon: ChartBarIcon, activeColor: "text-metrics" },
   "run-metrics": { icon: ChartArrowIcon, activeColor: "text-runs" },
   "ai-metrics": { icon: AIMetricsIcon, activeColor: "text-aiMetrics" },
+  "custom-dashboard": { icon: IconChartHistogram, activeColor: "text-text-bright" },
   deployments: { icon: DeploymentsIcon, activeColor: "text-deployments" },
   "environment-variables": { icon: IDIcon, activeColor: "text-environmentVariables" },
   branches: { icon: BranchEnvironmentIconSmall, activeColor: "text-previewBranches" },
@@ -82,7 +89,9 @@ const FAVORITE_PAGE_ICONS: Record<string, { icon: RenderIcon; activeColor: strin
   test: { icon: BeakerIcon, activeColor: "text-text-bright" },
   "project-settings": { icon: SlidersIcon, activeColor: "text-text-bright" },
   integrations: { icon: IntegrationsIcon, activeColor: "text-text-bright" },
-  slack: { icon: SlackIcon, activeColor: "text-text-bright" },
+  // Brand logos have no internal padding, so they render one step smaller (matching the org menu)
+  slack: { icon: SlackIcon, activeColor: "text-text-bright", className: "size-4" },
+  vercel: { icon: VercelLogo, activeColor: "text-text-bright", className: "size-4" },
   project: { icon: FolderOpenIcon, activeColor: "text-text-bright" },
   "org-settings": { icon: SlidersIcon, activeColor: "text-text-bright" },
   team: { icon: UserGroupIcon, activeColor: "text-text-bright" },
@@ -103,6 +112,11 @@ export function favoritePageIcon(iconKey: string | undefined): RenderIcon {
 
 export function favoritePageActiveColor(iconKey: string | undefined): string {
   return (iconKey ? FAVORITE_PAGE_ICONS[iconKey]?.activeColor : undefined) ?? "text-text-bright";
+}
+
+/** Size override for favorite icons that need one (see FAVORITE_PAGE_ICONS). */
+export function favoritePageIconClassName(iconKey: string | undefined): string | undefined {
+  return iconKey ? FAVORITE_PAGE_ICONS[iconKey]?.className : undefined;
 }
 
 /** Href for a favorite: its saved URL plus the marker param (see FAVORITE_SEARCH_PARAM). */
@@ -221,9 +235,12 @@ export function resolvePageMeta(pathname: string): PageMeta {
         : { icon: "project-settings", name: "Project settings" };
     }
     if (first === "dashboards") {
-      // The built-in metric dashboards have their own identities (and icons)
+      // The built-in metric dashboards and custom dashboards have their own identities (and icons)
       if (segments[1] === "overview") return { icon: "run-metrics", name: "Run metrics" };
       if (segments[1] === "llm") return { icon: "ai-metrics", name: "AI metrics" };
+      if (segments[1] === "custom") {
+        return { icon: "custom-dashboard", name: "Dashboards", singular: "Dashboard" };
+      }
     }
     return ENV_PAGE_META[first] ?? { icon: "page", name: "Page" };
   }
@@ -235,7 +252,7 @@ export function resolvePageMeta(pathname: string): PageMeta {
       return { icon: "slack", name: "Slack integration" };
     }
     if (segments[0] === "integrations" && segments[1] === "vercel") {
-      return { icon: "integrations", name: "Vercel integration" };
+      return { icon: "vercel", name: "Vercel integration" };
     }
     return ORG_SETTINGS_PAGE_META[segments[0] ?? ""] ?? { icon: "org-settings", name: "Settings" };
   }

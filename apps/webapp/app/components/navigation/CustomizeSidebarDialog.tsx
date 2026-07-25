@@ -3,6 +3,7 @@ import { ArrowDownIcon, ArrowUpIcon, EyeIcon, EyeSlashIcon } from "@heroicons/re
 import { GripVerticalIcon } from "lucide-react";
 import { useState } from "react";
 import ReactGridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
+import { CrossIcon } from "~/assets/icons/CrossIcon";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { DialogContent, DialogFooter, DialogHeader } from "../primitives/Dialog";
@@ -16,6 +17,7 @@ export type CustomizeSidebarItem = {
   id: string;
   name: string;
   icon: RenderIcon;
+  iconClassName?: string;
   defaultHidden?: boolean;
   /** Favorites get an inline-editable name in the modal. */
   isFavorite?: boolean;
@@ -40,6 +42,7 @@ export type SidebarCustomizationPayload = {
   hiddenItems: Record<string, boolean> | null;
   sectionItemOrder: Record<string, string[]> | null;
   favorites?: Array<{ id: string; label: string }>;
+  removedFavoriteIds?: string[];
 };
 
 type DialogState = {
@@ -50,6 +53,8 @@ type DialogState = {
   hidden: Record<string, boolean>;
   /** favorite id -> label being edited */
   labels: Record<string, string>;
+  /** favorite ids staged for removal; applied on Confirm */
+  removed: string[];
 };
 
 const FAVORITES_SECTION_ID = "favorites";
@@ -84,7 +89,13 @@ function buildState(
     }
   }
 
-  return { sectionOrder: orderedSections.map((section) => section.id), itemOrders, hidden, labels };
+  return {
+    sectionOrder: orderedSections.map((section) => section.id),
+    itemOrders,
+    hidden,
+    labels,
+    removed: [],
+  };
 }
 
 function arraysEqual(a: string[], b: string[]) {
@@ -142,13 +153,25 @@ export function CustomizeSidebarDialog({
     setState((current) => ({ ...current, labels: { ...current.labels, [itemId]: label } }));
   };
 
+  const removeFavorite = (itemId: string) => {
+    setState((current) => ({ ...current, removed: [...current.removed, itemId] }));
+  };
+
   // Reset restores the default layout (positions + visibility) but never touches favorite names
+  // or staged removals; Cancel is the way out of those
   const reset = () =>
-    setState((current) => ({ ...buildState(sections, undefined), labels: current.labels }));
+    setState((current) => ({
+      ...buildState(sections, undefined),
+      labels: current.labels,
+      removed: current.removed,
+    }));
 
   const hasBlankLabels = sections.some((section) =>
     section.items.some(
-      (item) => item.isFavorite && (state.labels[item.id] ?? item.name).trim().length === 0
+      (item) =>
+        item.isFavorite &&
+        !state.removed.includes(item.id) &&
+        (state.labels[item.id] ?? item.name).trim().length === 0
     )
   );
 
@@ -158,6 +181,7 @@ export function CustomizeSidebarDialog({
     const hiddenOverrides: Record<string, boolean> = {};
     for (const section of sections) {
       for (const item of section.items) {
+        if (state.removed.includes(item.id)) continue;
         const isHidden = state.hidden[item.id] ?? false;
         if (isHidden !== (item.defaultHidden ?? false)) {
           hiddenOverrides[item.id] = isHidden;
@@ -175,12 +199,17 @@ export function CustomizeSidebarDialog({
     }
 
     const favoritesSection = sections.find((section) => section.id === FAVORITES_SECTION_ID);
-    const favoriteOrder = state.itemOrders[FAVORITES_SECTION_ID] ?? [];
+    const favoriteOrder = (state.itemOrders[FAVORITES_SECTION_ID] ?? []).filter(
+      (id) => !state.removed.includes(id)
+    );
     const favoritesChanged =
       favoritesSection !== undefined &&
-      (!arraysEqual(favoriteOrder, defaults.itemOrders[FAVORITES_SECTION_ID] ?? []) ||
+      (state.removed.length > 0 ||
+        !arraysEqual(favoriteOrder, defaults.itemOrders[FAVORITES_SECTION_ID] ?? []) ||
         favoritesSection.items.some(
-          (item) => (state.labels[item.id] ?? item.name).trim() !== item.name
+          (item) =>
+            !state.removed.includes(item.id) &&
+            (state.labels[item.id] ?? item.name).trim() !== item.name
         ));
 
     // Parts equal to the defaults are sent as null so the stored preference is cleared, not pinned
@@ -193,6 +222,7 @@ export function CustomizeSidebarDialog({
       favorites: favoritesChanged
         ? favoriteOrder.map((id) => ({ id, label: state.labels[id] ?? "" }))
         : undefined,
+      removedFavoriteIds: state.removed.length > 0 ? state.removed : undefined,
     };
 
     onConfirm(payload);
@@ -229,12 +259,15 @@ export function CustomizeSidebarDialog({
             </div>
             <SectionItemList
               section={section}
-              order={state.itemOrders[section.id] ?? section.items.map((item) => item.id)}
+              order={(state.itemOrders[section.id] ?? section.items.map((item) => item.id)).filter(
+                (id) => !state.removed.includes(id)
+              )}
               hidden={state.hidden}
               labels={state.labels}
               onReorder={(itemIds) => reorderItems(section.id, itemIds)}
               onToggleHidden={toggleHidden}
               onLabelChange={setLabel}
+              onRemove={removeFavorite}
             />
           </div>
         ))}
@@ -289,6 +322,7 @@ function SectionItemList({
   onReorder,
   onToggleHidden,
   onLabelChange,
+  onRemove,
 }: {
   section: CustomizeSidebarSection;
   order: string[];
@@ -297,6 +331,7 @@ function SectionItemList({
   onReorder: (itemIds: string[]) => void;
   onToggleHidden: (itemId: string) => void;
   onLabelChange: (itemId: string, label: string) => void;
+  onRemove: (itemId: string) => void;
 }) {
   const { width, containerRef } = useContainerWidth({ initialWidth: 416 });
 
@@ -321,6 +356,7 @@ function SectionItemList({
       draggable={options.draggable}
       onToggleHidden={() => onToggleHidden(item.id)}
       onLabelChange={(label) => onLabelChange(item.id, label)}
+      onRemove={() => onRemove(item.id)}
     />
   );
 
@@ -359,6 +395,7 @@ function ModalItemRow({
   draggable,
   onToggleHidden,
   onLabelChange,
+  onRemove,
 }: {
   item: CustomizeSidebarItem;
   isHidden: boolean;
@@ -366,6 +403,7 @@ function ModalItemRow({
   draggable: boolean;
   onToggleHidden: () => void;
   onLabelChange: (label: string) => void;
+  onRemove: () => void;
 }) {
   return (
     <div
@@ -378,7 +416,10 @@ function ModalItemRow({
           isHidden && "opacity-50"
         )}
       >
-        <Icon icon={item.icon} className="size-5 shrink-0 text-text-dimmed" />
+        <Icon
+          icon={item.icon}
+          className={cn("size-5 shrink-0 text-text-dimmed", item.iconClassName)}
+        />
         {item.isFavorite ? (
           <>
             <Input
@@ -398,6 +439,16 @@ function ModalItemRow({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {item.isFavorite && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove ${item.name}`}
+            className="flex size-7 items-center justify-center rounded text-text-dimmed transition-colors hover:bg-error/10 hover:text-error focus-custom"
+          >
+            <CrossIcon className="size-4" />
+          </button>
+        )}
         <button
           type="button"
           onClick={onToggleHidden}

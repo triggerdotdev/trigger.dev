@@ -39,6 +39,7 @@ const CustomizationSchema = z.object({
     .array(z.object({ id: z.string().max(64), label: z.string().max(64) }))
     .max(100)
     .optional(),
+  removedFavoriteIds: z.array(z.string().max(64)).max(100).optional(),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -64,13 +65,15 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!customizationResult.success) {
       return json({ success: false, error: "Invalid request data" }, { status: 400 });
     }
-    const { sectionOrder, hiddenItems, sectionItemOrder, favorites } = customizationResult.data;
+    const { sectionOrder, hiddenItems, sectionItemOrder, favorites, removedFavoriteIds } =
+      customizationResult.data;
     await updateSideMenuCustomization({
       user,
       sectionOrder,
       hiddenItems,
       sectionItemOrder,
       favorites,
+      removedFavoriteIds,
     });
     return json({ success: true });
   }
