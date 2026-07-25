@@ -219,37 +219,62 @@ export function subscribeSessionOut(opts: SubscribeOptions): SSEStreamSubscripti
 }
 
 /**
- * Subscribe + drain parts into an array, stopping when `until(parts)` is true,
- * the stream closes, or `maxMs` elapses. Cancels the reader on exit. Returns
- * the parts plus how many distinct SSE connections/opens the subscription made
- * (for asserting the round-trip count on a reconnect).
+ * Subscribe + drain parts into an array, stopping when `until(parts)` is true
+ * or `maxMs` elapses. Cancels the reader on exit.
+ *
+ * The `.out` proxy serves a bounded `wait=N` window and then closes the SSE;
+ * real clients (and the run-engine session manager) reconnect with
+ * `Last-Event-ID` to keep draining a turn whose output streams across that
+ * boundary. A streaming agent routinely spans several windows, so when an
+ * `until` predicate is supplied this re-subscribes past each graceful close
+ * (deduping by seq, resuming from the last one seen) until the predicate holds
+ * or the deadline passes. Without `until` it reads a single window, matching a
+ * one-shot "read what's there" call.
  */
 export async function collectSessionOut(
   opts: SubscribeOptions & { until?: (parts: CollectedPart[]) => boolean; maxMs?: number }
 ): Promise<{ parts: CollectedPart[]; durationMs: number; subscription: SSEStreamSubscription }> {
-  const subscription = subscribeSessionOut(opts);
-  const stream = await subscription.subscribe();
-  const reader = stream.getReader();
   const parts: CollectedPart[] = [];
+  const seen = new Set<string>();
   const started = performance.now();
   const deadline = started + (opts.maxMs ?? 30_000);
+  let lastEventId = opts.lastEventId;
+  let subscription: SSEStreamSubscription;
 
-  try {
-    while (true) {
-      if (opts.until && opts.until(parts)) break;
-      const remaining = deadline - performance.now();
-      if (remaining <= 0) break;
-      const next = await Promise.race([
-        reader.read(),
-        new Promise<"timeout">((r) => setTimeout(() => r("timeout"), remaining)),
-      ]);
-      if (next === "timeout") break;
-      if (next.done) break;
-      parts.push(next.value as CollectedPart);
+  do {
+    subscription = subscribeSessionOut({ ...opts, lastEventId });
+    const stream = await subscription.subscribe();
+    const reader = stream.getReader();
+    let gotNew = false;
+    try {
+      while (true) {
+        if (opts.until && opts.until(parts)) break;
+        const remaining = deadline - performance.now();
+        if (remaining <= 0) break;
+        const next = await Promise.race([
+          reader.read(),
+          new Promise<"timeout">((r) => setTimeout(() => r("timeout"), remaining)),
+        ]);
+        if (next === "timeout") break;
+        if (next.done) break;
+        const part = next.value as CollectedPart;
+        if (part.id) {
+          if (seen.has(part.id)) continue;
+          seen.add(part.id);
+          lastEventId = part.id;
+        }
+        parts.push(part);
+        gotNew = true;
+      }
+    } finally {
+      await reader.cancel().catch(() => {});
     }
-  } finally {
-    await reader.cancel().catch(() => {});
-  }
+
+    if (!opts.until || opts.until(parts) || performance.now() >= deadline) break;
+    if (!gotNew) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  } while (true);
 
   return { parts, durationMs: performance.now() - started, subscription };
 }
