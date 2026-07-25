@@ -146,37 +146,63 @@ export async function appendInput(opts: {
  * headers (which `SSEStreamSubscription` hides). Reads the body to close and
  * reports how long that took, for asserting the server-side peek fast-close.
  */
-export async function openChannelRaw(
-  opts: SubscribeOptions & { maxMs?: number }
-): Promise<{ status: number; sessionSettled: string | null; closedMs: number; body: string }> {
+export async function openChannelRaw(opts: SubscribeOptions & { maxMs?: number }): Promise<{
+  status: number;
+  sessionSettled: string | null;
+  closedMs: number;
+  body: string;
+  timedOut: boolean;
+}> {
   const url = sessionChannelUrl(opts.baseUrl, opts.addressingKey, opts.io ?? "out");
   const started = performance.now();
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${opts.token}`,
-      Accept: "text/event-stream",
-      ...(opts.lastEventId ? { "Last-Event-ID": opts.lastEventId } : {}),
-      ...(opts.timeoutInSeconds ? { "Timeout-Seconds": String(opts.timeoutInSeconds) } : {}),
-      ...(opts.peekSettled ? { "X-Peek-Settled": "1" } : {}),
-    },
-  });
-  const sessionSettled = res.headers.get("x-session-settled");
-  let body = "";
-  if (res.body) {
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    const deadline = started + (opts.maxMs ?? 15_000);
-    try {
-      while (performance.now() < deadline) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        body += decoder.decode(value, { stream: true });
+  const maxMs = opts.maxMs ?? 15_000;
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), maxMs);
+  try {
+    const res = await fetch(url, {
+      signal: abort.signal,
+      headers: {
+        Authorization: `Bearer ${opts.token}`,
+        Accept: "text/event-stream",
+        ...(opts.lastEventId ? { "Last-Event-ID": opts.lastEventId } : {}),
+        ...(opts.timeoutInSeconds ? { "Timeout-Seconds": String(opts.timeoutInSeconds) } : {}),
+        ...(opts.peekSettled ? { "X-Peek-Settled": "1" } : {}),
+      },
+    });
+    const sessionSettled = res.headers.get("x-session-settled");
+    let body = "";
+    if (res.body) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          body += decoder.decode(value, { stream: true });
+        }
+      } catch {
+      } finally {
+        await reader.cancel().catch(() => {});
       }
-    } finally {
-      await reader.cancel().catch(() => {});
     }
+    return {
+      status: res.status,
+      sessionSettled,
+      closedMs: performance.now() - started,
+      body,
+      timedOut: false,
+    };
+  } catch {
+    return {
+      status: 0,
+      sessionSettled: null,
+      closedMs: performance.now() - started,
+      body: "",
+      timedOut: true,
+    };
+  } finally {
+    clearTimeout(timer);
   }
-  return { status: res.status, sessionSettled, closedMs: performance.now() - started, body };
 }
 
 export function subscribeSessionOut(opts: SubscribeOptions): SSEStreamSubscription {
