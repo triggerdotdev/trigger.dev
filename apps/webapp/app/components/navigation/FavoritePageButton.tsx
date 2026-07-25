@@ -60,8 +60,9 @@ export function FavoritePageButton({
   const existing = favorites.find((favorite) => favorite.url === url);
   const isFavorited = existing !== undefined;
   // The tooltip names the favorite: its custom name once saved, else the label saving would use
-  // (which includes detail-page ids, e.g. "Run: 05hrqq9n")
-  const pageName = existing?.label ?? buildFavoriteLabel(location.pathname, pageTitle);
+  // (which includes detail-page ids and filter summaries, e.g. "Runs: Completed, last 7d")
+  const pageName =
+    existing?.label ?? buildFavoriteLabel(location.pathname, location.search, pageTitle);
 
   const toggle = () => {
     if (existing) {
@@ -75,7 +76,7 @@ export function FavoritePageButton({
           intent: "add",
           id: crypto.randomUUID(),
           url,
-          label: buildFavoriteLabel(location.pathname, pageTitle),
+          label: buildFavoriteLabel(location.pathname, location.search, pageTitle),
           icon: resolvePageMeta(location.pathname).icon,
         },
         { method: "POST", action: FAVORITES_ACTION_PATH }

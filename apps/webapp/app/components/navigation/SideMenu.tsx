@@ -1414,7 +1414,8 @@ function SideMenuMoreItem({
             />
           ))}
         </div>
-        <div className="border-t border-grid-bright p-1">
+        {/* flex-col blockifies the inline-block menu item, avoiding stray line-box space below */}
+        <div className="flex flex-col border-t border-grid-bright p-1">
           <PopoverMenuItem
             icon={PencilSquareIcon}
             title="Customize sidebar"
@@ -1443,17 +1444,20 @@ function SectionHeaderMenu({ onCustomize }: { onCustomize: () => void }) {
       >
         <EllipsisHorizontalIcon className="size-3.5" />
       </PopoverCustomTrigger>
-      <PopoverContent className="w-fit min-w-max p-1" align="start" sideOffset={4}>
-        <PopoverMenuItem
-          icon={PencilSquareIcon}
-          title="Customize sidebar"
-          leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-          className={SIDE_MENU_POPOVER_ITEM_LABEL}
-          onClick={() => {
-            setOpen(false);
-            onCustomize();
-          }}
-        />
+      <PopoverContent className="w-fit min-w-max p-0" align="start" sideOffset={4}>
+        {/* flex-col blockifies the inline-block menu item, avoiding stray line-box space below */}
+        <div className="flex flex-col p-1">
+          <PopoverMenuItem
+            icon={PencilSquareIcon}
+            title="Customize sidebar"
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
+            onClick={() => {
+              setOpen(false);
+              onCustomize();
+            }}
+          />
+        </div>
       </PopoverContent>
     </Popover>
   );

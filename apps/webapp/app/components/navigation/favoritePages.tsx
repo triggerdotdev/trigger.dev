@@ -121,24 +121,28 @@ export function stripFavoriteSearchParam(search: string): string {
   return result.length > 0 ? `?${result}` : "";
 }
 
-/** A favorite is active when its marker param is in the URL and the pathname still matches. */
+/**
+ * A favorite is active only while the URL is exactly the view it saved: its marker param is
+ * present AND the rest of the URL still matches. Changing any filter on the page diverges the
+ * URL from the favorite, so it deactivates (and the regular menu item takes over).
+ */
 export function isFavoriteActive(
   favorite: FavoritePage,
   pathname: string,
   search: string
 ): boolean {
-  const favoritePath = favorite.url.split("?")[0];
   return (
-    pathname === favoritePath &&
-    new URLSearchParams(search).get(FAVORITE_SEARCH_PARAM) === favorite.id
+    new URLSearchParams(search).get(FAVORITE_SEARCH_PARAM) === favorite.id &&
+    favorite.url === pathname + stripFavoriteSearchParam(search)
   );
 }
 
 /**
  * The id of the favorite driving the current view: the URL's marker param, but only when it
- * belongs to one of the current user's favorites. A marker arriving via someone else's shared
- * link (or a removed favorite's stale link) resolves to undefined, so the page loads with
- * regular menu highlighting instead of suppressing it.
+ * belongs to one of the current user's favorites AND the URL still matches that favorite's
+ * saved view. A marker from someone else's shared link, a removed favorite's stale link, or a
+ * view whose filters have since been changed resolves to undefined, so regular menu
+ * highlighting applies.
  */
 export function useActiveFavoriteId(): string | undefined {
   const location = useLocation();
@@ -146,7 +150,9 @@ export function useActiveFavoriteId(): string | undefined {
 
   const marker = new URLSearchParams(location.search).get(FAVORITE_SEARCH_PARAM);
   if (!marker) return undefined;
-  return favorites.some((favorite) => favorite.id === marker) ? marker : undefined;
+  const favorite = favorites.find((f) => f.id === marker);
+  if (!favorite) return undefined;
+  return isFavoriteActive(favorite, location.pathname, location.search) ? marker : undefined;
 }
 
 type PageMeta = {
@@ -253,6 +259,10 @@ export function resolvePageMeta(pathname: string): PageMeta {
 
 const MAX_LABEL_LENGTH = 50;
 
+function truncateLabel(label: string): string {
+  return label.length > MAX_LABEL_LENGTH ? `${label.slice(0, MAX_LABEL_LENGTH - 1)}…` : label;
+}
+
 /**
  * Short id for a detail page whose last URL segment is a friendly id ("run_cmryyza…05hrqq9n").
  * Uses the same 8-character tail the dashboard tables display, so the label matches what the
@@ -267,31 +277,115 @@ function detailIdFromPath(pathname: string): string | undefined {
   return undefined;
 }
 
+/** Task type filter on the Tasks page (?types=…) becomes the whole favorite name. */
+const TASK_TYPE_LABELS: Record<string, string> = {
+  AGENT: "Agent tasks",
+  STANDARD: "Standard tasks",
+  SCHEDULED: "Scheduled tasks",
+};
+
+/** "COMPLETED_SUCCESSFULLY" -> "Completed successfully", "history" -> "History". */
+function humanizeValue(value: string): string {
+  const lowered = value.toLowerCase().replaceAll("_", " ");
+  return lowered.charAt(0).toUpperCase() + lowered.slice(1);
+}
+
+/** Pagination/UI-state params that never describe what the user filtered. */
+const NON_FILTER_PARAMS = [FAVORITE_SEARCH_PARAM, "cursor", "direction", "page", "span"];
+
 /**
- * Compose the default side menu label for a favorited page. List pages keep their nav name
- * ("Queues"); detail pages get an identifying prefix ("Queue: email-queue", or the short id for
- * friendly-id pages: "Run: 05hrqq9n"). Users can rename.
+ * Summarize a filtered view's search params into a short, selective descriptor for the favorite
+ * label ("Completed successfully, last 7d +2"). The best-known filters are named (at most two);
+ * everything else only counts toward a "+N" so heavily filtered views stay readable.
  */
-export function buildFavoriteLabel(pathname: string, pageTitle: string | undefined): string {
+function describeFilters(search: string): string | undefined {
+  const params = new URLSearchParams(search);
+  for (const param of NON_FILTER_PARAMS) {
+    params.delete(param);
+  }
+
+  const parts: string[] = [];
+  const consumed = new Set<string>();
+
+  const take = (key: string, describe: (values: string[]) => string | undefined) => {
+    const values = params.getAll(key).filter((value) => value.length > 0);
+    if (values.length === 0) return;
+    consumed.add(key);
+    const described = describe(values);
+    if (described) parts.push(described);
+  };
+
+  // Priority order: the filters most likely to identify the view come first
+  take("statuses", (v) => (v.length === 1 ? humanizeValue(v[0]) : `${v.length} statuses`));
+  take("levels", (v) => (v.length === 1 ? humanizeValue(v[0]) : `${v.length} levels`));
+  take("tasks", (v) => (v.length === 1 ? v[0] : `${v.length} tasks`));
+  take("queues", (v) => (v.length === 1 ? v[0].replace(/^task\//, "") : `${v.length} queues`));
+  take("tags", (v) => (v.length === 1 ? v[0] : `${v.length} tags`));
+  take("period", (v) => `last ${v[0]}`);
+  if (params.has("from") || params.has("to")) {
+    consumed.add("from");
+    consumed.add("to");
+    parts.push("custom range");
+  }
+  take("versions", (v) => (v.length === 1 ? v[0] : `${v.length} versions`));
+  take("machines", (v) => (v.length === 1 ? v[0] : `${v.length} machines`));
+  take("tab", (v) => humanizeValue(v[0]));
+  // The runs list appends rootOnly=false by default; only the non-default value is a filter
+  take("rootOnly", (v) => (v[0] === "true" ? "root only" : undefined));
+
+  const remaining = new Set([...params.keys()].filter((key) => !consumed.has(key))).size;
+
+  const MAX_NAMED_PARTS = 2;
+  const shown = parts.slice(0, MAX_NAMED_PARTS);
+  const extra = parts.length - shown.length + remaining;
+
+  if (shown.length === 0) {
+    return extra > 0 ? `${extra} filter${extra === 1 ? "" : "s"}` : undefined;
+  }
+  return shown.join(", ") + (extra > 0 ? ` +${extra}` : "");
+}
+
+/**
+ * Compose the default side menu label for a favorited page. Plain list pages keep their nav
+ * name ("Queues"); detail pages get an identifying prefix ("Queue: email-queue", or the short
+ * id for friendly-id pages: "Run: 05hrqq9n"); filtered views summarize their filters ("Runs:
+ * Completed successfully, last 7d"). Users can always rename.
+ */
+export function buildFavoriteLabel(
+  pathname: string,
+  search: string,
+  pageTitle: string | undefined
+): string {
   const meta = resolvePageMeta(pathname);
   const title = pageTitle?.trim();
   const prefix = meta.singular ?? meta.name;
 
-  // Generic titles ("Runs", "Run") identify nothing on a detail page; prefer the short id
+  // Generic titles ("Runs", "Run") identify nothing on their own; prefer ids/filters from the URL
   const isGenericTitle =
     !title ||
     title.toLowerCase() === meta.name.toLowerCase() ||
     title.toLowerCase() === prefix.toLowerCase();
 
   if (isGenericTitle) {
+    // The Tasks page filtered to a single task type takes that type as the whole name
+    if (meta.icon === "tasks") {
+      const types = new URLSearchParams(search).getAll("types");
+      if (types.length === 1 && TASK_TYPE_LABELS[types[0]]) {
+        return TASK_TYPE_LABELS[types[0]];
+      }
+    }
+
     const detailId = detailIdFromPath(pathname);
-    return detailId ? `${prefix}: ${detailId}` : meta.name;
+    if (detailId) return `${prefix}: ${detailId}`;
+
+    const filters = describeFilters(search);
+    return truncateLabel(filters ? `${meta.name}: ${filters}` : meta.name);
   }
 
   const label = title.toLowerCase().startsWith(prefix.toLowerCase())
     ? title
     : `${prefix}: ${title}`;
-  return label.length > MAX_LABEL_LENGTH ? `${label.slice(0, MAX_LABEL_LENGTH - 1)}…` : label;
+  return truncateLabel(label);
 }
 
 /**
