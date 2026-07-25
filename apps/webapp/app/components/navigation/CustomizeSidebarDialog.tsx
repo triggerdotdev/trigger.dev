@@ -123,16 +123,31 @@ export function CustomizeSidebarDialog({
 }) {
   const [state, setState] = useState<DialogState>(() => buildState(sections, prefs));
 
-  const orderedSections = state.sectionOrder
-    .map((id) => sections.find((section) => section.id === id))
-    .filter((section): section is CustomizeSidebarSection => section !== undefined);
+  // The Favorites section disappears with its last staged-removed favorite, matching the side
+  // menu (which hides the section when empty)
+  const displayedSections = (current: DialogState) =>
+    current.sectionOrder
+      .map((id) => sections.find((section) => section.id === id))
+      .filter((section): section is CustomizeSidebarSection => section !== undefined)
+      .filter(
+        (section) =>
+          section.id !== FAVORITES_SECTION_ID ||
+          section.items.some((item) => !current.removed.includes(item.id))
+      );
 
-  const moveSection = (index: number, direction: -1 | 1) => {
+  const orderedSections = displayedSections(state);
+
+  const moveSection = (sectionId: string, direction: -1 | 1) => {
     setState((current) => {
+      // Swap with the DISPLAYED neighbor: a hidden Favorites entry may still sit in
+      // sectionOrder between two visible sections
+      const displayed = displayedSections(current).map((section) => section.id);
+      const neighborId = displayed[displayed.indexOf(sectionId) + direction];
+      if (!neighborId) return current;
       const next = [...current.sectionOrder];
-      const target = index + direction;
-      if (target < 0 || target >= next.length) return current;
-      [next[index], next[target]] = [next[target], next[index]];
+      const a = next.indexOf(sectionId);
+      const b = next.indexOf(neighborId);
+      [next[a], next[b]] = [next[b], next[a]];
       return { ...current, sectionOrder: next };
     });
   };
@@ -247,14 +262,14 @@ export function CustomizeSidebarDialog({
                 <SectionMoveButton
                   label={`Move ${section.title} up`}
                   disabled={index === 0}
-                  onClick={() => moveSection(index, -1)}
+                  onClick={() => moveSection(section.id, -1)}
                 >
                   <ArrowUpIcon className="size-3.5" />
                 </SectionMoveButton>
                 <SectionMoveButton
                   label={`Move ${section.title} down`}
                   disabled={index === orderedSections.length - 1}
-                  onClick={() => moveSection(index, 1)}
+                  onClick={() => moveSection(section.id, 1)}
                 >
                   <ArrowDownIcon className="size-3.5" />
                 </SectionMoveButton>
