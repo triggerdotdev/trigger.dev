@@ -4,7 +4,11 @@ import {
   SideMenuSectionIdSchema,
   type SideMenuSectionId,
 } from "~/components/navigation/sideMenuTypes";
-import { updateItemOrder, updateSideMenuPreferences } from "~/services/dashboardPreferences.server";
+import {
+  updateItemOrder,
+  updateSideMenuCustomization,
+  updateSideMenuPreferences,
+} from "~/services/dashboardPreferences.server";
 import { requireUser } from "~/services/session.server";
 
 // Transforms form data string "true"/"false" to boolean, or undefined if not present
@@ -22,6 +26,19 @@ const RequestSchema = z.object({
   organizationId: z.string().optional(),
   listId: z.string().optional(),
   itemOrder: z.string().optional(), // JSON-encoded string[]
+  customization: z.string().optional(), // JSON-encoded CustomizationSchema
+});
+
+// Payload of the "Customize sidebar" modal. For the nullable fields, null resets to default and
+// an absent field leaves the stored value unchanged.
+const CustomizationSchema = z.object({
+  sectionOrder: z.array(z.string().max(64)).max(50).nullish(),
+  hiddenItems: z.record(z.string().max(64), z.boolean()).nullish(),
+  sectionItemOrder: z.record(z.string().max(64), z.array(z.string().max(64)).max(100)).nullish(),
+  favorites: z
+    .array(z.object({ id: z.string().max(64), label: z.string().max(64) }))
+    .max(100)
+    .optional(),
 });
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -33,6 +50,29 @@ export async function action({ request }: ActionFunctionArgs) {
   const result = RequestSchema.safeParse(rawData);
   if (!result.success) {
     return json({ success: false, error: "Invalid request data" }, { status: 400 });
+  }
+
+  // Handle a "Customize sidebar" modal submit
+  if (result.data.customization) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(result.data.customization);
+    } catch {
+      parsed = null;
+    }
+    const customizationResult = CustomizationSchema.safeParse(parsed);
+    if (!customizationResult.success) {
+      return json({ success: false, error: "Invalid request data" }, { status: 400 });
+    }
+    const { sectionOrder, hiddenItems, sectionItemOrder, favorites } = customizationResult.data;
+    await updateSideMenuCustomization({
+      user,
+      sectionOrder,
+      hiddenItems,
+      sectionItemOrder,
+      favorites,
+    });
+    return json({ success: true });
   }
 
   // Handle item order update

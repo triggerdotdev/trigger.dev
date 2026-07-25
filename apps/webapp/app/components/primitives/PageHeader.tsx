@@ -1,5 +1,5 @@
 import { Link, useNavigation } from "@remix-run/react";
-import { type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { OrgBanner } from "../billing/OrgBanner";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
@@ -7,21 +7,34 @@ import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
 import { SimpleTooltip } from "./Tooltip";
 import { DashboardAgentLauncher } from "../dashboard-agent/dashboardAgentLauncher";
+import { FavoritePageButton } from "../navigation/FavoritePageButton";
 
 type WithChildren = {
   children: React.ReactNode;
   className?: string;
 };
 
+/**
+ * PageTitle reports its title (when it's a plain string) up to the NavBar here, so the favorite
+ * button can name the page in its tooltip and default label without every page wiring it through.
+ */
+const PageTitleRegistrationContext = createContext<((title: string | undefined) => void) | null>(
+  null
+);
+
 export function NavBar({ children }: WithChildren) {
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading" || navigation.state === "submitting";
+  const [pageTitle, setPageTitle] = useState<string | undefined>(undefined);
 
   return (
     <div>
       <div className="grid h-10 w-full grid-rows-[auto_1px] bg-background-bright">
         <div className="flex w-full items-center gap-2 pl-3 pr-2">
-          <div className="flex flex-1 items-center justify-between">{children}</div>
+          <PageTitleRegistrationContext.Provider value={setPageTitle}>
+            <div className="flex flex-1 items-center justify-between">{children}</div>
+          </PageTitleRegistrationContext.Provider>
+          <FavoritePageButton pageTitle={pageTitle} />
           <DashboardAgentLauncher />
         </div>
         <LoadingBarDivider isLoading={isLoading} />
@@ -46,6 +59,15 @@ type PageTitleProps = {
 };
 
 export function PageTitle({ title, backButton, accessory }: PageTitleProps) {
+  const setPageTitle = useContext(PageTitleRegistrationContext);
+  const titleText = typeof title === "string" ? title : undefined;
+
+  useEffect(() => {
+    if (!setPageTitle) return;
+    setPageTitle(titleText);
+    return () => setPageTitle(undefined);
+  }, [setPageTitle, titleText]);
+
   return (
     <div className="flex items-center gap-1">
       {backButton && (

@@ -3,10 +3,12 @@ import {
   ChevronRightIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
+import { EllipsisHorizontalIcon, PencilSquareIcon } from "@heroicons/react/20/solid";
 import { useFetcher, useNavigation, useSubmit } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
 import {
   type CSSProperties,
+  Fragment,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   useCallback,
@@ -131,6 +133,7 @@ import { Badge } from "../primitives/Badge";
 import {
   Popover,
   PopoverContent,
+  PopoverCustomTrigger,
   PopoverMenuItem,
   PopoverSectionHeader,
   PopoverTrigger,
@@ -144,15 +147,23 @@ import {
   TooltipTrigger,
 } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
+import { type FavoritePage } from "~/services/dashboardPreferences.server";
+import {
+  CustomizeSidebarDialog,
+  type CustomizeSidebarSection,
+  type SidebarCustomizationPayload,
+} from "./CustomizeSidebarDialog";
 import { CreateDashboardButton } from "./DashboardDialogs";
 import { DashboardList } from "./DashboardList";
 import { EnvironmentSelector } from "./EnvironmentSelector";
+import { favoritePageIcon, useFavorites } from "./favoritePages";
+import { FavoriteMenuItem } from "./FavoritesSection";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { NotificationPanel } from "./NotificationPanel";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { type SideMenuSectionId } from "./sideMenuTypes";
+import { isItemHidden, orderByPreference, type SideMenuSectionId } from "./sideMenuTypes";
 
 /** Get the collapsed state for a specific side menu section from user preferences */
 function getSectionCollapsed(
@@ -161,6 +172,31 @@ function getSectionCollapsed(
 ): boolean {
   return sideMenu?.collapsedSections?.[sectionId] ?? false;
 }
+
+type SideMenuItemConfig = {
+  /** Stable id used for hidden/order preferences; never rename once shipped. */
+  id: string;
+  name: string;
+  icon: RenderIcon;
+  activeIconColor: string;
+  inactiveIconColor?: string;
+  to: string;
+  dataAction?: string;
+  badge?: ReactNode;
+  trailingIconClassName?: string;
+  /** Hidden for every user who hasn't set their own preference for this item. */
+  defaultHidden?: boolean;
+  /** Right-side action (e.g. the + button on Dashboards); only rendered when visible. */
+  action?: ReactNode;
+  /** Extra content rendered directly after the item (e.g. the dashboards list). */
+  after?: ReactNode;
+};
+
+type SideMenuSectionConfig = {
+  id: SideMenuSectionId;
+  title: string;
+  items: SideMenuItemConfig[];
+};
 
 // Size popover items (org/project menus) to match the side-menu items, overriding the smaller
 // small-menu-item defaults via tailwind-merge; icon carries the default dimmed color.
@@ -349,6 +385,17 @@ export function SideMenu({
   const featureFlags = useFeatureFlags();
   const incidentStatus = useIncidentStatus();
   const isV3Project = project.engine === "V1";
+  const favorites = useFavorites();
+  const [isCustomizeOpen, setCustomizeOpen] = useState(false);
+  // Lives here (not in the dialog): confirming closes/unmounts the dialog, which would abort a
+  // fetcher owned by it before the request fires.
+  const customizationFetcher = useFetcher();
+  const submitSidebarCustomization = (payload: SidebarCustomizationPayload) => {
+    customizationFetcher.submit(
+      { customization: JSON.stringify(payload) },
+      { method: "POST", action: "/resources/preferences/sidemenu" }
+    );
+  };
 
   const persistSideMenuPreferences = useCallback(
     (data: {
@@ -667,6 +714,261 @@ export function SideMenu({
         ? "hidden"
         : "shown";
 
+  // The customizable sections (everything except Tasks/Runs/Sessions), in DEFAULT order. The
+  // user's saved order/hidden preferences are applied at render below.
+  const staticSections: SideMenuSectionConfig[] = [];
+
+  if (user.admin || user.isImpersonating || featureFlags.hasAiAccess) {
+    staticSections.push({
+      id: "ai",
+      title: "AI",
+      items: [
+        {
+          id: "prompts",
+          name: "Prompts",
+          icon: AIPenIcon,
+          trailingIconClassName: "size-6",
+          activeIconColor: "text-aiPrompts",
+          to: v3PromptsPath(organization, project, environment),
+          dataAction: "prompts",
+          badge: <NewBadge />,
+        },
+        {
+          id: "models",
+          name: "Models",
+          icon: Box3DIcon,
+          activeIconColor: "text-models",
+          to: v3ModelsPath(organization, project, environment),
+          dataAction: "models",
+          badge: <NewBadge />,
+        },
+      ],
+    });
+  }
+
+  if (user.admin || user.isImpersonating || featureFlags.hasQueryAccess) {
+    staticSections.push({
+      id: "metrics",
+      title: "Observability",
+      items: [
+        ...(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess
+          ? [
+              {
+                id: "logs",
+                name: "Logs",
+                icon: LogsIcon,
+                activeIconColor: "text-logs",
+                to: v3LogsPath(organization, project, environment),
+                dataAction: "logs",
+                badge: <AlphaBadge />,
+              } satisfies SideMenuItemConfig,
+            ]
+          : []),
+        {
+          id: "errors",
+          name: "Errors",
+          icon: BugIcon,
+          activeIconColor: "text-errors",
+          to: v3ErrorsPath(organization, project, environment),
+          dataAction: "errors",
+        },
+        {
+          id: "query",
+          name: "Query",
+          icon: CodeSquareIcon,
+          activeIconColor: "text-query",
+          to: queryPath(organization, project, environment),
+          dataAction: "query",
+        },
+        {
+          id: "queues",
+          name: "Queues",
+          icon: QueuesIcon,
+          activeIconColor: "text-queues",
+          to: v3QueuesPath(organization, project, environment),
+          dataAction: "queues",
+        },
+        {
+          id: "dashboards",
+          name: "Dashboards",
+          icon: ChartBarIcon,
+          activeIconColor: "text-metrics",
+          to: v3DashboardsLandingPath(organization, project, environment),
+          dataAction: "dashboards-landing",
+          action: (
+            <CreateDashboardButton
+              organization={organization}
+              project={project}
+              environment={environment}
+              isCollapsed={isCollapsed}
+            />
+          ),
+          after: (
+            <DashboardList
+              organization={organization}
+              project={project}
+              environment={environment}
+              isCollapsed={isCollapsed}
+              user={user}
+            />
+          ),
+        },
+      ],
+    });
+  }
+
+  staticSections.push({
+    id: "deployments",
+    title: "Deployments",
+    items: [
+      {
+        id: "deployments",
+        name: "Deploys",
+        icon: DeploymentsIcon,
+        activeIconColor: "text-deployments",
+        to: v3DeploymentsPath(organization, project, environment),
+        dataAction: "deployments",
+      },
+      {
+        id: "environment-variables",
+        name: "Environment variables",
+        icon: IDIcon,
+        activeIconColor: "text-environmentVariables",
+        to: v3EnvironmentVariablesPath(organization, project, environment),
+        dataAction: "environment variables",
+      },
+      {
+        id: "preview-branches",
+        name: "Preview branches",
+        icon: BranchEnvironmentIconSmall,
+        activeIconColor: "text-previewBranches",
+        to: branchesPath(organization, project, environment),
+        dataAction: "preview-branches",
+      },
+      {
+        id: "regions",
+        name: "Regions",
+        icon: GlobeLinesIcon,
+        activeIconColor: "text-regions",
+        to: regionsPath(organization, project, environment),
+        dataAction: "regions",
+      },
+    ],
+  });
+
+  staticSections.push({
+    id: "manage",
+    title: "Manage",
+    items: [
+      {
+        id: "waitpoint-tokens",
+        name: "Waitpoint tokens",
+        icon: WaitpointTokenIcon,
+        activeIconColor: "text-sky-500",
+        to: v3WaitpointTokensPath(organization, project, environment),
+        dataAction: "waitpoint-tokens",
+      },
+      {
+        id: "batches",
+        name: "Batches",
+        icon: BatchesIcon,
+        activeIconColor: "text-batches",
+        to: v3BatchesPath(organization, project, environment),
+        dataAction: "batches",
+      },
+      {
+        id: "bulk-actions",
+        name: "Bulk actions",
+        icon: ListCheckedIcon,
+        activeIconColor: "text-text-bright",
+        to: v3BulkActionsPath(organization, project, environment),
+        dataAction: "bulk actions",
+      },
+      {
+        id: "api-keys",
+        name: "API keys",
+        icon: KeyIcon,
+        activeIconColor: "text-text-bright",
+        to: v3ApiKeysPath(organization, project, environment),
+        dataAction: "api keys",
+      },
+      {
+        id: "alerts",
+        name: "Alerts",
+        icon: BellIcon,
+        activeIconColor: "text-text-bright",
+        to: v3ProjectAlertsPath(organization, project, environment),
+        dataAction: "alerts",
+      },
+      ...(isManagedCloud
+        ? [
+            {
+              id: "concurrency",
+              name: "Concurrency",
+              icon: ConcurrencyIcon,
+              activeIconColor: "text-text-bright",
+              to: concurrencyPath(organization, project, environment),
+              dataAction: "concurrency",
+            } satisfies SideMenuItemConfig,
+          ]
+        : []),
+      {
+        id: "limits",
+        name: "Limits",
+        icon: DialIcon,
+        activeIconColor: "text-text-bright",
+        to: limitsPath(organization, project, environment),
+        dataAction: "limits",
+      },
+      {
+        id: "integrations",
+        name: "Integrations",
+        icon: IntegrationsIcon,
+        activeIconColor: "text-text-bright",
+        to: v3ProjectSettingsIntegrationsPath(organization, project, environment),
+        dataAction: "project-settings-integrations",
+      },
+    ],
+  });
+
+  const sideMenuPrefs = user.dashboardPreferences.sideMenu;
+
+  // Section order: favorites lives above AI by default; the saved preference reorders
+  const orderedSectionIds = orderByPreference(
+    [{ id: "favorites" as SideMenuSectionId }, ...staticSections.map((s) => ({ id: s.id }))],
+    sideMenuPrefs?.sectionOrder
+  ).map((s) => s.id);
+
+  // What the "Customize sidebar" modal edits, in default order (Tasks/Runs/Sessions excluded)
+  const customizeSections: CustomizeSidebarSection[] = [
+    ...(favorites.length > 0
+      ? [
+          {
+            id: "favorites",
+            title: "Favorites",
+            items: favorites.map((favorite) => ({
+              id: favorite.id,
+              name: favorite.label,
+              icon: favoritePageIcon(favorite.icon),
+              isFavorite: true,
+            })),
+          },
+        ]
+      : []),
+    ...staticSections.map((section) => ({
+      id: section.id,
+      title: section.title,
+      items: section.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        icon: item.icon,
+        defaultHidden: item.defaultHidden,
+      })),
+    })),
+  ];
+
+  const sectionHeaderMenu = <SectionHeaderMenu onCustomize={() => setCustomizeOpen(true)} />;
+
   return (
     <div
       ref={rootRef}
@@ -809,247 +1111,38 @@ export function SideMenu({
               />
             </div>
 
-            {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
-              <SideMenuSection
-                title="AI"
-                isSideMenuCollapsed={isCollapsed}
-                itemSpacingClassName="space-y-0"
-                initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "ai")}
-                onCollapseToggle={handleSectionToggle("ai")}
-              >
-                <SideMenuItem
-                  name="Prompts"
-                  icon={AIPenIcon}
-                  trailingIconClassName="size-6"
-                  activeIconColor="text-aiPrompts"
-                  inactiveIconColor="text-text-dimmed"
-                  to={v3PromptsPath(organization, project, environment)}
-                  data-action="prompts"
-                  badge={<NewBadge />}
-                  isCollapsed={isCollapsed}
-                />
-                {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
-                  <SideMenuItem
-                    name="Models"
-                    icon={Box3DIcon}
-                    activeIconColor="text-models"
-                    inactiveIconColor="text-text-dimmed"
-                    to={v3ModelsPath(organization, project, environment)}
-                    data-action="models"
-                    badge={<NewBadge />}
+            {orderedSectionIds.map((sectionId) => {
+              if (sectionId === "favorites") {
+                if (favorites.length === 0) return null;
+                return (
+                  <FavoritesSideMenuSection
+                    key="favorites"
+                    favorites={favorites}
+                    hiddenItems={sideMenuPrefs?.hiddenItems}
                     isCollapsed={isCollapsed}
+                    initialCollapsed={getSectionCollapsed(sideMenuPrefs, "favorites")}
+                    onCollapseToggle={handleSectionToggle("favorites")}
+                    headerMenu={sectionHeaderMenu}
                   />
-                )}
-              </SideMenuSection>
-            )}
+                );
+              }
 
-            {(user.admin || user.isImpersonating || featureFlags.hasQueryAccess) && (
-              <SideMenuSection
-                title="Observability"
-                isSideMenuCollapsed={isCollapsed}
-                itemSpacingClassName="space-y-0"
-                initialCollapsed={getSectionCollapsed(
-                  user.dashboardPreferences.sideMenu,
-                  "metrics"
-                )}
-                onCollapseToggle={handleSectionToggle("metrics")}
-              >
-                {(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess) && (
-                  <SideMenuItem
-                    name="Logs"
-                    icon={LogsIcon}
-                    activeIconColor="text-logs"
-                    inactiveIconColor="text-text-dimmed"
-                    to={v3LogsPath(organization, project, environment)}
-                    data-action="logs"
-                    badge={<AlphaBadge />}
-                    isCollapsed={isCollapsed}
-                  />
-                )}
-                <SideMenuItem
-                  name="Errors"
-                  icon={BugIcon}
-                  activeIconColor="text-errors"
-                  inactiveIconColor="text-text-dimmed"
-                  to={v3ErrorsPath(organization, project, environment)}
-                  data-action="errors"
-                  isCollapsed={isCollapsed}
-                />
-                <SideMenuItem
-                  name="Query"
-                  icon={CodeSquareIcon}
-                  activeIconColor="text-query"
-                  inactiveIconColor="text-text-dimmed"
-                  to={queryPath(organization, project, environment)}
-                  data-action="query"
-                  isCollapsed={isCollapsed}
-                />
-                <SideMenuItem
-                  name="Queues"
-                  icon={QueuesIcon}
-                  activeIconColor="text-queues"
-                  inactiveIconColor="text-text-dimmed"
-                  to={v3QueuesPath(organization, project, environment)}
-                  data-action="queues"
-                  isCollapsed={isCollapsed}
-                />
-                <SideMenuItem
-                  name="Dashboards"
-                  icon={ChartBarIcon}
-                  activeIconColor="text-metrics"
-                  inactiveIconColor="text-text-dimmed"
-                  to={v3DashboardsLandingPath(organization, project, environment)}
-                  data-action="dashboards-landing"
-                  isCollapsed={isCollapsed}
-                  action={
-                    <CreateDashboardButton
-                      organization={organization}
-                      project={project}
-                      environment={environment}
-                      isCollapsed={isCollapsed}
-                    />
-                  }
-                />
-                <DashboardList
-                  organization={organization}
-                  project={project}
-                  environment={environment}
-                  isCollapsed={isCollapsed}
-                  user={user}
-                />
-              </SideMenuSection>
-            )}
+              const section = staticSections.find((s) => s.id === sectionId);
+              if (!section) return null;
 
-            <SideMenuSection
-              title="Deployments"
-              isSideMenuCollapsed={isCollapsed}
-              itemSpacingClassName="space-y-0"
-              initialCollapsed={getSectionCollapsed(
-                user.dashboardPreferences.sideMenu,
-                "deployments"
-              )}
-              onCollapseToggle={handleSectionToggle("deployments")}
-            >
-              <SideMenuItem
-                name="Deploys"
-                icon={DeploymentsIcon}
-                activeIconColor="text-deployments"
-                inactiveIconColor="text-text-dimmed"
-                to={v3DeploymentsPath(organization, project, environment)}
-                data-action="deployments"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Environment variables"
-                icon={IDIcon}
-                activeIconColor="text-environmentVariables"
-                inactiveIconColor="text-text-dimmed"
-                to={v3EnvironmentVariablesPath(organization, project, environment)}
-                data-action="environment variables"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Preview branches"
-                icon={BranchEnvironmentIconSmall}
-                activeIconColor="text-previewBranches"
-                inactiveIconColor="text-text-dimmed"
-                to={branchesPath(organization, project, environment)}
-                data-action="preview-branches"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Regions"
-                icon={GlobeLinesIcon}
-                activeIconColor="text-regions"
-                inactiveIconColor="text-text-dimmed"
-                to={regionsPath(organization, project, environment)}
-                data-action="regions"
-                isCollapsed={isCollapsed}
-              />
-            </SideMenuSection>
-
-            <SideMenuSection
-              title="Manage"
-              isSideMenuCollapsed={isCollapsed}
-              itemSpacingClassName="space-y-0"
-              initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "manage")}
-              onCollapseToggle={handleSectionToggle("manage")}
-            >
-              <SideMenuItem
-                name="Waitpoint tokens"
-                icon={WaitpointTokenIcon}
-                activeIconColor="text-sky-500"
-                inactiveIconColor="text-text-dimmed"
-                to={v3WaitpointTokensPath(organization, project, environment)}
-                data-action="waitpoint-tokens"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Batches"
-                icon={BatchesIcon}
-                activeIconColor="text-batches"
-                inactiveIconColor="text-text-dimmed"
-                to={v3BatchesPath(organization, project, environment)}
-                data-action="batches"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Bulk actions"
-                icon={ListCheckedIcon}
-                activeIconColor="text-text-bright"
-                inactiveIconColor="text-text-dimmed"
-                to={v3BulkActionsPath(organization, project, environment)}
-                data-action="bulk actions"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="API keys"
-                icon={KeyIcon}
-                activeIconColor="text-text-bright"
-                inactiveIconColor="text-text-dimmed"
-                to={v3ApiKeysPath(organization, project, environment)}
-                data-action="api keys"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Alerts"
-                icon={BellIcon}
-                activeIconColor="text-text-bright"
-                inactiveIconColor="text-text-dimmed"
-                to={v3ProjectAlertsPath(organization, project, environment)}
-                data-action="alerts"
-                isCollapsed={isCollapsed}
-              />
-              {isManagedCloud && (
-                <SideMenuItem
-                  name="Concurrency"
-                  icon={ConcurrencyIcon}
-                  activeIconColor="text-text-bright"
-                  inactiveIconColor="text-text-dimmed"
-                  to={concurrencyPath(organization, project, environment)}
-                  data-action="concurrency"
+              return (
+                <CustomizableSideMenuSection
+                  key={section.id}
+                  section={section}
+                  itemOrder={sideMenuPrefs?.sectionItemOrder?.[section.id]}
+                  hiddenItems={sideMenuPrefs?.hiddenItems}
                   isCollapsed={isCollapsed}
+                  initialCollapsed={getSectionCollapsed(sideMenuPrefs, section.id)}
+                  onCollapseToggle={handleSectionToggle(section.id)}
+                  headerMenu={sectionHeaderMenu}
                 />
-              )}
-              <SideMenuItem
-                name="Limits"
-                icon={DialIcon}
-                activeIconColor="text-text-bright"
-                inactiveIconColor="text-text-dimmed"
-                to={limitsPath(organization, project, environment)}
-                data-action="limits"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Integrations"
-                icon={IntegrationsIcon}
-                activeIconColor="text-text-bright"
-                inactiveIconColor="text-text-dimmed"
-                to={v3ProjectSettingsIntegrationsPath(organization, project, environment)}
-                data-action="project-settings-integrations"
-                isCollapsed={isCollapsed}
-              />
-            </SideMenuSection>
+              );
+            })}
           </div>
         </div>
         <div>
@@ -1097,7 +1190,216 @@ export function SideMenu({
           </motion.div>
         </div>
       </div>
+      <Dialog open={isCustomizeOpen} onOpenChange={setCustomizeOpen}>
+        {/* Mounted only while open so the modal state re-seeds from current preferences each time */}
+        {isCustomizeOpen && (
+          <CustomizeSidebarDialog
+            sections={customizeSections}
+            prefs={{
+              sectionOrder: sideMenuPrefs?.sectionOrder,
+              hiddenItems: sideMenuPrefs?.hiddenItems,
+              sectionItemOrder: sideMenuPrefs?.sectionItemOrder,
+            }}
+            onConfirm={submitSidebarCustomization}
+            onClose={() => setCustomizeOpen(false)}
+          />
+        )}
+      </Dialog>
     </div>
+  );
+}
+
+/** A section built from {@link SideMenuItemConfig}s with the user's order/hidden prefs applied. */
+function CustomizableSideMenuSection({
+  section,
+  itemOrder,
+  hiddenItems,
+  isCollapsed,
+  initialCollapsed,
+  onCollapseToggle,
+  headerMenu,
+}: {
+  section: SideMenuSectionConfig;
+  itemOrder: string[] | undefined;
+  hiddenItems: Record<string, boolean> | undefined;
+  isCollapsed: boolean;
+  initialCollapsed: boolean;
+  onCollapseToggle: (collapsed: boolean) => void;
+  headerMenu: ReactNode;
+}) {
+  const orderedItems = orderByPreference(section.items, itemOrder);
+  const visibleItems = orderedItems.filter((item) => !isItemHidden(item, hiddenItems));
+  const moreItems = orderedItems.filter((item) => isItemHidden(item, hiddenItems));
+
+  return (
+    <SideMenuSection
+      title={section.title}
+      isSideMenuCollapsed={isCollapsed}
+      itemSpacingClassName="space-y-0"
+      initialCollapsed={initialCollapsed}
+      onCollapseToggle={onCollapseToggle}
+      headerMenu={headerMenu}
+    >
+      {visibleItems.map((item) => (
+        <Fragment key={item.id}>
+          <SideMenuItem
+            name={item.name}
+            icon={item.icon}
+            trailingIconClassName={item.trailingIconClassName}
+            activeIconColor={item.activeIconColor}
+            inactiveIconColor={item.inactiveIconColor ?? "text-text-dimmed"}
+            to={item.to}
+            data-action={item.dataAction}
+            badge={item.badge}
+            isCollapsed={isCollapsed}
+            action={item.action}
+          />
+          {item.after}
+        </Fragment>
+      ))}
+      {moreItems.length > 0 && (
+        <SideMenuMoreItem
+          items={moreItems.map((item) => ({
+            id: item.id,
+            name: item.name,
+            icon: item.icon,
+            to: item.to,
+          }))}
+          isCollapsed={isCollapsed}
+        />
+      )}
+    </SideMenuSection>
+  );
+}
+
+/** The user's favorited pages; hidden favorites collapse into the trailing "More" item. */
+function FavoritesSideMenuSection({
+  favorites,
+  hiddenItems,
+  isCollapsed,
+  initialCollapsed,
+  onCollapseToggle,
+  headerMenu,
+}: {
+  favorites: FavoritePage[];
+  hiddenItems: Record<string, boolean> | undefined;
+  isCollapsed: boolean;
+  initialCollapsed: boolean;
+  onCollapseToggle: (collapsed: boolean) => void;
+  headerMenu: ReactNode;
+}) {
+  const visible = favorites.filter((favorite) => !(hiddenItems?.[favorite.id] ?? false));
+  const hidden = favorites.filter((favorite) => hiddenItems?.[favorite.id] ?? false);
+
+  return (
+    <SideMenuSection
+      title="Favorites"
+      isSideMenuCollapsed={isCollapsed}
+      itemSpacingClassName="space-y-0"
+      initialCollapsed={initialCollapsed}
+      onCollapseToggle={onCollapseToggle}
+      headerMenu={headerMenu}
+    >
+      {visible.map((favorite) => (
+        <FavoriteMenuItem key={favorite.id} favorite={favorite} isCollapsed={isCollapsed} />
+      ))}
+      {hidden.length > 0 && (
+        <SideMenuMoreItem
+          items={hidden.map((favorite) => ({
+            id: favorite.id,
+            name: favorite.label,
+            icon: favoritePageIcon(favorite.icon),
+            to: favorite.url,
+          }))}
+          isCollapsed={isCollapsed}
+        />
+      )}
+    </SideMenuSection>
+  );
+}
+
+/**
+ * The trailing "More" item of a section: a popover listing that section's hidden items. Only
+ * rendered when the section has hidden items.
+ */
+function SideMenuMoreItem({
+  items,
+  isCollapsed,
+}: {
+  items: Array<{ id: string; name: string; icon: RenderIcon; to: string }>;
+  isCollapsed: boolean;
+}) {
+  const [isOpen, setOpen] = useState(false);
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    setOpen(false);
+  }, [navigation.location?.pathname]);
+
+  return (
+    <Popover open={isOpen} onOpenChange={setOpen}>
+      <SimpleTooltip
+        button={
+          <PopoverTrigger className="flex h-8 w-full items-center gap-2 overflow-hidden rounded pl-1.75 pr-2 text-text-dimmed hover:bg-background-hover hover:text-text-bright focus-custom data-[state=open]:bg-background-hover data-[state=open]:text-text-bright">
+            <EllipsisHorizontalIcon className="size-5 shrink-0" />
+            <span
+              className="min-w-0 flex-1 select-none truncate text-left text-[0.90625rem] font-medium tracking-[-0.01em]"
+              style={{ opacity: "var(--sm-label-opacity, 1)" }}
+            >
+              More
+            </span>
+          </PopoverTrigger>
+        }
+        content="More"
+        side="right"
+        sideOffset={8}
+        hidden={!isCollapsed}
+        asChild
+        tabbable
+        disableHoverableContent
+      />
+      <PopoverContent className="min-w-44 p-1" side="right" align="start" sideOffset={4}>
+        <div className="flex flex-col gap-1">
+          {items.map((item) => (
+            <PopoverMenuItem
+              key={item.id}
+              to={item.to}
+              title={item.name}
+              icon={item.icon}
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
+            />
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** The ellipsis on section headers (visible on hover) opening the sidebar customization menu. */
+function SectionHeaderMenu({ onCustomize }: { onCustomize: () => void }) {
+  const [isOpen, setOpen] = useState(false);
+
+  return (
+    <Popover open={isOpen} onOpenChange={setOpen}>
+      <PopoverCustomTrigger
+        aria-label="Sidebar options"
+        className="flex size-5 items-center justify-center justify-items-center rounded p-0 text-text-dimmed hover:bg-surface-control hover:text-text-bright"
+      >
+        <EllipsisHorizontalIcon className="size-4" />
+      </PopoverCustomTrigger>
+      <PopoverContent className="w-fit min-w-max p-1" align="start" sideOffset={4}>
+        <PopoverMenuItem
+          icon={PencilSquareIcon}
+          title="Customize sidebar"
+          leadingIconClassName="size-4 text-text-dimmed"
+          onClick={() => {
+            setOpen(false);
+            onCustomize();
+          }}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 

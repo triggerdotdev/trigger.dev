@@ -1,0 +1,136 @@
+import { StarIcon as StarIconOutline } from "@heroicons/react/24/outline";
+import { StarIcon as StarIconSolid } from "@heroicons/react/20/solid";
+import { useFetcher, useLocation } from "@remix-run/react";
+import { useEffect, useRef } from "react";
+import { useIsImpersonating } from "~/hooks/useOrganizations";
+import { useOptionalUser } from "~/hooks/useUser";
+import { Button } from "../primitives/Buttons";
+import { ShortcutKey } from "../primitives/ShortcutKey";
+import { useShortcuts } from "../primitives/ShortcutsProvider";
+import { SimpleTooltip } from "../primitives/Tooltip";
+import {
+  buildFavoriteLabel,
+  FAVORITES_ACTION_PATH,
+  resolvePageMeta,
+  useFavorites,
+} from "./favoritePages";
+
+/**
+ * The star in the page header that favorites the current page (full URL, including filters and
+ * tabs) to the side menu. Toggled by click or Option+F.
+ */
+export function FavoritePageButton({ pageTitle }: { pageTitle?: string }) {
+  const user = useOptionalUser();
+  const isImpersonating = useIsImpersonating();
+  const location = useLocation();
+  const favorites = useFavorites();
+  const fetcher = useFetcher();
+  const { areShortcutsEnabled } = useShortcuts();
+
+  const url = location.pathname + location.search;
+  const existing = favorites.find((favorite) => favorite.url === url);
+  const isFavorited = existing !== undefined;
+  const pageName = pageTitle?.trim() || resolvePageMeta(location.pathname).name;
+
+  const toggle = () => {
+    if (existing) {
+      fetcher.submit(
+        { intent: "remove", id: existing.id },
+        { method: "POST", action: FAVORITES_ACTION_PATH }
+      );
+    } else {
+      fetcher.submit(
+        {
+          intent: "add",
+          id: crypto.randomUUID(),
+          url,
+          label: buildFavoriteLabel(location.pathname, pageTitle),
+          icon: resolvePageMeta(location.pathname).icon,
+        },
+        { method: "POST", action: FAVORITES_ACTION_PATH }
+      );
+    }
+  };
+
+  // The listener reads the latest toggle through a ref so it isn't re-attached every render
+  const toggleRef = useRef(toggle);
+  toggleRef.current = toggle;
+
+  const showButton = user !== undefined && !isImpersonating;
+
+  useEffect(() => {
+    if (!showButton || !areShortcutsEnabled) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      // Matched on `event.code`: on macOS, Option makes "F" report "ƒ" via `event.key`, so the
+      // event.key-based useShortcutKeys hook can't capture Option+letter (see GlobalShortcuts).
+      if (
+        event.code !== "KeyF" ||
+        !event.altKey ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      toggleRef.current();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [showButton, areShortcutsEnabled]);
+
+  if (!showButton) {
+    return null;
+  }
+
+  const tooltipLabel = isFavorited
+    ? `Remove ${pageName} from favorites`
+    : `Add ${pageName} to favorites`;
+
+  return (
+    <SimpleTooltip
+      delayDuration={500}
+      disableHoverableContent
+      asChild
+      side="bottom"
+      button={
+        // Span wrapper: Button drops the pointer-event props Radix injects via asChild, so the
+        // tooltip trigger has to be a plain element (same pattern as CollapseMenuButton).
+        <span className="flex">
+          <Button
+            variant="minimal/small"
+            className="aspect-square h-6 p-1"
+            onClick={toggle}
+            aria-label={tooltipLabel}
+            aria-pressed={isFavorited}
+            LeadingIcon={
+              isFavorited ? (
+                <StarIconSolid className="size-4 text-yellow-500" />
+              ) : (
+                <StarIconOutline className="size-4 text-text-dimmed" />
+              )
+            }
+          />
+        </span>
+      }
+      content={
+        <span className="flex items-center gap-2">
+          {tooltipLabel}
+          <ShortcutKey shortcut={{ modifiers: ["alt"], key: "f" }} variant="medium/bright" />
+        </span>
+      }
+    />
+  );
+}

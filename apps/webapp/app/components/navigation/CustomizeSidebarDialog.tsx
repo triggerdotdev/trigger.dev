@@ -1,0 +1,402 @@
+import { DialogClose } from "@radix-ui/react-dialog";
+import { ArrowDownIcon, ArrowUpIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/20/solid";
+import { GripVerticalIcon } from "lucide-react";
+import { useState } from "react";
+import ReactGridLayout, { type Layout, useContainerWidth } from "react-grid-layout";
+import { cn } from "~/utils/cn";
+import { Button } from "../primitives/Buttons";
+import { DialogContent, DialogFooter, DialogHeader } from "../primitives/Dialog";
+import { Header3 } from "../primitives/Headers";
+import { Icon, type RenderIcon } from "../primitives/Icon";
+import { Input } from "../primitives/Input";
+import { isItemHidden, orderByPreference } from "./sideMenuTypes";
+
+export type CustomizeSidebarItem = {
+  id: string;
+  name: string;
+  icon: RenderIcon;
+  defaultHidden?: boolean;
+  /** Favorites get an inline-editable name in the modal. */
+  isFavorite?: boolean;
+};
+
+export type CustomizeSidebarSection = {
+  id: string;
+  title: string;
+  /** Items in DEFAULT order (favorites: saved order — that is their default). */
+  items: CustomizeSidebarItem[];
+};
+
+type SavedPreferences = {
+  sectionOrder?: string[];
+  hiddenItems?: Record<string, boolean>;
+  sectionItemOrder?: Record<string, string[]>;
+};
+
+/** What Confirm produces; null clears a stored preference back to its default. */
+export type SidebarCustomizationPayload = {
+  sectionOrder: string[] | null;
+  hiddenItems: Record<string, boolean> | null;
+  sectionItemOrder: Record<string, string[]> | null;
+  favorites?: Array<{ id: string; label: string }>;
+};
+
+type DialogState = {
+  sectionOrder: string[];
+  /** section id -> item ids in order */
+  itemOrders: Record<string, string[]>;
+  /** item id -> effective hidden */
+  hidden: Record<string, boolean>;
+  /** favorite id -> label being edited */
+  labels: Record<string, string>;
+};
+
+const FAVORITES_SECTION_ID = "favorites";
+const ROW_HEIGHT = 44;
+
+function buildState(
+  sections: CustomizeSidebarSection[],
+  prefs: SavedPreferences | undefined
+): DialogState {
+  const orderedSections = prefs ? orderByPreference(sections, prefs.sectionOrder) : sections;
+
+  const itemOrders: Record<string, string[]> = {};
+  const hidden: Record<string, boolean> = {};
+  const labels: Record<string, string> = {};
+
+  for (const section of sections) {
+    // Favorites' array order is canonical (already applied), so saved item order only applies to
+    // the static sections.
+    const orderedItems =
+      prefs && section.id !== FAVORITES_SECTION_ID
+        ? orderByPreference(section.items, prefs.sectionItemOrder?.[section.id])
+        : section.items;
+    itemOrders[section.id] = orderedItems.map((item) => item.id);
+
+    for (const item of section.items) {
+      hidden[item.id] = prefs
+        ? isItemHidden(item, prefs.hiddenItems)
+        : (item.defaultHidden ?? false);
+      if (item.isFavorite) {
+        labels[item.id] = item.name;
+      }
+    }
+  }
+
+  return { sectionOrder: orderedSections.map((section) => section.id), itemOrders, hidden, labels };
+}
+
+function arraysEqual(a: string[], b: string[]) {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+/**
+ * The "Customize sidebar" modal: reorder sections (arrows), reorder items (drag), hide/show items
+ * (eye), and rename favorites inline. Nothing is applied until Confirm; Reset restores the default
+ * layout without touching which pages are favorited.
+ */
+export function CustomizeSidebarDialog({
+  sections,
+  prefs,
+  onConfirm,
+  onClose,
+}: {
+  sections: CustomizeSidebarSection[];
+  prefs: SavedPreferences | undefined;
+  /** Owned by the parent: closing this dialog unmounts it, so it can't run its own fetcher. */
+  onConfirm: (payload: SidebarCustomizationPayload) => void;
+  onClose: () => void;
+}) {
+  const [state, setState] = useState<DialogState>(() => buildState(sections, prefs));
+
+  const orderedSections = state.sectionOrder
+    .map((id) => sections.find((section) => section.id === id))
+    .filter((section): section is CustomizeSidebarSection => section !== undefined);
+
+  const moveSection = (index: number, direction: -1 | 1) => {
+    setState((current) => {
+      const next = [...current.sectionOrder];
+      const target = index + direction;
+      if (target < 0 || target >= next.length) return current;
+      [next[index], next[target]] = [next[target], next[index]];
+      return { ...current, sectionOrder: next };
+    });
+  };
+
+  const reorderItems = (sectionId: string, itemIds: string[]) => {
+    setState((current) => ({
+      ...current,
+      itemOrders: { ...current.itemOrders, [sectionId]: itemIds },
+    }));
+  };
+
+  const toggleHidden = (itemId: string) => {
+    setState((current) => ({
+      ...current,
+      hidden: { ...current.hidden, [itemId]: !current.hidden[itemId] },
+    }));
+  };
+
+  const setLabel = (itemId: string, label: string) => {
+    setState((current) => ({ ...current, labels: { ...current.labels, [itemId]: label } }));
+  };
+
+  const reset = () => setState(buildState(sections, undefined));
+
+  const confirm = () => {
+    const defaults = buildState(sections, undefined);
+
+    const hiddenOverrides: Record<string, boolean> = {};
+    for (const section of sections) {
+      for (const item of section.items) {
+        const isHidden = state.hidden[item.id] ?? false;
+        if (isHidden !== (item.defaultHidden ?? false)) {
+          hiddenOverrides[item.id] = isHidden;
+        }
+      }
+    }
+
+    const sectionItemOrder: Record<string, string[]> = {};
+    for (const section of sections) {
+      if (section.id === FAVORITES_SECTION_ID) continue;
+      const order = state.itemOrders[section.id] ?? [];
+      if (!arraysEqual(order, defaults.itemOrders[section.id] ?? [])) {
+        sectionItemOrder[section.id] = order;
+      }
+    }
+
+    const favoritesSection = sections.find((section) => section.id === FAVORITES_SECTION_ID);
+    const favoriteOrder = state.itemOrders[FAVORITES_SECTION_ID] ?? [];
+    const favoritesChanged =
+      favoritesSection !== undefined &&
+      (!arraysEqual(favoriteOrder, defaults.itemOrders[FAVORITES_SECTION_ID] ?? []) ||
+        favoritesSection.items.some(
+          (item) => (state.labels[item.id] ?? item.name).trim() !== item.name
+        ));
+
+    // Parts equal to the defaults are sent as null so the stored preference is cleared, not pinned
+    const payload: SidebarCustomizationPayload = {
+      sectionOrder: arraysEqual(state.sectionOrder, defaults.sectionOrder)
+        ? null
+        : state.sectionOrder,
+      hiddenItems: Object.keys(hiddenOverrides).length > 0 ? hiddenOverrides : null,
+      sectionItemOrder: Object.keys(sectionItemOrder).length > 0 ? sectionItemOrder : null,
+      favorites: favoritesChanged
+        ? favoriteOrder.map((id) => ({ id, label: state.labels[id] ?? "" }))
+        : undefined,
+    };
+
+    onConfirm(payload);
+    onClose();
+  };
+
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>Customize sidebar</DialogHeader>
+      <div className="max-h-[60vh] space-y-6 overflow-y-auto pr-2 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+        {orderedSections.map((section, index) => (
+          <div key={section.id}>
+            <div className="flex items-center justify-between border-b border-grid-dimmed pb-1.5">
+              <Header3>{section.title}</Header3>
+              <div className="flex items-center gap-0.5">
+                <SectionMoveButton
+                  label={`Move ${section.title} up`}
+                  disabled={index === 0}
+                  onClick={() => moveSection(index, -1)}
+                >
+                  <ArrowUpIcon className="size-3.5" />
+                </SectionMoveButton>
+                <SectionMoveButton
+                  label={`Move ${section.title} down`}
+                  disabled={index === orderedSections.length - 1}
+                  onClick={() => moveSection(index, 1)}
+                >
+                  <ArrowDownIcon className="size-3.5" />
+                </SectionMoveButton>
+              </div>
+            </div>
+            <SectionItemList
+              section={section}
+              order={state.itemOrders[section.id] ?? section.items.map((item) => item.id)}
+              hidden={state.hidden}
+              labels={state.labels}
+              onReorder={(itemIds) => reorderItems(section.id, itemIds)}
+              onToggleHidden={toggleHidden}
+              onLabelChange={setLabel}
+            />
+          </div>
+        ))}
+      </div>
+      <DialogFooter>
+        <div className="flex items-center gap-2">
+          <DialogClose asChild>
+            <Button variant="secondary/medium">Cancel</Button>
+          </DialogClose>
+          <Button variant="secondary/medium" onClick={reset}>
+            Reset
+          </Button>
+        </div>
+        <Button variant="primary/medium" onClick={confirm}>
+          Confirm
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function SectionMoveButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex size-6 items-center justify-center rounded text-text-dimmed transition-colors hover:bg-surface-control hover:text-text-bright focus-custom disabled:pointer-events-none disabled:opacity-30"
+    >
+      {children}
+    </button>
+  );
+}
+
+function SectionItemList({
+  section,
+  order,
+  hidden,
+  labels,
+  onReorder,
+  onToggleHidden,
+  onLabelChange,
+}: {
+  section: CustomizeSidebarSection;
+  order: string[];
+  hidden: Record<string, boolean>;
+  labels: Record<string, string>;
+  onReorder: (itemIds: string[]) => void;
+  onToggleHidden: (itemId: string) => void;
+  onLabelChange: (itemId: string, label: string) => void;
+}) {
+  const { width, containerRef } = useContainerWidth({ initialWidth: 416 });
+
+  const items = order
+    .map((id) => section.items.find((item) => item.id === id))
+    .filter((item): item is CustomizeSidebarItem => item !== undefined);
+
+  const layout = items.map((item, index) => ({ i: item.id, x: 0, y: index, w: 1, h: 1 }));
+
+  const handleDragStop = (nextLayout: Layout) => {
+    const sorted = [...nextLayout].sort((a, b) => a.y - b.y).map((entry) => entry.i);
+    if (!arraysEqual(sorted, order)) {
+      onReorder(sorted);
+    }
+  };
+
+  const renderRow = (item: CustomizeSidebarItem, options: { draggable: boolean }) => (
+    <ModalItemRow
+      item={item}
+      isHidden={hidden[item.id] ?? false}
+      label={labels[item.id]}
+      draggable={options.draggable}
+      onToggleHidden={() => onToggleHidden(item.id)}
+      onLabelChange={(label) => onLabelChange(item.id, label)}
+    />
+  );
+
+  return (
+    <div ref={containerRef as React.Ref<HTMLDivElement>}>
+      {items.length >= 2 ? (
+        <ReactGridLayout
+          layout={layout}
+          width={width}
+          gridConfig={{
+            cols: 1,
+            rowHeight: ROW_HEIGHT,
+            margin: [0, 0] as const,
+            containerPadding: [0, 0] as const,
+          }}
+          resizeConfig={{ enabled: false }}
+          dragConfig={{ enabled: true, handle: ".customize-drag-handle" }}
+          onDragStop={handleDragStop}
+          autoSize
+        >
+          {items.map((item) => (
+            <div key={item.id}>{renderRow(item, { draggable: true })}</div>
+          ))}
+        </ReactGridLayout>
+      ) : (
+        items.map((item) => <div key={item.id}>{renderRow(item, { draggable: false })}</div>)
+      )}
+    </div>
+  );
+}
+
+function ModalItemRow({
+  item,
+  isHidden,
+  label,
+  draggable,
+  onToggleHidden,
+  onLabelChange,
+}: {
+  item: CustomizeSidebarItem;
+  isHidden: boolean;
+  label: string | undefined;
+  draggable: boolean;
+  onToggleHidden: () => void;
+  onLabelChange: (label: string) => void;
+}) {
+  return (
+    <div
+      className="flex items-center justify-between gap-3 border-b border-grid-dimmed"
+      style={{ height: ROW_HEIGHT }}
+    >
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-2 transition-opacity",
+          isHidden && "opacity-50"
+        )}
+      >
+        <Icon icon={item.icon} className="size-5 shrink-0 text-text-dimmed" />
+        {item.isFavorite ? (
+          <Input
+            value={label ?? item.name}
+            onChange={(e) => onLabelChange(e.target.value)}
+            variant="small"
+            maxLength={64}
+            containerClassName="max-w-60"
+            aria-label={`Rename ${item.name}`}
+          />
+        ) : (
+          <span className="truncate text-sm text-text-bright">{item.name}</span>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={onToggleHidden}
+          aria-label={isHidden ? `Show ${item.name}` : `Hide ${item.name}`}
+          aria-pressed={isHidden}
+          className="flex size-7 items-center justify-center rounded text-text-dimmed transition-colors hover:bg-surface-control hover:text-text-bright focus-custom"
+        >
+          {isHidden ? <EyeSlashIcon className="size-4" /> : <EyeIcon className="size-4" />}
+        </button>
+        {draggable ? (
+          <div className="customize-drag-handle flex size-7 cursor-grab items-center justify-center rounded text-text-dimmed transition-colors hover:text-text-bright active:cursor-grabbing">
+            <GripVerticalIcon className="size-4" />
+          </div>
+        ) : (
+          <div className="size-7" />
+        )}
+      </div>
+    </div>
+  );
+}

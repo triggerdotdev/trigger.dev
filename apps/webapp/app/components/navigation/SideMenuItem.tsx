@@ -27,6 +27,7 @@ export function SideMenuItem({
   action,
   disableIconHover = false,
   indented = false,
+  isActive: isActiveOverride,
   "data-action": dataAction,
 }: {
   icon?: RenderIcon;
@@ -45,10 +46,12 @@ export function SideMenuItem({
   disableIconHover?: boolean;
   /** Indented variant for grouped sub-items; only applied when the menu is expanded. */
   indented?: boolean;
+  /** Overrides the default pathname === to active check (e.g. favorites match on full URL). */
+  isActive?: boolean;
   "data-action"?: string;
 }) {
   const pathName = usePathName();
-  const isActive = pathName === to;
+  const isActive = isActiveOverride ?? pathName === to;
 
   const isIndented = indented && !isCollapsed;
 
