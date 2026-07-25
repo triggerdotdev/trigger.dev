@@ -74,6 +74,15 @@ export type S2RealtimeStreamsOptions = {
 const S2_TOKEN_OPS = ["append", "create-stream", "trim"] as const;
 const S2_TOKEN_OPS_FINGERPRINT = [...S2_TOKEN_OPS].sort().join(",");
 
+/**
+ * Placeholder handed back as the S2 access token when `skipAccessTokens` is set
+ * and no token is configured (self-hosted s2-lite ignores the token entirely).
+ * The SDK's session-stream writer rejects an empty access token as "no S2
+ * credentials" and never opens the writer, so the token must be non-empty even
+ * when it is semantically unused.
+ */
+const SKIP_ACCESS_TOKENS_SENTINEL = "s2-skip-access-tokens";
+
 type S2IssueAccessTokenResponse = { access_token: string };
 type S2AppendInput = { records: { body: string }[] };
 type S2AppendAck = {
@@ -168,7 +177,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     relativeName: string
   ): Promise<{ responseHeaders?: Record<string, string> }> {
     const accessToken = this.skipAccessTokens
-      ? this.token
+      ? this.token || SKIP_ACCESS_TOKENS_SENTINEL
       : await this.getS2AccessToken(randomUUID());
 
     return {

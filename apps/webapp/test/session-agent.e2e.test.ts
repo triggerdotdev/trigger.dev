@@ -66,6 +66,24 @@ afterAll(async () => {
   await server?.stop();
 }, 120_000);
 
+/**
+ * A synchronous mock model stream: enqueues every chunk in one tick and closes.
+ * `simulateReadableStream`'s default 0ms delay still yields a `setTimeout(0)`
+ * macrotask between chunks, which a loaded CI event loop can starve so the
+ * later chunks never emit and the turn produces an empty `.out`. Emitting
+ * synchronously keeps the mock deterministic across environments.
+ */
+function simStream(chunks: readonly unknown[]): ReadableStream<any> {
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(chunk);
+      }
+      controller.close();
+    },
+  });
+}
+
 function textModel(text: string) {
   const chunks = [
     { type: "text-start", id: "t1" },
@@ -81,7 +99,7 @@ function textModel(text: string) {
     },
   ];
   return new MockLanguageModelV3({
-    doStream: async () => ({ stream: simulateReadableStream({ chunks: chunks as never }) }),
+    doStream: async () => ({ stream: simStream(chunks) }),
   });
 }
 
@@ -139,7 +157,7 @@ function echoModel() {
           },
         },
       ];
-      return { stream: simulateReadableStream({ chunks: chunks as never }) };
+      return { stream: simStream(chunks) };
     },
   });
 }
@@ -239,7 +257,7 @@ function toolCallThenText(opts: {
   let idx = 0;
   return new MockLanguageModelV3({
     doStream: async () => ({
-      stream: simulateReadableStream({ chunks: (idx++ === 0 ? call1 : call2) as never }),
+      stream: simStream(idx++ === 0 ? call1 : call2),
     }),
   });
 }
@@ -264,7 +282,7 @@ function sequenceModel(texts: string[]) {
         { type: "text-end", id: "t1" },
         FINISH_STOP,
       ];
-      return { stream: simulateReadableStream({ chunks: chunks as never }) };
+      return { stream: simStream(chunks) };
     },
   });
 }

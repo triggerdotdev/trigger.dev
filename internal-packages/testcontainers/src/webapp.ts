@@ -312,6 +312,7 @@ export async function startSessionStreamTestServer(): Promise<SessionStreamTestS
       { host: rc.getHost(), port: rc.getPort() },
       {
         extraEnv: {
+          REALTIME_STREAMS_S2_ACCESS_TOKEN: "",
           REALTIME_STREAMS_S2_BASIN: s2.basin,
           REALTIME_STREAMS_S2_ENDPOINT: `${s2.endpoint}/v1`,
           REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: "true",
