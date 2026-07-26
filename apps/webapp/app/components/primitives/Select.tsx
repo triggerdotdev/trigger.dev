@@ -38,6 +38,9 @@ const variants = {
   "secondary/small": {
     button: cn(sizes.small.button, style.secondary.button),
   },
+  "secondary/medium": {
+    button: cn(sizes.medium.button, style.secondary.button),
+  },
   "tertiary/small": {
     button: cn(sizes.small.button, style.tertiary.button),
   },

@@ -525,7 +525,7 @@ export function ConnectGitHubRepoModal({
                     setSelectedRepository(undefined);
                   }}
                   items={gitHubAppInstallations}
-                  variant="tertiary/small"
+                  variant="secondary/medium"
                   placeholder="Select account"
                   dropdownIcon
                   text={selectedInstallation ? selectedInstallation.accountHandle : undefined}
@@ -576,7 +576,7 @@ export function ConnectGitHubRepoModal({
                     );
                     setSelectedRepository(repository);
                   }}
-                  variant="tertiary/small"
+                  variant="secondary/medium"
                   placeholder="Select repository"
                   heading="Filter repositories"
                   dropdownIcon
@@ -627,7 +627,7 @@ export function ConnectGitHubRepoModal({
                 cancelButton={
                   preventDismiss ? undefined : (
                     <DialogClose asChild>
-                      <Button variant="tertiary/medium">Cancel</Button>
+                      <Button variant="secondary/medium">Cancel</Button>
                     </DialogClose>
                   )
                 }
