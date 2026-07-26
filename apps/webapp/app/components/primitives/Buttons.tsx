@@ -89,6 +89,13 @@ const theme = {
     shortcut: "border-text-bright text-text-bright group-hover/button:border-text-bright/60",
     icon: "text-text-bright",
   },
+  warning: {
+    textColor: "text-warning transition group-disabled/button:text-warning/60",
+    button:
+      "bg-warning/10 border border-warning/20 group-hover/button:bg-warning/20 group-hover/button:border-warning/40 group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+    shortcut: "border-warning/40 text-warning group-hover/button:border-warning/60",
+    icon: "text-warning",
+  },
   docs: {
     textColor: "text-blue-200/70 transition group-disabled/button:text-text-dimmed/80",
     button:
@@ -133,6 +140,10 @@ const variant = {
   "danger/medium": createVariant("medium", "danger"),
   "danger/large": createVariant("large", "danger"),
   "danger/extra-large": createVariant("extra-large", "danger"),
+  "warning/small": createVariant("small", "warning"),
+  "warning/medium": createVariant("medium", "warning"),
+  "warning/large": createVariant("large", "warning"),
+  "warning/extra-large": createVariant("extra-large", "warning"),
   "docs/small": createVariant("small", "docs"),
   "docs/medium": createVariant("medium", "docs"),
   "docs/large": createVariant("large", "docs"),
