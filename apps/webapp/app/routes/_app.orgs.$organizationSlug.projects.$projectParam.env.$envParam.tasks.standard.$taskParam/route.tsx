@@ -1,20 +1,15 @@
-import { type MetaFunction, useLocation, useNavigation, useRevalidator } from "@remix-run/react";
+import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { type MutableRefObject, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import {
-  TypedAwait,
-  typeddefer,
-  type UseDataFunctionReturn,
-  useTypedLoaderData,
-} from "remix-typedjson";
+import { Suspense, useMemo, useRef, useState } from "react";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
@@ -26,7 +21,6 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { PulsingDot } from "~/components/primitives/PulsingDot";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
@@ -35,13 +29,11 @@ import {
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
@@ -59,7 +51,7 @@ import {
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
-import { useRunsLiveReload } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs._index/useRunsLiveReload";
+import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
@@ -244,113 +236,6 @@ export default function Page() {
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
-  );
-}
-
-type TaskRunList = NonNullable<Awaited<UseDataFunctionReturn<typeof loader>["runList"]>>;
-
-/**
- * Compact "N new runs" button, shown in the page top bar to the left of the
- * time filter when the live-reload hook has detected newer runs.
- */
-function NewRunsButton({ count, onClick }: { count: number; onClick: () => void }) {
-  return (
-    <span className="flex duration-150 animate-in fade-in-0">
-      <Button
-        variant="secondary/small"
-        className="text-text-bright"
-        onClick={onClick}
-        LeadingIcon={<PulsingDot className="h-2 w-2" />}
-        tooltip="Refresh to see new runs"
-        aria-label="New runs created. Refresh to see new runs."
-      >
-        {count >= 100 ? "99+ new runs" : `${count} new ${count === 1 ? "run" : "runs"}`}
-      </Button>
-    </span>
-  );
-}
-
-/**
- * Runs table with live updating. Mirrors the Runs list page: active rows are
- * patched in place (status/timing/cost). The "N new runs" count is surfaced to
- * the top-bar button via `onNewRunsCountChange` (count → visibility) and
- * `showNewRunsRef` (the latest click action), since the button lives outside
- * this deferred boundary. The task lives in the route path rather than a
- * `tasks` filter, so we pass `taskSlug` to scope new-run detection to this task.
- */
-function TaskRunsList({
-  list,
-  taskSlug,
-  onNewRunsCountChange,
-  showNewRunsRef,
-}: {
-  list: TaskRunList;
-  taskSlug: string;
-  onNewRunsCountChange: (count: number) => void;
-  showNewRunsRef: MutableRefObject<() => void>;
-}) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const navigation = useNavigation();
-  const location = useLocation();
-  const { has, replace } = useSearchParams();
-  const revalidator = useRevalidator();
-
-  // Loading a new version of this same page (time filter / pagination change).
-  const isLoading =
-    navigation.state === "loading" &&
-    navigation.location !== undefined &&
-    navigation.location.pathname === location.pathname &&
-    navigation.location.search !== location.search;
-
-  const { visibleRuns, newRunsCount, dismissNewRuns, childrenStatusesBasePath } = useRunsLiveReload(
-    {
-      runs: list.runs,
-      hasAnyRuns: list.hasAnyRuns,
-      isLoading,
-      organizationSlug: organization.slug,
-      projectSlug: project.slug,
-      environmentSlug: environment.slug,
-      taskSlug,
-    }
-  );
-
-  const onClickShowNewRuns = () => {
-    const isPaginated = has("cursor") || has("direction");
-    dismissNewRuns();
-    if (isPaginated) {
-      replace({ cursor: undefined, direction: undefined });
-      return;
-    }
-    revalidator.revalidate();
-  };
-
-  // Surface the banner to the top-bar button rendered by Page: keep the ref's
-  // action current, mirror the count up, and clear it when this boundary
-  // unmounts (e.g. the table re-suspends on a filter change).
-  useEffect(() => {
-    showNewRunsRef.current = onClickShowNewRuns;
-  }, [onClickShowNewRuns, showNewRunsRef]);
-  useEffect(() => {
-    onNewRunsCountChange(newRunsCount);
-  }, [newRunsCount, onNewRunsCountChange]);
-  useEffect(() => () => onNewRunsCountChange(0), [onNewRunsCountChange]);
-
-  return (
-    <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-      <TaskRunsTable
-        total={visibleRuns.length}
-        hasFilters={list.hasFilters}
-        filters={list.filters}
-        runs={visibleRuns}
-        childrenStatusesBasePath={childrenStatusesBasePath}
-        isLoading={isLoading}
-        variant="dimmed"
-        showTopBorder={false}
-        stickyHeader
-      />
-    </div>
   );
 }
 
