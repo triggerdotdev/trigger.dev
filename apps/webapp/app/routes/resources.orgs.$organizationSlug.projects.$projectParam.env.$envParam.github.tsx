@@ -989,14 +989,19 @@ export function ConnectedGitHubRepoForm({
                 }}
               />
             ) : (
-              <LinkButton
-                to={billingPath}
-                variant="secondary/small"
-                LeadingIcon={ArrowUpCircleIcon}
-                leadingIconClassName="text-indigo-500"
-              >
-                Upgrade
-              </LinkButton>
+              <>
+                {connectedGitHubRepo.previewDeploymentsEnabled && (
+                  <input type="hidden" name="previewDeploymentsEnabled" value="on" />
+                )}
+                <LinkButton
+                  to={billingPath}
+                  variant="secondary/small"
+                  LeadingIcon={ArrowUpCircleIcon}
+                  leadingIconClassName="text-indigo-500"
+                >
+                  Upgrade
+                </LinkButton>
+              </>
             )
           }
         >
