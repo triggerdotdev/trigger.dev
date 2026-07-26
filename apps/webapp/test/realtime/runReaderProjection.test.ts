@@ -56,7 +56,10 @@ describe("RunHydrator.hydrateByIds column projection", () => {
       },
     } as any;
     const runStore = new PostgresRunStore({ prisma: replica, readOnlyPrisma: replica });
-    return { hydrator: new RunHydrator({ replica, runStore }), getSelect: () => capturedSelect };
+    return {
+      hydrator: new RunHydrator({ readClient: replica, runStore }),
+      getSelect: () => capturedSelect,
+    };
   }
 
   it("projects the SELECT by skipColumns", async () => {
