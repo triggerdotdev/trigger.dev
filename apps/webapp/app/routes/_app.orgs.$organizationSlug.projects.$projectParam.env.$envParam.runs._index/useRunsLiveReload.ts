@@ -55,9 +55,14 @@ function appendNewRunsSearchParams(
     searchParams.append(key, value);
   }
   // On the task landing pages the task lives in the route path, not the query
-  // string, so scope the new-runs count to this task explicitly.
+  // string, so scope the new-runs count to this task explicitly. The task pages
+  // list every run of the task (their loaders apply no rootOnly filter), so
+  // force rootOnly off for the count too: a rootOnly preference persisted from
+  // the main Runs page would otherwise make the count skip child runs the list
+  // is showing, so the "N new runs" button could under-count or never appear.
   if (taskSlug) {
     searchParams.append("tasks", taskSlug);
+    searchParams.set("rootOnly", "false");
   }
   searchParams.set("includeNewRuns", "true");
   searchParams.set("since", String(since));
