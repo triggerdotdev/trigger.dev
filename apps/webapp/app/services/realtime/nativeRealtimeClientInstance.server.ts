@@ -1,5 +1,5 @@
 import { getMeter } from "@internal/tracing";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
@@ -130,9 +130,11 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
         })
       : undefined;
 
+  const runReadsFromPrimary = env.REALTIME_BACKEND_NATIVE_RUN_READS_FROM_PRIMARY === "1";
+
   // One RunHydrator shared by the router and the client, so its single-flight + short-TTL cache covers both.
   const runReader = new RunHydrator({
-    replica: $replica,
+    readClient: runReadsFromPrimary ? prisma : $replica,
     runStore,
     cacheTtlMs: env.REALTIME_BACKEND_NATIVE_RUN_CACHE_TTL_MS,
     maxCacheEntries: env.REALTIME_BACKEND_NATIVE_RUN_CACHE_MAX_ENTRIES,
@@ -142,7 +144,7 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
   // when idle) and the router delays wake hydrates by it, anchored to each record's
   // updatedAtMs — so a publish racing the replica's apply is waited out, not read stale.
   const lagEstimator =
-    env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED === "1"
+    !runReadsFromPrimary && env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED === "1"
       ? new ReplicaLagEstimator({
           source: createPostgresReplicaLagSource($replica),
           sampleIntervalMs: env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_SAMPLE_INTERVAL_MS,
