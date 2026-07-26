@@ -232,10 +232,16 @@ export class ClickHouse {
       existsQueryBuilder: getTaskRunExistsQueryBuilder(this.reader, { max_execution_time: 10 }),
       tagQueryBuilder: getTaskRunTagsQueryBuilder(this.reader),
       pendingVersionIdsQueryBuilder: getPendingVersionIdsQueryBuilder(this.reader),
-      getTaskActivity: getTaskActivityQueryBuilder(this.reader),
+      // Cap these server-side. The client's `request_timeout` defaults to 30s, and
+      // without a `max_execution_time` that timeout is the only thing that stops a
+      // slow query — it aborts the HTTP request rather than the query, so the
+      // failure arrives as an untyped socket timeout. 25s keeps every query that
+      // currently succeeds while letting ClickHouse terminate its own work first
+      // and return a proper timeout error.
+      getTaskActivity: getTaskActivityQueryBuilder(this.reader, { max_execution_time: 25 }),
       getCurrentRunningStats: getCurrentRunningStats(this.reader),
       getChildRunStatusCounts: getChildRunStatusCounts(this.reader),
-      getAverageDurations: getAverageDurations(this.reader),
+      getAverageDurations: getAverageDurations(this.reader, { max_execution_time: 25 }),
       getTaskUsageByOrganization: getTaskUsageByOrganization(this.reader),
     };
   }
