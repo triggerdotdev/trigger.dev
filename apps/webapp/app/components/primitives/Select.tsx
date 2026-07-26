@@ -695,7 +695,9 @@ export function ComboBox({
   ...props
 }: ComboBoxProps) {
   return (
-    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-hidden">
+    // pl-0: the bare input carries its own left padding from @tailwindcss/forms,
+    // so padding here too would indent the filter past the options below it.
+    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent pl-0 pr-3 text-xs text-text-dimmed outline-hidden">
       <Ariakit.Combobox
         autoSelect={autoSelect}
         render={<input placeholder={placeholder} />}
