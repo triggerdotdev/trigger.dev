@@ -1,10 +1,6 @@
 import { getFormProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import {
-  CheckCircleIcon,
-  ExclamationCircleIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/20/solid";
+import { CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher, useLocation, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
@@ -36,9 +32,8 @@ import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import {
   SettingsActions,
+  SettingsAlertRow,
   SettingsRow,
-  SettingsRowDescription,
-  SettingsRowTitle,
 } from "~/components/primitives/SettingsLayout";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import {
@@ -74,7 +69,6 @@ import {
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
-import { cn } from "~/utils/cn";
 
 export type ConnectedVercelProject = {
   id: string;
@@ -531,38 +525,6 @@ export const action = dashboardAction(
     }
   }
 );
-
-/**
- * A warning or error rendered as a settings row: hazard icon and title on the
- * left with the explanation beneath, both in the severity colour, and the
- * recovery action on the right.
- */
-function SettingsAlertRow({
-  variant,
-  title,
-  description,
-  action,
-}: {
-  variant: "warning" | "error";
-  title: string;
-  description: React.ReactNode;
-  action?: React.ReactNode;
-}) {
-  const Icon = variant === "error" ? ExclamationCircleIcon : ExclamationTriangleIcon;
-  const color = variant === "error" ? "text-error" : "text-warning";
-
-  return (
-    <SettingsRow action={action}>
-      <div className="flex-1 space-y-1">
-        <div className="flex items-center gap-1.5">
-          <Icon className={cn("size-4 shrink-0", color)} />
-          <SettingsRowTitle className={color}>{title}</SettingsRowTitle>
-        </div>
-        <SettingsRowDescription>{description}</SettingsRowDescription>
-      </div>
-    </SettingsRow>
-  );
-}
 
 /**
  * A selectable Vercel environment, shown with the Staging environment badge it

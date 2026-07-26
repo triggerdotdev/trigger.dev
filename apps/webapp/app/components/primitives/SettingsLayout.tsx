@@ -1,3 +1,4 @@
+import { ExclamationCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { type ReactNode } from "react";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
 import { cn } from "~/utils/cn";
@@ -206,6 +207,38 @@ export function SettingsBlock({
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * A warning or error as a settings row: hazard icon and title on the left in the
+ * severity colour, the explanation beneath in the usual dimmed body text, and
+ * the recovery action on the right.
+ */
+export function SettingsAlertRow({
+  variant,
+  title,
+  description,
+  action,
+}: {
+  variant: "warning" | "error";
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+}) {
+  const Icon = variant === "error" ? ExclamationCircleIcon : ExclamationTriangleIcon;
+  const color = variant === "error" ? "text-error" : "text-warning";
+
+  return (
+    <SettingsRow action={action}>
+      <div className="flex-1 space-y-1">
+        <div className="flex items-center gap-1.5">
+          <Icon className={cn("size-4 shrink-0", color)} />
+          <SettingsRowTitle className={color}>{title}</SettingsRowTitle>
+        </div>
+        {description ? <SettingsRowDescription>{description}</SettingsRowDescription> : null}
+      </div>
+    </SettingsRow>
   );
 }
 
