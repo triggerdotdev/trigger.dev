@@ -1,6 +1,6 @@
 # Caps vs scheduling: reconciliation findings
 
-Throwaway spike. Ships nothing; delete before any merge to main. Relative ranking
+Findings from a throwaway spike whose harness is archived (`chore/fair-queueing-spike`) and ships nothing; these findings are retained here as a design reference. Relative ranking
 on a small simulation, not a statistical or load study: read the verdicts as "what
 this harness supports", not proofs. Went through a blind two-model adversarial
 review (a third stalled); the review's fixes are folded in below.
