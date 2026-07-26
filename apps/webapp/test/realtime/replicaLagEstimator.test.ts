@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  AuroraReplicaLagSource,
   FirstSupportedReplicaLagSource,
   ReplicaLagEstimator,
   type ReplicaLagSource,
@@ -160,5 +161,45 @@ describe("FirstSupportedReplicaLagSource", () => {
     expect(await composed.sampleLagMs()).toBeUndefined(); // transient error -> skipped sample
     expect(await composed.sampleLagMs()).toBe(11); // still selected
     expect(composed.name).toBe("flaky");
+  });
+});
+
+describe("AuroraReplicaLagSource", () => {
+  function fakeDb(available: boolean) {
+    const queries: string[] = [];
+    return {
+      queries,
+      db: {
+        async $queryRawUnsafe<T = unknown>(query: string): Promise<T> {
+          queries.push(query);
+          if (query.includes("to_regproc")) {
+            return [{ available: available ? true : null }] as T;
+          }
+          return [{ lag: 12.5 }] as T;
+        },
+      },
+    };
+  }
+
+  it("never puts aurora_replica_status() on the wire when the function is absent", async () => {
+    const { db, queries } = fakeDb(false);
+    const aurora = new AuroraReplicaLagSource(db);
+
+    await expect(aurora.sampleLagMs()).rejects.toThrow(/not available/);
+    await expect(aurora.sampleLagMs()).rejects.toThrow(/not available/);
+
+    expect(queries.filter((q) => q.includes("FROM aurora_replica_status()"))).toHaveLength(0);
+    expect(queries.filter((q) => q.includes("to_regproc"))).toHaveLength(1);
+  });
+
+  it("samples lag on Aurora and probes for the function only once", async () => {
+    const { db, queries } = fakeDb(true);
+    const aurora = new AuroraReplicaLagSource(db);
+
+    expect(await aurora.sampleLagMs()).toBe(12.5);
+    expect(await aurora.sampleLagMs()).toBe(12.5);
+
+    expect(queries.filter((q) => q.includes("to_regproc"))).toHaveLength(1);
+    expect(queries.filter((q) => q.includes("FROM aurora_replica_status()"))).toHaveLength(2);
   });
 });
