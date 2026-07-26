@@ -9,14 +9,6 @@ import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import {
-  DEV_REVEAL_MODE,
-  DevRevealLabel,
-  devRevealConnectedVercelProject,
-  devRevealConnectedVercelProjectHealthy,
-  devRevealConnectedVercelProjectUnmappedStaging,
-  devRevealVercelCustomEnvironments,
-} from "~/components/integrations/devRevealIntegrations";
-import {
   EnvironmentIcon,
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
@@ -526,10 +518,6 @@ export const action = dashboardAction(
   }
 );
 
-/**
- * A selectable Vercel environment, shown with the Staging environment badge it
- * will map onto so the mapping reads as "this Vercel env becomes Staging".
- */
 function StagingEnvOption({ name }: { name: string }) {
   return (
     <span className="flex items-center gap-1.5">
@@ -539,7 +527,6 @@ function StagingEnvOption({ name }: { name: string }) {
   );
 }
 
-/** "Vercel app - Installed" status row, mirroring the GitHub app row. */
 function VercelAppInstalledRow() {
   return (
     <SettingsRow
@@ -554,10 +541,6 @@ function VercelAppInstalledRow() {
   );
 }
 
-/**
- * The "not yet connected" Vercel states as settings rows: install the app,
- * then connect a project. Mirrors GitHubSettingsRows.
- */
 function VercelSettingsRows({
   organizationSlug,
   projectSlug,
@@ -1121,15 +1104,12 @@ function VercelSettingsPanel({
   environmentSlug,
   onOpenVercelModal,
   isLoadingVercelData,
-  devReveal = false,
 }: {
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
   onOpenVercelModal?: () => void;
   isLoadingVercelData?: boolean;
-  /** TEMPORARY dev-only: render every state at once. Remove before merging. */
-  devReveal?: boolean;
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
   const _location = useLocation();
@@ -1169,162 +1149,12 @@ function VercelSettingsPanel({
     );
   }
 
-  if (fetcher.state === "loading" && !data && !devReveal) {
+  if (fetcher.state === "loading" && !data) {
     return (
       <div className="flex items-center gap-2 text-text-dimmed">
         <SpinnerWhite className="size-4" />
         <span className="text-sm">Loading Vercel settings...</span>
       </div>
-    );
-  }
-
-  // DEV_REVEAL_MODE "healthy": one fully connected state, for screenshots.
-  if (devReveal && DEV_REVEAL_MODE === "healthy") {
-    return (
-      <>
-        <VercelAppInstalledRow />
-        <ConnectedVercelProjectForm
-          connectedProject={devRevealConnectedVercelProjectHealthy}
-          hasStagingEnvironment
-          hasPreviewEnvironment
-          customEnvironments={devRevealVercelCustomEnvironments}
-          autoAssignCustomDomains={false}
-          currentTriggerVersion="20260101.1"
-          currentTriggerVersionFetchFailed={false}
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          canManageVercel={data?.canManageVercel ?? true}
-        />
-      </>
-    );
-  }
-
-  // DEV_REVEAL_ALL: stack the mutually exclusive states so all of them are
-  // visible, ordered the way a user unlocks them.
-  if (devReveal) {
-    const canManage = data?.canManageVercel ?? true;
-    const connectedProject = data?.connectedProject ?? devRevealConnectedVercelProject;
-    // `?? ` is not enough here: the loader returns an empty array when Vercel
-    // isn't configured, which would hide the staging mapping row.
-    const customEnvironments = data?.customEnvironments?.length
-      ? data.customEnvironments
-      : devRevealVercelCustomEnvironments;
-
-    return (
-      <>
-        <DevRevealLabel>1. GitHub not connected (Vercel can't sync anything yet)</DevRevealLabel>
-        <VercelSettingsRows
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          hasOrgIntegration={false}
-          isGitHubConnected={false}
-          onOpenModal={onOpenVercelModal}
-          isLoading={isLoadingVercelData}
-          canManageVercel={canManage}
-        />
-
-        <DevRevealLabel>2. App not installed</DevRevealLabel>
-        <VercelSettingsRows
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          hasOrgIntegration={false}
-          isGitHubConnected
-          onOpenModal={onOpenVercelModal}
-          isLoading={isLoadingVercelData}
-          canManageVercel={canManage}
-        />
-
-        <DevRevealLabel>3. App installed, no project connected</DevRevealLabel>
-        <VercelSettingsRows
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          hasOrgIntegration
-          isGitHubConnected
-          onOpenModal={onOpenVercelModal}
-          isLoading={isLoadingVercelData}
-          canManageVercel={canManage}
-        />
-
-        <DevRevealLabel>
-          4. Connected, no Vercel environment mapped to Staging (Staging rows disabled)
-        </DevRevealLabel>
-        <VercelAppInstalledRow />
-        <ConnectedVercelProjectForm
-          connectedProject={devRevealConnectedVercelProjectUnmappedStaging}
-          hasStagingEnvironment
-          hasPreviewEnvironment
-          customEnvironments={customEnvironments}
-          autoAssignCustomDomains={false}
-          currentTriggerVersion={null}
-          currentTriggerVersionFetchFailed={false}
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          canManageVercel={canManage}
-        />
-
-        <DevRevealLabel>
-          5. Connected, atomic deployments need auto-assign custom domains off
-        </DevRevealLabel>
-        <VercelAppInstalledRow />
-        <ConnectedVercelProjectForm
-          connectedProject={connectedProject}
-          hasStagingEnvironment
-          hasPreviewEnvironment
-          customEnvironments={customEnvironments}
-          autoAssignCustomDomains={null}
-          currentTriggerVersion="20260101.1"
-          currentTriggerVersionFetchFailed={false}
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          canManageVercel={canManage}
-        />
-
-        <DevRevealLabel>6. Connected and fully configured</DevRevealLabel>
-        <VercelAppInstalledRow />
-        <ConnectedVercelProjectForm
-          connectedProject={connectedProject}
-          hasStagingEnvironment
-          hasPreviewEnvironment
-          customEnvironments={customEnvironments}
-          autoAssignCustomDomains={false}
-          currentTriggerVersion="20260101.1"
-          currentTriggerVersionFetchFailed={false}
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          canManageVercel={canManage}
-        />
-
-        <DevRevealLabel>7. Connected, but GitHub was disconnected afterwards</DevRevealLabel>
-        <VercelAppInstalledRow />
-        <VercelGitHubWarning />
-        <ConnectedVercelProjectForm
-          connectedProject={connectedProject}
-          hasStagingEnvironment
-          hasPreviewEnvironment
-          customEnvironments={customEnvironments}
-          autoAssignCustomDomains={false}
-          currentTriggerVersion="20260101.1"
-          currentTriggerVersionFetchFailed={false}
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          canManageVercel={canManage}
-        />
-
-        <DevRevealLabel>8. Connection expired (settings hidden until reconnected)</DevRevealLabel>
-        <VercelAuthInvalidBanner
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          canManageVercel={canManage}
-        />
-      </>
     );
   }
 

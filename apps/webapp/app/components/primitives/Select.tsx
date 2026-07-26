@@ -695,14 +695,10 @@ export function ComboBox({
   ...props
 }: ComboBoxProps) {
   return (
-    // pl-0: the bare input carries its own left padding from @tailwindcss/forms,
-    // so padding here too would indent the filter past the options below it.
     <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent pl-0 pr-3 text-xs text-text-dimmed outline-hidden">
       <Ariakit.Combobox
         autoSelect={autoSelect}
         render={<input placeholder={placeholder} />}
-        // border-0/ring-0: @tailwindcss/forms styles a focused bare input with a
-        // blue border and ring, which clashes with the app's focus treatment.
         className="flex-1 border-0 bg-transparent text-xs text-text-dimmed outline-hidden focus:border-0 focus:ring-0"
         {...props}
       />

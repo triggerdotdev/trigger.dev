@@ -101,8 +101,6 @@ export function SettingsRowTitle({
   htmlFor?: string;
   className?: string;
 }) {
-  // `block` matters: as an inline element this would sit in an anonymous line
-  // box sized by the inherited line-height, padding the top of every row.
   const classes = cn(
     "block font-sans text-sm font-semibold leading-tight text-text-bright",
     className

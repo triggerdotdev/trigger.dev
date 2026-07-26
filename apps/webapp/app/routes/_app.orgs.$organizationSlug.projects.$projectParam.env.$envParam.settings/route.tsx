@@ -44,7 +44,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 const DEFAULT_PAGE_TITLE = "Project settings";
 
-/** Child settings routes can name themselves via `export const handle = { pageTitle }`. */
 function usePageTitle() {
   const matches = useMatches();
   for (let i = matches.length - 1; i >= 0; i--) {

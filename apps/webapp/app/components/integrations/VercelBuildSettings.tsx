@@ -38,10 +38,6 @@ type BuildSettingsFieldsProps = {
   currentTriggerVersionFetchFailed?: boolean;
   /** Hide the section-level master toggles for "Pull env vars" and "Discover new env vars". */
   hideSectionToggles?: boolean;
-  /**
-   * "settings" renders the env var sections as settings rows (project Integrations
-   * page); "card" keeps the bordered card used by the onboarding modal.
-   */
   layout?: "settings" | "card";
 };
 
@@ -400,11 +396,6 @@ export function BuildSettingsFields({
   );
 }
 
-/**
- * One environment's toggle as a settings row. The reason a toggle is disabled
- * is shown as a permanent description rather than a hover tooltip, and the
- * environment badge dims to match.
- */
 function EnvToggleRow({
   slug,
   checked,
@@ -418,9 +409,7 @@ function EnvToggleRow({
   checked: boolean;
   disabled: boolean;
   disabledReason?: string;
-  /** Names the control that unlocks this row; see tailwind.css for the rules. */
   unlockHint?: string;
-  /** Name other rows can point at to highlight this row's toggle. */
   unlockTarget?: string;
   onCheckedChange: (checked: boolean) => void;
 }) {

@@ -640,11 +640,6 @@
   }
 }
 
-/*
- * Hovering a settings row that is disabled highlights the control elsewhere on
- * the page that unlocks it. Pure CSS: the row carries `.unlock-hint-<name>` and
- * the control carries `data-unlock-target="<name>"`, both inside the same form.
- */
 form:has(.unlock-hint-staging-env:hover) [data-unlock-target="staging-env"],
 form:has(.unlock-hint-pull-prod:hover) [data-unlock-target="pull-prod"],
 form:has(.unlock-hint-pull-stg:hover) [data-unlock-target="pull-stg"],

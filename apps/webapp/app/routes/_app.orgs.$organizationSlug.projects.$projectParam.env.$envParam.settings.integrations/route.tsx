@@ -6,10 +6,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
-import {
-  DEV_REVEAL_ALL,
-  devRevealVercelOnboardingData,
-} from "~/components/integrations/devRevealIntegrations";
 import { Button } from "~/components/primitives/Buttons";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
@@ -45,7 +41,6 @@ import {
   VercelSettingsPanel,
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 
-/** Read by the parent settings layout to title the page. */
 export const handle = { pageTitle: "Integrations" };
 
 export const loader = dashboardLoader(
@@ -222,10 +217,7 @@ export default function IntegrationsSettingsPage() {
   const nextUrl = searchParams.get("next");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const vercelFetcher = useTypedFetcher<typeof vercelLoader>();
-  // DEV_REVEAL_ALL: the real payload needs a Vercel org integration, which local
-  // development has none of, so the modal could not be opened at all.
-  const onboardingData =
-    vercelFetcher.data?.onboardingData ?? (DEV_REVEAL_ALL ? devRevealVercelOnboardingData : null);
+  const onboardingData = vercelFetcher.data?.onboardingData ?? null;
 
   // Helper to open modal and ensure query param is present
   const openVercelOnboarding = useCallback(() => {
@@ -355,14 +347,10 @@ export default function IntegrationsSettingsPage() {
     }
   }, [onboardingData, vercelFetcher.state, openVercelOnboarding]);
 
-  // DEV_REVEAL_ALL: force both integrations on locally. Remove before merging.
-  const showGitHubSection = githubAppEnabled || DEV_REVEAL_ALL;
-  const showVercelSection = vercelIntegrationEnabled || DEV_REVEAL_ALL;
-
   return (
     <>
       <SettingsContainer className="md:mt-6">
-        {showGitHubSection && (
+        {githubAppEnabled && (
           <React.Fragment>
             <SettingsSection>
               <SettingsHeader title="Git settings" />
@@ -372,11 +360,10 @@ export default function IntegrationsSettingsPage() {
                 environmentSlug={environment.slug}
                 billingPath={v3BillingPath({ slug: organization.slug })}
                 layout="settings"
-                devReveal={DEV_REVEAL_ALL}
               />
             </SettingsSection>
 
-            {showVercelSection && (
+            {vercelIntegrationEnabled && (
               <SettingsSection>
                 <SettingsHeader title="Vercel integration" />
                 <VercelSettingsPanel
@@ -387,7 +374,6 @@ export default function IntegrationsSettingsPage() {
                   isLoadingVercelData={
                     vercelFetcher.state === "loading" || vercelFetcher.state === "submitting"
                   }
-                  devReveal={DEV_REVEAL_ALL}
                 />
               </SettingsSection>
             )}
@@ -412,7 +398,7 @@ export default function IntegrationsSettingsPage() {
       </SettingsContainer>
 
       {/* Vercel Onboarding Modal */}
-      {showVercelSection && (
+      {vercelIntegrationEnabled && (
         <VercelOnboardingModal
           isOpen={isModalOpen}
           onClose={closeVercelOnboarding}
@@ -420,9 +406,9 @@ export default function IntegrationsSettingsPage() {
           organizationSlug={organization.slug}
           projectSlug={project.slug}
           environmentSlug={environment.slug}
-          hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? DEV_REVEAL_ALL}
-          hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? DEV_REVEAL_ALL}
-          hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? DEV_REVEAL_ALL}
+          hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
+          hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? false}
+          hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
           nextUrl={nextUrl ?? undefined}
           vercelManageAccessUrl={vercelFetcher.data?.vercelManageAccessUrl}
           onDataReload={(vercelEnvironmentId) => {
@@ -601,10 +587,6 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
   );
 }
 
-/**
- * Right-hand control column for a settings row whose action is a text input:
- * fixed width so the inputs line up, with room for a validation message below.
- */
 function SettingsControl({ children }: { children: React.ReactNode }) {
   return <div className="flex w-64 flex-col gap-1">{children}</div>;
 }

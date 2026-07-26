@@ -27,13 +27,6 @@ import {
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
 import { OctoKitty } from "~/components/GitHubLoginButton";
-import {
-  DEV_REVEAL_MODE,
-  DevRevealLabel,
-  devRevealConnectedGitHubRepo,
-  devRevealConnectedGitHubRepoPublic,
-  devRevealGitHubInstallations,
-} from "~/components/integrations/devRevealIntegrations";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
@@ -414,7 +407,6 @@ export function ConnectGitHubRepoModal({
   /** When true, prevents closing the modal via Escape key or clicking outside */
   preventDismiss?: boolean;
   canManageGithub?: boolean;
-  /** Settings rows use the small button; onboarding/blank states use medium. */
   buttonVariant?: "secondary/small" | "secondary/medium";
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -699,11 +691,6 @@ export function GitHubConnectionPrompt({
   );
 }
 
-/**
- * "GitHub app — Installed" status row. Shown in every settings-layout state
- * once the app is installed, so the confirmation doesn't vanish as soon as a
- * repository is connected.
- */
 function GitHubAppInstalledRow() {
   return (
     <SettingsRow
@@ -718,11 +705,6 @@ function GitHubAppInstalledRow() {
   );
 }
 
-/**
- * The "not yet connected" states rendered as settings rows, for the project
- * Integrations page. `GitHubConnectionPrompt` keeps the compact button-only
- * treatment used by the deployments blank state.
- */
 function GitHubSettingsRows({
   gitHubAppInstallations,
   organizationSlug,
@@ -1053,10 +1035,6 @@ export function ConnectedGitHubRepoForm({
   );
 }
 
-/**
- * Environment name + icon, used as the left-hand label of a branch-tracking row.
- * `description` renders beneath it, matching the subtitle of a plain settings row.
- */
 function EnvironmentRowLabel({
   type,
   description,
@@ -1087,20 +1065,12 @@ export function GitHubSettingsPanel({
   environmentSlug,
   billingPath,
   layout = "compact",
-  devReveal = false,
 }: {
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
   billingPath: string;
-  /**
-   * "settings" renders the not-yet-connected states as settings rows (project
-   * Integrations page); "compact" keeps the button-only treatment used by the
-   * deployments blank state.
-   */
   layout?: "settings" | "compact";
-  /** TEMPORARY dev-only: render every state at once. Remove before merging. */
-  devReveal?: boolean;
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
   const location = useLocation();
@@ -1119,15 +1089,10 @@ export function GitHubSettingsPanel({
 
   const data = fetcher.data;
 
-  const connectedRepo =
-    data?.connectedRepository ?? (devReveal ? devRevealConnectedGitHubRepo : undefined);
-  const installations = data?.installations?.length
-    ? data.installations
-    : devRevealGitHubInstallations;
   const canManageGithub = data?.canManageGithub ?? true;
 
   // Loading state
-  if (fetcher.state === "loading" && !data && !devReveal) {
+  if (fetcher.state === "loading" && !data) {
     return (
       <div className="flex items-center gap-2 text-text-dimmed">
         <SpinnerWhite className="size-4" />
@@ -1137,77 +1102,8 @@ export function GitHubSettingsPanel({
   }
 
   // GitHub app not enabled
-  if ((!data || !data.enabled) && !devReveal) {
+  if (!data || !data.enabled) {
     return null;
-  }
-
-  // DEV_REVEAL_MODE "healthy": one fully connected state, for screenshots.
-  if (devReveal && DEV_REVEAL_MODE === "healthy") {
-    return (
-      <>
-        <GitHubAppInstalledRow />
-        <ConnectedGitHubRepoForm
-          connectedGitHubRepo={connectedRepo ?? devRevealConnectedGitHubRepo}
-          previewEnvironmentEnabled
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          billingPath={billingPath}
-          redirectUrl={effectiveRedirectUrl}
-          canManageGithub={canManageGithub}
-        />
-      </>
-    );
-  }
-
-  // DEV_REVEAL_ALL: stack the mutually exclusive states so all of them are visible.
-  if (devReveal) {
-    return (
-      <>
-        <DevRevealLabel>1. App not installed</DevRevealLabel>
-        <GitHubSettingsRows
-          gitHubAppInstallations={[]}
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          redirectUrl={effectiveRedirectUrl}
-          canManageGithub={canManageGithub}
-        />
-        <DevRevealLabel>2. App installed, no repository connected</DevRevealLabel>
-        <GitHubSettingsRows
-          gitHubAppInstallations={installations}
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          redirectUrl={effectiveRedirectUrl}
-          canManageGithub={canManageGithub}
-        />
-        <DevRevealLabel>3. Connected repository — Preview locked (needs upgrade)</DevRevealLabel>
-        <GitHubAppInstalledRow />
-        <ConnectedGitHubRepoForm
-          connectedGitHubRepo={connectedRepo ?? devRevealConnectedGitHubRepo}
-          previewEnvironmentEnabled={false}
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          billingPath={billingPath}
-          redirectUrl={effectiveRedirectUrl}
-          canManageGithub={canManageGithub}
-        />
-        <DevRevealLabel>4. Connected repository — Preview unlocked, public repo</DevRevealLabel>
-        <GitHubAppInstalledRow />
-        <ConnectedGitHubRepoForm
-          connectedGitHubRepo={devRevealConnectedGitHubRepoPublic}
-          previewEnvironmentEnabled
-          organizationSlug={organizationSlug}
-          projectSlug={projectSlug}
-          environmentSlug={environmentSlug}
-          billingPath={billingPath}
-          redirectUrl={effectiveRedirectUrl}
-          canManageGithub={canManageGithub}
-        />
-      </>
-    );
   }
 
   // Connected repository exists - show form
