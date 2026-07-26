@@ -26,7 +26,7 @@ export const DEV_REVEAL_ALL = true;
  * "healthy" renders one fully connected, warning-free state per section, for
  * screenshots.
  */
-export const DEV_REVEAL_MODE: "all" | "healthy" = "healthy";
+export const DEV_REVEAL_MODE: "all" | "healthy" = "all";
 
 /** Labels a placeholder state so it is obvious it isn't real data. */
 export function DevRevealLabel({ children }: { children: ReactNode }) {
