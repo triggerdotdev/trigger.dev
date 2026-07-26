@@ -1,4 +1,4 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { getFormProps, getInputProps, useForm, SubmissionResult } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import {
   ArrowUpCircleIcon,
@@ -266,8 +266,7 @@ export default function Page() {
 
   const [form, fields] = useForm<z.infer<typeof schema>>({
     id: "invite-members",
-    // TODO: type this
-    lastResult: lastSubmission as any,
+    lastResult: lastSubmission as SubmissionResult<string[]>,
     onValidate({ formData }) {
       return parseWithZod(formData, { schema });
     },
