@@ -699,7 +699,9 @@ export function ComboBox({
       <Ariakit.Combobox
         autoSelect={autoSelect}
         render={<input placeholder={placeholder} />}
-        className="flex-1 bg-transparent text-xs text-text-dimmed outline-hidden"
+        // border-0/ring-0: @tailwindcss/forms styles a focused bare input with a
+        // blue border and ring, which clashes with the app's focus treatment.
+        className="flex-1 border-0 bg-transparent text-xs text-text-dimmed outline-hidden focus:border-0 focus:ring-0"
         {...props}
       />
       {shortcut && (

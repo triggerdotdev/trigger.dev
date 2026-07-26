@@ -594,7 +594,7 @@ function VercelSettingsRows({
               noPermissionTooltip={noPermissionTooltip}
               to={vercelAppInstallPath(organizationSlug, projectSlug)}
               variant="secondary/small"
-              LeadingIcon={() => <VercelLogo className="-mx-1 size-3.5" />}
+              LeadingIcon={() => <VercelLogo className="-mx-1 size-3.5 text-text-bright" />}
             >
               Install Vercel app
             </PermissionLink>
@@ -615,7 +615,7 @@ function VercelSettingsRows({
               LeadingIcon={
                 isLoadingProjects
                   ? () => <SpinnerWhite className="size-4" />
-                  : () => <VercelLogo className="-mx-1 size-3.5" />
+                  : () => <VercelLogo className="-mx-1 size-3.5 text-text-bright" />
               }
             >
               {isLoadingProjects ? "Loading projects…" : "Connect Vercel project"}
@@ -840,7 +840,7 @@ function ConnectedVercelProjectForm({
           <>
             <span className="mr-2 inline-block size-1.5 rounded-full bg-success align-[0.15em]" />
             Vercel project
-            <VercelLogo className="relative -top-px mx-1.5 inline size-3.5 align-text-bottom" />
+            <VercelLogo className="relative -top-px mx-1.5 inline size-3.5 align-text-bottom text-text-bright" />
             {connectedProject.vercelProjectName} connected on{" "}
             <DateTime
               date={connectedProject.createdAt}
