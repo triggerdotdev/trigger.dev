@@ -1,7 +1,7 @@
 # Fair-queueing spike: findings
 
-This is a throwaway spike. It ships nothing and should be deleted before any
-merge to main; it exists to inform a design decision, not to become code.
+Findings from a throwaway spike whose harness is archived and ships nothing; these
+findings are retained here as a design reference that informed the change, not as code.
 
 Read the caveats section before quoting any single number. Two of them matter up
 front: (1) the candidate selectors are handed tenant identity (parsed from the

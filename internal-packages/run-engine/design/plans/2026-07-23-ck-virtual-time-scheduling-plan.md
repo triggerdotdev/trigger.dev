@@ -236,7 +236,7 @@ Create:
   assertions)
 - `internal-packages/run-engine/src/run-queue/tests/ckVtimeConcurrency.test.ts`
   (multi-consumer correctness, op-count budget)
-- `.server-changes/2026-XX-XX-ck-fair-scheduling.md` (at PR time; note it
+- `.server-changes/2026-07-24-ck-fair-scheduling.md` (at PR time; note it
   ships dark)
 
 ## Tasks
@@ -752,7 +752,7 @@ Verify: `pnpm run typecheck --filter @internal/run-engine` and
 
 ### Task 10: ship notes and cleanup
 
-- Add `.server-changes/2026-XX-XX-ck-fair-scheduling.md` per
+- Add `.server-changes/2026-07-24-ck-fair-scheduling.md` per
   `.server-changes/README.md` (user-facing wording; it ships dark, so the
   note says the fair ordering exists behind a flag and changes nothing by
   default). No changeset (no public package touched).

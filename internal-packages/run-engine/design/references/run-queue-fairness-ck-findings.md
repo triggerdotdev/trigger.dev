@@ -1,6 +1,6 @@
 # Per-concurrency-key fairness spike: findings
 
-Throwaway spike. Ships nothing; delete before any merge to main.
+Findings from a throwaway spike whose harness is archived (`chore/fair-queueing-spike`) and ships nothing; these findings are retained here as a design reference.
 
 Bottom line: the base-queue spike's direction carries over to the real seam. At
 the concurrency-key grain the production baseline (serve the oldest-head CK
