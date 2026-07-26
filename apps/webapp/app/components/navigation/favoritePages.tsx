@@ -1,6 +1,9 @@
-import { BeakerIcon, ClockIcon } from "@heroicons/react/24/outline";
+import { BeakerIcon } from "@heroicons/react/24/outline";
 import { IconChartHistogram } from "@tabler/icons-react";
 import { useFetchers, useLocation } from "@remix-run/react";
+import { ClockIcon } from "~/assets/icons/ClockIcon";
+import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
+import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
@@ -62,6 +65,10 @@ const FAVORITE_PAGE_ICONS: Record<
   { icon: RenderIcon; activeColor: string; className?: string }
 > = {
   tasks: { icon: TasksIcon, activeColor: "text-tasks" },
+  // Task detail pages carry their task-type icon, matching TaskTriggerSourceIcon
+  "task-standard": { icon: TaskIconSmall, activeColor: "text-tasks" },
+  "task-scheduled": { icon: ClockIcon, activeColor: "text-schedules" },
+  "task-agent": { icon: CubeSparkleIcon, activeColor: "text-agents" },
   runs: { icon: RunsIcon, activeColor: "text-runs" },
   sessions: { icon: AIChatIcon, activeColor: "text-sessions" },
   prompts: { icon: AIPenIcon, activeColor: "text-aiPrompts" },
@@ -176,6 +183,12 @@ type PageMeta = {
   name: string;
   /** Singular label-prefix for detail pages, e.g. "Queue" -> "Queue: my-queue". */
   singular?: string;
+  /**
+   * Entity name taken from the URL, used verbatim as the label. For detail pages whose header
+   * title is composed JSX (task/agent pages render an icon + slug), so no plain-text title
+   * reaches the star. The icon already conveys the type, so no prefix is added.
+   */
+  entityName?: string;
 };
 
 const ENV_PAGE_META: Record<string, PageMeta> = {
@@ -202,6 +215,8 @@ const ENV_PAGE_META: Record<string, PageMeta> = {
   limits: { icon: "limits", name: "Limits" },
   schedules: { icon: "schedules", name: "Schedules", singular: "Schedule" },
   test: { icon: "test", name: "Test", singular: "Test" },
+  // The playground route is the Test page too (its header reads "Test")
+  playground: { icon: "test", name: "Test", singular: "Test" },
 };
 
 const ORG_SETTINGS_PAGE_META: Record<string, PageMeta> = {
@@ -242,6 +257,27 @@ export function resolvePageMeta(pathname: string): PageMeta {
         return { icon: "custom-dashboard", name: "Dashboards", singular: "Dashboard" };
       }
     }
+
+    // Task detail: /tasks/{standard|scheduled}/{slug}. The slug is the only place the task name
+    // exists (the page header renders it as JSX), so it becomes the label.
+    if (first === "tasks" && segments[2]) {
+      const slug = decodeURIComponent(segments[2]);
+      return segments[1] === "scheduled"
+        ? { icon: "task-scheduled", name: "Scheduled task", entityName: slug }
+        : { icon: "task-standard", name: "Standard task", entityName: slug };
+    }
+
+    // Agent tasks live outside /tasks: /agents/{slug}
+    if (first === "agents") {
+      return segments[1]
+        ? {
+            icon: "task-agent",
+            name: "Agent task",
+            entityName: decodeURIComponent(segments[1]),
+          }
+        : { icon: "task-agent", name: "Agents" };
+    }
+
     return ENV_PAGE_META[first] ?? { icon: "page", name: "Page" };
   }
 
@@ -384,6 +420,9 @@ export function buildFavoriteLabel(
     title.toLowerCase() === prefix.toLowerCase();
 
   if (isGenericTitle) {
+    // Named entity from the URL (task/agent slug) is the label on its own; its icon carries the type
+    if (meta.entityName) return truncateLabel(meta.entityName);
+
     // The Tasks page filtered to a single task type takes that type as the whole name
     if (meta.icon === "tasks") {
       const types = new URLSearchParams(search).getAll("types");
