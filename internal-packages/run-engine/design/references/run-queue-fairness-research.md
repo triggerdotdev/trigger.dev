@@ -1,6 +1,6 @@
 # Queue-fairness research (grounding for the caps-vs-scheduling reconciliation)
 
-Throwaway spike notes. Five Fable research passes, distilled. Citations kept so
+Research notes distilled from a throwaway spike, retained here as a design reference. Five Fable research passes, distilled. Citations kept so
 the findings write-up and report can point at real sources. This grounds the
 central claim: occupancy caps and fair scheduling are orthogonal knobs, and the
 plan-of-record ships the cap knob while the earlier spike measured the scheduler
