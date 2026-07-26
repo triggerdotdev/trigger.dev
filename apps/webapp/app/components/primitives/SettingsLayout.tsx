@@ -152,14 +152,14 @@ export function SettingsRow({
   className?: string;
   titleClassName?: string;
   size?: RowSize;
-  align?: "center" | "start";
+  align?: "center" | "start" | "end";
   bordered?: boolean;
 }) {
   return (
     <div
       className={cn(
         "flex w-full justify-between gap-8",
-        align === "center" ? "items-center" : "items-start",
+        align === "center" ? "items-center" : align === "end" ? "items-end" : "items-start",
         rowSize[size],
         bordered && "border-b border-grid-dimmed",
         className
