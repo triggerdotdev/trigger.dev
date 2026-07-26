@@ -1008,7 +1008,12 @@ function ConnectedVercelProjectForm({
               <Button
                 type="button"
                 variant="warning/small"
-                disabled={isDisablingAutoAssign}
+                disabled={isDisablingAutoAssign || !canManageVercel}
+                tooltip={
+                  canManageVercel
+                    ? undefined
+                    : "You don't have permission to manage the Vercel integration"
+                }
                 LeadingIcon={isDisablingAutoAssign ? SpinnerWhite : undefined}
                 onClick={() =>
                   disableAutoAssignFetcher.submit(
