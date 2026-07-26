@@ -392,9 +392,11 @@ export default function IntegrationsSettingsPage() {
                 title="Build settings"
                 description={
                   <>
-                    These settings apply to deployments triggered from GitHub and to CLI deployments
-                    run with the{" "}
-                    <InlineCode variant="extra-small">--native-build-server</InlineCode> flag.
+                    Applies to deployments triggered from GitHub, and CLI deployments run with the{" "}
+                    <InlineCode variant="extra-small" className="whitespace-nowrap">
+                      --native-build-server
+                    </InlineCode>{" "}
+                    flag.
                   </>
                 }
               />
@@ -482,7 +484,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
         align="start"
         htmlFor={fields.triggerConfigFilePath.id}
         title="Trigger config file"
-        description="Path to your Trigger configuration file, relative to the root directory of your repo."
+        description="Path relative to your repo root."
         action={
           <SettingsControl>
             <Input
@@ -508,7 +510,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
         align="start"
         htmlFor={fields.installCommand.id}
         title="Install command"
-        description="Command to install your project dependencies. This will be run from the root directory of your repo. Auto-detected by default."
+        description="Runs from your repo root. Auto-detected by default."
         action={
           <SettingsControl>
             <Input
@@ -533,7 +535,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
         align="start"
         htmlFor={fields.preBuildCommand.id}
         title="Pre-build command"
-        description="Any command that needs to run before we build and deploy your project. This will be run from the root directory of your repo."
+        description="Runs from your repo root, before the build."
         action={
           <SettingsControl>
             <Input
@@ -557,7 +559,7 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
 
       <SettingsRow
         title="Use native build server"
-        description="Native build server builds don't rely on external build providers and are used by default. Requires version 4.2.0 or newer."
+        description="Builds without an external build provider. Requires trigger.dev v4.2.0 or newer."
         action={
           <Switch
             variant="medium"
