@@ -17,6 +17,7 @@
  */
 
 import { type ReactNode } from "react";
+import { type VercelOnboardingData } from "~/presenters/v3/VercelSettingsPresenter.server";
 import { type VercelProjectIntegrationData } from "~/v3/vercel/vercelProjectIntegrationSchema";
 
 export const DEV_REVEAL_ALL = true;
@@ -137,3 +138,43 @@ export const devRevealConnectedVercelProjectHealthy = {
 };
 
 export const devRevealVercelCustomEnvironments = [{ id: "env_dev", slug: "staging" }];
+
+/**
+ * Onboarding payload for the Vercel connect modal. The real one needs a Vercel
+ * org integration, which local development does not have, so the modal cannot
+ * be opened at all without this.
+ */
+export const devRevealVercelOnboardingData: VercelOnboardingData = {
+  customEnvironments: [
+    { id: "env_dev", slug: "staging", description: "Staging", branchMatcher: undefined },
+  ],
+  environmentVariables: [
+    {
+      id: "var_1",
+      key: "DATABASE_URL",
+      type: "encrypted",
+      isSecret: true,
+      target: ["production", "preview"],
+      customEnvironmentIds: [],
+    },
+    {
+      id: "var_2",
+      key: "NEXT_PUBLIC_APP_URL",
+      type: "plain",
+      isSecret: false,
+      target: ["production", "preview", "development"],
+      customEnvironmentIds: [],
+    },
+  ],
+  availableProjects: [
+    { id: "prj_dev", name: "acme-app" },
+    { id: "prj_marketing", name: "acme-marketing" },
+  ],
+  hasProjectSelected: false,
+  existingVariables: {
+    DATABASE_URL: { environments: ["prod", "preview"] },
+  },
+  gitHubAppInstallations: devRevealGitHubInstallations,
+  isGitHubConnected: true,
+  isOnboardingComplete: false,
+};

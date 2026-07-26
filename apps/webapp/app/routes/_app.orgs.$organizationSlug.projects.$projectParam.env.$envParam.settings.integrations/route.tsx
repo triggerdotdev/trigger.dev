@@ -6,7 +6,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
-import { DEV_REVEAL_ALL } from "~/components/integrations/devRevealIntegrations";
+import {
+  DEV_REVEAL_ALL,
+  devRevealVercelOnboardingData,
+} from "~/components/integrations/devRevealIntegrations";
 import { Button } from "~/components/primitives/Buttons";
 import { FormError } from "~/components/primitives/FormError";
 import { Input } from "~/components/primitives/Input";
@@ -219,6 +222,10 @@ export default function IntegrationsSettingsPage() {
   const nextUrl = searchParams.get("next");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const vercelFetcher = useTypedFetcher<typeof vercelLoader>();
+  // DEV_REVEAL_ALL: the real payload needs a Vercel org integration, which local
+  // development has none of, so the modal could not be opened at all.
+  const onboardingData =
+    vercelFetcher.data?.onboardingData ?? (DEV_REVEAL_ALL ? devRevealVercelOnboardingData : null);
 
   // Helper to open modal and ensure query param is present
   const openVercelOnboarding = useCallback(() => {
@@ -249,7 +256,7 @@ export default function IntegrationsSettingsPage() {
   useEffect(() => {
     if (hasQueryParam && vercelIntegrationEnabled) {
       // Ensure query param is present and modal is open
-      if (vercelFetcher.data?.onboardingData && vercelFetcher.state === "idle") {
+      if (onboardingData && vercelFetcher.state === "idle") {
         // Data is loaded, ensure modal is open (query param takes precedence)
         if (!isModalOpen) {
           openVercelOnboarding();
@@ -274,6 +281,7 @@ export default function IntegrationsSettingsPage() {
     organization.slug,
     project.slug,
     environment.slug,
+    onboardingData,
     vercelFetcher.data,
     vercelFetcher.state,
     isModalOpen,
@@ -292,7 +300,7 @@ export default function IntegrationsSettingsPage() {
 
   // When data finishes loading (from query param), ensure modal is open
   useEffect(() => {
-    if (hasQueryParam && vercelFetcher.data?.onboardingData && vercelFetcher.state === "idle") {
+    if (hasQueryParam && onboardingData && vercelFetcher.state === "idle") {
       // Data loaded and query param is present, ensure modal is open
       if (!isModalOpen) {
         openVercelOnboarding();
@@ -313,7 +321,7 @@ export default function IntegrationsSettingsPage() {
       });
     }
 
-    if (vercelFetcher.data && vercelFetcher.data.onboardingData) {
+    if (onboardingData) {
       // Data already loaded, open modal immediately
       openVercelOnboarding();
     } else {
@@ -332,6 +340,7 @@ export default function IntegrationsSettingsPage() {
     project.slug,
     environment.slug,
     vercelFetcher,
+    onboardingData,
     setSearchParams,
     hasQueryParam,
     openVercelOnboarding,
@@ -339,16 +348,12 @@ export default function IntegrationsSettingsPage() {
 
   // When data loads from button click, open modal
   useEffect(() => {
-    if (
-      waitingForButtonClickRef.current &&
-      vercelFetcher.data?.onboardingData &&
-      vercelFetcher.state === "idle"
-    ) {
+    if (waitingForButtonClickRef.current && onboardingData && vercelFetcher.state === "idle") {
       // Data loaded from button click, open modal and ensure query param is present
       waitingForButtonClickRef.current = false;
       openVercelOnboarding();
     }
-  }, [vercelFetcher.data, vercelFetcher.state, openVercelOnboarding]);
+  }, [onboardingData, vercelFetcher.state, openVercelOnboarding]);
 
   // DEV_REVEAL_ALL: force both integrations on locally. Remove before merging.
   const showGitHubSection = githubAppEnabled || DEV_REVEAL_ALL;
@@ -407,17 +412,17 @@ export default function IntegrationsSettingsPage() {
       </SettingsContainer>
 
       {/* Vercel Onboarding Modal */}
-      {vercelIntegrationEnabled && (
+      {showVercelSection && (
         <VercelOnboardingModal
           isOpen={isModalOpen}
           onClose={closeVercelOnboarding}
-          onboardingData={vercelFetcher.data?.onboardingData ?? null}
+          onboardingData={onboardingData}
           organizationSlug={organization.slug}
           projectSlug={project.slug}
           environmentSlug={environment.slug}
-          hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? false}
-          hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? false}
-          hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? false}
+          hasStagingEnvironment={vercelFetcher.data?.hasStagingEnvironment ?? DEV_REVEAL_ALL}
+          hasPreviewEnvironment={vercelFetcher.data?.hasPreviewEnvironment ?? DEV_REVEAL_ALL}
+          hasOrgIntegration={vercelFetcher.data?.hasOrgIntegration ?? DEV_REVEAL_ALL}
           nextUrl={nextUrl ?? undefined}
           vercelManageAccessUrl={vercelFetcher.data?.vercelManageAccessUrl}
           onDataReload={(vercelEnvironmentId) => {
