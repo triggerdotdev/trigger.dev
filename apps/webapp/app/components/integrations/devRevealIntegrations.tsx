@@ -21,9 +21,16 @@ import { type VercelProjectIntegrationData } from "~/v3/vercel/vercelProjectInte
 
 export const DEV_REVEAL_ALL = true;
 
+/**
+ * "all" stacks every state with a label on each, for working on the layout.
+ * "healthy" renders one fully connected, warning-free state per section, for
+ * screenshots.
+ */
+export const DEV_REVEAL_MODE: "all" | "healthy" = "healthy";
+
 /** Labels a placeholder state so it is obvious it isn't real data. */
 export function DevRevealLabel({ children }: { children: ReactNode }) {
-  if (!DEV_REVEAL_ALL) return null;
+  if (!DEV_REVEAL_ALL || DEV_REVEAL_MODE === "healthy") return null;
 
   return (
     <div className="flex items-center gap-2 border-b border-dashed border-amber-500/40 py-2">
@@ -112,6 +119,21 @@ export const devRevealConnectedVercelProjectUnmappedStaging = {
       vercelStagingEnvironment: null,
     },
   },
+};
+
+/** Everything mapped, pulled and discovered, so no row is disabled. */
+const devRevealHealthyIntegrationData: VercelProjectIntegrationData = {
+  ...devRevealVercelIntegrationData,
+  config: {
+    ...devRevealVercelIntegrationData.config,
+    pullEnvVarsBeforeBuild: ["prod", "stg", "preview"],
+    discoverEnvVars: ["prod", "stg", "preview"],
+  },
+};
+
+export const devRevealConnectedVercelProjectHealthy = {
+  ...devRevealConnectedVercelProject,
+  integrationData: devRevealHealthyIntegrationData,
 };
 
 export const devRevealVercelCustomEnvironments = [{ id: "env_dev", slug: "staging" }];

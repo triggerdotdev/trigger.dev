@@ -13,8 +13,10 @@ import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import {
+  DEV_REVEAL_MODE,
   DevRevealLabel,
   devRevealConnectedVercelProject,
+  devRevealConnectedVercelProjectHealthy,
   devRevealConnectedVercelProjectUnmappedStaging,
   devRevealVercelCustomEnvironments,
 } from "~/components/integrations/devRevealIntegrations";
@@ -1211,6 +1213,28 @@ function VercelSettingsPanel({
         <SpinnerWhite className="size-4" />
         <span className="text-sm">Loading Vercel settings...</span>
       </div>
+    );
+  }
+
+  // DEV_REVEAL_MODE "healthy": one fully connected state, for screenshots.
+  if (devReveal && DEV_REVEAL_MODE === "healthy") {
+    return (
+      <>
+        <VercelAppInstalledRow />
+        <ConnectedVercelProjectForm
+          connectedProject={devRevealConnectedVercelProjectHealthy}
+          hasStagingEnvironment
+          hasPreviewEnvironment
+          customEnvironments={devRevealVercelCustomEnvironments}
+          autoAssignCustomDomains={false}
+          currentTriggerVersion="20260101.1"
+          currentTriggerVersionFetchFailed={false}
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          canManageVercel={data?.canManageVercel ?? true}
+        />
+      </>
     );
   }
 

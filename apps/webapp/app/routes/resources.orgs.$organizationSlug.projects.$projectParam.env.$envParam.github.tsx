@@ -28,6 +28,7 @@ import {
 } from "~/components/environments/EnvironmentLabel";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import {
+  DEV_REVEAL_MODE,
   DevRevealLabel,
   devRevealConnectedGitHubRepo,
   devRevealConnectedGitHubRepoPublic,
@@ -1138,6 +1139,25 @@ export function GitHubSettingsPanel({
   // GitHub app not enabled
   if ((!data || !data.enabled) && !devReveal) {
     return null;
+  }
+
+  // DEV_REVEAL_MODE "healthy": one fully connected state, for screenshots.
+  if (devReveal && DEV_REVEAL_MODE === "healthy") {
+    return (
+      <>
+        <GitHubAppInstalledRow />
+        <ConnectedGitHubRepoForm
+          connectedGitHubRepo={connectedRepo ?? devRevealConnectedGitHubRepo}
+          previewEnvironmentEnabled
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          billingPath={billingPath}
+          redirectUrl={effectiveRedirectUrl}
+          canManageGithub={canManageGithub}
+        />
+      </>
+    );
   }
 
   // DEV_REVEAL_ALL: stack the mutually exclusive states so all of them are visible.
