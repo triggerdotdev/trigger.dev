@@ -482,15 +482,17 @@ function TaskRunsList({
     navigation.location.pathname === location.pathname &&
     navigation.location.search !== location.search;
 
-  const { visibleRuns, newRunsCount, dismissNewRuns, childrenStatusesBasePath } = useRunsLiveReload({
-    runs: list.runs,
-    hasAnyRuns: list.hasAnyRuns,
-    isLoading,
-    organizationSlug: organization.slug,
-    projectSlug: project.slug,
-    environmentSlug: environment.slug,
-    taskSlug,
-  });
+  const { visibleRuns, newRunsCount, dismissNewRuns, childrenStatusesBasePath } = useRunsLiveReload(
+    {
+      runs: list.runs,
+      hasAnyRuns: list.hasAnyRuns,
+      isLoading,
+      organizationSlug: organization.slug,
+      projectSlug: project.slug,
+      environmentSlug: environment.slug,
+      taskSlug,
+    }
+  );
 
   const onClickShowNewRuns = () => {
     const isPaginated = has("cursor") || has("direction");
