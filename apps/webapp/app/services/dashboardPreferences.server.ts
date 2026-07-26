@@ -93,28 +93,36 @@ async function mutateDashboardPreferences(
   userId: string,
   mutate: (current: DashboardPreferences) => DashboardPreferences | undefined
 ) {
-  return await $transaction(prisma, "mutateDashboardPreferences", async (tx) => {
-    const rows = await tx.$queryRaw<Array<{ dashboardPreferences: unknown }>>`
+  return await $transaction(
+    prisma,
+    "mutateDashboardPreferences",
+    async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ dashboardPreferences: unknown }>>`
       SELECT "dashboardPreferences" FROM "User" WHERE id = ${userId} FOR UPDATE
     `;
-    if (rows.length === 0) {
-      return undefined;
-    }
+      if (rows.length === 0) {
+        return undefined;
+      }
 
-    const updated = mutate(getDashboardPreferences(rows[0].dashboardPreferences));
-    if (!updated) {
-      return undefined;
-    }
+      const updated = mutate(getDashboardPreferences(rows[0].dashboardPreferences));
+      if (!updated) {
+        return undefined;
+      }
 
-    return await tx.user.update({
-      where: {
-        id: userId,
-      },
-      data: {
-        dashboardPreferences: updated,
-      },
-    });
-  });
+      return await tx.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          dashboardPreferences: updated,
+        },
+      });
+    },
+    // Concurrent writers queue on the row lock, so under load (several debounced writes plus a
+    // revalidation burst) a transaction can time out acquiring a connection or the lock; those
+    // codes are retriable and preference writes are idempotent.
+    { maxRetries: 3 }
+  );
 }
 
 export async function updateCurrentProjectEnvironmentId({

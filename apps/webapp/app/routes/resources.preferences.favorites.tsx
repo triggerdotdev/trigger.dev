@@ -5,6 +5,7 @@ import {
   removeFavorite,
   renameFavorite,
 } from "~/services/dashboardPreferences.server";
+import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 
 const FavoriteLabel = z
@@ -52,20 +53,27 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ success: false, error: "Invalid request data" }, { status: 400 });
   }
 
-  switch (result.data.intent) {
-    case "add": {
-      const { id, url, label, icon } = result.data;
-      await addFavorite({ user, favorite: { id, url, label, icon } });
-      break;
+  // Errors come back as a response (never a throw, which would escalate a preferences write to
+  // the error boundary); the side menu's optimistic entries revert when the fetcher settles.
+  try {
+    switch (result.data.intent) {
+      case "add": {
+        const { id, url, label, icon } = result.data;
+        await addFavorite({ user, favorite: { id, url, label, icon } });
+        break;
+      }
+      case "remove": {
+        await removeFavorite({ user, id: result.data.id });
+        break;
+      }
+      case "rename": {
+        await renameFavorite({ user, id: result.data.id, label: result.data.label });
+        break;
+      }
     }
-    case "remove": {
-      await removeFavorite({ user, id: result.data.id });
-      break;
-    }
-    case "rename": {
-      await renameFavorite({ user, id: result.data.id, label: result.data.label });
-      break;
-    }
+  } catch (error) {
+    logger.error("Failed to update favorites", { error: String(error) });
+    return json({ success: false, error: "Failed to save preferences" }, { status: 500 });
   }
 
   return json({ success: true });

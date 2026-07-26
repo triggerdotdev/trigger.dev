@@ -113,13 +113,21 @@ export function CustomizeSidebarDialog({
   sections,
   prefs,
   onConfirm,
-  onClose,
+  isConfirming,
+  confirmError,
 }: {
   sections: CustomizeSidebarSection[];
   prefs: SavedPreferences | undefined;
-  /** Owned by the parent: closing this dialog unmounts it, so it can't run its own fetcher. */
+  /**
+   * Owned by the parent: closing this dialog unmounts it, so it can't run its own fetcher. The
+   * parent submits the payload and closes the dialog once the save lands (or reports back via
+   * `confirmError`), so a failed save never silently reads as a successful one.
+   */
   onConfirm: (payload: SidebarCustomizationPayload) => void;
-  onClose: () => void;
+  /** True from Confirm until the save (and the refreshed side menu data) lands. */
+  isConfirming: boolean;
+  /** Save failure to surface next to Confirm; the dialog stays open for a retry. */
+  confirmError?: string;
 }) {
   const [state, setState] = useState<DialogState>(() => buildState(sections, prefs));
 
@@ -243,7 +251,6 @@ export function CustomizeSidebarDialog({
     };
 
     onConfirm(payload);
-    onClose();
   };
 
   return (
@@ -300,9 +307,19 @@ export function CustomizeSidebarDialog({
             Reset
           </Button>
         </div>
-        <Button variant="primary/medium" onClick={confirm} disabled={hasBlankLabels}>
-          Confirm
-        </Button>
+        <div className="flex min-w-0 items-center gap-3">
+          {confirmError && !isConfirming && (
+            <FormError className="truncate">{confirmError}</FormError>
+          )}
+          <Button
+            variant="primary/medium"
+            onClick={confirm}
+            disabled={hasBlankLabels}
+            isLoading={isConfirming}
+          >
+            Confirm
+          </Button>
+        </div>
       </DialogFooter>
     </DialogContent>
   );

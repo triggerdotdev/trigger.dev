@@ -9,6 +9,7 @@ import {
   updateSideMenuCustomization,
   updateSideMenuPreferences,
 } from "~/services/dashboardPreferences.server";
+import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 
 // Transforms form data string "true"/"false" to boolean, or undefined if not present
@@ -67,14 +68,25 @@ export async function action({ request }: ActionFunctionArgs) {
     }
     const { sectionOrder, hiddenItems, sectionItemOrder, favorites, removedFavoriteIds } =
       customizationResult.data;
-    await updateSideMenuCustomization({
-      user,
-      sectionOrder,
-      hiddenItems,
-      sectionItemOrder,
-      favorites,
-      removedFavoriteIds,
-    });
+    // The modal keeps its "Confirm" pending until this responds, so failures must come back as a
+    // response (never a throw, which would escalate a preferences write to the error boundary).
+    try {
+      const updated = await updateSideMenuCustomization({
+        user,
+        sectionOrder,
+        hiddenItems,
+        sectionItemOrder,
+        favorites,
+        removedFavoriteIds,
+      });
+      // undefined means nothing was written (impersonating, or the user row is gone)
+      if (!updated) {
+        return json({ success: false, error: "Failed to save preferences" }, { status: 500 });
+      }
+    } catch (error) {
+      logger.error("Failed to save sidebar customization", { error: String(error) });
+      return json({ success: false, error: "Failed to save preferences" }, { status: 500 });
+    }
     return json({ success: true });
   }
 

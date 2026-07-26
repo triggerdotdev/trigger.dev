@@ -4,7 +4,7 @@ import {
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
-import { useFetcher, useNavigation, useSubmit } from "@remix-run/react";
+import { useFetcher, useNavigation, useRevalidator, useSubmit } from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
 import {
   type CSSProperties,
@@ -395,15 +395,51 @@ export function SideMenu({
   const isV3Project = project.engine === "V1";
   const favorites = useFavorites();
   const [isCustomizeOpen, setCustomizeOpen] = useState(false);
-  // Lives here (not in the dialog): confirming closes/unmounts the dialog, which would abort a
-  // fetcher owned by it before the request fires.
-  const customizationFetcher = useFetcher();
+  // Lives here (not in the dialog): the dialog unmounts on close, which would abort a fetcher it
+  // owned mid-request.
+  const customizationFetcher = useFetcher<{ success: boolean }>();
+  const revalidator = useRevalidator();
+  // Confirm lifecycle: the dialog stays open (Confirm spinning) until the save response AND the
+  // revalidated preferences land, so the side menu is already updated the moment it closes — and
+  // a failed or hung save shows as such instead of silently reading as success.
+  const [isCustomizeConfirmPending, setCustomizeConfirmPending] = useState(false);
+  const [customizeError, setCustomizeError] = useState<string>();
+  // The fetcher's data survives across confirms, so only settle once THIS submission has been
+  // seen in flight — otherwise a reopened dialog could consume the previous confirm's response.
+  const customizeSubmitSeenRef = useRef(false);
   const submitSidebarCustomization = (payload: SidebarCustomizationPayload) => {
+    setCustomizeError(undefined);
+    setCustomizeConfirmPending(true);
+    customizeSubmitSeenRef.current = false;
     customizationFetcher.submit(
       { customization: JSON.stringify(payload) },
       { method: "POST", action: "/resources/preferences/sidemenu" }
     );
   };
+  useEffect(() => {
+    if (!isCustomizeConfirmPending) return;
+    if (customizationFetcher.state !== "idle") {
+      customizeSubmitSeenRef.current = true;
+      return;
+    }
+    if (!customizeSubmitSeenRef.current) return; // submit hasn't been picked up yet
+    const data = customizationFetcher.data;
+    if (!data) return;
+    if (data.success) {
+      // Wait out the post-save revalidation so the menu behind the dialog reflects the changes
+      if (revalidator.state !== "idle") return;
+      setCustomizeConfirmPending(false);
+      setCustomizeOpen(false);
+    } else {
+      setCustomizeConfirmPending(false);
+      setCustomizeError("Couldn't save your changes. Please try again.");
+    }
+  }, [
+    isCustomizeConfirmPending,
+    customizationFetcher.state,
+    customizationFetcher.data,
+    revalidator.state,
+  ]);
   // Same ownership rule: removing a favorite optimistically unmounts its menu item (and, for the
   // last favorite, the whole section), which would abort an item-owned fetcher mid-request.
   // Separate fetchers per mutation: fetchers are single-flight, so a shared one would cancel an
@@ -1221,7 +1257,18 @@ export function SideMenu({
           </motion.div>
         </div>
       </div>
-      <Dialog open={isCustomizeOpen} onOpenChange={setCustomizeOpen}>
+      <Dialog
+        open={isCustomizeOpen}
+        onOpenChange={(open) => {
+          setCustomizeOpen(open);
+          if (!open) {
+            // Cancel/ESC during a pending confirm abandons the wait; a still-running save is
+            // harmless (the menu revalidates whenever it lands)
+            setCustomizeConfirmPending(false);
+            setCustomizeError(undefined);
+          }
+        }}
+      >
         {/* Mounted only while open so the modal state re-seeds from current preferences each time */}
         {isCustomizeOpen && (
           <CustomizeSidebarDialog
@@ -1232,7 +1279,8 @@ export function SideMenu({
               sectionItemOrder: sideMenuPrefs?.sectionItemOrder,
             }}
             onConfirm={submitSidebarCustomization}
-            onClose={() => setCustomizeOpen(false)}
+            isConfirming={isCustomizeConfirmPending}
+            confirmError={customizeError}
           />
         )}
       </Dialog>
