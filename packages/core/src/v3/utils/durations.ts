@@ -32,6 +32,11 @@ export function millisecondsToNanoseconds(milliseconds: number): number {
   return milliseconds * 1_000_000;
 }
 
+/** Convert epoch milliseconds to nanoseconds using BigInt to avoid overflow. */
+export function epochMsToNanoseconds(ms: number): bigint {
+  return BigInt(ms) * 1_000_000n;
+}
+
 export function formatDurationNanoseconds(nanoseconds: number, options?: DurationOptions): string {
   return formatDurationMilliseconds(nanosecondsToMilliseconds(nanoseconds), options);
 }

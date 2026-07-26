@@ -474,7 +474,7 @@ function buildAiSpanTree(params: SpanTreeParams): CreateEventInput[] {
     attemptNumber?: number;
   }): CreateEventInput {
     const startNs = BigInt(opts.startMs) * BigInt(1_000_000);
-    const durationNs = opts.durationMs * 1_000_000;
+    const durationNs = BigInt(opts.durationMs) * BigInt(1_000_000);
     return {
       traceId,
       spanId: opts.spanId,

@@ -555,7 +555,7 @@ export function registerRunEngineEventBusHandlers() {
         );
 
         await eventRepository.recordEvent(retryMessage, {
-          startTime: BigInt(time.getTime() * 1000000),
+          startTime: BigInt(time.getTime()) * 1_000_000n,
           taskSlug: run.taskIdentifier,
           environment,
           attributes: {
