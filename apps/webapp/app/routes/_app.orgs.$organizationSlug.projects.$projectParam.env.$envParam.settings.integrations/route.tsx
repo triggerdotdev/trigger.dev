@@ -6,18 +6,19 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
-import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
+import { DEV_REVEAL_ALL } from "~/components/integrations/devRevealIntegrations";
 import { Button } from "~/components/primitives/Buttons";
-import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
-import { Fieldset } from "~/components/primitives/Fieldset";
-import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { Header2 } from "~/components/primitives/Headers";
-import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
-import { InputGroup } from "~/components/primitives/InputGroup";
-import { Label } from "~/components/primitives/Label";
+import {
+  SettingsActions,
+  SettingsContainer,
+  SettingsHeader,
+  SettingsRow,
+  SettingsSection,
+} from "~/components/primitives/SettingsLayout";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { Switch } from "~/components/primitives/Switch";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -40,6 +41,9 @@ import {
   VercelOnboardingModal,
   VercelSettingsPanel,
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+
+/** Read by the parent settings layout to title the page. */
+export const handle = { pageTitle: "Integrations" };
 
 export const loader = dashboardLoader(
   {
@@ -346,56 +350,59 @@ export default function IntegrationsSettingsPage() {
     }
   }, [vercelFetcher.data, vercelFetcher.state, openVercelOnboarding]);
 
+  // DEV_REVEAL_ALL: force both integrations on locally. Remove before merging.
+  const showGitHubSection = githubAppEnabled || DEV_REVEAL_ALL;
+  const showVercelSection = vercelIntegrationEnabled || DEV_REVEAL_ALL;
+
   return (
     <>
-      <MainHorizontallyCenteredContainer className="md:mt-6">
-        <div className="flex flex-col gap-6">
-          {githubAppEnabled && (
-            <React.Fragment>
-              <div>
-                <Header2 spacing>Git settings</Header2>
-                <div className="w-full rounded-sm border border-grid-dimmed p-4">
-                  <GitHubSettingsPanel
-                    organizationSlug={organization.slug}
-                    projectSlug={project.slug}
-                    environmentSlug={environment.slug}
-                    billingPath={v3BillingPath({ slug: organization.slug })}
-                  />
-                </div>
-              </div>
+      <SettingsContainer className="md:mt-6">
+        {showGitHubSection && (
+          <React.Fragment>
+            <SettingsSection>
+              <SettingsHeader title="Git settings" />
+              <GitHubSettingsPanel
+                organizationSlug={organization.slug}
+                projectSlug={project.slug}
+                environmentSlug={environment.slug}
+                billingPath={v3BillingPath({ slug: organization.slug })}
+                layout="settings"
+                devReveal={DEV_REVEAL_ALL}
+              />
+            </SettingsSection>
 
-              {vercelIntegrationEnabled && (
-                <div>
-                  <Header2 spacing>Vercel integration</Header2>
-                  <div className="w-full rounded-sm border border-grid-dimmed p-4">
-                    <VercelSettingsPanel
-                      organizationSlug={organization.slug}
-                      projectSlug={project.slug}
-                      environmentSlug={environment.slug}
-                      onOpenVercelModal={handleOpenVercelModal}
-                      isLoadingVercelData={
-                        vercelFetcher.state === "loading" || vercelFetcher.state === "submitting"
-                      }
-                    />
-                  </div>
-                </div>
-              )}
+            {showVercelSection && (
+              <SettingsSection>
+                <SettingsHeader title="Vercel integration" />
+                <VercelSettingsPanel
+                  organizationSlug={organization.slug}
+                  projectSlug={project.slug}
+                  environmentSlug={environment.slug}
+                  onOpenVercelModal={handleOpenVercelModal}
+                  isLoadingVercelData={
+                    vercelFetcher.state === "loading" || vercelFetcher.state === "submitting"
+                  }
+                  devReveal={DEV_REVEAL_ALL}
+                />
+              </SettingsSection>
+            )}
 
-              <div>
-                <Header2 spacing>Build settings</Header2>
-                <Hint className="mb-2">
-                  These settings apply to deployments triggered from GitHub and to CLI deployments
-                  run with the <InlineCode variant="extra-small">--native-build-server</InlineCode>{" "}
-                  flag.
-                </Hint>
-                <div className="w-full rounded-sm border border-grid-dimmed p-4">
-                  <BuildSettingsForm buildSettings={buildSettings ?? {}} />
-                </div>
-              </div>
-            </React.Fragment>
-          )}
-        </div>
-      </MainHorizontallyCenteredContainer>
+            <SettingsSection>
+              <SettingsHeader
+                title="Build settings"
+                description={
+                  <>
+                    These settings apply to deployments triggered from GitHub and to CLI deployments
+                    run with the{" "}
+                    <InlineCode variant="extra-small">--native-build-server</InlineCode> flag.
+                  </>
+                }
+              />
+              <BuildSettingsForm buildSettings={buildSettings ?? {}} />
+            </SettingsSection>
+          </React.Fragment>
+        )}
+      </SettingsContainer>
 
       {/* Vercel Onboarding Modal */}
       {vercelIntegrationEnabled && (
@@ -471,109 +478,126 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
 
   return (
     <Form method="post" {...getFormProps(buildSettingsForm)}>
-      <Fieldset>
-        <InputGroup fullWidth>
-          <Label htmlFor={fields.triggerConfigFilePath.id}>Trigger config file</Label>
-          <Input
-            {...getInputProps(fields.triggerConfigFilePath, { type: "text" })}
-            defaultValue={buildSettings?.triggerConfigFilePath || ""}
-            placeholder="trigger.config.ts"
-            onChange={(e) => {
-              setBuildSettingsValues((prev) => ({
-                ...prev,
-                triggerConfigFilePath: e.target.value,
-              }));
-            }}
-          />
-          <Hint>
-            Path to your Trigger configuration file, relative to the root directory of your repo.
-          </Hint>
-          <FormError id={fields.triggerConfigFilePath.errorId}>
-            {fields.triggerConfigFilePath.errors}
-          </FormError>
-        </InputGroup>
-
-        <InputGroup fullWidth>
-          <Label htmlFor={fields.installCommand.id}>Install command</Label>
-          <Input
-            {...getInputProps(fields.installCommand, { type: "text" })}
-            defaultValue={buildSettings?.installCommand || ""}
-            placeholder="e.g., `npm install`, `pnpm install`, or `bun install`"
-            onChange={(e) => {
-              setBuildSettingsValues((prev) => ({
-                ...prev,
-                installCommand: e.target.value,
-              }));
-            }}
-          />
-          <Hint>
-            Command to install your project dependencies. This will be run from the root directory
-            of your repo. Auto-detected by default.
-          </Hint>
-          <FormError id={fields.installCommand.errorId}>
-            {fields.installCommand.errors?.join(", ")}
-          </FormError>
-        </InputGroup>
-        <InputGroup fullWidth>
-          <Label htmlFor={fields.preBuildCommand.id}>Pre-build command</Label>
-          <Input
-            {...getInputProps(fields.preBuildCommand, { type: "text" })}
-            defaultValue={buildSettings?.preBuildCommand || ""}
-            placeholder="e.g., `npm run prisma:generate`"
-            onChange={(e) => {
-              setBuildSettingsValues((prev) => ({
-                ...prev,
-                preBuildCommand: e.target.value,
-              }));
-            }}
-          />
-          <Hint>
-            Any command that needs to run before we build and deploy your project. This will be run
-            from the root directory of your repo.
-          </Hint>
-          <FormError id={fields.preBuildCommand.errorId}>
-            {fields.preBuildCommand.errors?.join(", ")}
-          </FormError>
-        </InputGroup>
-        <div className="border-t border-grid-dimmed pt-4">
-          <InputGroup>
-            <CheckboxWithLabel
-              {...getInputProps(fields.useNativeBuildServer, { type: "checkbox" })}
-              label="Use native build server"
-              variant="simple/small"
-              defaultChecked={nativeBuildServerEnabled}
-              onChange={(isChecked) => {
+      <SettingsRow
+        align="start"
+        htmlFor={fields.triggerConfigFilePath.id}
+        title="Trigger config file"
+        description="Path to your Trigger configuration file, relative to the root directory of your repo."
+        action={
+          <SettingsControl>
+            <Input
+              {...getInputProps(fields.triggerConfigFilePath, { type: "text" })}
+              variant="medium"
+              defaultValue={buildSettings?.triggerConfigFilePath || ""}
+              placeholder="trigger.config.ts"
+              onChange={(e) => {
                 setBuildSettingsValues((prev) => ({
                   ...prev,
-                  useNativeBuildServer: isChecked,
+                  triggerConfigFilePath: e.target.value,
                 }));
               }}
             />
-            <Hint>
-              Native build server builds don't rely on external build providers and are used by
-              default. Requires version 4.2.0 or newer.
-            </Hint>
-            <FormError id={fields.useNativeBuildServer.errorId}>
-              {fields.useNativeBuildServer.errors}
+            <FormError id={fields.triggerConfigFilePath.errorId}>
+              {fields.triggerConfigFilePath.errors}
             </FormError>
-          </InputGroup>
-        </div>
-        <FormError>{buildSettingsForm.errors}</FormError>
-        <FormButtons
-          confirmButton={
-            <Button
-              type="submit"
-              name="action"
-              value="update-build-settings"
-              variant="secondary/small"
-              disabled={isBuildSettingsLoading || !hasBuildSettingsChanges}
-              LeadingIcon={isBuildSettingsLoading ? SpinnerWhite : undefined}
-            >
-              Save
-            </Button>
-          }
-        />
-      </Fieldset>
+          </SettingsControl>
+        }
+      />
+
+      <SettingsRow
+        align="start"
+        htmlFor={fields.installCommand.id}
+        title="Install command"
+        description="Command to install your project dependencies. This will be run from the root directory of your repo. Auto-detected by default."
+        action={
+          <SettingsControl>
+            <Input
+              {...getInputProps(fields.installCommand, { type: "text" })}
+              variant="medium"
+              defaultValue={buildSettings?.installCommand || ""}
+              placeholder="pnpm install"
+              onChange={(e) => {
+                setBuildSettingsValues((prev) => ({
+                  ...prev,
+                  installCommand: e.target.value,
+                }));
+              }}
+            />
+            <FormError id={fields.installCommand.errorId}>
+              {fields.installCommand.errors?.join(", ")}
+            </FormError>
+          </SettingsControl>
+        }
+      />
+      <SettingsRow
+        align="start"
+        htmlFor={fields.preBuildCommand.id}
+        title="Pre-build command"
+        description="Any command that needs to run before we build and deploy your project. This will be run from the root directory of your repo."
+        action={
+          <SettingsControl>
+            <Input
+              {...getInputProps(fields.preBuildCommand, { type: "text" })}
+              variant="medium"
+              defaultValue={buildSettings?.preBuildCommand || ""}
+              placeholder="npm run prisma:generate"
+              onChange={(e) => {
+                setBuildSettingsValues((prev) => ({
+                  ...prev,
+                  preBuildCommand: e.target.value,
+                }));
+              }}
+            />
+            <FormError id={fields.preBuildCommand.errorId}>
+              {fields.preBuildCommand.errors?.join(", ")}
+            </FormError>
+          </SettingsControl>
+        }
+      />
+
+      <SettingsRow
+        title="Use native build server"
+        description="Native build server builds don't rely on external build providers and are used by default. Requires version 4.2.0 or newer."
+        action={
+          <Switch
+            variant="medium"
+            name={fields.useNativeBuildServer.name}
+            defaultChecked={nativeBuildServerEnabled}
+            onCheckedChange={(isChecked) => {
+              setBuildSettingsValues((prev) => ({
+                ...prev,
+                useNativeBuildServer: isChecked,
+              }));
+            }}
+          />
+        }
+      />
+
+      <FormError id={fields.useNativeBuildServer.errorId}>
+        {fields.useNativeBuildServer.errors}
+      </FormError>
+      <FormError>{buildSettingsForm.errors}</FormError>
+
+      <SettingsActions>
+        <Button
+          type="submit"
+          name="action"
+          value="update-build-settings"
+          variant="secondary/small"
+          disabled={isBuildSettingsLoading || !hasBuildSettingsChanges}
+          LeadingIcon={isBuildSettingsLoading ? SpinnerWhite : undefined}
+        >
+          Save
+        </Button>
+      </SettingsActions>
     </Form>
   );
+}
+
+/**
+ * Right-hand control column for a settings row whose action is a text input:
+ * fixed width so the inputs line up, with room for a validation message below.
+ */
+function SettingsControl({ children }: { children: React.ReactNode }) {
+  return <div className="flex w-64 flex-col gap-1">{children}</div>;
 }
