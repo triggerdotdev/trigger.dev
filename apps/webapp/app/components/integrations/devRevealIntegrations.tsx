@@ -101,4 +101,17 @@ export const devRevealConnectedVercelProject = {
   integrationData: devRevealVercelIntegrationData,
 };
 
+/** Staging environment exists but no Vercel environment is mapped to it yet. */
+export const devRevealConnectedVercelProjectUnmappedStaging = {
+  ...devRevealConnectedVercelProject,
+  integrationData: {
+    ...devRevealVercelIntegrationData,
+    config: {
+      ...devRevealVercelIntegrationData.config,
+      atomicBuilds: [],
+      vercelStagingEnvironment: null,
+    },
+  },
+};
+
 export const devRevealVercelCustomEnvironments = [{ id: "env_dev", slug: "staging" }];

@@ -1,6 +1,10 @@
 import { getFormProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import {
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  ExclamationTriangleIcon,
+} from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher, useLocation, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
@@ -11,26 +15,28 @@ import { z } from "zod";
 import {
   DevRevealLabel,
   devRevealConnectedVercelProject,
+  devRevealConnectedVercelProjectUnmappedStaging,
   devRevealVercelCustomEnvironments,
 } from "~/components/integrations/devRevealIntegrations";
+import {
+  EnvironmentIcon,
+  environmentTextClassName,
+} from "~/components/environments/EnvironmentLabel";
 import { BuildSettingsFields } from "~/components/integrations/VercelBuildSettings";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { Button } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
-import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { Hint } from "~/components/primitives/Hint";
-import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import {
   SettingsActions,
-  SettingsBlock,
   SettingsRow,
+  SettingsRowDescription,
+  SettingsRowTitle,
 } from "~/components/primitives/SettingsLayout";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import {
@@ -66,6 +72,7 @@ import {
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
+import { cn } from "~/utils/cn";
 
 export type ConnectedVercelProject = {
   id: string;
@@ -523,10 +530,74 @@ export const action = dashboardAction(
   }
 );
 
-function VercelConnectionPrompt({
+/**
+ * A warning or error rendered as a settings row: hazard icon and title on the
+ * left with the explanation beneath, both in the severity colour, and the
+ * recovery action on the right.
+ */
+function SettingsAlertRow({
+  variant,
+  title,
+  description,
+  action,
+}: {
+  variant: "warning" | "error";
+  title: string;
+  description: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  const Icon = variant === "error" ? ExclamationCircleIcon : ExclamationTriangleIcon;
+  const color = variant === "error" ? "text-error" : "text-warning";
+
+  return (
+    <SettingsRow action={action}>
+      <div className="flex-1 space-y-1">
+        <div className="flex items-center gap-1.5">
+          <Icon className={cn("size-4 shrink-0", color)} />
+          <SettingsRowTitle className={color}>{title}</SettingsRowTitle>
+        </div>
+        <SettingsRowDescription>{description}</SettingsRowDescription>
+      </div>
+    </SettingsRow>
+  );
+}
+
+/**
+ * A selectable Vercel environment, shown with the Staging environment badge it
+ * will map onto so the mapping reads as "this Vercel env becomes Staging".
+ */
+function StagingEnvOption({ name }: { name: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <EnvironmentIcon environment={{ type: "STAGING" }} className="size-4" />
+      <span className={environmentTextClassName({ type: "STAGING" })}>{name}</span>
+    </span>
+  );
+}
+
+/** "Vercel app - Installed" status row, mirroring the GitHub app row. */
+function VercelAppInstalledRow() {
+  return (
+    <SettingsRow
+      title="Vercel app"
+      action={
+        <span className="flex items-center gap-1.5 text-sm text-text-dimmed">
+          <CheckCircleIcon className="size-4 text-success" />
+          Installed
+        </span>
+      }
+    />
+  );
+}
+
+/**
+ * The "not yet connected" Vercel states as settings rows: install the app,
+ * then connect a project. Mirrors GitHubSettingsRows.
+ */
+function VercelSettingsRows({
   organizationSlug,
   projectSlug,
-  environmentSlug,
+  environmentSlug: _environmentSlug,
   hasOrgIntegration,
   isGitHubConnected,
   onOpenModal,
@@ -542,67 +613,55 @@ function VercelConnectionPrompt({
   isLoading?: boolean;
   canManageVercel?: boolean;
 }) {
-  const installPath = vercelAppInstallPath(organizationSlug, projectSlug);
-
-  const handleConnectProject = () => {
-    if (onOpenModal) {
-      onOpenModal();
-    }
-  };
-
+  const noPermissionTooltip = "You don't have permission to manage the Vercel integration";
   const isLoadingProjects = isLoading ?? false;
-  const isDisabled = isLoadingProjects || !onOpenModal;
 
   return (
-    <Fieldset>
-      <InputGroup fullWidth>
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            {hasOrgIntegration ? (
-              <>
-                <Button
-                  variant="secondary/medium"
-                  onClick={handleConnectProject}
-                  disabled={isDisabled || !canManageVercel}
-                  tooltip={
-                    canManageVercel
-                      ? undefined
-                      : "You don't have permission to manage the Vercel integration"
-                  }
-                  LeadingIcon={
-                    isLoadingProjects
-                      ? () => <SpinnerWhite className="size-4" />
-                      : () => <VercelLogo className="-mx-1 size-4" />
-                  }
-                >
-                  {isLoadingProjects ? "Loading projects..." : "Connect Vercel project"}
-                </Button>
-                <span className="flex items-center gap-1 text-xs text-text-dimmed">
-                  <CheckCircleIcon className="size-4 text-success" /> Vercel app is installed
-                </span>
-                {!onOpenModal && (
-                  <span className="text-xs text-amber-400">
-                    Please reconnect Vercel to continue
-                  </span>
-                )}
-              </>
-            ) : (
-              <>
-                <PermissionLink
-                  hasPermission={canManageVercel}
-                  noPermissionTooltip="You don't have permission to manage the Vercel integration"
-                  to={installPath}
-                  variant="secondary/medium"
-                  LeadingIcon={() => <VercelLogo className="-mx-1 size-4" />}
-                >
-                  Install Vercel app
-                </PermissionLink>
-              </>
-            )}
-          </div>
-        </div>
-      </InputGroup>
-    </Fieldset>
+    <>
+      {hasOrgIntegration ? (
+        <VercelAppInstalledRow />
+      ) : (
+        <SettingsRow
+          title="Vercel app"
+          description="Give Trigger.dev access to your Vercel projects and environment variables."
+          action={
+            <PermissionLink
+              hasPermission={canManageVercel}
+              noPermissionTooltip={noPermissionTooltip}
+              to={vercelAppInstallPath(organizationSlug, projectSlug)}
+              variant="secondary/small"
+              LeadingIcon={() => <VercelLogo className="-mx-1 size-3.5" />}
+            >
+              Install Vercel app
+            </PermissionLink>
+          }
+        />
+      )}
+
+      {hasOrgIntegration && (
+        <SettingsRow
+          title="Vercel project"
+          description="Connect a Vercel project to pull environment variables and trigger builds."
+          action={
+            <Button
+              variant="secondary/small"
+              onClick={() => onOpenModal?.()}
+              disabled={isLoadingProjects || !onOpenModal || !canManageVercel}
+              tooltip={canManageVercel ? undefined : noPermissionTooltip}
+              LeadingIcon={
+                isLoadingProjects
+                  ? () => <SpinnerWhite className="size-4" />
+                  : () => <VercelLogo className="-mx-1 size-3.5" />
+              }
+            >
+              {isLoadingProjects ? "Loading projects…" : "Connect Vercel project"}
+            </Button>
+          }
+        />
+      )}
+
+      {!isGitHubConnected && <VercelGitHubWarning />}
+    </>
   );
 }
 
@@ -615,42 +674,32 @@ function VercelAuthInvalidBanner({
   projectSlug: string;
   canManageVercel?: boolean;
 }) {
-  const installUrl = vercelAppInstallPath(organizationSlug, projectSlug);
-
   return (
-    <Callout variant="error" className="mb-4">
-      <div className="flex items-start gap-3">
-        <div className="flex-1">
-          <p className="mb-2 font-sans text-sm font-medium text-text-bright">
-            Vercel connection expired
-          </p>
-          <p className="mb-3 font-sans text-xs text-text-dimmed">
-            Your Vercel access token has expired or been revoked. Please reconnect to restore
-            functionality.
-          </p>
-          <PermissionLink
-            hasPermission={canManageVercel}
-            noPermissionTooltip="You don't have permission to manage the Vercel integration"
-            to={installUrl}
-            variant="minimal/small"
-            className="border-error/20 bg-error/10 text-error hover:bg-error/20"
-          >
-            Reconnect Vercel
-          </PermissionLink>
-        </div>
-      </div>
-    </Callout>
+    <SettingsAlertRow
+      variant="warning"
+      title="Vercel connection expired"
+      description="Your access token has expired or been revoked. Reconnect to restore the integration."
+      action={
+        <PermissionLink
+          hasPermission={canManageVercel}
+          noPermissionTooltip="You don't have permission to manage the Vercel integration"
+          to={vercelAppInstallPath(organizationSlug, projectSlug)}
+          variant="warning/small"
+        >
+          Reconnect Vercel
+        </PermissionLink>
+      }
+    />
   );
 }
 
 function VercelGitHubWarning() {
   return (
-    <Callout variant="warning" className="mb-4">
-      <p className="font-sans text-xs font-normal text-text-dimmed">
-        GitHub integration is not connected. Vercel integration cannot sync environment variables
-        and link deployments without a properly installed GitHub integration.
-      </p>
-    </Callout>
+    <SettingsAlertRow
+      variant="warning"
+      title="GitHub isn't connected"
+      description="Vercel can't sync environment variables or link deployments until you connect a GitHub repo."
+    />
   );
 }
 
@@ -798,7 +847,7 @@ function ConnectedVercelProjectForm({
 
   const disabledEnvSlugsForBuildSettings: Partial<Record<EnvSlug, string>> | undefined =
     hasStagingEnvironment && !configValues.vercelStagingEnvironment
-      ? { stg: "Map a custom Vercel environment to Staging to enable this" }
+      ? { stg: "Set a Vercel environment for Staging first." }
       : undefined;
 
   const _formatSelectedEnvs = (
@@ -813,11 +862,37 @@ function ConnectedVercelProjectForm({
   return (
     <>
       <SettingsRow
+        title="Vercel project"
+        action={
+          <span className="flex items-center gap-1.5 text-sm text-text-dimmed">
+            <CheckCircleIcon className="size-4 text-success" />
+            Connected
+          </span>
+        }
+      />
+
+      <SettingsRow
+        description={
+          <>
+            <span className="mr-2 inline-block size-1.5 rounded-full bg-success align-[0.15em]" />
+            Vercel project
+            <VercelLogo className="relative -top-px mx-1.5 inline size-3.5 align-text-bottom" />
+            {connectedProject.vercelProjectName} connected on{" "}
+            <DateTime
+              date={connectedProject.createdAt}
+              includeTime={false}
+              includeSeconds={false}
+              showTimezone={false}
+              showTooltip={false}
+            />
+            .
+          </>
+        }
         action={
           <Dialog>
             <DialogTrigger asChild>
               <Button
-                variant="minimal/small"
+                variant="secondary/small"
                 disabled={!canManageVercel}
                 tooltip={
                   canManageVercel
@@ -855,23 +930,7 @@ function ConnectedVercelProjectForm({
             </DialogContent>
           </Dialog>
         }
-      >
-        <div className="flex flex-1 items-center gap-2">
-          <VercelLogo className="size-4" />
-          <span className="max-w-52 truncate text-sm text-text-bright">
-            {connectedProject.vercelProjectName}
-          </span>
-          <span className="text-xs text-text-dimmed">
-            <DateTime
-              date={connectedProject.createdAt}
-              includeTime={false}
-              includeSeconds={false}
-              showTimezone={false}
-              showTooltip={false}
-            />
-          </span>
-        </div>
-      </SettingsRow>
+      />
 
       {/* Configuration form */}
       <Form method="post" action={actionUrl} {...getFormProps(configForm)}>
@@ -911,110 +970,110 @@ function ConnectedVercelProjectForm({
         {/* Staging environment mapping */}
         {hasStagingEnvironment && customEnvironments && customEnvironments.length > 0 && (
           <SettingsRow
-            align="start"
-            title="Map Vercel environment to Staging"
-            description="Select which custom Vercel environment should map to Trigger.dev's Staging environment."
+            title="Vercel environment for Staging"
+            description="Required to enable the Staging options below."
             action={
-              <Select
-                value={configValues.vercelStagingEnvironment?.environmentId || ""}
-                setValue={(value) => {
-                  if (!Array.isArray(value)) {
-                    const env = customEnvironments?.find((e) => e.id === value);
-                    setConfigValues((prev) => {
-                      const next = {
-                        ...prev,
-                        vercelStagingEnvironment: env
-                          ? { environmentId: env.id, displayName: env.slug }
-                          : null,
-                      };
-                      // When clearing the staging mapping, strip "stg" from build settings
-                      if (!env) {
-                        next.pullEnvVarsBeforeBuild = prev.pullEnvVarsBeforeBuild.filter(
-                          (s) => s !== "stg"
-                        );
-                        next.discoverEnvVars = prev.discoverEnvVars.filter((s) => s !== "stg");
-                      }
-                      return next;
-                    });
+              <div data-unlock-target="staging-env">
+                <Select
+                  value={configValues.vercelStagingEnvironment?.environmentId || ""}
+                  setValue={(value) => {
+                    if (!Array.isArray(value)) {
+                      const env = customEnvironments?.find((e) => e.id === value);
+                      setConfigValues((prev) => {
+                        const next = {
+                          ...prev,
+                          vercelStagingEnvironment: env
+                            ? { environmentId: env.id, displayName: env.slug }
+                            : null,
+                        };
+                        // When clearing the staging mapping, strip "stg" from build settings
+                        if (!env) {
+                          next.pullEnvVarsBeforeBuild = prev.pullEnvVarsBeforeBuild.filter(
+                            (s) => s !== "stg"
+                          );
+                          next.discoverEnvVars = prev.discoverEnvVars.filter((s) => s !== "stg");
+                        }
+                        return next;
+                      });
+                    }
+                  }}
+                  items={[{ id: "", slug: "None" }, ...customEnvironments]}
+                  variant="secondary/small"
+                  placeholder="Select environment"
+                  dropdownIcon
+                  text={
+                    configValues.vercelStagingEnvironment ? (
+                      <StagingEnvOption name={configValues.vercelStagingEnvironment.displayName} />
+                    ) : (
+                      "None"
+                    )
                   }
-                }}
-                items={[{ id: "", slug: "None" }, ...customEnvironments]}
-                variant="tertiary/small"
-                placeholder="Select environment"
-                dropdownIcon
-                text={configValues.vercelStagingEnvironment?.displayName || "None"}
-              >
-                {[
-                  <SelectItem key="" value="">
-                    None
-                  </SelectItem>,
-                  ...customEnvironments.map((env) => (
-                    <SelectItem key={env.id} value={env.id}>
-                      {env.slug}
-                    </SelectItem>
-                  )),
-                ]}
-              </Select>
+                >
+                  {[
+                    <SelectItem key="" value="">
+                      <span className="text-text-bright">None</span>
+                    </SelectItem>,
+                    ...customEnvironments.map((env) => (
+                      <SelectItem key={env.id} value={env.id}>
+                        <StagingEnvOption name={env.slug} />
+                      </SelectItem>
+                    )),
+                  ]}
+                </Select>
+              </div>
             }
           />
         )}
 
-        <SettingsBlock>
-          <BuildSettingsFields
-            availableEnvSlugs={availableEnvSlugsForBuildSettings}
-            pullEnvVarsBeforeBuild={configValues.pullEnvVarsBeforeBuild}
-            onPullEnvVarsChange={(slugs) =>
-              setConfigValues((prev) => ({ ...prev, pullEnvVarsBeforeBuild: slugs }))
-            }
-            discoverEnvVars={configValues.discoverEnvVars}
-            onDiscoverEnvVarsChange={(slugs) =>
-              setConfigValues((prev) => ({ ...prev, discoverEnvVars: slugs }))
-            }
-            atomicBuilds={configValues.atomicBuilds}
-            onAtomicBuildsChange={(slugs) =>
-              setConfigValues((prev) => ({ ...prev, atomicBuilds: slugs }))
-            }
-            envVarsConfigLink={`/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/environment-variables`}
-            disabledEnvSlugs={disabledEnvSlugsForBuildSettings}
-            autoPromote={configValues.autoPromote}
-            onAutoPromoteChange={(value) =>
-              setConfigValues((prev) => ({ ...prev, autoPromote: value }))
-            }
-            currentTriggerVersion={currentTriggerVersion}
-            currentTriggerVersionFetchFailed={currentTriggerVersionFetchFailed}
-            hideSectionToggles
-          />
-        </SettingsBlock>
+        <BuildSettingsFields
+          availableEnvSlugs={availableEnvSlugsForBuildSettings}
+          pullEnvVarsBeforeBuild={configValues.pullEnvVarsBeforeBuild}
+          onPullEnvVarsChange={(slugs) =>
+            setConfigValues((prev) => ({ ...prev, pullEnvVarsBeforeBuild: slugs }))
+          }
+          discoverEnvVars={configValues.discoverEnvVars}
+          onDiscoverEnvVarsChange={(slugs) =>
+            setConfigValues((prev) => ({ ...prev, discoverEnvVars: slugs }))
+          }
+          atomicBuilds={configValues.atomicBuilds}
+          onAtomicBuildsChange={(slugs) =>
+            setConfigValues((prev) => ({ ...prev, atomicBuilds: slugs }))
+          }
+          envVarsConfigLink={`/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/environment-variables`}
+          disabledEnvSlugs={disabledEnvSlugsForBuildSettings}
+          autoPromote={configValues.autoPromote}
+          onAutoPromoteChange={(value) =>
+            setConfigValues((prev) => ({ ...prev, autoPromote: value }))
+          }
+          currentTriggerVersion={currentTriggerVersion}
+          currentTriggerVersionFetchFailed={currentTriggerVersionFetchFailed}
+          hideSectionToggles
+          layout="settings"
+        />
 
         {/* Warning: autoAssignCustomDomains must be disabled for atomic deployments */}
         {autoAssignCustomDomains !== false && configValues.atomicBuilds.includes("prod") && (
-          <SettingsBlock>
-            <Callout variant="warning">
-              <div className="flex flex-col gap-2">
-                <p className="font-sans text-xs font-normal text-text-dimmed">
-                  Atomic deployments require the "Auto-assign Custom Domains" setting to be disabled
-                  on your Vercel project. Without this, Vercel will promote deployments before
-                  Trigger.dev is ready.
-                </p>
-                {/* Submitted via fetcher rather than a nested <form>, which the
-                    browser drops during SSR and which breaks hydration. */}
-                <Button
-                  type="button"
-                  variant="tertiary/small"
-                  disabled={isDisablingAutoAssign}
-                  LeadingIcon={isDisablingAutoAssign ? SpinnerWhite : undefined}
-                  onClick={() =>
-                    disableAutoAssignFetcher.submit(
-                      { action: "disable-auto-assign" },
-                      { method: "post", action: actionUrl }
-                    )
-                  }
-                >
-                  Disable auto-assign custom domains
-                </Button>
-              </div>
-            </Callout>
-          </SettingsBlock>
+          <SettingsAlertRow
+            variant="warning"
+            title="Auto-assign Custom Domains is still on"
+            description="Vercel will promote deployments before Trigger.dev is ready. Turn it off so atomic deployments can stage the switch."
+            action={
+              <Button
+                type="button"
+                variant="warning/small"
+                disabled={isDisablingAutoAssign}
+                LeadingIcon={isDisablingAutoAssign ? SpinnerWhite : undefined}
+                onClick={() =>
+                  disableAutoAssignFetcher.submit(
+                    { action: "disable-auto-assign" },
+                    { method: "post", action: actionUrl }
+                  )
+                }
+              >
+                Disable auto-assign
+              </Button>
+            }
+          />
         )}
 
         <FormError>{configForm.errors}</FormError>
@@ -1155,81 +1214,130 @@ function VercelSettingsPanel({
     );
   }
 
-  // DEV_REVEAL_ALL: stack the mutually exclusive states so all of them are visible.
+  // DEV_REVEAL_ALL: stack the mutually exclusive states so all of them are
+  // visible, ordered the way a user unlocks them.
   if (devReveal) {
+    const canManage = data?.canManageVercel ?? true;
+    const connectedProject = data?.connectedProject ?? devRevealConnectedVercelProject;
+    // `?? ` is not enough here: the loader returns an empty array when Vercel
+    // isn't configured, which would hide the staging mapping row.
+    const customEnvironments = data?.customEnvironments?.length
+      ? data.customEnvironments
+      : devRevealVercelCustomEnvironments;
+
     return (
       <>
-        <DevRevealLabel>Connected project</DevRevealLabel>
+        <DevRevealLabel>1. GitHub not connected (Vercel can't sync anything yet)</DevRevealLabel>
+        <VercelSettingsRows
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          hasOrgIntegration={false}
+          isGitHubConnected={false}
+          onOpenModal={onOpenVercelModal}
+          isLoading={isLoadingVercelData}
+          canManageVercel={canManage}
+        />
+
+        <DevRevealLabel>2. App not installed</DevRevealLabel>
+        <VercelSettingsRows
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          hasOrgIntegration={false}
+          isGitHubConnected
+          onOpenModal={onOpenVercelModal}
+          isLoading={isLoadingVercelData}
+          canManageVercel={canManage}
+        />
+
+        <DevRevealLabel>3. App installed, no project connected</DevRevealLabel>
+        <VercelSettingsRows
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          hasOrgIntegration
+          isGitHubConnected
+          onOpenModal={onOpenVercelModal}
+          isLoading={isLoadingVercelData}
+          canManageVercel={canManage}
+        />
+
+        <DevRevealLabel>
+          4. Connected, no Vercel environment mapped to Staging (Staging rows disabled)
+        </DevRevealLabel>
+        <VercelAppInstalledRow />
         <ConnectedVercelProjectForm
-          connectedProject={data?.connectedProject ?? devRevealConnectedVercelProject}
+          connectedProject={devRevealConnectedVercelProjectUnmappedStaging}
           hasStagingEnvironment
           hasPreviewEnvironment
-          customEnvironments={data?.customEnvironments ?? devRevealVercelCustomEnvironments}
-          autoAssignCustomDomains={null}
-          currentTriggerVersion={data?.currentTriggerVersion ?? "20260101.1"}
+          customEnvironments={customEnvironments}
+          autoAssignCustomDomains={false}
+          currentTriggerVersion={null}
           currentTriggerVersionFetchFailed={false}
           organizationSlug={organizationSlug}
           projectSlug={projectSlug}
           environmentSlug={environmentSlug}
-          canManageVercel={data?.canManageVercel ?? true}
+          canManageVercel={canManage}
         />
 
-        <DevRevealLabel>Connection expired</DevRevealLabel>
-        <SettingsBlock>
-          <VercelAuthInvalidBanner
-            organizationSlug={organizationSlug}
-            projectSlug={projectSlug}
-            canManageVercel={data?.canManageVercel ?? true}
-          />
-        </SettingsBlock>
+        <DevRevealLabel>
+          5. Connected, atomic deployments need auto-assign custom domains off
+        </DevRevealLabel>
+        <VercelAppInstalledRow />
+        <ConnectedVercelProjectForm
+          connectedProject={connectedProject}
+          hasStagingEnvironment
+          hasPreviewEnvironment
+          customEnvironments={customEnvironments}
+          autoAssignCustomDomains={null}
+          currentTriggerVersion="20260101.1"
+          currentTriggerVersionFetchFailed={false}
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          canManageVercel={canManage}
+        />
 
-        <DevRevealLabel>GitHub not connected</DevRevealLabel>
-        <SettingsBlock>
-          <VercelGitHubWarning />
-        </SettingsBlock>
+        <DevRevealLabel>6. Connected and fully configured</DevRevealLabel>
+        <VercelAppInstalledRow />
+        <ConnectedVercelProjectForm
+          connectedProject={connectedProject}
+          hasStagingEnvironment
+          hasPreviewEnvironment
+          customEnvironments={customEnvironments}
+          autoAssignCustomDomains={false}
+          currentTriggerVersion="20260101.1"
+          currentTriggerVersionFetchFailed={false}
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          canManageVercel={canManage}
+        />
 
-        <DevRevealLabel>App installed, no project connected</DevRevealLabel>
-        <SettingsBlock>
-          <div className="flex flex-col gap-2">
-            <VercelConnectionPrompt
-              organizationSlug={organizationSlug}
-              projectSlug={projectSlug}
-              environmentSlug={environmentSlug}
-              hasOrgIntegration
-              isGitHubConnected
-              onOpenModal={onOpenVercelModal}
-              isLoading={isLoadingVercelData}
-              canManageVercel={data?.canManageVercel ?? true}
-            />
-            <Hint>
-              Connect your Vercel project to pull environment variables and trigger builds
-              automatically.
-            </Hint>
-          </div>
-        </SettingsBlock>
+        <DevRevealLabel>7. Connected, but GitHub was disconnected afterwards</DevRevealLabel>
+        <VercelAppInstalledRow />
+        <VercelGitHubWarning />
+        <ConnectedVercelProjectForm
+          connectedProject={connectedProject}
+          hasStagingEnvironment
+          hasPreviewEnvironment
+          customEnvironments={customEnvironments}
+          autoAssignCustomDomains={false}
+          currentTriggerVersion="20260101.1"
+          currentTriggerVersionFetchFailed={false}
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          environmentSlug={environmentSlug}
+          canManageVercel={canManage}
+        />
 
-        <DevRevealLabel>App not installed</DevRevealLabel>
-        <SettingsBlock>
-          <div className="flex flex-col gap-2">
-            <VercelConnectionPrompt
-              organizationSlug={organizationSlug}
-              projectSlug={projectSlug}
-              environmentSlug={environmentSlug}
-              hasOrgIntegration={false}
-              isGitHubConnected={false}
-              onOpenModal={onOpenVercelModal}
-              isLoading={isLoadingVercelData}
-              canManageVercel={data?.canManageVercel ?? true}
-            />
-            <Hint>
-              Install the Vercel app to connect your projects and pull environment variables.
-            </Hint>
-            <Hint>
-              GitHub integration is not connected. Vercel integration cannot sync environment
-              variables and link deployments without a properly installed GitHub integration.
-            </Hint>
-          </div>
-        </SettingsBlock>
+        <DevRevealLabel>8. Connection expired (settings hidden until reconnected)</DevRevealLabel>
+        <VercelAuthInvalidBanner
+          organizationSlug={organizationSlug}
+          projectSlug={projectSlug}
+          canManageVercel={canManage}
+        />
       </>
     );
   }
@@ -1252,6 +1360,7 @@ function VercelSettingsPanel({
           />
         )}
         {showGitHubWarning && <VercelGitHubWarning />}
+        {!showAuthInvalid && <VercelAppInstalledRow />}
         {!showAuthInvalid && (
           <ConnectedVercelProjectForm
             connectedProject={data.connectedProject}
@@ -1271,37 +1380,27 @@ function VercelSettingsPanel({
     );
   }
 
+  if (showAuthInvalid) {
+    return (
+      <VercelAuthInvalidBanner
+        organizationSlug={organizationSlug}
+        projectSlug={projectSlug}
+        canManageVercel={data.canManageVercel}
+      />
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-2">
-      {showAuthInvalid && (
-        <VercelAuthInvalidBanner organizationSlug={organizationSlug} projectSlug={projectSlug} />
-      )}
-      {!showAuthInvalid && (
-        <>
-          <VercelConnectionPrompt
-            organizationSlug={organizationSlug}
-            projectSlug={projectSlug}
-            environmentSlug={environmentSlug}
-            hasOrgIntegration={data.hasOrgIntegration}
-            isGitHubConnected={data.isGitHubConnected}
-            onOpenModal={showAuthInvalid ? undefined : onOpenVercelModal}
-            isLoading={isLoadingVercelData}
-            canManageVercel={data.canManageVercel}
-          />
-          <Hint>
-            {data.hasOrgIntegration
-              ? "Connect your Vercel project to pull environment variables and trigger builds automatically."
-              : "Install the Vercel app to connect your projects and pull environment variables."}
-          </Hint>
-          {!data.isGitHubConnected && (
-            <Hint>
-              GitHub integration is not connected. Vercel integration cannot sync environment
-              variables and link deployments without a properly installed GitHub integration.
-            </Hint>
-          )}
-        </>
-      )}
-    </div>
+    <VercelSettingsRows
+      organizationSlug={organizationSlug}
+      projectSlug={projectSlug}
+      environmentSlug={environmentSlug}
+      hasOrgIntegration={data.hasOrgIntegration}
+      isGitHubConnected={data.isGitHubConnected}
+      onOpenModal={onOpenVercelModal}
+      isLoading={isLoadingVercelData}
+      canManageVercel={data.canManageVercel}
+    />
   );
 }
 
