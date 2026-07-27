@@ -21,7 +21,7 @@ function initializeShadowRealtimeClient(): ShadowRealtimeClient {
   });
 
   const comparator = new RealtimeShadowComparator({
-    runReader: new RunHydrator({ replica: $replica, runStore }),
+    runReader: new RunHydrator({ readClient: $replica, runStore }),
     runListResolver: new ClickHouseRunListResolver({
       getClickhouse: (organizationId) =>
         clickhouseFactory.getClickhouseForOrganization(organizationId, "realtime"),
