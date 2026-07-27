@@ -1,5 +1,5 @@
-import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import {
   type FetcherWithComponents,
@@ -8,15 +8,15 @@ import {
   useLocation,
   useNavigation,
 } from "@remix-run/react";
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
-import { json } from "@remix-run/server-runtime";
+import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
-  EnvironmentCombo,
   environmentTextClassName,
   environmentTitle,
+  EnvironmentCombo,
 } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -30,7 +30,6 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
-import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
   TableBody,
@@ -40,20 +39,26 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
-import { TimezoneList } from "~/components/scheduled/timezones";
 import { prisma } from "~/db.server";
-import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import type { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
-import { logger } from "~/services/logger.server";
+import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema, docsPath, v3EnvironmentPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  ProjectParamSchema,
+  docsPath,
+  v3EnvironmentPath,
+} from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
+import { TimezoneList } from "~/components/scheduled/timezones";
+import { logger } from "~/services/logger.server";
+import { Spinner } from "~/components/primitives/Spinner";
+import { useEnvironment } from "~/hooks/useEnvironment";
 
 const cronFormat = `*    *    *    *    *
 ┬    ┬    ┬    ┬    ┬
@@ -69,10 +74,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: UpsertSchedule });
+  const submission = parse(formData, { schema: UpsertSchedule });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value) {
+    return json(submission);
   }
 
   // `_format=json` → return JSON instead of redirecting; caller toasts.
@@ -157,10 +162,10 @@ export function UpsertScheduleForm({
   submitFetcher?: FetcherWithComponents<unknown>;
 }) {
   const actionData = useActionData();
-  // Only feed conform-shaped data (`status`) to `useForm` — `{ ok, message }`
-  // envelopes lack it and crash conform.
+  // Only feed conform-shaped data (`intent`) to `useForm` — `{ ok, message }`
+  // envelopes lack `payload` and crash conform.
   const fetcherSubmission =
-    submitFetcher?.data && typeof submitFetcher.data === "object" && "status" in submitFetcher.data
+    submitFetcher?.data && typeof submitFetcher.data === "object" && "intent" in submitFetcher.data
       ? submitFetcher.data
       : undefined;
   const lastSubmission = submitFetcher ? fetcherSubmission : actionData;
@@ -180,10 +185,10 @@ export function UpsertScheduleForm({
       // coexist without duplicate DOM ids breaking `htmlFor` / conform.
       id: schedule?.friendlyId ? `edit-schedule-${schedule.friendlyId}` : "create-schedule",
       // TODO: type this
-      lastResult: lastSubmission as any,
+      lastSubmission: lastSubmission as any,
       shouldRevalidate: "onSubmit",
       onValidate({ formData }) {
-        return parseWithZod(formData, { schema: UpsertSchedule });
+        return parse(formData, { schema: UpsertSchedule });
       },
     });
 
@@ -228,7 +233,7 @@ export function UpsertScheduleForm({
     <FormComponent
       method="post"
       action={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/schedules/new`}
-      {...getFormProps(form)}
+      {...form.props}
       className="grid h-full max-h-full grid-rows-[2.5rem_1fr_auto] overflow-hidden bg-background-bright"
     >
       <div className="mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed">
@@ -236,11 +241,11 @@ export function UpsertScheduleForm({
           {schedule?.friendlyId
             ? "Edit schedule"
             : defaultTaskIdentifier
-              ? `New schedule for ${defaultTaskIdentifier}`
-              : "New schedule"}
+            ? `New schedule for ${defaultTaskIdentifier}`
+            : "New schedule"}
         </Header2>
       </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <div className="p-3">
           {submitFetcher ? <input type="hidden" name="_format" value="json" /> : null}
           {schedule && <input type="hidden" name="friendlyId" value={schedule.friendlyId} />}
@@ -254,7 +259,7 @@ export function UpsertScheduleForm({
                 <InputGroup>
                   <Label htmlFor={taskIdentifier.id}>Task</Label>
                   <Select
-                    {...getSelectProps(taskIdentifier)}
+                    {...conform.select(taskIdentifier)}
                     placeholder="Select a task"
                     defaultValue={schedule?.taskIdentifier}
                     heading={"Filter..."}
@@ -273,7 +278,7 @@ export function UpsertScheduleForm({
                       </>
                     )}
                   </Select>
-                  <FormError id={taskIdentifier.errorId}>{taskIdentifier.errors}</FormError>
+                  <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
                 </InputGroup>
               );
             })()}
@@ -294,7 +299,7 @@ export function UpsertScheduleForm({
                 CRON pattern (UTC)
               </Label>
               <Input
-                {...getInputProps(cron, { type: "text" })}
+                {...conform.input(cron, { type: "text" })}
                 placeholder="? ? ? ? ?"
                 required={true}
                 value={cronPattern}
@@ -313,7 +318,7 @@ export function UpsertScheduleForm({
             <InputGroup>
               <Label htmlFor={timezone.id}>Timezone</Label>
               <Select
-                {...getSelectProps(timezone)}
+                {...conform.select(timezone)}
                 placeholder="Select a timezone"
                 defaultValue={selectedTimezone}
                 value={selectedTimezone}
@@ -333,7 +338,7 @@ export function UpsertScheduleForm({
                   ? "UTC will not change with daylight savings time."
                   : "This will automatically adjust for daylight savings time."}
               </Hint>
-              <FormError id={timezone.errorId}>{timezone.errors}</FormError>
+              <FormError id={timezone.errorId}>{timezone.error}</FormError>
             </InputGroup>
             {nextRuns !== undefined && (
               <div className="flex flex-col gap-1">
@@ -401,14 +406,14 @@ export function UpsertScheduleForm({
                   connected with the dev CLI.
                 </Hint>
               )}
-              <FormError id={environments.errorId}>{environments.errors}</FormError>
+              <FormError id={environments.errorId}>{environments.error}</FormError>
             </InputGroup>
             <InputGroup>
               <Label required={false} htmlFor={externalId.id}>
                 External ID
               </Label>
               <Input
-                {...getInputProps(externalId, { type: "text" })}
+                {...conform.input(externalId, { type: "text" })}
                 placeholder="Optionally specify your own ID, e.g. user id"
                 defaultValue={schedule?.externalId ?? undefined}
               />
@@ -417,14 +422,14 @@ export function UpsertScheduleForm({
                 run function of your task. This allows you to have per-user CRON tasks.{" "}
                 <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
               </Hint>
-              <FormError id={externalId.errorId}>{externalId.errors}</FormError>
+              <FormError id={externalId.errorId}>{externalId.error}</FormError>
             </InputGroup>
             <InputGroup>
               <Label required={false} htmlFor={deduplicationKey.id}>
                 Deduplication key
               </Label>
               <Input
-                {...getInputProps(deduplicationKey, { type: "text" })}
+                {...conform.input(deduplicationKey, { type: "text" })}
                 disabled={schedule !== undefined}
                 defaultValue={
                   schedule?.userProvidedDeduplicationKey ? schedule?.deduplicationKey : undefined
@@ -440,9 +445,9 @@ export function UpsertScheduleForm({
                 very useful when using the SDK and you don't want to create duplicate schedules for
                 a user.
               </Hint>
-              <FormError id={deduplicationKey.errorId}>{deduplicationKey.errors}</FormError>
+              <FormError id={deduplicationKey.errorId}>{deduplicationKey.error}</FormError>
             </InputGroup>
-            <FormError>{form.errors}</FormError>
+            <FormError>{form.error}</FormError>
           </Fieldset>
         </div>
       </div>

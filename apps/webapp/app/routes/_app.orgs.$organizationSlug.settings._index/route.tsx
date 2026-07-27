@@ -1,6 +1,6 @@
 import colorWheelIcon from "../../assets/images/color-wheel.png";
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { conformZodMessage, parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import {
   CheckIcon,
   ExclamationTriangleIcon,
@@ -9,7 +9,7 @@ import {
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction, useActionData, useNavigation, useSubmit } from "@remix-run/react";
-import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -45,15 +45,17 @@ import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { useFaviconUrl } from "~/hooks/useFaviconUrl";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { clearCurrentProject } from "~/services/dashboardPreferences.server";
 import { DeleteOrganizationService } from "~/services/deleteOrganization.server";
 import { logger } from "~/services/logger.server";
 import { requireUser, requireUserId } from "~/services/session.server";
-import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { extractDomain, faviconUrl as buildFaviconUrl } from "~/utils/favicon";
-import { OrganizationParamsSchema, organizationSettingsPath, rootPath } from "~/utils/pathBuilder";
+import {
+  OrganizationParamsSchema,
+  organizationSettingsPath,
+  rootPath,
+} from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -127,7 +129,7 @@ export function createSchema(
         if (constraints.getSlugMatch === undefined) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: conformZodMessage.VALIDATION_UNDEFINED,
+            message: conform.VALIDATION_UNDEFINED,
           });
         } else {
           const { isMatch, organizationSlug } = constraints.getSlugMatch(slug);
@@ -145,147 +147,98 @@ export function createSchema(
   ]);
 }
 
-const Params = z.object({
-  organizationSlug: z.string(),
-});
+export const action: ActionFunction = async ({ request, params }) => {
+  const user = await requireUser(request);
+  const { organizationSlug } = params;
+  if (!organizationSlug) {
+    return json({ errors: { body: "organizationSlug is required" } }, { status: 400 });
+  }
 
-export const action = dashboardAction(
-  {
-    params: Params,
-    context: async (params) => {
-      const orgId = await resolveOrgIdFromSlug(params.organizationSlug);
-      return orgId ? { organizationId: orgId } : {};
+  const formData = await request.formData();
+  const schema = createSchema({
+    getSlugMatch: (slug) => {
+      return { isMatch: slug === organizationSlug, organizationSlug };
     },
-  },
-  async ({ ability, request, params }) => {
-    // clearCurrentProject (delete branch) needs the full UserFromSession
-    // (dashboardPreferences), which the builder's SessionUser doesn't carry.
-    const user = await requireUser(request);
-    const { organizationSlug } = params;
+  });
+  const submission = parse(formData, { schema });
 
-    const formData = await request.formData();
-    const schema = createSchema({
-      getSlugMatch: (slug) => {
-        return { isMatch: slug === organizationSlug, organizationSlug };
-      },
-    });
-    const submission = parseWithZod(formData, { schema });
+  if (!submission.value || submission.intent !== "submit") {
+    return json(submission);
+  }
 
-    if (submission.status !== "success") {
-      return json(submission.reply());
-    }
-
-    try {
-      switch (submission.value.action) {
-        case "rename": {
-          if (!ability.can("manage", { type: "organization" })) {
-            throw await redirectWithErrorMessage(
-              organizationSettingsPath({ slug: organizationSlug }),
-              request,
-              "You don't have permission to rename this organization"
-            );
-          }
-          await prisma.organization.update({
-            where: {
-              slug: organizationSlug,
-              members: {
-                some: {
-                  userId: user.id,
-                },
+  try {
+    switch (submission.value.action) {
+      case "rename": {
+        await prisma.organization.update({
+          where: {
+            slug: organizationSlug,
+            members: {
+              some: {
+                userId: user.id,
               },
             },
-            data: {
-              title: submission.value.organizationName,
-            },
-          });
+          },
+          data: {
+            title: submission.value.organizationName,
+          },
+        });
 
-          return redirectWithSuccessMessage(
+        return redirectWithSuccessMessage(
+          organizationSettingsPath({ slug: organizationSlug }),
+          request,
+          `Organization renamed to ${submission.value.organizationName}`
+        );
+      }
+      case "delete": {
+        const deleteOrganizationService = new DeleteOrganizationService();
+        try {
+          await deleteOrganizationService.call({ organizationSlug, userId: user.id, request });
+
+          //we need to clear the project from the session
+          await clearCurrentProject({
+            user,
+          });
+          return redirect(rootPath());
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+          logger.error("Organization could not be deleted", {
+            error: errorMessage,
+          });
+          return redirectWithErrorMessage(
             organizationSettingsPath({ slug: organizationSlug }),
             request,
-            `Organization renamed to ${submission.value.organizationName}`
+            errorMessage
           );
         }
-        case "delete": {
-          if (!ability.can("manage", { type: "organization" })) {
-            throw await redirectWithErrorMessage(
-              organizationSettingsPath({ slug: organizationSlug }),
-              request,
-              "You don't have permission to delete this organization"
-            );
-          }
-          const deleteOrganizationService = new DeleteOrganizationService();
-          try {
-            await deleteOrganizationService.call({ organizationSlug, userId: user.id, request });
+      }
+      case "avatar": {
+        const orgWhere = {
+          slug: organizationSlug,
+          members: { some: { userId: user.id } },
+        };
 
-            //we need to clear the project from the session
-            await clearCurrentProject({
-              user,
-            });
-            return redirect(rootPath());
-          } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-            logger.error("Organization could not be deleted", {
-              error: errorMessage,
-            });
-            return redirectWithErrorMessage(
-              organizationSettingsPath({ slug: organizationSlug }),
-              request,
-              errorMessage
-            );
-          }
-        }
-        case "avatar": {
-          const orgWhere = {
-            slug: organizationSlug,
-            members: { some: { userId: user.id } },
-          };
+        if (submission.value.type === "image") {
+          const url = submission.value.url ?? "";
+          const domain = url ? extractDomain(url) : null;
 
-          if (submission.value.type === "image") {
-            const url = submission.value.url ?? "";
-            const domain = url ? extractDomain(url) : null;
+          const existing = await prisma.organization.findFirst({
+            where: orgWhere,
+            select: { avatar: true, onboardingData: true },
+          });
 
-            const existing = await prisma.organization.findFirst({
-              where: orgWhere,
-              select: { avatar: true, onboardingData: true },
-            });
-
-            const existingData = toRecord(existing?.onboardingData);
-            const existingAvatar = parseAvatar(existing?.avatar ?? null, defaultAvatar);
-            const lastIconHex = extractLastIconHex(existingAvatar);
-
-            await prisma.organization.update({
-              where: orgWhere,
-              data: {
-                avatar: {
-                  type: "image",
-                  url: domain ? buildFaviconUrl(domain) : "",
-                  ...(lastIconHex ? { lastIconHex } : {}),
-                },
-                onboardingData: { ...existingData, companyUrl: url },
-              },
-            });
-
-            return redirectWithSuccessMessage(
-              organizationSettingsPath({ slug: organizationSlug }),
-              request,
-              `Updated logo`
-            );
-          }
-
-          const avatar = AvatarData.safeParse(submission.value);
-
-          if (!avatar.success) {
-            return redirectWithErrorMessage(
-              organizationSettingsPath({ slug: organizationSlug }),
-              request,
-              avatar.error.message
-            );
-          }
+          const existingData = toRecord(existing?.onboardingData);
+          const existingAvatar = parseAvatar(existing?.avatar ?? null, defaultAvatar);
+          const lastIconHex = extractLastIconHex(existingAvatar);
 
           await prisma.organization.update({
             where: orgWhere,
             data: {
-              avatar: avatar.data,
+              avatar: {
+                type: "image",
+                url: domain ? buildFaviconUrl(domain) : "",
+                ...(lastIconHex ? { lastIconHex } : {}),
+              },
+              onboardingData: { ...existingData, companyUrl: url },
             },
           });
 
@@ -295,16 +248,36 @@ export const action = dashboardAction(
             `Updated logo`
           );
         }
+
+        const avatar = AvatarData.safeParse(submission.value);
+
+        if (!avatar.success) {
+          return redirectWithErrorMessage(
+            organizationSettingsPath({ slug: organizationSlug }),
+            request,
+            avatar.error.message
+          );
+        }
+
+        await prisma.organization.update({
+          where: orgWhere,
+          data: {
+            avatar: avatar.data,
+          },
+        });
+
+        return redirectWithSuccessMessage(
+          organizationSettingsPath({ slug: organizationSlug }),
+          request,
+          `Updated logo`
+        );
       }
-    } catch (error: unknown) {
-      // Permission checks throw a redirect Response (toast) — let it through
-      // rather than flattening it into a generic 400.
-      if (error instanceof Response) throw error;
-      const message = error instanceof Error ? error.message : "An unexpected error occurred";
-      return json({ errors: { body: message } }, { status: 400 });
     }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "An unexpected error occurred";
+    return json({ errors: { body: message } }, { status: 400 });
   }
-);
+};
 
 export default function Page() {
   const { organization } = useTypedLoaderData<typeof loader>();
@@ -314,10 +287,10 @@ export default function Page() {
   const [renameForm, { organizationName }] = useForm({
     id: "rename-organization",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parseWithZod(formData, {
+      return parse(formData, {
         schema: createSchema(),
       });
     },
@@ -326,11 +299,11 @@ export default function Page() {
   const [deleteForm, { organizationSlug }] = useForm({
     id: "delete-organization",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     shouldValidate: "onInput",
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parseWithZod(formData, {
+      return parse(formData, {
         schema: createSchema({
           getSlugMatch: (slug) => ({
             isMatch: slug === organization.slug,
@@ -366,19 +339,19 @@ export default function Page() {
             </div>
 
             <div>
-              <Form method="post" {...getFormProps(renameForm)}>
+              <Form method="post" {...renameForm.props}>
                 <input type="hidden" name="action" value="rename" />
                 <Fieldset className="gap-y-0">
                   <InputGroup fullWidth>
                     <Label htmlFor={organizationName.id}>Organization name</Label>
                     <Input
-                      {...getInputProps(organizationName, { type: "text" })}
+                      {...conform.input(organizationName, { type: "text" })}
                       defaultValue={organization.title}
                       placeholder="Your organization name"
                       icon={FolderIcon}
                       autoFocus
                     />
-                    <FormError id={organizationName.errorId}>{organizationName.errors}</FormError>
+                    <FormError id={organizationName.errorId}>{organizationName.error}</FormError>
                   </InputGroup>
                   <FormButtons
                     confirmButton={
@@ -401,7 +374,7 @@ export default function Page() {
               <Header2 spacing>Danger zone</Header2>
               <Form
                 method="post"
-                {...getFormProps(deleteForm)}
+                {...deleteForm.props}
                 className="w-full rounded-sm border border-rose-500/40"
               >
                 <input type="hidden" name="action" value="delete" />
@@ -409,13 +382,13 @@ export default function Page() {
                   <InputGroup>
                     <Label htmlFor={organizationSlug.id}>Delete organization</Label>
                     <Input
-                      {...getInputProps(organizationSlug, { type: "text" })}
+                      {...conform.input(organizationSlug, { type: "text" })}
                       placeholder="Your organization slug"
                       icon={ExclamationTriangleIcon}
                       fullWidth
                     />
-                    <FormError id={organizationSlug.errorId}>{organizationSlug.errors}</FormError>
-                    <FormError>{deleteForm.errors}</FormError>
+                    <FormError id={organizationSlug.errorId}>{organizationSlug.error}</FormError>
+                    <FormError>{deleteForm.error}</FormError>
                     <Hint>
                       This change is irreversible, so please be certain. Type in the Organization
                       slug <InlineCode variant="extra-small">{organization.slug}</InlineCode> and
@@ -453,7 +426,7 @@ function LogoForm({
   const navigation = useNavigation();
 
   const avatar = navigation.formData
-    ? (avatarFromFormData(navigation.formData) ?? organization.avatar)
+    ? avatarFromFormData(navigation.formData) ?? organization.avatar
     : organization.avatar;
 
   const hex =
@@ -501,7 +474,7 @@ function LogoForm({
                   iconTileClass,
                   mode === "logo"
                     ? "border-indigo-500"
-                    : "border-grid-dimmed hover:border-border-bright"
+                    : "border-charcoal-775 hover:border-charcoal-600"
                 )}
               >
                 {showFavicon ? (
@@ -557,7 +530,7 @@ function LogoForm({
                   type="submit"
                   className={cn(
                     iconTileClass,
-                    avatar.type !== "letters" && "border-grid-dimmed hover:border-border-bright"
+                    avatar.type !== "letters" && "border-charcoal-775 hover:border-charcoal-600"
                   )}
                   style={{
                     borderColor: avatar.type === "letters" ? hex : undefined,
@@ -583,10 +556,11 @@ function LogoForm({
                     className={cn(
                       iconTileClass,
                       !(avatar.type === "icon" && avatar.name === name) &&
-                        "border-grid-dimmed hover:border-border-bright"
+                        "border-charcoal-775 hover:border-charcoal-600"
                     )}
                     style={{
-                      borderColor: avatar.type === "icon" && avatar.name === name ? hex : undefined,
+                      borderColor:
+                        avatar.type === "icon" && avatar.name === name ? hex : undefined,
                     }}
                   >
                     <Avatar
@@ -611,23 +585,17 @@ function LogoForm({
 function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
   return (
     <Popover>
-      <PopoverTrigger
-        className={cn(iconTileClass, "border-grid-dimmed hover:border-border-bright")}
-      >
+      <PopoverTrigger className={cn(iconTileClass, "border-charcoal-775 hover:border-charcoal-600")}>
         <img src={colorWheelIcon} className="m-0 block size-[30px] p-0" />
       </PopoverTrigger>
       <PopoverContent
-        className="overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+        className="overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
         <Form method="post" className="flex w-fit min-w-40 flex-col gap-1">
           <input type="hidden" name="action" value="avatar" />
-          <input
-            type="hidden"
-            name="type"
-            value={avatar.type === "image" ? "letters" : avatar.type}
-          />
+          <input type="hidden" name="type" value={avatar.type === "image" ? "letters" : avatar.type} />
           {avatar.type === "icon" && <input type="hidden" name="name" value={avatar.name} />}
           {defaultAvatarColors.map((color) => (
             <Button
@@ -649,10 +617,8 @@ function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
               fullWidth
               textAlignLeft
               className={cn(
-                "group-hover:bg-background-raised",
-                hex === color.hex
-                  ? "bg-background-hover group-hover:bg-surface-control/50"
-                  : undefined
+                "group-hover:bg-charcoal-700",
+                hex === color.hex ? "bg-charcoal-750 group-hover:bg-charcoal-600/50" : undefined
               )}
             >
               {color.name}
@@ -669,7 +635,7 @@ function RadioDot({ active }: { active: boolean }) {
     <div
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full border-2 p-0.5 transition",
-        active ? "border-indigo-500" : "border-grid-bright hover:border-border-bright"
+        active ? "border-indigo-500" : "border-charcoal-700 hover:border-charcoal-600"
       )}
     >
       <div
@@ -680,8 +646,7 @@ function RadioDot({ active }: { active: boolean }) {
   );
 }
 
-const iconTileClass =
-  "box-content grid size-10 shrink-0 place-items-center rounded-sm border-2 bg-charcoal-775";
+const iconTileClass = "box-content grid size-10 shrink-0 place-items-center rounded-sm border-2 bg-charcoal-775";
 
 function toRecord(json: unknown): Record<string, unknown> {
   return json && typeof json === "object" ? (json as Record<string, unknown>) : {};

@@ -40,17 +40,24 @@ export function SideMenuHeader({
       <h2 className="text-xs whitespace-nowrap">
         {visiblePart}
         {fadingPart && (
-          // --sm-label-opacity morphs "Project" → "Proj" as the menu narrows (unset elsewhere → 1).
-          <span style={{ opacity: "var(--sm-label-opacity, 1)" }}>{fadingPart}</span>
+          <motion.span
+            initial={false}
+            animate={{
+              opacity: isCollapsed ? 0 : 1,
+            }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+          >
+            {fadingPart}
+          </motion.span>
         )}
       </h2>
       {children !== undefined ? (
         <Popover onOpenChange={(open) => setHeaderMenuOpen(open)} open={isHeaderMenuOpen}>
           <PopoverCustomTrigger className="p-1">
-            <EllipsisHorizontalIcon className="h-4 w-4 text-text-faint transition group-hover:text-text-bright" />
+            <EllipsisHorizontalIcon className="h-4 w-4 text-charcoal-500 transition group-hover:text-text-bright" />
           </PopoverCustomTrigger>
           <PopoverContent
-            className="min-w-max overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+            className="min-w-max overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
             align="start"
           >
             <div className="flex flex-col gap-1 p-1">{children}</div>

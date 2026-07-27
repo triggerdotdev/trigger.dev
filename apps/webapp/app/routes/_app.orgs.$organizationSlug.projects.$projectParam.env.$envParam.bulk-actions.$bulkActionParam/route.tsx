@@ -1,22 +1,20 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
-import { NoSymbolIcon } from "@heroicons/react/24/solid";
+import { Form } from "@remix-run/react";
 import { tryCatch } from "@trigger.dev/core";
 import type { BulkActionType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
-import { useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { BulkActionFilterSummary } from "~/components/BulkActionFilterSummary";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { PermissionButton } from "~/components/primitives/PermissionButton";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import { AbortBulkActionDialog } from "~/components/runs/v3/AbortBulkActionDialog";
 import { BulkActionStatusCombo, BulkActionTypeCombo } from "~/components/runs/v3/BulkAction";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { env } from "~/env.server";
@@ -123,7 +121,7 @@ export const action = dashboardAction(
     }
 
     const service = new BulkActionService();
-    const [error, _result] = await tryCatch(service.abort(bulkActionParam, environment.id));
+    const [error, result] = await tryCatch(service.abort(bulkActionParam, environment.id));
 
     if (error) {
       logger.error("Failed to abort bulk action", {
@@ -185,13 +183,19 @@ export default function Page() {
       <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 text-sm">
         <BulkActionStatusCombo status={bulkAction.status} />
         {bulkAction.status === "PENDING" ? (
-          <ControlledAbortBulkActionDialog
-            canAbort={canAbort}
-            formAction={v3BulkActionPath(organization, project, environment, bulkAction)}
-          />
+          <Form method="post">
+            <PermissionButton
+              type="submit"
+              variant="danger/small"
+              hasPermission={canAbort}
+              noPermissionTooltip="You don't have permission to abort bulk actions"
+            >
+              Abort bulk action
+            </PermissionButton>
+          </Form>
         ) : null}
       </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <div className="space-y-3">
           <div className="px-3 pt-3">
             <Meter
@@ -313,7 +317,7 @@ function Meter({ type, successCount, failureCount, totalCount }: MeterProps) {
           {formatNumber(successCount + failureCount)}/{formatNumber(totalCount)}
         </Paragraph>
       </div>
-      <div className="relative h-4 w-full overflow-hidden rounded-sm bg-background-deep">
+      <div className="relative h-4 w-full overflow-hidden rounded-sm bg-charcoal-900">
         <motion.div
           className="absolute left-0 top-0 h-full w-full bg-success"
           initial={{ width: `${successPercentage}%` }}
@@ -321,7 +325,7 @@ function Meter({ type, successCount, failureCount, totalCount }: MeterProps) {
           transition={{ duration: 0.3, ease: "easeOut" }}
         />
         <motion.div
-          className="absolute top-0 h-full w-full bg-surface-control-hover"
+          className="absolute top-0 h-full w-full bg-charcoal-550"
           initial={{ width: `${failurePercentage}%`, left: `${successPercentage}%` }}
           animate={{ width: `${failurePercentage}%`, left: `${successPercentage}%` }}
           transition={{ duration: 0.3, ease: "easeOut" }}
@@ -335,7 +339,7 @@ function Meter({ type, successCount, failureCount, totalCount }: MeterProps) {
           </Paragraph>
         </div>
         <div className="flex items-center gap-1">
-          <div className="h-2 w-2 rounded-[1px] bg-surface-control-hover" />
+          <div className="h-2 w-2 rounded-[1px] bg-charcoal-550" />
           <Paragraph variant="extra-small">
             {formatNumber(failureCount)} {typeText(type)} failed{" "}
             {type === "CANCEL" ? " (already finished)" : ""}
@@ -353,29 +357,4 @@ function typeText(type: BulkActionType) {
     case "REPLAY":
       return "replayed";
   }
-}
-
-function ControlledAbortBulkActionDialog({
-  canAbort,
-  formAction,
-}: {
-  canAbort: boolean;
-  formAction: string;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          variant="danger/small"
-          LeadingIcon={NoSymbolIcon}
-          disabled={!canAbort}
-          tooltip={canAbort ? undefined : "You don't have permission to abort bulk actions"}
-        >
-          Abort…
-        </Button>
-      </DialogTrigger>
-      <AbortBulkActionDialog formAction={formAction} onAbortSubmitted={() => setOpen(false)} />
-    </Dialog>
-  );
 }

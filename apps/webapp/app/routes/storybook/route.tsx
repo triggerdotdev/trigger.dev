@@ -3,6 +3,7 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Fragment } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AppContainer } from "~/components/layout/AppLayout";
+import { env } from "~/env.server";
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 
@@ -155,12 +156,6 @@ const stories: Story[] = [
     name: "Usage",
     slug: "usage",
   },
-  // Dashboard agent section
-  {
-    sectionTitle: "Dashboard agent",
-    name: "Agent UI",
-    slug: "agent-ui",
-  },
   // Forms section
   {
     sectionTitle: "Forms",
@@ -244,7 +239,7 @@ function SideMenu({ stories }: { stories: Story[] }) {
       )}
     >
       <div className="flex h-full flex-col">
-        <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+        <div className="h-full overflow-hidden overflow-y-auto pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
           {stories.map((story) => {
             return (
               <Fragment key={story.slug}>

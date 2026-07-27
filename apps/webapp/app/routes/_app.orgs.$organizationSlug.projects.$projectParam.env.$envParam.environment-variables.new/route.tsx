@@ -1,5 +1,12 @@
-import { getFormProps, useForm, type FieldMetadata, type FormMetadata } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import {
+  type FieldConfig,
+  list,
+  requestIntent,
+  useFieldList,
+  useFieldset,
+  useForm,
+} from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import {
   LockClosedIcon,
   LockOpenIcon,
@@ -10,7 +17,7 @@ import {
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
-import { useCallback, useState } from "react";
+import { type RefObject, useCallback, useRef, useState } from "react";
 import { redirect } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -26,7 +33,6 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
 import {
@@ -42,12 +48,12 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+import { cn } from "~/utils/cn";
 import {
   environmentVariablesRouteId,
   type loader as environmentVariablesLoader,
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
-import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
-import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
   v3BillingPath,
@@ -55,7 +61,7 @@ import {
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
-import { findUnauthorizedEnvironmentId } from "~/v3/writableEnvironments";
+import { Select, SelectItem } from "~/components/primitives/Select";
 
 const Variable = z.object({
   key: EnvironmentVariableKey,
@@ -74,22 +80,19 @@ const schema = z.object({
     if (i === "true") return true;
     return false;
   }, z.boolean()),
-  environmentIds: z.preprocess(
-    (i) => {
-      if (typeof i === "string") return [i];
+  environmentIds: z.preprocess((i) => {
+    if (typeof i === "string") return [i];
 
-      if (Array.isArray(i)) {
-        const ids = i.filter((v) => typeof v === "string" && v !== "");
-        if (ids.length === 0) {
-          return;
-        }
-        return ids;
+    if (Array.isArray(i)) {
+      const ids = i.filter((v) => typeof v === "string" && v !== "");
+      if (ids.length === 0) {
+        return;
       }
+      return ids;
+    }
 
-      return;
-    },
-    z.array(z.string(), { required_error: "At least one environment is required" })
-  ),
+    return;
+  }, z.array(z.string(), { required_error: "At least one environment is required" })),
   variables: z.preprocess((i) => {
     if (!Array.isArray(i)) {
       return [];
@@ -118,10 +121,10 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema });
+    const submission = parse(formData, { schema });
 
-    if (submission.status !== "success") {
-      return json(submission.reply());
+    if (!submission.value) {
+      return json(submission);
     }
 
     // Enforce env-tier write:envvars for every targeted environment, so a role
@@ -135,15 +138,10 @@ export const action = dashboardAction(
       (env) => !ability.can("write", { type: "envvars", envType: env.type })
     );
     if (hasDeniedEnvironment) {
-      return json(
-        submission.reply({
-          fieldErrors: {
-            environmentIds: [
-              "You don't have permission to manage environment variables in one of the selected environments.",
-            ],
-          },
-        })
-      );
+      submission.error.environmentIds = [
+        "You don't have permission to manage environment variables in one of the selected environments.",
+      ];
+      return json(submission);
     }
 
     const project = await prisma.project.findUnique({
@@ -162,32 +160,8 @@ export const action = dashboardAction(
       },
     });
     if (!project) {
-      return json(submission.reply({ formErrors: ["Project not found"] }));
-    }
-
-    // The submitted `environmentIds` are user-supplied. Shared env types are
-    // writable by any member; a DEV env only by its owner. See
-    // findUnauthorizedEnvironmentId.
-    const submittedEnvs = await prisma.runtimeEnvironment.findMany({
-      where: {
-        projectId: project.id,
-        id: { in: submission.value.environmentIds },
-      },
-      select: { id: true, type: true, orgMember: { select: { userId: true } } },
-    });
-    const unauthorizedEnvironmentId = findUnauthorizedEnvironmentId(
-      submittedEnvs,
-      submission.value.environmentIds,
-      userId
-    );
-    if (unauthorizedEnvironmentId) {
-      return json(
-        submission.reply({
-          fieldErrors: {
-            environmentIds: ["One or more of the selected environments is not writable by you."],
-          },
-        })
-      );
+      submission.error.key = ["Project not found"];
+      return json(submission);
     }
 
     const repository = new EnvironmentVariablesRepository(prisma);
@@ -200,20 +174,19 @@ export const action = dashboardAction(
     });
 
     if (!result.success) {
-      const fieldErrors: Record<string, string[]> = {};
       if (result.variableErrors) {
         for (const { key, error } of result.variableErrors) {
           const index = submission.value.variables.findIndex((v) => v.key === key);
 
           if (index !== -1) {
-            fieldErrors[`variables[${index}].key`] = [error];
+            submission.error[`variables[${index}].key`] = [error];
           }
         }
       } else {
-        fieldErrors.variables = [result.error];
+        submission.error.variables = [result.error];
       }
 
-      return json(submission.reply({ fieldErrors }));
+      return json(submission);
     }
 
     return redirect(
@@ -227,7 +200,7 @@ export const action = dashboardAction(
 );
 
 export default function Page() {
-  const [isOpen, _setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(true);
   const parentData = useTypedMatchesData<typeof environmentVariablesLoader>({
     id: environmentVariablesRouteId,
   });
@@ -247,30 +220,27 @@ export default function Page() {
   const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<Set<string>>(new Set());
   const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(undefined);
 
-  // TODO for no we only support branch-specific env vars for Preview environments
-  // Mostly to keep the UX for setting consistent env-vars across Dev/Staging/Prod easier
-  const previewBranches = environments.filter(
-    (env) => env.type === "PREVIEW" && env.parentEnvironmentId !== null
-  );
-  const nonBranchEnvironments = environments.filter((env) => env.parentEnvironmentId === null);
+  const branchEnvironments = environments.filter((env) => env.branchName);
+  const nonBranchEnvironments = environments.filter((env) => !env.branchName);
   const selectedEnvironments = environments.filter((env) => selectedEnvironmentIds.has(env.id));
-  const previewIsSelected = selectedEnvironments.some((env) => env.type === "PREVIEW");
+  const previewIsSelected = selectedEnvironments.some(
+    (env) => env.branchName !== null || env.type === "PREVIEW"
+  );
 
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
 
-  const [form, fields] = useForm<z.infer<typeof schema>>({
+  const [form, { environmentIds, variables }] = useForm({
     id: "create-environment-variables",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parse(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
     defaultValue: {
       variables: [{ key: "", value: "" }],
     },
   });
-  const { environmentIds, variables } = fields;
 
   const handleEnvironmentChange = (
     environmentId: string,
@@ -324,8 +294,8 @@ export default function Page() {
     >
       <DialogContent className="p-0 pt-2.5 md:max-w-2xl lg:max-w-3xl">
         <DialogHeader className="px-4">New environment variables</DialogHeader>
-        <Form method="post" {...getFormProps(form)}>
-          <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+        <Form method="post" {...form.props}>
+          <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
             <InputGroup fullWidth>
               <Label>Environments</Label>
               {selectedBranchId ? (
@@ -382,9 +352,9 @@ export default function Page() {
                         <TooltipTrigger>
                           <TextLink
                             to={v3BillingPath(organization)}
-                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-border-bright py-2.5 pl-3 pr-4 transition hover:border-border-brightest hover:bg-background-dimmed"
+                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
                           >
-                            <LockClosedIcon className="size-4 text-text-faint" />
+                            <LockClosedIcon className="size-4 text-charcoal-500" />
                             <EnvironmentLabel
                               environment={{ type: "STAGING" }}
                               className="text-sm"
@@ -402,9 +372,9 @@ export default function Page() {
                         <TooltipTrigger>
                           <TextLink
                             to={v3BillingPath(organization)}
-                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-border-bright py-2.5 pl-3 pr-4 transition hover:border-border-brightest hover:bg-background-dimmed"
+                            className="flex w-fit cursor-pointer items-center gap-2 rounded border border-dashed border-charcoal-600 py-2.5 pl-3 pr-4 transition hover:border-charcoal-500 hover:bg-charcoal-850"
                           >
-                            <LockClosedIcon className="size-4 text-text-faint" />
+                            <LockClosedIcon className="size-4 text-charcoal-500" />
                             <EnvironmentLabel
                               environment={{ type: "PREVIEW" }}
                               className="text-sm"
@@ -420,7 +390,7 @@ export default function Page() {
                   </>
                 )}
               </div>
-              <FormError id={environmentIds.errorId}>{environmentIds.errors}</FormError>
+              <FormError id={environmentIds.errorId}>{environmentIds.error}</FormError>
               <Hint>
                 Dev environment variables specified here will be overridden by ones in your .env
                 file when running locally.
@@ -436,7 +406,7 @@ export default function Page() {
                     value={selectedBranchId ?? "all"}
                     setValue={handleBranchChange}
                     placeholder="All branches"
-                    items={[{ id: "all", branchName: "All branches" }, ...previewBranches]}
+                    items={[{ id: "all", branchName: "All branches" }, ...branchEnvironments]}
                     className="w-fit min-w-52"
                     filter={{
                       keys: [
@@ -444,7 +414,7 @@ export default function Page() {
                       ],
                     }}
                     text={(val) =>
-                      val ? previewBranches.find((b) => b.id === val)?.branchName : null
+                      val ? branchEnvironments.find((b) => b.id === val)?.branchName : null
                     }
                     dropdownIcon
                   >
@@ -498,13 +468,13 @@ export default function Page() {
               <VariableFields
                 revealValues={revealAll}
                 formId={form.id}
-                form={form}
+                formRef={form.ref}
                 variablesFields={variables}
               />
-              <FormError id={variables.errorId}>{variables.errors}</FormError>
+              <FormError id={variables.errorId}>{variables.error}</FormError>
             </InputGroup>
 
-            <FormError>{form.errors}</FormError>
+            <FormError>{form.error}</FormError>
           </Fieldset>
           <FormButtons
             className="px-4 pb-4"
@@ -552,12 +522,12 @@ function VariableFields({
   revealValues,
   formId,
   variablesFields,
-  form,
+  formRef,
 }: {
   revealValues: boolean;
   formId?: string;
-  variablesFields: FieldMetadata<Variable[]>;
-  form: FormMetadata<any>;
+  variablesFields: FieldConfig<any>;
+  formRef: RefObject<HTMLFormElement>;
 }) {
   const {
     items,
@@ -586,13 +556,13 @@ function VariableFields({
     const [firstPair, ...rest] = keyValuePairs;
     update(index, firstPair);
 
-    for (const _pair of rest) {
-      form.insert({ name: variablesFields.name });
+    for (const pair of rest) {
+      requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
     }
     insertAfter(index, rest);
   }, []);
 
-  const fields = variablesFields.getFieldList();
+  const fields = useFieldList(formRef, variablesFields);
 
   return (
     <>
@@ -608,7 +578,10 @@ function VariableFields({
             onChange={(value) => update(index, value)}
             onPaste={(e) => handlePaste(index, e)}
             onDelete={() => {
-              form.remove({ name: variablesFields.name, index });
+              requestIntent(
+                formRef.current ?? undefined,
+                list.remove(variablesFields.name, { index })
+              );
               remove(index);
             }}
             showDeleteButton={items.length > 1}
@@ -626,7 +599,7 @@ function VariableFields({
           className="w-fit"
           type="button"
           onClick={() => {
-            form.insert({ name: variablesFields.name });
+            requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
             append([{ key: "", value: "" }]);
           }}
           LeadingIcon={PlusIcon}
@@ -657,13 +630,14 @@ function VariableField({
   onDelete: () => void;
   showDeleteButton: boolean;
   showValue: boolean;
-  config: FieldMetadata<Variable>;
+  config: FieldConfig<Variable>;
 }) {
-  const fields = config.getFieldset();
+  const ref = useRef<HTMLFieldSetElement>(null);
+  const fields = useFieldset(ref, config);
   const baseFieldName = `variables[${index}]`;
 
   return (
-    <fieldset>
+    <fieldset ref={ref}>
       <FieldLayout>
         <div className="space-y-2">
           <Input
@@ -675,7 +649,7 @@ function VariableField({
             autoFocus={index === 0}
             onPaste={onPaste}
           />
-          <FormError id={fields.key.errorId}>{fields.key.errors}</FormError>
+          <FormError id={fields.key.errorId}>{fields.key.error}</FormError>
         </div>
         <div className={cn("flex items-start gap-1")}>
           <div className="grow space-y-2">
@@ -687,7 +661,7 @@ function VariableField({
               value={value.value}
               onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
             />
-            <FormError id={fields.value.errorId}>{fields.value.errors}</FormError>
+            <FormError id={fields.value.errorId}>{fields.value.error}</FormError>
           </div>
           {showDeleteButton && (
             <Button

@@ -1,15 +1,12 @@
-import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
-import { RectangleStackIcon } from "@heroicons/react/20/solid";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useNavigation, useParams, useSubmit } from "@remix-run/react";
-import { MachinePresetName } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
-import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
 import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
@@ -20,6 +17,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -29,12 +27,15 @@ import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
-import { InfoIconTooltip } from "~/components/primitives/Tooltip";
-import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { type loader } from "~/routes/resources.taskruns.$runParam.replay";
 import { docsPath } from "~/utils/pathBuilder";
 import { ReplayRunData } from "~/v3/replayTask";
+import { RectangleStackIcon } from "@heroicons/react/20/solid";
+import { Badge } from "~/components/primitives/Badge";
 import { RunTagInput } from "./RunTagInput";
+import { MachinePresetName } from "@trigger.dev/core/v3";
+import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import { divide } from "effect/Duration";
 
 type ReplayRunDialogProps = {
   runFriendlyId: string;
@@ -183,47 +184,49 @@ function ReplayForm({
   }));
 
   const lastSubmission = useActionData();
-  const [form, fields] = useForm({
+  const [
+    form,
+    {
+      environment,
+      payload,
+      metadata,
+      delaySeconds,
+      ttlSeconds,
+      idempotencyKey,
+      idempotencyKeyTTLSeconds,
+      queue,
+      concurrencyKey,
+      maxAttempts,
+      maxDurationSeconds,
+      tags,
+      version,
+      machine,
+      region,
+      prioritySeconds,
+    },
+  ] = useForm({
     id: "replay-task",
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onSubmit(event, { formData }) {
       event.preventDefault();
       if (editablePayload) {
-        formData.set(fields.payload.name, currentPayloadJson.current);
+        formData.set(payload.name, currentPayloadJson.current);
       }
-      formData.set(fields.metadata.name, currentMetadataJson.current);
+      formData.set(metadata.name, currentMetadataJson.current);
 
       submit(formData, { method: "POST", action: formAction });
     },
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: ReplayRunData });
+      return parse(formData, { schema: ReplayRunData });
     },
   });
-  const {
-    environment,
-    payload: _payload,
-    metadata: _metadata,
-    delaySeconds,
-    ttlSeconds,
-    idempotencyKey,
-    idempotencyKeyTTLSeconds,
-    queue,
-    concurrencyKey,
-    maxAttempts,
-    maxDurationSeconds,
-    tags,
-    version,
-    machine,
-    region,
-    prioritySeconds,
-  } = fields;
 
   return (
     <Form
       action={formAction}
       method="post"
       className="flex flex-1 flex-col overflow-hidden px-3"
-      {...getFormProps(form)}
+      {...form.props}
     >
       <input type="hidden" name="failedRedirect" value={failedRedirect} />
 
@@ -236,7 +239,7 @@ function ReplayForm({
         className="-mx-3 mt-3 w-auto flex-1 border-b border-t border-grid-dimmed"
       >
         <ResizablePanel id="payload" min="300px">
-          <div className="mb-3 h-full min-h-40 overflow-y-auto rounded-sm bg-background-deep scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          <div className="rounded-smbg-charcoal-900 mb-3 h-full min-h-40 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
             <JSONEditor
               className="h-full"
               autoFocus
@@ -299,7 +302,7 @@ function ReplayForm({
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel id="test-task-options" min="300px" default="300px" max="360px">
-          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
             <Fieldset className="px-3 py-3">
               <Hint>
                 Options enable you to control the execution behavior of your task.{" "}
@@ -310,7 +313,7 @@ function ReplayForm({
                   Machine
                 </Label>
                 <Select
-                  {...getSelectProps(machine)}
+                  {...conform.select(machine)}
                   variant="tertiary/small"
                   placeholder="Select machine type"
                   dropdownIcon
@@ -324,14 +327,14 @@ function ReplayForm({
                   ))}
                 </Select>
                 <Hint>Overrides the machine preset.</Hint>
-                <FormError id={machine.errorId}>{machine.errors}</FormError>
+                <FormError id={machine.errorId}>{machine.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={version.id} variant="small">
                   Version
                 </Label>
                 <Select
-                  {...getSelectProps(version)}
+                  {...conform.select(version)}
                   defaultValue="latest"
                   variant="tertiary/small"
                   placeholder="Select version"
@@ -353,7 +356,7 @@ function ReplayForm({
                 ) : (
                   <Hint>Runs task on a specific version.</Hint>
                 )}
-                <FormError id={version.errorId}>{version.errors}</FormError>
+                <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>
               {replayData.regions.length > 1 && (
                 <InputGroup>
@@ -361,7 +364,7 @@ function ReplayForm({
                     Region
                   </Label>
                   <Select
-                    {...getSelectProps(region)}
+                    {...conform.select(region)}
                     variant="tertiary/small"
                     placeholder={replayData.disableVersionSelection ? "–" : undefined}
                     dropdownIcon
@@ -381,7 +384,7 @@ function ReplayForm({
                   ) : (
                     <Hint>Overrides the region for this run.</Hint>
                   )}
-                  <FormError id={region.errorId}>{region.errors}</FormError>
+                  <FormError id={region.errorId}>{region.error}</FormError>
                 </InputGroup>
               )}
               <InputGroup>
@@ -390,7 +393,7 @@ function ReplayForm({
                 </Label>
                 {replayData.allowArbitraryQueues ? (
                   <Input
-                    {...getInputProps(queue, { type: "text" })}
+                    {...conform.input(queue, { type: "text" })}
                     variant="small"
                     defaultValue={replayData.queue}
                   />
@@ -411,7 +414,7 @@ function ReplayForm({
                         <SelectItem
                           key={queueItem.value}
                           value={queueItem.value}
-                          className="max-w-(--popover-anchor-width)"
+                          className="max-w-[var(--popover-anchor-width)]"
                           icon={
                             queueItem.type === "task" ? (
                               <TaskIcon className="size-4 shrink-0 text-blue-500" />
@@ -434,7 +437,7 @@ function ReplayForm({
                   </Select>
                 )}
                 <Hint>Assign run to a specific queue.</Hint>
-                <FormError id={queue.errorId}>{queue.errors}</FormError>
+                <FormError id={queue.errorId}>{queue.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={tags.id} variant="small">
@@ -447,14 +450,14 @@ function ReplayForm({
                   defaultTags={replayData.runTags}
                 />
                 <Hint>Add tags to easily filter runs.</Hint>
-                <FormError id={tags.errorId}>{tags.errors}</FormError>
+                <FormError id={tags.errorId}>{tags.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={maxAttempts.id} variant="small">
                   Max attempts
                 </Label>
                 <Input
-                  {...getInputProps(maxAttempts, { type: "number" })}
+                  {...conform.input(maxAttempts, { type: "number" })}
                   className="[&::-webkit-inner-spin-button]:appearance-none"
                   variant="small"
                   min={1}
@@ -473,7 +476,7 @@ function ReplayForm({
                   }}
                 />
                 <Hint>Retries failed runs up to the specified number of attempts.</Hint>
-                <FormError id={maxAttempts.errorId}>{maxAttempts.errors}</FormError>
+                <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label variant="small">Max duration</Label>
@@ -483,14 +486,14 @@ function ReplayForm({
                   defaultValueSeconds={replayData.maxDurationSeconds ?? undefined}
                 />
                 <Hint>Overrides the maximum compute time limit for the run.</Hint>
-                <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.errors}</FormError>
+                <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={idempotencyKey.id} variant="small">
                   Idempotency key
                 </Label>
-                <Input {...getInputProps(idempotencyKey, { type: "text" })} variant="small" />
-                <FormError id={idempotencyKey.errorId}>{idempotencyKey.errors}</FormError>
+                <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
+                <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
                 <Hint>
                   Specify an idempotency key to ensure that a task is only triggered once with the
                   same key.
@@ -504,7 +507,7 @@ function ReplayForm({
                 />
                 <Hint>Keys expire after 30 days by default.</Hint>
                 <FormError id={idempotencyKeyTTLSeconds.errorId}>
-                  {idempotencyKeyTTLSeconds.errors}
+                  {idempotencyKeyTTLSeconds.error}
                 </FormError>
               </InputGroup>
               <InputGroup>
@@ -512,26 +515,26 @@ function ReplayForm({
                   Concurrency key
                 </Label>
                 <Input
-                  {...getInputProps(concurrencyKey, { type: "text" })}
+                  {...conform.input(concurrencyKey, { type: "text" })}
                   variant="small"
                   defaultValue={replayData.concurrencyKey ?? undefined}
                 />
                 <Hint>
                   Limits concurrency by creating a separate queue for each value of the key.
                 </Hint>
-                <FormError id={concurrencyKey.errorId}>{concurrencyKey.errors}</FormError>
+                <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label variant="small">Delay</Label>
                 <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
                 <Hint>Delays run by a specific duration.</Hint>
-                <FormError id={delaySeconds.errorId}>{delaySeconds.errors}</FormError>
+                <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label variant="small">Priority</Label>
                 <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
                 <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
-                <FormError id={prioritySeconds.errorId}>{prioritySeconds.errors}</FormError>
+                <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label variant="small">TTL</Label>
@@ -541,9 +544,9 @@ function ReplayForm({
                   defaultValueSeconds={replayData.ttlSeconds}
                 />
                 <Hint>Expires the run if it hasn't started within the TTL.</Hint>
-                <FormError id={ttlSeconds.errorId}>{ttlSeconds.errors}</FormError>
+                <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
               </InputGroup>
-              <FormError>{form.errors}</FormError>
+              <FormError>{form.error}</FormError>
             </Fieldset>
           </div>
         </ResizablePanel>
@@ -557,7 +560,7 @@ function ReplayForm({
           <InputGroup className="flex flex-row items-center gap-3">
             <Label>Replay this run in</Label>
             <Select
-              {...getSelectProps(environment)}
+              {...conform.select(environment)}
               placeholder="Select an environment"
               defaultValue={replayData.environment.id}
               items={replayData.environments}

@@ -61,8 +61,7 @@ export function ChartLegendCompound({
   const totals = useSeriesTotal(aggregation);
 
   // Derive the effective label from the aggregation type when no explicit label is provided
-  const effectiveTotalLabel =
-    totalLabel ?? (aggregation ? aggregationLabels[aggregation] : "Total");
+  const effectiveTotalLabel = totalLabel ?? (aggregation ? aggregationLabels[aggregation] : "Total");
 
   // Calculate grand total by aggregating across all per-series values
   const grandTotal = useMemo(() => {
@@ -84,7 +83,9 @@ export function ChartLegendCompound({
 
     const rawValues = dataKeys.map((key) => dataRow[key]);
 
-    const values = rawValues.filter((v): v is number => v != null).map((v) => Number(v) || 0);
+    const values = rawValues
+      .filter((v): v is number => v != null)
+      .map((v) => Number(v) || 0);
 
     // All null → gap-filled point, return null to show dash
     if (values.length === 0) return null;
@@ -169,11 +170,7 @@ export function ChartLegendCompound({
 
   return (
     <div
-      className={cn(
-        "flex flex-col px-2 pb-2 pt-4 text-sm",
-        scrollable && "max-h-[50%] min-h-0",
-        className
-      )}
+      className={cn("flex flex-col px-2 pb-2 pt-4 text-sm", scrollable && "max-h-[50%] min-h-0", className)}
     >
       {/* Total row */}
       <div
@@ -197,14 +194,14 @@ export function ChartLegendCompound({
       </div>
 
       {/* Separator */}
-      <div className="mx-2 my-1 shrink-0 border-t border-grid-dimmed" />
+      <div className="mx-2 my-1 shrink-0 border-t border-charcoal-750" />
 
       {/* Legend items - scrollable when scrollable prop is true */}
       <div
         className={cn(
           "flex flex-col",
           scrollable &&
-            "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+            "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         )}
       >
         {legendItems.visible.map((item) => {
@@ -251,7 +248,7 @@ export function ChartLegendCompound({
                   content={item.label}
                   side="top"
                   disableHoverableContent
-                  className="max-w-xs wrap-break-word"
+                  className="max-w-xs break-words"
                   buttonClassName="cursor-default min-w-0"
                 />
                 <span
@@ -303,7 +300,7 @@ type ViewAllDataRowProps = {
 function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
   return (
     <div
-      className="relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-background-dimmed"
+      className="relative flex w-full cursor-pointer items-center justify-between gap-2 rounded px-2 py-1 transition hover:bg-charcoal-850"
       onClick={onViewAll}
       role="button"
       tabIndex={0}
@@ -316,7 +313,7 @@ function ViewAllDataRow({ remainingCount, onViewAll }: ViewAllDataRowProps) {
     >
       <div className="relative flex w-full items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
-          <div className="w-1 shrink-0 self-stretch rounded-[2px] border border-border-bright" />
+          <div className="w-1 shrink-0 self-stretch rounded-[2px] border border-charcoal-600" />
           <span className="text-text-dimmed tabular-nums">{remainingCount} more…</span>
         </div>
         <span className="self-start text-indigo-500">View all</span>
@@ -332,12 +329,7 @@ type HoveredHiddenItemRowProps = {
   valueFormatter?: (value: number) => string;
 };
 
-function HoveredHiddenItemRow({
-  item,
-  value,
-  remainingCount,
-  valueFormatter,
-}: HoveredHiddenItemRowProps) {
+function HoveredHiddenItemRow({ item, value, remainingCount, valueFormatter }: HoveredHiddenItemRowProps) {
   return (
     <div className="relative flex w-full items-center justify-between gap-2 rounded px-2 py-1">
       {/* Active highlight background */}

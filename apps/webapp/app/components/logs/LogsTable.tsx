@@ -1,18 +1,20 @@
-import { ArrowPathIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
+import { Link } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
+import { cn } from "~/utils/cn";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
-import { cn } from "~/utils/cn";
 import { highlightSearchText } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTimeAccurate } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
+import { LogLevel } from "./LogLevel";
+import { TruncatedCopyableValue } from "../primitives/TruncatedCopyableValue";
+import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
 import {
   Table,
   TableBlankRow,
@@ -24,7 +26,7 @@ import {
   TableRow,
   type TableVariant,
 } from "../primitives/Table";
-import { LogLevel } from "./LogLevel";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 
 type LogsTableProps = {
   logs: LogEntry[];
@@ -113,7 +115,7 @@ export function LogsTable({
   }, [hasMore, isLoadingMore, onLoadMore]);
 
   return (
-    <div className="relative h-full overflow-auto border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+    <div className="relative h-full overflow-auto border-t scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
       <Table variant="compact/mono" containerClassName="overflow-visible" showTopBorder={false}>
         <TableHeader className="sticky top-0 z-10">
           <TableRow>
@@ -151,7 +153,7 @@ export function LogsTable({
                   key={log.id}
                   className={cn(
                     "cursor-pointer transition-colors",
-                    isSelected ? "bg-background-hover" : "hover:bg-background-dimmed"
+                    isSelected ? "bg-charcoal-750" : "hover:bg-charcoal-850"
                   )}
                   isSelected={isSelected}
                 >
@@ -187,7 +189,7 @@ export function LogsTable({
                         variant="minimal/small"
                         TrailingIcon={RunsIcon}
                         trailingIconClassName="text-text-bright"
-                        className="h-5.5 pl-1.5 pr-2"
+                        className="h-[1.375rem] pl-1.5 pr-2"
                       >
                         <span className="text-[0.6875rem] text-text-bright">View run</span>
                       </LinkButton>
