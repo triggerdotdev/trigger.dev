@@ -1,8 +1,16 @@
-import type { RuntimeEnvironment } from "@trigger.dev/database";
-import { prisma } from "~/db.server";
+import type { PrismaClient, RuntimeEnvironment } from "@trigger.dev/database";
+import type { RoleBaseAccessController } from "@trigger.dev/rbac";
+import { trail } from "agentcrumbs"; // @crumbs
 import { customAlphabet } from "nanoid";
+import { prisma } from "~/db.server";
 import { RuntimeEnvironmentType } from "~/database-types";
+import { rbac } from "~/services/rbac.server";
+import { generateAdditionalApiKey, generateRootApiKey } from "~/utils/apiKeys";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+
+const crumb = trail("webapp"); // @crumbs
+
+export const MAX_API_KEY_TASK_IDENTIFIERS = 10;
 
 const apiKeyId = customAlphabet(
   "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
@@ -94,8 +102,130 @@ export async function regenerateApiKey({ userId, environmentId }: RegenerateAPIK
   return updatedEnviroment;
 }
 
+export async function createEnvironmentApiKey(
+  {
+    environmentId,
+    taskEnvironmentId,
+    userId,
+    name,
+    expiresAt,
+    presetId,
+    taskIdentifiers,
+  }: {
+    environmentId: string;
+    taskEnvironmentId: string;
+    userId: string;
+    name: string;
+    expiresAt?: Date;
+    // Required, and passed straight through to `prepareApiKeyPolicy` — callers
+    // name the access level rather than leaning on a default that would grant
+    // full access. Installs with no preset catalogue pass FULL_ACCESS_PRESET_ID.
+    presetId: string;
+    taskIdentifiers?: string[];
+  },
+  {
+    prismaClient = prisma,
+    rbacController = rbac,
+  }: {
+    prismaClient?: Pick<PrismaClient, "runtimeEnvironment" | "taskIdentifier" | "apiKey">;
+    rbacController?: Pick<RoleBaseAccessController, "prepareApiKeyPolicy">;
+  } = {}
+) {
+  const environment = await prismaClient.runtimeEnvironment.findFirst({
+    where: {
+      id: environmentId,
+      organization: { members: { some: { userId } } },
+    },
+    select: { id: true, type: true, organizationId: true },
+  });
+
+  if (!environment) {
+    throw new Error("Environment not found");
+  }
+
+  if (expiresAt && expiresAt.getTime() <= Date.now()) {
+    throw new Error("Expiration must be in the future");
+  }
+
+  const selectedTasks = [...new Set(taskIdentifiers?.map((task) => task.trim()).filter(Boolean))];
+
+  if (selectedTasks.length > MAX_API_KEY_TASK_IDENTIFIERS) {
+    throw new Error(`You can select at most ${MAX_API_KEY_TASK_IDENTIFIERS} tasks for an API key`);
+  }
+  if (selectedTasks.length > 0) {
+    const matchingTasks = await prismaClient.taskIdentifier.count({
+      where: {
+        runtimeEnvironmentId: taskEnvironmentId,
+        slug: { in: selectedTasks },
+        runtimeEnvironment: {
+          OR: [{ id: environment.id }, { parentEnvironmentId: environment.id }],
+        },
+      },
+    });
+
+    if (matchingTasks !== selectedTasks.length) {
+      throw new Error("One or more selected tasks are not available in this environment");
+    }
+  }
+
+  const prepared = await rbacController.prepareApiKeyPolicy({
+    organizationId: environment.organizationId,
+    presetId,
+    taskIdentifiers: selectedTasks.length > 0 ? selectedTasks : undefined,
+  });
+
+  if (!prepared.ok) {
+    throw new Error(prepared.error);
+  }
+
+  const generated = generateAdditionalApiKey(environment.type);
+  const apiKey = await prismaClient.apiKey.create({
+    data: {
+      name,
+      keyHash: generated.keyHash,
+      lastFour: generated.lastFour,
+      runtimeEnvironmentId: environment.id,
+      createdByUserId: userId,
+      expiresAt,
+      presetId: prepared.policy.presetId,
+      scopes: prepared.policy.scopes,
+    },
+  });
+
+  crumb("environment API key created", {
+    apiKeyId: apiKey.id,
+    environmentId,
+    presetId: apiKey.presetId,
+  }); // @crumbs
+
+  return { apiKey, plaintext: generated.apiKey };
+}
+
+export async function revokeEnvironmentApiKey({
+  environmentId,
+  apiKeyId,
+}: {
+  environmentId: string;
+  apiKeyId: string;
+}) {
+  const result = await prisma.apiKey.updateMany({
+    where: {
+      id: apiKeyId,
+      runtimeEnvironmentId: environmentId,
+      revokedAt: null,
+    },
+    data: { revokedAt: new Date() },
+  });
+
+  if (result.count !== 1) {
+    throw new Error("API key not found or already revoked");
+  }
+
+  crumb("environment API key revoked", { apiKeyId, environmentId }); // @crumbs
+}
+
 export function createApiKeyForEnv(envType: RuntimeEnvironment["type"]) {
-  return `tr_${envSlug(envType)}_${apiKeyId(20)}`;
+  return generateRootApiKey(envType).apiKey;
 }
 
 export function createPkApiKeyForEnv(envType: RuntimeEnvironment["type"]) {

@@ -1,15 +1,26 @@
-import { BookOpenIcon } from "@heroicons/react/20/solid";
+import {
+  BookOpenIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  KeyIcon,
+  NoSymbolIcon,
+  PlusIcon,
+} from "@heroicons/react/20/solid";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { Form, useFetcher, useSearchParams } from "@remix-run/react";
+import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
+import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import {
   EnvironmentCombo,
   environmentFullTitle,
   environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
-import { RegenerateApiKeyModal } from "~/components/environments/RegenerateApiKeyModal";
 import {
   MainHorizontallyCenteredContainer,
   PageBody,
@@ -22,56 +33,192 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "~/components/primitives/Accordion";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Badge } from "~/components/primitives/Badge";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
+import { CopyButton } from "~/components/primitives/CopyButton";
+import { DateTime } from "~/components/primitives/DateTime";
+import { DateTimePicker } from "~/components/primitives/DateTimePicker";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { Fieldset } from "~/components/primitives/Fieldset";
+import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header2 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
+import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import { useOrganization } from "~/hooks/useOrganizations";
+import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
+import { Switch } from "~/components/primitives/Switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableCellMenu,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
+import {
+  createEnvironmentApiKey,
+  MAX_API_KEY_TASK_IDENTIFIERS,
+  revokeEnvironmentApiKey,
+} from "~/models/api-key.server";
+import {
+  redirectWithErrorMessage,
+  redirectWithSuccessMessage,
+  typedJsonWithErrorMessage,
+  typedJsonWithSuccessMessage,
+} from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
-import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { FULL_ACCESS_PRESET_ID } from "@trigger.dev/rbac";
+import { rbac } from "~/services/rbac.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { pageMeta } from "~/utils/pageTitle";
 
 export const meta = pageMeta("API keys");
 
+const ApiKeySearchParams = z.object({
+  showRevoked: z.preprocess((value) => value === "true" || value === true, z.boolean()).optional(),
+});
+
+type ApiKeyPreset = NonNullable<Awaited<ReturnType<typeof rbac.apiKeyPresets>>>[number];
+
+const CreateApiKeySchema = z.object({
+  action: z.literal("create"),
+  name: z.string().trim().min(1).max(64),
+  expiresAt: z.preprocess(
+    (value) => (value === "" || value === undefined ? undefined : value),
+    z.coerce
+      .date()
+      .refine((date) => date.getTime() > Date.now(), "Expiration must be in the future")
+      .optional()
+  ),
+  presetId: z.string().trim().min(1).optional(),
+  taskScope: z.enum(["all", "selected"]).optional(),
+  taskIdentifiers: z
+    .array(z.string())
+    .max(MAX_API_KEY_TASK_IDENTIFIERS, {
+      message: `You can select at most ${MAX_API_KEY_TASK_IDENTIFIERS} tasks`,
+    })
+    .default([]),
+});
+
+const ApiKeyActionSchema = z.discriminatedUnion("action", [
+  CreateApiKeySchema,
+  z.object({ action: z.literal("revoke"), apiKeyId: z.string().min(1) }),
+]);
+
+function validateCreateApiKeyPreset({
+  presets,
+  presetId,
+  taskScope,
+  taskIdentifiers,
+  hasTaskParameters,
+}: {
+  presets: ApiKeyPreset[] | null;
+  presetId?: string;
+  taskScope?: "all" | "selected";
+  taskIdentifiers: string[];
+  hasTaskParameters: boolean;
+}): { presetId: string; usesTaskSelection: boolean } {
+  // Always resolves to a concrete preset id. "No preset chosen" means full
+  // access, and saying so here keeps that decision visible at the call site
+  // instead of relying on a default inside prepareApiKeyPolicy.
+  const fullAccess = { presetId: FULL_ACCESS_PRESET_ID, usesTaskSelection: false };
+
+  if (presets === null) {
+    if (presetId !== undefined || hasTaskParameters) {
+      throw new Error("API key access presets are not available");
+    }
+    return fullAccess;
+  }
+
+  if (!presetId) {
+    if (hasTaskParameters) {
+      throw new Error("A preset is required when selecting tasks");
+    }
+    return fullAccess;
+  }
+
+  const preset = presets.find((candidate) => candidate.id === presetId);
+  if (!preset) {
+    throw new Error("Invalid API key access preset");
+  }
+  if (!preset.available) {
+    throw new Error("This API key access preset is not available on your plan");
+  }
+
+  if (!preset.usesTaskSelection && hasTaskParameters) {
+    throw new Error("This API key access preset does not support task selection");
+  }
+  if (preset.usesTaskSelection && taskScope === "selected" && taskIdentifiers.length === 0) {
+    throw new Error("Select at least one task");
+  }
+  if (preset.usesTaskSelection && taskScope !== "selected" && taskIdentifiers.length > 0) {
+    throw new Error("Task identifiers require selected task scope");
+  }
+
+  return { presetId: preset.id, usesTaskSelection: preset.usesTaskSelection ?? false };
+}
+
+type ApiKeyActionData =
+  | { ok: true; action: "create"; apiKey: string }
+  | { ok: false; error: string };
+
 export const loader = dashboardLoader(
   {
     params: EnvironmentParamSchema,
+    searchParams: ApiKeySearchParams,
     context: async (params) => {
       const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
       return organizationId ? { organizationId } : {};
     },
-    // No hard authorization: anyone with project access can open the page.
-    // Reading the secret key is gated per environment tier below — a role
-    // that can't read this tier's keys gets the info panel, not the key.
   },
-  async ({ params, user, ability }) => {
-    const { projectParam, envParam } = params;
-
+  async ({ params, searchParams, user, ability }) => {
     try {
       const presenter = new ApiKeysPresenter();
-      const { environment, hasVercelIntegration } = await presenter.call({
+      const data = await presenter.call({
         userId: user.id,
-        projectSlug: projectParam,
-        environmentSlug: envParam,
+        organizationSlug: params.organizationSlug,
+        projectSlug: params.projectParam,
+        environmentSlug: params.envParam,
+        showRevoked: searchParams.showRevoked,
       });
 
-      const canReadApiKeys =
-        !environment || ability.can("read", { type: "apiKeys", envType: environment.type });
+      const canReadApiKeys = ability.can("read", {
+        type: "apiKeys",
+        envType: data.environment.type,
+      });
+      const canWriteApiKeys = ability.can("write", {
+        type: "apiKeys",
+        envType: data.environment.type,
+      });
 
       return typedjson({
-        // Never serialize the secret key to the client when the role can't
-        // read it for this environment tier.
-        environment: environment && !canReadApiKeys ? { ...environment, apiKey: "" } : environment,
-        hasVercelIntegration,
+        ...data,
+        environment: {
+          ...data.environment,
+          apiKey: canReadApiKeys ? data.environment.apiKey : null,
+        },
+        rootApiKey: {
+          ...data.rootApiKey,
+          value: canReadApiKeys ? data.rootApiKey.value : null,
+          obfuscated: canReadApiKeys ? data.rootApiKey.obfuscated : null,
+        },
+        apiKeys: canReadApiKeys ? data.apiKeys : [],
         canReadApiKeys,
+        canWriteApiKeys,
+        showRevoked: searchParams.showRevoked ?? false,
       });
     } catch (error) {
       console.error(error);
@@ -83,21 +230,129 @@ export const loader = dashboardLoader(
   }
 );
 
-export default function Page() {
-  const { environment, hasVercelIntegration, canReadApiKeys } = useTypedLoaderData<typeof loader>();
-  const _organization = useOrganization();
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    // The environment tier is only known after resolving the route params,
+    // so write:apiKeys is enforced in the handler before any mutation.
+  },
+  async ({ request, params, user, ability }) => {
+    if (request.method.toUpperCase() !== "POST") {
+      throw new Response("Method Not Allowed", { status: 405 });
+    }
 
-  if (!environment) {
-    throw new Response(undefined, {
-      status: 404,
-      statusText: "Environment not found",
+    const project = await findProjectBySlug(params.organizationSlug, params.projectParam, user.id);
+    if (!project) {
+      throw new Response("Project not found", { status: 404 });
+    }
+
+    const environment = await findEnvironmentBySlug(project.id, params.envParam, user.id);
+    if (!environment) {
+      throw new Response("Environment not found", { status: 404 });
+    }
+
+    if (!ability.can("write", { type: "apiKeys", envType: environment.type })) {
+      return typedJsonWithErrorMessage(
+        { ok: false as const, error: "You don't have permission to manage these API keys." },
+        request,
+        "You don't have permission to manage these API keys."
+      );
+    }
+
+    const formData = await request.formData();
+    const hasTaskParameters = formData.has("taskScope") || formData.has("taskIdentifiers");
+    const submission = ApiKeyActionSchema.safeParse({
+      ...Object.fromEntries(formData),
+      taskIdentifiers: formData.getAll("taskIdentifiers"),
     });
-  }
+    if (!submission.success) {
+      const error = submission.error.issues[0]?.message ?? "Invalid API key request";
+      return typedJsonWithErrorMessage({ ok: false as const, error }, request, error);
+    }
 
-  let envBlock = `TRIGGER_SECRET_KEY="${environment.apiKey}"`;
-  if (environment.branchName) {
-    envBlock += `\nTRIGGER_PREVIEW_BRANCH="${environment.branchName}"`;
+    const keyEnvironmentId = environment.parentEnvironmentId ?? environment.id;
+    const returnPath = `${new URL(request.url).pathname}${new URL(request.url).search}`;
+
+    try {
+      switch (submission.data.action) {
+        case "create": {
+          const presets = await rbac.apiKeyPresets(project.organizationId);
+          const preset = validateCreateApiKeyPreset({
+            presets,
+            presetId: submission.data.presetId,
+            taskScope: submission.data.taskScope,
+            taskIdentifiers: submission.data.taskIdentifiers,
+            hasTaskParameters,
+          });
+          const result = await createEnvironmentApiKey({
+            environmentId: keyEnvironmentId,
+            taskEnvironmentId: environment.id,
+            userId: user.id,
+            name: submission.data.name,
+            expiresAt: submission.data.expiresAt,
+            presetId: preset.presetId,
+            taskIdentifiers:
+              preset.usesTaskSelection && submission.data.taskScope === "selected"
+                ? submission.data.taskIdentifiers
+                : undefined,
+          });
+
+          return typedJsonWithSuccessMessage(
+            {
+              ok: true as const,
+              action: "create" as const,
+              apiKey: result.plaintext,
+            },
+            request,
+            `Created ${submission.data.name} API key`
+          );
+        }
+        case "revoke": {
+          await revokeEnvironmentApiKey({
+            environmentId: keyEnvironmentId,
+            apiKeyId: submission.data.apiKeyId,
+          });
+
+          return redirectWithSuccessMessage(returnPath, request, "API key revoked");
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update API keys";
+
+      if (submission.data.action === "create") {
+        return typedJsonWithErrorMessage({ ok: false as const, error: message }, request, message);
+      }
+
+      return redirectWithErrorMessage(returnPath, request, message);
+    }
   }
+);
+
+export default function Page() {
+  const {
+    environment,
+    rootApiKey,
+    apiKeys,
+    canReadApiKeys,
+    canWriteApiKeys,
+    showRevoked,
+    hasVercelIntegration,
+    availableTasks,
+    presets,
+  } = useTypedLoaderData<typeof loader>();
+
+  const envBlock = environment.apiKey
+    ? [
+        `TRIGGER_SECRET_KEY="${environment.apiKey}"`,
+        environment.branchName ? `TRIGGER_PREVIEW_BRANCH="${environment.branchName}"` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : null;
 
   return (
     <PageContainer>
@@ -106,7 +361,7 @@ export default function Page() {
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
-              <Property.Item key={environment.id}>
+              <Property.Item>
                 <Property.Label>{environment.slug}</Property.Label>
                 <Property.Value>
                   <CopyableText value={environment.id} asChild hideTooltip />
@@ -115,106 +370,553 @@ export default function Page() {
             </Property.Table>
           </AdminDebugTooltip>
 
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/v3/apikeys")}
-          >
+          <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("/v3/apikeys")}>
             API keys docs
           </LinkButton>
+
+          {canReadApiKeys ? (
+            <NewApiKeyDialog
+              canWrite={canWriteApiKeys}
+              availableTasks={availableTasks}
+              presets={presets}
+            />
+          ) : null}
         </PageAccessories>
       </NavBar>
-      <PageBody>
-        <MainHorizontallyCenteredContainer>
-          <div className="mb-3 border-b border-grid-dimmed pb-1">
-            <Header2
-              className={cn(
-                "inline-flex items-center gap-1 font-normal",
-                environmentTextClassName(environment)
-              )}
-            >
-              <EnvironmentCombo
-                environment={environment}
-                className="text-base"
-                iconClassName="size-5"
-              />
-              API keys
-            </Header2>
-          </div>
-          {canReadApiKeys ? (
-            <div className="flex flex-col gap-6">
-              <InputGroup fullWidth>
-                <div className="flex w-full items-center justify-between">
-                  <Label>Secret key</Label>
-                  <RegenerateApiKeyModal
-                    id={environment.parentEnvironment?.id ?? environment.id}
-                    title={environmentFullTitle(environment)}
-                    hasVercelIntegration={hasVercelIntegration}
-                    isDevelopment={environment.type === "DEVELOPMENT"}
+      <PageBody scrollable={false}>
+        {canReadApiKeys ? (
+          <div className="grid max-h-full min-h-full grid-rows-[auto_auto_1fr]">
+            <MainHorizontallyCenteredContainer className="w-full py-3">
+              <div className="mb-3 border-b border-grid-dimmed pb-1">
+                <Header2
+                  className={cn(
+                    "inline-flex items-center gap-1 font-normal",
+                    environmentTextClassName(environment)
+                  )}
+                >
+                  <EnvironmentCombo
+                    environment={environment}
+                    className="text-base"
+                    iconClassName="size-5"
                   />
-                </div>
-                <ClipboardField
-                  className="w-full max-w-none"
-                  secure={`tr_${environment.apiKey.split("_")[1]}_••••••••`}
-                  value={environment.apiKey}
-                  variant={"secondary/small"}
-                />
-                <Hint>
-                  Set this as your <InlineCode variant="extra-small">TRIGGER_SECRET_KEY</InlineCode>{" "}
-                  env var in your backend.
-                </Hint>
-              </InputGroup>
-              {environment.branchName && (
-                <InputGroup fullWidth>
-                  <Label>Branch name</Label>
-                  <ClipboardField
-                    className="w-full max-w-none"
-                    value={environment.branchName}
-                    variant={"secondary/small"}
-                  />
-                  <Hint>
-                    Set this as your{" "}
-                    <InlineCode variant="extra-small">TRIGGER_PREVIEW_BRANCH</InlineCode> env var in
-                    your backend.
-                  </Hint>
-                </InputGroup>
-              )}
-              {environment.type === "DEVELOPMENT" && (
-                <Callout variant="info">
-                  Every team member gets their own dev Secret key. Make sure you're using the one
-                  above otherwise you will trigger runs on your team member's machine.
+                  API keys
+                </Header2>
+              </div>
+
+              {environment.type === "DEVELOPMENT" ? (
+                <Callout variant="info" className="mb-3">
+                  Every team member gets their own dev API keys. Make sure you're using one from
+                  this page, otherwise you will trigger runs on your team member's machine.
                 </Callout>
-              )}
+              ) : null}
 
               <Accordion type="single" collapsible>
-                <AccordionItem value="item-1" className="bg-white dark:bg-transparent">
+                <AccordionItem value="environment-variables" className="bg-white dark:bg-transparent">
                   <AccordionTrigger>How to set these environment variables</AccordionTrigger>
                   <AccordionContent>
                     <div className="flex flex-col gap-2">
                       <div>
-                        You need to set these environment variables in your backend. This allows the
-                        SDK to authenticate with Trigger.dev.
+                        Set these environment variables in your backend so the SDK can authenticate
+                        with Trigger.dev.
                       </div>
-                      <CodeBlock
-                        language="javascript"
-                        code={envBlock}
-                        showOpenInModal={false}
-                        showLineNumbers={false}
-                      />
+                      {envBlock ? (
+                        <CodeBlock
+                          language="javascript"
+                          code={envBlock}
+                          showOpenInModal={false}
+                          showLineNumbers={false}
+                        />
+                      ) : null}
                     </div>
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
+            </MainHorizontallyCenteredContainer>
+
+            <div className="flex items-center justify-end border-t border-grid-dimmed p-2">
+              <RevokedFilter checked={showRevoked} />
             </div>
-          ) : (
+
+            <div className="overflow-x-auto">
+              <Table showTopBorder={false}>
+                <TableHeader>
+                  <TableRow>
+                    <TableHeaderCell>Name</TableHeaderCell>
+                    <TableHeaderCell>Secret key</TableHeaderCell>
+                    <TableHeaderCell>Status</TableHeaderCell>
+                    <TableHeaderCell>Access</TableHeaderCell>
+                    <TableHeaderCell>Created by</TableHeaderCell>
+                    <TableHeaderCell>Created</TableHeaderCell>
+                    <TableHeaderCell>Last used</TableHeaderCell>
+                    <TableHeaderCell hiddenLabel>Actions</TableHeaderCell>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow isSelected>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 text-text-bright">
+                        <KeyIcon className="size-4" />
+                        {rootApiKey.name}
+                        <Badge variant="extra-small">Root</Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex w-64 items-center justify-between gap-2">
+                        <span className="font-mono text-text-dimmed">
+                          {rootApiKey.obfuscated ?? "–"}
+                        </span>
+                        {rootApiKey.value ? (
+                          <CopyButton value={rootApiKey.value} variant="icon" size="small" />
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <ApiKeyStatus />
+                    </TableCell>
+                    <TableCell>
+                      <ApiKeyAccess label="No restrictions" />
+                    </TableCell>
+                    <TableCell>–</TableCell>
+                    <TableCell>
+                      <DateTime date={rootApiKey.createdAt} />
+                    </TableCell>
+                    <TableCell>–</TableCell>
+                    <TableCellMenu
+                      isSticky
+                      className="bg-background-hover group-hover/table-row:bg-background-bright"
+                      visibleButtons={
+                        canWriteApiKeys ? (
+                          <RegenerateApiKeyModal
+                            id={environment.keyEnvironmentId}
+                            title={environmentFullTitle(environment)}
+                            hasVercelIntegration={hasVercelIntegration}
+                            isDevelopment={environment.type === "DEVELOPMENT"}
+                          />
+                        ) : null
+                      }
+                    />
+                  </TableRow>
+
+                  {apiKeys.map((apiKey) => {
+                    const isExpired = apiKey.expiresAt
+                      ? new Date(apiKey.expiresAt).getTime() <= Date.now()
+                      : false;
+                    const cannotAuthenticate = Boolean(apiKey.revokedAt) || isExpired;
+                    const cannotRevoke = Boolean(apiKey.revokedAt) || isExpired;
+                    const creator =
+                      apiKey.createdBy?.displayName ??
+                      apiKey.createdBy?.name ??
+                      apiKey.createdBy?.email ??
+                      "Deleted user";
+
+                    return (
+                      <TableRow key={apiKey.id} disabled={cannotAuthenticate}>
+                        <TableCell>{apiKey.name}</TableCell>
+                        <TableCell>
+                          <span className="font-mono text-text-dimmed">{apiKey.obfuscated}</span>
+                        </TableCell>
+                        <TableCell>
+                          <ApiKeyStatus revokedAt={apiKey.revokedAt} expiresAt={apiKey.expiresAt} />
+                        </TableCell>
+                        <TableCell>
+                          <ApiKeyAccess
+                            label={apiKey.access.label}
+                            taskIdentifiers={apiKey.access.taskIdentifiers}
+                            usesTaskSelection={apiKey.access.usesTaskSelection}
+                          />
+                        </TableCell>
+                        <TableCell>{creator}</TableCell>
+                        <TableCell>
+                          <DateTime date={apiKey.createdAt} />
+                        </TableCell>
+                        <TableCell>
+                          {apiKey.lastUsedAt ? <DateTime date={apiKey.lastUsedAt} /> : "Never"}
+                        </TableCell>
+                        <TableCellMenu
+                          isSticky
+                          visibleButtons={
+                            cannotRevoke ? null : (
+                              <RevokeApiKeyButton
+                                id={apiKey.id}
+                                name={apiKey.name}
+                                canWrite={canWriteApiKeys}
+                              />
+                            )
+                          }
+                        />
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        ) : (
+          <MainHorizontallyCenteredContainer className="py-6">
             <PermissionDenied
               message={`With your current role, you can't view the API keys for ${environmentFullTitle(
                 environment
               )}.`}
             />
-          )}
-        </MainHorizontallyCenteredContainer>
+          </MainHorizontallyCenteredContainer>
+        )}
       </PageBody>
     </PageContainer>
+  );
+}
+
+function RevokedFilter({ checked }: { checked: boolean }) {
+  const [, setSearchParams] = useSearchParams();
+
+  return (
+    <Switch
+      checked={checked}
+      onCheckedChange={(showRevoked) => {
+        setSearchParams((searchParams) => {
+          if (showRevoked) {
+            searchParams.set("showRevoked", "true");
+          } else {
+            searchParams.delete("showRevoked");
+          }
+          return searchParams;
+        });
+      }}
+      label="Show revoked"
+      variant="secondary/small"
+    />
+  );
+}
+
+function NewApiKeyDialog({
+  canWrite,
+  availableTasks,
+  presets,
+}: {
+  canWrite: boolean;
+  availableTasks: string[];
+  presets: ApiKeyPreset[] | null;
+}) {
+  const fetcher = useFetcher<typeof action>();
+  const actionData = fetcher.data as ApiKeyActionData | undefined;
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [expiresAt, setExpiresAt] = useState<Date>();
+  const defaultPresetId = presets?.find((preset) => preset.available)?.id ?? "";
+  const [presetId, setPresetId] = useState(defaultPresetId);
+  const [taskScope, setTaskScope] = useState<"all" | "selected">("all");
+  const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
+  const [createdApiKey, setCreatedApiKey] = useState<string>();
+
+  useEffect(() => {
+    if (fetcher.state === "idle" && actionData?.ok && actionData.action === "create") {
+      setCreatedApiKey(actionData.apiKey);
+    }
+  }, [actionData, fetcher.state]);
+
+  const usesTaskSelection =
+    presets?.find((preset) => preset.id === presetId)?.usesTaskSelection ?? false;
+  const needsSelectedTask = usesTaskSelection && taskScope === "selected";
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (nextOpen) {
+          setName("");
+          setExpiresAt(undefined);
+          setPresetId(defaultPresetId);
+          setTaskScope("all");
+          setSelectedTasks([]);
+          setCreatedApiKey(undefined);
+        }
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button
+          variant="primary/small"
+          LeadingIcon={PlusIcon}
+          shortcut={{ key: "n" }}
+          disabled={!canWrite}
+          tooltip={canWrite ? undefined : "You don't have permission to create API keys"}
+        >
+          New API key
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>New API key</DialogHeader>
+        {createdApiKey ? (
+          <div className="flex flex-col gap-3 pt-3">
+            <Callout variant="success">
+              Copy this API key and store it in a secure place. You won't be able to see it again.
+            </Callout>
+            <ClipboardField
+              secure
+              value={createdApiKey}
+              variant="secondary/medium"
+              className="w-full"
+            />
+            <Callout variant="warning">
+              Requires a version of <InlineCode variant="extra-small">@trigger.dev/sdk</InlineCode>{" "}
+              that supports additional environment API keys. On older versions,{" "}
+              <InlineCode variant="extra-small">auth.createPublicToken()</InlineCode> will return a
+              token the server rejects, because only the root API key can sign one locally.
+            </Callout>
+            <FormButtons
+              confirmButton={
+                <DialogClose asChild>
+                  <Button variant="primary/small">Done</Button>
+                </DialogClose>
+              }
+            />
+          </div>
+        ) : (
+          <fetcher.Form method="post">
+            <input type="hidden" name="action" value="create" />
+            {expiresAt ? (
+              <input type="hidden" name="expiresAt" value={expiresAt.toISOString()} />
+            ) : null}
+            {presetId ? <input type="hidden" name="presetId" value={presetId} /> : null}
+            {usesTaskSelection ? <input type="hidden" name="taskScope" value={taskScope} /> : null}
+            <Fieldset className="mt-3 max-h-[70vh] overflow-y-auto pr-1">
+              <InputGroup>
+                <Label htmlFor="api-key-name">Name</Label>
+                <Input
+                  id="api-key-name"
+                  name="name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="e.g. Stripe webhooks"
+                  maxLength={64}
+                  autoComplete="off"
+                  fullWidth
+                />
+                <Hint>Use a name that identifies where this key will be used.</Hint>
+              </InputGroup>
+
+              <InputGroup>
+                <Label>Expiration</Label>
+                <DateTimePicker
+                  label="API key expiration"
+                  value={expiresAt}
+                  onChange={setExpiresAt}
+                  showSeconds={false}
+                  showClearButton
+                />
+                <Hint>Leave blank for a key that doesn&apos;t expire.</Hint>
+              </InputGroup>
+
+              {presets ? (
+                <InputGroup>
+                  <Label>Access</Label>
+                  <RadioGroup value={presetId} onValueChange={setPresetId} className="grid gap-2">
+                    {presets.map((preset) => (
+                      <RadioGroupItem
+                        key={preset.id}
+                        id={`api-key-access-${preset.id}`}
+                        value={preset.id}
+                        variant="description"
+                        label={preset.label}
+                        description={preset.description}
+                        disabled={!preset.available}
+                        badges={preset.available ? undefined : ["Upgrade"]}
+                      />
+                    ))}
+                  </RadioGroup>
+                </InputGroup>
+              ) : null}
+
+              {usesTaskSelection ? (
+                <InputGroup>
+                  <Label>Tasks</Label>
+                  <RadioGroup
+                    value={taskScope}
+                    onValueChange={(value) => setTaskScope(value as "all" | "selected")}
+                    className="grid gap-2"
+                  >
+                    <RadioGroupItem
+                      id="api-key-task-scope-all"
+                      value="all"
+                      variant="simple/small"
+                      label="All tasks"
+                    />
+                    <RadioGroupItem
+                      id="api-key-task-scope-selected"
+                      value="selected"
+                      variant="simple/small"
+                      label="Selected tasks"
+                      disabled={availableTasks.length === 0}
+                    />
+                  </RadioGroup>
+
+                  {taskScope === "selected" ? (
+                    <div className="max-h-48 space-y-2 overflow-y-auto rounded border border-grid-dimmed p-3">
+                      {availableTasks.map((taskIdentifier) => (
+                        <CheckboxWithLabel
+                          key={taskIdentifier}
+                          id={`api-key-task-${taskIdentifier}`}
+                          name="taskIdentifiers"
+                          value={taskIdentifier}
+                          variant="simple/small"
+                          label={<span className="font-mono">{taskIdentifier}</span>}
+                          defaultChecked={selectedTasks.includes(taskIdentifier)}
+                          onChange={(checked) => {
+                            setSelectedTasks((current) =>
+                              checked
+                                ? [...new Set([...current, taskIdentifier])]
+                                : current.filter((task) => task !== taskIdentifier)
+                            );
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  <Hint>
+                    Task restrictions use task identifiers and continue to apply across deployments.
+                  </Hint>
+                </InputGroup>
+              ) : null}
+
+              {actionData && !actionData.ok ? (
+                <Paragraph variant="small" className="text-error">
+                  {actionData.error}
+                </Paragraph>
+              ) : null}
+
+              <FormButtons
+                confirmButton={
+                  <Button
+                    type="submit"
+                    variant="primary/small"
+                    disabled={
+                      !name.trim() ||
+                      (needsSelectedTask &&
+                        (selectedTasks.length === 0 ||
+                          selectedTasks.length > MAX_API_KEY_TASK_IDENTIFIERS)) ||
+                      fetcher.state !== "idle"
+                    }
+                    isLoading={fetcher.state !== "idle"}
+                  >
+                    Create API key
+                  </Button>
+                }
+                cancelButton={
+                  <DialogClose asChild>
+                    <Button variant="tertiary/small">Cancel</Button>
+                  </DialogClose>
+                }
+              />
+            </Fieldset>
+          </fetcher.Form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RevokeApiKeyButton({
+  id,
+  name,
+  canWrite,
+}: {
+  id: string;
+  name: string;
+  canWrite: boolean;
+}) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          variant="minimal/small"
+          LeadingIcon={NoSymbolIcon}
+          disabled={!canWrite}
+          tooltip={canWrite ? undefined : "You don't have permission to revoke API keys"}
+        >
+          Revoke…
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>Revoke API key</DialogHeader>
+        <div className="flex flex-col gap-3 pt-3">
+          <Paragraph>
+            Are you sure you want to revoke "{name}"? Requests using this key will stop
+            authenticating, and it won't be able to mint new public tokens. Public tokens it already
+            minted remain valid until they expire. This can't be reversed.
+          </Paragraph>
+          <FormButtons
+            confirmButton={
+              <Form method="post">
+                <input type="hidden" name="action" value="revoke" />
+                <input type="hidden" name="apiKeyId" value={id} />
+                <Button type="submit" variant="danger/medium">
+                  Revoke API key
+                </Button>
+              </Form>
+            }
+            cancelButton={
+              <DialogClose asChild>
+                <Button variant="tertiary/medium">Cancel</Button>
+              </DialogClose>
+            }
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ApiKeyAccess({
+  label,
+  taskIdentifiers,
+  usesTaskSelection = false,
+}: {
+  label: string;
+  taskIdentifiers?: string[];
+  usesTaskSelection?: boolean;
+}) {
+  return (
+    <div className="flex min-w-40 flex-col gap-0.5">
+      <span className="text-xs text-text-bright">{label}</span>
+      {usesTaskSelection ? (
+        <span className="text-xs text-text-dimmed">
+          {taskIdentifiers === undefined
+            ? "All tasks"
+            : `${taskIdentifiers.length} selected ${taskIdentifiers.length === 1 ? "task" : "tasks"}`}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ApiKeyStatus({
+  revokedAt,
+  expiresAt,
+}: {
+  revokedAt?: Date | string | null;
+  expiresAt?: Date | string | null;
+}) {
+  if (revokedAt) {
+    return (
+      <div className="flex items-center gap-1 text-xs text-text-dimmed">
+        <NoSymbolIcon className="size-4" />
+        Revoked
+      </div>
+    );
+  }
+
+  if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
+    return (
+      <div className="flex items-center gap-1 text-xs text-text-dimmed">
+        <ExclamationTriangleIcon className="size-4" />
+        Expired
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 text-xs text-success">
+      <CheckCircleIcon className="size-4" />
+      Active
+    </div>
   );
 }
