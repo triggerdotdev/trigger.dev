@@ -1,4 +1,5 @@
 import { startSpan } from "@internal/tracing";
+import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { isFinalRunStatus } from "../statuses.js";
 import type { SystemResources } from "./systems.js";
 import type { WaitpointSystem } from "./waitpointSystem.js";
@@ -29,6 +30,106 @@ export class BatchSystem {
 
   public async performCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
     await this.#tryCompleteBatch({ batchId });
+  }
+
+  public async scheduleExpireBatch({
+    batchId,
+    availableAt,
+  }: {
+    batchId: string;
+    availableAt: Date;
+  }): Promise<void> {
+    await this.$.worker.enqueue({
+      id: `expireBatch:${batchId}`,
+      job: "expireBatch",
+      payload: { batchId },
+      availableAt,
+    });
+  }
+
+  /**
+   * Terminally fail a batch whose phase 2 item stream never sealed it, completing the
+   * parent's batchTriggerAndWait waitpoint with an error so the parent resumes with a
+   * failure instead of hanging forever.
+   *
+   * A batch is only sealed once every item has streamed, but the parent is blocked on the
+   * batch's waitpoint from the moment the batch is created. Nothing else completes that
+   * waitpoint, so without this a stream that never finishes strands the parent permanently.
+   *
+   * Idempotent and race-safe: a batch that sealed in the meantime is left alone.
+   */
+  public async expireBatch({ batchId }: { batchId: string }): Promise<void> {
+    return startSpan(this.$.tracer, "expireBatch", async (span) => {
+      span.setAttribute("batchId", batchId);
+
+      const batch = await this.$.runStore.findBatchTaskRunById(batchId, undefined, this.$.prisma);
+
+      if (!batch) {
+        this.$.logger.debug("expireBatch: batch doesn't exist", { batchId });
+        return;
+      }
+
+      if (batch.sealed || batch.status !== "PENDING") {
+        this.$.logger.debug("expireBatch: batch sealed or no longer PENDING, nothing to do", {
+          batchId,
+          status: batch.status,
+          sealed: batch.sealed,
+        });
+        return;
+      }
+
+      const aborted = await this.$.runStore.updateManyBatchTaskRun(
+        {
+          where: { id: batchId, sealed: false, status: "PENDING" },
+          data: {
+            status: "ABORTED",
+            completedAt: new Date(),
+            processingCompletedAt: new Date(),
+          },
+        },
+        this.$.prisma
+      );
+
+      if (aborted.count === 0) {
+        this.$.logger.debug("expireBatch: lost the race to a seal, no-op", { batchId });
+        return;
+      }
+
+      const waitpoint = await this.$.runStore.findWaitpoint(
+        {
+          where: { completedByBatchId: batchId },
+        },
+        this.$.prisma
+      );
+
+      if (!waitpoint) {
+        this.$.logger.debug("expireBatch: no waitpoint, nothing was blocked on this batch", {
+          batchId,
+        });
+        return;
+      }
+
+      const enqueuedCount = batch.successfulRunCount ?? 0;
+      const error: TaskRunError = {
+        type: "STRING_ERROR",
+        raw:
+          `Batch ${batch.friendlyId} was never fully created: only ${enqueuedCount} of ` +
+          `${batch.expectedCount} items were received before it timed out, so it can never ` +
+          `complete. batchTriggerAndWait failed rather than waiting forever.`,
+      };
+
+      await this.waitpointSystem.completeWaitpoint({
+        id: waitpoint.id,
+        output: { value: JSON.stringify(error), isError: true },
+      });
+
+      this.$.logger.warn("expireBatch: aborted an unsealed batch and resumed its parent", {
+        batchId,
+        waitpointId: waitpoint.id,
+        enqueuedCount,
+        expectedCount: batch.expectedCount,
+      });
+    });
   }
 
   /**

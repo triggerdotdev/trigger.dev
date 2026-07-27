@@ -60,6 +60,13 @@ type Options = {
   keyPrefix: string;
   pathMatchers: (RegExp | string)[];
   pathWhiteList?: (RegExp | string)[];
+  /**
+   * Escape hatch for requests that can only be admitted by consulting state, rather than by
+   * matching a path. Runs after the authorization header check, so an unauthenticated
+   * request is still rejected, and only skips the rate limit itself. Must not throw: a
+   * bypass that cannot decide should return false and let the limiter apply.
+   */
+  bypass?: (req: ExpressRequest) => Promise<boolean>;
   defaultLimiter: RateLimiterConfig;
   limiterConfigOverride?: LimitConfigOverrideFunction;
   limiterCache?: {
@@ -151,6 +158,7 @@ export function authorizationRateLimitMiddleware({
   defaultLimiter,
   pathMatchers,
   pathWhiteList = [],
+  bypass,
   log = {
     rejections: true,
     requests: true,
@@ -245,6 +253,13 @@ export function authorizationRateLimitMiddleware({
           2
         )
       );
+    }
+
+    if (bypass && (await bypass(req))) {
+      if (log.requests) {
+        logger.info(`RateLimiter (${keyPrefix}): bypassed ${req.path}`);
+      }
+      return next();
     }
 
     const hash = createHash("sha256");

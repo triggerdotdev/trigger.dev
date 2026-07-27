@@ -879,6 +879,20 @@ const EnvironmentSchema = z
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
     BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(5),
+    /**
+     * How long a created batch may remain unsealed before the seal-timeout reaper
+     * aborts it and resumes any blocked parent with an error. Must exceed the SDK's
+     * worst-case stream-retry budget (maxAttempts x server request timeout).
+     * Doubles as the TTL of the phase 2 streaming grant, so the grant and the reaper
+     * always agree on how long a batch is allowed to be sealing.
+     */
+    BATCH_SEAL_TIMEOUT_MS: z.coerce.number().int().positive().default(1_800_000),
+    /**
+     * Number of phase 2 (`POST /api/v3/batches/:id/items`) requests a created batch is
+     * granted, exempt from the general API rate limit. Sized above the SDK's stream
+     * maxAttempts so a batch admitted by the batch limiter can always finish streaming.
+     */
+    BATCH_STREAM_GRANT_ATTEMPTS: z.coerce.number().int().positive().default(10),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),

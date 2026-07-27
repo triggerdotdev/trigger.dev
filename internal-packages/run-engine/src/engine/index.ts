@@ -285,6 +285,9 @@ export class RunEngine {
         tryCompleteBatch: async ({ payload }) => {
           await this.batchSystem.performCompleteBatch({ batchId: payload.batchId });
         },
+        expireBatch: async ({ payload }) => {
+          await this.batchSystem.expireBatch({ batchId: payload.batchId });
+        },
         continueRunIfUnblocked: async ({ payload }) => {
           await this.waitpointSystem.continueRunIfUnblocked({
             runId: payload.runId,
@@ -1775,6 +1778,28 @@ export class RunEngine {
 
   async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
     return this.batchSystem.scheduleCompleteBatch({ batchId });
+  }
+
+  /**
+   * Terminally fail a batch whose phase 2 item stream never sealed it, completing the
+   * parent's batchTriggerAndWait waitpoint with an error so the parent resumes.
+   */
+  async expireBatch({ batchId }: { batchId: string }): Promise<void> {
+    return this.batchSystem.expireBatch({ batchId });
+  }
+
+  /**
+   * Schedule the seal-timeout reaper. Only worth scheduling for a batch that blocks a
+   * parent, since a fire-and-forget batch has nothing to strand.
+   */
+  async scheduleExpireBatch({
+    batchId,
+    availableAt,
+  }: {
+    batchId: string;
+    availableAt: Date;
+  }): Promise<void> {
+    return this.batchSystem.scheduleExpireBatch({ batchId, availableAt });
   }
 
   // ============================================================================
