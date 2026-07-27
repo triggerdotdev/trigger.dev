@@ -39,8 +39,9 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasSso]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
-  // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Controllable
-  // globally and per-org (org wins). No-op unless INTERNAL_API_ORIGIN is set.
+  // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Per-org, with
+  // INTERNAL_API_ORIGIN_ENABLED as the global default (org wins). No-op unless
+  // INTERNAL_API_ORIGIN is set.
   // Strict z.boolean(): coercion turns the string "false" into true, which
   // would silently enable the wrong orgs if written as a string.
   [FEATURE_FLAG.internalApiOriginEnabled]: z.boolean(),

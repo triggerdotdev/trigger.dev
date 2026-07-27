@@ -236,6 +236,8 @@ const EnvironmentSchema = z
     // Alternative API origin for deployed runs whose org has the
     // internalApiOriginEnabled feature flag on. Unset = flag is a no-op.
     INTERNAL_API_ORIGIN: z.string().optional(),
+    // Global default for internalApiOriginEnabled when an org hasn't set it.
+    INTERNAL_API_ORIGIN_ENABLED: z.string().default("0"),
     STREAM_ORIGIN: z.string().optional(),
     ELECTRIC_ORIGIN: z.string().default("http://localhost:3060"),
     // A comma separated list of electric origins to shard into different electric instances by environmentId

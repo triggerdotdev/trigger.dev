@@ -44,6 +44,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
     include: {
       parentEnvironment: true,
+      organization: { select: { featureFlags: true } },
     },
   });
 
