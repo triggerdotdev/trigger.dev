@@ -13,6 +13,8 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { RoleBaseAccessFallback } from "./fallback.js";
 export type { RoleBaseAccessController, RbacAbility, RbacResource } from "@trigger.dev/plugins";
 export type { UserActorAuthResult, UserActorClaims } from "@trigger.dev/plugins";
+export { buildJwtAbility, scopesWithinAbility } from "./ability.js";
+export { FULL_ACCESS_PRESET_ID, scopesGrantFullAccess } from "@trigger.dev/plugins";
 // Re-export the user-actor token grammar so the webapp mints/checks tokens
 // through @trigger.dev/rbac (it doesn't import @trigger.dev/plugins directly).
 export {
@@ -211,6 +213,20 @@ class LazyController implements RoleBaseAccessController {
 
   async systemRoles(...args: Parameters<RoleBaseAccessController["systemRoles"]>) {
     return (await this.c()).systemRoles(...args);
+  }
+
+  async apiKeyPresets(...args: Parameters<RoleBaseAccessController["apiKeyPresets"]>) {
+    return (await this.c()).apiKeyPresets(...args);
+  }
+
+  async prepareApiKeyPolicy(...args: Parameters<RoleBaseAccessController["prepareApiKeyPolicy"]>) {
+    return (await this.c()).prepareApiKeyPolicy(...args);
+  }
+
+  async describeApiKeyPolicy(
+    ...args: Parameters<RoleBaseAccessController["describeApiKeyPolicy"]>
+  ) {
+    return (await this.c()).describeApiKeyPolicy(...args);
   }
 
   async allPermissions(

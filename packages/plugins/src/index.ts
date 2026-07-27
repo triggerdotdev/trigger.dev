@@ -18,10 +18,22 @@ export type {
   RbacPluginConfig,
   RbacDatabaseConfig,
   SystemRole,
+  ApiKeyPreset,
+  ApiKeyPolicy,
+  PrepareApiKeyPolicyResult,
+  ApiKeyPolicyDescription,
   AuthenticatedEnvironment,
+  RbacScopeAction,
+  RbacScopeResourceType,
 } from "./rbac.js";
 
-export { buildJwtAbility } from "./rbac.js";
+export {
+  buildJwtAbility,
+  buildScope,
+  FULL_ACCESS_PRESET_ID,
+  scopesGrantFullAccess,
+  scopesWithinAbility,
+} from "./rbac.js";
 export {
   isUserActorToken,
   signUserActorToken,
