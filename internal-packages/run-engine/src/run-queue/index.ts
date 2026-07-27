@@ -140,9 +140,25 @@ type MarkedRun = {
 const RETURN_UNCLAIMED_BATCH_SIZE = 50;
 const READ_MESSAGES_BATCH_SIZE = 200;
 
+/**
+ * One retry covers the admission-to-RPUSH gap, which is a single round trip. `skipped` cannot
+ * distinguish that gap from a leaked concurrency slot, which never becomes claimable, so the
+ * pass count is kept low enough that a leak costs one short delay rather than a stall — these
+ * sweeps run per environment inside bulk pause loops.
+ */
+const RETURN_UNCLAIMED_MAX_PASSES = 2;
+const RETURN_UNCLAIMED_PASS_DELAY_MS = 50;
+const RETURN_UNCLAIMED_MAX_PASS_CEILING = 10;
+
 export type ReturnUnclaimedMessagesResult = {
+  /** Distinct runs put back on their queue. */
   returned: number;
-  skipped: number;
+  /**
+   * Candidates the final pass could not claim. Each is either a run a worker took first —
+   * which means it escaped the pause and is executing — or a leaked concurrency slot with no
+   * worker queue entry behind it. The two are indistinguishable from here.
+   */
+  skippedLastPass: number;
   errors: number;
   passes: number;
 };
@@ -1058,8 +1074,8 @@ export class RunQueue {
    *
    * Admission is not atomic with the push onto the worker queue: the dequeue script claims
    * the concurrency slot and a separate round trip does the RPUSH. A run caught in that gap
-   * is a candidate whose claim fails, so a pass reporting skipped runs is retried — by then
-   * the run has either landed on the worker queue (and is claimable) or been picked up by a
+   * is a candidate whose claim fails, so a pass that skips or errors is retried — by then the
+   * run has either landed on the worker queue (and is claimable) or been picked up by a
    * worker (and has left the candidate set).
    *
    * @param queue - Restrict to a single queue (including its concurrency key variants).
@@ -1068,8 +1084,8 @@ export class RunQueue {
   public async returnUnclaimedMessagesToQueue({
     env,
     queue,
-    maxPasses = 3,
-    passDelayMs = 250,
+    maxPasses = RETURN_UNCLAIMED_MAX_PASSES,
+    passDelayMs = RETURN_UNCLAIMED_PASS_DELAY_MS,
   }: {
     env: MinimalAuthenticatedEnvironment;
     queue?: string;
@@ -1080,30 +1096,39 @@ export class RunQueue {
       "returnUnclaimedMessagesToQueue",
       async (span) => {
         const targetBaseQueueKey = queue ? this.keys.queueKey(env, queue) : undefined;
+        const totalPasses = Number.isFinite(maxPasses)
+          ? Math.min(RETURN_UNCLAIMED_MAX_PASS_CEILING, Math.max(1, Math.floor(maxPasses)))
+          : RETURN_UNCLAIMED_MAX_PASSES;
 
-        let returned = 0;
-        let skipped = 0;
+        const returnedRunIds = new Set<string>();
+        let skippedLastPass = 0;
         let errors = 0;
         let passes = 0;
 
-        for (let pass = 0; pass < Math.max(1, maxPasses); pass++) {
+        for (let pass = 0; pass < totalPasses; pass++) {
           passes++;
 
           const passResult = await this.#returnUnclaimedMessagesPass(env, targetBaseQueueKey);
 
-          returned += passResult.returned;
+          for (const runId of passResult.returnedRunIds) {
+            returnedRunIds.add(runId);
+          }
           errors += passResult.errors;
-          skipped = passResult.skipped;
+          skippedLastPass = passResult.skipped;
 
-          if (passResult.skipped === 0 || pass === Math.max(1, maxPasses) - 1) {
+          const settled = passResult.skipped === 0 && passResult.errors === 0;
+
+          if (settled || pass === totalPasses - 1) {
             break;
           }
 
           await setTimeout(passDelayMs);
         }
 
+        const returned = returnedRunIds.size;
+
         span.setAttribute("returned_count", returned);
-        span.setAttribute("skipped_count", skipped);
+        span.setAttribute("skipped_last_pass", skippedLastPass);
         span.setAttribute("error_count", errors);
         span.setAttribute("passes", passes);
 
@@ -1112,12 +1137,12 @@ export class RunQueue {
           environmentId: env.id,
           queue,
           returned,
-          skipped,
+          skippedLastPass,
           errors,
           passes,
         });
 
-        return { returned, skipped, errors, passes };
+        return { returned, skippedLastPass, errors, passes };
       },
       {
         kind: SpanKind.INTERNAL,
@@ -1129,17 +1154,23 @@ export class RunQueue {
     );
   }
 
+  /**
+   * Candidates come from the environment-level sets even when a single queue is targeted.
+   * The per-queue sets would be cheaper but `ckIndex` only tracks concurrency key variants
+   * that still have pending messages, so a variant whose only runs are already in flight is
+   * not discoverable from it.
+   */
   async #returnUnclaimedMessagesPass(
     env: MinimalAuthenticatedEnvironment,
     targetBaseQueueKey: string | undefined
-  ): Promise<{ returned: number; skipped: number; errors: number }> {
+  ): Promise<{ returnedRunIds: string[]; skipped: number; errors: number }> {
     const unclaimedRunIds = await this.redis.sdiff(
       this.keys.envCurrentConcurrencyKey(env),
       this.keys.envCurrentDequeuedKey(env)
     );
 
     if (unclaimedRunIds.length === 0) {
-      return { returned: 0, skipped: 0, errors: 0 };
+      return { returnedRunIds: [], skipped: 0, errors: 0 };
     }
 
     const messages = (await this.#readMessages(env.organization.id, unclaimedRunIds)).filter(
@@ -1147,7 +1178,7 @@ export class RunQueue {
         !targetBaseQueueKey || this.keys.baseQueueKeyFromQueue(message.queue) === targetBaseQueueKey
     );
 
-    let returned = 0;
+    const returnedRunIds: string[] = [];
     let skipped = 0;
     let errors = 0;
 
@@ -1171,14 +1202,17 @@ export class RunQueue {
         }
 
         if (result.value) {
-          returned++;
+          const runId = batch[index]?.runId;
+          if (runId) {
+            returnedRunIds.push(runId);
+          }
         } else {
           skipped++;
         }
       }
     }
 
-    return { returned, skipped, errors };
+    return { returnedRunIds, skipped, errors };
   }
 
   async #readMessages(orgId: string, runIds: string[]): Promise<OutputPayload[]> {

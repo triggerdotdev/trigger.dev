@@ -121,7 +121,7 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
           queue: "task/my-task",
         });
 
-        expect(result).toEqual({ returned: 3, skipped: 0, errors: 0, passes: 1 });
+        expect(result).toEqual({ returned: 3, skippedLastPass: 0, errors: 0, passes: 1 });
 
         expect(await queue.peekAllOnWorkerQueue(authenticatedEnvDev.id)).toHaveLength(0);
         expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(3);
@@ -260,7 +260,7 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
         });
 
         expect(result.returned).toBe(0);
-        expect(result.skipped).toBe(1);
+        expect(result.skippedLastPass).toBe(1);
 
         expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(0);
         expect(await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
@@ -270,6 +270,41 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
       }
     }
   );
+
+  redisTest("never resurrects an acknowledged run", async ({ redisContainer }) => {
+    const queue = createRunQueue(redisContainer);
+
+    try {
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: messageFor({ runId: "r1" }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+
+      await queue.processMasterQueueForEnvironment(authenticatedEnvDev.id, 10);
+      expect(await queue.peekAllOnWorkerQueue(authenticatedEnvDev.id)).toHaveLength(1);
+
+      await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, "r1", {
+        skipDequeueProcessing: true,
+      });
+
+      expect(await queue.messageExists(authenticatedEnvDev.organization.id, "r1")).toBe(0);
+
+      const result = await queue.returnUnclaimedMessagesToQueue({
+        env: authenticatedEnvDev,
+        queue: "task/my-task",
+        maxPasses: 1,
+      });
+
+      expect(result.returned).toBe(0);
+      expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(0);
+      expect(await queue.lengthOfEnvQueue(authenticatedEnvDev)).toBe(0);
+      expect(await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(0);
+    } finally {
+      await queue.quit();
+    }
+  });
 
   redisTest("restores the TTL registration of a returned run", async ({ redisContainer }) => {
     const queue = createRunQueue(redisContainer, {
@@ -520,20 +555,27 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
           authenticatedEnvDev.id
         );
         assertNonNullable(claimed);
+        expect(claimed.messageId).toBe("r1");
+
+        await queue.processMasterQueueForEnvironment(authenticatedEnvDev.id, 10);
+        expect(await queue.peekAllOnWorkerQueue(authenticatedEnvDev.id)).toHaveLength(1);
 
         expect(
           await queue.currentConcurrencyOfQueues(authenticatedEnvDev, ["task/my-task"])
         ).toEqual({ "task/my-task": 1 });
 
-        await queue.returnUnclaimedMessagesToQueue({
+        const result = await queue.returnUnclaimedMessagesToQueue({
           env: authenticatedEnvDev,
           queue: "task/my-task",
         });
 
+        expect(result.returned).toBe(1);
+        expect(await queue.peekAllOnWorkerQueue(authenticatedEnvDev.id)).toHaveLength(0);
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+
         expect(
           await queue.currentConcurrencyOfQueues(authenticatedEnvDev, ["task/my-task"])
         ).toEqual({ "task/my-task": 1 });
-        expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
 
         await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, claimed.messageId, {
           skipDequeueProcessing: true,
@@ -549,13 +591,104 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
   );
 
   redisTest(
+    "claims a fast-pathed run pushed to the unresolved worker queue name",
+    async ({ redisContainer }) => {
+      vi.stubEnv(
+        "RUN_ENGINE_WORKER_QUEUE_OVERRIDES",
+        JSON.stringify({ environmentId: { [authenticatedEnvDev.id]: "rerouted" } })
+      );
+
+      let queue: RunQueue | undefined;
+
+      try {
+        queue = createRunQueue(redisContainer);
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageFor({ runId: "r1" }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+          enableFastPath: true,
+        });
+
+        expect(await queue.peekAllOnWorkerQueue(authenticatedEnvDev.id)).toHaveLength(1);
+        expect(await queue.peekAllOnWorkerQueue("rerouted")).toHaveLength(0);
+
+        const result = await queue.returnUnclaimedMessagesToQueue({
+          env: authenticatedEnvDev,
+          queue: "task/my-task",
+        });
+
+        expect(result.returned).toBe(1);
+        expect(await queue.peekAllOnWorkerQueue(authenticatedEnvDev.id)).toHaveLength(0);
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(0);
+      } finally {
+        vi.unstubAllEnvs();
+        await queue?.quit();
+      }
+    }
+  );
+
+  redisTest("retries a pass while runs remain unclaimed", async ({ redisContainer }) => {
+    const queue = createRunQueue(redisContainer);
+    const redis = createRedisClient(redisContainer);
+
+    try {
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: messageFor({ runId: "r1" }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+
+      await queue.processMasterQueueForEnvironment(authenticatedEnvDev.id, 10);
+
+      const entry = await redis.lpop(`runqueue:test:workerQueue:${authenticatedEnvDev.id}`);
+      assertNonNullable(entry);
+
+      const result = await queue.returnUnclaimedMessagesToQueue({
+        env: authenticatedEnvDev,
+        queue: "task/my-task",
+        passDelayMs: 10,
+      });
+
+      expect(result.passes).toBe(2);
+      expect(result.skippedLastPass).toBe(1);
+      expect(result.returned).toBe(0);
+
+      const single = await queue.returnUnclaimedMessagesToQueue({
+        env: authenticatedEnvDev,
+        queue: "task/my-task",
+        maxPasses: 1,
+      });
+
+      expect(single.passes).toBe(1);
+
+      for (const maxPasses of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
+        const guarded = await queue.returnUnclaimedMessagesToQueue({
+          env: authenticatedEnvDev,
+          queue: "task/my-task",
+          maxPasses,
+          passDelayMs: 1,
+        });
+
+        expect(guarded.passes).toBeGreaterThanOrEqual(1);
+        expect(guarded.passes).toBeLessThanOrEqual(10);
+      }
+    } finally {
+      await redis.quit();
+      await queue.quit();
+    }
+  });
+
+  redisTest(
     "leaves runs that have not reached the worker queue alone",
     async ({ redisContainer }) => {
       const queue = createRunQueue(redisContainer);
 
       try {
         const empty = await queue.returnUnclaimedMessagesToQueue({ env: authenticatedEnvDev });
-        expect(empty).toEqual({ returned: 0, skipped: 0, errors: 0, passes: 1 });
+        expect(empty).toEqual({ returned: 0, skippedLastPass: 0, errors: 0, passes: 1 });
 
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
@@ -567,7 +700,7 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
         const pendingOnly = await queue.returnUnclaimedMessagesToQueue({
           env: authenticatedEnvDev,
         });
-        expect(pendingOnly).toEqual({ returned: 0, skipped: 0, errors: 0, passes: 1 });
+        expect(pendingOnly).toEqual({ returned: 0, skippedLastPass: 0, errors: 0, passes: 1 });
         expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
         expect(await queue.oldestMessageInQueue(authenticatedEnvDev, "task/my-task")).toBe(
           baseTimestamp
@@ -595,7 +728,7 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
       expect(first.returned).toBe(1);
 
       const second = await queue.returnUnclaimedMessagesToQueue({ env: authenticatedEnvDev });
-      expect(second).toEqual({ returned: 0, skipped: 0, errors: 0, passes: 1 });
+      expect(second).toEqual({ returned: 0, skippedLastPass: 0, errors: 0, passes: 1 });
 
       expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
       expect(await queue.lengthOfEnvQueue(authenticatedEnvDev)).toBe(1);

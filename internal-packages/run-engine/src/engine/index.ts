@@ -49,7 +49,7 @@ import type {
   BatchCompletionCallback,
 } from "../batch-queue/types.js";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
-import { RunQueue } from "../run-queue/index.js";
+import { RunQueue, type ReturnUnclaimedMessagesResult } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import type { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
@@ -1648,7 +1648,7 @@ export class RunEngine {
   }: {
     environment: MinimalAuthenticatedEnvironment;
     queue?: string;
-  }): Promise<{ returned: number; skipped: number }> {
+  }): Promise<ReturnUnclaimedMessagesResult> {
     return this.runQueue.returnUnclaimedMessagesToQueue({ env: environment, queue });
   }
 
