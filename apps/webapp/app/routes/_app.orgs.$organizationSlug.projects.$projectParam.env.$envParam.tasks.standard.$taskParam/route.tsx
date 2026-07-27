@@ -1,7 +1,7 @@
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
@@ -29,7 +29,6 @@ import {
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -52,6 +51,7 @@ import {
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
+import { NewRunsButton, TaskRunsList } from "~/components/runs/v3/TaskRunsList";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
@@ -121,6 +121,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       to,
       cursor,
       direction,
+      includeHasAnyRuns: true,
     })
     .catch(() => null);
 
@@ -144,6 +145,13 @@ export default function Page() {
   });
   const queuesPath = v3QueuesPath(organization, project, environment);
 
+  // New-runs banner state is lifted here so the button can live in the top bar,
+  // while the count/action originate from the live-reload hook inside the
+  // deferred runs table below. Count drives visibility; the ref exposes the
+  // click action (kept current by TaskRunsList each render).
+  const [newRunsCount, setNewRunsCount] = useState(0);
+  const showNewRunsRef = useRef<() => void>(() => {});
+
   return (
     <PageContainer>
       <NavBar>
@@ -166,6 +174,9 @@ export default function Page() {
               <div className="flex h-10 items-center border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
                 <Header2>Runs</Header2>
                 <div className="ml-auto flex items-center gap-1.5">
+                  {newRunsCount > 0 ? (
+                    <NewRunsButton count={newRunsCount} onClick={() => showNewRunsRef.current()} />
+                  ) : null}
                   <TimeFilter defaultPeriod="7d" labelName="Runs" />
                   <Suspense fallback={null}>
                     <TypedAwait resolve={runList} errorElement={null}>
@@ -200,17 +211,12 @@ export default function Page() {
                       <TypedAwait resolve={runList} errorElement={<TableLoading />}>
                         {(list) =>
                           list ? (
-                            <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-                              <TaskRunsTable
-                                total={list.runs.length}
-                                hasFilters={list.hasFilters}
-                                filters={list.filters}
-                                runs={list.runs}
-                                variant="dimmed"
-                                showTopBorder={false}
-                                stickyHeader
-                              />
-                            </div>
+                            <TaskRunsList
+                              list={list}
+                              taskSlug={task.slug}
+                              onNewRunsCountChange={setNewRunsCount}
+                              showNewRunsRef={showNewRunsRef}
+                            />
                           ) : (
                             <TableLoading />
                           )
