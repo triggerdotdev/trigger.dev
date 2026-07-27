@@ -201,6 +201,15 @@ export type {
 
 export * from "./getBranch.js";
 
+export type CreatePublicTokenRequestBody = {
+  scopes: string[];
+  expirationTime?: string | number;
+  oneTimeUse?: boolean;
+  realtime?: { skipColumns?: string[] };
+};
+
+const CreatePublicTokenResponseBody = z.object({ token: z.string() });
+
 /**
  * Trigger.dev v3 API client
  */
@@ -359,6 +368,15 @@ export class ApiClient {
     )
       .withResponse()
       .then(async ({ data, response }) => {
+        const jwtHeader = response.headers.get("x-trigger-jwt");
+
+        if (typeof jwtHeader === "string") {
+          return {
+            ...data,
+            publicAccessToken: jwtHeader,
+          };
+        }
+
         const claimsHeader = response.headers.get("x-trigger-jwt-claims");
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
@@ -407,6 +425,15 @@ export class ApiClient {
     )
       .withResponse()
       .then(async ({ data, response }) => {
+        const jwtHeader = response.headers.get("x-trigger-jwt");
+
+        if (typeof jwtHeader === "string") {
+          return {
+            ...data,
+            publicAccessToken: jwtHeader,
+          };
+        }
+
         const claimsHeader = response.headers.get("x-trigger-jwt-claims");
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
@@ -1865,6 +1892,22 @@ export class ApiClient {
       {
         method: "POST",
         headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async createPublicToken(
+    body: CreatePublicTokenRequestBody,
+    requestOptions?: ZodFetchOptions
+  ): Promise<{ token: string }> {
+    return zodfetch(
+      CreatePublicTokenResponseBody,
+      `${this.baseUrl}/api/v1/auth/public-tokens`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)
     );
