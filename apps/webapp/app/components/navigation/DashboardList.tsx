@@ -184,6 +184,7 @@ function DashboardChildMenuItem({
       to={item.path}
       isCollapsed={isCollapsed}
       disableIconHover
+      yieldActiveToFavorite
       action={
         showDragHandle ? (
           <div className="sidebar-drag-handle flex h-full w-full cursor-grab items-center justify-center rounded text-text-dimmed opacity-0 group-hover/menuitem:opacity-100 hover:text-text-bright active:cursor-grabbing">
