@@ -712,12 +712,16 @@ describe("RunEngine 2-Phase Batch API", () => {
         prisma
       );
 
-      await setTimeout(500);
-      const dequeued = await engine.dequeueFromWorkerQueue({
-        consumerId: "test_12345",
-        workerQueue: "main",
-      });
-      expect(dequeued.length).toBe(1);
+      await vi.waitFor(
+        async () => {
+          const dequeued = await engine.dequeueFromWorkerQueue({
+            consumerId: "test_12345",
+            workerQueue: "main",
+          });
+          expect(dequeued.length).toBe(1);
+        },
+        { timeout: 15_000, interval: 100 }
+      );
 
       const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
       assertNonNullable(initialExecutionData);

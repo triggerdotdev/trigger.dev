@@ -1,3 +1,4 @@
+import { tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { batchStreamGrants } from "~/runEngine/concerns/batchStreamGrantsInstance.server";
 import { authenticateAuthorizationHeader } from "./apiAuth.server";
@@ -92,12 +93,14 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
       return false;
     }
 
-    const authenticated = await authenticateAuthorizationHeader(authorizationValue, {
-      allowPublicKey: true,
-      allowJWT: true,
-    });
+    const [authError, authenticated] = await tryCatch(
+      authenticateAuthorizationHeader(authorizationValue, {
+        allowPublicKey: true,
+        allowJWT: true,
+      })
+    );
 
-    if (!authenticated || !authenticated.ok) {
+    if (authError || !authenticated || !authenticated.ok) {
       return false;
     }
 

@@ -5,7 +5,6 @@ import { Ratelimit } from "@upstash/ratelimit";
 import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { env } from "~/env.server";
 import type { RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "./logger.server";
 import type { Duration, Limiter } from "./rateLimiter.server";
@@ -56,7 +55,7 @@ export type RateLimiterConfig = z.infer<typeof RateLimiterConfig>;
 type LimitConfigOverrideFunction = (authorizationValue: string) => Promise<unknown>;
 
 type Options = {
-  redis?: RedisWithClusterOptions;
+  redis: RedisWithClusterOptions;
   keyPrefix: string;
   pathMatchers: (RegExp | string)[];
   pathWhiteList?: (RegExp | string)[];
@@ -184,16 +183,7 @@ export function authorizationRateLimitMiddleware({
     }),
   });
 
-  const redisClient = createRedisRateLimitClient(
-    redis ?? {
-      port: env.RATE_LIMIT_REDIS_PORT,
-      host: env.RATE_LIMIT_REDIS_HOST,
-      username: env.RATE_LIMIT_REDIS_USERNAME,
-      password: env.RATE_LIMIT_REDIS_PASSWORD,
-      tlsDisabled: env.RATE_LIMIT_REDIS_TLS_DISABLED === "true",
-      clusterMode: env.RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED === "1",
-    }
-  );
+  const redisClient = createRedisRateLimitClient(redis);
 
   return async (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => {
     if (log.requests) {
@@ -255,11 +245,24 @@ export function authorizationRateLimitMiddleware({
       );
     }
 
-    if (bypass && (await bypass(req))) {
-      if (log.requests) {
-        logger.info(`RateLimiter (${keyPrefix}): bypassed ${req.path}`);
+    if (bypass) {
+      let bypassed = false;
+
+      try {
+        bypassed = await bypass(req);
+      } catch (error) {
+        logger.warn(`RateLimiter (${keyPrefix}): bypass threw, applying the limit`, {
+          path: req.path,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
-      return next();
+
+      if (bypassed) {
+        if (log.requests) {
+          logger.info(`RateLimiter (${keyPrefix}): bypassed ${req.path}`);
+        }
+        return next();
+      }
     }
 
     const hash = createHash("sha256");
