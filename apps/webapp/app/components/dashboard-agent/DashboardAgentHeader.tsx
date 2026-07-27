@@ -3,19 +3,26 @@ import { cn } from "~/utils/cn";
 
 export function DashboardAgentHeader({
   view,
+  title,
   onNewChat,
   onToggleHistory,
   onClose,
 }: {
   view: "chat" | "history";
+  // The active chat's title (the panel owns resolving it). Titles are written by
+  // the agent, so they can be long — truncate and keep the full text in a
+  // tooltip.
+  title: string;
   onNewChat: () => void;
   onToggleHistory: () => void;
   onClose: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between border-b border-grid-bright px-3 py-2">
-      <span className="text-sm font-medium text-text-bright">Chat</span>
-      <div className="flex items-center gap-0.5">
+    <div className="flex items-center justify-between gap-2 border-b border-grid-bright px-3 py-2">
+      <span className="truncate text-sm font-medium text-text-bright" title={title}>
+        {title}
+      </span>
+      <div className="flex shrink-0 items-center gap-0.5">
         <IconButton label="New chat" icon={PencilSquareIcon} onClick={onNewChat} />
         <IconButton
           label="History"

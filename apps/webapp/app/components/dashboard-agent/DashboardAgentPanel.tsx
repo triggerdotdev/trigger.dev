@@ -3,6 +3,7 @@ import { useLocation } from "@remix-run/react";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
+import { useToast } from "~/components/primitives/Toast";
 import { useAgentPageContext } from "~/hooks/useAgentPageContext";
 import { useApiOrigin } from "~/hooks/useApiOrigin";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -21,6 +22,7 @@ import {
   type DashboardAgentChat as DashboardAgentChatListItem,
 } from "./DashboardAgentHistory";
 import type { AgentPageContext } from "./page-context-types";
+import { agentPageLabel } from "./page-label";
 
 // Restore the last open chat across panel re-opens and page reloads. Scoped by
 // org because chats are org-scoped. localStorage (not a cookie) since the panel
@@ -84,6 +86,7 @@ export function DashboardAgentPanel({
   const apiOrigin = useApiOrigin();
   const location = useLocation();
   const pageContext = useAgentPageContext();
+  const toast = useToast();
 
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
   const storageKey = lastChatStorageKey(organization.id);
@@ -96,7 +99,10 @@ export function DashboardAgentPanel({
   // racing it into a new chat.
   const [loading, setLoading] = useState(() => readLastChatId(storageKey) !== null);
 
-  const currentPage = location.pathname.split("/").filter(Boolean).pop() ?? "overview";
+  // What the banner shows. The agent gets the full pathname in `clientData`
+  // (below) — this is display text only, derived from the same page context the
+  // agent receives so the two can't disagree about where the user is.
+  const currentPage = agentPageLabel(pageContext, location.pathname);
 
   // The page context is a fresh object every render, so key the clientData memo
   // off its serialized form — otherwise every render would look like new
@@ -116,12 +122,16 @@ export function DashboardAgentPanel({
   );
 
   const loadHistory = useCallback(async () => {
-    const res = await fetch(actionPath);
-    if (res.ok) {
+    try {
+      const res = await fetch(actionPath);
+      if (!res.ok) throw new Error(`History request failed (${res.status})`);
       const data = (await res.json()) as { chats?: DashboardAgentChatListItem[] };
       setChats(data.chats ?? []);
+    } catch (error) {
+      console.error("Dashboard agent: failed to load chat history", error);
+      toast.error("We couldn't load your previous chats. Try again in a moment.");
     }
-  }, [actionPath]);
+  }, [actionPath, toast]);
 
   // Bumped on each open so a slower earlier open can't overwrite a newer one
   // when chats are switched rapidly.
@@ -137,6 +147,10 @@ export function DashboardAgentPanel({
       setLoading(true);
       try {
         const res = await fetch(`${actionPath}?chatId=${encodeURIComponent(id)}`);
+        if (!res.ok && res.status !== 404) {
+          console.error(`Dashboard agent: failed to open chat ${id} (${res.status})`);
+          toast.error("We couldn't open that chat. Try again in a moment.");
+        }
         const data = res.ok
           ? ((await res.json()) as {
               messages?: UIMessage[];
@@ -159,11 +173,15 @@ export function DashboardAgentPanel({
           // Nothing stored under this id — drop to a fresh draft.
           setActive(null);
         }
+      } catch (error) {
+        console.error(`Dashboard agent: failed to open chat ${id}`, error);
+        toast.error("We couldn't open that chat. Try again in a moment.");
+        if (seq === openChatRequestSeq.current) setActive(null);
       } finally {
         if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
-    [actionPath]
+    [actionPath, toast]
   );
 
   // Start a new chat by sending its first message. The server generates the id,
@@ -196,6 +214,8 @@ export function DashboardAgentPanel({
         // A newer open/create (or New chat) superseded this one — drop the result.
         if (seq !== openChatRequestSeq.current) return;
         if (!res.ok || !data.chatId || !data.publicAccessToken) {
+          console.error(`Dashboard agent: failed to create chat (${res.status})`, data.error);
+          toast.error(data.error ?? "We couldn't start that chat. Try again in a moment.");
           setActive(null);
           return;
         }
@@ -206,19 +226,26 @@ export function DashboardAgentPanel({
           pendingFirstMessage: data.headStarted ? undefined : text,
           streaming: data.headStarted,
         });
+      } catch (error) {
+        console.error("Dashboard agent: failed to create chat", error);
+        toast.error("We couldn't start that chat. Try again in a moment.");
+        if (seq === openChatRequestSeq.current) setActive(null);
       } finally {
         if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
-    [actionPath, clientData]
+    [actionPath, clientData, toast]
   );
 
   // On open, restore the last chat if there is one; otherwise stay in the draft
-  // state (active = null). Runs once per mount.
+  // state (active = null). Runs once per mount. The history list is loaded at the
+  // same time: it's one cheap request, it makes the History view instant, and
+  // it's where the header gets the active chat's title from.
   const restored = useRef(false);
   useEffect(() => {
     if (restored.current) return;
     restored.current = true;
+    void loadHistory();
     const stored = readLastChatId(storageKey);
     if (stored) {
       void openChat(stored);
@@ -226,7 +253,7 @@ export function DashboardAgentPanel({
       // `loading` starts true only when there was something to restore.
       setLoading(false);
     }
-  }, [openChat, storageKey]);
+  }, [openChat, storageKey, loadHistory]);
 
   // Persist the active chat as the one to restore next time.
   useEffect(() => {
@@ -277,11 +304,18 @@ export function DashboardAgentPanel({
       const body = new FormData();
       body.set("intent", "delete");
       body.set("chatId", id);
-      await fetch(actionPath, { method: "POST", body });
+      try {
+        const res = await fetch(actionPath, { method: "POST", body });
+        if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+      } catch (error) {
+        console.error("Dashboard agent: failed to delete chat", error);
+        toast.error("We couldn't delete that chat. Try again in a moment.");
+        return;
+      }
       if (id === active?.chatId) newChat();
       void loadHistory();
     },
-    [actionPath, active?.chatId, newChat, loadHistory]
+    [actionPath, active?.chatId, newChat, loadHistory, toast]
   );
 
   const toggleHistory = useCallback(() => {
@@ -291,10 +325,21 @@ export function DashboardAgentPanel({
     });
   }, [loadHistory]);
 
+  // The header names what you're looking at. Titles come from the history list
+  // (the agent writes one when the first turn settles), so a brand-new chat has
+  // none yet and falls back to "Chat".
+  const headerTitle =
+    view === "history"
+      ? "Chat history"
+      : active
+        ? (chats.find((chat) => chat.id === active.chatId)?.title ?? "Chat")
+        : "New chat";
+
   return (
     <div className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150">
       <DashboardAgentHeader
         view={view}
+        title={headerTitle}
         onNewChat={newChat}
         onToggleHistory={toggleHistory}
         onClose={onClose}

@@ -7,6 +7,7 @@ import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { v3RunPath } from "~/utils/pathBuilder";
+import { isRunFriendlyId } from "./run-id";
 
 // The "why did this run fail?" failure card — the first block in the dashboard
 // agent's view catalog. Rendered from a `diagnosis` block the agent emits via
@@ -27,11 +28,21 @@ const CATEGORY_LABELS: Record<DiagnosisBlock["category"], string> = {
   unknown: "Unknown",
 };
 
+// Semantic tokens, not raw palette classes: those are tuned for the dark theme
+// only, and these tokens are what the theme layer remaps (see tailwind.css).
 const CONFIDENCE_STYLES: Record<DiagnosisBlock["confidence"], string> = {
-  high: "border-emerald-500/40 text-emerald-400",
-  medium: "border-amber-500/40 text-amber-400",
+  high: "border-success/40 text-success",
+  medium: "border-warning/40 text-warning",
   low: "border-border-bright text-text-dimmed",
 };
+
+// Same rationale as CONFIDENCE_STYLES; the category is always a failure, so it
+// reads as an error.
+const CATEGORY_BADGE_STYLE = "border-error/40 text-error";
+
+// Matches the app's link convention (TextLink `primary`), which holds up in both
+// themes.
+const LINK_STYLE = "text-indigo-500 transition hover:text-indigo-400";
 
 const EVIDENCE_LABELS: Record<DiagnosisBlock["evidence"][number]["type"], string> = {
   error: "Error",
@@ -60,7 +71,7 @@ function RunLink({ runId, className }: { runId: string; className?: string }) {
   const to = useRunPath(runId);
   if (!to) return <span className={cn("font-mono text-text-dimmed", className)}>{runId}</span>;
   return (
-    <Link to={to} className={cn("text-indigo-400 underline hover:text-indigo-300", className)}>
+    <Link to={to} className={cn(LINK_STYLE, "underline", className)}>
       {runId}
     </Link>
   );
@@ -70,7 +81,7 @@ function RunLink({ runId, className }: { runId: string; className?: string }) {
 // becomes an external link, everything else (error id, file:line, version) is
 // shown as monospace text.
 function EvidenceReference({ reference }: { reference: string }) {
-  if (/^run_[a-z0-9]+$/i.test(reference)) {
+  if (isRunFriendlyId(reference)) {
     return <RunLink runId={reference} className="font-mono text-xs" />;
   }
   const safeUrl = toSafeUrl(reference);
@@ -80,7 +91,7 @@ function EvidenceReference({ reference }: { reference: string }) {
         href={safeUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="font-mono text-xs text-indigo-400 underline hover:text-indigo-300"
+        className={cn(LINK_STYLE, "font-mono text-xs underline")}
       >
         {reference}
       </a>
@@ -95,7 +106,7 @@ function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["ac
   return (
     <div className="flex flex-wrap gap-2 pt-1">
       {actions.map((action, i) => {
-        if (action.kind === "view_run" && /^run_[a-z0-9]+$/i.test(action.target)) {
+        if (action.kind === "view_run" && isRunFriendlyId(action.target)) {
           return (
             <RunActionButton
               key={i}
@@ -153,7 +164,7 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
     <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
       <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-3 py-2">
         <span className="text-xs font-medium text-text-dimmed">Run diagnosis</span>
-        <Badge variant="small" className="border-rose-500/40 text-rose-400">
+        <Badge variant="small" className={CATEGORY_BADGE_STYLE}>
           {CATEGORY_LABELS[block.category] ?? block.category}
         </Badge>
         <Badge variant="small" className={cn("uppercase", CONFIDENCE_STYLES[block.confidence])}>

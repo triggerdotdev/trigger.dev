@@ -7,6 +7,7 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
+import { cn } from "~/utils/cn";
 
 // Render an agent "chart" block by running its TRQL query through the dashboard's
 // own /resources/metric endpoint (session-authed, returns rows + real column
@@ -24,6 +25,21 @@ type MetricResponse =
         timeRange: { from: string; to: string };
       };
     };
+
+// The chart block's schema (`chartBlockBodySchema` in
+// @internal/dashboard-agent-contracts) carries only `period` for the time window
+// — no scope, no explicit from/to, no height. So these are fixed here rather
+// than plumbed from the block. If the schema grows those fields, read them off
+// `block` instead of using these.
+const CHART_SCOPE = "environment"; // the panel is always open in one environment
+const CHART_FROM = null; // `period` is the only window the agent can ask for
+const CHART_TO = null;
+const CHART_HEIGHT_CLASS = "h-64"; // fits the panel at its default width
+
+// Query errors come from ClickHouse via the metric endpoint and can carry SQL
+// and schema detail, so the panel shows a fixed message and the real one goes to
+// the console for whoever is debugging.
+const CHART_ERROR_MESSAGE = "This chart's query couldn't run.";
 
 type ChartState =
   | { status: "loading" }
@@ -63,10 +79,10 @@ export function AgentChart({ block }: { block: ChartBlock }) {
         organizationId,
         projectId,
         environmentId,
-        scope: "environment",
+        scope: CHART_SCOPE,
         period: block.period ?? null,
-        from: null,
-        to: null,
+        from: CHART_FROM,
+        to: CHART_TO,
       }),
       signal: controller.signal,
     })
@@ -74,7 +90,8 @@ export function AgentChart({ block }: { block: ChartBlock }) {
       .then((data) => {
         if (controller.signal.aborted) return;
         if (!data.success) {
-          setState({ status: "error", error: data.error });
+          console.error("Dashboard agent chart query failed:", data.error);
+          setState({ status: "error", error: CHART_ERROR_MESSAGE });
         } else {
           setState({
             status: "ready",
@@ -86,7 +103,8 @@ export function AgentChart({ block }: { block: ChartBlock }) {
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
-        setState({ status: "error", error: err?.message ?? "The query failed to run." });
+        console.error("Dashboard agent chart request failed:", err);
+        setState({ status: "error", error: CHART_ERROR_MESSAGE });
       });
     return () => controller.abort();
   }, [block.query, block.period, organizationId, projectId, environmentId]);
@@ -109,7 +127,7 @@ export function AgentChart({ block }: { block: ChartBlock }) {
           {block.title}
         </div>
       ) : null}
-      <div className="h-64 w-full p-2">
+      <div className={cn("w-full p-2", CHART_HEIGHT_CLASS)}>
         {state.status === "loading" ? (
           <div className="flex h-full items-center justify-center gap-2 text-xs text-text-dimmed">
             <Spinner className="size-3" />

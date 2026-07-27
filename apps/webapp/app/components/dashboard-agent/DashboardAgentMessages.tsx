@@ -1,9 +1,21 @@
 import type { UIMessage } from "@ai-sdk/react";
+import { ArrowPathIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { memo } from "react";
+import { Button } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { MessageBubble, renderPart } from "~/components/runs/v3/agent/AgentMessageView";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import { ViewBlocks } from "./view-catalog";
+
+// "thinking" — the turn is submitted but nothing has come back yet.
+// "working" — the turn is streaming: text, or (more often) tool calls, which can
+// run for a while with no visible output.
+export type TurnActivity = "thinking" | "working";
+
+const ACTIVITY_LABELS: Record<TurnActivity, string> = {
+  thinking: "Thinking…",
+  working: "Working…",
+};
 
 // The shared MessageBubble renders `step-start` parts as a dashed "step"
 // separator — useful in the run inspector / playground, just noise in this
@@ -52,14 +64,21 @@ const DashboardAgentMessageBubble = memo(function DashboardAgentMessageBubble({
 // which renders as a rich card.
 export function DashboardAgentMessages({
   messages,
-  isThinking,
+  activity,
   error,
+  onRetry,
+  onDismissError,
 }: {
   messages: UIMessage[];
-  isThinking: boolean;
+  // What the turn is doing right now, or null when nothing is in flight. A turn
+  // spends most of its time streaming tool calls, so the indicator has to stay
+  // up for the whole turn — not just the initial submit.
+  activity: TurnActivity | null;
   error?: Error;
+  onRetry?: () => void;
+  onDismissError?: () => void;
 }) {
-  const rootRef = useAutoScrollToBottom([messages, isThinking]);
+  const rootRef = useAutoScrollToBottom([messages, activity]);
 
   return (
     <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
@@ -67,15 +86,34 @@ export function DashboardAgentMessages({
         {messages.map((message) => (
           <DashboardAgentMessageBubble key={message.id} message={stripStepParts(message)} />
         ))}
-        {isThinking && (
+        {activity && (
           <div className="flex items-center gap-2 text-sm text-text-dimmed">
             <Spinner className="size-3" />
-            Thinking…
+            {ACTIVITY_LABELS[activity]}
           </div>
         )}
         {error && (
-          <div className="rounded border border-error/30 bg-error/10 px-3 py-2">
-            <span className="text-xs text-error">{error.message}</span>
+          <div className="flex flex-col gap-2 rounded border border-error/30 bg-error/10 px-3 py-2">
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-xs text-error">{error.message}</span>
+              {onDismissError && (
+                <button
+                  type="button"
+                  onClick={onDismissError}
+                  aria-label="Dismiss error"
+                  className="shrink-0 rounded p-0.5 text-text-dimmed transition hover:text-text-bright focus-custom"
+                >
+                  <XMarkIcon className="size-3.5" />
+                </button>
+              )}
+            </div>
+            {onRetry && (
+              <div>
+                <Button variant="tertiary/small" LeadingIcon={ArrowPathIcon} onClick={onRetry}>
+                  Try again
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

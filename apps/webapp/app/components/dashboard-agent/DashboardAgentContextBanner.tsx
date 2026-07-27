@@ -5,6 +5,8 @@ export function DashboardAgentContextBanner({
 }: {
   projectSlug: string;
   environmentSlug: string;
+  // A human label for the page ("Runs", "Run detail"), not a path — see
+  // `page-label.ts`. The agent still receives the full pathname separately.
   currentPage: string;
 }) {
   return (
@@ -14,7 +16,7 @@ export function DashboardAgentContextBanner({
       <span>/</span>
       <span className="truncate">{environmentSlug}</span>
       <span>/</span>
-      <span className="truncate capitalize">{currentPage}</span>
+      <span className="truncate">{currentPage}</span>
     </div>
   );
 }

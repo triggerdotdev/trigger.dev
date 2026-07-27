@@ -5,7 +5,7 @@ import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
-import { DashboardAgentMessages } from "./DashboardAgentMessages";
+import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
 import type { AgentPageContext } from "./page-context-types";
 
@@ -60,6 +60,8 @@ export function DashboardAgentChat({
   actionPath: string;
   projectSlug: string;
   environmentSlug: string;
+  // Human label for the current page, for the context banner. The path the agent
+  // sees travels separately, in `clientData.currentPage`.
   currentPage: string;
   // Cold start: send this first message through the transport once on mount to
   // trigger the turn. Undefined for head-started and resumed chats.
@@ -142,6 +144,7 @@ export function DashboardAgentChat({
     status,
     stop: aiStop,
     error,
+    clearError,
   } = useChat({
     id: chatId,
     messages: initialMessages,
@@ -152,7 +155,11 @@ export function DashboardAgentChat({
   });
 
   const isStreaming = status === "streaming";
-  const isThinking = status === "submitted";
+  // A turn is in flight from submit until it settles. Deriving the indicator
+  // from status (rather than from what the last part happens to be) keeps it up
+  // through long tool calls, where the agent is busy but silent.
+  const activity: TurnActivity | null =
+    status === "submitted" ? "thinking" : status === "streaming" ? "working" : null;
 
   // Cold start: trigger the first turn by sending the pending message once.
   const sentFirst = useRef(false);
@@ -172,6 +179,20 @@ export function DashboardAgentChat({
     },
     [isStreaming, sendMessage]
   );
+
+  // Re-send the last thing the user asked. The failed turn produced nothing, so
+  // sending the same text again is the whole retry — no server-side state to
+  // unwind.
+  const retry = useCallback(() => {
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
+    const text = lastUserMessage?.parts
+      ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text)
+      .join("\n")
+      .trim();
+    clearError();
+    if (text) void sendMessage({ text });
+  }, [messages, sendMessage, clearError]);
 
   const stop = useCallback(() => {
     transport.stopGeneration(chatId);
@@ -195,10 +216,19 @@ export function DashboardAgentChat({
         environmentSlug={environmentSlug}
         currentPage={currentPage}
       />
-      {messages.length === 0 ? (
+      {/* A cold-start chat mounts with no messages and a first message about to
+          be sent, so the prompts would flash for a frame before the transcript
+          replaced them. Gate on that pending send. */}
+      {messages.length === 0 && !pendingFirstMessage ? (
         <DashboardAgentSuggestedPrompts onSelect={submit} />
       ) : (
-        <DashboardAgentMessages messages={messages} isThinking={isThinking} error={error} />
+        <DashboardAgentMessages
+          messages={messages}
+          activity={activity}
+          error={error}
+          onRetry={retry}
+          onDismissError={clearError}
+        />
       )}
       <DashboardAgentComposer
         value={input}
@@ -206,6 +236,7 @@ export function DashboardAgentChat({
         onSubmit={() => submit(input)}
         onStop={stop}
         isStreaming={isStreaming}
+        focusKey={prefill?.seq}
       />
     </>
   );
