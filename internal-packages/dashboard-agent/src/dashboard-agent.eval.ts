@@ -38,7 +38,20 @@ const HAS_KEY = Boolean(process.env.ANTHROPIC_API_KEY);
 const AGENT_MODEL = "claude-sonnet-4-6";
 const JUDGE_MODEL = "claude-sonnet-4-6";
 
-const CLIENT_DATA = { userId: "user_eval", organizationId: "org_eval" };
+const CLIENT_DATA = {
+  userId: "user_eval",
+  organizationId: "org_eval",
+  // navigate_to needs a project + environment to build a trigger:// URI, and
+  // get_current_page reads the page context, so the eval turn carries both.
+  projectRef: "proj_eval1",
+  environmentId: "env_eval1",
+  pageContext: {
+    page: { kind: "run" as const, runId: "run_a1", status: "FAILED", taskId: "send-receipt" },
+    signals: [
+      { kind: "fresh_failure" as const, runId: "run_a1", failedAt: "2026-01-01T00:00:00.000Z" },
+    ],
+  },
+};
 const NOOP_STORE: DashboardAgentStore = {
   ensureChat: async () => {},
   persistMessages: async () => {},
@@ -117,6 +130,140 @@ const FIXTURES: Record<string, unknown> = {
     affectedVersions: ["20260101.1", "20260102.1"],
     resolvedAt: null,
   },
+  // The curated health report (curateReport's shape): a degraded environment
+  // whose data IS trustworthy, so action advice is allowed.
+  get_report: {
+    title: "health",
+    scope: "prod",
+    period: "last 1h",
+    baselineLabel: "vs your 7d normal",
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    windowMinutes: 60,
+    summary: {
+      severity: "crit",
+      statements: [
+        { findingType: "flow", severity: "crit" },
+        { findingType: "execution", severity: "ok" },
+        { findingType: "liveness", severity: "ok" },
+      ],
+    },
+    findings: [
+      {
+        type: "flow",
+        severity: "crit",
+        reason: "env_limit_saturation",
+        read: "saturation_chain",
+        metricIds: ["pending", "concurrency"],
+        recommendation: { code: "raise_env_limit" },
+        attribution: { dim: "queue", key: "task/send-receipt", share: 0.82, of: "pending" },
+      },
+      {
+        type: "execution",
+        severity: "ok",
+        reason: "healthy",
+        read: "runs_are_fine",
+        metricIds: [],
+      },
+      { type: "liveness", severity: "ok", reason: "fresh", metricIds: ["liveness"] },
+    ],
+    metrics: [
+      {
+        id: "start_latency_p95",
+        value: 41000,
+        unit: "ms",
+        aggregation: "p95",
+        normal: 900,
+        severity: "crit",
+      },
+      { id: "pending", value: 4210, unit: "count", severity: "crit" },
+      {
+        id: "throughput",
+        value: -180,
+        unit: "perMin",
+        aggregation: "rate",
+        breakdown: { done: 120, triggered: 300 },
+        severity: "warn",
+      },
+      {
+        id: "failures",
+        value: 0.01,
+        unit: "ratio",
+        aggregation: "ratio",
+        normal: 0.012,
+        severity: "ok",
+      },
+      { id: "concurrency", value: 50, unit: "count", breakdown: { limit: 50 }, severity: "ok" },
+    ],
+    facts: {
+      trustworthy: true,
+      flowSource: "queue_metrics_v1",
+      pendingEstimated: false,
+      throughput: { donePerMin: 120, triggeredPerMin: 300, normalTriggeredPerMin: 140 },
+      flowEvidence: {
+        envLimit: 50,
+        throttledShare: 0.61,
+        worstQueue: { name: "task/send-receipt", share: 0.82 },
+        dlqDelta: 0,
+      },
+    },
+    footer: [{ code: "raise_env_limit" }],
+    seriesOmitted: true,
+  },
+  get_queue: {
+    queue: "task/send-email",
+    period: "1h",
+    from: "2026-01-01T00:00:00.000Z",
+    to: "2026-01-01T01:00:00.000Z",
+    waitMs: { p50: 12000, p95: 41000 },
+    peakQueued: 4210,
+    startedCount: 7200,
+    startedPerMin: 120,
+    throttledCount: 37,
+    bucketIntervalMs: 300000,
+    depthTrend: [10, 120, 900, 2400, 4210],
+  },
+  list_deploys: {
+    deploys: [
+      {
+        id: "deployment_1",
+        version: "20260102.1",
+        shortCode: "abc1234",
+        status: "DEPLOYED",
+        deployedAt: "2026-01-02T09:00:00.000Z",
+        commitMessage: "Batch the receipt sends",
+        commitRef: "main",
+        pullRequestNumber: 412,
+      },
+    ],
+  },
+  get_deploy: {
+    deploy: {
+      id: "deployment_1",
+      version: "20260102.1",
+      shortCode: "abc1234",
+      status: "DEPLOYED",
+      deployedAt: "2026-01-02T09:00:00.000Z",
+      commitMessage: "Batch the receipt sends",
+    },
+    isCurrent: true,
+  },
+  correlate_version: {
+    runId: "run_a1",
+    version: "20260102.1",
+    sha: "cafebabecafebabecafebabecafebabecafebabe",
+    dirty: false,
+    shortCode: "abc1234",
+    git: {
+      commitMessage: "Batch the receipt sends",
+      commitRef: "main",
+      pullRequestNumber: 412,
+      pullRequestTitle: "Batch the receipt sends",
+    },
+  },
+  search_docs: {
+    results:
+      "batchTrigger() triggers many runs of the same task in one call. It takes an array of payloads and returns a batch handle; use batchTriggerAndWait() inside a task to wait for all of them.",
+  },
 };
 
 // Real schemas (so the model sees the real tool descriptions) + stubbed executes
@@ -130,8 +277,10 @@ function makeFixtureTools(calls: Array<{ tool: string; input: unknown }>): ToolS
       inputSchema: s.inputSchema,
       execute: async (input: unknown) => {
         calls.push({ tool: name, input });
-        // render_view is a presentation tool: it echoes the spec, like the real one.
-        if (name === "render_view") return input;
+        // render_view and navigate_to don't fetch anything: the real ones echo
+        // back the spec / the intent they built, so the fixtures do too.
+        if (name === "render_view" || name === "navigate_to") return input;
+        if (name === "get_current_page") return CLIENT_DATA.pageContext;
         return FIXTURES[name] ?? {};
       },
     });
@@ -246,9 +395,23 @@ const TOOL_CASES: Array<{ question: string; expect: string }> = [
   { question: "What tasks are deployed in this environment?", expect: "list_tasks" },
   { question: "Which projects can I access?", expect: "list_projects" },
   { question: "What environments does this project have?", expect: "list_environments" },
+  // M3: navigation, the health report, versions, queues, and docs.
+  {
+    question: "Show me the failed runs of send-receipt in the last day.",
+    expect: "navigate_to",
+  },
+  { question: "Take me to run run_a1.", expect: "navigate_to" },
+  { question: "How is prod doing?", expect: "get_report" },
+  { question: "Is anything wrong right now?", expect: "get_report" },
+  { question: "What commit is run run_a1 running?", expect: "correlate_version" },
+  { question: "How do I use batchTrigger?", expect: "search_docs" },
+  { question: "How deep is the email queue?", expect: "get_queue" },
+  { question: "What was deployed recently?", expect: "list_deploys" },
 ];
 
-const TOOL_SELECTION_THRESHOLD = 0.83; // tolerate ~2/12 misses; a trend reds the suite
+// 20 cases; tolerate ~3 misses. A single nondeterministic miss shouldn't red the
+// suite, a trend should.
+const TOOL_SELECTION_THRESHOLD = 0.83;
 
 describe.skipIf(!HAS_KEY)("dashboardAgent evals (real model)", () => {
   it("tool selection: picks the right tool for the question", async () => {

@@ -386,26 +386,36 @@ describe("buildDashboardAgentTools", () => {
     expect(Object.keys(tools).sort()).toEqual(
       [
         "ask_support",
+        "correlate_version",
+        "get_current_page",
+        "get_deploy",
         "get_error",
         "get_query_schema",
+        "get_queue",
+        "get_report",
         "get_run",
         "get_run_trace",
+        "list_deploys",
         "list_environments",
         "list_errors",
         "list_projects",
         "list_runs",
         "list_tasks",
+        "navigate_to",
         "run_query",
         "render_view",
+        "search_docs",
       ].sort()
     );
 
     // No userActorToken / apiOrigin => every data tool returns a graceful
-    // error, never throws and never hits the network. render_view is a
-    // presentation tool and ask_support is gated on its own env config
-    // (not the token), so both are exempt.
+    // error, never throws and never hits the network. The exempt ones don't
+    // read the user's data at all: render_view and navigate_to echo/validate a
+    // spec, get_current_page reads the turn's own context, and ask_support and
+    // search_docs are public knowledge lanes gated on their own config.
+    const EXEMPT = ["render_view", "ask_support", "search_docs", "get_current_page"];
     for (const name of Object.keys(tools)) {
-      if (name === "render_view" || name === "ask_support") continue;
+      if (EXEMPT.includes(name)) continue;
       const tool = tools[name] as { execute?: (input: unknown, opts: unknown) => Promise<unknown> };
       const result = (await tool.execute?.({}, {})) as { error?: string };
       expect(result).toHaveProperty("error");
@@ -436,5 +446,85 @@ describe("buildDashboardAgentTools", () => {
     };
     const output = await renderView.execute(spec, {});
     expect(output).toEqual(spec);
+  });
+
+  // navigate_to / get_current_page: no fetch, no auth — they turn the turn's own
+  // context into a trigger:// intent the host can act on.
+  const SCOPE = { projectRef: "proj_abc", environmentId: "env_abc" };
+  const callTool = (name: string, input: unknown, ctx: Record<string, unknown> = SCOPE) => {
+    const tools = buildDashboardAgentTools(ctx);
+    const tool = tools[name] as { execute: (input: unknown, opts: unknown) => Promise<any> };
+    return tool.execute(input, {});
+  };
+
+  it("navigate_to emits a trigger:// navigate intent for each addressable kind", async () => {
+    await expect(
+      callTool("navigate_to", { destination: { kind: "run", runId: "run_1" } })
+    ).resolves.toEqual({
+      intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/run/run_1" },
+    });
+
+    await expect(
+      callTool("navigate_to", { destination: { kind: "error", fingerprint: "error_1" } })
+    ).resolves.toEqual({
+      intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/error/error_1" },
+    });
+
+    // A queue name's `/` is percent-encoded, so a task queue round-trips.
+    await expect(
+      callTool("navigate_to", { destination: { kind: "queue", name: "task/send-receipt" } })
+    ).resolves.toEqual({
+      intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/queue/task%2Fsend-receipt" },
+    });
+
+    await expect(
+      callTool("navigate_to", { destination: { kind: "deployment", version: "20260101.1" } })
+    ).resolves.toEqual({
+      intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/deployment/20260101.1" },
+    });
+  });
+
+  it("navigate_to carries runs-list filters and never emits a dashboard path", async () => {
+    const filters = { tasks: ["send-receipt"], statuses: ["FAILED"], period: "1d" };
+    const result = await callTool("navigate_to", { destination: { kind: "runs", filters } });
+    expect(result.intent).toEqual({ kind: "navigate", view: "runs", filters });
+    expect(result.appliedFilters).toEqual(filters);
+    expect(JSON.stringify(result)).not.toContain("/orgs/");
+  });
+
+  it("navigate_to fails closed when the turn has no project or environment", async () => {
+    const result = await callTool(
+      "navigate_to",
+      { destination: { kind: "run", runId: "run_1" } },
+      {}
+    );
+    expect(typeof result.error).toBe("string");
+  });
+
+  it("get_current_page returns the turn's structured page context", async () => {
+    const pageContext = {
+      page: { kind: "run" as const, runId: "run_1", status: "FAILED", taskId: "send-receipt" },
+      signals: [
+        { kind: "fresh_failure" as const, runId: "run_1", failedAt: "2026-01-01T00:00:00Z" },
+      ],
+    };
+    await expect(
+      callTool("get_current_page", {}, { ...SCOPE, pageContext, currentPage: "/runs/run_1" })
+    ).resolves.toEqual({
+      page: pageContext.page,
+      signals: pageContext.signals,
+      path: "/runs/run_1",
+    });
+
+    // Only a raw path (an older turn) degrades to the `other` page kind.
+    await expect(callTool("get_current_page", {}, { currentPage: "/some/page" })).resolves.toEqual({
+      page: { kind: "other", path: "/some/page" },
+      signals: [],
+    });
+
+    // Nothing at all: say so rather than guessing.
+    const blind = await callTool("get_current_page", {}, {});
+    expect(blind.page).toBeNull();
+    expect(typeof blind.note).toBe("string");
   });
 });

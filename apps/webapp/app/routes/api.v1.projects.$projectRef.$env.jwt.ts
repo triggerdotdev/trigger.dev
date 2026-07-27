@@ -1,16 +1,13 @@
 import { type ActionFunctionArgs, json } from "@remix-run/node";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
-import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
 import {
   authenticatedEnvironmentForAuthentication,
-  authenticateRequest,
   branchNameFromRequest,
-  type AuthenticationResult,
 } from "~/services/apiAuth.server";
-import { env as appEnv } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
+import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -28,43 +25,19 @@ const RequestBodySchema = z.object({
 
 export async function action({ request, params }: ActionFunctionArgs) {
   try {
-    const bearer = request.headers
-      .get("Authorization")
-      ?.replace(/^Bearer /, "")
-      .trim();
-    const isUat = !!bearer && isUserActorToken(bearer);
+    // A delegated user-actor token authenticates as its user, like a PAT (UATs
+    // are only accepted on the routes that opt in, via this helper). The token's
+    // optional scope cap ceilings the minted env JWT below.
+    const authentication = await authenticateUatOrApiRequest(request);
 
-    // A delegated user-actor token authenticates as its user, like a PAT. We
-    // resolve it here (not through authenticateRequest) so the exchange stays
-    // scoped to this route — UATs deliberately aren't accepted on every
-    // PAT route. `uatCap` (the token's optional scope cap) ceilings the
-    // minted env JWT below.
-    let uatCap: string[] | undefined;
-    let userActorId: string | undefined;
-    let authenticationResult: AuthenticationResult | undefined;
-    if (isUat) {
-      const claims = await verifyUserActorToken(appEnv.SESSION_SECRET, bearer!);
-      if (!claims) {
-        return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-      }
-      uatCap = claims.cap;
-      userActorId = claims.userId;
-      // The env lookup keys purely on the user, identical to a PAT.
-      authenticationResult = {
-        type: "personalAccessToken",
-        result: { userId: claims.userId },
-      };
-    } else {
-      authenticationResult = await authenticateRequest(request, {
-        personalAccessToken: true,
-        organizationAccessToken: true,
-        apiKey: false,
-      });
-    }
-
-    if (!authenticationResult) {
+    if (!authentication) {
       return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
     }
+
+    const { authenticationResult, userActor } = authentication;
+    const isUat = Boolean(userActor);
+    const uatCap = userActor?.cap;
+    const userActorId = userActor?.userId;
 
     const parsedParams = ParamsSchema.safeParse(params);
 

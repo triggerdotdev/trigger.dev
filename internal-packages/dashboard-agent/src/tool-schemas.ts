@@ -11,7 +11,7 @@
  * the user) live in `tools.ts`, which imports these schemas and adds executes
  * on top; the route handler never sees them.
  */
-import { viewBlockInputSchema } from "@internal/dashboard-agent-contracts";
+import { runFiltersSchema, viewBlockInputSchema } from "@internal/dashboard-agent-contracts";
 import { tool } from "ai";
 import { z } from "zod";
 
@@ -163,6 +163,154 @@ export const askSupportSchema = tool({
   }),
 });
 
+// Health report — the composed "is anything wrong here?" answer.
+
+export const getReportSchema = tool({
+  description:
+    "Get a composed report for the current environment. The 'health' report is the single best answer to 'is anything wrong?' / 'how is prod doing?': it grades flow (are runs starting?), execution (are they succeeding and fast?), and liveness (is telemetry fresh?), each with a severity, a reason, and the metrics behind it. Read this before reaching for individual queries.",
+  inputSchema: z.object({
+    key: z
+      .string()
+      .optional()
+      .describe("Which report to run. Only 'health' exists today; it is the default."),
+    period: z
+      .string()
+      .optional()
+      .describe(
+        "Window shorthand like '30m', '1h', '24h' (max 90d). Defaults to the report's own."
+      ),
+  }),
+});
+
+export const getQueueSchema = tool({
+  description:
+    "Get one queue's metrics over a window: wait latency (p50/p95), peak depth, how many runs started (throughput), and how often the queue was throttled by its concurrency limit. Use this for 'how deep is the X queue', 'is X backed up', or 'why are runs waiting'.",
+  inputSchema: z.object({
+    queue: z
+      .string()
+      .describe(
+        "The queue name. For a task's own queue pass the task id (e.g. 'send-receipt') with type 'task'; for a named custom queue pass its name with type 'custom'."
+      ),
+    type: z
+      .enum(["task", "custom"])
+      .optional()
+      .describe("'task' (default) for a task's built-in queue, 'custom' for a named queue."),
+    period: z
+      .string()
+      .optional()
+      .describe("Window shorthand like '15m', '1h', '24h' (max 7d). Defaults to 1h."),
+  }),
+});
+
+// Deployments (versions) — what's running and what changed.
+
+export const listDeploysSchema = tool({
+  description:
+    "List the recent deployments (versions) in the current environment, newest first, with each one's version, status, when it deployed, and its commit message. Use this for 'what changed recently', 'what version is live', or to line a failure up against a deploy.",
+  inputSchema: z.object({
+    status: z
+      .enum(["PENDING", "BUILDING", "DEPLOYING", "DEPLOYED", "FAILED", "CANCELED", "TIMED_OUT"])
+      .optional()
+      .describe("Only deployments in this status."),
+    period: z
+      .string()
+      .optional()
+      .describe("Relative window, e.g. 24h, 7d. Max 30d; larger values are capped at 30d."),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .max(50)
+      .optional()
+      .describe("Max deployments to return (default 10)."),
+  }),
+});
+
+export const getDeploySchema = tool({
+  description:
+    "Get one deployment's detail: version, status, when it deployed, and the commit and pull request behind it. Omit the version to get the environment's current (promoted) deployment — the one new runs use.",
+  inputSchema: z.object({
+    version: z
+      .string()
+      .optional()
+      .describe(
+        "The deployment version (e.g. '20260101.1') or its short code. Omit for the current deployment."
+      ),
+  }),
+});
+
+export const correlateVersionSchema = tool({
+  description:
+    "Find the exact code a run executed: the deployed version it locked to, that version's commit SHA, and the commit message, branch, and pull request behind it. Use this for 'what commit is this run running', 'which change broke this', or before reading source for a run.",
+  inputSchema: z.object({
+    runId: z.string().describe("The run id, e.g. run_abc123."),
+  }),
+});
+
+export const searchDocsSchema = tool({
+  description:
+    "Search the Trigger.dev documentation and return the matching passages. Use this for 'how do I …' questions about the product — SDK usage, configuration, concepts, limits — and cite what the docs actually say. For the user's own runs, errors, and metrics use the read tools instead.",
+  inputSchema: z.object({
+    query: z
+      .string()
+      .describe(
+        "What to look up, in natural language or as keywords (e.g. 'batchTrigger limits')."
+      ),
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Navigation — the agent takes the user somewhere instead of describing a path.
+//
+// `navigate_to` never emits a dashboard URL. It emits a `navigate` intent whose
+// target is a `trigger://` URI (the frozen grammar in
+// @internal/dashboard-agent-contracts), built server-side from typed params plus
+// the turn's project ref + environment id. The HOST resolves the URI to whatever
+// the current dashboard route happens to be, so a route rename can't break a
+// stored transcript and the model can never fabricate a link.
+// ---------------------------------------------------------------------------
+
+export const getCurrentPageSchema = tool({
+  description:
+    "Get the page the user is looking at right now (its kind and identity — a run, an error, a queue, a deployment, or the runs list with its filters) plus anything notable the dashboard already spotted on it, like a fresh failure or a saturated concurrency limit. Call this before asking the user where they are or what they mean by 'this run'.",
+  inputSchema: z.object({}),
+});
+
+export const navigateToSchema = tool({
+  description:
+    "Take the user to a place in the dashboard. Use this whenever they ask to be shown something ('show me…', 'take me to…', 'open…'), instead of describing where to click. Pick the destination kind and give its identity; for the runs list you can also apply filters, which is how you show 'failed runs of task X in the last day'.",
+  inputSchema: z.object({
+    destination: z
+      .discriminatedUnion("kind", [
+        z.object({
+          kind: z.literal("runs").describe("The runs list, optionally filtered."),
+          filters: runFiltersSchema
+            .optional()
+            .describe(
+              "Filters to apply to the runs list: tasks, statuses, versions, tags, queues, and a period like '1d'."
+            ),
+        }),
+        z.object({
+          kind: z.literal("run"),
+          runId: z.string().describe("The run id, e.g. run_abc123."),
+        }),
+        z.object({
+          kind: z.literal("error"),
+          fingerprint: z.string().describe("The error group id, e.g. error_abc123."),
+        }),
+        z.object({
+          kind: z.literal("queue"),
+          name: z.string().describe("The queue name, as list_runs / get_queue report it."),
+        }),
+        z.object({
+          kind: z.literal("deployment"),
+          version: z.string().describe("The deployment version, e.g. 20260101.1."),
+        }),
+      ])
+      .describe("Where to go."),
+  }),
+});
+
 // ---------------------------------------------------------------------------
 // View catalog — our own small "generative UI" layer.
 //
@@ -274,6 +422,16 @@ export const dashboardAgentToolSchemas = {
   run_query: runQuerySchema,
   ask_support: askSupportSchema,
   render_view: renderViewSchema,
+  // Appended, never reordered: this key order is the head-start warm step's tool
+  // order too, and a reshuffle changes the prompt prefix the provider caches.
+  get_report: getReportSchema,
+  get_queue: getQueueSchema,
+  list_deploys: listDeploysSchema,
+  get_deploy: getDeploySchema,
+  correlate_version: correlateVersionSchema,
+  search_docs: searchDocsSchema,
+  get_current_page: getCurrentPageSchema,
+  navigate_to: navigateToSchema,
 };
 
 // Code mode adds the source tools. Same key order `buildDashboardAgentTools`
@@ -315,6 +473,14 @@ You have read-only tools that act as the user against their own account:
 - run_query: run a read-only TRQL query (SQL-style over ClickHouse) against the current environment's analytics data.
 - ask_support: ask the Trigger.dev support assistant about how Trigger.dev works (docs, concepts, features, configuration, how-tos).
 - render_view: render a structured view in the panel from the block catalog. The catalog has the "diagnosis" block (a failure card for a single run) and the "chart" block (a line/bar chart of run_query results).
+- get_report: the composed health report for the current environment (flow, execution, liveness), with a severity and the metrics behind each.
+- get_queue: one queue's wait latency, peak depth, throughput, and throttling over a window.
+- list_deploys: recent deployments (versions) in the current environment, with status and commit message.
+- get_deploy: one deployment's detail, or the current promoted one when you omit the version.
+- correlate_version: the version, commit, and pull request a specific run actually ran.
+- search_docs: search the Trigger.dev documentation.
+- get_current_page: the page the user is on right now, and what the dashboard already noticed on it.
+- navigate_to: take the user to a run, error, queue, deployment, or a filtered runs list.
 
 Guidelines:
 - Be concise and direct. A short, correct answer beats a long one.
@@ -324,6 +490,20 @@ Guidelines:
 - Never invent run IDs, task identifiers, metrics, or features. If a tool returns an error or nothing, say so plainly.
 - Use Trigger.dev's own terminology: tasks, runs, attempts, queues, deployments, environments, schedules, waitpoints.
 - For questions about how Trigger.dev itself works (concepts, features, configuration, best practices, how-tos, "how do I..."), use ask_support rather than guessing. For the user's own runs, errors, tasks, and metrics, use the read and query tools. A question can need both: ask_support for the how-to, the read tools for their specific data.
+
+Knowing where the user is, and taking them places:
+- Before asking the user where they are or what "this run" means, call get_current_page. It tells you the page kind and identity plus what the dashboard already noticed there, so resolve pronouns from it instead of asking.
+- When the user asks to be shown something ("show me the failed runs of send-receipt today", "take me to that run", "open the email queue"), call navigate_to rather than describing where to click. Never write out a dashboard URL or path — navigate_to is the only way you point at a place.
+- For a runs list, put the filters in the navigate_to call, and then say in one line which filters you applied ("failed runs of send-receipt, last 24h") so the user can see what they're looking at.
+
+Is anything wrong?:
+- For "is anything wrong", "how is prod doing", "is everything healthy", start with get_report. It grades flow, execution, and liveness together, which is a better first answer than any single query.
+- If the report's facts.trustworthy is false, the underlying telemetry is stale: say the data can't be trusted right now and what would confirm it. Do NOT diagnose a cause or recommend an action off untrusted numbers.
+- When the report points at flow (runs not starting), follow up with get_queue on the queue it names to see depth, wait time, and throttling. When it points at execution, follow up with list_errors / get_run_trace.
+- When something started failing at a particular time, check list_deploys for a deploy in that window, and correlate_version on a failing run to see the exact commit and pull request it ran.
+
+Product questions:
+- For "how do I …" questions about Trigger.dev itself, use search_docs and answer from what it returns, citing the doc. ask_support is for longer, composed troubleshooting answers. Never invent an API or option that isn't in either.
 
 Diagnosing why a run failed:
 - When the user asks why a specific run failed (or to investigate a run or error), gather evidence before answering: get_run for the status and error, get_run_trace for the failing span and timeline, and get_error / list_errors to see whether it's a recurring pattern and how widespread it is.

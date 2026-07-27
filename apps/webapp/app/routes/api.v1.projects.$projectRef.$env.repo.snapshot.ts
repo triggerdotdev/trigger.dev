@@ -1,17 +1,12 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
-import { env as $env } from "~/env.server";
-import {
-  type AuthenticationResult,
-  authenticatedEnvironmentForAuthentication,
-  authenticateRequest,
-} from "~/services/apiAuth.server";
+import { authenticatedEnvironmentForAuthentication } from "~/services/apiAuth.server";
 import {
   resolveDashboardAgentRepoSnapshot,
   resolveRunCommit,
 } from "~/services/dashboardAgent.server";
 import { logger } from "~/services/logger.server";
+import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server";
 
 // Resolve a signed source-archive pointer for the project's connected repo, used
 // by the dashboard agent's code tools. With `?runId=run_...` it pins to the
@@ -27,23 +22,8 @@ const ParamsSchema = z.object({
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   try {
-    const bearer = request.headers
-      .get("Authorization")
-      ?.replace(/^Bearer /, "")
-      .trim();
-    let authenticationResult: AuthenticationResult | undefined;
-    if (bearer && isUserActorToken(bearer)) {
-      const claims = await verifyUserActorToken($env.SESSION_SECRET, bearer);
-      if (!claims) return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-      authenticationResult = { type: "personalAccessToken", result: { userId: claims.userId } };
-    } else {
-      authenticationResult = await authenticateRequest(request, {
-        personalAccessToken: true,
-        organizationAccessToken: true,
-        apiKey: false,
-      });
-    }
-    if (!authenticationResult) {
+    const authentication = await authenticateUatOrApiRequest(request);
+    if (!authentication) {
       return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
     }
 
@@ -53,7 +33,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
     const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
     const runtimeEnv = await authenticatedEnvironmentForAuthentication(
-      authenticationResult,
+      authentication.authenticationResult,
       projectRef,
       env,
       triggerBranch

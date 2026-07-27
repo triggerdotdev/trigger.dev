@@ -1,17 +1,31 @@
+import {
+  agentIntentSchema,
+  formatTriggerUri,
+  type AgentPageContext,
+  type ParsedTriggerUri,
+} from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
 import {
   askSupportSchema,
+  correlateVersionSchema,
+  getCurrentPageSchema,
+  getDeploySchema,
   getErrorSchema,
   getQuerySchemaSchema,
+  getQueueSchema,
+  getReportSchema,
   getRunSchema,
   getRunTraceSchema,
+  listDeploysSchema,
   listEnvironmentsSchema,
   listErrorsSchema,
   listProjectsSchema,
   listRunsSchema,
   listTasksSchema,
+  navigateToSchema,
   renderViewSchema,
   runQuerySchema,
+  searchDocsSchema,
 } from "./tool-schemas";
 import { buildRepoTools, type RepoSnapshot } from "./repo-tools";
 
@@ -37,8 +51,14 @@ export type DashboardAgentToolContext = {
   projectRef?: string;
   // Canonical API env name (dev/staging/prod/preview), resolved by the proxy.
   environmentName?: string;
+  // RuntimeEnvironment id — the `{env}` component of every trigger:// URI this
+  // turn emits. Names/slugs are display-only and must never appear in a URI.
+  environmentId?: string;
   // The dashboard path the user is on, passed as context to ask_support.
   currentPage?: string;
+  // Structured view of the same page, when the host could classify it. Read by
+  // get_current_page so the agent can resolve "this run" without asking.
+  pageContext?: AgentPageContext;
   // Present only when the current project has a connected GitHub repo: a signed
   // archive pointer the code-mode file tools read from. Adds the source tools.
   repoSnapshot?: RepoSnapshot;
@@ -219,6 +239,90 @@ function curateError(group: any) {
   };
 }
 
+/**
+ * The health report VM, curated for a model.
+ *
+ * Everything that carries a judgement survives verbatim (summary, findings,
+ * metrics, facts, footer) so the agent can quote the report's own grades instead
+ * of re-deriving them. Two things are dropped: the per-metric `series` arrays
+ * (nine × 48 numbers the model can't use in prose) and `links` (the route emits
+ * them with empty urls). `seriesOmitted` records that the shape is lossy.
+ *
+ * `facts.trustworthy === false` means the telemetry behind the numbers is stale.
+ * The prompt forbids acting on that; keep the flag at the top level of `facts` so
+ * it can't be missed.
+ */
+function curateReport(data: unknown) {
+  const vm = (data ?? {}) as any;
+  const facts = (vm.facts ?? {}) as any;
+  const flowEvidence = (facts.flowEvidence ?? {}) as any;
+  return {
+    title: vm.title,
+    scope: vm.scope,
+    period: vm.period,
+    baselineLabel: vm.baselineLabel,
+    generatedAt: vm.generatedAt,
+    windowMinutes: vm.windowMinutes,
+    summary: vm.summary,
+    findings: (vm.findings ?? []).map((f: any) => ({
+      type: f.type,
+      severity: f.severity,
+      reason: f.reason,
+      read: f.read,
+      metricIds: f.metricIds,
+      recommendation: f.recommendation,
+      hedge: f.hedge,
+      anomalyWindow: f.anomalyWindow,
+      attribution: f.attribution,
+      exclusions: f.exclusions,
+      observations: f.observations,
+    })),
+    metrics: (vm.metrics ?? []).map((m: any) => ({
+      id: m.id,
+      value: m.value,
+      unit: m.unit,
+      aggregation: m.aggregation,
+      normal: m.normal,
+      delta: m.delta,
+      breakdown: m.breakdown,
+      annotation: m.annotation,
+      availability: m.availability,
+      severity: m.severity,
+    })),
+    facts: {
+      trustworthy: facts.trustworthy,
+      staleReason: facts.staleReason,
+      flowSource: facts.flowSource,
+      pendingEstimated: facts.pendingEstimated,
+      throughput: facts.throughput,
+      flowEvidence: {
+        envLimit: flowEvidence.envLimit,
+        throttledShare: flowEvidence.throttledShare,
+        worstQueue: flowEvidence.worstQueue,
+        dlqDelta: flowEvidence.dlqDelta,
+      },
+    },
+    footer: vm.footer,
+    seriesOmitted: true,
+  };
+}
+
+function curateDeploy(deployment: any) {
+  const git = (deployment?.git ?? undefined) as Record<string, unknown> | undefined;
+  return {
+    id: deployment?.id,
+    version: deployment?.version,
+    shortCode: deployment?.shortCode,
+    status: deployment?.status,
+    createdAt: deployment?.createdAt,
+    deployedAt: deployment?.deployedAt,
+    commitMessage: git?.commitMessage,
+    commitRef: git?.commitRef,
+    pullRequestNumber: git?.pullRequestNumber,
+    error: deployment?.error ? { name: deployment.error.name } : undefined,
+  };
+}
+
 // Cap the run-list lookback at 30 days. Parse the `<number><unit>` window and
 // clamp anything larger (or unparseable) down to 30d, so the agent can't scan
 // huge time ranges. Returns the effective period so the model reports the real
@@ -230,6 +334,78 @@ function clampPeriod(period: string): string {
   if (!match) return "30d";
   const seconds = Number(match[1]) * PERIOD_UNIT_SECONDS[match[2]];
   return seconds > MAX_PERIOD_SECONDS ? "30d" : period.trim();
+}
+
+/**
+ * Docs search, ported from the CLI's MCP `search_docs` tool
+ * (packages/cli-v3/src/mcp/mintlifyClient.ts): a JSON-RPC `tools/call` against
+ * the public Mintlify-hosted docs MCP endpoint. Public knowledge, so no auth and
+ * no user data — same reasoning as ask_support, minus the shared secret.
+ *
+ * The endpoint answers with either JSON or a single-event SSE stream, so both are
+ * handled. Returns the MCP result's text blocks, capped.
+ */
+const DOCS_MCP_URL = "https://trigger.dev/docs/mcp";
+const DOCS_MCP_TOOL = "search_trigger_dev";
+const DOCS_RESULT_MAX_CHARS = 20_000;
+
+async function searchTriggerDocs(
+  query: string,
+  signal: AbortSignal
+): Promise<{ results: string } | { error: string }> {
+  let res: Response;
+  try {
+    res = await fetch(DOCS_MCP_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2025-06-18",
+      },
+      signal,
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: DOCS_MCP_TOOL, arguments: { query } },
+      }),
+    });
+  } catch (error) {
+    return { error: `Couldn't reach the docs: ${(error as Error).message}` };
+  }
+
+  if (!res.ok) return { error: `The docs search failed (status ${res.status}).` };
+
+  const body = await res.text();
+  let payload: any;
+  if (res.headers.get("content-type")?.includes("text/event-stream")) {
+    // One `data:` event carries the whole JSON-RPC response.
+    const line = body.split("\n").find((l) => l.startsWith("data:"));
+    if (!line) return { error: "The docs search returned no data." };
+    try {
+      payload = JSON.parse(line.slice(5).trim());
+    } catch {
+      return { error: "The docs search returned an unreadable response." };
+    }
+  } else {
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      return { error: "The docs search returned an unreadable response." };
+    }
+  }
+
+  if (payload?.error?.message) return { error: `The docs search failed: ${payload.error.message}` };
+
+  const content = payload?.result?.content;
+  const text = (Array.isArray(content) ? content : [])
+    .filter((part: any) => part?.type === "text" && typeof part.text === "string")
+    .map((part: any) => part.text as string)
+    .join("\n\n")
+    .trim();
+
+  if (!text) return { error: "The docs search found nothing for that query." };
+  return { results: text.slice(0, DOCS_RESULT_MAX_CHARS) };
 }
 
 const NO_AUTH = { error: "No delegated access is available for this turn." } as const;
@@ -518,6 +694,237 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     render_view: tool({
       ...renderViewSchema,
       execute: async (view) => view,
+    }),
+
+    get_report: tool({
+      ...getReportSchema,
+      execute: async ({ key, period }) => {
+        const envJwt = await getEnvJwt();
+        if (!envJwt) return { error: "No current environment is available to report on." };
+        const reportKey = key ?? "health";
+        const sp = new URLSearchParams({ format: "json" });
+        if (period) sp.append("period", period);
+        const result = await apiGet(
+          origin,
+          `/api/v1/reports/${encodeURIComponent(reportKey)}?${sp.toString()}`,
+          envJwt
+        );
+        if (!result.ok) {
+          return { error: `Couldn't get the ${reportKey} report (status ${result.status}).` };
+        }
+        // The report's own trigger:// URI travels with the snapshot, so the card
+        // can show where it came from without re-deriving the scope. Built from
+        // the RuntimeEnvironment *id* the proxy injects — never the env name.
+        const uri =
+          projectRef && ctx.environmentId
+            ? formatTriggerUri({
+                kind: "report",
+                projectRef,
+                environmentId: ctx.environmentId,
+                key: reportKey,
+              })
+            : undefined;
+        // Flat and curated: the tool output IS the (trimmed) view model, so the
+        // panel's report-block adapter reads it directly. Deliberately NOT
+        // accompanied by the untouched VM — carrying the metric series twice
+        // would bloat the model's context for fields only the renderer reads.
+        return { ...curateReport(result.data), ...(uri ? { uri } : {}) };
+      },
+    }),
+
+    get_queue: tool({
+      ...getQueueSchema,
+      execute: async ({ queue, type, period }) => {
+        const envJwt = await getEnvJwt();
+        if (!envJwt) return { error: "No current environment is available to read queues from." };
+        const sp = new URLSearchParams({ type: type ?? "task" });
+        if (period) sp.append("period", period);
+        // Double-encode the name: a task queue's ClickHouse name carries a `task/`
+        // prefix, and the route un-escapes `%2F` back to `/` itself.
+        const result = await apiGet(
+          origin,
+          `/api/v1/queues/${encodeURIComponent(queue)}/metrics?${sp.toString()}`,
+          envJwt
+        );
+        if (!result.ok) {
+          return {
+            error: `Couldn't get metrics for the ${queue} queue (status ${result.status}).`,
+          };
+        }
+        return result.data;
+      },
+    }),
+
+    list_deploys: tool({
+      ...listDeploysSchema,
+      execute: async ({ status, period, limit }) => {
+        const envJwt = await getEnvJwt();
+        if (!envJwt) {
+          return { error: "No current environment is available to read deployments from." };
+        }
+        const effectivePeriod = period ? clampPeriod(period) : undefined;
+        const sp = new URLSearchParams();
+        if (status) sp.append("status", status);
+        if (effectivePeriod) sp.append("period", effectivePeriod);
+        sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
+        const result = await apiGet(origin, `/api/v1/deployments?${sp.toString()}`, envJwt);
+        if (!result.ok) return { error: `Couldn't list deployments (status ${result.status}).` };
+        const rows = ((result.data as any)?.data ?? []) as any[];
+        return {
+          deploys: (Array.isArray(rows) ? rows : []).map(curateDeploy),
+          period: effectivePeriod,
+          nextCursor: (result.data as any)?.pagination?.next,
+        };
+      },
+    }),
+
+    get_deploy: tool({
+      ...getDeploySchema,
+      execute: async ({ version }) => {
+        const envJwt = await getEnvJwt();
+        if (!envJwt) {
+          return { error: "No current environment is available to read deployments from." };
+        }
+        // No version: the promoted deployment, which is what new runs use.
+        if (!version) {
+          const result = await apiGet(origin, "/api/v1/deployments/current", envJwt);
+          if (!result.ok) {
+            return { error: `Couldn't get the current deployment (status ${result.status}).` };
+          }
+          return { deploy: curateDeploy(result.data), isCurrent: true };
+        }
+        // The public retrieve route is API-key-only, so find the version in the
+        // JWT-reachable list instead. One page is plenty for "which deploy was
+        // that"; anything older is a list_deploys question.
+        const result = await apiGet(origin, "/api/v1/deployments?page[size]=100", envJwt);
+        if (!result.ok) return { error: `Couldn't look up deployments (status ${result.status}).` };
+        const rows = ((result.data as any)?.data ?? []) as any[];
+        const match = (Array.isArray(rows) ? rows : []).find(
+          (d: any) => d?.version === version || d?.shortCode === version
+        );
+        if (!match) {
+          return {
+            error: `No deployment ${version} in this environment's last 100 deploys. Use list_deploys to see what exists.`,
+          };
+        }
+        return { deploy: curateDeploy(match), isCurrent: false };
+      },
+    }),
+
+    correlate_version: tool({
+      ...correlateVersionSchema,
+      execute: async ({ runId }) => {
+        if (!hasAuth) return NO_AUTH;
+        if (!projectRef || !environmentName) {
+          return { error: "No current environment is available to resolve the run's version." };
+        }
+        // A user-level route (like the repo snapshot), so this uses the delegated
+        // token directly rather than the env JWT.
+        const result = await apiGet(
+          origin,
+          `/api/v1/projects/${projectRef}/${environmentName}/runs/${encodeURIComponent(runId)}/commit`,
+          userActorToken!
+        );
+        if (!result.ok) {
+          if (result.status === 404) {
+            return {
+              error: `Run ${runId} isn't locked to a deployed version, so there's no commit to correlate (dev runs behave this way).`,
+            };
+          }
+          return { error: `Couldn't resolve the commit for ${runId} (status ${result.status}).` };
+        }
+        return result.data;
+      },
+    }),
+
+    search_docs: tool({
+      ...searchDocsSchema,
+      execute: async ({ query }) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30_000);
+        try {
+          return await searchTriggerDocs(query, controller.signal);
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+    }),
+
+    // Context tools: no fetch, no auth. They read what the host already told us
+    // about this turn, or hand an intent back for the host to act on.
+    get_current_page: tool({
+      ...getCurrentPageSchema,
+      execute: async () => {
+        if (ctx.pageContext) {
+          return {
+            page: ctx.pageContext.page,
+            signals: ctx.pageContext.signals,
+            path: ctx.currentPage,
+          };
+        }
+        // Older turns (and unclassified routes) carry only the raw path.
+        if (ctx.currentPage) {
+          return { page: { kind: "other", path: ctx.currentPage }, signals: [] };
+        }
+        return {
+          page: null,
+          signals: [],
+          note: "This turn carried no page context, so ask the user what they're looking at.",
+        };
+      },
+    }),
+
+    navigate_to: tool({
+      ...navigateToSchema,
+      execute: async ({ destination }) => {
+        if (!projectRef || !ctx.environmentId) {
+          return {
+            error:
+              "No current project and environment for this turn, so there's nowhere to navigate to. Tell the user what to look at instead.",
+          };
+        }
+        const scope = { projectRef, environmentId: ctx.environmentId };
+
+        // The runs list is a filtered view, not an addressable resource: the v1
+        // trigger:// grammar has no `runs` kind, so this destination carries the
+        // filters and no target. Everything else formats a real URI, which the
+        // host resolves to whatever the current dashboard route is.
+        if (destination.kind === "runs") {
+          return {
+            intent: { kind: "navigate", view: "runs", filters: destination.filters },
+            appliedFilters: destination.filters ?? {},
+          };
+        }
+
+        let parsed: ParsedTriggerUri;
+        switch (destination.kind) {
+          case "run":
+            parsed = { kind: "run", ...scope, runId: destination.runId };
+            break;
+          case "error":
+            parsed = { kind: "error", ...scope, fingerprint: destination.fingerprint };
+            break;
+          case "queue":
+            parsed = { kind: "queue", ...scope, name: destination.name };
+            break;
+          case "deployment":
+            parsed = { kind: "deployment", ...scope, version: destination.version };
+            break;
+        }
+
+        // Format, then re-validate through the intent schema, so a malformed id
+        // becomes a tool error the model can recover from rather than an intent
+        // the host has to reject.
+        try {
+          const intent = agentIntentSchema.parse({
+            kind: "navigate",
+            target: formatTriggerUri(parsed),
+          });
+          return { intent };
+        } catch (error) {
+          return { error: `Couldn't build a link for that: ${(error as Error).message}` };
+        }
+      },
     }),
   };
 
