@@ -885,19 +885,12 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         }
         const scope = { projectRef, environmentId: ctx.environmentId };
 
-        // The runs list is a filtered view, not an addressable resource: the v1
-        // trigger:// grammar has no `runs` kind, so this destination carries the
-        // filters and no target. Everything else formats a real URI, which the
-        // host resolves to whatever the current dashboard route is.
-        if (destination.kind === "runs") {
-          return {
-            intent: { kind: "navigate", view: "runs", filters: destination.filters },
-            appliedFilters: destination.filters ?? {},
-          };
-        }
-
         let parsed: ParsedTriggerUri;
         switch (destination.kind) {
+          case "runs":
+            // The runs collection URI; filters ride in the intent, not the URI.
+            parsed = { kind: "runs", ...scope };
+            break;
           case "run":
             parsed = { kind: "run", ...scope, runId: destination.runId };
             break;
@@ -919,8 +912,13 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           const intent = agentIntentSchema.parse({
             kind: "navigate",
             target: formatTriggerUri(parsed),
+            ...(destination.kind === "runs" && destination.filters
+              ? { filters: destination.filters }
+              : {}),
           });
-          return { intent };
+          return destination.kind === "runs"
+            ? { intent, appliedFilters: destination.filters ?? {} }
+            : { intent };
         } catch (error) {
           return { error: `Couldn't build a link for that: ${(error as Error).message}` };
         }

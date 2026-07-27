@@ -38,6 +38,8 @@ import { z } from "zod";
 export type TriggerUri = string & { readonly __brand: "TriggerUri" };
 
 export type ParsedTriggerUri =
+  // The runs *collection* — a navigate target; filters ride in the intent, not the URI.
+  | { kind: "runs"; projectRef: string; environmentId: string }
   | { kind: "run"; projectRef: string; environmentId: string; runId: string }
   | { kind: "span"; projectRef: string; environmentId: string; runId: string; spanId: string }
   | { kind: "error"; projectRef: string; environmentId: string; fingerprint: string }
@@ -57,6 +59,7 @@ export type ParsedTriggerUri =
 
 /** The resource kinds in the v1 grammar. Doubles as the evidence `kind` enum. */
 export const TRIGGER_URI_KINDS = [
+  "runs",
   "run",
   "span",
   "error",
@@ -132,8 +135,10 @@ export function safeParseTriggerUri(input: string): TriggerUriParseResult {
     segments.push(decoded);
   }
 
-  if (segments.length < 4) {
-    return fail("expected at least trigger://{proj}/{env}/{kind}/{id}");
+  // Collection kinds (`runs`) are exactly 3 segments; every resource kind
+  // carries at least one id segment after the kind.
+  if (segments.length < 3) {
+    return fail("expected at least trigger://{proj}/{env}/{kind}");
   }
 
   const [projectRef, environmentId, resource, ...tail] = segments as [
@@ -148,6 +153,10 @@ export function safeParseTriggerUri(input: string): TriggerUriParseResult {
   }
 
   switch (resource) {
+    case "runs": {
+      if (tail.length !== 0) return fail("expected runs (no id segments)");
+      return ok({ kind: "runs", projectRef, environmentId });
+    }
     case "run": {
       if (tail.length === 1) {
         return ok({ kind: "run", projectRef, environmentId, runId: tail[0]! });
@@ -229,6 +238,8 @@ export function formatTriggerUri(parsed: ParsedTriggerUri): TriggerUri {
   )}`;
 
   switch (parsed.kind) {
+    case "runs":
+      return `${prefix}/runs` as TriggerUri;
     case "run":
       return `${prefix}/run/${segment(parsed.runId, "runId")}` as TriggerUri;
     case "span":

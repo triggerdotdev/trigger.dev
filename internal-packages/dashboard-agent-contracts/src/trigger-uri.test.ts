@@ -81,6 +81,7 @@ const roundTrips: Array<[string, ParsedTriggerUri]> = [
     "investigation",
     { kind: "investigation", projectRef: proj, environmentId: env, investigationId: "inv_123" },
   ],
+  ["runs collection", { kind: "runs", projectRef: proj, environmentId: env }],
 ];
 
 describe("format/parse round trip", () => {

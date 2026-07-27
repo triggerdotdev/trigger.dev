@@ -487,7 +487,11 @@ describe("buildDashboardAgentTools", () => {
   it("navigate_to carries runs-list filters and never emits a dashboard path", async () => {
     const filters = { tasks: ["send-receipt"], statuses: ["FAILED"], period: "1d" };
     const result = await callTool("navigate_to", { destination: { kind: "runs", filters } });
-    expect(result.intent).toEqual({ kind: "navigate", view: "runs", filters });
+    expect(result.intent).toEqual({
+      kind: "navigate",
+      target: "trigger://proj_abc/env_abc/runs",
+      filters,
+    });
     expect(result.appliedFilters).toEqual(filters);
     expect(JSON.stringify(result)).not.toContain("/orgs/");
   });

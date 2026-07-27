@@ -28,6 +28,7 @@ import {
   v3QueuesPath,
   v3RunPath,
   v3RunSpanPath,
+  v3RunsPath,
 } from "~/utils/pathBuilder";
 
 /**
@@ -83,6 +84,13 @@ function resolveInScope(
   const environment = { slug: scope.slug };
 
   switch (parsed.kind) {
+    case "runs":
+      // The runs collection; the navigate intent's `filters` become URL params
+      // at the host (this resolver returns the unfiltered list path).
+      return {
+        label: "Runs",
+        url: v3RunsPath(organization, project, environment),
+      };
     case "run":
       return {
         label: parsed.runId,
