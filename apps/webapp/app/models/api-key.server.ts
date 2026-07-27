@@ -6,6 +6,7 @@ import type { PrismaClient, RuntimeEnvironment } from "@trigger.dev/database";
 import type { HostRbacController } from "@trigger.dev/rbac";
 import { trail } from "agentcrumbs"; // @crumbs
 import { customAlphabet } from "nanoid";
+import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import { prisma } from "~/db.server";
 import { RuntimeEnvironmentType } from "~/database-types";
 import { rbac } from "~/services/rbac.server";
@@ -13,8 +14,6 @@ import { generateAdditionalApiKey, generateRootApiKey } from "~/utils/apiKeys";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 const crumb = trail("webapp"); // @crumbs
-
-export const MAX_API_KEY_TASK_IDENTIFIERS = 10;
 
 const apiKeyId = customAlphabet(
   "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",

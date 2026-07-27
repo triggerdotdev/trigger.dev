@@ -2,7 +2,8 @@ import { containerTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import rbacPlugin, { type RoleBaseAccessController } from "@trigger.dev/rbac";
 import { expect, vi } from "vitest";
-import { createEnvironmentApiKey, MAX_API_KEY_TASK_IDENTIFIERS } from "~/models/api-key.server";
+import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
+import { createEnvironmentApiKey } from "~/models/api-key.server";
 import {
   createRuntimeEnvironment,
   createTestOrgProjectWithMember,

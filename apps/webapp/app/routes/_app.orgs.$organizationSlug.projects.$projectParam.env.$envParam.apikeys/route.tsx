@@ -63,11 +63,8 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import {
-  createEnvironmentApiKey,
-  MAX_API_KEY_TASK_IDENTIFIERS,
-  revokeEnvironmentApiKey,
-} from "~/models/api-key.server";
+import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
+import { createEnvironmentApiKey, revokeEnvironmentApiKey } from "~/models/api-key.server";
 import {
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
