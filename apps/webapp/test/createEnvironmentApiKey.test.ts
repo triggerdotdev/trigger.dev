@@ -45,7 +45,7 @@ containerTest("standalone fallback creates one explicit full-access key", async 
     { prismaClient: prisma, rbacController: fallback }
   );
 
-  expect(result.plaintext).toMatch(/^tr_prod_ak_[A-Za-z0-9]{24}$/);
+  expect(result.plaintext).toMatch(/^tr_prod_sk_[A-Za-z0-9]{24}$/);
   expect(result.apiKey).toMatchObject({
     presetId: null,
     scopes: ["admin"],
