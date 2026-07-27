@@ -13,9 +13,12 @@ import { MockLanguageModelV3 } from "ai/test";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  clientDataSchema,
   dashboardAgent,
+  dashboardAgentEvalTriggerKey,
   dashboardAgentModelKey,
   dashboardAgentStoreKey,
+  type DashboardAgentEvalTrigger,
   type DashboardAgentStore,
 } from "./dashboard-agent";
 import { buildDashboardAgentTools } from "./tools";
@@ -101,6 +104,15 @@ function fakeStore(): { store: DashboardAgentStore; calls: StoreCalls } {
     setChatTitleIfDefault: async (args) => void calls.setChatTitleIfDefault.push(args),
   };
   return { store, calls };
+}
+
+// Records the eval enqueues the agent performs, in place of tasks.trigger.
+function fakeEvalTrigger(): { trigger: DashboardAgentEvalTrigger; calls: unknown[] } {
+  const calls: unknown[] = [];
+  return {
+    trigger: async (payload, options) => void calls.push({ payload, options }),
+    calls,
+  };
 }
 
 const CLIENT_DATA = { userId: "user_1", organizationId: "org_1" };
@@ -248,6 +260,119 @@ describe("dashboardAgent (mock harness)", () => {
     // never execute (no tool output) — this is the regression guard.
     expect(executedTool(turn.chunks)).toBe(true);
     expect(collectText(turn.chunks)).toBe("resolved from the tool");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Eval sampling
+// ---------------------------------------------------------------------------
+
+describe("per-turn eval sampling", () => {
+  let harness: MockChatAgentHarness | undefined;
+  const originalRate = process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+    if (originalRate === undefined) {
+      delete process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+    } else {
+      process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = originalRate;
+    }
+  });
+
+  // Runs a turn at the given sample rate and returns the recorded eval enqueues.
+  async function turnAtRate(rate: string, chatId: string): Promise<unknown[]> {
+    process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE = rate;
+    const { store } = fakeStore();
+    const { trigger, calls } = fakeEvalTrigger();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId,
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("answered")]));
+        set(dashboardAgentEvalTriggerKey, trigger);
+      },
+    });
+
+    await harness.sendMessage(userMessage("hi"));
+    // onTurnComplete enqueues after the turn-complete chunk; give it a tick.
+    await new Promise((r) => setTimeout(r, 30));
+    return calls;
+  }
+
+  it("does not enqueue the eval task at rate 0", async () => {
+    expect(await turnAtRate("0", "chat_rate_zero")).toHaveLength(0);
+  });
+
+  it("enqueues the eval task at rate 1", async () => {
+    const calls = (await turnAtRate("1", "chat_rate_one")) as Array<{
+      options: { idempotencyKey: string };
+    }>;
+    expect(calls).toHaveLength(1);
+    // The idempotency key still keys off chat + turn, so a retried turn is scored once.
+    expect(calls[0]?.options.idempotencyKey).toBe("eval:chat_rate_one:0");
+  });
+
+  it("falls back to sampling every turn when the rate is unparseable", async () => {
+    expect(await turnAtRate("not-a-number", "chat_rate_bad")).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// clientData back-compat — resumed chats replay their original metadata shape
+// ---------------------------------------------------------------------------
+
+describe("clientDataSchema", () => {
+  it("accepts the old shape a chat created before pageContext replays", () => {
+    const parsed = clientDataSchema.safeParse({
+      userId: "user_1",
+      organizationId: "org_1",
+      projectId: "proj_1",
+      currentPage: "/orgs/acme/projects/p/env/dev/runs",
+      apiOrigin: "http://localhost:3030",
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts only the org + user pair", () => {
+    expect(clientDataSchema.safeParse({ userId: "user_1", organizationId: "org_1" }).success).toBe(
+      true
+    );
+  });
+
+  it("accepts the new shape with environmentId and pageContext", () => {
+    const parsed = clientDataSchema.safeParse({
+      userId: "user_1",
+      organizationId: "org_1",
+      environmentId: "env_1",
+      pageContext: {
+        page: {
+          kind: "run",
+          runId: "run_1",
+          status: "FAILED",
+          taskId: "my-task",
+          queue: "default",
+        },
+        signals: [
+          { kind: "fresh_failure", runId: "run_1", failedAt: "2026-07-27T00:00:00.000Z" },
+          { kind: "slow_run", runId: "run_2", durationMs: 9000, baselineP95Ms: 1200 },
+          { kind: "concurrency_saturation", severity: "crit" },
+        ],
+      },
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.pageContext?.signals).toHaveLength(3);
+  });
+
+  it("rejects a pageContext with an unknown page kind", () => {
+    const parsed = clientDataSchema.safeParse({
+      userId: "user_1",
+      organizationId: "org_1",
+      pageContext: { page: { kind: "nope" }, signals: [] },
+    });
+    expect(parsed.success).toBe(false);
   });
 });
 

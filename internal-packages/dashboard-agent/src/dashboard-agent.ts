@@ -29,8 +29,9 @@ import { buildDashboardAgentTools } from "./tools";
  * by the webapp. This is the launch-week dogfood: we run our own product on the
  * primitive we ship.
  *
- * No tools yet: it answers from a dashboard-managed system prompt (Anthropic,
- * resolved via the provider registry) with prompt caching, persists the
+ * It answers from a dashboard-managed system prompt (Anthropic, resolved via the
+ * provider registry) with prompt caching, calls the read-only tools built per
+ * turn from the delegated token the `in` proxy injects, persists the
  * conversation to the agent's own datastore (NOT the main DB — the agent has no
  * access to that), and generates the chat title in the background. Runtime
  * history is owned by chat.agent's built-in object-store snapshot; the rows we
@@ -100,6 +101,43 @@ export const dashboardAgentModelKey = locals.create<LanguageModel>("dashboard-ag
 // stubbed executes) so the model's tool choice can be observed and its answers
 // judged without a live API.
 export const dashboardAgentToolsKey = locals.create<ToolSet>("dashboard-agent.tools");
+
+// How the per-turn eval is enqueued, behind an interface so it can be injected.
+// Production leaves this unset and triggers the real decoupled task; tests
+// inject a recorder to observe whether a turn was sampled.
+export type DashboardAgentEvalTrigger = (
+  payload: EvalTurnPayload,
+  options: { idempotencyKey: string }
+) => Promise<unknown>;
+
+export const dashboardAgentEvalTriggerKey = locals.create<DashboardAgentEvalTrigger>(
+  "dashboard-agent.eval-trigger"
+);
+
+function getEvalTrigger(): DashboardAgentEvalTrigger {
+  return (
+    locals.get(dashboardAgentEvalTriggerKey) ??
+    ((payload, options) =>
+      tasks.trigger<typeof evalTurn>("dashboard-agent-eval-turn", payload, options))
+  );
+}
+
+// Fraction of turns to eval, from DASHBOARD_AGENT_EVAL_SAMPLE_RATE. Defaults to
+// 1.0 (every turn) — volume is internal and low today. Anything unparseable or
+// out of range falls back to 1.0 rather than silently dropping evals; 0 means
+// never. Read per turn so the rate can be changed without a redeploy.
+function evalSampleRate(): number {
+  const raw = process.env.DASHBOARD_AGENT_EVAL_SAMPLE_RATE;
+  if (raw === undefined || raw.trim() === "") return 1;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return 1;
+  return parsed;
+}
+
+// `Math.random()` is in [0, 1), so rate 0 never samples and rate 1 always does.
+function shouldEvalTurn(): boolean {
+  return Math.random() < evalSampleRate();
+}
 
 // The system prompt is dashboard-managed (text + model + config). Resolving it
 // is an API call, so cache it per worker process — workers are short-lived
@@ -195,15 +233,63 @@ async function generateAndSaveTitle(
   }
 }
 
+// Where the user is and what is notable there, injected server-side per turn.
+// TODO(M0-integration): swap to `agentPageContextSchema` from
+// `@internal/dashboard-agent-contracts` once that package lands.
+const agentPageSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("runs"), filters: z.unknown().optional() }),
+  z.object({
+    kind: z.literal("run"),
+    runId: z.string(),
+    status: z.string(),
+    taskId: z.string(),
+    queue: z.string().optional(),
+  }),
+  z.object({ kind: z.literal("error"), fingerprint: z.string() }),
+  z.object({
+    kind: z.literal("queue"),
+    name: z.string(),
+    health: z.enum(["ok", "warn", "crit"]).optional(),
+  }),
+  z.object({ kind: z.literal("deployment"), version: z.string() }),
+  z.object({ kind: z.literal("other"), path: z.string() }),
+]);
+
+const agentPageSignalSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("fresh_failure"), runId: z.string(), failedAt: z.string() }),
+  z.object({ kind: z.literal("waiting_run"), runId: z.string(), queue: z.string().optional() }),
+  z.object({
+    kind: z.literal("slow_run"),
+    runId: z.string(),
+    durationMs: z.number(),
+    baselineP95Ms: z.number(),
+  }),
+  z.object({ kind: z.literal("concurrency_saturation"), severity: z.enum(["warn", "crit"]) }),
+]);
+
+const agentPageContextSchema = z.object({
+  page: agentPageSchema,
+  signals: z.array(agentPageSignalSchema),
+});
+
+export type AgentPage = z.infer<typeof agentPageSchema>;
+export type AgentPageSignal = z.infer<typeof agentPageSignalSchema>;
+export type AgentPageContext = z.infer<typeof agentPageContextSchema>;
+
 // A chat belongs to an org + user. The current project/env (and the page) are
 // per-turn context for the agent, not chat identity — one conversation can span
-// several projects/envs.
-const clientDataSchema = z.object({
+// several projects/envs. Every field past the org + user pair is optional:
+// resumed chats replay their original, older-shaped clientData and must keep
+// validating.
+export const clientDataSchema = z.object({
   userId: z.string(),
   organizationId: z.string(),
   projectId: z.string().optional(),
   environmentId: z.string().optional(),
   currentPage: z.string().optional(),
+  // Structured version of `currentPage`: the page the turn was asked from plus
+  // the notable things on it. Server-injected by the `in` proxy.
+  pageContext: agentPageContextSchema.optional(),
   // Injected server-side by the `in` proxy on each turn (never sent from the
   // browser): a short-lived read-only delegated token for the user, the API
   // origin to call back to, and the current project ref + env its tools read.
@@ -306,17 +392,16 @@ export const dashboardAgent = chat.agent({
 
     // Runtime eval: score this turn in a SEPARATE, idempotency-keyed task so it
     // never blocks or bills the agent run. Best-effort — enqueue failures must
-    // not break the turn. Every turn for now (internal, low volume); add a
-    // sample rate here when this scales.
-    if (clientData?.organizationId && clientData?.userId && responseMessage) {
+    // not break the turn. Sampled by DASHBOARD_AGENT_EVAL_SAMPLE_RATE (default:
+    // every turn, since volume is internal and low).
+    if (clientData?.organizationId && clientData?.userId && responseMessage && shouldEvalTurn()) {
       try {
         const resolved = await getSystemPrompt(modeFor(clientData));
         // The current turn's question. On a Head Start turn it arrives in the
         // boot payload (not in newUIMessages), so take the latest user message
         // from the full transcript, which holds for normal turns too.
         const userMessage = [...uiMessages].reverse().find((m) => m.role === "user");
-        await tasks.trigger<typeof evalTurn>(
-          "dashboard-agent-eval-turn",
+        await getEvalTrigger()(
           {
             chatId,
             turn,
