@@ -20,7 +20,7 @@ describe("API key utilities", () => {
     expect(root.apiKey).toMatch(new RegExp(`^${prefix}[A-Za-z0-9]{24}$`));
     expect(root.keyHash).toBe(hashApiKey(root.apiKey));
     expect(root.lastFour).toBe(root.apiKey.slice(-4));
-    expect(additional.apiKey).toMatch(new RegExp(`^${prefix}ak_[A-Za-z0-9]{24}$`));
+    expect(additional.apiKey).toMatch(new RegExp(`^${prefix}sk_[A-Za-z0-9]{24}$`));
     expect(additional.keyHash).toBe(hashApiKey(additional.apiKey));
     expect(additional.lastFour).toBe(additional.apiKey.slice(-4));
     expect(apiKeyPrefix(environmentType)).toBe(prefix);
@@ -28,7 +28,7 @@ describe("API key utilities", () => {
       `${prefix}••••••••${root.lastFour}`
     );
     expect(obfuscateApiKey(environmentType, additional.lastFour, "additional")).toBe(
-      `${prefix}ak_••••••••${additional.lastFour}`
+      `${prefix}sk_••••••••${additional.lastFour}`
     );
   });
 

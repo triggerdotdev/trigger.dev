@@ -25,7 +25,7 @@ export function generateRootApiKey(environmentType: RuntimeEnvironmentType) {
 }
 
 export function generateAdditionalApiKey(environmentType: RuntimeEnvironmentType) {
-  return generatedApiKey(`${apiKeyPrefix(environmentType)}ak_${apiKeyId()}`);
+  return generatedApiKey(`${apiKeyPrefix(environmentType)}sk_${apiKeyId()}`);
 }
 
 export function apiKeyPrefix(environmentType: RuntimeEnvironmentType): string {
@@ -46,6 +46,6 @@ export function obfuscateApiKey(
   lastFour: string,
   kind: "root" | "additional" = "root"
 ): string {
-  const discriminator = kind === "additional" ? "ak_" : "";
+  const discriminator = kind === "additional" ? "sk_" : "";
   return `${apiKeyPrefix(environmentType)}${discriminator}••••••••${lastFour}`;
 }
