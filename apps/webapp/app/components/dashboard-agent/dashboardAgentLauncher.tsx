@@ -5,6 +5,12 @@ import { cn } from "~/utils/cn";
 type DashboardAgentContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;
+  /**
+   * Open the panel with `text` already in play: sent as the first message of a
+   * new chat when nothing is open, or dropped into the composer of the chat
+   * that's already open (so an in-progress conversation is never hijacked).
+   */
+  openWith: (text: string) => void;
 };
 
 const DashboardAgentContext = createContext<DashboardAgentContextValue | null>(null);

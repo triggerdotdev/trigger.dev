@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -27,13 +27,37 @@ export function DashboardAgent({
   hasAccess?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  // A request from `openWith`, handed to the panel. `seq` makes repeat requests
+  // with the same text distinct, so the panel can tell them apart.
+  const [requestedMessage, setRequestedMessage] = useState<
+    { text: string; seq: number } | undefined
+  >(undefined);
+
+  // Closing drops any pending request, so reopening the panel later doesn't
+  // replay text the user has moved on from.
+  const setPanelOpen = useCallback((next: boolean) => {
+    setOpen(next);
+    if (!next) setRequestedMessage(undefined);
+  }, []);
+
+  const openWith = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setOpen(true);
+    setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
+  }, []);
+
+  const context = useMemo(
+    () => ({ open, setOpen: setPanelOpen, openWith }),
+    [open, setPanelOpen, openWith]
+  );
 
   if (!hasAccess) {
     return <div className="h-full min-h-0">{children}</div>;
   }
 
   return (
-    <DashboardAgentProvider value={{ open, setOpen }}>
+    <DashboardAgentProvider value={context}>
       {open ? (
         <ResizablePanelGroup
           orientation="horizontal"
@@ -45,7 +69,10 @@ export function DashboardAgent({
           </ResizablePanel>
           <ResizableHandle id="dashboard-agent-handle" />
           <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
-            <DashboardAgentPanel onClose={() => setOpen(false)} />
+            <DashboardAgentPanel
+              onClose={() => setPanelOpen(false)}
+              requestedMessage={requestedMessage}
+            />
           </ResizablePanel>
         </ResizablePanelGroup>
       ) : (

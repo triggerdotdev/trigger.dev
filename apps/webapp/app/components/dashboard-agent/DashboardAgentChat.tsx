@@ -7,6 +7,7 @@ import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentMessages } from "./DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
+import type { AgentPageContext } from "./page-context-types";
 
 // The persisted session for a chat: the session-scoped token plus the stream
 // cursor. Resuming with `lastEventId` is what stops the agent's `.out` stream
@@ -23,6 +24,10 @@ export type DashboardAgentClientData = {
   projectId?: string;
   environmentId?: string;
   currentPage?: string;
+  // What page the user is on, as facts rather than a path. Sent on create and
+  // on every turn, so the agent sees where the user is now — not where they
+  // were when the chat started.
+  pageContext?: AgentPageContext;
 };
 
 /**
@@ -44,6 +49,7 @@ export function DashboardAgentChat({
   currentPage,
   pendingFirstMessage,
   streaming,
+  prefill,
   onTurnSettled,
 }: {
   chatId: string;
@@ -62,9 +68,21 @@ export function DashboardAgentChat({
   // streaming so the transport resumes `session.out` instead of treating it as
   // a settled session with nothing to reconnect to.
   streaming?: boolean;
+  // Text dropped into the composer from outside (the launcher's `openWith`).
+  // `seq` makes each request distinct so the same text can be sent twice.
+  prefill?: { text: string; seq: number };
   onTurnSettled: () => void;
 }) {
   const [input, setInput] = useState("");
+
+  // Put requested text in the composer rather than sending it: a chat is already
+  // open, so the user gets to read and edit before it goes.
+  const prefilledSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!prefill || prefilledSeq.current === prefill.seq) return;
+    prefilledSeq.current = prefill.seq;
+    setInput(prefill.text);
+  }, [prefill]);
 
   const transport = useTriggerChatTransport<typeof dashboardAgent>({
     task: "dashboard-agent",

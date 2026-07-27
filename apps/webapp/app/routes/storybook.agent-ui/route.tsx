@@ -1,3 +1,4 @@
+import { VIEW_BLOCK_VERSION } from "@internal/dashboard-agent-contracts";
 import type { DiagnosisBlock, ViewBlock } from "@internal/dashboard-agent";
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
 import { Header1, Header2 } from "~/components/primitives/Headers";
@@ -89,12 +90,46 @@ const lowConfidenceDiagnosis: DiagnosisBlock = {
   ],
 };
 
-function Example({ title, block }: { title: string; block: ViewBlock }) {
+// Blocks may carry an envelope: `id` identifies the block across turns and
+// `revision` says how fresh it is. ViewBlocks collapses same-(type, id) blocks
+// to the highest revision, so a re-emitted diagnosis replaces the earlier one
+// instead of stacking cards.
+const revisedDiagnosis: ViewBlock[] = [
+  {
+    ...lowConfidenceDiagnosis,
+    id: "diagnosis-run_a1b2c3d4e5",
+    revision: 1,
+    version: VIEW_BLOCK_VERSION,
+    summary: "Revision 1 — first guess, before the logs came back. Should not render.",
+  },
+  {
+    ...externalServiceDiagnosis,
+    id: "diagnosis-run_a1b2c3d4e5",
+    revision: 2,
+    version: VIEW_BLOCK_VERSION,
+    summary: "Revision 2 — narrowed to the payload, still unconfirmed. Should not render.",
+  },
+  {
+    ...fullDiagnosis,
+    id: "diagnosis-run_a1b2c3d4e5",
+    revision: 3,
+    version: VIEW_BLOCK_VERSION,
+    summary:
+      "Revision 3 — the only card that should render: processOrder threw on an order with no line items.",
+  },
+];
+
+// Two envelope-less (legacy) blocks: no id, so nothing is grouped and both
+// render, in order — the pre-envelope behaviour.
+const legacyBlocks: ViewBlock[] = [externalServiceDiagnosis, lowConfidenceDiagnosis];
+
+function Example({ title, note, blocks }: { title: string; note?: string; blocks: ViewBlock[] }) {
   return (
     <div className="flex flex-col gap-2">
       <Header2>{title}</Header2>
+      {note ? <Paragraph variant="extra-small">{note}</Paragraph> : null}
       <div className="w-104 max-w-full">
-        <ViewBlocks blocks={[block]} />
+        <ViewBlocks blocks={blocks} />
       </div>
     </div>
   );
@@ -115,9 +150,19 @@ export default function Story() {
       </div>
 
       <div className="flex flex-wrap gap-8">
-        <Example title="Diagnosis — full, high confidence" block={fullDiagnosis} />
-        <Example title="Diagnosis — external service, medium" block={externalServiceDiagnosis} />
-        <Example title="Diagnosis — low confidence, minimal" block={lowConfidenceDiagnosis} />
+        <Example title="Diagnosis — full, high confidence" blocks={[fullDiagnosis]} />
+        <Example title="Diagnosis — external service, medium" blocks={[externalServiceDiagnosis]} />
+        <Example title="Diagnosis — low confidence, minimal" blocks={[lowConfidenceDiagnosis]} />
+        <Example
+          title="Envelope — three revisions, one card"
+          note="Three blocks share (diagnosis, diagnosis-run_a1b2c3d4e5) at revisions 1–3. Only revision 3 renders."
+          blocks={revisedDiagnosis}
+        />
+        <Example
+          title="Legacy — no envelope, both render"
+          note="Blocks with no id are never grouped: both render, in order."
+          blocks={legacyBlocks}
+        />
       </div>
     </div>
   );

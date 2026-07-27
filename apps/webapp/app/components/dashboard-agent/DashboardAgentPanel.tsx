@@ -3,6 +3,7 @@ import { useLocation } from "@remix-run/react";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Spinner } from "~/components/primitives/Spinner";
+import { useAgentPageContext } from "~/hooks/useAgentPageContext";
 import { useApiOrigin } from "~/hooks/useApiOrigin";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -19,12 +20,33 @@ import {
   DashboardAgentHistory,
   type DashboardAgentChat as DashboardAgentChatListItem,
 } from "./DashboardAgentHistory";
+import type { AgentPageContext } from "./page-context-types";
 
 // Restore the last open chat across panel re-opens and page reloads. Scoped by
 // org because chats are org-scoped. localStorage (not a cookie) since the panel
 // only mounts client-side — the server never needs this.
 const lastChatStorageKey = (organizationId: string) =>
   `tdev:dashboard-agent:last-chat:${organizationId}`;
+
+function readLastChatId(storageKey: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(storageKey);
+  } catch {
+    return null; // localStorage unavailable — start fresh
+  }
+}
+
+// Undefined when the context can't be serialized (it should always be
+// JSON-safe — it comes from loader data — but the panel must not break if a
+// page's mapper puts something exotic in `filters`).
+function serializePageContext(pageContext: AgentPageContext): string | undefined {
+  try {
+    return JSON.stringify(pageContext);
+  } catch {
+    return undefined;
+  }
+}
 
 type ActiveChat = {
   chatId: string;
@@ -46,23 +68,40 @@ type ActiveChat = {
  * so the client never invents an id. Existing chats resolve their stored
  * transcript + session before mounting `DashboardAgentChat` (keyed by chatId).
  */
-export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
+export function DashboardAgentPanel({
+  onClose,
+  requestedMessage,
+}: {
+  onClose: () => void;
+  // Text handed to the panel from outside (`openWith`). `seq` distinguishes
+  // repeat requests with the same text.
+  requestedMessage?: { text: string; seq: number };
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const user = useUser();
   const apiOrigin = useApiOrigin();
   const location = useLocation();
-
-  const [view, setView] = useState<"chat" | "history">("chat");
-  const [chats, setChats] = useState<DashboardAgentChatListItem[]>([]);
-  const [active, setActive] = useState<ActiveChat | null>(null);
-  const [loading, setLoading] = useState(false);
+  const pageContext = useAgentPageContext();
 
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
   const storageKey = lastChatStorageKey(organization.id);
 
+  const [view, setView] = useState<"chat" | "history">("chat");
+  const [chats, setChats] = useState<DashboardAgentChatListItem[]>([]);
+  const [active, setActive] = useState<ActiveChat | null>(null);
+  // Starts true when there's a chat to restore, so the first render already
+  // knows a restore is coming — an `openWith` request waits for it instead of
+  // racing it into a new chat.
+  const [loading, setLoading] = useState(() => readLastChatId(storageKey) !== null);
+
   const currentPage = location.pathname.split("/").filter(Boolean).pop() ?? "overview";
+
+  // The page context is a fresh object every render, so key the clientData memo
+  // off its serialized form — otherwise every render would look like new
+  // per-turn context to the transport.
+  const pageContextKey = serializePageContext(pageContext);
 
   const clientData = useMemo<DashboardAgentClientData>(
     () => ({
@@ -71,8 +110,9 @@ export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
       projectId: project.id,
       environmentId: environment.id,
       currentPage: location.pathname,
+      pageContext: pageContextKey ? (JSON.parse(pageContextKey) as AgentPageContext) : undefined,
     }),
-    [user.id, organization.id, project.id, environment.id, location.pathname]
+    [user.id, organization.id, project.id, environment.id, location.pathname, pageContextKey]
   );
 
   const loadHistory = useCallback(async () => {
@@ -179,13 +219,13 @@ export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (restored.current) return;
     restored.current = true;
-    let stored: string | null = null;
-    try {
-      stored = window.localStorage.getItem(storageKey);
-    } catch {
-      /* localStorage unavailable — start fresh */
+    const stored = readLastChatId(storageKey);
+    if (stored) {
+      void openChat(stored);
+    } else {
+      // `loading` starts true only when there was something to restore.
+      setLoading(false);
     }
-    if (stored) void openChat(stored);
   }, [openChat, storageKey]);
 
   // Persist the active chat as the one to restore next time.
@@ -197,6 +237,25 @@ export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
       /* ignore */
     }
   }, [active?.chatId, storageKey]);
+
+  // Text handed in by `openWith`. With no chat open we start one and send it
+  // straight away (the launcher's caller already knows what to ask); with a chat
+  // open we only drop it into the composer, so we never inject a message into
+  // the middle of someone's conversation. Waits for an in-flight restore/open so
+  // it can tell which of the two it is.
+  const [prefill, setPrefill] = useState<{ text: string; seq: number } | undefined>(undefined);
+  const handledRequestSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!requestedMessage || loading) return;
+    if (handledRequestSeq.current === requestedMessage.seq) return;
+    handledRequestSeq.current = requestedMessage.seq;
+    setView("chat");
+    if (active) {
+      setPrefill(requestedMessage);
+    } else {
+      void createChat(requestedMessage.text);
+    }
+  }, [requestedMessage, loading, active, createChat]);
 
   const newChat = useCallback(() => {
     // Invalidate any in-flight open/create so its result can't replace the draft.
@@ -261,6 +320,7 @@ export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
           session={active.session}
           pendingFirstMessage={active.pendingFirstMessage}
           streaming={active.streaming}
+          prefill={prefill}
           clientData={clientData}
           apiOrigin={apiOrigin}
           actionPath={actionPath}

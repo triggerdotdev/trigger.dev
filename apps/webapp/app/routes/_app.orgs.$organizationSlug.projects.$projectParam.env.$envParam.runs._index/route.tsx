@@ -1,4 +1,5 @@
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
+import { runFiltersSchema } from "@internal/dashboard-agent-contracts";
 import { type MetaFunction, useLocation, useNavigation, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useState } from "react";
@@ -59,6 +60,7 @@ import { requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
+import type { Handle } from "~/utils/handle";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -78,6 +80,21 @@ import {
 import { useRunsLiveReload } from "./useRunsLiveReload";
 
 export { shouldRevalidateRunsList as shouldRevalidate };
+
+// Tell the dashboard agent it's looking at the runs list, with the filters the
+// loader already resolved — no extra queries. Read straight off the route match
+// (not via the typedjson deserializer, which mutates the match data) and parsed
+// through the contract, which keeps only the navigable fields and strips the
+// rest. Signals come later.
+export const handle: Handle = {
+  agentPageContext: (data) => {
+    const filters = runFiltersSchema.safeParse((data as { filters?: unknown } | null)?.filters);
+    return {
+      page: { kind: "runs", filters: filters.success ? filters.data : undefined },
+      signals: [],
+    };
+  },
+};
 
 export const meta: MetaFunction = () => {
   return [
