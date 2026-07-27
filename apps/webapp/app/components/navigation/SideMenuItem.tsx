@@ -85,6 +85,7 @@ export function SideMenuItem({
   disableIconHover = false,
   indented = false,
   isActive: isActiveOverride,
+  yieldActiveToFavorite = false,
   "data-action": dataAction,
 }: {
   icon?: RenderIcon;
@@ -105,13 +106,22 @@ export function SideMenuItem({
   indented?: boolean;
   /** Overrides the default pathname === to active check (e.g. favorites match on full URL). */
   isActive?: boolean;
+  /**
+   * In menus that render the Favorites section (the main project menu), an active favorite owns
+   * the highlight, so the plain item yields its active state to it. Menus without a favorites
+   * list (org settings, account) must not set this: they have no favorite item to carry the
+   * highlight instead.
+   */
+  yieldActiveToFavorite?: boolean;
   "data-action"?: string;
 }) {
   const pathName = usePathName();
-  // When one of the user's OWN favorites owns the current view (via its marker param), it takes
-  // the active state; markers from shared links don't count (see useActiveFavoriteId).
+  // Only the user's OWN favorites own a view (via the marker param); markers from shared links
+  // don't count (see useActiveFavoriteId).
   const activeFavoriteId = useActiveFavoriteId();
-  const isActive = isActiveOverride ?? (pathName === to && activeFavoriteId === undefined);
+  const isActive =
+    isActiveOverride ??
+    (pathName === to && (!yieldActiveToFavorite || activeFavoriteId === undefined));
 
   const isIndented = indented && !isCollapsed;
 

@@ -424,7 +424,12 @@ export function SideMenu({
     }
     if (!customizeSubmitSeenRef.current) return; // submit hasn't been picked up yet
     const data = customizationFetcher.data;
-    if (!data) return;
+    if (!data) {
+      // Settled with no response body (e.g. a session-expiry redirect): fail rather than spin
+      setCustomizeConfirmPending(false);
+      setCustomizeError("Couldn't save your changes. Please try again.");
+      return;
+    }
     if (data.success) {
       // Wait out the post-save revalidation so the menu behind the dialog reflects the changes
       if (revalidator.state !== "idle") return;
@@ -1152,6 +1157,7 @@ export function SideMenu({
                 to={v3EnvironmentPath(organization, project, environment)}
                 data-action="tasks"
                 isCollapsed={isCollapsed}
+                yieldActiveToFavorite
               />
               <SideMenuItem
                 name="Runs"
@@ -1161,6 +1167,7 @@ export function SideMenu({
                 to={v3RunsPath(organization, project, environment)}
                 data-action="runs"
                 isCollapsed={isCollapsed}
+                yieldActiveToFavorite
               />
               <SideMenuItem
                 name="Sessions"
@@ -1171,6 +1178,7 @@ export function SideMenu({
                 data-action="sessions"
                 badge={<NewBadge />}
                 isCollapsed={isCollapsed}
+                yieldActiveToFavorite
               />
             </div>
 
@@ -1334,6 +1342,7 @@ function CustomizableSideMenuSection({
             badge={item.badge}
             isCollapsed={isCollapsed}
             action={item.action}
+            yieldActiveToFavorite
           />
           {item.after}
         </Fragment>
