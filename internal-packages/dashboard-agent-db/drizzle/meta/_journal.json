@@ -15,6 +15,13 @@
       "when": 1781990914081,
       "tag": "0001_slimy_living_tribunal",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785152602605,
+      "tag": "0002_luxuriant_king_cobra",
+      "breakpoints": true
     }
   ]
 }

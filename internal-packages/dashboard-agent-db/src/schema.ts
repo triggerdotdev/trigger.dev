@@ -9,7 +9,9 @@ import {
   smallint,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { WatchSpec } from "@internal/dashboard-agent-contracts";
 
 /**
  * All dashboard-agent tables live in a dedicated Postgres schema. In cloud this
@@ -145,9 +147,128 @@ export const chatTurnEvals = dashboardAgentSchema.table(
   ]
 );
 
+/**
+ * One row per investigation — the agent's structured, revisioned working state
+ * for a diagnostic thread. The primary key is the `investigationId` on purpose:
+ * a follow-up turn (or another chat's handoff) can load an investigation from the
+ * id alone, without knowing which chat it belongs to.
+ *
+ * `state` is deliberately untyped JSONB: the payload shape is still moving, and
+ * pinning a `$type` here would make every shape change a migration. The
+ * projectRef/environmentRef pair is the tenancy check for every write — a
+ * revision bump must come from the same chat, project and environment that
+ * created the investigation.
+ *
+ * `projectRef` is the project's **external** ref (`proj_…`), the same identifier
+ * the `trigger://` URI scheme uses. `environmentRef` is `RuntimeEnvironment.id`.
+ * Both are main-DB ids with no FK (cross-db).
+ */
+export const investigations = dashboardAgentSchema.table(
+  "investigations",
+  {
+    id: text("id").primaryKey(), // = investigationId (`inv_…`)
+    chatId: text("chat_id").notNull(), // = chats.id
+    projectRef: text("project_ref").notNull(),
+    environmentRef: text("environment_ref").notNull(),
+    // Monotonic per investigation; bumped by a single atomic UPDATE.
+    revision: integer("revision").notNull().default(0),
+    state: jsonb("state").$type<unknown>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // "the investigations in this chat" (sidebar / follow-up context).
+    index("investigations_chat_idx").on(t.chatId),
+  ]
+);
+
+/** `active` is the only non-terminal status; the other three are immutable. */
+export type WatchStatus = "active" | "fired" | "expired" | "cancelled";
+/** `not_required` while active and for every cancelled outcome — only fired/expired notify. */
+export type WatchDeliveryStatus = "not_required" | "pending" | "delivered";
+export type WatchCancelReason = "user" | "access_revoked" | "chat_deleted";
+
+/**
+ * The persisted spec adds a server-set `since` to the caller's spec. It's the
+ * watch's creation time (ISO), used by `error_recurrence` so a recurrence check
+ * can't match errors that predate the watch. Stored inside the JSONB rather than
+ * as a column because it's part of the check's input, not watch lifecycle state.
+ */
+export type PersistedWatchSpec = WatchSpec & { since?: string };
+
+/**
+ * One row per watch — "tell me when X happens", checked by a periodic task.
+ *
+ * The initiating identity (`organizationId` / `projectId` / `environmentId` /
+ * `userId`) is a **snapshot taken at creation and never updated**: a watch fires
+ * with exactly the access its creator had, so a later membership change can only
+ * cancel it (`cancel_reason = 'access_revoked'`), never silently widen its scope.
+ * These are main-DB ids, FK-free (cross-db).
+ *
+ * `identity` is the caller-computed dedup key for the watched thing (e.g. the run
+ * id or queue being watched) — its own column so the "already watching this"
+ * lookup is a plain indexed query instead of a JSONB dig.
+ *
+ * Status/delivery transitions are guarded in the query layer with
+ * `WHERE status = 'active' … RETURNING`, not by DB constraints, so a concurrent
+ * fire/expire/cancel resolves to exactly one winner.
+ */
+export const watches = dashboardAgentSchema.table(
+  "watches",
+  {
+    id: text("id").primaryKey(), // = watchId (`watch_…`)
+    chatId: text("chat_id").notNull(), // = chats.id
+    // Dedup key component: what is being watched, as a string.
+    identity: text("identity").notNull(),
+    spec: jsonb("spec").$type<PersistedWatchSpec>().notNull(),
+    status: text("status").$type<WatchStatus>().notNull().default("active"),
+    deliveryStatus: text("delivery_status")
+      .$type<WatchDeliveryStatus>()
+      .notNull()
+      .default("not_required"),
+    cancelReason: text("cancel_reason").$type<WatchCancelReason>(),
+    // Immutable initiating identity — snapshot at creation.
+    organizationId: text("organization_id").notNull(),
+    projectId: text("project_id").notNull(),
+    environmentId: text("environment_id").notNull(),
+    userId: text("user_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    firedAt: timestamp("fired_at", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    // The last check's output; on fire/expire it's the payload the notification uses.
+    lastResult: jsonb("last_result").$type<Record<string, unknown>>(),
+    // Ticks so far. Check idempotency keys are `watch:{id}:tick:{n}`.
+    tickCount: integer("tick_count").notNull().default(0),
+  },
+  (t) => [
+    index("watches_chat_idx").on(t.chatId),
+    // Guardrails + dedup: "the active watches in this chat" (max 3, and is this
+    // thing already watched). Partial so terminal rows never bloat the hot path.
+    //
+    // UNIQUE is the actual dedup guarantee: a read-then-insert check can't be
+    // race-proof under READ COMMITTED (two transactions both see no duplicate and
+    // both insert), so the constraint has to live in the DB. Partial on `active`
+    // because re-watching the same thing after a watch fired must be allowed.
+    // Leading `chat_id` means this also serves the "active watches of this chat"
+    // lookup, so no separate non-unique partial index is needed.
+    uniqueIndex("watches_chat_active_identity_key")
+      .on(t.chatId, t.projectId, t.environmentId, t.identity)
+      .where(sql`${t.status} = 'active'`),
+    // Sweep: active watches due to be checked / past their expiry.
+    index("watches_status_expires_idx").on(t.status, t.expiresAt),
+  ]
+);
+
 export type Chat = typeof chats.$inferSelect;
 export type NewChat = typeof chats.$inferInsert;
 export type ChatSession = typeof chatSessions.$inferSelect;
 export type NewChatSession = typeof chatSessions.$inferInsert;
 export type ChatTurnEval = typeof chatTurnEvals.$inferSelect;
 export type NewChatTurnEval = typeof chatTurnEvals.$inferInsert;
+export type Investigation = typeof investigations.$inferSelect;
+export type NewInvestigation = typeof investigations.$inferInsert;
+export type Watch = typeof watches.$inferSelect;
+export type NewWatch = typeof watches.$inferInsert;

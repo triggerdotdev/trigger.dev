@@ -34,6 +34,25 @@ of truth.
   `public_access_token` and `last_event_id` for resume. Separate table so the
   secret token is isolated from list queries and the hot per-turn write stays off
   the conversation row's indexes.
+- `chat_turn_evals` — one append-only row per evaluated turn, written by the
+  `dashboard-agent-eval-turn` task: quality scores (grounded / answered / concise)
+  and insight classification (intent, outcome, capability & docs gaps). Keyed on
+  `(chat_id, turn)` so a re-delivered turn can't double-insert.
+- `investigations` — the agent's revisioned working state for a diagnostic thread.
+  Keyed by `investigation_id` so a follow-up can load one from the id alone;
+  `revision` is bumped by a single atomic `revision = revision + 1` update, and the
+  `chat_id`/`project_ref`/`environment_ref` triple must match on every commit.
+  `state` is intentionally untyped JSONB — the payload shape isn't frozen yet.
+- `watches` — "tell me when X happens", checked by a periodic task. `status`
+  (`active | fired | expired | cancelled`) and `delivery_status`
+  (`not_required | pending | delivered`) are guarded in the query layer with
+  `WHERE status = 'active' … RETURNING`, so concurrent fire/expire/cancel resolves
+  to one winner. The org/project/env/user identity is a snapshot taken at creation
+  and never updated — a watch fires with exactly the access its creator had.
+  `identity` is the dedup key for the watched thing: a partial unique index on
+  `(chat_id, project_id, environment_id, identity) WHERE status = 'active'` is what
+  actually prevents duplicates, since a read-then-insert check can't be race-proof.
+  A chat may hold at most three active watches (best-effort, not a hard cap).
 
 ## Migrations
 
