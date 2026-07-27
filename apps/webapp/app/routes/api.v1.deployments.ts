@@ -5,7 +5,7 @@ import {
   type InitializeDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
 import { $replica } from "~/db.server";
-import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { authenticateApiKeyWithScope } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -18,12 +18,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
+  const authResult = await authenticateApiKeyWithScope(request, {
+    action: "write",
+    resource: { type: "deployments" },
+  });
 
-  if (!authenticationResult) {
+  if (!authResult.ok) {
     logger.info("Invalid or missing api key", { url: request.url });
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    return json({ error: authResult.error }, { status: authResult.status });
   }
+
+  const authenticationResult = authResult.authentication;
 
   const rawBody = await request.json();
   const body = InitializeDeploymentRequestBody.safeParse(rawBody);

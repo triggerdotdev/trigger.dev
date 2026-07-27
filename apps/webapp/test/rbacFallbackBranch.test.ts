@@ -1,7 +1,10 @@
 import { postgresTest } from "@internal/testcontainers";
 import plugin from "@trigger.dev/rbac";
+import { createHash } from "node:crypto";
+import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { type PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
+import { generateAdditionalApiKey } from "~/utils/apiKeys";
 import { createTestOrgProjectWithMember, uniqueId } from "./fixtures/environmentVariablesFixtures";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -139,6 +142,313 @@ describe("RBAC fallback — DEVELOPMENT branch pivot", () => {
       expect(result.ok).toBe(false);
       if (result.ok) return;
       expect(result.status).toBe(401);
+    }
+  );
+});
+
+describe("RBAC fallback — additional keys", () => {
+  postgresTest("authenticates an additional key and records its use", async ({ prisma }) => {
+    const { organization, project, orgMember, user } = await createTestOrgProjectWithMember(prisma);
+    const rbac = makeController(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+      orgMemberId: orgMember.id,
+    });
+    const additional = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+    await prisma.apiKey.create({
+      data: {
+        name: "External integration",
+        keyHash: createHash("sha256").update(additional).digest("hex"),
+        lastFour: additional.slice(-4),
+        runtimeEnvironmentId: environment.id,
+        createdByUserId: user.id,
+        presetId: null,
+        scopes: ["admin"],
+      },
+    });
+    const rootResult = await rbac.authenticateBearer(bearerRequest(environment.apiKey));
+    const additionalResult = await rbac.authenticateBearer(bearerRequest(additional));
+
+    expect(rootResult.ok).toBe(true);
+    expect(additionalResult.ok).toBe(true);
+    if (!additionalResult.ok) return;
+    expect(additionalResult.environment.id).toBe(environment.id);
+    expect(additionalResult.environment.apiKey).toBe(environment.apiKey);
+    await expect(
+      prisma.apiKey.findFirst({
+        where: { keyHash: createHash("sha256").update(additional).digest("hex") },
+        select: { lastUsedAt: true },
+      })
+    ).resolves.toMatchObject({ lastUsedAt: expect.any(Date) });
+  });
+
+  postgresTest("enforces restricted stored scopes on an additional key", async ({ prisma }) => {
+    const { organization, project, orgMember, user } = await createTestOrgProjectWithMember(prisma);
+    const rbac = makeController(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+      orgMemberId: orgMember.id,
+    });
+    const additional = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+    await prisma.apiKey.create({
+      data: {
+        name: "Task-scoped",
+        keyHash: createHash("sha256").update(additional).digest("hex"),
+        lastFour: additional.slice(-4),
+        runtimeEnvironmentId: environment.id,
+        createdByUserId: user.id,
+        presetId: "TRIGGER_ONLY",
+        scopes: ["trigger:tasks:send-email"],
+      },
+    });
+
+    const result = await rbac.authenticateBearer(bearerRequest(additional));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.subject).toMatchObject({ type: "apiKey", restricted: true });
+    expect(result.ability.can("trigger", { type: "tasks", id: "send-email" })).toBe(true);
+    expect(result.ability.can("trigger", { type: "tasks", id: "other-task" })).toBe(false);
+    expect(result.ability.can("read", { type: "runs" })).toBe(false);
+  });
+
+  postgresTest("pivots an additional key to its branch environment", async ({ prisma }) => {
+    const { organization, project, orgMember, user } = await createTestOrgProjectWithMember(prisma);
+    const rbac = makeController(prisma);
+    const devRoot = await createEnv(prisma, project.id, organization.id, {
+      type: "DEVELOPMENT",
+      orgMemberId: orgMember.id,
+    });
+    const branch = await createEnv(prisma, project.id, organization.id, {
+      type: "DEVELOPMENT",
+      orgMemberId: orgMember.id,
+      parentEnvironmentId: devRoot.id,
+      branchName: "api-key-policy",
+    });
+    const additional = generateAdditionalApiKey("DEVELOPMENT").apiKey;
+
+    await prisma.apiKey.create({
+      data: {
+        name: "Branch key",
+        keyHash: createHash("sha256").update(additional).digest("hex"),
+        lastFour: additional.slice(-4),
+        runtimeEnvironmentId: devRoot.id,
+        createdByUserId: user.id,
+        presetId: null,
+        scopes: ["admin"],
+      },
+    });
+
+    const result = await rbac.authenticateBearer(bearerRequest(additional, "api-key-policy"));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.environment.id).toBe(branch.id);
+    expect(result.environment.parentEnvironment?.id).toBe(devRoot.id);
+    expect(result.subject).toMatchObject({ type: "apiKey", restricted: false });
+  });
+
+  postgresTest("treats empty stored scopes as restricted and deny-all", async ({ prisma }) => {
+    const { organization, project, orgMember, user } = await createTestOrgProjectWithMember(prisma);
+    const rbac = makeController(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+      orgMemberId: orgMember.id,
+    });
+    const additional = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+    await prisma.apiKey.create({
+      data: {
+        name: "Empty policy",
+        keyHash: createHash("sha256").update(additional).digest("hex"),
+        lastFour: additional.slice(-4),
+        runtimeEnvironmentId: environment.id,
+        createdByUserId: user.id,
+        presetId: null,
+        scopes: [],
+      },
+    });
+
+    const result = await rbac.authenticateBearer(bearerRequest(additional));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.subject).toMatchObject({ type: "apiKey", restricted: true });
+    expect(result.ability.can("read", { type: "runs" })).toBe(false);
+    expect(result.ability.can("trigger", { type: "tasks", id: "send-email" })).toBe(false);
+  });
+});
+
+describe("RBAC fallback — public JWTs", () => {
+  postgresTest(
+    "keeps tokens signed with a rotated root key valid for the grace window",
+    async ({ prisma }) => {
+      const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
+      const rbac = makeController(prisma);
+      const environment = await createEnv(prisma, project.id, organization.id, {
+        type: "PRODUCTION",
+        orgMemberId: orgMember.id,
+      });
+      const token = await generateJWT({
+        secretKey: environment.apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["read:runs"] },
+        expirationTime: "1h",
+      });
+
+      await expect(
+        rbac.authenticateBearer(bearerRequest(token), { allowJWT: true })
+      ).resolves.toMatchObject({ ok: true });
+
+      // Rotate exactly as `regenerateApiKey` does: new value on the env, old
+      // value parked in RevokedApiKey with a future expiry.
+      const previousApiKey = environment.apiKey;
+      await prisma.$transaction([
+        prisma.revokedApiKey.create({
+          data: {
+            apiKey: previousApiKey,
+            runtimeEnvironmentId: environment.id,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        }),
+        prisma.runtimeEnvironment.update({
+          where: { id: environment.id },
+          data: { apiKey: uniqueId("tr_rotated") },
+        }),
+      ]);
+
+      const graceResult = await rbac.authenticateBearer(bearerRequest(token), { allowJWT: true });
+      expect(graceResult.ok).toBe(true);
+      if (!graceResult.ok) return;
+      expect(graceResult.environment.id).toBe(environment.id);
+      expect(graceResult.ability.can("read", { type: "runs" })).toBe(true);
+      expect(graceResult.ability.can("write", { type: "runs" })).toBe(false);
+    }
+  );
+
+  postgresTest(
+    "rejects a token signed with a rotated key once the grace window expires",
+    async ({ prisma }) => {
+      const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
+      const rbac = makeController(prisma);
+      const environment = await createEnv(prisma, project.id, organization.id, {
+        type: "PRODUCTION",
+        orgMemberId: orgMember.id,
+      });
+      const token = await generateJWT({
+        secretKey: environment.apiKey,
+        payload: { pub: true, sub: environment.id, scopes: ["read:runs"] },
+        expirationTime: "1h",
+      });
+
+      await prisma.$transaction([
+        prisma.revokedApiKey.create({
+          data: {
+            apiKey: environment.apiKey,
+            runtimeEnvironmentId: environment.id,
+            expiresAt: new Date(Date.now() - 60 * 1000),
+          },
+        }),
+        prisma.runtimeEnvironment.update({
+          where: { id: environment.id },
+          data: { apiKey: uniqueId("tr_rotated") },
+        }),
+      ]);
+
+      await expect(
+        rbac.authenticateBearer(bearerRequest(token), { allowJWT: true })
+      ).resolves.toMatchObject({ ok: false, status: 401 });
+    }
+  );
+
+  postgresTest("surfaces public JWT actor attribution", async ({ prisma }) => {
+    const { organization, project, orgMember, user } = await createTestOrgProjectWithMember(prisma);
+    const rbac = makeController(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+      orgMemberId: orgMember.id,
+    });
+    const token = await generateJWT({
+      secretKey: environment.apiKey,
+      payload: {
+        pub: true,
+        sub: environment.id,
+        scopes: ["read:runs"],
+        act: { sub: user.id },
+      },
+      expirationTime: "1h",
+    });
+
+    const result = await rbac.authenticateBearer(bearerRequest(token), { allowJWT: true });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.jwt?.act).toEqual({ sub: user.id });
+  });
+
+  postgresTest("rejects public JWTs for soft-deleted projects", async ({ prisma }) => {
+    const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
+    const rbac = makeController(prisma);
+    const environment = await createEnv(prisma, project.id, organization.id, {
+      type: "PRODUCTION",
+      orgMemberId: orgMember.id,
+    });
+    const token = await generateJWT({
+      secretKey: environment.apiKey,
+      payload: { pub: true, sub: environment.id, scopes: ["read:runs"] },
+      expirationTime: "1h",
+    });
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    const result = await rbac.authenticateBearer(bearerRequest(token), { allowJWT: true });
+
+    expect(result).toMatchObject({ ok: false, status: 401 });
+  });
+});
+
+describe("RBAC fallback — additional key permissions", () => {
+  postgresTest(
+    "gives additional keys root-key-equivalent permissive access",
+    async ({ prisma }) => {
+      const { organization, project, orgMember, user } =
+        await createTestOrgProjectWithMember(prisma);
+      const rbac = makeController(prisma);
+      const environment = await createEnv(prisma, project.id, organization.id, {
+        type: "PRODUCTION",
+        orgMemberId: orgMember.id,
+      });
+      const additional = generateAdditionalApiKey("PRODUCTION").apiKey;
+
+      await prisma.apiKey.create({
+        data: {
+          name: "External integration",
+          keyHash: createHash("sha256").update(additional).digest("hex"),
+          lastFour: additional.slice(-4),
+          runtimeEnvironmentId: environment.id,
+          createdByUserId: user.id,
+          presetId: null,
+          scopes: ["admin"],
+        },
+      });
+
+      const rootResult = await rbac.authenticateBearer(bearerRequest(environment.apiKey));
+      const additionalResult = await rbac.authenticateBearer(bearerRequest(additional));
+
+      expect(rootResult.ok).toBe(true);
+      expect(additionalResult.ok).toBe(true);
+      if (!rootResult.ok || !additionalResult.ok) return;
+
+      expect(additionalResult.subject).toMatchObject({ type: "apiKey", restricted: false });
+      for (const [action, resource] of [
+        ["write", { type: "envvars" }],
+        ["trigger", { type: "tasks", id: "send-email" }],
+        ["read", { type: "runs", id: "run_123" }],
+      ] as const) {
+        expect(additionalResult.ability.can(action, resource)).toBe(
+          rootResult.ability.can(action, resource)
+        );
+      }
     }
   );
 });

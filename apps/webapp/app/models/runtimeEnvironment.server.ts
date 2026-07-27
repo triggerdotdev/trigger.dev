@@ -5,7 +5,9 @@ import { runStore } from "~/v3/runStore.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
+import { hashApiKey } from "~/utils/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import { scopesGrantFullAccess } from "@trigger.dev/rbac";
 
 export type { RuntimeEnvironment };
 
@@ -93,11 +95,21 @@ export function toAuthenticated(
   };
 }
 
-export async function findEnvironmentByApiKey(
+export type ApiKeyEnvironmentResolution =
+  | { ok: true; environment: AuthenticatedEnvironment }
+  | { ok: false; reason: "not-found" | "restricted" };
+
+/**
+ * Resolve an environment from a raw API key for legacy routes that do not
+ * declare authorization. Additional keys are accepted only when their stored
+ * scopes explicitly grant full access; restricted keys fail closed here
+ * (`reason: "restricted"`, so callers can explain the rejection).
+ */
+async function resolveEnvironmentByApiKey(
   apiKey: string,
   branchName: string | undefined,
-  tx: PrismaClientOrTransaction = $replica
-): Promise<AuthenticatedEnvironment | null> {
+  tx: PrismaClientOrTransaction
+): Promise<ApiKeyEnvironmentResolution> {
   const branch = sanitizeBranchName(branchName) ?? undefined;
 
   const include = {
@@ -112,6 +124,8 @@ export async function findEnvironmentByApiKey(
       : undefined,
   } satisfies Prisma.RuntimeEnvironmentInclude;
 
+  const now = new Date();
+  let additionalApiKey: { id: string; lastUsedAt: Date | null } | null = null;
   let environment = await tx.runtimeEnvironment.findFirst({
     where: {
       apiKey,
@@ -119,12 +133,12 @@ export async function findEnvironmentByApiKey(
     include,
   });
 
-  // Fall back to keys that were revoked within the grace window
+  // Fall back to root keys that were rotated within the grace window.
   if (!environment) {
     const revokedApiKey = await tx.revokedApiKey.findFirst({
       where: {
         apiKey,
-        expiresAt: { gt: new Date() },
+        expiresAt: { gt: now },
       },
       include: {
         runtimeEnvironment: { include },
@@ -134,13 +148,64 @@ export async function findEnvironmentByApiKey(
     environment = revokedApiKey?.runtimeEnvironment ?? null;
   }
 
+  // Additional keys are host-owned credentials. Legacy routes cannot apply a
+  // scoped ability, so only an explicit full-access scope is accepted.
   if (!environment) {
-    return null;
+    const match = await tx.apiKey.findFirst({
+      where: {
+        keyHash: hashApiKey(apiKey),
+        revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: {
+        id: true,
+        lastUsedAt: true,
+        scopes: true,
+        runtimeEnvironment: { include },
+      },
+    });
+
+    if (match && !scopesGrantFullAccess(match.scopes)) {
+      return { ok: false, reason: "restricted" };
+    }
+
+    additionalApiKey = match ? { id: match.id, lastUsedAt: match.lastUsedAt } : null;
+    environment = match?.runtimeEnvironment ?? null;
+  }
+
+  if (!environment) {
+    return { ok: false, reason: "not-found" };
+  }
+
+  if (
+    additionalApiKey &&
+    (!additionalApiKey.lastUsedAt ||
+      additionalApiKey.lastUsedAt < new Date(now.getTime() - 300_000))
+  ) {
+    try {
+      // Deliberately the primary `prisma`, not `tx`: `tx` defaults to the
+      // read replica (and may be a caller's transaction), and this last-used
+      // telemetry write must hit the writer. It's throttled to once every 5
+      // minutes per key and best-effort — auth never fails if it can't record.
+      await prisma.apiKey.updateMany({
+        where: {
+          id: additionalApiKey.id,
+          revokedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        data: { lastUsedAt: now },
+      });
+    } catch (error) {
+      logger.warn("Failed to update API key last-used timestamp", {
+        apiKeyId: additionalApiKey.id,
+        error,
+      });
+    }
   }
 
   //don't return deleted projects
   if (environment.project.deletedAt !== null) {
-    return null;
+    return { ok: false, reason: "not-found" };
   }
 
   if (environment.type === "PREVIEW") {
@@ -148,23 +213,26 @@ export async function findEnvironmentByApiKey(
       logger.warn("findEnvironmentByApiKey(): Preview env with no branch name provided", {
         environmentId: environment.id,
       });
-      return null;
+      return { ok: false, reason: "not-found" };
     }
 
     const childEnvironment = environment.childEnvironments.at(0);
 
     if (childEnvironment) {
-      return toAuthenticated({
-        ...childEnvironment,
-        apiKey: environment.apiKey,
-        orgMember: environment.orgMember,
-        organization: environment.organization,
-        project: environment.project,
-      });
+      return {
+        ok: true,
+        environment: toAuthenticated({
+          ...childEnvironment,
+          apiKey: environment.apiKey,
+          orgMember: environment.orgMember,
+          organization: environment.organization,
+          project: environment.project,
+        }),
+      };
     }
 
     //A branch was specified but no child environment was found
-    return null;
+    return { ok: false, reason: "not-found" };
   }
 
   // If there is a named DEV branch (other than default), return it
@@ -172,20 +240,49 @@ export async function findEnvironmentByApiKey(
     const childEnvironment = environment.childEnvironments.at(0);
 
     if (childEnvironment) {
-      return toAuthenticated({
-        ...childEnvironment,
-        apiKey: environment.apiKey,
-        orgMember: environment.orgMember,
-        organization: environment.organization,
-        project: environment.project,
-      });
+      return {
+        ok: true,
+        environment: toAuthenticated({
+          ...childEnvironment,
+          apiKey: environment.apiKey,
+          orgMember: environment.orgMember,
+          organization: environment.organization,
+          project: environment.project,
+        }),
+      };
     }
 
     //A branch was specified but no child environment was found
-    return null;
+    return { ok: false, reason: "not-found" };
   }
 
-  return toAuthenticated(environment);
+  return { ok: true, environment: toAuthenticated(environment) };
+}
+
+/**
+ * Resolve an environment from a raw API key. Root and grace-window keys keep
+ * their legacy behavior; additional keys with restricted scopes fail closed.
+ */
+export async function findEnvironmentByApiKey(
+  apiKey: string,
+  branchName: string | undefined,
+  tx: PrismaClientOrTransaction = $replica
+): Promise<AuthenticatedEnvironment | null> {
+  const resolution = await resolveEnvironmentByApiKey(apiKey, branchName, tx);
+  return resolution.ok ? resolution.environment : null;
+}
+
+/**
+ * Like `findEnvironmentByApiKey`, but distinguishes a restricted additional
+ * key (fails closed on legacy routes) from an unknown key so callers can
+ * return an accurate error message.
+ */
+export async function findEnvironmentByApiKeyWithResolution(
+  apiKey: string,
+  branchName: string | undefined,
+  tx: PrismaClientOrTransaction = $replica
+): Promise<ApiKeyEnvironmentResolution> {
+  return resolveEnvironmentByApiKey(apiKey, branchName, tx);
 }
 
 /**

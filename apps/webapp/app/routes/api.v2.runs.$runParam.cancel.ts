@@ -1,7 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { env as appEnv } from "~/env.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
@@ -19,10 +19,6 @@ const { action } = createActionApiRoute(
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "none",
-    authorization: {
-      action: "write",
-      resource: (params) => ({ type: "runs", id: params.runParam }),
-    },
     // PG-or-buffer resolver. Returning null here would 404 BEFORE the
     // action runs (`apiBuilder.server.ts:321`), so buffered cancels need
     // a buffer check at this layer too. Logic lives in a helper so the
@@ -36,6 +32,16 @@ const { action } = createActionApiRoute(
         environmentId: auth.environment.id,
         organizationId: auth.environment.organizationId,
       }),
+    authorization: {
+      action: "write",
+      resource: (params, _, __, ___, run) =>
+        run
+          ? anyResource([
+              { type: "runs", id: run.friendlyId },
+              { type: "tasks", id: run.taskIdentifier },
+            ])
+          : { type: "runs", id: params.runParam },
+    },
   },
   async ({ params, authentication }) => {
     const runId = params.runParam;

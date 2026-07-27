@@ -13,7 +13,10 @@ import type {
   RoleMutationResult,
 } from "@trigger.dev/plugins";
 import type { PrismaClient } from "@trigger.dev/database";
+import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
+
 import { RoleBaseAccessFallback } from "./fallback.js";
+import { BearerCredentialResolver } from "./bearerCredentials.js";
 export type { RoleBaseAccessController, RbacAbility, RbacResource } from "@trigger.dev/plugins";
 
 /**
@@ -30,6 +33,7 @@ export type HostRbacController = Required<RoleBaseAccessController>;
 export type { UserActorAuthResult, UserActorClaims } from "@trigger.dev/plugins";
 export { buildJwtAbility, scopesWithinAbility } from "./ability.js";
 export { FULL_ACCESS_PRESET_ID, scopesGrantFullAccess } from "@trigger.dev/plugins";
+export { resolveJwtSigningKey } from "./bearerCredentials.js";
 // Re-export the user-actor token grammar so the webapp mints/checks tokens
 // through @trigger.dev/rbac (it doesn't import @trigger.dev/plugins directly).
 export {
@@ -85,8 +89,15 @@ export function withActionAliases(underlying: RbacAbility): RbacAbility {
 // Synchronous create() avoids top-level await (not supported in the webapp's CJS build).
 class LazyController implements RoleBaseAccessController {
   private readonly _init: Promise<RoleBaseAccessController>;
+  // Additional API keys (the ApiKey table) are host-owned, not known to the
+  // optional plugin. The host resolves them with its always-on credential
+  // resolver — not a full RBAC fallback controller.
+  private readonly _hostCredentialResolver: BearerCredentialResolver;
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
+    this._hostCredentialResolver = new BearerCredentialResolver(
+      "primary" in prisma ? prisma : { primary: prisma, replica: prisma }
+    );
     this._init = this.load(prisma, options);
     // load() runs eagerly but the result is awaited lazily on first method
     // call. If load() rejects (e.g. REQUIRE_PLUGINS=1 + plugin missing) and
@@ -176,7 +187,32 @@ class LazyController implements RoleBaseAccessController {
   }
 
   async authenticateBearer(...args: Parameters<RoleBaseAccessController["authenticateBearer"]>) {
-    const result = await (await this.c()).authenticateBearer(...args);
+    const controller = await this.c();
+    const usingPlugin = await controller.isUsingPlugin();
+    const [request, options] = args;
+    const rawToken = request.headers
+      .get("Authorization")
+      ?.replace(/^Bearer /, "")
+      .trim();
+    const useHostForPublicJWT = Boolean(options?.allowJWT && rawToken && isPublicJWT(rawToken));
+
+    // Public JWT validation is host-owned. Route it directly to the host so
+    // plugin implementations cannot drift from the canonical JWT checks.
+    let result = useHostForPublicJWT
+      ? await this._hostCredentialResolver.authenticate(...args)
+      : await controller.authenticateBearer(...args);
+
+    // Additional environment API keys are stored by the host, not by the
+    // optional RBAC plugin. If the plugin does not recognize a bearer token,
+    // let the host resolver try that principal type. Root keys and all
+    // plugin-owned principals remain authoritative in the plugin.
+    if (!useHostForPublicJWT && !result.ok && result.status === 401 && usingPlugin) {
+      const hostResult = await this._hostCredentialResolver.authenticate(...args);
+      if (hostResult.ok && hostResult.subject.type === "apiKey") {
+        result = hostResult;
+      }
+    }
+
     return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;
   }
 

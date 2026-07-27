@@ -9,9 +9,11 @@ import {
   authIncludeBase,
   authIncludeWithParent,
   findEnvironmentByApiKey,
+  findEnvironmentByApiKeyWithResolution,
   findEnvironmentByPublicApiKey,
   toAuthenticated,
 } from "~/models/runtimeEnvironment.server";
+import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { logger } from "./logger.server";
 import { safeEnvironmentLogFields } from "./safeEnvironmentLog";
@@ -28,6 +30,7 @@ import {
 } from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import { rbac } from "./rbac.server";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -58,6 +61,10 @@ export type ApiAuthenticationResultSuccess = {
   realtime?: {
     skipColumns?: string[];
   };
+  // Present when authentication went through the RBAC bearer controller.
+  // Legacy direct authentication intentionally omits it and remains fail-closed
+  // for restricted additional keys.
+  ability?: RbacAbility;
   // Present when the request used a public JWT minted from a PAT/UAT exchange
   // that stamped an `act` delegation claim. `actor.sub` is the acting user id,
   // used for attribution (e.g. who resolved an error). Absent for plain env
@@ -117,7 +124,11 @@ export async function authenticateApiRequestWithFailure(
  */
 export async function authenticateApiKey(
   apiKey: string,
-  options: { allowPublicKey?: boolean; allowJWT?: boolean; branchName?: string } = {}
+  options: {
+    allowPublicKey?: boolean;
+    allowJWT?: boolean;
+    branchName?: string;
+  } = {}
 ): Promise<ApiAuthenticationResultSuccess | undefined> {
   const result = getApiKeyResult(apiKey);
 
@@ -184,7 +195,11 @@ export async function authenticateApiKey(
  */
 async function authenticateApiKeyWithFailure(
   apiKey: string,
-  options: { allowPublicKey?: boolean; allowJWT?: boolean; branchName?: string } = {}
+  options: {
+    allowPublicKey?: boolean;
+    allowJWT?: boolean;
+    branchName?: string;
+  } = {}
 ): Promise<ApiAuthenticationResult> {
   const result = getApiKeyResult(apiKey);
 
@@ -226,18 +241,24 @@ async function authenticateApiKeyWithFailure(
       };
     }
     case "PRIVATE": {
-      const environment = await findEnvironmentByApiKey(result.apiKey, options.branchName);
-      if (!environment) {
+      const resolution = await findEnvironmentByApiKeyWithResolution(
+        result.apiKey,
+        options.branchName
+      );
+      if (!resolution.ok) {
         return {
           ok: false,
-          error: "Invalid API Key",
+          error:
+            resolution.reason === "restricted"
+              ? "This endpoint does not support restricted API keys. Use an API key with full environment access."
+              : "Invalid API Key",
         };
       }
 
       return {
         ok: true,
         ...result,
-        environment,
+        environment: resolution.environment,
       };
     }
     case "PUBLIC_JWT": {
@@ -258,6 +279,52 @@ async function authenticateApiKeyWithFailure(
       };
     }
   }
+}
+
+/**
+ * Authenticate an API-key request for a legacy (non-apiBuilder) route that
+ * needs to accept granular additional keys, then enforce that the key's ability
+ * authorizes `action` on `resource`. Root keys (and grace-window root keys)
+ * carry the unrestricted `admin` ability, preserving pre-granular behavior.
+ *
+ * Only apiKey credentials are accepted (no PAT / org token / public key). Use
+ * this for routes previously guarded by a bare `authenticateApiRequest` call.
+ */
+export async function authenticateApiKeyWithScope(
+  request: Request,
+  {
+    action,
+    resource,
+    allowJWT = false,
+  }: { action: string; resource: RbacResource; allowJWT?: boolean }
+): Promise<
+  | { ok: true; authentication: ApiAuthenticationResultSuccess }
+  | { ok: false; status: 401 | 403; error: string }
+> {
+  const apiKey = getApiKeyFromHeader(request.headers.get("Authorization"));
+  if (!apiKey) {
+    return { ok: false, status: 401, error: "Invalid or Missing API key" };
+  }
+
+  const result = await rbac.authenticateAuthorizeBearer(
+    request,
+    { action, resource },
+    { allowJWT }
+  );
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ok: true,
+    authentication: {
+      ok: true,
+      apiKey,
+      type: "PRIVATE",
+      environment: result.environment,
+      ability: result.ability,
+    },
+  };
 }
 
 export async function authenticateAuthorizationHeader(
@@ -434,7 +501,10 @@ export async function authenticateRequest<
   }
 
   if (allowedMethods.apiKey) {
-    const result = await authenticateApiKey(apiKey, { allowPublicKey: false, branchName });
+    const result = await authenticateApiKey(apiKey, {
+      allowPublicKey: false,
+      branchName,
+    });
 
     if (!result) {
       return;

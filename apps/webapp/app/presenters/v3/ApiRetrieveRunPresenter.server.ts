@@ -14,6 +14,7 @@ import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
 import type { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import type { RbacAbility } from "@trigger.dev/rbac";
 import assertNever from "assert-never";
 import type { API_VERSIONS, RunStatusUnspecifiedApiVersion } from "~/api/versions";
 import { CURRENT_API_VERSION } from "~/api/versions";
@@ -83,6 +84,24 @@ type CommonRelatedRunWithVersion = CommonRelatedRun & {
 // ReturnType<typeof findRun>) so findRun can return a synthesised buffered
 // run without the type becoming self-referential. Exported so the
 // buffer-synthesis helper below can match this shape under unit test.
+function canReadRelatedRun(
+  ability: RbacAbility | undefined,
+  run: CommonRelatedRunWithVersion
+): boolean {
+  if (!ability) return true;
+
+  const resources = [
+    { type: "runs", id: run.friendlyId },
+    { type: "tasks", id: run.taskIdentifier },
+    ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
+  ];
+  if (run.batch?.friendlyId) {
+    resources.push({ type: "batch", id: run.batch.friendlyId });
+  }
+
+  return ability.can("read", resources);
+}
+
 export type FoundRun = CommonRelatedRunWithVersion & {
   traceId: string;
   payload: string;
@@ -212,7 +231,7 @@ export class ApiRetrieveRunPresenter {
     return synthesiseFoundRunFromBuffer(buffered);
   }
 
-  public async call(taskRun: FoundRun, env: AuthenticatedEnvironment) {
+  public async call(taskRun: FoundRun, env: AuthenticatedEnvironment, ability?: RbacAbility) {
     return startSpanWithEnv(tracer, "ApiRetrieveRunPresenter.call", env, async () => {
       let $payload: any;
       let $payloadPresignedUrl: string | undefined;
@@ -290,14 +309,18 @@ export class ApiRetrieveRunPresenter {
           taskRun.engine === "V1" ? taskRun.attempts.length : (taskRun.attemptNumber ?? 0),
         attempts: [],
         relatedRuns: {
-          root: taskRun.rootTaskRun
-            ? await createCommonRunStructure(taskRun.rootTaskRun, this.apiVersion)
-            : undefined,
-          parent: taskRun.parentTaskRun
-            ? await createCommonRunStructure(taskRun.parentTaskRun, this.apiVersion)
-            : undefined,
+          root:
+            taskRun.rootTaskRun && canReadRelatedRun(ability, taskRun.rootTaskRun)
+              ? await createCommonRunStructure(taskRun.rootTaskRun, this.apiVersion)
+              : undefined,
+          parent:
+            taskRun.parentTaskRun && canReadRelatedRun(ability, taskRun.parentTaskRun)
+              ? await createCommonRunStructure(taskRun.parentTaskRun, this.apiVersion)
+              : undefined,
           children: await Promise.all(
-            taskRun.childRuns.map(async (r) => await createCommonRunStructure(r, this.apiVersion))
+            taskRun.childRuns
+              .filter((run) => canReadRelatedRun(ability, run))
+              .map(async (run) => await createCommonRunStructure(run, this.apiVersion))
           ),
         },
       };

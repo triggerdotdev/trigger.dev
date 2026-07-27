@@ -31,9 +31,9 @@ export const loader = createLoaderApiRoute(
       },
     },
   },
-  async ({ authentication, resource, apiVersion }) => {
+  async ({ authentication, ability, resource, apiVersion }) => {
     const presenter = new ApiRetrieveRunPresenter(apiVersion);
-    const result = await presenter.call(resource, authentication.environment);
+    const result = await presenter.call(resource, authentication.environment, ability);
 
     if (!result) {
       return json(
