@@ -1,6 +1,6 @@
 import { postgresTest } from "@internal/testcontainers";
 import { type PrismaClient } from "@trigger.dev/database";
-import { describe, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { findEnvironmentByApiKey } from "~/models/runtimeEnvironment.server";
 import { generateAdditionalApiKey, hashApiKey } from "~/utils/apiKeys";
 import { createTestOrgProjectWithMember, uniqueId } from "./fixtures/environmentVariablesFixtures";
@@ -162,6 +162,43 @@ describe("findEnvironmentByApiKey — non-branchable", () => {
     const resolved = await findEnvironmentByApiKey("tr_dev_nonexistent", undefined, prisma);
     expect(resolved).toBeNull();
   });
+
+  it("queries only the additional-key store for a valid additional-key format", async () => {
+    const runtimeEnvironmentFind = vi.fn();
+    const revokedApiKeyFind = vi.fn();
+    const apiKeyFind = vi.fn(async () => null);
+    const tx = {
+      runtimeEnvironment: { findFirst: runtimeEnvironmentFind },
+      revokedApiKey: { findFirst: revokedApiKeyFind },
+      apiKey: { findFirst: apiKeyFind },
+    } as unknown as PrismaClient;
+
+    await expect(
+      findEnvironmentByApiKey("tr_prod_sk_0123456789abcdefghijklmn", undefined, tx)
+    ).resolves.toBeNull();
+    expect(apiKeyFind).toHaveBeenCalledOnce();
+    expect(runtimeEnvironmentFind).not.toHaveBeenCalled();
+    expect(revokedApiKeyFind).not.toHaveBeenCalled();
+  });
+
+  it.each(["tr_prod_ak_0123456789abcdefghijklmn", "tr_prod_sk_too-short"])(
+    "keeps malformed additional-key formats on the root lookup path: %s",
+    async (apiKey) => {
+      const runtimeEnvironmentFind = vi.fn(async () => null);
+      const revokedApiKeyFind = vi.fn(async () => null);
+      const apiKeyFind = vi.fn();
+      const tx = {
+        runtimeEnvironment: { findFirst: runtimeEnvironmentFind },
+        revokedApiKey: { findFirst: revokedApiKeyFind },
+        apiKey: { findFirst: apiKeyFind },
+      } as unknown as PrismaClient;
+
+      await expect(findEnvironmentByApiKey(apiKey, undefined, tx)).resolves.toBeNull();
+      expect(runtimeEnvironmentFind).toHaveBeenCalledOnce();
+      expect(revokedApiKeyFind).toHaveBeenCalledOnce();
+      expect(apiKeyFind).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe("findEnvironmentByApiKey — additional and disabled keys", () => {

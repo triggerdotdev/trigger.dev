@@ -13,6 +13,7 @@ import type {
   RoleMutationResult,
 } from "@trigger.dev/plugins";
 import type { PrismaClient } from "@trigger.dev/database";
+import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
 
 import { RoleBaseAccessFallback } from "./fallback.js";
@@ -195,22 +196,22 @@ class LazyController implements RoleBaseAccessController {
       ?.replace(/^Bearer /, "")
       .trim();
     const useHostForPublicJWT = Boolean(options?.allowJWT && rawToken && isPublicJWT(rawToken));
+    const useHostForAdditionalKey = Boolean(
+      !useHostForPublicJWT && usingPlugin && rawToken && isAdditionalApiKey(rawToken)
+    );
 
-    // Public JWT validation is host-owned. Route it directly to the host so
-    // plugin implementations cannot drift from the canonical JWT checks.
-    let result = useHostForPublicJWT
-      ? await this._hostCredentialResolver.authenticate(...args)
-      : await controller.authenticateBearer(...args);
+    // Public JWT validation and additional environment API keys are host-owned.
+    // Route those formats directly to the host; all other bearer credentials
+    // remain authoritative in the installed controller.
+    const result =
+      useHostForPublicJWT || useHostForAdditionalKey
+        ? await this._hostCredentialResolver.authenticate(...args)
+        : await controller.authenticateBearer(...args);
 
-    // Additional environment API keys are stored by the host, not by the
-    // optional RBAC plugin. If the plugin does not recognize a bearer token,
-    // let the host resolver try that principal type. Root keys and all
-    // plugin-owned principals remain authoritative in the plugin.
-    if (!useHostForPublicJWT && !result.ok && result.status === 401 && usingPlugin) {
-      const hostResult = await this._hostCredentialResolver.authenticate(...args);
-      if (hostResult.ok && hostResult.subject.type === "apiKey") {
-        result = hostResult;
-      }
+    // The format is only a routing hint. A successful host resolution on the
+    // additional-key path must still produce the expected principal type.
+    if (useHostForAdditionalKey && result.ok && result.subject.type !== "apiKey") {
+      return { ok: false as const, status: 401 as const, error: "Invalid API key" };
     }
 
     return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;

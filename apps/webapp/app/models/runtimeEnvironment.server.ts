@@ -6,6 +6,7 @@ import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 import { hashApiKey } from "~/utils/apiKeys";
+import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { scopesGrantFullAccess } from "@trigger.dev/rbac";
 
@@ -125,16 +126,18 @@ async function resolveEnvironmentByApiKey(
   } satisfies Prisma.RuntimeEnvironmentInclude;
 
   const now = new Date();
-  let additionalApiKey: { id: string; lastUsedAt: Date | null } | null = null;
-  let environment = await tx.runtimeEnvironment.findFirst({
-    where: {
-      apiKey,
-    },
-    include,
-  });
+  const routesToAdditionalKey = isAdditionalApiKey(apiKey);
+  let rootEnvironment = routesToAdditionalKey
+    ? null
+    : await tx.runtimeEnvironment.findFirst({
+        where: {
+          apiKey,
+        },
+        include,
+      });
 
   // Fall back to root keys that were rotated within the grace window.
-  if (!environment) {
+  if (!routesToAdditionalKey && !rootEnvironment) {
     const revokedApiKey = await tx.revokedApiKey.findFirst({
       where: {
         apiKey,
@@ -145,33 +148,33 @@ async function resolveEnvironmentByApiKey(
       },
     });
 
-    environment = revokedApiKey?.runtimeEnvironment ?? null;
+    rootEnvironment = revokedApiKey?.runtimeEnvironment ?? null;
   }
 
   // Additional keys are host-owned credentials. Legacy routes cannot apply a
   // scoped ability, so only an explicit full-access scope is accepted.
-  if (!environment) {
-    const match = await tx.apiKey.findFirst({
-      where: {
-        keyHash: hashApiKey(apiKey),
-        revokedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
-      select: {
-        id: true,
-        lastUsedAt: true,
-        scopes: true,
-        runtimeEnvironment: { include },
-      },
-    });
+  const match = routesToAdditionalKey
+    ? await tx.apiKey.findFirst({
+        where: {
+          keyHash: hashApiKey(apiKey),
+          revokedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        select: {
+          id: true,
+          lastUsedAt: true,
+          scopes: true,
+          runtimeEnvironment: { include },
+        },
+      })
+    : null;
 
-    if (match && !scopesGrantFullAccess(match.scopes)) {
-      return { ok: false, reason: "restricted" };
-    }
-
-    additionalApiKey = match ? { id: match.id, lastUsedAt: match.lastUsedAt } : null;
-    environment = match?.runtimeEnvironment ?? null;
+  if (match && !scopesGrantFullAccess(match.scopes)) {
+    return { ok: false, reason: "restricted" };
   }
+
+  const additionalApiKey = match ? { id: match.id, lastUsedAt: match.lastUsedAt } : null;
+  let environment = rootEnvironment ?? match?.runtimeEnvironment ?? null;
 
   if (!environment) {
     return { ok: false, reason: "not-found" };

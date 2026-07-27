@@ -19,6 +19,8 @@ type LazyControllerInternals = {
 };
 
 const prismaPlaceholder = {} as PrismaClient;
+const ADDITIONAL_API_KEY = "tr_prod_sk_0123456789abcdefghijklmn";
+const ROOT_API_KEY = "tr_prod_0123456789abcdefghijklmn";
 const environment = {
   id: "env_123",
   organizationId: "org_123",
@@ -53,6 +55,20 @@ function additionalKeyResult(scopes: string[]): AuthSuccess {
   };
 }
 
+function rootKeyResult(): AuthSuccess {
+  return {
+    ok: true,
+    environment,
+    subject: {
+      type: "user",
+      userId: "user_123",
+      organizationId: environment.organizationId,
+      projectId: environment.projectId,
+    },
+    ability: buildJwtAbility(["admin"]),
+  };
+}
+
 function publicJwtResult(): AuthSuccess {
   return {
     ok: true,
@@ -69,6 +85,12 @@ function publicJwtResult(): AuthSuccess {
 
 function publicJwt(payload: Record<string, unknown>) {
   return `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
+}
+
+function bearerRequest(token: string) {
+  return new Request("https://api.trigger.dev/test", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 describe("API-key policy controller composition", () => {
@@ -94,33 +116,124 @@ describe("API-key policy controller composition", () => {
     expect(pluginAuthenticate).not.toHaveBeenCalled();
   });
 
-  it("uses the scoped host result unchanged when plugin auth falls back to an additional key", async () => {
-    const pluginAuthenticate = vi.fn(async () => ({
-      ok: false as const,
-      status: 401 as const,
-      error: "Invalid API key",
-    }));
+  it("routes valid additional keys directly to the host and preserves their scopes", async () => {
+    const pluginAuthenticate = vi.fn();
+    const hostAuthenticate = vi.fn(async () => additionalKeyResult(["write:tasks:send-email"]));
     const plugin = {
       isUsingPlugin: vi.fn(async () => true),
       authenticateBearer: pluginAuthenticate,
     } as unknown as RoleBaseAccessController;
-    const controller = installPlugin(
-      plugin,
-      vi.fn(async () => additionalKeyResult(["write:tasks:send-email"]))
-    );
+    const controller = installPlugin(plugin, hostAuthenticate);
 
-    const result = await controller.authenticateBearer(
-      new Request("https://api.trigger.dev/test", {
-        headers: { Authorization: "Bearer tr_additional" },
-      })
-    );
+    const result = await controller.authenticateBearer(bearerRequest(ADDITIONAL_API_KEY));
 
     expect(result.ok).toBe(true);
+    expect(hostAuthenticate).toHaveBeenCalledOnce();
+    expect(pluginAuthenticate).not.toHaveBeenCalled();
     if (!result.ok) return;
     expect(result.subject).toMatchObject({ type: "apiKey", restricted: true });
     expect(result.ability.can("trigger", { type: "tasks", id: "send-email" })).toBe(true);
     expect(result.ability.can("trigger", { type: "tasks", id: "other-task" })).toBe(false);
     expect(result.ability.can("read", { type: "runs" })).toBe(false);
+  });
+
+  it("returns an unknown additional key's host 401 without calling the plugin", async () => {
+    const hostFailure = {
+      ok: false as const,
+      status: 401 as const,
+      error: "Invalid API key",
+    };
+    const pluginAuthenticate = vi.fn();
+    const hostAuthenticate = vi.fn(async () => hostFailure);
+    const plugin = {
+      isUsingPlugin: vi.fn(async () => true),
+      authenticateBearer: pluginAuthenticate,
+    } as unknown as RoleBaseAccessController;
+    const controller = installPlugin(plugin, hostAuthenticate);
+
+    await expect(controller.authenticateBearer(bearerRequest(ADDITIONAL_API_KEY))).resolves.toEqual(
+      hostFailure
+    );
+    expect(hostAuthenticate).toHaveBeenCalledOnce();
+    expect(pluginAuthenticate).not.toHaveBeenCalled();
+  });
+
+  it("routes current root keys to the plugin without calling the host", async () => {
+    const pluginAuthenticate = vi.fn(async () => rootKeyResult());
+    const hostAuthenticate = vi.fn();
+    const plugin = {
+      isUsingPlugin: vi.fn(async () => true),
+      authenticateBearer: pluginAuthenticate,
+    } as unknown as RoleBaseAccessController;
+    const controller = installPlugin(plugin, hostAuthenticate);
+
+    await expect(controller.authenticateBearer(bearerRequest(ROOT_API_KEY))).resolves.toMatchObject(
+      {
+        ok: true,
+        subject: { type: "user" },
+      }
+    );
+    expect(pluginAuthenticate).toHaveBeenCalledOnce();
+    expect(hostAuthenticate).not.toHaveBeenCalled();
+  });
+
+  it.each([401, 403] as const)(
+    "returns a plugin %s for root-shaped keys without calling the host",
+    async (status) => {
+      const pluginFailure = {
+        ok: false as const,
+        status,
+        error: "Unauthorized",
+      };
+      const pluginAuthenticate = vi.fn(async () => pluginFailure);
+      const hostAuthenticate = vi.fn();
+      const plugin = {
+        isUsingPlugin: vi.fn(async () => true),
+        authenticateBearer: pluginAuthenticate,
+      } as unknown as RoleBaseAccessController;
+      const controller = installPlugin(plugin, hostAuthenticate);
+
+      await expect(controller.authenticateBearer(bearerRequest(ROOT_API_KEY))).resolves.toEqual(
+        pluginFailure
+      );
+      expect(pluginAuthenticate).toHaveBeenCalledOnce();
+      expect(hostAuthenticate).not.toHaveBeenCalled();
+    }
+  );
+
+  it("fails closed when an additional-key host route resolves a non-apiKey subject", async () => {
+    const pluginAuthenticate = vi.fn();
+    const hostAuthenticate = vi.fn(async () => rootKeyResult());
+    const plugin = {
+      isUsingPlugin: vi.fn(async () => true),
+      authenticateBearer: pluginAuthenticate,
+    } as unknown as RoleBaseAccessController;
+    const controller = installPlugin(plugin, hostAuthenticate);
+
+    await expect(controller.authenticateBearer(bearerRequest(ADDITIONAL_API_KEY))).resolves.toEqual(
+      {
+        ok: false,
+        status: 401,
+        error: "Invalid API key",
+      }
+    );
+    expect(pluginAuthenticate).not.toHaveBeenCalled();
+  });
+
+  it("keeps additional-key authentication in the no-plugin fallback controller", async () => {
+    const fallbackAuthenticate = vi.fn(async () => additionalKeyResult(["admin"]));
+    const hostAuthenticate = vi.fn();
+    const fallback = {
+      isUsingPlugin: vi.fn(async () => false),
+      authenticateBearer: fallbackAuthenticate,
+    } as unknown as RoleBaseAccessController;
+    const controller = installPlugin(fallback, hostAuthenticate);
+
+    await expect(
+      controller.authenticateBearer(bearerRequest(ADDITIONAL_API_KEY))
+    ).resolves.toMatchObject({ ok: true, subject: { type: "apiKey" } });
+    expect(fallbackAuthenticate).toHaveBeenCalledOnce();
+    expect(hostAuthenticate).not.toHaveBeenCalled();
   });
 
   it("delegates API-key policy catalogue, preparation, and description", async () => {

@@ -1,6 +1,7 @@
 import type { BearerAuthResult, RbacEnvironment, RbacSubject } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
+import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { extractJWTSub, isPublicJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { scopesGrantFullAccess } from "@trigger.dev/plugins";
@@ -163,16 +164,18 @@ export class BearerCredentialResolver {
       childEnvironments: branchName ? { where: { branchName, archivedAt: null } } : undefined,
     } as const;
     const now = new Date();
-    let additionalApiKey: { id: string; lastUsedAt: Date | null; scopes: string[] } | null = null;
-    let env = await this.replica.runtimeEnvironment.findFirst({
-      where: { apiKey: rawToken },
-      include,
-    });
+    const routesToAdditionalKey = isAdditionalApiKey(rawToken);
+    let rootEnvironment = routesToAdditionalKey
+      ? null
+      : await this.replica.runtimeEnvironment.findFirst({
+          where: { apiKey: rawToken },
+          include,
+        });
 
     // Revoked API key grace window — recently rotated keys keep working until
     // their `expiresAt`; without this a customer who rotates an env API key
     // gets immediate 401s on the new auth path.
-    if (!env) {
+    if (!routesToAdditionalKey && !rootEnvironment) {
       const revoked = await this.replica.revokedApiKey.findFirst({
         where: {
           apiKey: rawToken,
@@ -180,29 +183,28 @@ export class BearerCredentialResolver {
         },
         include: { runtimeEnvironment: { include } },
       });
-      env = revoked?.runtimeEnvironment ?? null;
+      rootEnvironment = revoked?.runtimeEnvironment ?? null;
     }
 
-    if (!env) {
-      const match = await this.replica.apiKey.findFirst({
-        where: {
-          keyHash: createHash("sha256").update(rawToken, "utf8").digest("hex"),
-          revokedAt: null,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-        },
-        select: {
-          id: true,
-          lastUsedAt: true,
-          scopes: true,
-          runtimeEnvironment: { include },
-        },
-      });
-
-      additionalApiKey = match
-        ? { id: match.id, lastUsedAt: match.lastUsedAt, scopes: match.scopes }
-        : null;
-      env = match?.runtimeEnvironment ?? null;
-    }
+    const match = routesToAdditionalKey
+      ? await this.replica.apiKey.findFirst({
+          where: {
+            keyHash: createHash("sha256").update(rawToken, "utf8").digest("hex"),
+            revokedAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+          select: {
+            id: true,
+            lastUsedAt: true,
+            scopes: true,
+            runtimeEnvironment: { include },
+          },
+        })
+      : null;
+    const additionalApiKey = match
+      ? { id: match.id, lastUsedAt: match.lastUsedAt, scopes: match.scopes }
+      : null;
+    let env = rootEnvironment ?? match?.runtimeEnvironment ?? null;
 
     if (!env || env.project.deletedAt !== null) {
       return { ok: false, status: 401, error: "Invalid API key" };
