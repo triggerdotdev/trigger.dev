@@ -11,15 +11,15 @@ describe("normalizeThemePreference", () => {
     }
   });
 
-  it("falls back to classic for legacy/unknown values", () => {
-    expect(normalizeThemePreference("solarized")).toBe("classic");
-    expect(normalizeThemePreference("")).toBe("classic");
-    expect(normalizeThemePreference(42)).toBe("classic");
-    expect(normalizeThemePreference(null)).toBe("classic");
+  it("falls back to dark for legacy/unknown values", () => {
+    expect(normalizeThemePreference("solarized")).toBe("dark");
+    expect(normalizeThemePreference("")).toBe("dark");
+    expect(normalizeThemePreference(42)).toBe("dark");
+    expect(normalizeThemePreference(null)).toBe("dark");
   });
 
-  it("falls back to classic for undefined", () => {
-    expect(normalizeThemePreference(undefined)).toBe("classic");
+  it("falls back to dark for undefined", () => {
+    expect(normalizeThemePreference(undefined)).toBe("dark");
   });
 });
 
