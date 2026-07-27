@@ -9,10 +9,10 @@
     "collect": "tsx src/collect.ts"
   },
   "dependencies": {
-    "@trigger.dev/sdk": "latest"
+    "@trigger.dev/sdk": "4.5.7"
   },
   "devDependencies": {
-    "trigger.dev": "latest",
+    "trigger.dev": "4.5.7",
     "tsx": "^4.19.0",
     "typescript": "^5.5.0"
   }

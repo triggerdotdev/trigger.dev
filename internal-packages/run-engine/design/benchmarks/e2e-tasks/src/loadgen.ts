@@ -1,100 +1,103 @@
 /**
  * Noisy-neighbor load generator for the CK virtual-time END-TO-END A/B arm.
  *
- * Triggers the deployed `ck-bench` task on a self-hosted instance. Tenant A
- * floods the base queue across MANY concurrency keys (the sharding/sybil case a
- * per-key cap cannot fix); tenant B sends a few runs on a couple of keys. Each
- * run is tagged so `collect.ts` can measure per-tenant enqueue->start latency,
- * and each run carries a per-run `region` so the load spreads across the managed
- * worker groups (multi-cluster placement).
+ * Tenant A floods the base queue across MANY concurrency keys (the sharding case
+ * a per-key cap cannot fix); tenant B sends a few runs on a couple of keys. Each
+ * run carries a per-run `region` so load spreads across the managed worker groups.
  *
- * This does NOT flip the feature flag: the flag is server-side (see the operator
- * runbook). Run this once per arm AFTER the operator has set the flag and
- * redeployed the control plane, passing the matching --arm so the tags line up.
+ * This instance's runs.list (ClickHouse-backed) is unreliable, so we capture each
+ * run id at trigger time via individual tasks.trigger calls (fired with bounded
+ * concurrency so they still enqueue near-simultaneously as a backlog) and write a
+ * manifest. collect.ts / waitdrain.ts retrieve by id (the Postgres path).
  *
- * Auth (from env):
- *   TRIGGER_API_URL       e.g. https://<instance>
- *   TRIGGER_SECRET_KEY    the PROD environment secret key of the bench project
- *
- * Config (from env, with defaults):
- *   ARM=off|on            tag only; must match the server flag state
- *   BATCH=<id>            unique per A/B run pair (defaults to a timestamp)
- *   HOLD_MS=1500          per-run slot hold
- *   A_KEYS=40 A_PER_KEY=5 tenant A flood shape
- *   B_KEYS=2  B_PER_KEY=5 tenant B light shape
- *   REGIONS=trigger-regiona,trigger-regionb,trigger-regionc
- *                         runs are round-robined across these worker groups
+ * Auth (env): TRIGGER_API_URL, TRIGGER_SECRET_KEY (prod env secret key).
+ * Config (env): ARM=off|on  BATCH=<id>  HOLD_MS  A_KEYS A_PER_KEY  B_KEYS B_PER_KEY
+ *   REGIONS=trigger-regiona,trigger-regionb,trigger-regionc  OUT=./e2e-results
+ *   FIRE_CONCURRENCY=30
  */
 import { configure, tasks } from "@trigger.dev/sdk";
+import { mkdirSync, writeFileSync } from "node:fs";
 import type { ckBenchTask } from "./trigger/ckBench.js";
 
-function envInt(name: string, dflt: number): number {
-  const v = process.env[name];
-  return v === undefined ? dflt : Number(v);
-}
+const envInt = (n: string, d: number) =>
+  process.env[n] === undefined ? d : Number(process.env[n]);
 
 async function main() {
   const apiURL = process.env.TRIGGER_API_URL;
   const accessToken = process.env.TRIGGER_SECRET_KEY;
-  if (!apiURL || !accessToken) {
-    throw new Error("Set TRIGGER_API_URL and TRIGGER_SECRET_KEY (prod env secret key).");
-  }
+  if (!apiURL || !accessToken) throw new Error("Set TRIGGER_API_URL and TRIGGER_SECRET_KEY.");
   configure({ baseURL: apiURL, accessToken });
 
   const arm = (process.env.ARM ?? "off") as "off" | "on";
-  const batch = process.env.BATCH ?? `b${Date.now()}`;
+  const batch = process.env.BATCH ?? `b${arm}`;
   const holdMs = envInt("HOLD_MS", 1500);
-  const aKeys = envInt("A_KEYS", 40);
-  const aPerKey = envInt("A_PER_KEY", 5);
-  const bKeys = envInt("B_KEYS", 2);
-  const bPerKey = envInt("B_PER_KEY", 5);
+  const aKeys = envInt("A_KEYS", 30);
+  const aPerKey = envInt("A_PER_KEY", 8);
+  const bKeys = envInt("B_KEYS", 3);
+  const bPerKey = envInt("B_PER_KEY", 10);
+  const outDir = process.env.OUT ?? "./e2e-results";
+  const fireConcurrency = envInt("FIRE_CONCURRENCY", 30);
   const regions = (process.env.REGIONS ?? "trigger-regiona,trigger-regionb,trigger-regionc")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
 
-  type Item = {
-    payload: { holdMs: number; tenant: string; key: string; arm: "off" | "on"; batch: string };
-    options: { concurrencyKey: string; region: string; tags: string[] };
-  };
-
+  type Item = { tenant: "A" | "B"; key: string; region: string };
   const items: Item[] = [];
   let n = 0;
   const push = (tenant: "A" | "B", key: string) => {
-    const region = regions[n % regions.length]!;
+    items.push({ tenant, key, region: regions[n % regions.length]! });
     n++;
-    items.push({
-      payload: { holdMs, tenant, key, arm, batch },
-      options: {
-        concurrencyKey: key,
-        region,
-        tags: [`ckbench`, `arm:${arm}`, `tenant:${tenant}`, `batch:${batch}`],
-      },
-    });
   };
-
   for (let k = 0; k < aKeys; k++) for (let i = 0; i < aPerKey; i++) push("A", `A-${k}`);
   for (let k = 0; k < bKeys; k++) for (let i = 0; i < bPerKey; i++) push("B", `B-${k}`);
-
-  // Interleave A and B enqueues so B does not simply arrive first; the point is
-  // whether B's few runs start promptly WHILE A's flood is queued.
-  items.sort((x, y) => x.payload.key.localeCompare(y.payload.key));
+  // interleave so B does not all arrive first
+  items.sort((x, y) => x.key.localeCompare(y.key));
 
   console.log(
     `[loadgen] arm=${arm} batch=${batch} total=${items.length} (A=${aKeys}x${aPerKey}, B=${bKeys}x${bPerKey}) regions=${regions.join(",")} holdMs=${holdMs}`
   );
 
-  const handle = await tasks.batchTrigger<typeof ckBenchTask>(
-    "ck-bench",
-    items.map((it) => ({ payload: it.payload, options: it.options }))
-  );
+  const manifest: {
+    batch: string;
+    arm: string;
+    triggeredAt: number;
+    runs: { id: string; tenant: string; key: string; region: string }[];
+  } = { batch, arm, triggeredAt: Date.now(), runs: [] };
 
+  let idx = 0;
+  let failed = 0;
+  async function worker() {
+    while (idx < items.length) {
+      const it = items[idx++]!;
+      try {
+        const h = await tasks.trigger<typeof ckBenchTask>(
+          "ck-bench",
+          { holdMs, tenant: it.tenant, key: it.key, arm, batch },
+          {
+            concurrencyKey: it.key,
+            region: it.region,
+            tags: ["ckbench", `arm:${arm}`, `tenant:${it.tenant}`, `batch:${batch}`],
+          }
+        );
+        manifest.runs.push({ id: h.id, tenant: it.tenant, key: it.key, region: it.region });
+      } catch (e) {
+        failed++;
+        if (failed <= 3) console.error(`[loadgen] trigger failed:`, (e as Error).message);
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(fireConcurrency, items.length) }, worker));
+
+  mkdirSync(outDir, { recursive: true });
+  const path = `${outDir}/manifest-${batch}.json`;
+  writeFileSync(path, JSON.stringify(manifest, null, 2));
   console.log(
-    `[loadgen] batch triggered: ${handle.batchId} (${items.length} runs). BATCH=${batch}`
+    `[loadgen] triggered ${manifest.runs.length}/${items.length} (failed ${failed}). manifest: ${path}`
   );
 }
 
-main().catch((err) => {
-  console.error(err);
+main().catch((e) => {
+  console.error(e);
   process.exit(1);
 });

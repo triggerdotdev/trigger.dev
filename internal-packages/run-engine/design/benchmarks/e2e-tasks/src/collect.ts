@@ -1,26 +1,15 @@
 /**
- * Collect per-tenant enqueue->start latency for one END-TO-END arm.
+ * Collect per-tenant enqueue->start latency for one END-TO-END arm, from a batch
+ * manifest (retrieve by id; runs.list is unreliable on this instance).
  *
- * Lists the runs for a batch by tag, reads each run's createdAt (enqueue) and
- * startedAt (execution start), and reports per-tenant p50/p95/p99 of
- * (startedAt - createdAt). Run once per arm; point --arm/BATCH at the tags the
- * loadgen used.
+ * Metric per run = startedAt - createdAt (run-start latency: queue wait + dequeue
+ * + worker pickup). Headline is tenant B (few keys): bounded under vtime, grows
+ * with A's backlog under baseline.
  *
- * The headline metric is tenant B's start latency: under the baseline it should
- * grow with tenant A's backlog (B waits behind the flood); under vtime it should
- * stay bounded (B takes its fair turn). Tenant A's latency is reported for
- * context and is expected to be similar or slightly higher under vtime.
- *
- * NOTE ON THE TIMESTAMP: startedAt - createdAt is the honest run-start latency a
- * reviewer cares about (queue wait + dequeue + worker pickup). For a tighter
- * dequeue-only number, use the Postgres/TRQL alternative in the benchmark doc.
- *
- * Auth + config (env):
- *   TRIGGER_API_URL, TRIGGER_SECRET_KEY (prod env secret key)
- *   ARM=off|on   BATCH=<id>   OUT=./e2e-results
+ * Env: TRIGGER_API_URL, TRIGGER_SECRET_KEY.  Args (env): BATCH ARM OUT POLL_CONCURRENCY
  */
 import { configure, runs } from "@trigger.dev/sdk";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 function pct(sorted: number[], p: number): number {
   if (sorted.length === 0) return NaN;
@@ -34,65 +23,70 @@ function summarize(xs: number[]) {
 }
 
 async function main() {
-  const apiURL = process.env.TRIGGER_API_URL;
-  const accessToken = process.env.TRIGGER_SECRET_KEY;
-  if (!apiURL || !accessToken) throw new Error("Set TRIGGER_API_URL and TRIGGER_SECRET_KEY.");
-  configure({ baseURL: apiURL, accessToken });
-
+  configure({
+    baseURL: process.env.TRIGGER_API_URL!,
+    accessToken: process.env.TRIGGER_SECRET_KEY!,
+  });
+  const batch = process.env.BATCH!;
   const arm = (process.env.ARM ?? "off") as "off" | "on";
-  const batch = process.env.BATCH;
   const outDir = process.env.OUT ?? "./e2e-results";
-  if (!batch) throw new Error("Set BATCH=<id> to the loadgen batch id.");
+  const conc = Number(process.env.POLL_CONCURRENCY ?? "20");
+  const manifest = JSON.parse(readFileSync(`${outDir}/manifest-${batch}.json`, "utf8"));
+  const entries: { id: string; tenant: string }[] = manifest.runs;
 
   const waitsByTenant = new Map<string, number[]>();
-  let total = 0;
   let missingStart = 0;
-
-  // Page through every run carrying this batch tag. BATCH is unique per arm
-  // (e.g. off-1 / on-1), so the single batch tag identifies the arm; filtering
-  // on one tag avoids any multi-tag AND/OR ambiguity in the runs filter.
-  for await (const run of runs.list({ tag: `batch:${batch}`, limit: 100 })) {
-    total++;
-    const detail = await runs.retrieve(run.id);
-    const createdAt = detail.createdAt?.getTime();
-    const startedAt = detail.startedAt?.getTime();
-    if (createdAt === undefined || startedAt === undefined) {
-      missingStart++;
-      continue;
+  let i = 0;
+  async function w() {
+    while (i < entries.length) {
+      const e = entries[i++]!;
+      try {
+        const r = await runs.retrieve(e.id);
+        const c = r.createdAt?.getTime();
+        const s = r.startedAt?.getTime();
+        if (c === undefined || s === undefined) {
+          missingStart++;
+          continue;
+        }
+        const arr = waitsByTenant.get(e.tenant) ?? waitsByTenant.set(e.tenant, []).get(e.tenant)!;
+        arr.push(s - c);
+      } catch {
+        missingStart++;
+      }
     }
-    const tenantTag = (detail.tags ?? []).find((t) => t.startsWith("tenant:")) ?? "tenant:?";
-    const tenant = tenantTag.slice("tenant:".length);
-    const wait = startedAt - createdAt;
-    (waitsByTenant.get(tenant) ?? waitsByTenant.set(tenant, []).get(tenant)!).push(wait);
   }
+  await Promise.all(Array.from({ length: Math.min(conc, entries.length) }, w));
 
   const perTenant: Record<string, ReturnType<typeof summarize>> = {};
-  for (const [tenant, xs] of waitsByTenant) perTenant[tenant] = summarize(xs);
-
-  const report = { arm, batch, total, missingStart, unit: "ms (startedAt - createdAt)", perTenant };
+  for (const [t, xs] of waitsByTenant) perTenant[t] = summarize(xs);
+  const report = {
+    arm,
+    batch,
+    total: entries.length,
+    missingStart,
+    unit: "ms (startedAt - createdAt)",
+    perTenant,
+  };
 
   mkdirSync(outDir, { recursive: true });
   writeFileSync(`${outDir}/e2e-${batch}-${arm}.json`, JSON.stringify(report, null, 2));
 
-  // Append a human row per tenant to a shared markdown file so OFF and ON land
-  // in one table you can eyeball before running the joiner.
-  const mdPath = `${outDir}/e2e-summary.md`;
   const rows = Object.entries(perTenant)
     .map(
-      ([tenant, s]) =>
-        `| ${batch} | ${arm} | ${tenant} | ${s.count} | ${s.mean.toFixed(0)} | ${s.p50.toFixed(0)} | ${s.p95.toFixed(0)} | ${s.p99.toFixed(0)} |`
+      ([t, s]) =>
+        `| ${batch} | ${arm} | ${t} | ${s.count} | ${s.mean.toFixed(0)} | ${s.p50.toFixed(0)} | ${s.p95.toFixed(0)} | ${s.p99.toFixed(0)} |`
     )
     .join("\n");
   appendFileSync(
-    mdPath,
+    `${outDir}/e2e-summary.md`,
     `\n<!-- batch ${batch} arm ${arm} -->\n| batch | arm | tenant | runs | mean ms | p50 | p95 | p99 |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n${rows}\n`
   );
-
-  console.log(`[collect] arm=${arm} batch=${batch} runs=${total} missingStart=${missingStart}`);
+  console.log(
+    `[collect] arm=${arm} batch=${batch} runs=${entries.length} missingStart=${missingStart}`
+  );
   console.log(JSON.stringify(perTenant, null, 2));
 }
-
-main().catch((err) => {
-  console.error(err);
+main().catch((e) => {
+  console.error(e);
   process.exit(1);
 });
