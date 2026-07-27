@@ -7,7 +7,8 @@ import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
 import { removeBlacklistedVariables } from "../environmentVariableRules.server";
-import { resolveInternalApiOriginEnabled } from "../featureFlags";
+import { FEATURE_FLAG, resolveInternalApiOriginEnabled } from "../featureFlags";
+import { globalFlagsRegistry } from "../globalFlagsRegistry.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   type CreateEnvironmentVariables,
@@ -917,7 +918,6 @@ export const RuntimeEnvironmentForEnvRepoPayload = {
     organizationId: true,
     branchName: true,
     builtInEnvironmentVariableOverrides: true,
-    organization: { select: { featureFlags: true } },
   },
 } as const;
 
@@ -1151,8 +1151,9 @@ async function resolveOverridableOtelDevVariables(
 // Deployed runs normally get the public API origin. When INTERNAL_API_ORIGIN is
 // set and the org's internalApiOriginEnabled flag resolves on (org override wins
 // in both directions; INTERNAL_API_ORIGIN_ENABLED is the global default applied
-// only when the org has not set it), they get the internal origin instead. Reads
-// the in-memory org flags, so a flag change takes effect on the next attempt.
+// only when the org has not set it), they get the internal origin instead. The
+// global default is the cached DB flag with INTERNAL_API_ORIGIN_ENABLED as the
+// fallback; org flags are read in-memory, so a flip applies on the next attempt.
 function resolveProdApiOrigin(runtimeEnvironment: RuntimeEnvironmentForEnvRepo): string {
   const publicOrigin = env.API_ORIGIN ?? env.APP_ORIGIN;
 
@@ -1162,7 +1163,9 @@ function resolveProdApiOrigin(runtimeEnvironment: RuntimeEnvironmentForEnvRepo):
 
   const enabled = resolveInternalApiOriginEnabled({
     orgFeatureFlags: runtimeEnvironment.organization?.featureFlags,
-    globalDefault: env.INTERNAL_API_ORIGIN_ENABLED === "1",
+    globalDefault:
+      globalFlagsRegistry.current()?.[FEATURE_FLAG.internalApiOriginEnabled] ??
+      env.INTERNAL_API_ORIGIN_ENABLED === "1",
   });
 
   return enabled ? env.INTERNAL_API_ORIGIN : publicOrigin;

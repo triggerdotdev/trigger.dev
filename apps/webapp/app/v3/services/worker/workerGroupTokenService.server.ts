@@ -544,8 +544,8 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
       },
       include: {
         parentEnvironment: true,
-        // Feeds resolveProdApiOrigin (internal-api-origin flag) without a query.
-        organization: { select: { featureFlags: true } },
+        // Feeds resolveProdApiOrigin; only loaded when internal-origin routing is possible.
+        ...(env.INTERNAL_API_ORIGIN ? { organization: { select: { featureFlags: true } } } : {}),
       },
     });
 
