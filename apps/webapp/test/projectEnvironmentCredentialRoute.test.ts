@@ -69,7 +69,7 @@ describe("project environment credential response", () => {
         type: "apiKey",
         result: {
           ok: true,
-          apiKey: "tr_prod_ak_presented",
+          apiKey: "tr_prod_sk_presented",
           type: "PRIVATE",
           environment,
         },
@@ -80,7 +80,7 @@ describe("project environment credential response", () => {
 
     expect(response.status).toBe(200);
     await expect(responseJson(response)).resolves.toMatchObject({
-      apiKey: "tr_prod_ak_presented",
+      apiKey: "tr_prod_sk_presented",
       projectId: "proj_123",
     });
   });

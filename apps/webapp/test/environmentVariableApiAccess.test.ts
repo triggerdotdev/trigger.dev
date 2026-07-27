@@ -22,12 +22,12 @@ describe("presentedApiKeyFromAuthentication", () => {
         type: "apiKey",
         result: {
           ok: true,
-          apiKey: "tr_prod_ak_presented",
+          apiKey: "tr_prod_sk_presented",
           type: "PRIVATE",
           environment: {} as never,
         },
       })
-    ).toBe("tr_prod_ak_presented");
+    ).toBe("tr_prod_sk_presented");
   });
 
   it("does not exchange user tokens for an API key", () => {
