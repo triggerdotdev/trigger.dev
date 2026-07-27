@@ -115,3 +115,67 @@ should return for it.
   is `demoFlag.server.ts`, which nothing in `demo/` imports. A vitest suite
   (`demo/demo.test.ts`) enforces that, validates every fixture against the
   contracts schemas, and checks the id namespacing.
+
+---
+
+## Gallery & screenshot pack
+
+The demo conversations show the flows. The **state gallery** shows the states:
+every card, chip row, prompt row, intent bubble and message-level state, in
+isolation, at panel width, fed by the same fixtures.
+
+### The gallery
+
+`http://localhost:3030/storybook/agent-ui` — no env var needed, but you must be
+signed in as an admin (the local seed user is). Every state is its own anchored
+section, so `#report-degraded` links straight to one. The theme buttons at the
+top right flip `data-theme` on the root element; the app itself is dark-only for
+now, so that toggle is how a light render is produced.
+
+What renders is driven by `apps/webapp/app/routes/storybook.agent-ui/manifest.ts`
+— one row per state, `{ sectionId, title, group }`. The `sectionId` is the DOM
+id, the deep-link anchor and the screenshot filename, so it is stable; a manifest
+row the page can't render shows up as a red "no renderer" box rather than
+disappearing. Add a state by adding a manifest row and a `STATES` entry.
+
+### The screenshot pack
+
+```bash
+# terminal 1, repo root — apps/webapp/.env needs
+#   DASHBOARD_AGENT_DEMO=1
+#   DASHBOARD_AGENT_ENABLED=1   # or DASHBOARD_AGENT_ADMIN_PREVIEW=1
+pnpm run dev --filter webapp
+
+# terminal 2, apps/webapp — first run only
+pnpm exec playwright install chromium
+
+# terminal 2, apps/webapp
+SCREENSHOT_ENV_PATH=/orgs/<org>/projects/<project>/env/dev/runs \
+  pnpm run agent-ui:screenshots
+```
+
+It logs in over the local magic-link flow (dev redirects straight to the link,
+so no email), then walks two things in each theme:
+
+1. every gallery section, captured by its `id`;
+2. every `Demo · …` conversation, opened in the real panel on the env page you
+   passed, captured as the panel element.
+
+Drop `SCREENSHOT_ENV_PATH` to do the gallery only. Other knobs: `BASE_URL`
+(default `http://localhost:3030`), `SCREENSHOT_EMAIL` (default
+`local@trigger.dev`, must be an admin), `SCREENSHOT_THEMES` (default
+`dark,light`), `SCREENSHOT_OUT`, `SCREENSHOT_SCALE` (device pixel ratio, default
+2), `SCREENSHOT_HEADED=1` to watch it.
+
+Output lands in `apps/webapp/screenshots/agent-ui/` (git-ignored):
+
+```
+{theme}/{group}/{sectionId}.png
+manifest.json
+```
+
+`manifest.json` is the index of the run: when it was taken, against what, and
+one row per attempted capture with its theme, group, section id, title, relative
+file path and — for anything that failed — the reason. Every capture is
+attempted even if earlier ones fail, and the exit code is non-zero if anything
+did, so the pack doubles as a smoke test that the gallery still renders.

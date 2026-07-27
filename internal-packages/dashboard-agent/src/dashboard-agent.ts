@@ -235,7 +235,11 @@ async function generateAndSaveTitle(
 
 import { agentPageContextSchema } from "@internal/dashboard-agent-contracts";
 
-export type { AgentPage, AgentPageContext, AgentPageSignal } from "@internal/dashboard-agent-contracts";
+export type {
+  AgentPage,
+  AgentPageContext,
+  AgentPageSignal,
+} from "@internal/dashboard-agent-contracts";
 
 // A chat belongs to an org + user. The current project/env (and the page) are
 // per-turn context for the agent, not chat identity — one conversation can span
