@@ -86,12 +86,22 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     }
 
     const batchFriendlyId = match[1];
+    const authorizationValue = req.headers.authorization;
 
-    if (!batchFriendlyId) {
+    if (!batchFriendlyId || !authorizationValue) {
       return false;
     }
 
-    return batchStreamGrants.spend(batchFriendlyId);
+    const authenticated = await authenticateAuthorizationHeader(authorizationValue, {
+      allowPublicKey: true,
+      allowJWT: true,
+    });
+
+    if (!authenticated || !authenticated.ok) {
+      return false;
+    }
+
+    return batchStreamGrants.spend(authenticated.environment.id, batchFriendlyId);
   },
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",

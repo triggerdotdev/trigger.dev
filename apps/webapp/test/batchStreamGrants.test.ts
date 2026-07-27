@@ -14,7 +14,9 @@ vi.mock("../app/services/logger.server", () => ({
 
 import { BatchStreamGrants } from "../app/runEngine/concerns/batchStreamGrants.server.js";
 
-describe.skipIf(process.env.GITHUB_ACTIONS)("BatchStreamGrants", () => {
+describe("BatchStreamGrants", () => {
+  const ENV = "env_1";
+
   redisTest("spends exactly the granted number of attempts", async ({ redisOptions }) => {
     const grants = new BatchStreamGrants({
       redis: { ...redisOptions, tlsDisabled: true },
@@ -23,13 +25,13 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("BatchStreamGrants", () => {
     });
 
     try {
-      await grants.mint("batch_spend");
+      await grants.mint(ENV, "batch_spend");
 
-      expect(await grants.spend("batch_spend")).toBe(true);
-      expect(await grants.spend("batch_spend")).toBe(true);
-      expect(await grants.spend("batch_spend")).toBe(true);
-      expect(await grants.spend("batch_spend")).toBe(false);
-      expect(await grants.spend("batch_spend")).toBe(false);
+      expect(await grants.spend(ENV, "batch_spend")).toBe(true);
+      expect(await grants.spend(ENV, "batch_spend")).toBe(true);
+      expect(await grants.spend(ENV, "batch_spend")).toBe(true);
+      expect(await grants.spend(ENV, "batch_spend")).toBe(false);
+      expect(await grants.spend(ENV, "batch_spend")).toBe(false);
     } finally {
       await grants.quit();
     }
@@ -43,7 +45,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("BatchStreamGrants", () => {
     });
 
     try {
-      expect(await grants.spend("batch_never_minted")).toBe(false);
+      expect(await grants.spend(ENV, "batch_never_minted")).toBe(false);
     } finally {
       await grants.quit();
     }
@@ -57,12 +59,12 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("BatchStreamGrants", () => {
     });
 
     try {
-      await grants.mint("batch_a");
-      await grants.mint("batch_b");
+      await grants.mint(ENV, "batch_a");
+      await grants.mint(ENV, "batch_b");
 
-      expect(await grants.spend("batch_a")).toBe(true);
-      expect(await grants.spend("batch_a")).toBe(false);
-      expect(await grants.spend("batch_b")).toBe(true);
+      expect(await grants.spend(ENV, "batch_a")).toBe(true);
+      expect(await grants.spend(ENV, "batch_a")).toBe(false);
+      expect(await grants.spend(ENV, "batch_b")).toBe(true);
     } finally {
       await grants.quit();
     }
@@ -71,20 +73,37 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("BatchStreamGrants", () => {
   redisTest("expires the grant so it cannot outlive the seal window", async ({ redisOptions }) => {
     const grants = new BatchStreamGrants({
       redis: { ...redisOptions, tlsDisabled: true },
-      attempts: 5,
+      attempts: 100_000,
       ttlMs: 150,
     });
 
     try {
-      await grants.mint("batch_expiring");
-      expect(await grants.spend("batch_expiring")).toBe(true);
+      await grants.mint(ENV, "batch_expiring");
+      expect(await grants.spend(ENV, "batch_expiring")).toBe(true);
 
       await vi.waitFor(
         async () => {
-          expect(await grants.spend("batch_expiring")).toBe(false);
+          expect(await grants.spend(ENV, "batch_expiring")).toBe(false);
         },
         { timeout: 5_000, interval: 50 }
       );
+    } finally {
+      await grants.quit();
+    }
+  });
+
+  redisTest("another environment cannot spend this batch's grant", async ({ redisOptions }) => {
+    const grants = new BatchStreamGrants({
+      redis: { ...redisOptions, tlsDisabled: true },
+      attempts: 1,
+      ttlMs: 60_000,
+    });
+
+    try {
+      await grants.mint(ENV, "batch_scoped");
+
+      expect(await grants.spend("env_intruder", "batch_scoped")).toBe(false);
+      expect(await grants.spend(ENV, "batch_scoped")).toBe(true);
     } finally {
       await grants.quit();
     }

@@ -109,7 +109,7 @@ export class BatchSystem {
         return;
       }
 
-      const enqueuedCount = batch.successfulRunCount ?? 0;
+      const enqueuedCount = (batch.successfulRunCount ?? 0) + (batch.failedRunCount ?? 0);
       const error: TaskRunError = {
         type: "STRING_ERROR",
         raw:
@@ -190,20 +190,21 @@ export class BatchSystem {
 
       if (runs.every((r) => isFinalRunStatus(r.status))) {
         this.$.logger.debug("#tryCompleteBatch: All runs are completed", { batchId });
-        await this.$.runStore.updateBatchTaskRun(
+
+        const completed = await this.$.runStore.updateManyBatchTaskRun(
           {
-            where: {
-              id: batchId,
-            },
-            data: {
-              status: "COMPLETED",
-            },
-            select: {
-              id: true,
-            },
+            where: { id: batchId, status: { notIn: ["ABORTED", "COMPLETED"] } },
+            data: { status: "COMPLETED" },
           },
           this.$.prisma
         );
+
+        if (completed.count === 0) {
+          this.$.logger.debug("#tryCompleteBatch: batch already reached a terminal status", {
+            batchId,
+          });
+          return;
+        }
 
         //get waitpoint (if there is one)
         const waitpoint = await this.$.runStore.findWaitpoint(

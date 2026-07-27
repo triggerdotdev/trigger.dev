@@ -122,7 +122,7 @@ export class CreateBatchService extends WithRunEngine {
 
           this.onBatchTaskRunCreated.post(batch);
 
-          await batchStreamGrants.mint(friendlyId);
+          await batchStreamGrants.mint(environment.id, friendlyId);
 
           // Block parent run if this is a batchTriggerAndWait
           if (body.parentRunId && body.resumeParentOnCompletion) {

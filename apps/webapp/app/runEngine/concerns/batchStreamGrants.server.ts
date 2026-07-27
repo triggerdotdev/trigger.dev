@@ -35,9 +35,14 @@ export class BatchStreamGrants {
    * Grant a newly created batch its phase 2 budget. Never throws: a batch that fails to get
    * a grant still works, it just falls back to the general rate limiter for streaming.
    */
-  async mint(batchId: string): Promise<void> {
+  async mint(environmentId: string, batchId: string): Promise<void> {
     try {
-      await this.redis.set(this.#key(batchId), this.options.attempts, "PX", this.options.ttlMs);
+      await this.redis.set(
+        this.#key(environmentId, batchId),
+        this.options.attempts,
+        "PX",
+        this.options.ttlMs
+      );
     } catch (error) {
       logger.warn("BatchStreamGrants: failed to mint grant", {
         batchId,
@@ -53,10 +58,12 @@ export class BatchStreamGrants {
    * unreachable, so the caller falls back to the general rate limiter rather than opening
    * an unbounded bypass.
    */
-  async spend(batchId: string): Promise<boolean> {
+  async spend(environmentId: string, batchId: string): Promise<boolean> {
     try {
       // @ts-expect-error - Custom command defined via defineCommand
-      const remaining = (await this.redis.spendBatchStreamGrant(this.#key(batchId))) as number;
+      const remaining = (await this.redis.spendBatchStreamGrant(
+        this.#key(environmentId, batchId)
+      )) as number;
 
       return remaining >= 0;
     } catch (error) {
@@ -73,8 +80,12 @@ export class BatchStreamGrants {
     await this.redis.quit();
   }
 
-  #key(batchId: string): string {
-    return `${KEY_PREFIX}${batchId}`;
+  /**
+   * Scoped to the environment as well as the batch, so a caller authenticated against a
+   * different environment can never spend this batch's grant even if they know its id.
+   */
+  #key(environmentId: string, batchId: string): string {
+    return `${KEY_PREFIX}${environmentId}:${batchId}`;
   }
 
   #registerCommands(): void {
