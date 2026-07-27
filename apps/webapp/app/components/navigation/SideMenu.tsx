@@ -1035,7 +1035,12 @@ export function SideMenu({
     })),
   ];
 
-  const sectionHeaderMenu = <SectionHeaderMenu onCustomize={() => setCustomizeOpen(true)} />;
+  // Customizing exists to persist a layout, and preference writes are skipped for impersonated
+  // sessions, so don't offer the entry points there at all (same reason the favorite star hides).
+  const openCustomize = user.isImpersonating ? undefined : () => setCustomizeOpen(true);
+  const sectionHeaderMenu = openCustomize ? (
+    <SectionHeaderMenu onCustomize={openCustomize} />
+  ) : undefined;
 
   return (
     <div
@@ -1194,7 +1199,7 @@ export function SideMenu({
                     initialCollapsed={getSectionCollapsed(sideMenuPrefs, "favorites")}
                     onCollapseToggle={handleSectionToggle("favorites")}
                     headerMenu={sectionHeaderMenu}
-                    onCustomize={() => setCustomizeOpen(true)}
+                    onCustomize={openCustomize}
                     onRemoveFavorite={removeFavorite}
                     onRenameFavorite={renameFavorite}
                   />
@@ -1214,7 +1219,7 @@ export function SideMenu({
                   initialCollapsed={getSectionCollapsed(sideMenuPrefs, section.id)}
                   onCollapseToggle={handleSectionToggle(section.id)}
                   headerMenu={sectionHeaderMenu}
-                  onCustomize={() => setCustomizeOpen(true)}
+                  onCustomize={openCustomize}
                 />
               );
             })}
@@ -1314,7 +1319,8 @@ function CustomizableSideMenuSection({
   initialCollapsed: boolean;
   onCollapseToggle: (collapsed: boolean) => void;
   headerMenu: ReactNode;
-  onCustomize: () => void;
+  /** Undefined when customizing isn't offered (impersonated sessions can't persist a layout). */
+  onCustomize: (() => void) | undefined;
 }) {
   const orderedItems = orderByPreference(section.items, itemOrder);
   const visibleItems = orderedItems.filter((item) => !isItemHidden(item, hiddenItems));
@@ -1381,7 +1387,8 @@ function FavoritesSideMenuSection({
   initialCollapsed: boolean;
   onCollapseToggle: (collapsed: boolean) => void;
   headerMenu: ReactNode;
-  onCustomize: () => void;
+  /** Undefined when customizing isn't offered (impersonated sessions can't persist a layout). */
+  onCustomize: (() => void) | undefined;
   onRemoveFavorite: (id: string) => void;
   onRenameFavorite: (id: string, label: string) => void;
 }) {
@@ -1434,7 +1441,8 @@ function SideMenuMoreItem({
 }: {
   items: Array<{ id: string; name: string; icon: RenderIcon; iconClassName?: string; to: string }>;
   isCollapsed: boolean;
-  onCustomize: () => void;
+  /** Undefined when customizing isn't offered (impersonated sessions can't persist a layout). */
+  onCustomize: (() => void) | undefined;
 }) {
   const [isOpen, setOpen] = useState(false);
   const navigation = useNavigation();
@@ -1480,18 +1488,20 @@ function SideMenuMoreItem({
           ))}
         </div>
         {/* flex-col blockifies the inline-block menu item, avoiding stray line-box space below */}
-        <div className="flex flex-col border-t border-grid-bright p-1">
-          <PopoverMenuItem
-            icon={SidebarCustomizeIcon}
-            title="Customize sidebar"
-            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-            className={SIDE_MENU_POPOVER_ITEM_LABEL}
-            onClick={() => {
-              setOpen(false);
-              onCustomize();
-            }}
-          />
-        </div>
+        {onCustomize && (
+          <div className="flex flex-col border-t border-grid-bright p-1">
+            <PopoverMenuItem
+              icon={SidebarCustomizeIcon}
+              title="Customize sidebar"
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
+              onClick={() => {
+                setOpen(false);
+                onCustomize();
+              }}
+            />
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

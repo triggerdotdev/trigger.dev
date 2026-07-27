@@ -46,6 +46,13 @@ const CustomizationSchema = z.object({
 export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
+  // Every writer below deliberately skips impersonated sessions so an admin's browsing can't
+  // rewrite the customer's saved layout. That skip is a no-op, not a failed save, so report it as
+  // success: it must not reach the callers that surface write failures to the user.
+  if (user.isImpersonating) {
+    return json({ success: true });
+  }
+
   const formData = await request.formData();
   const rawData = Object.fromEntries(formData);
 

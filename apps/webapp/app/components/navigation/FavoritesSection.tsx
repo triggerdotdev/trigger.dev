@@ -3,6 +3,7 @@ import { useLocation, useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
 import { CrossIcon } from "~/assets/icons/CrossIcon";
 import { RenameIcon } from "~/assets/icons/RenameIcon";
+import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { type FavoritePage } from "~/services/dashboardPreferences.server";
 import { cn } from "~/utils/cn";
 import { Icon, type RenderIcon } from "../primitives/Icon";
@@ -42,6 +43,7 @@ export function FavoriteMenuItem({
 }) {
   const location = useLocation();
   const navigation = useNavigation();
+  const isImpersonating = useIsImpersonating();
   const [isEditing, setIsEditing] = useState(false);
   const [isMenuOpen, setMenuOpen] = useState(false);
 
@@ -85,7 +87,9 @@ export function FavoriteMenuItem({
       isActive={isActive}
       data-action="favorite"
       action={
-        !isCollapsed ? (
+        // Renaming and removing are preference writes, which impersonated sessions skip, so the
+        // menu is left out there rather than appearing to work and reverting.
+        !isCollapsed && !isImpersonating ? (
           <Popover open={isMenuOpen} onOpenChange={setMenuOpen}>
             <PopoverCustomTrigger
               aria-label={`Favorite options for ${favorite.label}`}
