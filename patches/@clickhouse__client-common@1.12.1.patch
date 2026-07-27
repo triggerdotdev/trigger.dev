@@ -21,7 +21,7 @@ index e06fa4ab36537c2a448857c1b001e70cd771bfe5..9750bd7e1285ac8cf2c8095b592ed344
 -        return new ClickHouseError(groups);
 +        const error = new ClickHouseError(groups);
 +        if (!inputIsError && groups.message.startsWith("Cannot parse JSON object")) {
-+            error.rawMessage = message;
++            Object.defineProperty(error, "rawMessage", { value: message, enumerable: false });
 +        }
 +        return error;
      }
