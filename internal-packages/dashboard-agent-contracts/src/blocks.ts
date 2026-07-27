@@ -26,6 +26,7 @@
  * `id` is a **non-revisable** block: it can never be replaced by a later revision
  * and is rendered in transcript order.
  */
+import { triggerUriSchema } from "./trigger-uri.js";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -49,8 +50,8 @@ import { z } from "zod";
  *   increases as the investigation progresses, so the panel shows one live card
  *   rather than a stack of near-duplicates.
  *
- * The report/investigation payload schemas themselves are NOT defined here yet
- * (M2 and M5 own them) — only the identity rule is frozen now.
+ * The investigation payload schema is NOT defined here yet (M5 owns it) — only
+ * its identity rule is frozen now.
  */
 export const blockEnvelopeSchema = z.object({
   id: z.string(),
@@ -201,12 +202,188 @@ export const chartBlockBodySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// report
+// ---------------------------------------------------------------------------
+
+/**
+ * The report card's payload: a whole `ReportViewModel` as returned by the
+ * reports API (`GET /api/v1/reports/:key?format=json`).
+ *
+ * **The webapp's `app/presenters/v3/reports/report-view-model.ts` is the source
+ * of truth for the shape; the schema below is the WIRE CONTRACT for it.** The
+ * two are mirrored by hand on purpose — this package is a zod-only leaf and must
+ * never import the webapp — so the schema is deliberately lenient: every object
+ * `passthrough()`es unknown keys, arrays default to empty, and only the fields
+ * the card actually renders are named. A presenter that grows a field keeps
+ * validating here; a stored transcript from an older presenter keeps rendering.
+ *
+ * Two rules the report block does NOT share with the other blocks:
+ *
+ * 1. It is **not** in `viewBlockInputSchema`. The model never writes a report —
+ *    the host builds the block from the completed `get_report` tool call, so the
+ *    card and the model's grounding are the same snapshot and the model cannot
+ *    reconstruct (or drift from) a single number.
+ * 2. Its `revision` is fixed at `0`. Every render is a separate historical
+ *    snapshot keyed by its tool-call id, so latest-wins can never collapse two
+ *    report cards into one.
+ */
+export const reportSeveritySchema = z.enum(["ok", "warn", "crit"]);
+
+/**
+ * Formatting hint for a metric value. Unknown units fall back to `count`
+ * (`.catch`) rather than failing the block — units are presentation-only and the
+ * report side is free to add one.
+ */
+export const reportUnitSchema = z.enum(["ms", "count", "ratio", "perMin"]).catch("count");
+
+/** A message-catalog code (`report-messages.ts` resolves it to a string). */
+const reasonCodeSchema = z.string();
+
+export const reportDeltaSchema = z
+  .object({
+    dir: z.enum(["up", "down", "flat"]).catch("flat"),
+    mult: z.number().optional(),
+  })
+  .passthrough();
+
+export const reportMetricSchema = z
+  .object({
+    id: z.string(),
+    value: z.number(),
+    unit: reportUnitSchema,
+    aggregation: z.string().optional(),
+    normal: z.number().optional(),
+    delta: reportDeltaSchema.optional(),
+    series: z
+      .object({
+        points: z.array(z.number()).default([]),
+        kind: z.enum(["measured", "estimated"]).catch("measured"),
+      })
+      .passthrough()
+      .optional(),
+    breakdown: z.record(z.number()).optional(),
+    annotation: z
+      .object({ code: reasonCodeSchema, value: z.number().optional() })
+      .passthrough()
+      .optional(),
+    availability: z.enum(["measured", "unknown"]).optional(),
+    severity: reportSeveritySchema,
+  })
+  .passthrough();
+
+/** A recommendation or hedge: a code plus an optional key into `vm.links`. */
+export const reportRecommendationSchema = z
+  .object({ code: reasonCodeSchema, link: z.string().optional() })
+  .passthrough();
+
+/** A ruled-out cause, or a supporting observation, with its evidence. */
+const codeWithEvidenceSchema = z
+  .object({ code: reasonCodeSchema, evidence: z.record(z.number()).optional() })
+  .passthrough();
+
+export const reportFindingSchema = z
+  .object({
+    /** Open string, not an enum: "flow" | "execution" | "liveness" | future kinds. */
+    type: z.string(),
+    severity: reportSeveritySchema,
+    reason: reasonCodeSchema,
+    read: reasonCodeSchema.optional(),
+    metricIds: z.array(z.string()).default([]),
+    recommendation: reportRecommendationSchema.optional(),
+    hedge: reportRecommendationSchema.optional(),
+    anomalyWindow: z
+      .object({ minutes: z.number(), touchesEnd: z.boolean() })
+      .passthrough()
+      .optional(),
+    attribution: z
+      .object({ dim: z.string(), key: z.string(), share: z.number(), of: z.string() })
+      .passthrough()
+      .optional(),
+    exclusions: z.array(codeWithEvidenceSchema).optional(),
+    observations: z.array(codeWithEvidenceSchema).optional(),
+  })
+  .passthrough();
+
+export const reportSummaryStatementSchema = z
+  .object({
+    findingType: z.string(),
+    severity: reportSeveritySchema,
+    reason: reasonCodeSchema.optional(),
+  })
+  .passthrough();
+
+/** A footer line: an action, or the "do nothing" option (which carries a value). */
+export const reportFooterEntrySchema = z
+  .object({
+    code: reasonCodeSchema,
+    link: z.string().optional(),
+    value: z.number().optional(),
+  })
+  .passthrough();
+
+export const reportLinkSchema = z
+  .object({ key: z.string(), label: z.string(), url: z.string() })
+  .passthrough();
+
+export const reportViewModelSchema = z
+  .object({
+    /** "health" | "cost" | … — also the key into the message catalog. */
+    title: z.string(),
+    /** The environment the report is about, e.g. "prod". */
+    scope: z.string(),
+    /** "last 1h". */
+    period: z.string(),
+    baselineLabel: z.string().optional(),
+    /** ISO string, set by the presenter — never read from the renderer's clock. */
+    generatedAt: z.string(),
+    windowMinutes: z.number(),
+    summary: z
+      .object({
+        severity: reportSeveritySchema,
+        statements: z.array(reportSummaryStatementSchema).default([]),
+      })
+      .passthrough(),
+    findings: z.array(reportFindingSchema).default([]),
+    metrics: z.array(reportMetricSchema).default([]),
+    /**
+     * The dense structured payload for agents. Free-form by design; the card only
+     * reads `trustworthy` (false = the telemetry behind the verdict is stale, so
+     * the numbers are informational only).
+     */
+    facts: z.record(z.unknown()).default({}),
+    links: z.array(reportLinkSchema).default([]),
+    footer: z.array(reportFooterEntrySchema).default([]),
+  })
+  .passthrough();
+
+export type ReportViewModelPayload = z.infer<typeof reportViewModelSchema>;
+export type ReportMetricPayload = z.infer<typeof reportMetricSchema>;
+export type ReportFindingPayload = z.infer<typeof reportFindingSchema>;
+export type ReportSeverity = z.infer<typeof reportSeveritySchema>;
+export type ReportUnit = z.infer<typeof reportUnitSchema>;
+
+const reportBlockBodySchema = z.object({
+  type: z.literal("report"),
+  vm: reportViewModelSchema,
+  /**
+   * The `trigger://…/report/{key}` URI this snapshot came from. Optional because
+   * it needs the project ref AND the RuntimeEnvironment id, which only a producer
+   * with environment context has; a card without one simply shows no source line.
+   */
+  reportUri: triggerUriSchema.optional(),
+  /** When the snapshot was taken — `vm.generatedAt`, carried up for the header. */
+  asOf: z.string(),
+});
+
+// ---------------------------------------------------------------------------
 // Model-facing input schemas (no envelope)
 // ---------------------------------------------------------------------------
 
 /**
  * What the `render_view` tool accepts from the model: bodies only. Identity is
  * assigned by the executor, never by the model.
+ *
+ * `report` is absent on purpose — see `reportBlockSchema`.
  */
 export const viewBlockInputSchema = z.discriminatedUnion("type", [
   diagnosisBlockBodySchema,
@@ -224,14 +401,26 @@ export type ViewBlockInput = z.infer<typeof viewBlockInputSchema>;
 export const diagnosisBlockSchema = diagnosisBlockBodySchema.merge(blockEnvelopeSchema);
 export const chartBlockSchema = chartBlockBodySchema.merge(blockEnvelopeSchema);
 
+/**
+ * A report snapshot. `id` is the id of the `get_report` tool call that produced
+ * it and `revision` is pinned to `0` by the type — the immutability rule is
+ * enforced here rather than left to a comment, so nothing can emit a "revised"
+ * report and collapse two snapshots into one card.
+ */
+export const reportBlockSchema = reportBlockBodySchema
+  .merge(blockEnvelopeSchema)
+  .extend({ revision: z.literal(0) });
+
 /** Validate here before persisting or emitting a block to a renderer. */
 export const viewBlockSchema = z.discriminatedUnion("type", [
   diagnosisBlockSchema,
   chartBlockSchema,
+  reportBlockSchema,
 ]);
 
 export type EnvelopedDiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
 export type EnvelopedChartBlock = z.infer<typeof chartBlockSchema>;
+export type EnvelopedReportBlock = z.infer<typeof reportBlockSchema>;
 export type EnvelopedViewBlock = z.infer<typeof viewBlockSchema>;
 
 // ---------------------------------------------------------------------------
@@ -240,11 +429,13 @@ export type EnvelopedViewBlock = z.infer<typeof viewBlockSchema>;
 
 export const legacyDiagnosisBlockSchema = diagnosisBlockBodySchema.extend(optionalEnvelopeShape);
 export const legacyChartBlockSchema = chartBlockBodySchema.extend(optionalEnvelopeShape);
+export const legacyReportBlockSchema = reportBlockBodySchema.extend(optionalEnvelopeShape);
 
 /** Parse stored transcript blocks with this: pre-envelope blocks still validate. */
 export const legacyViewBlockSchema = z.discriminatedUnion("type", [
   legacyDiagnosisBlockSchema,
   legacyChartBlockSchema,
+  legacyReportBlockSchema,
 ]);
 
 /**
@@ -256,6 +447,7 @@ export const legacyViewBlockSchema = z.discriminatedUnion("type", [
  */
 export type DiagnosisBlock = z.infer<typeof legacyDiagnosisBlockSchema>;
 export type ChartBlock = z.infer<typeof legacyChartBlockSchema>;
+export type ReportBlock = z.infer<typeof legacyReportBlockSchema>;
 export type ViewBlock = z.infer<typeof legacyViewBlockSchema>;
 
 /** Lenient parse of one stored block. */

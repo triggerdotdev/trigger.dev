@@ -1,10 +1,13 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { ArrowPathIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import type { AgentIntent } from "@internal/dashboard-agent-contracts";
 import { memo } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { MessageBubble, renderPart } from "~/components/runs/v3/agent/AgentMessageView";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
+import { reportBlockFromToolPart } from "./report-block-adapter";
+import type { ResolvedUri } from "./ReportView";
 import { ViewBlocks } from "./view-catalog";
 
 // "thinking" — the turn is submitted but nothing has come back yet.
@@ -35,23 +38,56 @@ function viewSpecFor(part: UIMessage["parts"][number]): { blocks: unknown[] } | 
   return Array.isArray(p.output?.blocks) ? { blocks: p.output!.blocks! } : null;
 }
 
-// Renders one message. Assistant messages that include a completed render_view
-// part get the catalog cards (plus the gather tool rows / lead-in text for
-// transparency); everything else uses the shared MessageBubble unchanged, so
-// its streaming memoization is preserved for the common case.
+/**
+ * The blocks one part contributes, or null when it isn't a card at all.
+ *
+ * Two sources, one renderer:
+ * - `render_view` — blocks the model composed.
+ * - `get_report` — a snapshot block the host builds from the tool's own output,
+ *   so the card shows the numbers the model was grounded on rather than numbers
+ *   it retyped.
+ *
+ * Both replace the generic tool row: a rendered card already says everything the
+ * raw JSON would. A `get_report` part that can't be adapted (still streaming, or
+ * an error) returns null and keeps its tool row, so the failure stays visible.
+ */
+function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
+  const spec = viewSpecFor(part);
+  if (spec) return spec.blocks;
+  const report = reportBlockFromToolPart(part);
+  return report ? [report] : null;
+}
+
+// Renders one message. Assistant messages that include a card-producing part get
+// the catalog cards (plus the gather tool rows / lead-in text for transparency);
+// everything else uses the shared MessageBubble unchanged, so its streaming
+// memoization is preserved for the common case.
 const DashboardAgentMessageBubble = memo(function DashboardAgentMessageBubble({
   message,
+  onIntent,
+  resolveUri,
 }: {
   message: UIMessage;
+  onIntent?: (intent: AgentIntent) => void;
+  resolveUri?: (uri: string) => ResolvedUri | null;
 }) {
-  if (message.role !== "assistant" || !message.parts?.some((p) => viewSpecFor(p))) {
+  if (message.role !== "assistant" || !message.parts?.some((p) => blocksFor(p))) {
     return <MessageBubble message={message} />;
   }
   return (
     <div className="space-y-2">
       {message.parts.map((part, i) => {
-        const spec = viewSpecFor(part);
-        if (spec) return <ViewBlocks key={i} blocks={spec.blocks as never} />;
+        const blocks = blocksFor(part);
+        if (blocks) {
+          return (
+            <ViewBlocks
+              key={i}
+              blocks={blocks as never}
+              onIntent={onIntent}
+              resolveUri={resolveUri}
+            />
+          );
+        }
         return renderPart(part, i);
       })}
     </div>
@@ -68,6 +104,8 @@ export function DashboardAgentMessages({
   error,
   onRetry,
   onDismissError,
+  onIntent,
+  resolveUri,
 }: {
   messages: UIMessage[];
   // What the turn is doing right now, or null when nothing is in flight. A turn
@@ -77,6 +115,10 @@ export function DashboardAgentMessages({
   error?: Error;
   onRetry?: () => void;
   onDismissError?: () => void;
+  /** Where a card's actions go. Threaded down to the view catalog. */
+  onIntent?: (intent: AgentIntent) => void;
+  /** Host resolver for `trigger://` URIs a card cites. */
+  resolveUri?: (uri: string) => ResolvedUri | null;
 }) {
   const rootRef = useAutoScrollToBottom([messages, activity]);
 
@@ -84,7 +126,12 @@ export function DashboardAgentMessages({
     <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div ref={rootRef} className="space-y-4 p-4">
         {messages.map((message) => (
-          <DashboardAgentMessageBubble key={message.id} message={stripStepParts(message)} />
+          <DashboardAgentMessageBubble
+            key={message.id}
+            message={stripStepParts(message)}
+            onIntent={onIntent}
+            resolveUri={resolveUri}
+          />
         ))}
         {activity && (
           <div className="flex items-center gap-2 text-sm text-text-dimmed">
