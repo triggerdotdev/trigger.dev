@@ -1,5 +1,14 @@
 # trigger.dev
 
+## 4.5.8
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.8`
+  - `@trigger.dev/build@4.5.8`
+  - `@trigger.dev/schema-to-json@4.5.8`
+
 ## 4.5.7
 
 ### Patch Changes
