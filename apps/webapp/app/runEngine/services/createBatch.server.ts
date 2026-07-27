@@ -126,17 +126,17 @@ export class CreateBatchService extends WithRunEngine {
 
           // Block parent run if this is a batchTriggerAndWait
           if (body.parentRunId && body.resumeParentOnCompletion) {
+            await this._engine.scheduleExpireBatch({
+              batchId: batch.id,
+              availableAt: new Date(Date.now() + env.BATCH_SEAL_TIMEOUT_MS),
+            });
+
             await this._engine.blockRunWithCreatedBatch({
               runId: RunId.fromFriendlyId(body.parentRunId),
               batchId: batch.id,
               environmentId: environment.id,
               projectId: environment.projectId,
               organizationId: environment.organizationId,
-            });
-
-            await this._engine.scheduleExpireBatch({
-              batchId: batch.id,
-              availableAt: new Date(Date.now() + env.BATCH_SEAL_TIMEOUT_MS),
             });
           }
 

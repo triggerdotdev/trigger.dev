@@ -859,6 +859,58 @@ describe("RunEngine 2-Phase Batch API", () => {
     });
 
     containerTest(
+      "resumes the parent when a previous run aborted the batch but died before the waitpoint",
+      async ({ prisma, redisOptions }) => {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+        const engine = createEngine(prisma, redisOptions);
+
+        try {
+          const { batchId, parentRun } = await setupUnsealedBatchBlockingParent(
+            engine,
+            prisma,
+            authenticatedEnvironment
+          );
+
+          await prisma.batchTaskRun.update({
+            where: { id: batchId },
+            data: {
+              status: "ABORTED",
+              completedAt: new Date(),
+              processingCompletedAt: new Date(),
+            },
+          });
+
+          const beforeRetry = await prisma.waitpoint.findFirst({
+            where: { completedByBatchId: batchId },
+          });
+          assertNonNullable(beforeRetry);
+          expect(beforeRetry.status).toBe("PENDING");
+
+          await engine.expireBatch({ batchId });
+
+          const waitpoint = await prisma.waitpoint.findFirst({
+            where: { completedByBatchId: batchId },
+          });
+          assertNonNullable(waitpoint);
+          expect(waitpoint.status).toBe("COMPLETED");
+          expect(waitpoint.outputIsError).toBe(true);
+
+          await vi.waitFor(
+            async () => {
+              const waitpoints = await prisma.taskRunWaitpoint.findMany({
+                where: { taskRunId: parentRun.id },
+              });
+              expect(waitpoints.length).toBe(0);
+            },
+            { timeout: 15_000 }
+          );
+        } finally {
+          await engine.quit();
+        }
+      }
+    );
+
+    containerTest(
       "aborts a fire-and-forget batch without a waitpoint to resolve",
       async ({ prisma, redisOptions }) => {
         const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");

@@ -3,15 +3,6 @@ import { describe, expect, vi } from "vitest";
 
 vi.setConfig({ testTimeout: 30_000 });
 
-vi.mock("../app/services/logger.server", () => ({
-  logger: {
-    info: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-    error: vi.fn(),
-  },
-}));
-
 import { BatchStreamGrants } from "../app/runEngine/concerns/batchStreamGrants.server.js";
 
 describe("BatchStreamGrants", () => {

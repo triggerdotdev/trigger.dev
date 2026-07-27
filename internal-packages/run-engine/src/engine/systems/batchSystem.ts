@@ -1,4 +1,4 @@
-import { startSpan } from "@internal/tracing";
+import { startSpan, type Counter } from "@internal/tracing";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { isFinalRunStatus } from "../statuses.js";
 import type { SystemResources } from "./systems.js";
@@ -12,10 +12,15 @@ export type BatchSystemOptions = {
 export class BatchSystem {
   private readonly $: SystemResources;
   private readonly waitpointSystem: WaitpointSystem;
+  private readonly expirationsCounter: Counter;
 
   constructor(private readonly options: BatchSystemOptions) {
     this.$ = options.resources;
     this.waitpointSystem = options.waitpointSystem;
+    this.expirationsCounter = this.$.meter.createCounter("batch_system.expirations", {
+      description: "Seal-timeout reaper runs, by outcome",
+      unit: "batches",
+    });
   }
 
   public async scheduleCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
@@ -57,6 +62,11 @@ export class BatchSystem {
    * waitpoint, so without this a stream that never finishes strands the parent permanently.
    *
    * Idempotent and race-safe: a batch that sealed in the meantime is left alone.
+   *
+   * Resumable too. The abort and the waitpoint completion are two writes, so a crash between
+   * them would otherwise leave the parent blocked with no way back: the retry would see a
+   * non-PENDING batch and bail. An already-ABORTED batch therefore falls through to complete
+   * its waitpoint again, which {@link WaitpointSystem.completeWaitpoint} treats as a no-op.
    */
   public async expireBatch({ batchId }: { batchId: string }): Promise<void> {
     return startSpan(this.$.tracer, "expireBatch", async (span) => {
@@ -66,33 +76,46 @@ export class BatchSystem {
 
       if (!batch) {
         this.$.logger.debug("expireBatch: batch doesn't exist", { batchId });
+        this.expirationsCounter.add(1, { outcome: "missing" });
         return;
       }
 
-      if (batch.sealed || batch.status !== "PENDING") {
-        this.$.logger.debug("expireBatch: batch sealed or no longer PENDING, nothing to do", {
+      if (batch.sealed || (batch.status !== "PENDING" && batch.status !== "ABORTED")) {
+        this.$.logger.debug("expireBatch: batch sealed or already finished, nothing to do", {
           batchId,
           status: batch.status,
           sealed: batch.sealed,
         });
+        this.expirationsCounter.add(1, { outcome: "already_settled" });
         return;
       }
 
-      const aborted = await this.$.runStore.updateManyBatchTaskRun(
-        {
-          where: { id: batchId, sealed: false, status: "PENDING" },
-          data: {
-            status: "ABORTED",
-            completedAt: new Date(),
-            processingCompletedAt: new Date(),
+      if (batch.status === "PENDING") {
+        const aborted = await this.$.runStore.updateManyBatchTaskRun(
+          {
+            where: { id: batchId, sealed: false, status: "PENDING" },
+            data: {
+              status: "ABORTED",
+              completedAt: new Date(),
+              processingCompletedAt: new Date(),
+            },
           },
-        },
-        this.$.prisma
-      );
+          this.$.prisma
+        );
 
-      if (aborted.count === 0) {
-        this.$.logger.debug("expireBatch: lost the race to a seal, no-op", { batchId });
-        return;
+        if (aborted.count === 0) {
+          const current = await this.$.runStore.findBatchTaskRunById(
+            batchId,
+            undefined,
+            this.$.prisma
+          );
+
+          if (!current || current.sealed || current.status !== "ABORTED") {
+            this.$.logger.debug("expireBatch: lost the race to a seal, no-op", { batchId });
+            this.expirationsCounter.add(1, { outcome: "lost_race" });
+            return;
+          }
+        }
       }
 
       const waitpoint = await this.$.runStore.findWaitpoint(
@@ -106,6 +129,7 @@ export class BatchSystem {
         this.$.logger.debug("expireBatch: no waitpoint, nothing was blocked on this batch", {
           batchId,
         });
+        this.expirationsCounter.add(1, { outcome: "aborted_no_parent" });
         return;
       }
 
@@ -122,6 +146,8 @@ export class BatchSystem {
         id: waitpoint.id,
         output: { value: JSON.stringify(error), isError: true },
       });
+
+      this.expirationsCounter.add(1, { outcome: "aborted_parent_resumed" });
 
       this.$.logger.warn("expireBatch: aborted an unsealed batch and resumed its parent", {
         batchId,
