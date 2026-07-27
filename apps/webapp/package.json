@@ -19,6 +19,7 @@
     "guard:runops-legacy": "cross-env NODE_OPTIONS=\"--max-old-space-size=8192\" tsx ./scripts/runOpsLegacyGuard.ts",
     "db:seed": "tsx seed.ts",
     "db:seed:ai-spans": "tsx seed-ai-spans.mts",
+    "db:seed:webhooks": "tsx seed-webhook-deliveries.ts",
     "upload:sourcemaps": "bash ./upload-sourcemaps.sh",
     "test": "vitest --no-file-parallelism",
     "eval:dev": "evalite watch"
