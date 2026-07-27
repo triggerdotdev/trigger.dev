@@ -218,6 +218,16 @@ export function bustBillingLimitCaches(organizationId: string) {
   invalidateBillingLimitCaches(organizationId);
 }
 
+/**
+ * Clears the caches whose value is derived from the org's plan. Call after a
+ * plan change — a downgrade can revoke SSO, and serving the previous decision
+ * for the stale TTL would keep a surface open that the new plan doesn't allow.
+ */
+function invalidatePlanDerivedCaches(organizationId: string) {
+  platformCache.entitlement.remove(organizationId).catch(() => {});
+  platformCache.ssoEntitlement.remove(organizationId).catch(() => {});
+}
+
 // Clear the cached promo-credits read so a just-granted code shows on the usage
 // page immediately rather than after the stale TTL.
 export function bustPromoCreditsCache(organizationId: string) {
@@ -543,7 +553,7 @@ export async function setPlan(
     case "free_connected": {
       // Selecting Free provisions the plan directly, so any free result is a success.
       opts?.invalidateBillingCache?.(organization.id);
-      platformCache.entitlement.remove(organization.id).catch(() => {});
+      invalidatePlanDerivedCaches(organization.id);
       const response = redirect(newProjectPath(organization, "You're on the Free plan."));
       await opts?.onFreePlanProvisioned?.(response);
       return response;
@@ -554,13 +564,13 @@ export async function setPlan(
     case "updated_subscription": {
       // Invalidate billing cache since subscription changed
       opts?.invalidateBillingCache?.(organization.id);
-      platformCache.entitlement.remove(organization.id).catch(() => {});
+      invalidatePlanDerivedCaches(organization.id);
       return redirectWithSuccessMessage(callerPath, request, "Subscription updated successfully.");
     }
     case "canceled_subscription": {
       // Invalidate billing cache since subscription was canceled
       opts?.invalidateBillingCache?.(organization.id);
-      platformCache.entitlement.remove(organization.id).catch(() => {});
+      invalidatePlanDerivedCaches(organization.id);
       return redirectWithSuccessMessage(callerPath, request, "Subscription canceled.");
     }
   }
@@ -778,28 +788,35 @@ export type SsoEntitlement = "entitled" | "not_entitled" | "unknown";
  * Loader errors are swallowed inside the loader for the same reason as
  * `getEntitlement`: @unkey/cache passes the loader promise to waitUntil()
  * with no .catch(), and returning undefined stops a transient billing
- * failure from being cached as an access decision.
+ * failure from being cached as an access decision. The SWR read is guarded
+ * too, so a cache-infra failure resolves to `unknown` rather than rejecting
+ * into the settings loader and the directory-sync worker.
  */
 export async function getSsoEntitlement(organizationId: string): Promise<SsoEntitlement> {
   if (!client) return "entitled";
 
-  const result = await platformCache.ssoEntitlement.swr(organizationId, async () => {
-    try {
-      const response = await client.currentPlan(organizationId);
-      if (!response.success) {
-        recordPlatformFailure("getSsoEntitlement", "no_success");
+  try {
+    const result = await platformCache.ssoEntitlement.swr(organizationId, async () => {
+      try {
+        const response = await client.currentPlan(organizationId);
+        if (!response.success) {
+          recordPlatformFailure("getSsoEntitlement", "no_success");
+          return undefined;
+        }
+        return response.v3Subscription?.plan?.limits?.hasSso === true;
+      } catch (_e) {
+        recordPlatformFailure("getSsoEntitlement", "caught");
         return undefined;
       }
-      return response.v3Subscription?.plan?.limits?.hasSso === true;
-    } catch (_e) {
-      recordPlatformFailure("getSsoEntitlement", "caught");
-      return undefined;
-    }
-  });
+    });
 
-  if (result.err || result.val === undefined) return "unknown";
+    if (result.err || result.val === undefined) return "unknown";
 
-  return result.val ? "entitled" : "not_entitled";
+    return result.val ? "entitled" : "not_entitled";
+  } catch (_e) {
+    recordPlatformFailure("getSsoEntitlement", "caught");
+    return "unknown";
+  }
 }
 
 export type PromoCreditsData = {
