@@ -22,9 +22,13 @@ import { DashboardAgentProvider } from "./dashboardAgentLauncher";
 export function DashboardAgent({
   children,
   hasAccess = false,
+  demoEnabled = false,
 }: {
   children: React.ReactNode;
   hasAccess?: boolean;
+  // Demo mode (DASHBOARD_AGENT_DEMO): canned fixture conversations appear in
+  // the panel history for design review. Resolved server-side.
+  demoEnabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   // A request from `openWith`, handed to the panel. `seq` makes repeat requests
@@ -72,6 +76,7 @@ export function DashboardAgent({
             <DashboardAgentPanel
               onClose={() => setPanelOpen(false)}
               requestedMessage={requestedMessage}
+              demoEnabled={demoEnabled}
             />
           </ResizablePanel>
         </ResizablePanelGroup>

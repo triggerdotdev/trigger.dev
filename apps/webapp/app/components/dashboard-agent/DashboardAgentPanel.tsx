@@ -21,6 +21,7 @@ import {
   DashboardAgentHistory,
   type DashboardAgentChat as DashboardAgentChatListItem,
 } from "./DashboardAgentHistory";
+import { DemoChatView, demoHistoryChats, isDemoChatId } from "./demo";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
 
@@ -73,11 +74,15 @@ type ActiveChat = {
 export function DashboardAgentPanel({
   onClose,
   requestedMessage,
+  demoEnabled = false,
 }: {
   onClose: () => void;
   // Text handed to the panel from outside (`openWith`). `seq` distinguishes
   // repeat requests with the same text.
   requestedMessage?: { text: string; seq: number };
+  // Demo mode: fixture conversations appear in history and render without a
+  // transport. Resolved server-side (DASHBOARD_AGENT_DEMO).
+  demoEnabled?: boolean;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -126,12 +131,12 @@ export function DashboardAgentPanel({
       const res = await fetch(actionPath);
       if (!res.ok) throw new Error(`History request failed (${res.status})`);
       const data = (await res.json()) as { chats?: DashboardAgentChatListItem[] };
-      setChats(data.chats ?? []);
+      setChats([...(data.chats ?? []), ...(demoEnabled ? demoHistoryChats : [])]);
     } catch (error) {
       console.error("Dashboard agent: failed to load chat history", error);
       toast.error("We couldn't load your previous chats. Try again in a moment.");
     }
-  }, [actionPath, toast]);
+  }, [actionPath, toast, demoEnabled]);
 
   // Bumped on each open so a slower earlier open can't overwrite a newer one
   // when chats are switched rapidly.
@@ -144,6 +149,16 @@ export function DashboardAgentPanel({
     async (id: string) => {
       setView("chat");
       const seq = ++openChatRequestSeq.current;
+      // Demo chats have nothing stored — DemoChatView renders the fixture.
+      if (isDemoChatId(id)) {
+        if (demoEnabled) {
+          setActive({ chatId: id, messages: [], session: null });
+        } else {
+          setActive(null);
+        }
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
         const res = await fetch(`${actionPath}?chatId=${encodeURIComponent(id)}`);
@@ -181,7 +196,7 @@ export function DashboardAgentPanel({
         if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
-    [actionPath, toast]
+    [actionPath, toast, demoEnabled]
   );
 
   // Start a new chat by sending its first message. The server generates the id,
@@ -255,9 +270,10 @@ export function DashboardAgentPanel({
     }
   }, [openChat, storageKey, loadHistory]);
 
-  // Persist the active chat as the one to restore next time.
+  // Persist the active chat as the one to restore next time. Demo chats are
+  // not persisted — they may not exist next session (flag off).
   useEffect(() => {
-    if (!active?.chatId) return;
+    if (!active?.chatId || isDemoChatId(active.chatId)) return;
     try {
       window.localStorage.setItem(storageKey, active.chatId);
     } catch {
@@ -301,6 +317,8 @@ export function DashboardAgentPanel({
 
   const deleteChat = useCallback(
     async (id: string) => {
+      // Demo chats aren't stored — nothing to delete.
+      if (isDemoChatId(id)) return;
       const body = new FormData();
       body.set("intent", "delete");
       body.set("chatId", id);
@@ -357,6 +375,14 @@ export function DashboardAgentPanel({
         <div className="flex flex-1 items-center justify-center">
           <Spinner className="size-5" />
         </div>
+      ) : active && isDemoChatId(active.chatId) ? (
+        <DemoChatView
+          key={active.chatId}
+          chatId={active.chatId}
+          projectSlug={project.slug}
+          environmentSlug={environment.slug}
+          currentPage={currentPage}
+        />
       ) : active ? (
         <DashboardAgentChat
           key={active.chatId}
