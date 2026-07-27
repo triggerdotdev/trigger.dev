@@ -1,5 +1,9 @@
 import type { PrismaClient, RuntimeEnvironment } from "@trigger.dev/database";
-import type { RoleBaseAccessController } from "@trigger.dev/rbac";
+// HostRbacController, not RoleBaseAccessController: the policy methods are
+// optional on the plugin-facing contract, and `rbac` (LazyController) has
+// already substituted the fail-closed defaults for any an installed plugin
+// omits. Depending on the host surface keeps this call site guard-free.
+import type { HostRbacController } from "@trigger.dev/rbac";
 import { trail } from "agentcrumbs"; // @crumbs
 import { customAlphabet } from "nanoid";
 import { prisma } from "~/db.server";
@@ -128,7 +132,7 @@ export async function createEnvironmentApiKey(
     rbacController = rbac,
   }: {
     prismaClient?: Pick<PrismaClient, "runtimeEnvironment" | "taskIdentifier" | "apiKey">;
-    rbacController?: Pick<RoleBaseAccessController, "prepareApiKeyPolicy">;
+    rbacController?: Pick<HostRbacController, "prepareApiKeyPolicy">;
   } = {}
 ) {
   const environment = await prismaClient.runtimeEnvironment.findFirst({

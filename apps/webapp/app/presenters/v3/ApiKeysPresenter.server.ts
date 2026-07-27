@@ -1,15 +1,16 @@
 import { type RuntimeEnvironment } from "@trigger.dev/database";
-import { scopesGrantFullAccess, type RoleBaseAccessController } from "@trigger.dev/rbac";
+// HostRbacController, not RoleBaseAccessController: the policy methods are
+// optional on the plugin-facing contract, and `rbac` (LazyController) has
+// already substituted the fail-closed defaults for any an installed plugin
+// omits. Depending on the host surface keeps these call sites guard-free.
+import { scopesGrantFullAccess, type HostRbacController } from "@trigger.dev/rbac";
 import { type PrismaReplicaClient, $replica } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { rbac } from "~/services/rbac.server";
 import { obfuscateApiKey } from "~/utils/apiKeys";
 
-type ApiKeyPolicyPresenter = Pick<
-  RoleBaseAccessController,
-  "apiKeyPresets" | "describeApiKeyPolicy"
->;
+type ApiKeyPolicyPresenter = Pick<HostRbacController, "apiKeyPresets" | "describeApiKeyPolicy">;
 
 export class ApiKeysPresenter {
   // Read-only presenter for a dashboard page — all queries below are reads, so
