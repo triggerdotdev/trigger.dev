@@ -62,13 +62,16 @@ export function QueuePauseResumeButton({
                 <Button
                   type="button"
                   variant={variant}
-                  className={
-                    iconOnly
-                      ? queue.paused
+                  className={cn(
+                    iconOnly &&
+                      (queue.paused
                         ? "system:border-transparent system:bg-success system:transition system:group-hover/button:bg-success system:group-hover/button:brightness-90"
-                        : "system:border-transparent system:bg-warning system:transition system:group-hover/button:bg-warning system:group-hover/button:brightness-90"
-                      : undefined
-                  }
+                        : "system:border-transparent system:bg-warning system:transition system:group-hover/button:bg-warning system:group-hover/button:brightness-90"),
+                    withQueueName &&
+                      (queue.paused
+                        ? "border-success/60 text-success [&_span]:text-success hover:border-success"
+                        : "border-warning/60 text-warning [&_span]:text-warning hover:border-warning")
+                  )}
                   LeadingIcon={queue.paused ? PlayIcon : PauseIcon}
                   leadingIconClassName={cn(
                     queue.paused ? "text-success" : "text-warning",
@@ -77,13 +80,6 @@ export function QueuePauseResumeButton({
                   fullWidth={fullWidth}
                   textAlignLeft={fullWidth}
                   aria-label={label}
-                  className={
-                    withQueueName
-                      ? queue.paused
-                        ? "border-success/60 text-success [&_span]:text-success hover:border-success"
-                        : "border-warning/60 text-warning [&_span]:text-warning hover:border-warning"
-                      : undefined
-                  }
                 >
                   {iconOnly
                     ? undefined
