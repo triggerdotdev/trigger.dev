@@ -21,6 +21,7 @@ import {
 import { Button } from "~/components/primitives/Buttons";
 import { Header1, Header3 } from "~/components/primitives/Headers";
 import { Spinner } from "~/components/primitives/Spinner";
+import { AgentDotMatrix } from "../storybook.ai-agent/AgentDotMatrix";
 
 export default function Story() {
   const isSelected = true;
@@ -385,6 +386,42 @@ export default function Story() {
           >
             Disabled menu item
           </Button>
+        </div>
+      </div>
+      <Header1 className="mb-2 mt-8">Ask AI button</Header1>
+      <div className="grid grid-cols-4 gap-8 border-b border-grid-bright pb-8">
+        <div className="flex flex-col items-start gap-2">
+          <Header3 className="mb-1 uppercase">Sizes</Header3>
+          <Button variant="ask-ai/small">
+            <span className="flex items-center gap-x-1.5 text-text-bright">
+              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" />
+              Ask AI
+            </span>
+          </Button>
+          <Button variant="ask-ai/medium">
+            <span className="flex items-center gap-x-2 text-text-bright">
+              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" />
+              Ask AI
+            </span>
+          </Button>
+          <Button variant="ask-ai/large">
+            <span className="flex items-center gap-x-2 text-text-bright">
+              <AgentDotMatrix size={20} palette="mono" restColor="#ffffff" />
+              Ask AI
+            </span>
+          </Button>
+        </div>
+        <div className="flex flex-col items-start gap-2">
+          <Header3 className="mb-1 uppercase">Disabled</Header3>
+          <Button variant="ask-ai/small" disabled>
+            <span className="flex items-center gap-x-1.5 text-text-bright">
+              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" />
+              Ask AI
+            </span>
+          </Button>
+        </div>
+        <div className="col-span-2 self-end text-sm text-text-dimmed">
+          Reserved for the AI agent. See the "AI agent" story for the live pairing.
         </div>
       </div>
     </div>
