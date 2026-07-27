@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { VERSION } from "../../version.js";
+import { isAdditionalApiKey } from "../apiKeys.js";
 import type { ApiClientConfiguration } from "../apiClientManager-api.js";
 import { generateJWT } from "../jwt.js";
 import {
@@ -239,6 +240,21 @@ export class ApiClient {
     this.futureFlags = futureFlags;
   }
 
+  /**
+   * Key for signing a public access token locally. Only root keys can do this —
+   * an additional key isn't the environment's signing material, so a token
+   * signed with one would never verify. Throw rather than return a dead token.
+   */
+  get #selfSigningKey(): string {
+    if (isAdditionalApiKey(this.accessToken)) {
+      throw new Error(
+        "This additional API key cannot self-sign public tokens, and the server did not return one. Upgrade the server or use the root API key."
+      );
+    }
+
+    return this.accessToken;
+  }
+
   get fetchClient(): typeof fetch {
     const headers = this.#getHeaders(false);
 
@@ -334,7 +350,7 @@ export class ApiClient {
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
         const jwt = await generateJWT({
-          secretKey: this.accessToken,
+          secretKey: this.#selfSigningKey,
           payload: {
             ...claims,
             scopes: [`read:runs:${data.id}`],
@@ -381,7 +397,7 @@ export class ApiClient {
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
         const jwt = await generateJWT({
-          secretKey: this.accessToken,
+          secretKey: this.#selfSigningKey,
           payload: {
             ...claims,
             scopes: [`read:batch:${data.id}`],
@@ -438,7 +454,7 @@ export class ApiClient {
         const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
         const jwt = await generateJWT({
-          secretKey: this.accessToken,
+          secretKey: this.#selfSigningKey,
           payload: {
             ...claims,
             scopes: [`read:batch:${data.id}`],
@@ -1134,7 +1150,7 @@ export class ApiClient {
           const claims = claimsHeader ? JSON.parse(claimsHeader) : undefined;
 
           const jwt = await generateJWT({
-            secretKey: this.accessToken,
+            secretKey: this.#selfSigningKey,
             payload: {
               ...claims,
               scopes: [`write:waitpoints:${data.id}`],

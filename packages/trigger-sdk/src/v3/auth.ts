@@ -122,7 +122,8 @@ export type CreatePublicTokenOptions = {
   scopes?: PublicTokenPermissions;
 
   /**
-   * The expiration time for the token. This can be a number representing the time in milliseconds, a `Date` object, or a string.
+   * The expiration time for the token: a duration string, a `Date`, or a Unix
+   * timestamp in **seconds**.
    *
    * @example
    *
@@ -151,6 +152,9 @@ export type CreatePublicTokenOptions = {
   };
 };
 
+// A `Date` becomes Unix seconds; duration strings and numbers pass through. A
+// bare number is already Unix seconds, matching how the local signing path
+// reads it, so both key types treat the option the same.
 function serverExpirationTime(
   expirationTime: number | Date | string | undefined
 ): number | string | undefined {
@@ -249,7 +253,8 @@ async function withPublicToken(options: CreatePublicTokenOptions, fn: () => Prom
 
 export type CreateTriggerTokenOptions = {
   /**
-   * The expiration time for the token. This can be a number representing the time in milliseconds, a `Date` object, or a string.
+   * The expiration time for the token: a duration string, a `Date`, or a Unix
+   * timestamp in **seconds**.
    *
    * @example
    *
