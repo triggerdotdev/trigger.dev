@@ -470,17 +470,37 @@ export interface RoleBaseAccessController {
   // Plugin-owned API-key policy catalogue and policy generation. A null
   // catalogue means no plugin is installed. The host owns credentials and
   // persists the effective policy returned by prepareApiKeyPolicy().
-  apiKeyPresets(organizationId: string): Promise<ApiKeyPreset[] | null>;
+  //
+  // These three are OPTIONAL, and are the first optional members of this
+  // interface — the distinction is deliberate. Methods the host cannot serve a
+  // request without (authenticateBearer, authenticatePat, authenticateSession)
+  // stay required. Capability extensions the host can degrade past are
+  // optional, so a plugin built against an older contract still satisfies this
+  // interface. That matters because the plugin is compiled against whichever
+  // OSS commit its base image carries: making an additive capability required
+  // turns every such addition into a lockstep two-repo merge, and turns a
+  // plugin rollback into an image build failure instead of a graceful
+  // degradation.
+  //
+  // Absence must fail CLOSED, and each default is chosen so it does:
+  //   - apiKeyPresets       -> null (identical to "no plugin installed")
+  //   - prepareApiKeyPolicy -> { ok: false } — NEVER a full-access default;
+  //                            key creation stops, while already-issued keys
+  //                            keep authorizing from their persisted scopes
+  //   - describeApiKeyPolicy -> {} (presentation only)
+  // LazyController applies these defaults, so host callers going through
+  // `rbac` see a total surface and cannot forget the guard.
+  apiKeyPresets?(organizationId: string): Promise<ApiKeyPreset[] | null>;
   // `presetId` is deliberately required: an authorization function must not
   // have an implicit default, least of all a full-access one. A caller that
   // omits the field should fail to compile rather than silently mint an admin
   // credential. Installs with no preset catalogue pass "FULL_ACCESS".
-  prepareApiKeyPolicy(params: {
+  prepareApiKeyPolicy?(params: {
     organizationId: string;
     presetId: string;
     taskIdentifiers?: string[];
   }): Promise<PrepareApiKeyPolicyResult>;
-  describeApiKeyPolicy(policy: ApiKeyPolicy): Promise<ApiKeyPolicyDescription>;
+  describeApiKeyPolicy?(policy: ApiKeyPolicy): Promise<ApiKeyPolicyDescription>;
 
   // Role introspection. The fallback returns []; a plugin may return
   // its own role catalogue.
