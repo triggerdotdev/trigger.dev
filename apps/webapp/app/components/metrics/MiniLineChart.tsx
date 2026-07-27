@@ -138,7 +138,7 @@ export function MiniLineChart({
         type="monotone"
         dataKey="count"
         stroke={color}
-        strokeWidth={1.5}
+        strokeWidth={1}
         dot={false}
         activeDot={{ r: 2.5, fill: color, strokeWidth: 0 }}
         isAnimationActive={false}
@@ -148,7 +148,7 @@ export function MiniLineChart({
           type="monotone"
           dataKey="throttledOverlay"
           stroke="var(--color-warning)"
-          strokeWidth={1.5}
+          strokeWidth={1}
           dot={false}
           activeDot={{ r: 2.5, fill: "var(--color-warning)", strokeWidth: 0 }}
           connectNulls={false}

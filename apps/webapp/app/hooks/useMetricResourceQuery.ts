@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInterval } from "./useInterval";
 
 export type MetricResourceRow = Record<string, number | string | null>;
@@ -24,16 +24,32 @@ export type MetricResourceQueryOptions = {
   refreshIntervalMs?: number;
 };
 
+// Module-level cache of the last successful rows per query signature. Lets a remounted chart
+// (switching tabs, or navigating back to the queues list) paint its previous data immediately
+// instead of flashing a loading skeleton every time, while it revalidates in the background.
+// Bounded so it can't grow without limit over a long session.
+const responseCache = new Map<string, MetricResourceRow[]>();
+const RESPONSE_CACHE_MAX = 200;
+
+function cacheSet(key: string, rows: MetricResourceRow[]) {
+  // Re-insert so the key becomes the most-recently-used (Map preserves insertion order).
+  responseCache.delete(key);
+  responseCache.set(key, rows);
+  if (responseCache.size > RESPONSE_CACHE_MAX) {
+    const oldest = responseCache.keys().next().value;
+    if (oldest !== undefined) responseCache.delete(oldest);
+  }
+}
+
 /**
  * Client-fetch a TRQL query from the metric resource route (like the dashboard
  * widgets): own loading state, interval + on-focus refresh, abort on change/unmount.
+ *
+ * Successful results are cached per query signature, so a chart that remounts (tab switch, or
+ * back-navigation to the queues list) shows its last data immediately and revalidates in the
+ * background rather than flashing a loading skeleton.
  */
 export function useMetricResourceQuery(query: string, opts: MetricResourceQueryOptions) {
-  const [rows, setRows] = useState<MetricResourceRow[] | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-
   const {
     organizationId,
     projectId,
@@ -44,11 +60,37 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   } = opts;
   const { period, from, to } = opts.timeRange;
   const queuesKey = opts.queues && opts.queues.length > 0 ? opts.queues.join(",") : undefined;
+  const resolvedPeriod = period ?? (from || to ? null : defaultPeriod);
+  const cacheKey = useMemo(
+    () =>
+      [
+        organizationId,
+        projectId,
+        environmentId,
+        resolvedPeriod ?? "",
+        from ?? "",
+        to ?? "",
+        fillGaps ? 1 : 0,
+        queuesKey ?? "",
+        query,
+      ].join("|"),
+    [organizationId, projectId, environmentId, resolvedPeriod, from, to, fillGaps, queuesKey, query]
+  );
+
+  const [rows, setRows] = useState<MetricResourceRow[] | null>(
+    () => responseCache.get(cacheKey) ?? null
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(() => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    // Paint cached rows immediately (no skeleton) on remount / key change while we revalidate.
+    const cached = responseCache.get(cacheKey);
+    if (cached) setRows(cached);
     setIsLoading(true);
     fetch("/resources/metric", {
       method: "POST",
@@ -56,7 +98,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
       body: JSON.stringify({
         query,
         scope: "environment",
-        period: period ?? (from || to ? null : defaultPeriod),
+        period: resolvedPeriod,
         from,
         to,
         fillGaps: !!fillGaps,
@@ -71,6 +113,7 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
       .then((data) => {
         if (controller.signal.aborted) return;
         if (data.success) {
+          cacheSet(cacheKey, data.data.rows);
           setRows(data.data.rows);
           setFailed(false);
         } else {
@@ -86,11 +129,11 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
         }
       });
   }, [
+    cacheKey,
     query,
-    period,
+    resolvedPeriod,
     from,
     to,
-    defaultPeriod,
     fillGaps,
     organizationId,
     projectId,

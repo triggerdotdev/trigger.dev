@@ -1298,8 +1298,10 @@ function WaitingInQueueBlock({
       : null;
 
   return (
-    <div className="flex flex-col gap-3 border-b border-grid-bright pb-4">
-      <div className="grid grid-cols-3 gap-2">
+    <div className="@container flex flex-col gap-3 border-b border-grid-bright pb-4">
+      {/* Responsive to the side panel width (container query, not viewport): 3-up while there's
+          room, stacking to a single column only once the panel gets narrow. */}
+      <div className="grid grid-cols-1 gap-2 @[22rem]:grid-cols-3">
         <MiniStat
           title={
             <span className="flex items-center gap-1.5">
@@ -1325,7 +1327,10 @@ function WaitingInQueueBlock({
               : "of ∞"
           }
         />
-        <MiniStat title="Waiting for" value={formatWaitMs(waitedMs)} />
+        <MiniStat
+          title="Waiting for"
+          value={formatDurationMilliseconds(waitedMs, { style: "short", maxDecimalPoints: 0 })}
+        />
       </div>
 
       <div className="rounded-sm border border-grid-dimmed bg-background-bright p-3">

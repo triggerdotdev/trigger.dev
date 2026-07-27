@@ -60,9 +60,43 @@ const variants = {
   },
 };
 
+const SECURE_MASK = "••••••••••••••••";
+
+/**
+ * Builds the masked display string, optionally revealing the first/last few
+ * characters in cleartext so users can confirm a copied value. A custom mask
+ * string (when `secure` is a string) is always shown as-is.
+ */
+function maskValue(
+  value: string,
+  secure: boolean | string,
+  revealStart: number,
+  revealEnd: number
+) {
+  if (typeof secure === "string") {
+    return secure;
+  }
+
+  const start = Math.max(0, revealStart);
+  const end = Math.max(0, revealEnd);
+
+  // Nothing to reveal, or revealing would leak the whole value: fully mask.
+  if ((start === 0 && end === 0) || start + end >= value.length) {
+    return SECURE_MASK;
+  }
+
+  const revealedStart = start > 0 ? value.slice(0, start) : "";
+  const revealedEnd = end > 0 ? value.slice(-end) : "";
+  return `${revealedStart}${SECURE_MASK}${revealedEnd}`;
+}
+
 type ClipboardFieldProps = {
   value: string;
   secure?: boolean | string;
+  /** When masked, reveal this many of the first characters in cleartext. */
+  secureRevealStart?: number;
+  /** When masked, reveal this many of the last characters in cleartext. */
+  secureRevealEnd?: number;
   variant: keyof typeof variants;
   className?: string;
   icon?: React.ReactNode;
@@ -73,6 +107,8 @@ type ClipboardFieldProps = {
 export function ClipboardField({
   value,
   secure = false,
+  secureRevealStart = 0,
+  secureRevealEnd = 0,
   variant,
   className,
   icon,
@@ -87,6 +123,8 @@ export function ClipboardField({
     setIsSecure(secure !== undefined && secure);
   }, [secure]);
 
+  const maskedValue = maskValue(value, secure, secureRevealStart, secureRevealEnd);
+
   return (
     <span className={cn(container, fullWidth ? "w-full" : "max-w-fit", className)}>
       {icon && (
@@ -100,7 +138,7 @@ export function ClipboardField({
       <input
         type="text"
         ref={inputIcon}
-        value={isSecure ? (typeof secure === "string" ? secure : "••••••••••••••••") : value}
+        value={isSecure ? maskedValue : value}
         readOnly={true}
         className={cn(
           "shrink grow select-all overflow-x-auto",

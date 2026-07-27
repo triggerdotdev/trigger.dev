@@ -95,6 +95,8 @@ class ManagedSupervisor {
 
   private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
+  private readonly warmStartDispatchUrl =
+    env.TRIGGER_WARM_START_DISPATCH_URL ?? env.TRIGGER_WARM_START_URL;
 
   private readonly wideEventOpts: WideEventOptions = {
     service: "supervisor",
@@ -698,7 +700,7 @@ class ManagedSupervisor {
       return false;
     }
 
-    const warmStartUrlWithPath = new URL("/warm-start", this.warmStartUrl);
+    const warmStartUrlWithPath = new URL("/warm-start", this.warmStartDispatchUrl);
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

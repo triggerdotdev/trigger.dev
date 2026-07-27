@@ -372,6 +372,9 @@ function CreatePersonalAccessToken({
           </Callout>
           <ClipboardField
             secure
+            // 7-char "tr_pat_" prefix + 4 token chars, matching the tokens list display
+            secureRevealStart={11}
+            secureRevealEnd={4}
             value={token.token}
             variant={"secondary/medium"}
             icon={<ShieldExclamationIcon className="size-5 text-success" />}

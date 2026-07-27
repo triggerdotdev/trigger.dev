@@ -9,7 +9,11 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
   page: z.coerce.number().min(1).default(1),
-  per_page: z.coerce.number().min(1).default(20),
+  per_page: z.coerce
+    .number()
+    .min(1)
+    .transform((n) => Math.min(n, 100))
+    .default(20),
   type: z.enum(["task", "custom"]).optional(),
 });
 

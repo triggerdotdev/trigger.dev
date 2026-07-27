@@ -12,7 +12,12 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 const SearchParamsSchema = z.object({
   page: z.coerce.number().int().positive().optional(),
-  perPage: z.coerce.number().int().positive().optional(),
+  perPage: z.coerce
+    .number()
+    .int()
+    .positive()
+    .transform((n) => Math.min(n, 100))
+    .optional(),
 });
 
 export const loader = createLoaderApiRoute(

@@ -218,7 +218,7 @@ describe("RunHydrator read-route through the runStore seam (legacy + new)", () =
       });
 
       const runStore = makeRoutingShapedStore({ newStore, legacyStore });
-      const hydrator = new RunHydrator({ replica: prisma14, runStore });
+      const hydrator = new RunHydrator({ readClient: prisma14, runStore });
 
       const rows = await hydrator.hydrateByIds(envId, [newRunId, legacyRunId]);
       expect(rows.map((r) => r.id).sort()).toEqual([legacyRunId, newRunId].sort());
@@ -267,7 +267,7 @@ describe("RunHydrator read-route through the runStore seam (legacy + new)", () =
       });
 
       const runStore = makeRoutingShapedStore({ newStore, legacyStore });
-      const hydrator = new RunHydrator({ replica: prisma14, runStore });
+      const hydrator = new RunHydrator({ readClient: prisma14, runStore });
 
       const row = await hydrator.getRunById(envId, migratedRunId);
       expect(row?.id).toBe(migratedRunId);
@@ -300,7 +300,7 @@ describe("RunHydrator read-route through the runStore seam (legacy + new)", () =
       });
 
       const runStore = makeRoutingShapedStore({ newStore, legacyStore });
-      const hydrator = new RunHydrator({ replica: prisma14, runStore });
+      const hydrator = new RunHydrator({ readClient: prisma14, runStore });
 
       const byId = await hydrator.getRunById(envId, oldRunId);
       expect(byId?.payload).toBe('{"era":"old"}');
@@ -338,7 +338,7 @@ describe("RunHydrator read-route through the runStore seam (legacy + new)", () =
 
       // A generic legacy replica would miss the NEW row entirely — the metadata must come off NEW.
       const runStore = makeRoutingShapedStore({ newStore, legacyStore });
-      const hydrator = new RunHydrator({ replica: prisma14, runStore, cacheTtlMs: 0 });
+      const hydrator = new RunHydrator({ readClient: prisma14, runStore, cacheTtlMs: 0 });
 
       const snapshot = await hydrator.getRunById(envId, terminalRunId);
       expect(snapshot?.id).toBe(terminalRunId);
@@ -385,7 +385,7 @@ describe("RunHydrator read-route through the runStore seam (legacy + new)", () =
       // Use a 0ms TTL so each getRunById re-reads through the seam (no cached stale row across the
       // crossing). Single-flight/TTL are proven separately below.
       const runStore = makeRoutingShapedStore({ newStore, legacyStore, classify });
-      const hydrator = new RunHydrator({ replica: prisma14, runStore, cacheTtlMs: 0 });
+      const hydrator = new RunHydrator({ readClient: prisma14, runStore, cacheTtlMs: 0 });
 
       // Before migration: served from LEGACY.
       const before = await hydrator.getRunById(envId, runId);
@@ -434,7 +434,7 @@ describe("RunHydrator single-flight + TTL cache intact across the seam", () => {
       });
 
       const runStore = makeRoutingShapedStore({ newStore, legacyStore });
-      const hydrator = new RunHydrator({ replica: prisma14, runStore, cacheTtlMs: 60_000 });
+      const hydrator = new RunHydrator({ readClient: prisma14, runStore, cacheTtlMs: 60_000 });
 
       // Two concurrent calls -> single-flight collapses to ONE underlying read.
       const [a, b] = await Promise.all([
@@ -466,7 +466,7 @@ describe("RunHydrator single-flight + TTL cache intact across the seam", () => {
       const missingRunId = newId("missing_run");
 
       const runStore = makeRoutingShapedStore({ newStore, legacyStore });
-      const hydrator = new RunHydrator({ replica: prisma14, runStore, cacheTtlMs: 60_000 });
+      const hydrator = new RunHydrator({ readClient: prisma14, runStore, cacheTtlMs: 60_000 });
 
       const first = await hydrator.getRunById(envId, missingRunId);
       expect(first).toBeNull();
@@ -504,7 +504,7 @@ describe("RunHydrator single-DB passthrough (one PostgresRunStore over one clien
         });
       }
 
-      const hydrator = new RunHydrator({ replica: prisma, runStore: store, cacheTtlMs: 60_000 });
+      const hydrator = new RunHydrator({ readClient: prisma, runStore: store, cacheTtlMs: 60_000 });
 
       // hydrateByIds returns both rows from the single client.
       const rows = await hydrator.hydrateByIds(envId, [runIdA, runIdB]);
@@ -523,7 +523,7 @@ describe("RunHydrator single-DB passthrough (one PostgresRunStore over one clien
   postgresTest("empty id-set returns [] without touching the store", async ({ prisma }) => {
     const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
     const findRunsSpy = vi.spyOn(store, "findRuns");
-    const hydrator = new RunHydrator({ replica: prisma, runStore: store });
+    const hydrator = new RunHydrator({ readClient: prisma, runStore: store });
 
     const rows = await hydrator.hydrateByIds("env_none", []);
     expect(rows).toEqual([]);

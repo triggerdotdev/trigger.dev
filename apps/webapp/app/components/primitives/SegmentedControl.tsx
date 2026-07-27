@@ -77,6 +77,8 @@ type SegmentedControlProps = {
   variant?: VariantType;
   fullWidth?: boolean;
   onChange?: (value: string) => void;
+  /** Override the control's outer styling (e.g. a height that matches an adjacent input). */
+  className?: string;
 };
 
 export default function SegmentedControl({
@@ -87,6 +89,7 @@ export default function SegmentedControl({
   variant = "secondary/medium",
   fullWidth,
   onChange,
+  className,
 }: SegmentedControlProps) {
   const variantStyle = variants[variant];
   const _isPrimary = variant.startsWith("primary");
@@ -96,7 +99,8 @@ export default function SegmentedControl({
       className={cn(
         "flex rounded text-text-bright",
         variantStyle.base,
-        fullWidth ? "w-full" : "w-fit"
+        fullWidth ? "w-full" : "w-fit",
+        className
       )}
     >
       <RadioGroup
