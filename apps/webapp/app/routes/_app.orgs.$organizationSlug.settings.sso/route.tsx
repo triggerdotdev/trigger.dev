@@ -47,7 +47,6 @@ import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 export const meta: MetaFunction = () => [{ title: "SSO & Directory Sync | Trigger.dev" }];
 
@@ -60,13 +59,6 @@ async function resolveOrg(slug: string) {
     where: { slug },
     select: { id: true, title: true },
   });
-}
-
-function planAllowsSso(plan: unknown): boolean {
-  if (!plan || typeof plan !== "object") return false;
-  const subscription = (plan as { v3Subscription?: { plan?: { limits?: { hasSso?: boolean } } } })
-    .v3Subscription;
-  return subscription?.plan?.limits?.hasSso === true;
 }
 
 // Client-side upsell is cosmetic; gate real IdP mutations server-side.
@@ -149,6 +141,7 @@ export const loader = dashboardLoader(
         jitRoles: [] as Role[],
         directorySync: EMPTY_DIRECTORY_SYNC_STATUS,
         hasSso: false,
+        isEntitled: false,
       });
     }
 
@@ -179,6 +172,7 @@ export const loader = dashboardLoader(
       jitRoles,
       directorySync,
       hasSso,
+      isEntitled: true,
     });
   }
 );
@@ -371,11 +365,10 @@ function useOverrideDraft<T>(serverValue: T): {
 }
 
 export default function Page() {
-  const { status, orgTitle, jitRoles, directorySync, hasSso } = useTypedLoaderData<typeof loader>();
+  const { status, orgTitle, jitRoles, directorySync, hasSso, isEntitled } =
+    useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
-  const _plan = useCurrentPlan();
 
-  const isEntitled = planAllowsSso(_plan);
   const activeConnections = status.connections.filter((c) => c.state === "active");
   const hasActive = activeConnections.length > 0;
 
