@@ -1,13 +1,13 @@
 import { StarIcon as StarIconOutline } from "@heroicons/react/24/outline";
 import { StarIcon as StarIconSolid } from "@heroicons/react/20/solid";
 import { useFetcher, useLocation, useSearchParams } from "@remix-run/react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useIsImpersonating } from "~/hooks/useOrganizations";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useOptionalUser } from "~/hooks/useUser";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { ShortcutKey } from "../primitives/ShortcutKey";
-import { useShortcuts } from "../primitives/ShortcutsProvider";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import {
   buildFavoriteLabel,
@@ -35,7 +35,6 @@ export function FavoritePageButton({
   const location = useLocation();
   const favorites = useFavorites();
   const fetcher = useFetcher();
-  const { areShortcutsEnabled } = useShortcuts();
   const [, setSearchParams] = useSearchParams();
 
   // The marker param and pagination position never count toward URL identity, so paging through
@@ -86,44 +85,19 @@ export function FavoritePageButton({
     }
   };
 
-  // The listener reads the latest toggle through a ref so it isn't re-attached every render
-  const toggleRef = useRef(toggle);
-  toggleRef.current = toggle;
-
   const showButton = user !== undefined && !isImpersonating;
 
-  useEffect(() => {
-    if (!showButton || !areShortcutsEnabled) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      // Matched on `event.code`: on macOS, Option makes "F" report "ƒ" via `event.key`, so the
-      // event.key-based useShortcutKeys hook can't capture Option+letter (see GlobalShortcuts).
-      if (
-        event.code !== "KeyF" ||
-        !event.altKey ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.shiftKey
-      ) {
-        return;
-      }
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
+  // Option+F reports event.key "ƒ" on macOS, but the hotkeys matcher falls back to the physical
+  // event.code ("KeyF"), so the standard hook captures it; exact modifier matching keeps the
+  // bare "f" filter shortcut separate.
+  useShortcutKeys({
+    shortcut: { key: "f", modifiers: ["alt"] },
+    action: (event) => {
       event.preventDefault();
-      toggleRef.current();
-    };
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [showButton, areShortcutsEnabled]);
+      toggle();
+    },
+    disabled: !showButton,
+  });
 
   if (!showButton) {
     return null;
