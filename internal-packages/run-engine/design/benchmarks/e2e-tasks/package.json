@@ -1,0 +1,19 @@
+{
+  "name": "ck-vtime-e2e-bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end noisy-neighbor load harness for the CK virtual-time scheduling A/B. Deployed to a self-hosted trigger.dev instance; not part of the monorepo build.",
+  "scripts": {
+    "loadgen": "tsx src/loadgen.ts",
+    "collect": "tsx src/collect.ts"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "latest"
+  },
+  "devDependencies": {
+    "trigger.dev": "latest",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
