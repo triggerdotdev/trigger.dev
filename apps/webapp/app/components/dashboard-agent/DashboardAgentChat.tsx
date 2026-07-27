@@ -1,6 +1,7 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
+import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
@@ -50,6 +51,7 @@ export function DashboardAgentChat({
   pendingFirstMessage,
   streaming,
   prefill,
+  promotedPrompt,
   onTurnSettled,
 }: {
   chatId: string;
@@ -73,6 +75,9 @@ export function DashboardAgentChat({
   // Text dropped into the composer from outside (the launcher's `openWith`).
   // `seq` makes each request distinct so the same text can be sent twice.
   prefill?: { text: string; seq: number };
+  // The product-controlled promoted chip, from the feature flag. Only used for
+  // the suggested prompts on an empty chat.
+  promotedPrompt?: SuggestedPrompt;
   onTurnSettled: () => void;
 }) {
   const [input, setInput] = useState("");
@@ -220,7 +225,11 @@ export function DashboardAgentChat({
           be sent, so the prompts would flash for a frame before the transcript
           replaced them. Gate on that pending send. */}
       {messages.length === 0 && !pendingFirstMessage ? (
-        <DashboardAgentSuggestedPrompts onSelect={submit} />
+        <DashboardAgentSuggestedPrompts
+          onSelect={submit}
+          pageContext={clientData.pageContext}
+          promoted={promotedPrompt}
+        />
       ) : (
         <DashboardAgentMessages
           messages={messages}

@@ -7,6 +7,7 @@ export const FEATURE_FLAG = {
   hasLogsPageAccess: "hasLogsPageAccess",
   hasAiAccess: "hasAiAccess",
   hasDashboardAgentAccess: "hasDashboardAgentAccess",
+  promotedDashboardAgentPrompt: "promotedDashboardAgentPrompt",
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
   hasSso: "hasSso",
@@ -34,6 +35,13 @@ export const FeatureFlagCatalog = {
   // Gates the in-dashboard AI agent panel. Controllable globally and per-org
   // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.
   [FEATURE_FLAG.hasDashboardAgentAccess]: z.coerce.boolean(),
+  // The dashboard agent's promoted suggested prompt, as a JSON string:
+  // {"id":"...","label":"...","prompt":"..."}. A string (not an object) because
+  // this catalog is scalar-only — the admin flags UI renders every flag from
+  // `getFlagControlType`, which has no object control. The structure is validated
+  // where it's read (`suggested-prompts/promotedPrompt.server.ts`); an invalid
+  // value means no promoted chip, never a broken panel. Unset by default.
+  [FEATURE_FLAG.promotedDashboardAgentPrompt]: z.string(),
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
   [FEATURE_FLAG.hasSso]: z.coerce.boolean(),

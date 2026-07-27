@@ -1,6 +1,12 @@
 import type { UIMessage } from "@ai-sdk/react";
 import type { DiagnosisBlock, ViewBlock } from "@internal/dashboard-agent";
-import { VIEW_BLOCK_VERSION } from "@internal/dashboard-agent-contracts";
+import {
+  safeParseTriggerUri,
+  VIEW_BLOCK_VERSION,
+  type AgentPageContext,
+  type ReportViewModelPayload,
+  type SuggestedPrompt,
+} from "@internal/dashboard-agent-contracts";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import {
   demoChatById,
@@ -10,12 +16,14 @@ import {
   DemoIntentBubble,
   DemoInvestigationCard,
   DemoReportCard,
-  DemoSuggestedPromptsRow,
   DemoWatchChips,
   type DemoItem,
 } from "~/components/dashboard-agent/demo";
 import { DashboardAgentMessages } from "~/components/dashboard-agent/DashboardAgentMessages";
+import { DashboardAgentSuggestedPrompts } from "~/components/dashboard-agent/DashboardAgentSuggestedPrompts";
+import { ReportView } from "~/components/dashboard-agent/ReportView";
 import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
+import { resolveSuggestedPrompts } from "~/components/dashboard-agent/suggested-prompts";
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -271,6 +279,42 @@ function EmptyChartCard() {
   );
 }
 
+/**
+ * The real `DashboardAgentSuggestedPrompts`, fed a fixture page context.
+ *
+ * The chips come from the registry resolver, so what's on screen here is exactly
+ * what the panel shows on that page — including the ordering and the cap.
+ * `dismissedIds` is passed explicitly, which puts the component in its controlled
+ * mode so the gallery never touches (or is affected by) localStorage.
+ */
+function PromptsHarness({
+  context,
+  promoted,
+  dismissedIds = [],
+}: {
+  context: AgentPageContext;
+  promoted?: SuggestedPrompt;
+  dismissedIds?: string[];
+}) {
+  const signals =
+    context.signals.length > 0 ? context.signals.map((s) => s.kind).join(", ") : "no signals";
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[10px] uppercase tracking-wide text-text-faint">
+        {context.page.kind} — {signals}
+      </p>
+      <div className="rounded-lg border border-grid-bright bg-background-bright py-4">
+        <DashboardAgentSuggestedPrompts
+          onSelect={noop}
+          pageContext={context}
+          promoted={promoted}
+          dismissedIds={dismissedIds}
+        />
+      </div>
+    </div>
+  );
+}
+
 function Missing({ what }: { what: string }) {
   return (
     <div className="rounded-md border border-error/50 bg-error/10 px-3 py-2 text-xs text-error">
@@ -283,12 +327,87 @@ function Missing({ what }: { what: string }) {
 // The state map. Keyed by `sectionId`, so the manifest drives what renders.
 // ---------------------------------------------------------------------------
 
-const { demoInvestigations, demoIntents, demoPrompts, demoWatches, demoPageContexts } =
-  demoFixtures;
+const { demoInvestigations, demoIntents, demoWatches, demoPageContexts } = demoFixtures;
+
+// A stand-in for whatever the `promotedDashboardAgentPrompt` flag holds in
+// production — the point of the state is the styling of the top slot.
+const promotedPrompt: SuggestedPrompt = {
+  id: "sp:promo-storybook",
+  label: "Try the new health report",
+  prompt: "Give me a health report for this environment.",
+  source: "promoted",
+};
+
+// Dismiss whatever the resolver puts first on the failed-run page, so the
+// "after a dismissal" state always shows a real chip having been removed even if
+// the registry's wording changes.
+const dismissedPromptIds = resolveSuggestedPrompts(demoPageContexts.failedRun)
+  .slice(0, 1)
+  .map((prompt) => prompt.id);
 
 const reportItems = chatItems(demoId("report-healthy"), "report").concat(
   chatItems(demoId("report-degraded"), "report")
 );
+
+// ---------------------------------------------------------------------------
+// Report fixtures for the shipped ReportView. The two demo VMs cover healthy and
+// degraded; the third is derived here because no fixture conversation shows it:
+// when telemetry goes stale the interpreter marks flow AND execution "unknown",
+// strips every actionable field, and flags the snapshot `trustworthy: false` —
+// the one state where the card must show numbers while refusing to advise on
+// them. Derived exactly the way `applyStaleGuard` does it, so the shape is real.
+// ---------------------------------------------------------------------------
+
+const untrustworthyReport: ReportViewModelPayload = {
+  ...demoFixtures.demoDegradedReport,
+  summary: {
+    severity: "crit",
+    statements: [
+      { findingType: "flow", severity: "crit", reason: "unknown" },
+      { findingType: "execution", severity: "crit", reason: "unknown" },
+      { findingType: "liveness", severity: "crit" },
+    ],
+  },
+  findings: demoFixtures.demoDegradedReport.findings.map((finding) =>
+    finding.type === "liveness"
+      ? {
+          ...finding,
+          severity: "crit",
+          reason: "stale",
+          recommendation: { code: "check_control_plane", link: "status" },
+        }
+      : {
+          ...finding,
+          severity: "crit",
+          reason: "unknown",
+          recommendation: undefined,
+          attribution: undefined,
+          exclusions: undefined,
+          observations: undefined,
+          hedge: undefined,
+          anomalyWindow: undefined,
+        }
+  ),
+  metrics: demoFixtures.demoDegradedReport.metrics.map((metric) =>
+    metric.id === "liveness"
+      ? { ...metric, value: 21 * 60_000, severity: "crit" }
+      : { ...metric, annotation: undefined }
+  ),
+  facts: { trustworthy: false, staleReason: "telemetry_stale" },
+  links: [{ key: "status", label: "status.trigger.dev", url: "https://status.trigger.dev" }],
+  footer: [{ code: "check_control_plane", link: "status" }],
+};
+
+/**
+ * The gallery's stand-in for the panel's URI resolver. In the app the host
+ * resolves against the real environment (`resolveTriggerUri.server.ts`); here a
+ * fixture resolver proves the seam exists without a project route.
+ */
+function fixtureResolveUri(uri: string): { label: string; url: string } | null {
+  const parsed = safeParseTriggerUri(uri);
+  if (!parsed.success) return null;
+  return { label: uri.split("/").slice(-1)[0]!, url: "#resolved-by-the-host" };
+}
 
 const STATES: Record<string, React.ReactNode> = {
   // --- Diagnosis card -----------------------------------------------------
@@ -341,6 +460,25 @@ const STATES: Record<string, React.ReactNode> = {
   ),
 
   // --- Report card --------------------------------------------------------
+  "report-view-healthy": (
+    <ReportView
+      vm={demoFixtures.demoHealthyReport}
+      reportUri={reportItems[0]?.sourceUri}
+      onIntent={noop}
+      resolveUri={fixtureResolveUri}
+    />
+  ),
+  "report-view-degraded": (
+    <ReportView
+      vm={demoFixtures.demoDegradedReport}
+      reportUri={reportItems[1]?.sourceUri}
+      onIntent={noop}
+      resolveUri={fixtureResolveUri}
+    />
+  ),
+  "report-view-untrustworthy": (
+    <ReportView vm={untrustworthyReport} onIntent={noop} resolveUri={fixtureResolveUri} />
+  ),
   "report-healthy": (
     <DemoReportCard
       vm={demoFixtures.demoHealthyReport}
@@ -368,27 +506,21 @@ const STATES: Record<string, React.ReactNode> = {
   "watches-all-states": <DemoWatchChips watches={demoWatches.row} onCancel={noop} />,
 
   // --- Suggested prompts --------------------------------------------------
-  "prompts-default": <DemoSuggestedPromptsRow prompts={demoPrompts.defaults} onSelect={noop} />,
-  "prompts-contextual-fresh-failure": (
-    <DemoSuggestedPromptsRow
-      prompts={demoPrompts.sets.failedRun}
-      context={demoPageContexts.failedRun}
-      onSelect={noop}
-      onDismiss={noop}
-    />
-  ),
+  // The real component, resolving the registry against each fixture context.
+  "prompts-default": <PromptsHarness context={demoPageContexts.other} />,
+  "prompts-contextual-fresh-failure": <PromptsHarness context={demoPageContexts.failedRun} />,
   "prompts-promoted": (
-    <DemoSuggestedPromptsRow prompts={demoPrompts.sets.failedRun.slice(0, 1)} onSelect={noop} />
+    <PromptsHarness context={demoPageContexts.failedRun} promoted={promotedPrompt} />
   ),
   "prompts-dismissed": (
-    <DemoSuggestedPromptsRow
-      prompts={demoPrompts.sets.failedRun}
-      context={demoPageContexts.failedRun}
-      dismissedIds={demoPrompts.dismissedIds}
-      onSelect={noop}
-      onDismiss={noop}
-    />
+    <PromptsHarness context={demoPageContexts.failedRun} dismissedIds={dismissedPromptIds} />
   ),
+  "prompts-contextual-waiting-run": <PromptsHarness context={demoPageContexts.waitingRun} />,
+  "prompts-contextual-slow-run": <PromptsHarness context={demoPageContexts.slowRun} />,
+  "prompts-contextual-saturation": <PromptsHarness context={demoPageContexts.queue} />,
+  "prompts-page-runs": <PromptsHarness context={demoPageContexts.runs} />,
+  "prompts-page-error": <PromptsHarness context={demoPageContexts.error} />,
+  "prompts-page-deployment": <PromptsHarness context={demoPageContexts.deployment} />,
 
   // --- Intent bubbles -----------------------------------------------------
   "intent-navigate-filtered-runs": (

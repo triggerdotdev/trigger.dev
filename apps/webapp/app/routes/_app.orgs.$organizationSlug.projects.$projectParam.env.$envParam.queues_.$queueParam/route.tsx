@@ -74,8 +74,18 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { InlineCode } from "~/components/code/InlineCode";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BookOpenIcon } from "@heroicons/react/20/solid";
+import { queueAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
+import type { Handle } from "~/utils/handle";
 
 export const meta: MetaFunction = () => [{ title: `Queue metrics | Trigger.dev` }];
+
+// Tell the dashboard agent which queue it's looking at, plus its health, from the
+// live running/queued/limit counts the loader already returns. A saturation
+// signal is only emitted when the queue is at capacity with work waiting — the
+// same decision the queues list renders as "At capacity". No extra queries.
+export const handle: Handle = {
+  agentPageContext: (data) => queueAgentPageContext(data),
+};
 
 const ParamsSchema = EnvironmentParamSchema.extend({ queueParam: z.string() });
 

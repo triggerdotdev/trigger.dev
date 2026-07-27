@@ -22,6 +22,7 @@ import {
   type DashboardAgentChat as DashboardAgentChatListItem,
 } from "./DashboardAgentHistory";
 import { DemoChatView, demoHistoryChats, isDemoChatId } from "./demo";
+import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
 
@@ -75,6 +76,7 @@ export function DashboardAgentPanel({
   onClose,
   requestedMessage,
   demoEnabled = false,
+  promotedPrompt,
 }: {
   onClose: () => void;
   // Text handed to the panel from outside (`openWith`). `seq` distinguishes
@@ -83,6 +85,8 @@ export function DashboardAgentPanel({
   // Demo mode: fixture conversations appear in history and render without a
   // transport. Resolved server-side (DASHBOARD_AGENT_DEMO).
   demoEnabled?: boolean;
+  // The product-controlled promoted prompt chip, from the feature flag.
+  promotedPrompt?: SuggestedPrompt;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -398,6 +402,7 @@ export function DashboardAgentPanel({
           projectSlug={project.slug}
           environmentSlug={environment.slug}
           currentPage={currentPage}
+          promotedPrompt={promotedPrompt}
           onTurnSettled={loadHistory}
         />
       ) : (
@@ -406,6 +411,8 @@ export function DashboardAgentPanel({
           projectSlug={project.slug}
           environmentSlug={environment.slug}
           currentPage={currentPage}
+          pageContext={pageContext}
+          promotedPrompt={promotedPrompt}
         />
       )}
     </div>

@@ -137,9 +137,22 @@ export const MANIFEST: GallerySection[] = [
     group: "investigation",
   },
 
-  // --- Report card (demo-only until M2) ------------------------------------
-  { sectionId: "report-healthy", title: "Healthy — nothing to do", group: "report" },
-  { sectionId: "report-degraded", title: "Degraded — env limit saturation", group: "report" },
+  // --- Report card ---------------------------------------------------------
+  // The shipped ReportView first, then the demo mockup it grew out of (kept so a
+  // design change can be compared against what was reviewed).
+  { sectionId: "report-view-healthy", title: "Healthy — nothing to do", group: "report" },
+  {
+    sectionId: "report-view-degraded",
+    title: "Degraded — env limit saturation, actions wired",
+    group: "report",
+  },
+  {
+    sectionId: "report-view-untrustworthy",
+    title: "Stale telemetry — verdict unknown, numbers informational",
+    group: "report",
+  },
+  { sectionId: "report-healthy", title: "Demo mockup — healthy", group: "report" },
+  { sectionId: "report-degraded", title: "Demo mockup — degraded", group: "report" },
 
   // --- Chart card ----------------------------------------------------------
   { sectionId: "chart-with-data", title: "With canned rows", group: "chart" },
@@ -161,6 +174,28 @@ export const MANIFEST: GallerySection[] = [
   },
   { sectionId: "prompts-promoted", title: "Promoted chip on its own", group: "prompts" },
   { sectionId: "prompts-dismissed", title: "After a dismissal", group: "prompts" },
+  {
+    sectionId: "prompts-contextual-waiting-run",
+    title: "Contextual — run waiting in a queue",
+    group: "prompts",
+  },
+  {
+    sectionId: "prompts-contextual-slow-run",
+    title: "Contextual — run slower than usual",
+    group: "prompts",
+  },
+  {
+    sectionId: "prompts-contextual-saturation",
+    title: "Contextual — queue at capacity",
+    group: "prompts",
+  },
+  { sectionId: "prompts-page-runs", title: "Page defaults — runs list", group: "prompts" },
+  { sectionId: "prompts-page-error", title: "Page defaults — error group", group: "prompts" },
+  {
+    sectionId: "prompts-page-deployment",
+    title: "Page defaults — deployment",
+    group: "prompts",
+  },
 
   // --- Intent bubbles ------------------------------------------------------
   {

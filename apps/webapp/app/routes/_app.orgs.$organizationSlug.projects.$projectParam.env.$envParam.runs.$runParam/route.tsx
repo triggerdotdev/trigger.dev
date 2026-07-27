@@ -106,7 +106,9 @@ import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
+import { runAgentPageContext } from "~/components/dashboard-agent/suggested-prompts";
 import { cn } from "~/utils/cn";
+import type { Handle } from "~/utils/handle";
 import { lerp } from "~/utils/lerp";
 import {
   docsPath,
@@ -266,6 +268,14 @@ async function runWritePermissions(request: Request, userId: string, organizatio
   const canWriteRun = auth.ok ? auth.ability.can("write", { type: "runs" }) : true;
   return { canReplayRun: canWriteRun, canCancelRun: canWriteRun };
 }
+
+// Tell the dashboard agent which run it's looking at, and whether something is
+// wrong with it: a recent failure or a run stuck waiting. Both come from fields
+// the loader already returns (`run.status`, `run.completedAt`, and the task id off
+// the run's own span), so this costs no queries — see `runAgentPageContext`.
+export const handle: Handle = {
+  agentPageContext: (data) => runAgentPageContext(data),
+};
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
