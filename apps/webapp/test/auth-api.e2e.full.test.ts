@@ -913,7 +913,7 @@ describe("API", () => {
       expect(res.status).toBe(403);
     });
 
-    it("filter[taskIdentifier]=task_a,task_b + JWT read:tasks:task_a → passes (array match)", async () => {
+    it("filter[taskIdentifier]=task_a,task_b + JWT read:tasks:task_a → 403 (requires every task)", async () => {
       const server = getTestServer();
       const seed = await seedTestEnvironment(server.prisma);
       const jwt = await generateJWT({
@@ -928,11 +928,9 @@ describe("API", () => {
       const res = await get("?filter%5BtaskIdentifier%5D=task_a%2Ctask_b", {
         Authorization: `Bearer ${jwt}`,
       });
-      // Resource array is [{type:"runs"}, {type:"tasks",id:"task_a"}, {type:"tasks",id:"task_b"}].
-      // The scope read:tasks:task_a matches the second element → access granted.
-      // Handler may 500 (ClickHouse unreachable in tests) but auth passed.
-      expect(res.status).not.toBe(401);
-      expect(res.status).not.toBe(403);
+      // A task-scoped JWT must authorize every requested task so including an
+      // unauthorized task in a multi-task filter cannot expose its runs.
+      expect(res.status).toBe(403);
     });
 
     it("filter[taskIdentifier]=task_a + JWT read:tasks:task_z → 403 (no array match)", async () => {
@@ -2473,13 +2471,14 @@ describe("API", () => {
         expect(res.status).not.toBe(403);
       });
 
-      it("read:tasks (type-only) on no-filter list: 403 (filter is sessions, not tasks)", async () => {
-        // No filter → resource is `{ type: "sessions" }` only. read:tasks
-        // doesn't match the sessions type, so 403 — explicit narrowing.
+      it("read:tasks (type-only) on no-filter list: auth passes", async () => {
+        // Preserve the legacy behavior where a type-level task scope grants
+        // access to an unfiltered list while task ID scopes require a filter.
         const seed = await seedTestEnvironment(getTestServer().prisma);
         const jwt = await mintJwt(seed.apiKey, seed.environment.id, ["read:tasks"]);
         const res = await fetchWithJwt(jwt);
-        expect(res.status).toBe(403);
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
       });
 
       it("write:tasks:foo (wrong action) on filter=foo: 403", async () => {
