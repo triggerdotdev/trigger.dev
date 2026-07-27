@@ -6,7 +6,7 @@ import { BaseService } from "./baseService.server";
 import { determineEngineVersion } from "../engineVersion.server";
 import {
   removeQueueConcurrencyLimits,
-  returnUnclaimedMessagesToQueue,
+  sweepUnclaimedRuns,
   updateQueueConcurrencyLimits,
 } from "../runQueue.server";
 import { engine } from "../runEngine.server";
@@ -63,7 +63,6 @@ export class PauseQueueService extends BaseService {
 
       if (action === "paused") {
         await updateQueueConcurrencyLimits(environment, queue.name, 0);
-        await returnUnclaimedMessagesToQueue({ environment, queue: queue.name });
       } else {
         if (queue.concurrencyLimit) {
           await updateQueueConcurrencyLimits(environment, queue.name, queue.concurrencyLimit);
@@ -77,6 +76,10 @@ export class PauseQueueService extends BaseService {
         action,
         environmentId: environment.id,
       });
+
+      if (action === "paused") {
+        await sweepUnclaimedRuns(environment, queue.name);
+      }
 
       const results = await Promise.all([
         engine.lengthOfQueues(environment, [queue.name]),

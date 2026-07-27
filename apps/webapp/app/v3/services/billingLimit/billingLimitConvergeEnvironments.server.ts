@@ -190,7 +190,6 @@ async function pauseEnvironmentForBillingLimit(
 
   try {
     await updateConcurrency(updated, 0);
-    await returnUnclaimed(updated);
   } catch (error) {
     await db.runtimeEnvironment.update({
       where: { id: environment.id },
@@ -200,6 +199,15 @@ async function pauseEnvironmentForBillingLimit(
   } finally {
     // The env's paused state changed (or was rolled back); drop any cached copy either way.
     controlPlaneResolver.invalidateEnvironment(environment.id);
+  }
+
+  try {
+    await returnUnclaimed(updated);
+  } catch (error) {
+    logger.error("Billing limit converge failed to return unclaimed runs", {
+      environmentId: environment.id,
+      error,
+    });
   }
 }
 

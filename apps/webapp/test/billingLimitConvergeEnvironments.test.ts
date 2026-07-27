@@ -95,7 +95,7 @@ describe("convergeBillingLimitEnvironmentsForOrg", () => {
     expect(returnUnclaimed).not.toHaveBeenCalled();
   });
 
-  postgresTest("rolls back pause when returning unclaimed runs fails", async ({ prisma }) => {
+  postgresTest("keeps the pause when returning unclaimed runs fails", async ({ prisma }) => {
     const { organization, project } = await createTestOrgProjectWithMember(prisma);
     const environment = await createRuntimeEnvironment(prisma, {
       projectId: project.id,
@@ -103,22 +103,30 @@ describe("convergeBillingLimitEnvironmentsForOrg", () => {
       type: "PRODUCTION",
       slug: uniqueId("prod"),
     });
-
-    await expect(
-      convergeBillingLimitEnvironmentsForOrg(organization.id, "grace", {
-        prismaClient: prisma,
-        updateConcurrency: async () => undefined,
-        returnUnclaimed: async () => {
-          throw new Error("run queue unavailable");
-        },
-      })
-    ).rejects.toThrow("run queue unavailable");
-
-    const envAfter = await prisma.runtimeEnvironment.findUniqueOrThrow({
-      where: { id: environment.id },
+    const second = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PRODUCTION",
+      slug: uniqueId("prod"),
     });
-    expect(envAfter.paused).toBe(false);
-    expect(envAfter.pauseSource).toBeNull();
+
+    const result = await convergeBillingLimitEnvironmentsForOrg(organization.id, "grace", {
+      prismaClient: prisma,
+      updateConcurrency: async () => undefined,
+      returnUnclaimed: async () => {
+        throw new Error("run queue unavailable");
+      },
+    });
+
+    expect(result).toEqual({ paused: 2, unpaused: 0 });
+
+    for (const env of [environment, second]) {
+      const envAfter = await prisma.runtimeEnvironment.findUniqueOrThrow({
+        where: { id: env.id },
+      });
+      expect(envAfter.paused).toBe(true);
+      expect(envAfter.pauseSource).toBe(EnvironmentPauseSource.BILLING_LIMIT);
+    }
   });
 
   postgresTest("rolls back pause when concurrency update fails", async ({ prisma }) => {

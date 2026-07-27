@@ -137,6 +137,16 @@ type MarkedRun = {
   score: number;
 };
 
+const RETURN_UNCLAIMED_BATCH_SIZE = 50;
+const READ_MESSAGES_BATCH_SIZE = 200;
+
+export type ReturnUnclaimedMessagesResult = {
+  returned: number;
+  skipped: number;
+  errors: number;
+  passes: number;
+};
+
 const defaultRetrySettings = {
   maxAttempts: 12,
   factor: 2,
@@ -1046,64 +1056,68 @@ export class RunQueue {
    * re-enter at the back, so if the queue can still admit work then a newer run can overtake
    * one that is on its way back.
    *
+   * Admission is not atomic with the push onto the worker queue: the dequeue script claims
+   * the concurrency slot and a separate round trip does the RPUSH. A run caught in that gap
+   * is a candidate whose claim fails, so a pass reporting skipped runs is retried — by then
+   * the run has either landed on the worker queue (and is claimable) or been picked up by a
+   * worker (and has left the candidate set).
+   *
    * @param queue - Restrict to a single queue (including its concurrency key variants).
    *   Omit to cover every queue in the environment.
    */
   public async returnUnclaimedMessagesToQueue({
     env,
     queue,
+    maxPasses = 3,
+    passDelayMs = 250,
   }: {
     env: MinimalAuthenticatedEnvironment;
     queue?: string;
-  }): Promise<{ returned: number; skipped: number }> {
+    maxPasses?: number;
+    passDelayMs?: number;
+  }): Promise<ReturnUnclaimedMessagesResult> {
     return this.#trace(
       "returnUnclaimedMessagesToQueue",
       async (span) => {
-        const unclaimedRunIds = await this.redis.sdiff(
-          this.keys.envCurrentConcurrencyKey(env),
-          this.keys.envCurrentDequeuedKey(env)
-        );
-
-        span.setAttribute("unclaimed_count", unclaimedRunIds.length);
-
-        if (unclaimedRunIds.length === 0) {
-          return { returned: 0, skipped: 0 };
-        }
-
         const targetBaseQueueKey = queue ? this.keys.queueKey(env, queue) : undefined;
-        const messages = await this.#readMessages(env.organization.id, unclaimedRunIds);
 
         let returned = 0;
         let skipped = 0;
+        let errors = 0;
+        let passes = 0;
 
-        for (const message of messages) {
-          if (
-            targetBaseQueueKey &&
-            this.keys.baseQueueKeyFromQueue(message.queue) !== targetBaseQueueKey
-          ) {
-            continue;
+        for (let pass = 0; pass < Math.max(1, maxPasses); pass++) {
+          passes++;
+
+          const passResult = await this.#returnUnclaimedMessagesPass(env, targetBaseQueueKey);
+
+          returned += passResult.returned;
+          errors += passResult.errors;
+          skipped = passResult.skipped;
+
+          if (passResult.skipped === 0 || pass === Math.max(1, maxPasses) - 1) {
+            break;
           }
 
-          if (await this.#callReturnMessageToQueue(message)) {
-            returned++;
-          } else {
-            skipped++;
-          }
+          await setTimeout(passDelayMs);
         }
 
         span.setAttribute("returned_count", returned);
         span.setAttribute("skipped_count", skipped);
+        span.setAttribute("error_count", errors);
+        span.setAttribute("passes", passes);
 
         this.logger.info("returnUnclaimedMessagesToQueue", {
           service: this.name,
           environmentId: env.id,
           queue,
-          candidates: unclaimedRunIds.length,
           returned,
           skipped,
+          errors,
+          passes,
         });
 
-        return { returned, skipped };
+        return { returned, skipped, errors, passes };
       },
       {
         kind: SpanKind.INTERNAL,
@@ -1115,30 +1129,86 @@ export class RunQueue {
     );
   }
 
-  async #readMessages(orgId: string, runIds: string[]): Promise<OutputPayload[]> {
-    const rawMessages = await this.redis.mget(
-      runIds.map((runId) => this.keys.messageKey(orgId, runId))
+  async #returnUnclaimedMessagesPass(
+    env: MinimalAuthenticatedEnvironment,
+    targetBaseQueueKey: string | undefined
+  ): Promise<{ returned: number; skipped: number; errors: number }> {
+    const unclaimedRunIds = await this.redis.sdiff(
+      this.keys.envCurrentConcurrencyKey(env),
+      this.keys.envCurrentDequeuedKey(env)
     );
 
+    if (unclaimedRunIds.length === 0) {
+      return { returned: 0, skipped: 0, errors: 0 };
+    }
+
+    const messages = (await this.#readMessages(env.organization.id, unclaimedRunIds)).filter(
+      (message) =>
+        !targetBaseQueueKey || this.keys.baseQueueKeyFromQueue(message.queue) === targetBaseQueueKey
+    );
+
+    let returned = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (let i = 0; i < messages.length; i += RETURN_UNCLAIMED_BATCH_SIZE) {
+      const batch = messages.slice(i, i + RETURN_UNCLAIMED_BATCH_SIZE);
+
+      const results = await Promise.allSettled(
+        batch.map((message) => this.#callReturnMessageToQueue(message))
+      );
+
+      for (const [index, result] of results.entries()) {
+        if (result.status === "rejected") {
+          errors++;
+          this.logger.error("returnUnclaimedMessagesToQueue failed for a run", {
+            service: this.name,
+            environmentId: env.id,
+            runId: batch[index]?.runId,
+            error: result.reason,
+          });
+          continue;
+        }
+
+        if (result.value) {
+          returned++;
+        } else {
+          skipped++;
+        }
+      }
+    }
+
+    return { returned, skipped, errors };
+  }
+
+  async #readMessages(orgId: string, runIds: string[]): Promise<OutputPayload[]> {
     const messages: OutputPayload[] = [];
 
-    for (const rawMessage of rawMessages) {
-      if (!rawMessage) {
-        continue;
-      }
+    for (let i = 0; i < runIds.length; i += READ_MESSAGES_BATCH_SIZE) {
+      const rawMessages = await this.redis.mget(
+        runIds
+          .slice(i, i + READ_MESSAGES_BATCH_SIZE)
+          .map((runId) => this.keys.messageKey(orgId, runId))
+      );
 
-      const [error, message] = parseRawMessage(rawMessage);
+      for (const rawMessage of rawMessages) {
+        if (!rawMessage) {
+          continue;
+        }
 
-      if (error) {
-        this.logger.error(`[${this.name}] Failed to parse message`, {
-          error,
-          service: this.name,
-          message: message ?? rawMessage,
-        });
-      }
+        const [error, message] = parseRawMessage(rawMessage);
 
-      if (message) {
-        messages.push(message);
+        if (error) {
+          this.logger.error(`[${this.name}] Failed to parse message`, {
+            error,
+            service: this.name,
+            message: message ?? rawMessage,
+          });
+        }
+
+        if (message) {
+          messages.push(message);
+        }
       }
     }
 
@@ -2753,12 +2823,21 @@ export class RunQueue {
       this.shardCount
     );
     const workerQueueKey = this.keys.workerQueueKey(this.#getWorkerQueueFromMessage(message));
+    const rawWorkerQueueKey =
+      message.version === "2" ? this.keys.workerQueueKey(message.workerQueue) : workerQueueKey;
+
+    const returnTtl = Boolean(message.ttlExpiresAt) && Boolean(this.options.ttlSystem);
+    const ttlQueueKey = this.keys.ttlQueueKeyForShard(this.#getTtlShardForQueue(message.queue));
+    const ttlMember = `${message.queue}|${message.runId}|${message.orgId}`;
+    const ttlScore = returnTtl ? String(message.ttlExpiresAt) : "0";
 
     this.logger.debug("Calling returnMessageToQueue", {
       messageKey,
       messageQueue,
       masterQueueKey,
       workerQueueKey,
+      rawWorkerQueueKey,
+      ttlQueueKey,
       messageId,
       messageScore: message.timestamp,
       service: this.name,
@@ -2777,6 +2856,8 @@ export class RunQueue {
         envCurrentDequeuedKey,
         envQueueKey,
         workerQueueKey,
+        rawWorkerQueueKey,
+        ttlQueueKey,
         this.keys.ckIndexKeyFromQueue(message.queue),
         this.keys.queueLengthCounterKeyFromQueue(message.queue),
         this.keys.queueRunningCounterKeyFromQueue(message.queue),
@@ -2786,7 +2867,9 @@ export class RunQueue {
         messageKey,
         this.keys.toCkWildcard(message.queue),
         this.options.redis.keyPrefix ?? "",
-        String(this.counterTtlSeconds)
+        String(this.counterTtlSeconds),
+        ttlMember,
+        ttlScore
       );
     } else {
       result = await this.redis.returnMessageToQueue(
@@ -2799,10 +2882,14 @@ export class RunQueue {
         envCurrentDequeuedKey,
         envQueueKey,
         workerQueueKey,
+        rawWorkerQueueKey,
+        ttlQueueKey,
         messageId,
         messageQueue,
         String(message.timestamp),
-        messageKey
+        messageKey,
+        ttlMember,
+        ttlScore
       );
     }
 
@@ -4691,7 +4778,7 @@ end
      * Returns 1 when the message was returned, 0 when it was left alone.
      */
     this.redis.defineCommand("returnMessageToQueue", {
-      numberOfKeys: 9,
+      numberOfKeys: 11,
       lua: `
 -- Keys:
 local masterQueueKey = KEYS[1]
@@ -4703,14 +4790,25 @@ local queueCurrentDequeuedKey = KEYS[6]
 local envCurrentDequeuedKey = KEYS[7]
 local envQueueKey = KEYS[8]
 local workerQueueKey = KEYS[9]
+local rawWorkerQueueKey = KEYS[10]
+local ttlQueueKey = KEYS[11]
 
 -- Args:
 local messageId = ARGV[1]
 local messageQueueName = ARGV[2]
 local messageScore = tonumber(ARGV[3])
 local messageKeyValue = ARGV[4]
+local ttlMember = ARGV[5]
+local ttlScore = tonumber(ARGV[6])
 
-if redis.call('LREM', workerQueueKey, 0, messageKeyValue) == 0 then
+-- The resolver-mapped key and the raw one can differ while a region override is active,
+-- and the two producers disagree on which they push to.
+local claimed = redis.call('LREM', workerQueueKey, 0, messageKeyValue)
+if rawWorkerQueueKey ~= workerQueueKey then
+  claimed = claimed + redis.call('LREM', rawWorkerQueueKey, 0, messageKeyValue)
+end
+
+if claimed == 0 then
   return 0
 end
 
@@ -4726,6 +4824,11 @@ redis.call('SREM', envCurrentDequeuedKey, messageId)
 
 redis.call('ZADD', messageQueueKey, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+-- Admission removed the TTL member; restore it so the run can still expire while queued.
+if ttlScore > 0 then
+  redis.call('ZADD', ttlQueueKey, ttlScore, ttlMember)
+end
 
 local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
 if #earliestMessage == 0 then
@@ -4744,7 +4847,7 @@ return 1
      * variant zset INCRs lengthCounter only when it reported a new entry.
      */
     this.redis.defineCommand("returnMessageToQueueCkTracked", {
-      numberOfKeys: 12,
+      numberOfKeys: 14,
       lua: `
 -- Keys:
 local masterQueueKey = KEYS[1]
@@ -4756,9 +4859,11 @@ local queueCurrentDequeuedKey = KEYS[6]
 local envCurrentDequeuedKey = KEYS[7]
 local envQueueKey = KEYS[8]
 local workerQueueKey = KEYS[9]
-local ckIndexKey = KEYS[10]
-local lengthCounterKey = KEYS[11]
-local runningCounterKey = KEYS[12]
+local rawWorkerQueueKey = KEYS[10]
+local ttlQueueKey = KEYS[11]
+local ckIndexKey = KEYS[12]
+local lengthCounterKey = KEYS[13]
+local runningCounterKey = KEYS[14]
 
 -- Args:
 local messageId = ARGV[1]
@@ -4768,6 +4873,8 @@ local messageKeyValue = ARGV[4]
 local ckWildcardName = ARGV[5]
 local keyPrefix = ARGV[6]
 local counterTtl = ARGV[7]
+local ttlMember = ARGV[8]
+local ttlScore = tonumber(ARGV[9])
 
 local function decrFloored(key)
   if tonumber(redis.call('GET', key) or '0') > 0 then
@@ -4775,7 +4882,14 @@ local function decrFloored(key)
   end
 end
 
-if redis.call('LREM', workerQueueKey, 0, messageKeyValue) == 0 then
+-- The resolver-mapped key and the raw one can differ while a region override is active,
+-- and the two producers disagree on which they push to.
+local claimed = redis.call('LREM', workerQueueKey, 0, messageKeyValue)
+if rawWorkerQueueKey ~= workerQueueKey then
+  claimed = claimed + redis.call('LREM', rawWorkerQueueKey, 0, messageKeyValue)
+end
+
+if claimed == 0 then
   return 0
 end
 
@@ -4805,6 +4919,11 @@ local added = redis.call('ZADD', messageQueueKey, messageScore, messageId)
 redis.call('ZADD', envQueueKey, messageScore, messageId)
 if added == 1 then
   redis.call('INCR', lengthCounterKey)
+end
+
+-- Admission removed the TTL member; restore it so the run can still expire while queued.
+if ttlScore > 0 then
+  redis.call('ZADD', ttlQueueKey, ttlScore, ttlMember)
 end
 
 local earliest = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
@@ -5975,10 +6094,14 @@ declare module "@internal/redis" {
       envCurrentDequeuedKey: string,
       envQueueKey: string,
       workerQueueKey: string,
+      rawWorkerQueueKey: string,
+      ttlQueueKey: string,
       messageId: string,
       messageQueueName: string,
       messageScore: string,
       messageKeyValue: string,
+      ttlMember: string,
+      ttlScore: string,
       callback?: Callback<number>
     ): Result<number, Context>;
 
@@ -5992,6 +6115,8 @@ declare module "@internal/redis" {
       envCurrentDequeuedKey: string,
       envQueueKey: string,
       workerQueueKey: string,
+      rawWorkerQueueKey: string,
+      ttlQueueKey: string,
       ckIndexKey: string,
       lengthCounterKey: string,
       runningCounterKey: string,
@@ -6002,6 +6127,8 @@ declare module "@internal/redis" {
       ckWildcardName: string,
       keyPrefix: string,
       counterTtl: string,
+      ttlMember: string,
+      ttlScore: string,
       callback?: Callback<number>
     ): Result<number, Context>;
 

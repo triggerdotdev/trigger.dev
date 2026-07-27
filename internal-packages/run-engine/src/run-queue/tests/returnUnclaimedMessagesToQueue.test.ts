@@ -6,6 +6,7 @@ import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import type { InputPayload } from "../types.js";
 import { Decimal } from "@trigger.dev/database";
+import { createRedisClient as createRawRedisClient } from "@internal/redis";
 
 const testOptions = {
   name: "rq",
@@ -59,7 +60,10 @@ function messageFor(
   };
 }
 
-function createRunQueue(redisContainer: { getHost(): string; getPort(): number }) {
+function createRunQueue(
+  redisContainer: { getHost(): string; getPort(): number },
+  overrides: Partial<ConstructorParameters<typeof RunQueue>[0]> = {}
+) {
   const redisOptions = {
     keyPrefix: "runqueue:test:",
     host: redisContainer.getHost(),
@@ -73,7 +77,19 @@ function createRunQueue(redisContainer: { getHost(): string; getPort(): number }
       keys: testOptions.keys,
     }),
     redis: redisOptions,
+    ...overrides,
   });
+}
+
+function createRedisClient(redisContainer: { getHost(): string; getPort(): number }) {
+  return createRawRedisClient({
+    host: redisContainer.getHost(),
+    port: redisContainer.getPort(),
+  });
+}
+
+function queueKeyFor(queue: string) {
+  return testOptions.keys.queueKey(authenticatedEnvDev, queue);
 }
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -105,7 +121,7 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
           queue: "task/my-task",
         });
 
-        expect(result).toEqual({ returned: 3, skipped: 0 });
+        expect(result).toEqual({ returned: 3, skipped: 0, errors: 0, passes: 1 });
 
         expect(await queue.peekAllOnWorkerQueue(authenticatedEnvDev.id)).toHaveLength(0);
         expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(3);
@@ -211,6 +227,88 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
         ["r1"]
       );
     } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest(
+    "leaves a run whose worker queue entry is gone but is not yet marked dequeued",
+    async ({ redisContainer }) => {
+      const queue = createRunQueue(redisContainer);
+      const redis = createRedisClient(redisContainer);
+
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageFor({ runId: "r1" }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        await queue.processMasterQueueForEnvironment(authenticatedEnvDev.id, 10);
+
+        const popped = await redis.lpop(`runqueue:test:workerQueue:${authenticatedEnvDev.id}`);
+        expect(popped).not.toBeNull();
+
+        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+        expect(await queue.currentDequeuedOfQueue(authenticatedEnvDev, "task/my-task")).toBe(0);
+
+        const result = await queue.returnUnclaimedMessagesToQueue({
+          env: authenticatedEnvDev,
+          queue: "task/my-task",
+          maxPasses: 1,
+        });
+
+        expect(result.returned).toBe(0);
+        expect(result.skipped).toBe(1);
+
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(0);
+        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+      } finally {
+        await redis.quit();
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest("restores the TTL registration of a returned run", async ({ redisContainer }) => {
+    const queue = createRunQueue(redisContainer, {
+      ttlSystem: {
+        shardCount: 1,
+        consumersDisabled: true,
+        workerQueueSuffix: "ttlWorker",
+        workerItemsSuffix: "ttlWorkerItems",
+      },
+    });
+    const redis = createRedisClient(redisContainer);
+
+    try {
+      const ttlExpiresAt = Date.now() + 600_000;
+
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: messageFor({ runId: "r1", ttlExpiresAt }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+
+      const ttlKey = "runqueue:test:ttl:shard:0";
+      const ttlMember = `${queueKeyFor("task/my-task")}|r1|o1234`;
+
+      expect(await redis.zscore(ttlKey, ttlMember)).toBe(String(ttlExpiresAt));
+
+      await queue.processMasterQueueForEnvironment(authenticatedEnvDev.id, 10);
+      expect(await redis.zscore(ttlKey, ttlMember)).toBeNull();
+
+      await queue.returnUnclaimedMessagesToQueue({
+        env: authenticatedEnvDev,
+        queue: "task/my-task",
+      });
+
+      expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+      expect(await redis.zscore(ttlKey, ttlMember)).toBe(String(ttlExpiresAt));
+    } finally {
+      await redis.quit();
       await queue.quit();
     }
   });
@@ -397,13 +495,67 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
   });
 
   redisTest(
+    "keeps the concurrency key running counter correct across a return",
+    async ({ redisContainer }) => {
+      const queue = createRunQueue(redisContainer);
+
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageFor({ runId: "r1", concurrencyKey: "ck-a" }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageFor({ runId: "r2", concurrencyKey: "ck-a" }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        await queue.processMasterQueueForEnvironment(authenticatedEnvDev.id, 10);
+
+        const claimed = await queue.dequeueMessageFromWorkerQueue(
+          "consumer",
+          authenticatedEnvDev.id
+        );
+        assertNonNullable(claimed);
+
+        expect(
+          await queue.currentConcurrencyOfQueues(authenticatedEnvDev, ["task/my-task"])
+        ).toEqual({ "task/my-task": 1 });
+
+        await queue.returnUnclaimedMessagesToQueue({
+          env: authenticatedEnvDev,
+          queue: "task/my-task",
+        });
+
+        expect(
+          await queue.currentConcurrencyOfQueues(authenticatedEnvDev, ["task/my-task"])
+        ).toEqual({ "task/my-task": 1 });
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+
+        await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, claimed.messageId, {
+          skipDequeueProcessing: true,
+        });
+
+        expect(
+          await queue.currentConcurrencyOfQueues(authenticatedEnvDev, ["task/my-task"])
+        ).toEqual({ "task/my-task": 0 });
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
     "leaves runs that have not reached the worker queue alone",
     async ({ redisContainer }) => {
       const queue = createRunQueue(redisContainer);
 
       try {
         const empty = await queue.returnUnclaimedMessagesToQueue({ env: authenticatedEnvDev });
-        expect(empty).toEqual({ returned: 0, skipped: 0 });
+        expect(empty).toEqual({ returned: 0, skipped: 0, errors: 0, passes: 1 });
 
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
@@ -415,7 +567,7 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
         const pendingOnly = await queue.returnUnclaimedMessagesToQueue({
           env: authenticatedEnvDev,
         });
-        expect(pendingOnly).toEqual({ returned: 0, skipped: 0 });
+        expect(pendingOnly).toEqual({ returned: 0, skipped: 0, errors: 0, passes: 1 });
         expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
         expect(await queue.oldestMessageInQueue(authenticatedEnvDev, "task/my-task")).toBe(
           baseTimestamp
@@ -443,7 +595,7 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
       expect(first.returned).toBe(1);
 
       const second = await queue.returnUnclaimedMessagesToQueue({ env: authenticatedEnvDev });
-      expect(second).toEqual({ returned: 0, skipped: 0 });
+      expect(second).toEqual({ returned: 0, skipped: 0, errors: 0, passes: 1 });
 
       expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
       expect(await queue.lengthOfEnvQueue(authenticatedEnvDev)).toBe(1);
