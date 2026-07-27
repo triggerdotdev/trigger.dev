@@ -1,4 +1,3 @@
-import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useMemo, useState } from "react";
@@ -18,7 +17,7 @@ import { statusColor } from "~/components/primitives/charts/statusColors";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
@@ -44,7 +43,6 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUser } from "~/services/session.server";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3EnvironmentPath,
   v3PlaygroundAgentPath,
@@ -223,15 +221,6 @@ export default function Page() {
             </span>
           }
         />
-        <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("ai-chat/overview")}
-          >
-            Agents docs
-          </LinkButton>
-        </PageAccessories>
       </NavBar>
       <MetricsLayout.Root>
         {/* Filters — the pinned bar under the NavBar: the TimeFilter and pagination that used to

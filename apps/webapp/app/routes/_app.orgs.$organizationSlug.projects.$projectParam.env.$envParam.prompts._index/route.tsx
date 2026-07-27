@@ -15,7 +15,7 @@ import { MainCenteredContainer, PageBody, PageContainer } from "~/components/lay
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { cn } from "~/utils/cn";
@@ -36,9 +36,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
-import { LinkButton } from "~/components/primitives/Buttons";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
+import { EnvironmentParamSchema, v3PromptsPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Prompts | Trigger.dev" }];
@@ -98,11 +96,6 @@ export default function PromptsPage() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Prompts" />
-        <PageAccessories>
-          <LinkButton variant="docs/small" LeadingIcon={BookOpenIcon} to={docsPath("ai/prompts")}>
-            Prompts docs
-          </LinkButton>
-        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <Table containerClassName="border-t-0">

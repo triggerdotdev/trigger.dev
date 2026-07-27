@@ -20,7 +20,7 @@ import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
@@ -38,7 +38,6 @@ import {
 } from "~/utils/pathBuilder";
 import {
   ArrowTopRightOnSquareIcon,
-  BookOpenIcon,
   CommandLineIcon,
   DocumentTextIcon,
   PencilSquareIcon,
@@ -554,15 +553,6 @@ export default function Page() {
             text: "Private Connections",
           }}
         />
-        <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("private-networking/overview")}
-          >
-            Private connection docs
-          </LinkButton>
-        </PageAccessories>
       </NavBar>
       <PageBody scrollable={true}>
         <MainHorizontallyCenteredContainer className="max-w-3xl">

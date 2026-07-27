@@ -454,13 +454,6 @@ function QueuesWithMetricsView() {
         <PageTitle title="Queues" />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/queue-concurrency")}
-          >
-            Queues docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <MetricsLayout.Root>
@@ -1633,13 +1626,6 @@ function ClassicQueuesView() {
         <PageTitle title="Queues" />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/queue-concurrency")}
-          >
-            Queues docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

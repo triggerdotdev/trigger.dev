@@ -1,7 +1,6 @@
 import {
   ArrowUturnLeftIcon,
   BoltSlashIcon,
-  BookOpenIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   InformationCircleIcon,
@@ -111,7 +110,6 @@ import { cn } from "~/utils/cn";
 import type { Handle } from "~/utils/handle";
 import { lerp } from "~/utils/lerp";
 import {
-  docsPath,
   v3BillingPath,
   v3RunParamsSchema,
   v3RunPath,
@@ -523,9 +521,6 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
-          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/runs")}>
-            Run docs
-          </LinkButton>
           <Dialog key={`replay-${run.friendlyId}`}>
             <DialogTrigger asChild>
               <Button

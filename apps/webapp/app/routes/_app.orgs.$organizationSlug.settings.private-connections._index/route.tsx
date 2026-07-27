@@ -1,9 +1,4 @@
-import {
-  BookOpenIcon,
-  ClipboardDocumentIcon,
-  PlusIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
+import { ClipboardDocumentIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, useRevalidator, type MetaFunction } from "@remix-run/react";
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -26,7 +21,6 @@ import { logger } from "~/services/logger.server";
 import { deletePrivateLink, getPrivateLinks } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
-  docsPath,
   OrganizationParamsSchema,
   organizationPath,
   v3PrivateConnectionsPath,
@@ -183,13 +177,6 @@ export default function Page() {
       <NavBar>
         <PageTitle title="Private Connections" />
         <PageAccessories>
-          <LinkButton
-            variant="docs/small"
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("private-networking/overview")}
-          >
-            Private connection docs
-          </LinkButton>
           {hasPrivateNetworking && canAdd && (
             <LinkButton variant="primary/small" LeadingIcon={PlusIcon} to="new">
               Add Connection

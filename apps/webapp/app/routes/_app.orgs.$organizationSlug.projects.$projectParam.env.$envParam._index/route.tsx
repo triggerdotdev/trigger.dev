@@ -1,4 +1,4 @@
-import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -90,7 +90,6 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3AgentTaskPath,
   v3PlaygroundAgentPath,
@@ -269,13 +268,6 @@ export default function Page() {
         <PageTitle title="Tasks" accessory={<TasksHelpTooltip />} />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/tasks/overview")}
-          >
-            Task docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

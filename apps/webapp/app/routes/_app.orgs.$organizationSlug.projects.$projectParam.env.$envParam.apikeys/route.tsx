@@ -1,4 +1,3 @@
-import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -23,7 +22,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "~/components/primitives/Accordion";
-import { LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { Header2 } from "~/components/primitives/Headers";
@@ -37,7 +35,7 @@ import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
-import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -120,14 +118,6 @@ export default function Page() {
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
-
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/v3/apikeys")}
-          >
-            API keys docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody>

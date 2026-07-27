@@ -185,13 +185,6 @@ export default function Page() {
         )}
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/runs-and-attempts")}
-          >
-            Runs docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>

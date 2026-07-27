@@ -1,4 +1,4 @@
-import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { PlusIcon } from "@heroicons/react/20/solid";
 import { NoSymbolIcon } from "@heroicons/react/24/solid";
 import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -49,7 +49,6 @@ import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
-  docsPath,
   EnvironmentParamSchema,
   v3BulkActionPath,
   v3CreateBulkActionPath,
@@ -140,13 +139,6 @@ export default function Page() {
         <PageTitle title="Bulk actions" />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton
-            variant={"docs/small"}
-            LeadingIcon={BookOpenIcon}
-            to={docsPath("/bulk-actions")}
-          >
-            Bulk actions docs
-          </LinkButton>
           <LinkButton
             variant="primary/small"
             LeadingIcon={PlusIcon}

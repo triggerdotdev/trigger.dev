@@ -1,4 +1,3 @@
-import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Outlet, useParams, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -6,7 +5,6 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { NoWaitpointTokens } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { ListPagination } from "~/components/ListPagination";
-import { LinkButton } from "~/components/primitives/Buttons";
 import { ClipboardField } from "~/components/primitives/ClipboardField";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -48,7 +46,7 @@ import {
   runOpsSplitReadEnabled,
   type PrismaClientOrTransaction,
 } from "~/db.server";
-import { docsPath, EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3WaitpointTokenPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -137,9 +135,6 @@ export default function Page() {
         <PageTitle title={<V4Title>Waitpoint Tokens</V4Title>} />
         <PageAccessories>
           <AdminDebugTooltip />
-          <LinkButton variant={"docs/small"} LeadingIcon={BookOpenIcon} to={docsPath("/wait")}>
-            Waitpoints docs
-          </LinkButton>
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
