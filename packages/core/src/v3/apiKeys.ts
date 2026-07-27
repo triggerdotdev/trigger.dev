@@ -1,4 +1,4 @@
-const ADDITIONAL_API_KEY_PATTERN = /^tr_(dev|stg|prod|preview)_ak_[0-9a-zA-Z]{24}$/;
+const ADDITIONAL_API_KEY_PATTERN = /^tr_(dev|stg|prod|preview)_sk_[0-9a-zA-Z]{24}$/;
 
 /**
  * Returns whether a key has the additional environment API key format.

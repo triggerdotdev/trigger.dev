@@ -137,7 +137,7 @@ describe("chat.createStartSessionAction — runtime", () => {
     const start = chat.createStartSessionAction("fake-chat", {
       apiClient: {
         baseURL: "https://example.invalid",
-        accessToken: "tr_prod_ak_0123456789abcdefghijklmn",
+        accessToken: "tr_prod_sk_0123456789abcdefghijklmn",
       },
       tokenTTL: "30m",
       fetch: async (url, init, context) => {

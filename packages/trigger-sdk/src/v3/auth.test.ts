@@ -38,7 +38,7 @@ describe("public token API key routing", () => {
   });
 
   it("uses server minting for additional keys", async () => {
-    const key = "tr_prod_ak_0123456789abcdefghijklmn";
+    const key = "tr_prod_sk_0123456789abcdefghijklmn";
     const token = await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createPublicToken({
         scopes: { read: { runs: ["run_123"] } },
@@ -63,7 +63,7 @@ describe("public token API key routing", () => {
   });
 
   it("server-mints trigger tokens with one-time-use semantics", async () => {
-    const key = "tr_dev_ak_0123456789abcdefghijklmn";
+    const key = "tr_dev_sk_0123456789abcdefghijklmn";
     await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createTriggerPublicToken(["task-one", "task-two"], { multipleUse: true })
     );
@@ -75,7 +75,7 @@ describe("public token API key routing", () => {
   });
 
   it("server-mints batch trigger tokens for additional keys", async () => {
-    const key = "tr_stg_ak_0123456789abcdefghijklmn";
+    const key = "tr_stg_sk_0123456789abcdefghijklmn";
     await apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createBatchTriggerPublicToken("batch-task", {
         expirationTime: "2h",
@@ -136,7 +136,7 @@ describe("public token API key routing", () => {
     ["an empty scopes object", {}],
     ["a scope group with nothing selected", { read: {} }],
   ])("rejects %s clearly for additional keys", async (_label, scopes) => {
-    const key = "tr_prod_ak_0123456789abcdefghijklmn";
+    const key = "tr_prod_sk_0123456789abcdefghijklmn";
     const promise = apiClientManager.runWithConfig({ baseURL: baseUrl, accessToken: key }, () =>
       auth.createPublicToken(scopes === undefined ? undefined : { scopes })
     );
@@ -152,7 +152,7 @@ describe("public token API key routing", () => {
     const promise = apiClientManager.runWithConfig(
       {
         baseURL: baseUrl,
-        accessToken: "tr_prod_ak_0123456789abcdefghijklmn",
+        accessToken: "tr_prod_sk_0123456789abcdefghijklmn",
       },
       () => auth.createPublicToken({ scopes: { read: { runs: true } } })
     );
