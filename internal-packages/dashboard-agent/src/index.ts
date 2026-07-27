@@ -6,6 +6,8 @@
 // register the task in the webapp's context.
 export * from "./dashboard-agent.js";
 
-// The view-catalog block types, for the webapp's render registry. Type-only —
-// these come from the light schema module and pull no runtime into the bundle.
-export type { ChartBlock, DiagnosisBlock, ViewBlock } from "./tool-schemas.js";
+// The view-catalog block types, for the webapp's render registry. They now live
+// in `@internal/dashboard-agent-contracts` (a zod-only leaf) and are re-exported
+// here so existing `import type { ViewBlock } from "@internal/dashboard-agent"`
+// sites keep working. Type-only — no runtime enters the bundle.
+export type { ChartBlock, DiagnosisBlock, ViewBlock } from "@internal/dashboard-agent-contracts";

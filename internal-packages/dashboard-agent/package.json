@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.0",
+    "@internal/dashboard-agent-contracts": "workspace:*",
     "@internal/dashboard-agent-db": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "ai": "^6.0.116",

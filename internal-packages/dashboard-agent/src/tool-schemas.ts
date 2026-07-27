@@ -4,12 +4,14 @@
  *
  * HARD CONSTRAINT — bundle isolation. The head-start route imports this file
  * and runs it in the webapp process, so anything imported here lands in that
- * bundle. Allowed imports: `ai` (for `tool()`), `zod`, type-only AI SDK. Nothing
- * else — no `@internal/dashboard-agent-db`, no `@trigger.dev/sdk` runtime, no
+ * bundle. Allowed imports: `ai` (for `tool()`), `zod`, type-only AI SDK, and
+ * `@internal/dashboard-agent-contracts` (a zod-only leaf package). Nothing else
+ * — no `@internal/dashboard-agent-db`, no `@trigger.dev/sdk` runtime, no
  * `postgres`/`drizzle`. The `execute` fns (the data lane that calls the API as
  * the user) live in `tools.ts`, which imports these schemas and adds executes
  * on top; the route handler never sees them.
  */
+import { viewBlockInputSchema } from "@internal/dashboard-agent-contracts";
 import { tool } from "ai";
 import { z } from "zod";
 
@@ -172,147 +174,24 @@ export const askSupportSchema = tool({
 // HTML) without its zod 4 / React 19 dependency — we stay on the pinned zod 3.
 //
 // `render_view`'s `execute` (in tools.ts) just validates + echoes the spec back;
-// there's no API call. Add a new block by adding a member to `viewBlockSchema`
-// here and a renderer entry in the webapp registry.
+// there's no API call.
+//
+// The block schemas themselves live in `@internal/dashboard-agent-contracts`
+// (src/blocks.ts) so the webapp, the agent, and persistence share one definition.
+// Add a new block there, then add a renderer entry in the webapp registry.
+//
+// The tool takes `viewBlockInputSchema` — the BODY-only schema, with no
+// `{ id, revision, version }` envelope. Block identity is system-owned: the model
+// never supplies it, and the executor/persistence layer stamps the envelope on
+// (M5). The strict enveloped schema (`viewBlockSchema` in contracts) is for
+// renderers and storage, not for the model.
 // ---------------------------------------------------------------------------
-
-// The "why did this run fail?" failure card — the first (and for now only)
-// catalog block. The agent gathers evidence with the read tools, then fills
-// these fields. `type` is the discriminant the render registry keys off.
-export const diagnosisBlockSchema = z.object({
-  type: z.literal("diagnosis"),
-  runId: z.string().describe("The run this diagnoses, e.g. run_abc123."),
-  summary: z.string().describe("One or two plain-language sentences: what happened and why."),
-  category: z
-    .enum([
-      "user_code_error",
-      "configuration",
-      "dependency",
-      "timeout",
-      "out_of_memory",
-      "rate_limit",
-      "external_service",
-      "infrastructure",
-      "cancellation",
-      "unknown",
-    ])
-    .describe("Your classification of the root cause."),
-  likelyCause: z
-    .string()
-    .describe(
-      "The most probable root cause, in specific terms — name the code, config, or dependency."
-    ),
-  confidence: z
-    .enum(["high", "medium", "low"])
-    .describe("How confident you are in this diagnosis given the evidence. Be honest."),
-  evidence: z
-    .array(
-      z.object({
-        type: z.enum([
-          "error",
-          "failed_span",
-          "child_run",
-          "logs",
-          "deploy",
-          "source",
-          "historical_match",
-        ]),
-        detail: z.string().describe("What this piece of evidence shows."),
-        reference: z
-          .string()
-          .optional()
-          .describe(
-            "Optional pointer to the evidence: a run id (run_...), error id (error_...), file:line, version, or URL."
-          ),
-      })
-    )
-    .describe(
-      "The concrete signals behind the diagnosis. Cite real ids, spans, versions, or file:line."
-    ),
-  impact: z
-    .string()
-    .optional()
-    .describe("Optional: how widespread this is, e.g. how many runs hit the same error recently."),
-  nextSteps: z.array(z.string()).describe("Actionable recommendations, most important first."),
-  actions: z
-    .array(
-      z.object({
-        label: z.string().describe("Button text, e.g. 'View run' or 'Read the retries docs'."),
-        kind: z
-          .enum(["view_run", "docs"])
-          .describe(
-            "view_run links to a run page in this environment; docs opens an external URL."
-          ),
-        target: z.string().describe("For view_run: a run id (run_...). For docs: an https URL."),
-      })
-    )
-    .optional()
-    .describe("Optional call-to-action buttons rendered under the card."),
-});
-
-// The chart block carries the TRQL query (not the rows): the panel runs it
-// through the dashboard's own query execution + QueryResultsChart, so the chart
-// is live and matches the Query page exactly. The agent describes the chart with
-// the SAME config the dashboard's chart builder uses (chartType + axis columns +
-// group/aggregation) and writes a query whose result columns map onto it.
-export const chartBlockSchema = z.object({
-  type: z.literal("chart"),
-  title: z.string().optional().describe("Optional chart title."),
-  query: z
-    .string()
-    .describe(
-      "A read-only TRQL SELECT whose result columns map onto the axes below. The panel runs this query and renders the result, so write it the same way you would for run_query (toStartOfHour/toStartOfDay buckets, countIf/sumIf per series)."
-    ),
-  period: z
-    .string()
-    .optional()
-    .describe(
-      "Time window shorthand like '24h', '7d', '30d' (max 30d), applied to the table's time column."
-    ),
-  chartType: z
-    .enum(["line", "bar"])
-    .describe(
-      "line for trends over time, bar for comparing categories. Stack with `stacked` for composition."
-    ),
-  xAxisColumn: z
-    .string()
-    .describe(
-      "The result column for the x-axis: a time bucket (for line) or a category (for bar)."
-    ),
-  yAxisColumns: z
-    .array(z.string())
-    .min(1)
-    .describe("The numeric result column(s) to plot. One per series, unless groupByColumn is set."),
-  groupByColumn: z
-    .string()
-    .nullish()
-    .describe(
-      "Optional result column to split a single yAxisColumn into one series per distinct value."
-    ),
-  stacked: z
-    .boolean()
-    .optional()
-    .describe("Stack the series (cumulative/composition). Default false."),
-  aggregation: z
-    .enum(["sum", "avg", "count", "min", "max"])
-    .optional()
-    .describe("How to combine values that share an x point. Default sum."),
-});
-
-export const viewBlockSchema = z.discriminatedUnion("type", [
-  diagnosisBlockSchema,
-  chartBlockSchema,
-]);
-
-export type DiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
-export type ChartBlock = z.infer<typeof chartBlockSchema>;
-export type ViewBlock = z.infer<typeof viewBlockSchema>;
 
 export const renderViewSchema = tool({
   description:
     "Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has two blocks: `diagnosis` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools) and `chart` (a line/bar chart of run_query results). Keep any accompanying message to a one-line lead-in.",
   inputSchema: z.object({
-    blocks: z.array(viewBlockSchema).min(1).describe("The blocks to render, top to bottom."),
+    blocks: z.array(viewBlockInputSchema).min(1).describe("The blocks to render, top to bottom."),
   }),
 });
 
