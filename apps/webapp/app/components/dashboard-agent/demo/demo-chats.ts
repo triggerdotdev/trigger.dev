@@ -112,7 +112,7 @@ const PROD_BANNER = {
 
 const investigateStreaming: DemoChat = {
   id: demoId("investigate-streaming"),
-  title: "Demo · Investigate: card streaming",
+  title: "Why did this run fail?",
   flow: "investigate",
   summary:
     "The investigation card mid-flight: two revisions of the same card, hypotheses marked testing, one settling to validated.",
@@ -153,7 +153,7 @@ const investigateStreaming: DemoChat = {
 
 const investigateConcluded: DemoChat = {
   id: demoId("investigate-concluded"),
-  title: "Demo · Investigate: concluded",
+  title: "send-order-receipt failure",
   flow: "investigate",
   summary:
     "The concluded card collapsed: What happened (severity + cause) and How to fix. Expand it for three tested hypotheses, verdict chips, cited evidence and a source excerpt.",
@@ -199,7 +199,7 @@ const investigateConcluded: DemoChat = {
 
 const investigateInconclusive: DemoChat = {
   id: demoId("investigate-inconclusive"),
-  title: "Demo · Investigate: inconclusive",
+  title: "Intermittent upstream timeouts",
   flow: "investigate",
   summary:
     "No cause found: What we know + What to check next, and deliberately no fix section. One hypothesis ruled out, one still open.",
@@ -226,7 +226,7 @@ const investigateInconclusive: DemoChat = {
 
 const investigateShowCode: DemoChat = {
   id: demoId("investigate-show-code"),
-  title: "Demo · Investigate: show me the code",
+  title: "Show me the failing code",
   flow: "investigate",
   summary:
     "Follow-up turn after a conclusion: a fenced diff citing file:line@sha, with an explicit 'I haven't applied anything'.",
@@ -254,7 +254,7 @@ const investigateShowCode: DemoChat = {
 
 const investigateDirtyCommit: DemoChat = {
   id: demoId("investigate-dirty-commit"),
-  title: "Demo · Investigate: dirty-commit caveat",
+  title: "Failure after yesterday's deploy",
   flow: "investigate",
   summary:
     "The same conclusion, hedged: the deploy was built from a dirty working tree, so source citations are the nearest repository snapshot — not the exact deployed code. Confidence drops to medium.",
@@ -275,7 +275,7 @@ const investigateDirtyCommit: DemoChat = {
 
 const navigateFilteredRuns: DemoChat = {
   id: demoId("navigate-filtered-runs"),
-  title: "Demo · Navigation: opened filtered runs",
+  title: "Failed runs in the last 24h",
   flow: "navigation",
   summary:
     "The agent moved the user's screen and says so: a past-tense navigate bubble plus the deep link it used. Clicking the link is intercepted.",
@@ -316,7 +316,7 @@ const navigateFilteredRuns: DemoChat = {
 
 const navigateRejectedIntent: DemoChat = {
   id: demoId("navigate-rejected-intent"),
-  title: "Demo · Navigation: rejected intent",
+  title: "Take me to my deployments",
   flow: "navigation",
   summary:
     "A reserved `propose_fix` intent is rejected out loud rather than silently ignored. This is the behaviour to review before write actions exist.",
@@ -344,7 +344,7 @@ const navigateRejectedIntent: DemoChat = {
 
 const promptsPageAware: DemoChat = {
   id: demoId("prompts-page-aware"),
-  title: "Demo · Prompts: page-aware chips",
+  title: "What should I look at here?",
   flow: "prompts",
   summary:
     "The chip row per page kind, with the promoted slot first. The last row shows what a dismissal leaves behind.",
@@ -383,7 +383,7 @@ const promptsPageAware: DemoChat = {
 
 const watchCreatedAndWake: DemoChat = {
   id: demoId("watch-created-and-wake"),
-  title: "Demo · Watch: created, then woke",
+  title: "Tell me when the backlog drains",
   flow: "watch",
   summary:
     "A watch is created from a conversation, shows as a chip, and later speaks unprompted when it fires.",
@@ -411,7 +411,7 @@ const watchCreatedAndWake: DemoChat = {
 
 const watchExpiryAndCancel: DemoChat = {
   id: demoId("watch-expiry-and-cancel"),
-  title: "Demo · Watch: expiry and cancel",
+  title: "Watch for that error recurring",
   flow: "watch",
   summary:
     "Three endings: expired having verified nothing happened, expired unable to verify at all, and cancelled from the chip.",
@@ -449,7 +449,7 @@ const watchExpiryAndCancel: DemoChat = {
 
 const reportHealthy: DemoChat = {
   id: demoId("report-healthy"),
-  title: "Demo · Reports: healthy",
+  title: "How is prod doing?",
   flow: "reports",
   summary:
     "The health report with nothing wrong: three green statements, collapsed findings, 'nothing to do' footer.",
@@ -488,7 +488,7 @@ const reportHealthy: DemoChat = {
 
 const reportDegraded: DemoChat = {
   id: demoId("report-degraded"),
-  title: "Demo · Reports: degraded",
+  title: "Is anything wrong right now?",
   flow: "reports",
   summary:
     "Flow stalled at the env concurrency limit while execution stays healthy: causal chain, worst-queue attribution, 'not your code', and a two-entry footer including the do-nothing option.",
@@ -520,7 +520,7 @@ const reportDegraded: DemoChat = {
 
 const docsAnswer: DemoChat = {
   id: demoId("docs-answer"),
-  title: "Demo · Reports: docs answer with sources",
+  title: "How do I use batchTrigger?",
   flow: "reports",
   summary:
     "A how-does-it-work question answered from the docs, with source links under the answer and no invented API.",
@@ -562,7 +562,7 @@ const docsAnswer: DemoChat = {
 
 const baseEmpty: DemoChat = {
   id: demoId("base-empty"),
-  title: "Demo · Base: empty / first open",
+  title: "Chat",
   flow: "base",
   summary: "First open: the production suggested-prompt panel and an empty composer.",
   banner: PROD_BANNER,
@@ -572,7 +572,7 @@ const baseEmpty: DemoChat = {
 
 const baseStreaming: DemoChat = {
   id: demoId("base-streaming"),
-  title: "Demo · Base: streaming",
+  title: "Summarize today's failures",
   flow: "base",
   summary:
     "A partial assistant message (text part still streaming) with the Thinking row underneath.",
@@ -597,7 +597,7 @@ const baseStreaming: DemoChat = {
 
 const baseToolInFlight: DemoChat = {
   id: demoId("base-tool-in-flight"),
-  title: "Demo · Base: tool call in flight",
+  title: "How deep is the email queue?",
   flow: "base",
   summary:
     "A tool row mid-call ('calling…') above a finished one. Click either row to expand its input/output.",
@@ -629,7 +629,7 @@ const baseToolInFlight: DemoChat = {
 
 const baseErrorRetry: DemoChat = {
   id: demoId("base-error-retry"),
-  title: "Demo · Base: error and retry",
+  title: "List yesterday's runs",
   flow: "base",
   summary:
     "A turn that failed: the failed tool row, the error row the panel renders, and a retry affordance.",
@@ -659,7 +659,7 @@ const baseErrorRetry: DemoChat = {
 
 const baseResumed: DemoChat = {
   id: demoId("base-resumed"),
-  title: "Demo · Base: resumed chat",
+  title: "Queue health over time",
   flow: "base",
   summary:
     "A transcript replayed from the store, including one pre-envelope block that must still render (and can never be revised).",
@@ -703,7 +703,7 @@ const baseResumed: DemoChat = {
 
 const baseComposerDraft: DemoChat = {
   id: demoId("base-composer-draft"),
-  title: "Demo · Base: composer with a draft",
+  title: "New chat",
   flow: "base",
   summary:
     "The composer pre-filled the way `openWith` fills it from a page — the user reads and edits before sending.",
@@ -720,7 +720,7 @@ const baseComposerDraft: DemoChat = {
 
 const baseBanners: DemoChat = {
   id: demoId("base-banners"),
-  title: "Demo · Base: banner variants",
+  title: "Which page am I on?",
   flow: "base",
   summary: "The context banner across page kinds, plus the watch chip row that sits under it.",
   banner: PROD_BANNER,
@@ -746,7 +746,7 @@ const baseBanners: DemoChat = {
 
 const baseInvestigationDeepLink: DemoChat = {
   id: demoId("base-investigation-uri"),
-  title: "Demo · Base: investigation deep link",
+  title: "Follow-up on the investigation",
   flow: "base",
   summary:
     "An investigation cited by URI — the shape a shared or resumed investigation link takes.",

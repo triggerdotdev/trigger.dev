@@ -20,7 +20,7 @@ DASHBOARD_AGENT_ENABLED=1   # or DASHBOARD_AGENT_ADMIN_PREVIEW=1 — the panel s
 ```
 
 Restart the webapp, open any project, open the agent panel, click the History
-icon. The demo conversations are the rows titled `Demo · …`. Pick one; it renders
+icon. Demo conversations look exactly like real chats (deliberately — review the true experience); they are the extra history rows listed below. Pick one; it renders
 in place of a real chat.
 
 An env var rather than a feature flag on purpose: demo mode is a local review
@@ -51,25 +51,25 @@ message catalog.
 
 | Open | You should see | Feedback wanted |
 | --- | --- | --- |
-| `Demo · Investigate: card streaming` | Two revisions of one investigation card; hypotheses marked **Testing** with a spinner, one settling to **Validated**. | Is a live-revising card readable, or does it need a quieter in-progress state? Is "Testing" the right word? |
-| `Demo · Investigate: concluded` | Collapsed card: **What happened** (severity + cause, 1–2 sentences) then **How to fix**. Expand "How I worked this out" for 3 hypotheses with verdict chips, evidence with `trigger://` URIs and a source excerpt. | Is the collapsed view enough to act on without expanding? Is the fix prose specific enough — and clearly *not applied*? |
-| `Demo · Investigate: inconclusive` | **What we know** + **What to check next**, expanded, and deliberately **no fix section**. One hypothesis ruled out, one still open. | Does "I don't know" land as honest rather than broken? Are the next-checks concrete enough to be worth reading? |
-| `Demo · Investigate: show me the code` | A follow-up turn with a fenced diff citing `file:line@sha`, ending in "I haven't applied anything". | Is a diff the right answer to "show me the code", or should it be the current source with the change described? |
-| `Demo · Investigate: dirty-commit caveat` | The same conclusion with an amber caveat: source lines are the **nearest repository snapshot, not the exact deployed code**; confidence drops to medium. | Is the hedge clear without undermining the telemetry evidence, which is unaffected? Is amber too loud for it? |
+| `Why did this run fail?` | Two revisions of one investigation card; hypotheses marked **Testing** with a spinner, one settling to **Validated**. | Is a live-revising card readable, or does it need a quieter in-progress state? Is "Testing" the right word? |
+| `send-order-receipt failure` | Collapsed card: **What happened** (severity + cause, 1–2 sentences) then **How to fix**. Expand "How I worked this out" for 3 hypotheses with verdict chips, evidence with `trigger://` URIs and a source excerpt. | Is the collapsed view enough to act on without expanding? Is the fix prose specific enough — and clearly *not applied*? |
+| `Intermittent upstream timeouts` | **What we know** + **What to check next**, expanded, and deliberately **no fix section**. One hypothesis ruled out, one still open. | Does "I don't know" land as honest rather than broken? Are the next-checks concrete enough to be worth reading? |
+| `Show me the failing code` | A follow-up turn with a fenced diff citing `file:line@sha`, ending in "I haven't applied anything". | Is a diff the right answer to "show me the code", or should it be the current source with the change described? |
+| `Failure after yesterday's deploy` | The same conclusion with an amber caveat: source lines are the **nearest repository snapshot, not the exact deployed code**; confidence drops to medium. | Is the hedge clear without undermining the telemetry evidence, which is unaffected? Is amber too loud for it? |
 
 ## Navigation
 
 | Open | You should see | Feedback wanted |
 | --- | --- | --- |
-| `Demo · Navigation: opened filtered runs` | A past-tense navigate bubble — "Opened runs filtered to failed · last 24h · send-order-receipt" — with the deep link under it, plus a chart. | Is the bubble enough to explain a screen that just changed? Should the filters be listed, or just summarised? |
-| `Demo · Navigation: rejected intent` | A reserved `propose_fix` intent rejected out loud ("proposing a fix isn't available yet"), then the agent describing the change instead. | Is an explicit rejection better than the agent never offering? What should it say? |
-| `Demo · Base: investigation deep link` | An investigation cited by `trigger://…/investigation/…`, plus a navigate-to-run bubble. | Should raw URIs ever be visible to users, or always resolved to a label? |
+| `Failed runs in the last 24h` | A past-tense navigate bubble — "Opened runs filtered to failed · last 24h · send-order-receipt" — with the deep link under it, plus a chart. | Is the bubble enough to explain a screen that just changed? Should the filters be listed, or just summarised? |
+| `Take me to my deployments` | A reserved `propose_fix` intent rejected out loud ("proposing a fix isn't available yet"), then the agent describing the change instead. | Is an explicit rejection better than the agent never offering? What should it say? |
+| `Follow-up on the investigation` | An investigation cited by `trigger://…/investigation/…`, plus a navigate-to-run bubble. | Should raw URIs ever be visible to users, or always resolved to a label? |
 
 ## Prompts
 
 | Open | You should see | Feedback wanted |
 | --- | --- | --- |
-| `Demo · Prompts: page-aware chips` | Four chip rows — failed run, waiting run, slow run, saturated queue — each headed by the page context and signals it came from, promoted chip first in indigo. Last row: the same page after one chip was dismissed. | Is one promoted slot right? Is the promoted styling too strong? Do the chips read as *offers* rather than commands? Is dismissal worth building? |
+| `What should I look at here?` | Four chip rows — failed run, waiting run, slow run, saturated queue — each headed by the page context and signals it came from, promoted chip first in indigo. Last row: the same page after one chip was dismissed. | Is one promoted slot right? Is the promoted styling too strong? Do the chips read as *offers* rather than commands? Is dismissal worth building? |
 
 Fixture data for M4's registry lives in `demo/fixtures/page-context.ts`: one
 `AgentPageContext` per page kind (with `fresh_failure`, `waiting_run`,
@@ -80,35 +80,35 @@ should return for it.
 
 | Open | You should see | Feedback wanted |
 | --- | --- | --- |
-| `Demo · Watch: created, then woke` | A watch intent, the chip row under the banner (`send-order-receipt`, `backlog-drain`), then an unprompted wake narration minutes later. | Does an unprompted message need more framing than the note above it? Is the chip row the right home for watches? |
-| `Demo · Watch: expiry and cancel` | Chips in all four states (watching / fired / expired / cancelled), an expiry narration, the **couldn't verify at expiry** variant, and a cancel confirmation. Cancel `×` is intercepted. | Is the "couldn't verify" wording clearly different from "it didn't happen"? Should an expired watch offer to renew itself? |
+| `Tell me when the backlog drains` | A watch intent, the chip row under the banner (`send-order-receipt`, `backlog-drain`), then an unprompted wake narration minutes later. | Does an unprompted message need more framing than the note above it? Is the chip row the right home for watches? |
+| `Watch for that error recurring` | Chips in all four states (watching / fired / expired / cancelled), an expiry narration, the **couldn't verify at expiry** variant, and a cancel confirmation. Cancel `×` is intercepted. | Is the "couldn't verify" wording clearly different from "it didn't happen"? Should an expired watch offer to renew itself? |
 
 ## Reports
 
 | Open | You should see | Feedback wanted |
 | --- | --- | --- |
-| `Demo · Reports: healthy` | Three green statements, collapsed findings, `nothing to do` footer, report URI at the bottom. | Is a healthy report worth a card at all, or should it be one sentence? |
-| `Demo · Reports: degraded` | Flow stalled at the env concurrency limit with execution healthy: causal `read:` line, metric rows with sparklines and deltas, worst-queue attribution, "not your code", two footer actions including the do-nothing option. | Does the card survive the 380px panel width? Are the sparklines legible there? Is "not your code" prominent enough — it's the single most valuable line? |
-| `Demo · Reports: docs answer with sources` | A docs answer with two source links under it and no invented API. | Are citations under the answer enough, or do they need to be inline? |
+| `How is prod doing?` | Three green statements, collapsed findings, `nothing to do` footer, report URI at the bottom. | Is a healthy report worth a card at all, or should it be one sentence? |
+| `Is anything wrong right now?` | Flow stalled at the env concurrency limit with execution healthy: causal `read:` line, metric rows with sparklines and deltas, worst-queue attribution, "not your code", two footer actions including the do-nothing option. | Does the card survive the 380px panel width? Are the sparklines legible there? Is "not your code" prominent enough — it's the single most valuable line? |
+| `How do I use batchTrigger?` | A docs answer with two source links under it and no invented API. | Are citations under the answer enough, or do they need to be inline? |
 
 ## Base states
 
 | Open | You should see | Feedback wanted |
 | --- | --- | --- |
-| `Demo · Base: empty / first open` | The production suggested-prompt panel and an empty composer. | Is the first-open screen doing enough work? |
-| `Demo · Base: streaming` | A partially streamed assistant message with the "Thinking…" row under it. | Does a half-sentence read as progress or as breakage? |
-| `Demo · Base: tool call in flight` | A finished tool row above one still "calling…". **Click a row to expand its input/output.** | Should tool rows be visible by default, or collapsed behind one "worked on it" line? |
-| `Demo · Base: error and retry` | A failed tool row, the panel's error row, and a Retry button (intercepted). | Is the error message useful? Should retry be automatic? |
-| `Demo · Base: resumed chat` | A replayed transcript whose `render_view` part carried three blocks: revisions 0 and 1 of one diagnosis (collapsed latest-wins) and one **pre-envelope block with no id** that still renders and can never be revised. | Should a resumed chat be marked as historical more strongly than the demo bar does? |
-| `Demo · Base: composer with a draft` | The composer pre-filled the way `openWith` fills it from a page. Sending is intercepted. | Should a prefilled question send itself, or always wait for the user? |
-| `Demo · Base: banner variants` | The context banner across four page/env shapes (including a preview branch), plus the watch chip row. | Does the banner earn its row? Does a long preview-branch name break it? |
-| History list | Every `Demo · …` row alongside real chats. `demoEmptyHistoryChats` is the empty state. | Are demo rows distinguishable enough from real ones in the list? |
+| `Chat` | The production suggested-prompt panel and an empty composer. | Is the first-open screen doing enough work? |
+| `Summarize today's failures` | A partially streamed assistant message with the "Thinking…" row under it. | Does a half-sentence read as progress or as breakage? |
+| `How deep is the email queue?` | A finished tool row above one still "calling…". **Click a row to expand its input/output.** | Should tool rows be visible by default, or collapsed behind one "worked on it" line? |
+| `List yesterday's runs` | A failed tool row, the panel's error row, and a Retry button (intercepted). | Is the error message useful? Should retry be automatic? |
+| `Queue health over time` | A replayed transcript whose `render_view` part carried three blocks: revisions 0 and 1 of one diagnosis (collapsed latest-wins) and one **pre-envelope block with no id** that still renders and can never be revised. | Should a resumed chat be marked as historical more strongly than the demo bar does? |
+| `New chat` | The composer pre-filled the way `openWith` fills it from a page. Sending is intercepted. | Should a prefilled question send itself, or always wait for the user? |
+| `Which page am I on?` | The context banner across four page/env shapes (including a preview branch), plus the watch chip row. | Does the banner earn its row? Does a long preview-branch name break it? |
+| History list | Every demo row alongside real chats (demo rows are visually identical by design). `demoEmptyHistoryChats` is the empty state. | Does the mixed list read naturally? |
 
 ## Notes for reviewers
 
 - Run ids like `run_demo0f2c91` are fabricated. The `diagnosis` card links them
   to real run pages, so those links 404 — expected.
-- The `chart` view block inside `Demo · Base: resumed chat` is the *real*
+- The `chart` view block inside `Queue health over time` is the *real*
   `AgentChart`, which runs its query against your current environment. It may be
   empty locally. Every other chart in demo mode uses canned rows.
 - `demo/` contains no server imports and no `fetch` calls; the only server file
@@ -158,7 +158,7 @@ It logs in over the local magic-link flow (dev redirects straight to the link,
 so no email), then walks two things in each theme:
 
 1. every gallery section, captured by its `id`;
-2. every `Demo · …` conversation, opened in the real panel on the env page you
+2. every demo conversation, opened in the real panel on the env page you
    passed, captured as the panel element.
 
 Drop `SCREENSHOT_ENV_PATH` to do the gallery only. Other knobs: `BASE_URL`

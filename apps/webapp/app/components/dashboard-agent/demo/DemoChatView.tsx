@@ -34,20 +34,9 @@ import { DemoSuggestedPromptsRow } from "./components/DemoSuggestedPromptsRow";
 import { DemoWatchChips } from "./components/DemoWatchChips";
 import { demoChatById, type DemoChat, type DemoItem } from "./demo-chats";
 
-/** The strip that makes it impossible to mistake demo mode for the real thing. */
-function DemoModeBar({ chat }: { chat: DemoChat }) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-amber-500/30 bg-amber-500/5 px-3 py-1.5">
-      <span className="rounded-sm bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300">
-        demo
-      </span>
-      <span className="text-xs text-amber-200/80">{chat.title}</span>
-      <span className="text-[10px] text-amber-200/50">
-        {chat.resumed ? "resumed transcript · " : ""}all data is dummy
-      </span>
-    </div>
-  );
-}
+// No demo banner: fixture chats are presented exactly like real ones so the
+// review judges the actual experience. Isolation stays mechanical (demo:* ids,
+// no transport, no writes) — it never depended on the visual marker.
 
 function DemoItemView({
   item,
@@ -189,7 +178,6 @@ export function DemoChatView({
 
   return (
     <>
-      <DemoModeBar chat={chat} />
       <DashboardAgentContextBanner
         projectSlug={banner.projectSlug}
         environmentSlug={banner.environmentSlug}

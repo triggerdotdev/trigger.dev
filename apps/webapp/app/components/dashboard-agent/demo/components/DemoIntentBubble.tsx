@@ -11,14 +11,14 @@ import { ArrowTopRightOnSquareIcon, NoSymbolIcon } from "@heroicons/react/20/sol
 import { cn } from "~/utils/cn";
 import type { DemoIntent } from "../fixtures/intents";
 
-/** A neutral inline note — the demo interceptor's voice, never the agent's. */
+/**
+ * A neutral inline note — the demo interceptor's voice, never the agent's.
+ * Unlabelled on purpose: fixture chats present as real ones for review.
+ */
 export function DemoNote({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-md border border-dashed border-border-bright bg-background-bright/40 px-2.5 py-1.5">
-      <span className="text-xs text-text-dimmed">
-        <span className="mr-1.5 font-medium uppercase tracking-wide text-text-faint">demo</span>
-        {children}
-      </span>
+      <span className="text-xs text-text-dimmed">{children}</span>
     </div>
   );
 }

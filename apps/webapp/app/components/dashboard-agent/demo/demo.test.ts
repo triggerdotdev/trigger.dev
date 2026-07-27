@@ -331,10 +331,12 @@ describe("demo coverage", () => {
     }
   });
 
-  it("gives every chat a playbook summary", () => {
+  it("gives every chat a playbook summary and a natural title", () => {
     for (const chat of demoChats) {
       expect(chat.summary.length, chat.id).toBeGreaterThan(20);
-      expect(chat.title.startsWith("Demo · "), chat.title).toBe(true);
+      // Titles read like real chats — identity lives in the demo: id, never the label.
+      expect(chat.title.includes("Demo"), chat.title).toBe(false);
+      expect(chat.title.length, chat.id).toBeGreaterThan(0);
     }
   });
 });
