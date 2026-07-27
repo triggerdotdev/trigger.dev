@@ -1,0 +1,7 @@
+# Standalone deploy/run artifacts (this project is installed + run outside the monorepo)
+node_modules/
+.trigger/
+e2e-results/
+.env.bench
+pnpm-lock.yaml
+package-lock.json
