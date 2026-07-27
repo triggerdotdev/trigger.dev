@@ -52,6 +52,14 @@ describe("resolveInternalApiOriginEnabled", () => {
         globalDefault: false,
       })
     ).toBe(false);
+
+    // The fallback must follow the global default, not hardcode false.
+    expect(
+      resolveInternalApiOriginEnabled({
+        orgFeatureFlags: { internalApiOriginEnabled: "false" },
+        globalDefault: true,
+      })
+    ).toBe(true);
   });
 
   it("ignores non-object flag containers", () => {

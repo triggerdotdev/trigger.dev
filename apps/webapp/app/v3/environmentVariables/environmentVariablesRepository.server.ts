@@ -1151,8 +1151,9 @@ async function resolveOverridableOtelDevVariables(
 // Deployed runs normally get the public API origin. When INTERNAL_API_ORIGIN is
 // set and the org's internalApiOriginEnabled flag resolves on (org override wins
 // in both directions; the global default applies only when the org has not set
-// it), they get the internal origin instead. Resolved at attempt start, so flag
-// changes take effect on the next attempt without redeploys.
+// it), they get the internal origin instead. Resolved at attempt start: an org
+// override applies on the next attempt; a global-default flip lags by up to the
+// flags-registry reload interval, independently per webapp instance.
 async function resolveProdApiOrigin(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo
 ): Promise<string> {
@@ -1162,7 +1163,7 @@ async function resolveProdApiOrigin(
     return publicOrigin;
   }
 
-  const organization = await prisma.organization.findFirst({
+  const organization = await $replica.organization.findFirst({
     where: { id: runtimeEnvironment.organizationId },
     select: { featureFlags: true },
   });
