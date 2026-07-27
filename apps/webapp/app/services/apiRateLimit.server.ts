@@ -96,7 +96,6 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     const [authError, authenticated] = await tryCatch(
       authenticateAuthorizationHeader(authorizationValue, {
         allowPublicKey: true,
-        allowJWT: true,
       })
     );
 
