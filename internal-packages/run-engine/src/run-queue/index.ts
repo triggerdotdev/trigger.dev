@@ -1033,6 +1033,118 @@ export class RunQueue {
     );
   }
 
+  /**
+   * Returns runs that the queue has admitted but that no worker has claimed yet back into
+   * the pending queue, restoring the position they held before they were admitted.
+   *
+   * A run sitting in the worker queue is in `currentConcurrency` but not yet in
+   * `currentDequeued`, so the difference of those two sets identifies the candidates without
+   * having to scan the (region-wide) worker queue list.
+   *
+   * Callers must make the queue ineligible for dequeuing (concurrency limit 0) *before*
+   * calling this. Returning a run costs it its place in the worker queue FIFO and it can only
+   * re-enter at the back, so if the queue can still admit work then a newer run can overtake
+   * one that is on its way back.
+   *
+   * @param queue - Restrict to a single queue (including its concurrency key variants).
+   *   Omit to cover every queue in the environment.
+   */
+  public async returnUnclaimedMessagesToQueue({
+    env,
+    queue,
+  }: {
+    env: MinimalAuthenticatedEnvironment;
+    queue?: string;
+  }): Promise<{ returned: number; skipped: number }> {
+    return this.#trace(
+      "returnUnclaimedMessagesToQueue",
+      async (span) => {
+        const unclaimedRunIds = await this.redis.sdiff(
+          this.keys.envCurrentConcurrencyKey(env),
+          this.keys.envCurrentDequeuedKey(env)
+        );
+
+        span.setAttribute("unclaimed_count", unclaimedRunIds.length);
+
+        if (unclaimedRunIds.length === 0) {
+          return { returned: 0, skipped: 0 };
+        }
+
+        const targetBaseQueueKey = queue ? this.keys.queueKey(env, queue) : undefined;
+        const messages = await this.#readMessages(env.organization.id, unclaimedRunIds);
+
+        let returned = 0;
+        let skipped = 0;
+
+        for (const message of messages) {
+          if (
+            targetBaseQueueKey &&
+            this.keys.baseQueueKeyFromQueue(message.queue) !== targetBaseQueueKey
+          ) {
+            continue;
+          }
+
+          if (await this.#callReturnMessageToQueue(message)) {
+            returned++;
+          } else {
+            skipped++;
+          }
+        }
+
+        span.setAttribute("returned_count", returned);
+        span.setAttribute("skipped_count", skipped);
+
+        this.logger.info("returnUnclaimedMessagesToQueue", {
+          service: this.name,
+          environmentId: env.id,
+          queue,
+          candidates: unclaimedRunIds.length,
+          returned,
+          skipped,
+        });
+
+        return { returned, skipped };
+      },
+      {
+        kind: SpanKind.INTERNAL,
+        attributes: {
+          [SEMATTRS_MESSAGING_SYSTEM]: "runqueue",
+          ...attributesFromAuthenticatedEnv(env),
+        },
+      }
+    );
+  }
+
+  async #readMessages(orgId: string, runIds: string[]): Promise<OutputPayload[]> {
+    const rawMessages = await this.redis.mget(
+      runIds.map((runId) => this.keys.messageKey(orgId, runId))
+    );
+
+    const messages: OutputPayload[] = [];
+
+    for (const rawMessage of rawMessages) {
+      if (!rawMessage) {
+        continue;
+      }
+
+      const [error, message] = parseRawMessage(rawMessage);
+
+      if (error) {
+        this.logger.error(`[${this.name}] Failed to parse message`, {
+          error,
+          service: this.name,
+          message: message ?? rawMessage,
+        });
+      }
+
+      if (message) {
+        messages.push(message);
+      }
+    }
+
+    return messages;
+  }
+
   public async removeEnvironmentQueuesFromMasterQueue(
     runtimeEnvironmentId: string,
     organizationId: string,
@@ -2621,6 +2733,80 @@ export class RunQueue {
         String(messageScore)
       );
     }
+  }
+
+  /**
+   * @returns true if the message was returned to its queue, false if a worker had already
+   *   claimed it (or its payload was gone) and it was left alone.
+   */
+  async #callReturnMessageToQueue(message: OutputPayload): Promise<boolean> {
+    const messageId = message.runId;
+    const messageKey = this.keys.messageKey(message.orgId, message.runId);
+    const messageQueue = message.queue;
+    const queueCurrentConcurrencyKey = this.keys.queueCurrentConcurrencyKeyFromQueue(message.queue);
+    const envCurrentConcurrencyKey = this.keys.envCurrentConcurrencyKeyFromQueue(message.queue);
+    const queueCurrentDequeuedKey = this.keys.queueCurrentDequeuedKeyFromQueue(message.queue);
+    const envCurrentDequeuedKey = this.keys.envCurrentDequeuedKeyFromQueue(message.queue);
+    const envQueueKey = this.keys.envQueueKeyFromQueue(message.queue);
+    const masterQueueKey = this.keys.masterQueueKeyForEnvironment(
+      message.environmentId,
+      this.shardCount
+    );
+    const workerQueueKey = this.keys.workerQueueKey(this.#getWorkerQueueFromMessage(message));
+
+    this.logger.debug("Calling returnMessageToQueue", {
+      messageKey,
+      messageQueue,
+      masterQueueKey,
+      workerQueueKey,
+      messageId,
+      messageScore: message.timestamp,
+      service: this.name,
+    });
+
+    let result: number;
+
+    if (message.concurrencyKey) {
+      result = await this.redis.returnMessageToQueueCkTracked(
+        masterQueueKey,
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        workerQueueKey,
+        this.keys.ckIndexKeyFromQueue(message.queue),
+        this.keys.queueLengthCounterKeyFromQueue(message.queue),
+        this.keys.queueRunningCounterKeyFromQueue(message.queue),
+        messageId,
+        messageQueue,
+        String(message.timestamp),
+        messageKey,
+        this.keys.toCkWildcard(message.queue),
+        this.options.redis.keyPrefix ?? "",
+        String(this.counterTtlSeconds)
+      );
+    } else {
+      result = await this.redis.returnMessageToQueue(
+        masterQueueKey,
+        messageKey,
+        messageQueue,
+        queueCurrentConcurrencyKey,
+        envCurrentConcurrencyKey,
+        queueCurrentDequeuedKey,
+        envCurrentDequeuedKey,
+        envQueueKey,
+        workerQueueKey,
+        messageId,
+        messageQueue,
+        String(message.timestamp),
+        messageKey
+      );
+    }
+
+    return result === 1;
   }
 
   async #callMoveToDeadLetterQueue({ message }: { message: OutputPayload }) {
@@ -4496,6 +4682,149 @@ end
 `,
     });
 
+    /**
+     * Return an admitted-but-unclaimed message to its queue at its original score.
+     *
+     * The LREM is the claim: if it removes nothing then a worker has already popped the
+     * entry and owns the run, so every other key must be left untouched.
+     *
+     * Returns 1 when the message was returned, 0 when it was left alone.
+     */
+    this.redis.defineCommand("returnMessageToQueue", {
+      numberOfKeys: 9,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local workerQueueKey = KEYS[9]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageScore = tonumber(ARGV[3])
+local messageKeyValue = ARGV[4]
+
+if redis.call('LREM', workerQueueKey, 0, messageKeyValue) == 0 then
+  return 0
+end
+
+-- An orphaned list entry (payload already acknowledged): the LREM above cleaned it up.
+if redis.call('EXISTS', messageKey) == 0 then
+  return 0
+end
+
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+
+redis.call('ZADD', messageQueueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+
+local earliestMessage = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliestMessage == 0 then
+  redis.call('ZREM', masterQueueKey, messageQueueName)
+else
+  redis.call('ZADD', masterQueueKey, earliestMessage[2], messageQueueName)
+end
+
+return 1
+`,
+    });
+
+    /**
+     * Tracked CK variant of returnMessageToQueue. Mirrors nackMessageCkTracked's counter
+     * bookkeeping: SREM currentDequeued may DECR runningCounter, and the ZADD back into the
+     * variant zset INCRs lengthCounter only when it reported a new entry.
+     */
+    this.redis.defineCommand("returnMessageToQueueCkTracked", {
+      numberOfKeys: 12,
+      lua: `
+-- Keys:
+local masterQueueKey = KEYS[1]
+local messageKey = KEYS[2]
+local messageQueueKey = KEYS[3]
+local queueCurrentConcurrencyKey = KEYS[4]
+local envCurrentConcurrencyKey = KEYS[5]
+local queueCurrentDequeuedKey = KEYS[6]
+local envCurrentDequeuedKey = KEYS[7]
+local envQueueKey = KEYS[8]
+local workerQueueKey = KEYS[9]
+local ckIndexKey = KEYS[10]
+local lengthCounterKey = KEYS[11]
+local runningCounterKey = KEYS[12]
+
+-- Args:
+local messageId = ARGV[1]
+local messageQueueName = ARGV[2]
+local messageScore = tonumber(ARGV[3])
+local messageKeyValue = ARGV[4]
+local ckWildcardName = ARGV[5]
+local keyPrefix = ARGV[6]
+local counterTtl = ARGV[7]
+
+local function decrFloored(key)
+  if tonumber(redis.call('GET', key) or '0') > 0 then
+    redis.call('DECR', key)
+  end
+end
+
+if redis.call('LREM', workerQueueKey, 0, messageKeyValue) == 0 then
+  return 0
+end
+
+-- An orphaned list entry (payload already acknowledged): the LREM above cleaned it up.
+if redis.call('EXISTS', messageKey) == 0 then
+  return 0
+end
+
+redis.call('SREM', queueCurrentConcurrencyKey, messageId)
+redis.call('SREM', envCurrentConcurrencyKey, messageId)
+local removedFromDequeued = redis.call('SREM', queueCurrentDequeuedKey, messageId)
+redis.call('SREM', envCurrentDequeuedKey, messageId)
+if removedFromDequeued == 1 then
+  decrFloored(runningCounterKey)
+end
+
+if redis.call('EXISTS', lengthCounterKey) == 0 then
+  local total = 0
+  local variants = redis.call('ZRANGE', ckIndexKey, 0, -1)
+  for _, v in ipairs(variants) do
+    total = total + tonumber(redis.call('ZCARD', keyPrefix .. v) or '0')
+  end
+  redis.call('SET', lengthCounterKey, total, 'EX', counterTtl)
+end
+
+local added = redis.call('ZADD', messageQueueKey, messageScore, messageId)
+redis.call('ZADD', envQueueKey, messageScore, messageId)
+if added == 1 then
+  redis.call('INCR', lengthCounterKey)
+end
+
+local earliest = redis.call('ZRANGE', messageQueueKey, 0, 0, 'WITHSCORES')
+if #earliest > 0 then
+  redis.call('ZADD', ckIndexKey, earliest[2], messageQueueName)
+end
+
+local earliestIdx = redis.call('ZRANGE', ckIndexKey, 0, 0, 'WITHSCORES')
+if #earliestIdx == 0 then
+  redis.call('ZREM', masterQueueKey, ckWildcardName)
+else
+  redis.call('ZADD', masterQueueKey, earliestIdx[2], ckWildcardName)
+end
+
+redis.call('ZREM', masterQueueKey, messageQueueName)
+
+return 1
+`,
+    });
+
     this.redis.defineCommand("moveToDeadLetterQueue", {
       numberOfKeys: 9,
       lua: `
@@ -5635,6 +5964,46 @@ declare module "@internal/redis" {
       ckWildcardName: string,
       callback?: Callback<void>
     ): Result<void, Context>;
+
+    returnMessageToQueue(
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      workerQueueKey: string,
+      messageId: string,
+      messageQueueName: string,
+      messageScore: string,
+      messageKeyValue: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
+
+    returnMessageToQueueCkTracked(
+      masterQueueKey: string,
+      messageKey: string,
+      messageQueue: string,
+      queueCurrentConcurrencyKey: string,
+      envCurrentConcurrencyKey: string,
+      queueCurrentDequeuedKey: string,
+      envCurrentDequeuedKey: string,
+      envQueueKey: string,
+      workerQueueKey: string,
+      ckIndexKey: string,
+      lengthCounterKey: string,
+      runningCounterKey: string,
+      messageId: string,
+      messageQueueName: string,
+      messageScore: string,
+      messageKeyValue: string,
+      ckWildcardName: string,
+      keyPrefix: string,
+      counterTtl: string,
+      callback?: Callback<number>
+    ): Result<number, Context>;
 
     nackMessageCkTracked(
       masterQueueKey: string,

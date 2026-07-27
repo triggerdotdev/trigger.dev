@@ -2,7 +2,7 @@ import { EnvironmentPauseSource, type PrismaClientOrTransaction } from "@trigger
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { getManualPauseEnvironmentResult } from "~/v3/services/billingLimit/manualPauseEnvironmentGuard.server";
-import { updateEnvConcurrencyLimits } from "../runQueue.server";
+import { returnUnclaimedMessagesToQueue, updateEnvConcurrencyLimits } from "../runQueue.server";
 import { WithRunEngine } from "./baseService.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -114,6 +114,7 @@ export class PauseEnvironmentService extends WithRunEngine {
             environmentId: environment.id,
           });
           await updateEnvConcurrencyLimits(environment, 0);
+          await returnUnclaimedMessagesToQueue({ environment });
         } else {
           logger.debug("PauseEnvironmentService: resuming environment", {
             environmentId: environment.id,

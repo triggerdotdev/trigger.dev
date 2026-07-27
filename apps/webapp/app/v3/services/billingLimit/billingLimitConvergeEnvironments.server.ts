@@ -29,6 +29,8 @@ type UpdateEnvConcurrency = (
   maximumConcurrencyLimit?: number
 ) => Promise<void>;
 
+type ReturnUnclaimedMessages = (environment: EnvironmentWithRelations) => Promise<void>;
+
 export async function convergeBillingLimitEnvironmentsForOrg(
   organizationId: string,
   targetState: BillingLimitConvergeTargetState,
@@ -36,6 +38,7 @@ export async function convergeBillingLimitEnvironmentsForOrg(
     batchSize?: number;
     prismaClient?: PrismaClient;
     updateConcurrency?: UpdateEnvConcurrency;
+    returnUnclaimed?: ReturnUnclaimedMessages;
   }
 ): Promise<ConvergeOrgResult> {
   const db = options?.prismaClient ?? prisma;
@@ -51,18 +54,32 @@ export async function convergeBillingLimitEnvironmentsForOrg(
       return updateEnvConcurrencyLimits(environment, maximumConcurrencyLimit);
     });
 
+  const returnUnclaimed =
+    options?.returnUnclaimed ??
+    (async (environment) => {
+      const { returnUnclaimedMessagesToQueue } = await import("~/v3/runQueue.server");
+      await returnUnclaimedMessagesToQueue({ environment });
+    });
+
   if (targetState === "ok") {
     return unpauseBillingLimitEnvironments(organizationId, db, batchSize, updateConcurrency);
   }
 
-  return pauseBillingLimitEnvironments(organizationId, db, batchSize, updateConcurrency);
+  return pauseBillingLimitEnvironments(
+    organizationId,
+    db,
+    batchSize,
+    updateConcurrency,
+    returnUnclaimed
+  );
 }
 
 async function pauseBillingLimitEnvironments(
   organizationId: string,
   db: PrismaClient,
   batchSize: number,
-  updateConcurrency: UpdateEnvConcurrency
+  updateConcurrency: UpdateEnvConcurrency,
+  returnUnclaimed: ReturnUnclaimedMessages
 ): Promise<ConvergeOrgResult> {
   let paused = 0;
   let cursor: string | undefined;
@@ -88,7 +105,7 @@ async function pauseBillingLimitEnvironments(
     }
 
     for (const environment of environments) {
-      await pauseEnvironmentForBillingLimit(environment, db, updateConcurrency);
+      await pauseEnvironmentForBillingLimit(environment, db, updateConcurrency, returnUnclaimed);
       paused++;
     }
 
@@ -156,7 +173,8 @@ async function unpauseBillingLimitEnvironments(
 async function pauseEnvironmentForBillingLimit(
   environment: EnvironmentWithRelations,
   db: PrismaClient,
-  updateConcurrency: UpdateEnvConcurrency
+  updateConcurrency: UpdateEnvConcurrency,
+  returnUnclaimed: ReturnUnclaimedMessages
 ) {
   const updated = await db.runtimeEnvironment.update({
     where: { id: environment.id },
@@ -172,6 +190,7 @@ async function pauseEnvironmentForBillingLimit(
 
   try {
     await updateConcurrency(updated, 0);
+    await returnUnclaimed(updated);
   } catch (error) {
     await db.runtimeEnvironment.update({
       where: { id: environment.id },

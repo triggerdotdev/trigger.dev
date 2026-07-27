@@ -1634,6 +1634,24 @@ export class RunEngine {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
   }
 
+  /**
+   * Returns runs that have been admitted for execution but that no worker has claimed yet
+   * back into their queue, at the position they held before.
+   *
+   * Pausing only stops runs being admitted; anything already handed to a worker queue would
+   * otherwise still execute. Call this after the queue has been made ineligible for
+   * dequeuing, never before — see `RunQueue.returnUnclaimedMessagesToQueue`.
+   */
+  async returnUnclaimedMessagesToQueue({
+    environment,
+    queue,
+  }: {
+    environment: MinimalAuthenticatedEnvironment;
+    queue?: string;
+  }): Promise<{ returned: number; skipped: number }> {
+    return this.runQueue.returnUnclaimedMessagesToQueue({ env: environment, queue });
+  }
+
   async removeEnvironmentQueuesFromMasterQueue({
     runtimeEnvironmentId,
     organizationId,

@@ -49,6 +49,78 @@ describe("convergeBillingLimitEnvironmentsForOrg", () => {
     expect(envAfter.pauseSource).toBeNull();
   });
 
+  postgresTest("returns unclaimed runs after pausing for a billing limit", async ({ prisma }) => {
+    const { organization, project } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PRODUCTION",
+      slug: uniqueId("prod"),
+    });
+
+    const calls: Array<{ concurrency?: number; returnedFor?: string }> = [];
+
+    const result = await convergeBillingLimitEnvironmentsForOrg(organization.id, "grace", {
+      prismaClient: prisma,
+      updateConcurrency: async (_env, maximumConcurrencyLimit) => {
+        calls.push({ concurrency: maximumConcurrencyLimit });
+      },
+      returnUnclaimed: async (env) => {
+        calls.push({ returnedFor: env.id });
+      },
+    });
+
+    expect(result).toEqual({ paused: 1, unpaused: 0 });
+
+    expect(calls).toEqual([{ concurrency: 0 }, { returnedFor: environment.id }]);
+
+    const envAfter = await prisma.runtimeEnvironment.findUniqueOrThrow({
+      where: { id: environment.id },
+    });
+    expect(envAfter.paused).toBe(true);
+    expect(envAfter.pauseSource).toBe(EnvironmentPauseSource.BILLING_LIMIT);
+  });
+
+  postgresTest("does not return unclaimed runs when unpausing", async ({ prisma }) => {
+    const { organization } = await createBillingPausedProductionEnv(prisma);
+
+    const returnUnclaimed = vi.fn(async () => undefined);
+
+    await convergeBillingLimitEnvironmentsForOrg(organization.id, "ok", {
+      prismaClient: prisma,
+      updateConcurrency: async () => undefined,
+      returnUnclaimed,
+    });
+
+    expect(returnUnclaimed).not.toHaveBeenCalled();
+  });
+
+  postgresTest("rolls back pause when returning unclaimed runs fails", async ({ prisma }) => {
+    const { organization, project } = await createTestOrgProjectWithMember(prisma);
+    const environment = await createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PRODUCTION",
+      slug: uniqueId("prod"),
+    });
+
+    await expect(
+      convergeBillingLimitEnvironmentsForOrg(organization.id, "grace", {
+        prismaClient: prisma,
+        updateConcurrency: async () => undefined,
+        returnUnclaimed: async () => {
+          throw new Error("run queue unavailable");
+        },
+      })
+    ).rejects.toThrow("run queue unavailable");
+
+    const envAfter = await prisma.runtimeEnvironment.findUniqueOrThrow({
+      where: { id: environment.id },
+    });
+    expect(envAfter.paused).toBe(false);
+    expect(envAfter.pauseSource).toBeNull();
+  });
+
   postgresTest("rolls back pause when concurrency update fails", async ({ prisma }) => {
     const { organization, project } = await createTestOrgProjectWithMember(prisma);
     const environment = await createRuntimeEnvironment(prisma, {

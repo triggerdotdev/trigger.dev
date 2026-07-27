@@ -30,3 +30,19 @@ export async function removeQueueConcurrencyLimits(
 ) {
   await engine.runQueue.removeQueueConcurrencyLimits(environment, queueName);
 }
+
+/**
+ * Returns runs waiting to be picked up by a worker back into their queue.
+ *
+ * Only safe once the concurrency limit has been set to 0, otherwise a newer run can be
+ * admitted and overtake one on its way back.
+ */
+export async function returnUnclaimedMessagesToQueue({
+  environment,
+  queue,
+}: {
+  environment: AuthenticatedEnvironment;
+  queue?: string;
+}) {
+  return engine.returnUnclaimedMessagesToQueue({ environment, queue });
+}
