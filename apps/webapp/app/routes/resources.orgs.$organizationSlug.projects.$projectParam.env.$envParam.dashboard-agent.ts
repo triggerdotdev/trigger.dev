@@ -146,7 +146,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
       const runtimeEnv = await $replica.runtimeEnvironment.findFirst({
         where: { projectId: project.id, slug: envParam },
-        select: { type: true },
+        select: { id: true, type: true },
       });
       const environmentName = runtimeEnv ? ENV_NAME_BY_TYPE[runtimeEnv.type] : undefined;
       const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
@@ -167,6 +167,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             userActorToken: await mintDashboardAgentUserActorToken(userId),
             apiOrigin: dashboardAgentApiOrigin(),
             projectRef: project.externalRef,
+            // Same canonical environment identity the `in` proxy injects, so turn
+            // 1 and turn N carry identical context.
+            environmentId: runtimeEnv?.id,
             environmentName,
             ...(repoSnapshot ? { repoSnapshot } : {}),
           },

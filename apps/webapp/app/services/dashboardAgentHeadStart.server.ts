@@ -6,8 +6,9 @@ import {
   dashboardAgentCodeToolSchemas,
   dashboardAgentToolSchemas,
 } from "@internal/dashboard-agent/tool-schemas";
+import { ApiClient, SessionStreamInstance, writeTurnCompleteRecord } from "@trigger.dev/core/v3";
 import { chat as chatServer } from "@trigger.dev/sdk/chat-server";
-import { streamText, type UIMessage } from "ai";
+import { streamText, type UIMessage, type UIMessageChunk } from "ai";
 import { env } from "~/env.server";
 import {
   dashboardAgentApiOrigin,
@@ -18,6 +19,90 @@ import { logger } from "~/services/logger.server";
 const TASK_ID = "dashboard-agent";
 
 const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
+
+/**
+ * Shown in the chat when the warm first turn never produced anything. Generic on
+ * purpose — the underlying provider/network error is logged, not surfaced. The
+ * user can just send the message again.
+ */
+export const HEAD_START_FAILURE_ERROR_TEXT =
+  "The assistant couldn't start this response. Please send your message again.";
+
+/**
+ * The two writes the failure path needs on `session.out`. Split out as a seam so
+ * the failure logic is unit-testable without S2 credentials or a live session.
+ */
+export type DashboardAgentSessionOutWriter = {
+  /** Append one UIMessage chunk as a data record. */
+  writeChunk(chunk: UIMessageChunk): Promise<void>;
+  /** Append the `turn-complete` control record that closes the client's stream. */
+  writeTurnComplete(): Promise<void>;
+};
+
+/**
+ * Surface a failed warm step 1 to the client as a visible error turn.
+ *
+ * `startHeadStart` has already dispatched `handover-skip`, so the agent run
+ * exits without writing anything — nobody else will ever write to `session.out`
+ * for this turn. The browser, which mounts as streaming and resumes
+ * `session.out`, would otherwise hang on an empty stream and the turn would look
+ * silently lost.
+ *
+ * The shape mirrors what the chat.agent runtime emits on a failed turn (see
+ * `packages/trigger-sdk/src/v3/chat.ts`): an `{ type: "error", errorText }` data
+ * chunk — which the AI SDK transport turns into `useChat`'s `error`, rendered by
+ * DashboardAgentMessages — followed by the `turn-complete` control record, which
+ * is what actually closes the resumed stream (see `chat-client.ts`).
+ *
+ * `turn-complete` is written even if the error chunk fails, so a resumed stream
+ * always terminates; the chunk's error still propagates to the caller for logging.
+ */
+export async function writeHeadStartFailureToSessionOut(
+  writer: DashboardAgentSessionOutWriter
+): Promise<void> {
+  try {
+    await writer.writeChunk({
+      type: "error",
+      errorText: HEAD_START_FAILURE_ERROR_TEXT,
+    } as UIMessageChunk);
+  } finally {
+    await writer.writeTurnComplete();
+  }
+}
+
+function singleChunkStream(chunk: UIMessageChunk): ReadableStream<UIMessageChunk> {
+  return new ReadableStream<UIMessageChunk>({
+    start(controller) {
+      controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+}
+
+// Writes as the agent's own environment (secret key auth) — `.out` appends are
+// PRIVATE-only, and this is the same credential the head start creates the
+// session with.
+function createSessionOutWriter(
+  chatId: string,
+  accessToken: string
+): DashboardAgentSessionOutWriter {
+  const apiClient = new ApiClient(dashboardAgentApiOrigin(), accessToken);
+  return {
+    async writeChunk(chunk) {
+      const instance = new SessionStreamInstance<UIMessageChunk>({
+        apiClient,
+        baseUrl: apiClient.baseUrl,
+        sessionId: chatId, // Sessions are addressable by externalId (chatId).
+        io: "out",
+        source: singleChunkStream(chunk),
+      });
+      await instance.wait();
+    },
+    async writeTurnComplete() {
+      await writeTurnCompleteRecord(apiClient, chatId);
+    },
+  };
+}
 
 /**
  * Server-owned head start. The webapp generates the chatId and owns the chat
@@ -63,10 +148,23 @@ export async function startDashboardAgentHeadStart(params: {
 
   // The webapp is long-lived, so step 1's drain + the handover dispatch run in
   // the background after this resolves (createSession + trigger have completed).
-  // Log a warm-step failure for observability: startHeadStart has already fired
-  // handover-skip so the agent run exits cleanly, but the client (mounted as
-  // streaming) then resumes an empty session.out, so the turn looks lost.
-  completion.catch((error) => {
+  // On failure startHeadStart has already fired handover-skip, so the agent run
+  // exits cleanly and nothing else will ever write to session.out for this turn —
+  // write an error turn ourselves so the client's resume shows a visible,
+  // retryable error instead of an empty chat.
+  completion.catch(async (error) => {
     logger.error("Dashboard agent head start failed", { chatId: params.chatId, error });
+
+    const accessToken = env.DASHBOARD_AGENT_SECRET_KEY;
+    if (!accessToken) return;
+
+    try {
+      await writeHeadStartFailureToSessionOut(createSessionOutWriter(params.chatId, accessToken));
+    } catch (writeError) {
+      logger.error("Failed to write dashboard agent head start error to session.out", {
+        chatId: params.chatId,
+        error: writeError,
+      });
+    }
   });
 }

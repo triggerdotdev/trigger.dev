@@ -233,48 +233,9 @@ async function generateAndSaveTitle(
   }
 }
 
-// Where the user is and what is notable there, injected server-side per turn.
-// TODO(M0-integration): swap to `agentPageContextSchema` from
-// `@internal/dashboard-agent-contracts` once that package lands.
-const agentPageSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("runs"), filters: z.unknown().optional() }),
-  z.object({
-    kind: z.literal("run"),
-    runId: z.string(),
-    status: z.string(),
-    taskId: z.string(),
-    queue: z.string().optional(),
-  }),
-  z.object({ kind: z.literal("error"), fingerprint: z.string() }),
-  z.object({
-    kind: z.literal("queue"),
-    name: z.string(),
-    health: z.enum(["ok", "warn", "crit"]).optional(),
-  }),
-  z.object({ kind: z.literal("deployment"), version: z.string() }),
-  z.object({ kind: z.literal("other"), path: z.string() }),
-]);
+import { agentPageContextSchema } from "@internal/dashboard-agent-contracts";
 
-const agentPageSignalSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("fresh_failure"), runId: z.string(), failedAt: z.string() }),
-  z.object({ kind: z.literal("waiting_run"), runId: z.string(), queue: z.string().optional() }),
-  z.object({
-    kind: z.literal("slow_run"),
-    runId: z.string(),
-    durationMs: z.number(),
-    baselineP95Ms: z.number(),
-  }),
-  z.object({ kind: z.literal("concurrency_saturation"), severity: z.enum(["warn", "crit"]) }),
-]);
-
-const agentPageContextSchema = z.object({
-  page: agentPageSchema,
-  signals: z.array(agentPageSignalSchema),
-});
-
-export type AgentPage = z.infer<typeof agentPageSchema>;
-export type AgentPageSignal = z.infer<typeof agentPageSignalSchema>;
-export type AgentPageContext = z.infer<typeof agentPageContextSchema>;
+export type { AgentPage, AgentPageContext, AgentPageSignal } from "@internal/dashboard-agent-contracts";
 
 // A chat belongs to an org + user. The current project/env (and the page) are
 // per-turn context for the agent, not chat identity — one conversation can span

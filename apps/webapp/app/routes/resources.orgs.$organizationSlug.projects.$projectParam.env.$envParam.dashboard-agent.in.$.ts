@@ -74,7 +74,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // Resolve the dashboard env slug to the canonical API env name its tools use.
   const runtimeEnv = await $replica.runtimeEnvironment.findFirst({
     where: { projectId: project.id, slug: envParam },
-    select: { type: true },
+    select: { id: true, type: true },
   });
   const environmentName = runtimeEnv ? ENV_NAME_BY_TYPE[runtimeEnv.type] : undefined;
 
@@ -96,6 +96,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
         userActorToken: await mintDashboardAgentUserActorToken(user.id),
         apiOrigin,
         projectRef: project.externalRef,
+        // The canonical environment identity. `(projectId, slug)` isn't unique
+        // (dev is per-member) and names are display-only, so anything that has to
+        // address one specific environment row uses this id. `environmentName`
+        // stays for back-compat with the agent's name-addressed tools.
+        environmentId: runtimeEnv?.id,
         environmentName,
         ...(repoSnapshot ? { repoSnapshot } : {}),
       };
