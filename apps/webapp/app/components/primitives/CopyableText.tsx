@@ -11,12 +11,19 @@ export function CopyableText({
   className,
   asChild,
   variant,
+  hideTooltip,
 }: {
   value: string;
   copyValue?: string;
   className?: string;
   asChild?: boolean;
   variant?: "icon-right" | "text-below";
+  /**
+   * Hide the "Copy"/"Copied" hint tooltip. Use when this is rendered inside another
+   * Radix tooltip (e.g. the admin debug panel): the nested tooltip would otherwise
+   * fire Radix's global "one tooltip open at a time" close and dismiss the parent.
+   */
+  hideTooltip?: boolean;
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const { copy, copied } = useCopy(copyValue ?? value);
@@ -24,6 +31,24 @@ export function CopyableText({
   const resolvedVariant = variant ?? "icon-right";
 
   if (resolvedVariant === "icon-right") {
+    const iconButton = (
+      <span
+        className={cn(
+          "ml-1 flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
+          asChild && "p-1",
+          copied
+            ? "text-green-500"
+            : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
+        )}
+      >
+        {copied ? (
+          <ClipboardCheckIcon className="size-3.5" />
+        ) : (
+          <ClipboardIcon className="size-3.5" />
+        )}
+      </span>
+    );
+
     return (
       <span
         className={cn("group relative inline-flex h-6 items-center", className)}
@@ -38,29 +63,17 @@ export function CopyableText({
             isHovered ? "flex" : "hidden"
           )}
         >
-          <SimpleTooltip
-            button={
-              <span
-                className={cn(
-                  "ml-1 flex size-6 items-center justify-center rounded border border-border-bright bg-background-hover",
-                  asChild && "p-1",
-                  copied
-                    ? "text-green-500"
-                    : "text-text-dimmed hover:border-border-bright hover:bg-background-raised hover:text-text-bright"
-                )}
-              >
-                {copied ? (
-                  <ClipboardCheckIcon className="size-3.5" />
-                ) : (
-                  <ClipboardIcon className="size-3.5" />
-                )}
-              </span>
-            }
-            content={copied ? "Copied!" : "Copy"}
-            className="font-sans"
-            disableHoverableContent
-            asChild={asChild}
-          />
+          {hideTooltip ? (
+            iconButton
+          ) : (
+            <SimpleTooltip
+              button={iconButton}
+              content={copied ? "Copied!" : "Copy"}
+              className="font-sans"
+              disableHoverableContent
+              asChild={asChild}
+            />
+          )}
         </span>
       </span>
     );

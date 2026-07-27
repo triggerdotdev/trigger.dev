@@ -112,6 +112,7 @@ export const Env = z
 
     // Optional services
     TRIGGER_WARM_START_URL: z.string().optional(),
+    TRIGGER_WARM_START_DISPATCH_URL: z.string().optional(),
     TRIGGER_CHECKPOINT_URL: z.string().optional(),
     TRIGGER_METADATA_URL: z.string().optional(),
 

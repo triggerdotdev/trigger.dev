@@ -216,7 +216,7 @@ describe("realtime-svc — replica-lag guards", () => {
       const replica = laggingReplica(prisma, [{ model: "taskRun", mode: "missing" }]);
       // The hydrator holds the real store; hydrateByIds passes `options.replica` as the read client.
       const hydrator = new RunHydrator({
-        replica: replica.client as PrismaClient,
+        readClient: replica.client as PrismaClient,
         runStore: writerStore,
         cacheTtlMs: 0,
       });
@@ -263,7 +263,7 @@ describe("realtime-svc — replica-lag guards", () => {
 
       const replica = laggingReplica(prisma, [{ model: "taskRun", mode: "missing" }]);
       const hydrator = new RunHydrator({
-        replica: replica.client as PrismaClient,
+        readClient: replica.client as PrismaClient,
         runStore: writerStore,
         cacheTtlMs: 0,
       });

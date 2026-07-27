@@ -462,6 +462,7 @@ const EnvironmentSchema = z
     // TTL/size of the per-org realtimeBackend flag cache used to pick the serving backend.
     REALTIME_BACKEND_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     REALTIME_BACKEND_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(50_000),
+    REALTIME_BACKEND_NATIVE_RUN_READS_FROM_PRIMARY: z.string().default("0"),
     // "1" enables the read-your-writes gate: wake hydrates wait out the measured replica lag
     // (anchored to the change record's updatedAtMs) and stale reads are retried.
     REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED: z.string().default("1"),

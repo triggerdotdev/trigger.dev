@@ -6389,6 +6389,9 @@ function chatAgent<
           // Declared here so the finally can detach it — a handler leaked past
           // its turn duplicates every mid-stream message into the shared buffer.
           let turnMsgSub: { off: () => void } | undefined;
+          let capturedPartialResponse: TUIMessage | undefined;
+          let responseCommitted = false;
+          const turnBufferedChunks: UIMessageChunk[] = [];
           try {
             // Extract turn-level context before entering the span. Slim
             // wire: at most one delta message per record. `headStartMessages`
@@ -7175,11 +7178,12 @@ function chatAgent<
                           finishReason?: FinishReason;
                         }) => {
                           capturedResponseMessage = responseMessage as TUIMessage;
+                          capturedPartialResponse = responseMessage as TUIMessage;
                           capturedFinishReason = finishReason;
                           resolveOnFinish!();
                         },
                       });
-                      await pipeChat(uiStream, {
+                      await pipeChat(tapUIMessageChunks(uiStream, turnBufferedChunks), {
                         signal: combinedSignal,
                         spanName: "stream response",
                       });
@@ -7388,6 +7392,12 @@ function chatAgent<
                       turnNewUIMessages.push(capturedResponseMessage);
                       locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                     }
+                  }
+
+                  if (capturedResponseMessage) {
+                    responseCommitted = true;
+                    capturedPartialResponse = capturedResponseMessage;
+                    turnBufferedChunks.length = 0;
                   }
 
                   if (runSignal.aborted) return "exit";
@@ -7611,6 +7621,7 @@ function chatAgent<
                         parts: [...(msg.parts ?? []), ...lateParts],
                       } as TUIMessage;
                       capturedResponseMessage = accumulatedUIMessages[idx] as TUIMessage;
+                      capturedPartialResponse = capturedResponseMessage;
                       turnCompleteEvent.responseMessage = capturedResponseMessage;
                       turnCompleteEvent.uiMessages = accumulatedUIMessages;
                     }
@@ -7904,10 +7915,77 @@ function chatAgent<
                 ? [...accumulatedUIMessages, erroredWireMessage]
                 : accumulatedUIMessages;
 
-            // Fire onTurnComplete on the error path too — the docs promise it
-            // runs "after every turn, successful or errored" so customers can
-            // mark the turn failed. `responseMessage` is undefined/partial and
-            // `error` carries the thrown value.
+            let partialResponse: TUIMessage | undefined =
+              capturedPartialResponse ??
+              ((await assemblePartialFromChunks(turnBufferedChunks)) as TUIMessage | undefined);
+            if (partialResponse) {
+              partialResponse = cleanupAbortedParts(partialResponse);
+            }
+
+            let partialIdx = partialResponse?.id
+              ? erroredUIMessages.findIndex((m) => m.id === partialResponse!.id)
+              : -1;
+            if (partialResponse && capturedPartialResponse === undefined && partialIdx !== -1) {
+              partialResponse = undefined;
+              partialIdx = -1;
+            }
+            if (partialResponse && !partialResponse.id) {
+              partialResponse = { ...partialResponse, id: generateMessageId() } as TUIMessage;
+            }
+            if (partialResponse && !responseCommitted) {
+              const queuedParts = locals.get(chatResponsePartsKey);
+              if (queuedParts && queuedParts.length > 0) {
+                partialResponse = {
+                  ...partialResponse,
+                  parts: [...partialResponse.parts, ...(queuedParts as UIMessage["parts"])],
+                } as TUIMessage;
+                locals.set(chatResponsePartsKey, []);
+              }
+            }
+            const includePartial = partialResponse != null && !responseCommitted;
+            let erroredUIMessagesWithPartial: TUIMessage[] = !includePartial
+              ? erroredUIMessages
+              : partialIdx === -1
+                ? [...erroredUIMessages, partialResponse!]
+                : (erroredUIMessages.map((m, i) =>
+                    i === partialIdx ? partialResponse! : m
+                  ) as TUIMessage[]);
+
+            let erroredNewUIMessages: TUIMessage[] = erroredWireMessage ? [erroredWireMessage] : [];
+            if (includePartial) {
+              erroredNewUIMessages.push(partialResponse!);
+            }
+
+            let erroredNewModelMessages: ModelMessage[] = [];
+
+            if (!responseCommitted) {
+              try {
+                if (erroredNewUIMessages.length > 0) {
+                  erroredNewModelMessages = await toModelMessages(
+                    erroredNewUIMessages.map((m) => stripProviderMetadata(m))
+                  );
+                }
+                if (erroredUIMessagesWithPartial !== accumulatedUIMessages) {
+                  if (partialIdx === -1) {
+                    const appended = erroredUIMessagesWithPartial.slice(
+                      accumulatedUIMessages.length
+                    );
+                    accumulatedMessages.push(
+                      ...(await toModelMessages(appended.map((m) => stripProviderMetadata(m))))
+                    );
+                  } else {
+                    accumulatedMessages = await toModelMessages(erroredUIMessagesWithPartial);
+                  }
+                  accumulatedUIMessages = erroredUIMessagesWithPartial;
+                  locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                }
+              } catch {
+                erroredNewModelMessages = [];
+                erroredUIMessagesWithPartial = erroredUIMessages;
+                erroredNewUIMessages = erroredWireMessage ? [erroredWireMessage] : [];
+              }
+            }
+
             if (onTurnComplete) {
               try {
                 await tracer.startActiveSpan(
@@ -7917,11 +7995,11 @@ function chatAgent<
                       ctx,
                       chatId: currentWirePayload.chatId,
                       messages: accumulatedMessages,
-                      uiMessages: erroredUIMessages,
-                      newMessages: [],
-                      newUIMessages: erroredWireMessage ? [erroredWireMessage] : [],
-                      responseMessage: undefined,
-                      rawResponseMessage: undefined,
+                      uiMessages: erroredUIMessagesWithPartial,
+                      newMessages: erroredNewModelMessages,
+                      newUIMessages: erroredNewUIMessages,
+                      responseMessage: partialResponse,
+                      rawResponseMessage: partialResponse,
                       turn,
                       runId: ctx.run.id,
                       chatAccessToken: "",
@@ -7967,7 +8045,7 @@ function chatAgent<
                 await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                   version: 1,
                   savedAt: Date.now(),
-                  messages: erroredUIMessages,
+                  messages: erroredUIMessagesWithPartial,
                   lastOutEventId: errorTurnCompleteResult?.lastEventId,
                   lastInEventId:
                     errorSnapshotInCursor !== undefined ? String(errorSnapshotInCursor) : undefined,
@@ -8887,28 +8965,26 @@ export type PipeAndCaptureResult = {
  * can return, and propagates a source error to the consumer after buffering
  * whatever streamed first. See {@link pipeChatAndCapture} for why.
  */
-async function* tapUIMessageChunks(
+function tapUIMessageChunks(
   source: AsyncIterable<unknown> | ReadableStream<unknown>,
   buffer: UIMessageChunk[]
-): AsyncGenerator<unknown> {
+): ReadableStream<unknown> | AsyncGenerator<unknown> {
   if (isReadableStream(source)) {
-    const reader = source.getReader();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer.push(value as UIMessageChunk);
-        yield value;
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  } else {
+    return source.pipeThrough(
+      new TransformStream<unknown, unknown>({
+        transform(chunk, controller) {
+          buffer.push(chunk as UIMessageChunk);
+          controller.enqueue(chunk);
+        },
+      })
+    );
+  }
+  return (async function* () {
     for await (const chunk of source) {
       buffer.push(chunk as UIMessageChunk);
       yield chunk;
     }
-  }
+  })();
 }
 
 /**
@@ -9744,6 +9820,15 @@ function createChatSession(
                 // Surface a genuine stream failure to the caller. A user stop
                 // (status "aborted") falls through so the partial is accumulated.
                 if (captured.status === "error") {
+                  if (captured.message) {
+                    const partial = cleanupAbortedParts(captured.message);
+                    const queuedParts = locals.get(chatResponsePartsKey);
+                    if (queuedParts && queuedParts.length > 0) {
+                      (partial as any).parts = [...(partial.parts ?? []), ...queuedParts];
+                      locals.set(chatResponsePartsKey, []);
+                    }
+                    await accumulator.addResponse(partial);
+                  }
                   throw captured.error;
                 }
                 response = captured.message;

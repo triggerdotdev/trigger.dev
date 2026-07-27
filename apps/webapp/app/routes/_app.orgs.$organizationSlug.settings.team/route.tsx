@@ -18,6 +18,7 @@ import { z } from "zod";
 import { Feedback } from "~/components/Feedback";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
   Alert,
@@ -372,7 +373,9 @@ export default function Page() {
             <Property.Table>
               <Property.Item>
                 <Property.Label>Org ID</Property.Label>
-                <Property.Value>{organization.id}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={organization.id} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
 
               {members.map((member) => (

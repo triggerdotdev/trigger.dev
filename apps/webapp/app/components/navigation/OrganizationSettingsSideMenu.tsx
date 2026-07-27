@@ -163,11 +163,6 @@ export function OrganizationSettingsSideMenu({
               inactiveIconColor="text-text-dimmed"
               to={organizationSsoPath(organization)}
               data-action="sso"
-              badge={
-                currentPlan?.v3Subscription?.plan?.code === "enterprise" ? undefined : (
-                  <Badge variant="extra-small">Enterprise</Badge>
-                )
-              }
             />
           )}
         </div>

@@ -8,7 +8,11 @@ import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
-  per_page: z.coerce.number().min(1).default(25),
+  per_page: z.coerce
+    .number()
+    .min(1)
+    .transform((n) => Math.min(n, 100))
+    .default(25),
 });
 
 export async function loader({ request, params }: LoaderFunctionArgs) {

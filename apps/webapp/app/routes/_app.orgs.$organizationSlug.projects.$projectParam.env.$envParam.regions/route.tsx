@@ -163,7 +163,9 @@ export default function Page() {
               {regions.map((region) => (
                 <Property.Item key={region.id}>
                   <Property.Label>{region.name}</Property.Label>
-                  <Property.Value>{region.id}</Property.Value>
+                  <Property.Value>
+                    <CopyableText value={region.id} asChild hideTooltip />
+                  </Property.Value>
                 </Property.Item>
               ))}
             </Property.Table>

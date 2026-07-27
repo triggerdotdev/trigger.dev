@@ -22,6 +22,7 @@ import { useUser } from "~/hooks/useUser";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { updateUser } from "~/models/user.server";
 import { requireUserId } from "~/services/session.server";
+import { emailSchema, MAX_EMAIL_LENGTH } from "~/utils/emailValidation";
 import { accountPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
@@ -42,10 +43,8 @@ function createSchema(
       .string({ required_error: "You must enter a name" })
       .min(2, "Your name must be at least 2 characters long")
       .max(50),
-    email: z
-      .string()
-      .email()
-      .superRefine((email, ctx) => {
+    email: emailSchema.pipe(
+      z.string().superRefine((email, ctx) => {
         if (constraints.isEmailUnique === undefined) {
           //client-side validation skips this
           ctx.addIssue({
@@ -65,7 +64,8 @@ function createSchema(
             });
           });
         }
-      }),
+      })
+    ),
     marketingEmails: z.preprocess((value) => value === "on", z.boolean()),
   });
 }
@@ -177,6 +177,7 @@ export default function Page() {
                 <div className="flex w-56 flex-none flex-col gap-1">
                   <Input
                     {...getInputProps(email, { type: "text" })}
+                    maxLength={MAX_EMAIL_LENGTH}
                     placeholder="Your email"
                     defaultValue={user?.email ?? ""}
                   />

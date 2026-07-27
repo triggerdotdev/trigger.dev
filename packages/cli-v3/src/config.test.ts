@@ -33,6 +33,10 @@ async function createProject(runtime?: string) {
 
 describe("loadConfig runtime", () => {
   it.each([
+    ["node", "node"],
+    ["node-22", "node-22"],
+    ["node-24", "node-24"],
+    ["node-26", "node-26"],
     ["experimental-node-24", "node-24"],
     ["experimental-node-26", "node-26"],
   ] as const)("normalizes %s before returning the resolved config", async (runtime, expected) => {
@@ -47,7 +51,7 @@ describe("loadConfig runtime", () => {
     await expect(loadConfig({ cwd, warn: false })).resolves.toMatchObject({ runtime: "node" });
   });
 
-  it.each(["node-24", "node-26", "node-23"])(
+  it.each(["node-23"])(
     "rejects unsupported public runtime %s while loading config",
     async (runtime) => {
       const cwd = await createProject(runtime);

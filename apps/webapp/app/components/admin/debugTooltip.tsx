@@ -1,4 +1,5 @@
 import { ShieldCheckIcon } from "@heroicons/react/20/solid";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
   Tooltip,
@@ -25,7 +26,10 @@ export function AdminDebugTooltip({ children }: { children?: React.ReactNode }) 
         <TooltipTrigger>
           <ShieldCheckIcon className="size-5" />
         </TooltipTrigger>
-        <TooltipContent className="max-h-[90vh] overflow-y-auto">
+        {/* The copy controls below pass `hideTooltip` so their own tooltips don't fire
+            Radix's global close and dismiss this panel. `pr-8` leaves room for the
+            copy button, which is absolutely positioned to the right of each value. */}
+        <TooltipContent className="max-h-[90vh] overflow-y-auto pr-8">
           <Content>{children}</Content>
         </TooltipContent>
       </Tooltip>
@@ -44,23 +48,31 @@ function Content({ children }: { children: React.ReactNode }) {
       <Property.Table>
         <Property.Item>
           <Property.Label>User ID</Property.Label>
-          <Property.Value>{user.id}</Property.Value>
+          <Property.Value>
+            <CopyableText value={user.id} asChild hideTooltip />
+          </Property.Value>
         </Property.Item>
         {organization && (
           <Property.Item>
             <Property.Label>Org ID</Property.Label>
-            <Property.Value>{organization.id}</Property.Value>
+            <Property.Value>
+              <CopyableText value={organization.id} asChild hideTooltip />
+            </Property.Value>
           </Property.Item>
         )}
         {project && (
           <>
             <Property.Item>
               <Property.Label>Project ID</Property.Label>
-              <Property.Value>{project.id}</Property.Value>
+              <Property.Value>
+                <CopyableText value={project.id} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Project ref</Property.Label>
-              <Property.Value>{project.externalRef}</Property.Value>
+              <Property.Value>
+                <CopyableText value={project.externalRef} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
           </>
         )}
@@ -68,7 +80,9 @@ function Content({ children }: { children: React.ReactNode }) {
           <>
             <Property.Item>
               <Property.Label>Environment ID</Property.Label>
-              <Property.Value>{environment.id}</Property.Value>
+              <Property.Value>
+                <CopyableText value={environment.id} asChild hideTooltip />
+              </Property.Value>
             </Property.Item>
             <Property.Item>
               <Property.Label>Environment type</Property.Label>
@@ -81,7 +95,7 @@ function Content({ children }: { children: React.ReactNode }) {
           </>
         )}
       </Property.Table>
-      <div className="pt-2">{children}</div>
+      {children && <div className="pt-2">{children}</div>}
     </div>
   );
 }

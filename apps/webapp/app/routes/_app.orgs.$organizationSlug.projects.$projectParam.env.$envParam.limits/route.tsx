@@ -7,6 +7,7 @@ import { Gauge } from "lucide-react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { EnvironmentSelector } from "~/components/navigation/EnvironmentSelector";
@@ -125,7 +126,9 @@ export default function Page() {
               </Property.Item>
               <Property.Item>
                 <Property.Label>Organization ID</Property.Label>
-                <Property.Value>{data.organizationId}</Property.Value>
+                <Property.Value>
+                  <CopyableText value={data.organizationId} asChild hideTooltip />
+                </Property.Value>
               </Property.Item>
             </Property.Table>
           </AdminDebugTooltip>
