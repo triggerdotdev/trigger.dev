@@ -11,10 +11,11 @@ import { useShortcuts } from "../primitives/ShortcutsProvider";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import {
   buildFavoriteLabel,
+  canonicalFavoriteUrl,
   FAVORITE_SEARCH_PARAM,
   FAVORITES_ACTION_PATH,
+  favoritePageUrl,
   resolvePageMeta,
-  stripFavoriteSearchParam,
   useFavorites,
 } from "./favoritePages";
 
@@ -37,8 +38,9 @@ export function FavoritePageButton({
   const { areShortcutsEnabled } = useShortcuts();
   const [, setSearchParams] = useSearchParams();
 
-  // The favorite marker param is presentation-only, so it never counts toward URL identity
-  const url = location.pathname + stripFavoriteSearchParam(location.search);
+  // The marker param and pagination position never count toward URL identity, so paging through
+  // a favorited view keeps the same favorite (and never saves a soon-stale cursor)
+  const url = favoritePageUrl(location.pathname, location.search);
 
   // A marker that isn't one of this user's favorites came from a shared link (or a favorite
   // that's since been removed): clean it from the URL so the page behaves like a normal visit.
@@ -57,7 +59,7 @@ export function FavoritePageButton({
       { replace: true, preventScrollReset: true }
     );
   }, [hasForeignMarker, setSearchParams]);
-  const existing = favorites.find((favorite) => favorite.url === url);
+  const existing = favorites.find((favorite) => canonicalFavoriteUrl(favorite.url) === url);
   const isFavorited = existing !== undefined;
   // The tooltip names the favorite: its custom name once saved, else the label saving would use
   // (which includes detail-page ids and filter summaries, e.g. "Runs: Completed, last 7d")

@@ -134,18 +134,36 @@ export function favoriteLinkTo(favorite: FavoritePage): string {
   return `${path}?${params.toString()}`;
 }
 
-/** The current location's search string without the favorite marker, for saving/matching URLs. */
-export function stripFavoriteSearchParam(search: string): string {
+/** Pagination position params: never part of a favorite's identity (see favoritePageUrl). */
+const PAGINATION_PARAMS = ["cursor", "direction", "page"];
+
+/**
+ * The canonical URL a favorite saves and matches against: the path and search minus the favorite
+ * marker (presentation-only) and the pagination position (cursors go stale, and page N of a view
+ * is not a different view). A favorite pins filters and tabs, never a transient page of them.
+ */
+export function favoritePageUrl(pathname: string, search: string): string {
   const params = new URLSearchParams(search);
   params.delete(FAVORITE_SEARCH_PARAM);
+  for (const param of PAGINATION_PARAMS) {
+    params.delete(param);
+  }
   const result = params.toString();
-  return result.length > 0 ? `?${result}` : "";
+  return pathname + (result.length > 0 ? `?${result}` : "");
+}
+
+/** favoritePageUrl for an already-joined URL, e.g. a favorite's stored one (which may predate
+ * pagination stripping). */
+export function canonicalFavoriteUrl(url: string): string {
+  const [pathname, search = ""] = url.split("?");
+  return favoritePageUrl(pathname, search);
 }
 
 /**
- * A favorite is active only while the URL is exactly the view it saved: its marker param is
- * present AND the rest of the URL still matches. Changing any filter on the page diverges the
- * URL from the favorite, so it deactivates (and the regular menu item takes over).
+ * A favorite is active only while the URL is the view it saved: its marker param is present AND
+ * the canonical URL still matches. Changing any filter on the page diverges the URL from the
+ * favorite, so it deactivates (and the regular menu item takes over) — but paging within the
+ * view keeps it active, matching what the favorite pins.
  */
 export function isFavoriteActive(
   favorite: FavoritePage,
@@ -154,7 +172,7 @@ export function isFavoriteActive(
 ): boolean {
   return (
     new URLSearchParams(search).get(FAVORITE_SEARCH_PARAM) === favorite.id &&
-    favorite.url === pathname + stripFavoriteSearchParam(search)
+    canonicalFavoriteUrl(favorite.url) === favoritePageUrl(pathname, search)
   );
 }
 
@@ -344,7 +362,7 @@ function humanizeValue(value: string): string {
 }
 
 /** Pagination/UI-state params that never describe what the user filtered. */
-const NON_FILTER_PARAMS = [FAVORITE_SEARCH_PARAM, "cursor", "direction", "page", "span"];
+const NON_FILTER_PARAMS = [FAVORITE_SEARCH_PARAM, ...PAGINATION_PARAMS, "span"];
 
 /**
  * Summarize a filtered view's search params into a short, selective descriptor for the favorite
