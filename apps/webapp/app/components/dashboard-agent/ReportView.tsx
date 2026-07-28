@@ -31,8 +31,9 @@ import {
   type ReportViewModelPayload,
   type TriggerUri,
 } from "@internal/dashboard-agent-contracts";
+import { ArrowUpRightIcon, BookOpenIcon } from "@heroicons/react/20/solid";
 import { Badge } from "~/components/primitives/Badge";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 // Imported for its registration side effect as much as its value: each report's
 // catalog registers itself under the report's title on import.
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
@@ -187,16 +188,26 @@ function ActionButton({
   label,
   target,
   onIntent,
+  code,
 }: {
   label: string;
   target: LinkTarget;
   onIntent?: (intent: AgentIntent) => void;
+  code?: string;
 }) {
   if (target.kind === "external") {
+    // Everything in the footer is a button: docs get the docs variant, any
+    // other external action (contact us, status page) the primary one.
+    const docs = (code ?? "").includes("docs") || /\bdocs?\b/i.test(label);
     return (
-      <ReportFooterLink href={target.url} external>
+      <LinkButton
+        to={target.url}
+        variant={docs ? "docs/small" : "primary/small"}
+        LeadingIcon={docs ? BookOpenIcon : undefined}
+        TrailingIcon={docs ? undefined : ArrowUpRightIcon}
+      >
         {label}
-      </ReportFooterLink>
+      </LinkButton>
     );
   }
 
@@ -514,6 +525,7 @@ export function ReportView({
               <ActionButton
                 key={i}
                 label={label}
+                code={entry.code}
                 target={classifyLink(linkByKey(entry.link), resolveUri)}
                 onIntent={onIntent}
               />

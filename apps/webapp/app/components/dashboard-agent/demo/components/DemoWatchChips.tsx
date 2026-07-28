@@ -10,7 +10,6 @@
  */
 import { CheckCircleIcon, ClockIcon, NoSymbolIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { WatchStatus } from "@internal/dashboard-agent-contracts";
-import { Button } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
@@ -63,10 +62,10 @@ export function DemoWatchChips({
         <span
           key={watch.id}
           title={`${watch.spec.note} · every ${watch.spec.checkEveryMinutes} min · ${STATUS_LABEL[watch.status]}`}
-          // The cancel affordance is revealed on hover/focus (the History rows'
-          // delete pattern): a resting chip shows only the state and the label —
-          // a spinner and a red button side by side read as noise.
-          className="group inline-flex items-center gap-2 rounded-full border border-border-bright bg-background-bright py-0.5 pl-2 pr-2 text-xs text-text-bright focus-within:pr-1 hover:pr-1"
+          // A plain × that is always there (no chrome, no size change on
+          // hover): faint at rest, red on its own hover. A revealed button made
+          // the chip grow under the cursor.
+          className="inline-flex items-center gap-1.5 rounded-full border border-border-bright bg-background-bright py-0.5 pl-2 pr-1.5 text-xs text-text-bright"
         >
           <StatusIcon status={watch.status} />
           {watch.chipLabel}
@@ -77,14 +76,15 @@ export function DemoWatchChips({
               side="bottom"
               content={`Cancel the ${watch.chipLabel} watch`}
               button={
-                <Button
-                  variant="danger/small"
-                  LeadingIcon={XMarkIcon}
-                  className="hidden h-5 rounded-full px-1.5 focus-visible:inline-flex group-focus-within:inline-flex group-hover:inline-flex"
+                <button
+                  type="button"
                   // Icon-only, so the label has to name the watch it cancels.
                   aria-label={`Cancel the ${watch.chipLabel} watch`}
                   onClick={() => onCancel?.(watch)}
-                />
+                  className="text-text-faint transition-colors hover:text-error focus-visible:text-error focus-custom"
+                >
+                  <XMarkIcon className="size-3.5" />
+                </button>
               }
             />
           ) : null}

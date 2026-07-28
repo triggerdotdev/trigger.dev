@@ -18,6 +18,7 @@ import type {
   ReportViewModel,
   Unit,
 } from "~/presenters/v3/reports/report-view-model";
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import { Button } from "~/components/primitives/Buttons";
 import {
@@ -341,10 +342,17 @@ export function DemoReportCard({
             if (NON_ACTION_CODES.has(entry.code)) {
               return <ReportFooterNote key={i}>{label}</ReportFooterNote>;
             }
-            // Demo mode: the footer never navigates. Clicking hands the label
+            // Everything is a button: docs get the docs variant, actions the
+            // primary one. Demo mode never navigates — clicking hands the label
             // back to the host so the transcript can show what would happen.
+            const docs = entry.code.includes("docs");
             return (
-              <Button key={i} variant="primary/small" onClick={() => onAction?.(label, url)}>
+              <Button
+                key={i}
+                variant={docs ? "docs/small" : "primary/small"}
+                LeadingIcon={docs ? BookOpenIcon : undefined}
+                onClick={() => onAction?.(label, url)}
+              >
                 {label}
               </Button>
             );

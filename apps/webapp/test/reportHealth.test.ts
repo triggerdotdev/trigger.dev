@@ -81,9 +81,12 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
     expect(concurrency.annotation).toEqual({ code: "pinned_minutes", value: 40 });
   });
 
-  it("footer = raise limit + do-nothing (drains)", () => {
+  it("footer = contact us + docs + do-nothing (drains)", () => {
+    // Raising the env limit is a plan quota, not self-serve — the footer offers
+    // the contact action with the docs alongside.
     expect(vm.footer).toEqual([
-      { code: "raise_env_limit", link: "concurrency" },
+      { code: "contact_us_raise_limit", link: "contact" },
+      { code: "concurrency_docs", link: "concurrency" },
       { code: "do_nothing_drains", value: 2.3 },
     ]);
   });
@@ -96,7 +99,7 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
 
       FLOW        🟡 at your env concurrency limit (last 40 min)
 
-        concurrency     100/100           ▁▅▆█████   pinned 40 of last 60 min
+        concurrency     100/100           ▁▅▆█████   40 min at limit
 
         pending         1,910     ↑ 16×   ▁▁▂▃▅▅▇█   (normal ~120)
 
@@ -115,7 +118,8 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
 
       LIVENESS    🟢 fresh — telemetry current, updated 4s ago
 
-      → Raise the env concurrency limit
+      → Contact us to raise the limit
+        Concurrency docs
         or do nothing — backlog drains in ~2.3 min once triggers ease"
     `);
   });

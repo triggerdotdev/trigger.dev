@@ -142,7 +142,11 @@ export function ReportHeadline({
   );
 }
 
-/** A finding other than the one in the headline: its state, its type, its reason. */
+/**
+ * A finding other than the one in the headline: its state, its type, its
+ * reason. Fixed columns, so the texts of consecutive lines (execution /
+ * liveness) start on the same vertical.
+ */
 export function ReportFindingLine({
   severity,
   type,
@@ -155,8 +159,8 @@ export function ReportFindingLine({
   bright?: boolean;
 }) {
   return (
-    <p className="flex items-start gap-2">
-      <ReportSeverityIcon severity={severity} className="mt-0.5 shrink-0" />
+    <p className="grid grid-cols-[1rem_4.5rem_minmax(0,1fr)] items-start gap-x-2">
+      <ReportSeverityIcon severity={severity} className="mt-0.5" />
       <span className="mt-px text-xs uppercase tracking-wide text-text-dimmed">{type}</span>
       <span className={cn("text-sm", bright ? "text-text-bright" : "text-text-dimmed")}>
         {text}

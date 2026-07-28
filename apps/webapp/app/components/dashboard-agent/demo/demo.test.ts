@@ -292,7 +292,7 @@ describe("report fixtures", () => {
       for (const entry of vm.footer) {
         if (entry.link) expect(linkKeys.has(entry.link), entry.link).toBe(true);
       }
-      expect(vm.footer.length).toBeLessThanOrEqual(2);
+      expect(vm.footer.length).toBeLessThanOrEqual(3);
     }
   });
 });

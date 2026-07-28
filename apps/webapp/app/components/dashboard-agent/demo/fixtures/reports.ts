@@ -232,9 +232,13 @@ export const demoDegradedReport: ReportViewModel = {
       label: "Concurrency & limits",
       url: "https://trigger.dev/docs/queue-concurrency",
     },
+    { key: "contact", label: "Contact us", url: "https://trigger.dev/contact" },
   ],
   footer: [
-    { code: "raise_env_limit", link: "concurrency_docs" },
+    // Raising the env limit is a plan quota — the action is contacting us; the
+    // docs ride alongside as their own button.
+    { code: "contact_us_raise_limit", link: "contact" },
+    { code: "concurrency_docs", link: "concurrency_docs" },
     { code: "do_nothing_drains", value: 26.7 },
   ],
 };
