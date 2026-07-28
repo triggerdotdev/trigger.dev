@@ -18,6 +18,7 @@ import {
   dashboardAgentEvalTriggerKey,
   dashboardAgentModelKey,
   dashboardAgentStoreKey,
+  sanitizeReplayedToolInputs,
   type DashboardAgentEvalTrigger,
   type DashboardAgentStore,
 } from "./dashboard-agent";
@@ -310,6 +311,14 @@ describe("watch wake narration", () => {
     const first = await harness.sendAction(WAKE);
     expect(collectText(first.chunks)).toBe("The backlog drained — 0 pending now.");
 
+    // The streamed message carries the SAME id the read-model copy is persisted
+    // under — the panel merges live stream and loaded history by message id, so
+    // two ids for one narration would render it twice.
+    const startChunk = first.chunks.find(
+      (chunk) => (chunk as { type?: string }).type === "start"
+    ) as { messageId?: string } | undefined;
+    expect(startChunk?.messageId).toBe("wake:watch:watch_1:fired");
+
     // An action is not a turn: no turn persistence ran, but the narration is in
     // the display read-model under an id derived from the action.
     expect(calls.persistTurn).toHaveLength(0);
@@ -350,6 +359,37 @@ describe("watch wake narration", () => {
       "wake:watch:watch_1:fired",
       "wake:watch:watch_2:expired",
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Replayed tool-input sanitizing
+// ---------------------------------------------------------------------------
+
+describe("sanitizeReplayedToolInputs", () => {
+  it("coerces empty-string and null tool inputs to {} and leaves everything else alone", () => {
+    const messages = [
+      { role: "user", content: "investigate this" },
+      {
+        role: "assistant",
+        content: [
+          { type: "tool-call", toolCallId: "tc1", toolName: "get_report", input: "" },
+          // `typeof null === "object"` — the case the original check let through,
+          // which the Anthropic API rejects with "Input should be an object".
+          { type: "tool-call", toolCallId: "tc2", toolName: "list_errors", input: null },
+          { type: "tool-call", toolCallId: "tc3", toolName: "get_run", input: { runId: "r1" } },
+          { type: "text", text: "looking..." },
+        ],
+      },
+    ] as Parameters<typeof sanitizeReplayedToolInputs>[0];
+
+    const [user, assistant] = sanitizeReplayedToolInputs(messages);
+    expect(user).toBe(messages[0]);
+    const parts = (assistant as { content: Array<{ input?: unknown }> }).content;
+    expect(parts[0]!.input).toEqual({});
+    expect(parts[1]!.input).toEqual({});
+    expect(parts[2]!.input).toEqual({ runId: "r1" });
+    expect(parts[3]).toBe((messages[1] as { content: unknown[] }).content[3]);
   });
 });
 

@@ -345,6 +345,33 @@ export const watchWakeActionSchema = z.object({
 const WAKE_INSTRUCTION =
   "This is a watch wake, not a question: nobody is waiting on a reply. Write ONE short message — the outcome, the numbers from the facts below, and one suggested next step. No tools, no new investigation, no recap.";
 
+/**
+ * Coerce replayed tool-call inputs the Anthropic API would reject back to `{}`.
+ *
+ * The model occasionally emits a no-arg tool call with a non-object input (empty
+ * string, or `null` — which `typeof` also calls "object"), the SDK replays it
+ * into history verbatim, and the API then fails the whole turn with
+ * "tool_use.input: Input should be an object". Used by `prepareMessages` on
+ * normal turns and by the wake narration, which builds its model call directly.
+ */
+export function sanitizeReplayedToolInputs(messages: ModelMessage[]): ModelMessage[] {
+  const isBadInput = (part: unknown) =>
+    typeof part === "object" &&
+    part !== null &&
+    (part as { type?: string }).type === "tool-call" &&
+    (typeof (part as { input?: unknown }).input !== "object" ||
+      (part as { input?: unknown }).input === null);
+
+  return messages.map((message) => {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) return message;
+    if (!message.content.some(isBadInput)) return message;
+    return {
+      ...message,
+      content: message.content.map((part) => (isBadInput(part) ? { ...part, input: {} } : part)),
+    };
+  }) as ModelMessage[];
+}
+
 // Same Anthropic breakpoint `prepareMessages` rolls onto a turn's last message.
 function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessage[] {
   if (messages.length === 0) return messages;
@@ -417,15 +444,18 @@ async function narrateWatchWake(args: {
     // wake, which is unique and would only ever be a cache write), so the wake
     // reads back the same cached prefix a normal turn would.
     messages: [
-      ...withCacheBreakpointOnLast(args.messages),
+      ...withCacheBreakpointOnLast(sanitizeReplayedToolInputs(args.messages)),
       { role: "user" as const, content: wakePrompt(action) },
     ],
     ...resolved.toAISDKTelemetry(),
   });
 
   // Pipe explicitly (rather than returning the result) so the final text is in
-  // hand for the history + read-model writes below.
-  await chat.pipe(result);
+  // hand for the history + read-model writes below. The streamed message must
+  // carry the SAME id the copy below is persisted under — the panel merges the
+  // live stream with the loaded history by message id, and two ids for one
+  // narration render it twice.
+  await chat.pipe(result.toUIMessageStream({ generateMessageId: () => messageId }));
   const text = (await result.text).trim();
   if (!text) return;
 
@@ -589,32 +619,7 @@ export const dashboardAgent = chat.agent({
   // intact across this hook, so it's safe on a resume turn.
   prepareMessages: ({ messages }) => {
     if (messages.length === 0) return messages;
-    // The model occasionally emits a no-arg tool call with a non-object input
-    // (empty string), which the SDK replays into history verbatim and the
-    // Anthropic API then rejects with "tool_use.input: Input should be an
-    // object" — a hard turn failure. Coerce those inputs back to {} on replay.
-    const sanitized = messages.map((message) => {
-      if (message.role !== "assistant" || !Array.isArray(message.content)) return message;
-      const needsFix = message.content.some(
-        (part) =>
-          typeof part === "object" &&
-          part !== null &&
-          (part as { type?: string }).type === "tool-call" &&
-          typeof (part as { input?: unknown }).input !== "object"
-      );
-      if (!needsFix) return message;
-      return {
-        ...message,
-        content: message.content.map((part) =>
-          typeof part === "object" &&
-          part !== null &&
-          (part as { type?: string }).type === "tool-call" &&
-          typeof (part as { input?: unknown }).input !== "object"
-            ? { ...part, input: {} }
-            : part
-        ),
-      };
-    }) as typeof messages;
+    const sanitized = sanitizeReplayedToolInputs(messages);
 
     const last = sanitized[sanitized.length - 1];
     return [
