@@ -10,7 +10,11 @@ import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
-import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createActionApiRoute,
+  everyResource,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { batchPublicAccessScopes } from "~/utils/batchItemAuthorization";
 import { canWriteParentRun } from "~/utils/parentRunAuthorization.server";
 import { clientSafeErrorMessage } from "~/utils/prismaErrors";
@@ -18,6 +22,7 @@ import {
   handleRequestIdempotency,
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
+import { scopeRequestIdempotencyKey } from "~/utils/requestIdempotencyKey";
 import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
@@ -40,9 +45,21 @@ const { action, loader } = createActionApiRoute(
     maxContentLength: 131_072, // 128KB is plenty for the batch metadata
     authorization: {
       action: "batchTrigger",
-      // No specific tasks exist yet. This grant only creates the batch shell;
-      // phase two authorizes every streamed task before enqueueing it.
-      resource: () => anyResource([{ type: "batch" }, { type: "tasks" }]),
+      resource: (_params, _searchParams, _headers, body) => {
+        // Newer clients declare the distinct task identifiers before creating
+        // the batch, so selected-task credentials can be authorized before the
+        // shell is created. Older clients omit them and retain the existing
+        // collection-level behavior: broad credentials pass, selected-task
+        // credentials fail closed.
+        if (!body.taskIdentifiers) {
+          return anyResource([{ type: "batch" }, { type: "tasks" }]);
+        }
+
+        return everyResource(
+          body.taskIdentifiers.map((id) => ({ type: "tasks" as const, id })),
+          [{ type: "batch" }, { type: "tasks" }]
+        );
+      },
     },
     corsStrategy: "all",
   },
@@ -96,11 +113,18 @@ const { action, loader } = createActionApiRoute(
       triggerClient,
     });
 
-    // Handle idempotency for the batch creation
+    // Keep create-batch retries isolated by environment and the task set that
+    // was authorized above. Sorting makes the scope stable when callers send
+    // the same identifiers in a different order.
+    const scopedIdempotencyKey = scopeRequestIdempotencyKey(body.idempotencyKey, [
+      authentication.environment.id,
+      ...(body.taskIdentifiers ? [...new Set(body.taskIdentifiers)].sort() : []),
+    ]);
+
     const cachedResponse = await handleRequestIdempotency<
       { friendlyId: string; runCount: number },
       CreateBatchResponse
-    >(body.idempotencyKey, {
+    >(scopedIdempotencyKey, {
       requestType: "create-batch",
       findCachedEntity: async (cachedRequestId) => {
         const batch = await engine.runStore.findBatchTaskRunById(cachedRequestId);
@@ -133,7 +157,7 @@ const { action, loader } = createActionApiRoute(
     const service = new CreateBatchService();
 
     service.onBatchTaskRunCreated.attachOnce(async (batch) => {
-      await saveRequestIdempotency(body.idempotencyKey, "create-batch", batch.id);
+      await saveRequestIdempotency(scopedIdempotencyKey, "create-batch", batch.id);
     });
 
     try {

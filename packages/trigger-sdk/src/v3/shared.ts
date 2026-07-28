@@ -1644,6 +1644,10 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
  * @param requestOptions - Optional request options
  * @internal
  */
+export function uniqueBatchTaskIdentifiers(items: BatchItemNDJSON[]): string[] {
+  return Array.from(new Set(items.map((item) => item.task))).sort();
+}
+
 async function executeBatchTwoPhase(
   apiClient: ReturnType<typeof apiClientManager.clientOrThrow>,
   items: BatchItemNDJSON[],
@@ -1678,6 +1682,7 @@ async function executeBatchTwoPhase(
     batch = await apiClient.createBatch(
       {
         runCount: items.length,
+        taskIdentifiers: uniqueBatchTaskIdentifiers(items),
         parentRunId: options.parentRunId,
         resumeParentOnCompletion: options.resumeParentOnCompletion,
         idempotencyKey: options.idempotencyKey,

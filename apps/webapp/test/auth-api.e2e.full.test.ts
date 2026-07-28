@@ -744,13 +744,16 @@ describe("API", () => {
     });
   });
 
-  // v3 batches use a collection-level resource { type: "tasks" } with
-  // no id — items are validated per-row when streamed. So id-specific
-  // scopes (write:tasks:foo) shouldn't grant blanket access; only
-  // type-level write:tasks (or admin/write:all) should.
-  describe("Trigger task — batch v3 (api.v3.batches) collection-level", () => {
+  // v3 batch creation accepts an optional declaration of the distinct task
+  // identifiers that will be streamed. New clients send it so selected-task
+  // credentials can authorize the batch before its shell is created. Older
+  // clients omit it and retain the collection-level, fail-closed behavior.
+  describe("Trigger task — batch v3 (api.v3.batches)", () => {
     const path = "/api/v3/batches";
-    const buildBody = () => ({ runCount: 1 });
+    const buildBody = (taskIdentifiers?: string[]) => ({
+      runCount: taskIdentifiers?.length ?? 1,
+      taskIdentifiers,
+    });
 
     it("missing auth: 401", async () => {
       const server = getTestServer();
@@ -777,6 +780,67 @@ describe("API", () => {
       });
       expect(res.status).not.toBe(401);
       expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with batchTrigger:tasks:taskA + declared taskA: auth passes", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["batchTrigger:tasks:taskA"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA"])),
+      });
+      expect(res.status).not.toBe(401);
+      expect(res.status).not.toBe(403);
+    });
+
+    it("JWT with batchTrigger:tasks:taskA + a mixed declaration: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["batchTrigger:tasks:taskA"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody(["taskA", "taskB"])),
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("JWT with batchTrigger:tasks:taskA + no declaration: 403", async () => {
+      const server = getTestServer();
+      const seed = await seedTestEnvironment(server.prisma);
+      const jwt = await generateJWT({
+        secretKey: seed.apiKey,
+        payload: {
+          pub: true,
+          sub: seed.environment.id,
+          scopes: ["batchTrigger:tasks:taskA"],
+        },
+        expirationTime: "15m",
+      });
+      const res = await server.webapp.fetch(path, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify(buildBody()),
+      });
+      expect(res.status).toBe(403);
     });
 
     it("JWT with read:tasks: 403", async () => {
