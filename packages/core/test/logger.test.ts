@@ -94,13 +94,13 @@ describe("Logger redaction", () => {
     expect(JSON.stringify(line)).not.toContain("tr_prod_secret_value");
   });
 
-  it("redacts values that look like a secret even under a non-denied key", () => {
+  it("redacts values that contain a secret even under a non-denied key", () => {
     const logger = new Logger("test", "info");
 
     const line = captureLogLine(() =>
       logger.info("value pattern check", {
-        someRandomField: "tr_live_abcdef123456",
-        anotherField: "Bearer some.jwt.value",
+        someRandomField: "request failed with tr_live_abcdef123456",
+        anotherField: "authorization used Bearer some.jwt.value",
         normalField: "just some text",
       })
     );
@@ -108,6 +108,19 @@ describe("Logger redaction", () => {
     expect(line.someRandomField).toMatch(/^\[filtered/);
     expect(line.anotherField).toMatch(/^\[filtered/);
     expect(line.normalField).toBe("just some text");
+  });
+
+  it("redacts a structured message before assigning it to $message", () => {
+    const logger = new Logger("test", "info");
+
+    const line = captureLogLine(() =>
+      logger.info("structured message check", {
+        message: "request failed with Bearer secret.jwt.value",
+      })
+    );
+
+    expect(line.$message).toMatch(/^\[filtered/);
+    expect(JSON.stringify(line)).not.toContain("secret.jwt.value");
   });
 
   it("truncates strings longer than the per-field cap", () => {

@@ -38,9 +38,9 @@ const DEFAULT_FILTERED_KEYS = [
   "completedwaitpoints",
 ];
 
-// Belt-and-braces value-shape check: catches secrets that land under a field name we didn't
-// think to deny-list (a live trigger.dev API key, a bearer token, or an OpenAI-style secret key).
-const SECRET_VALUE_PATTERN = /^(tr_[a-zA-Z0-9_-]{4,}|sk-[a-zA-Z0-9_-]{4,}|Bearer\s+\S+)/;
+// Belt-and-braces value-shape check: catches secrets anywhere in values that land under a field
+// name we didn't think to deny-list (a trigger.dev API key, bearer token, or OpenAI-style key).
+const SECRET_VALUE_PATTERN = /(tr_[a-zA-Z0-9_-]{4,}|sk-[a-zA-Z0-9_-]{4,}|Bearer\s+\S+)/;
 
 // Per-field and per-structure caps so a single unbounded object (a run payload, a batch of
 // items, a DB row) can't blow up log line size or CPU. Truncation keeps the field present and
@@ -159,7 +159,7 @@ export class Logger {
     const currentSpan = trace.getSpan(context.active());
 
     const structuredError = extractStructuredErrorFromArgs(this.#filteredKeys, ...args);
-    const structuredMessage = extractStructuredMessageFromArgs(...args);
+    const structuredMessage = extractStructuredMessageFromArgs(this.#filteredKeys, ...args);
 
     const structuredLog = {
       ...structureArgs(safeJsonClone(args) as Record<string, unknown>[], this.#filteredKeys),
@@ -225,19 +225,23 @@ function extractStructuredErrorFromArgs(
       message: filterKeys(nestedError.message, filteredKeys),
       stack: filterKeys(nestedError.stack, filteredKeys),
       name: nestedError.name,
-      metadata: "metadata" in nestedError ? filterKeys(nestedError.metadata, filteredKeys) : undefined,
+      metadata:
+        "metadata" in nestedError ? filterKeys(nestedError.metadata, filteredKeys) : undefined,
     };
   }
 
   return;
 }
 
-function extractStructuredMessageFromArgs(...args: Array<Record<string, unknown> | undefined>) {
+function extractStructuredMessageFromArgs(
+  filteredKeys: Set<string>,
+  ...args: Array<Record<string, unknown> | undefined>
+) {
   // Check to see if there is a `message` key in the args, and if so, return it
   const structuredMessage = args.find((arg) => arg?.message);
 
   if (structuredMessage) {
-    return structuredMessage.message;
+    return filterKeys(structuredMessage.message, filteredKeys);
   }
 
   return;
