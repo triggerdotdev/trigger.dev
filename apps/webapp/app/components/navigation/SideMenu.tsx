@@ -1682,9 +1682,9 @@ function OrgSelector({
                 className="flex min-w-0 items-center gap-1.5 overflow-hidden"
                 style={SIDE_MENU_SELECTOR_LABEL_STYLE}
               >
-                <span className="overflow-hidden whitespace-nowrap text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
+                <SideMenuLabel className="text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
                   {organization.title}
-                </span>
+                </SideMenuLabel>
               </span>
             </span>
             <span
@@ -1987,9 +1987,9 @@ function ProjectSelector({
                 className="flex min-w-0 items-center overflow-hidden"
                 style={SIDE_MENU_SELECTOR_LABEL_STYLE}
               >
-                <span className="overflow-hidden whitespace-nowrap text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
+                <SideMenuLabel className="text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
                   {project.name ?? "Select a project"}
-                </span>
+                </SideMenuLabel>
               </span>
             </span>
             <span
@@ -2041,7 +2041,7 @@ function ProjectSelector({
                 to={v3ProjectPath(organization, p)}
                 title={
                   <div className="flex w-full items-center justify-between text-text-bright">
-                    <span className="grow truncate text-left">{p.name}</span>
+                    <SideMenuLabel className="min-w-0 grow text-left">{p.name}</SideMenuLabel>
                   </div>
                 }
                 isSelected={isSelected}
