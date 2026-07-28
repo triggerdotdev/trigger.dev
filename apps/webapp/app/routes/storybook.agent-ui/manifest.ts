@@ -26,7 +26,8 @@ export type GalleryGroup =
   | "watches"
   | "prompts"
   | "intents"
-  | "messages";
+  | "messages"
+  | "banner";
 
 export type GallerySection = {
   /** DOM id, deep-link anchor and screenshot filename. Stable. */
@@ -53,6 +54,7 @@ export const GALLERY_GROUPS: { group: GalleryGroup; label: string }[] = [
   { group: "prompts", label: "Suggested prompts" },
   { group: "intents", label: "Intent bubbles" },
   { group: "messages", label: "Message-level states" },
+  { group: "banner", label: "Context banner" },
 ];
 
 export const MANIFEST: GallerySection[] = [
@@ -237,6 +239,10 @@ export const MANIFEST: GallerySection[] = [
     group: "messages",
   },
   { sectionId: "messages-docs-sources", title: "Answer with source links", group: "messages" },
+  { sectionId: "banner-prod", title: "Production environment", group: "banner" },
+  { sectionId: "banner-dev", title: "Dev environment", group: "banner" },
+  { sectionId: "banner-preview-long", title: "Preview branch with a long name", group: "banner" },
+  { sectionId: "banner-run-detail", title: "Run detail page", group: "banner" },
 ];
 
 /** Sections in a group, in manifest order. */

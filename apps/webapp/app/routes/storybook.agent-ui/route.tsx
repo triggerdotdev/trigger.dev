@@ -19,6 +19,7 @@ import {
   DemoWatchChips,
   type DemoItem,
 } from "~/components/dashboard-agent/demo";
+import { DashboardAgentContextBanner } from "~/components/dashboard-agent/DashboardAgentContextBanner";
 import { DashboardAgentMessages } from "~/components/dashboard-agent/DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "~/components/dashboard-agent/DashboardAgentSuggestedPrompts";
 import { ReportView } from "~/components/dashboard-agent/ReportView";
@@ -543,6 +544,36 @@ const STATES: Record<string, React.ReactNode> = {
   // the real AgentChart has no environment to query outside a project route.
   "messages-render-view": <MessageHarness chatId={demoId("base-resumed")} take={2} />,
   "messages-docs-sources": <MessageHarness chatId={demoId("docs-answer")} />,
+
+  // --- Context banner (variants live here, not in demo chats) --------------
+  "banner-prod": (
+    <DashboardAgentContextBanner
+      projectSlug="demo-storefront"
+      environmentSlug="prod"
+      currentPage="Runs"
+    />
+  ),
+  "banner-dev": (
+    <DashboardAgentContextBanner
+      projectSlug="demo-storefront"
+      environmentSlug="dev"
+      currentPage="Queues"
+    />
+  ),
+  "banner-preview-long": (
+    <DashboardAgentContextBanner
+      projectSlug="demo-storefront"
+      environmentSlug="preview-demo-feature-rework-receipt-email-batching"
+      currentPage="Deployments"
+    />
+  ),
+  "banner-run-detail": (
+    <DashboardAgentContextBanner
+      projectSlug="demo-storefront"
+      environmentSlug="prod"
+      currentPage="Run detail"
+    />
+  ),
 };
 
 // ---------------------------------------------------------------------------

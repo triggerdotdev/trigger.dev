@@ -239,9 +239,22 @@ export function DemoChatView({
         </ChatTranscript>
       ) : (
         // Empty / first-open: the production prompt panel, chips intercepted.
-        <DashboardAgentSuggestedPrompts
-          onSelect={(prompt) => intercept(`would send: "${prompt}"`)}
-        />
+        // The intent log still needs a home here — sending from the draft case
+        // must show its note, not vanish.
+        <div className="flex-1 overflow-y-auto">
+          <DashboardAgentSuggestedPrompts
+            onSelect={(prompt) => intercept(`would send: "${prompt}"`)}
+          />
+          {intercepted.length > 0 ? (
+            <ChatTranscript>
+              <ChatTurn>
+                {intercepted.map((message, i) => (
+                  <ChatNote key={i}>{message}</ChatNote>
+                ))}
+              </ChatTurn>
+            </ChatTranscript>
+          ) : null}
+        </div>
       )}
       {/* #endregion chat-layout transcript */}
 
