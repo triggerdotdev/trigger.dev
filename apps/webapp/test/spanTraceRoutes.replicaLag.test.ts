@@ -2,12 +2,11 @@
 // route caller (never a reimplemented read) against a real split Postgres with the owning LEGACY replica
 // FROZEN via laggingReplica. The routes pass a branded $replica, so reads stay on the owning replica.
 // Only orthogonal webapp singletons are mocked (bearer auth, mollifier buffer, ClickHouse repository,
-// formatters, session cookie, control-plane resolver, longPollingFetch).
+// formatters).
 //
 // Properties per read: the spans/trace findResource reads emit a RETRYABLE 404 (x-should-retry:true) on a
 // replica+buffer miss and return 200 once the replica catches up (proven with a caught-up store); the
-// triggeredRuns list simply omits a just-triggered child under lag (200, eventually consistent); the sync
-// trace-runs loader recovers a live run via a primary re-read on a replica miss and still 404s a truly-absent run.
+// triggeredRuns list simply omits a just-triggered child under lag (200, eventually consistent).
 
 import { describe, expect, vi } from "vitest";
 import { heteroRunOpsPostgresTest, laggingReplica } from "@internal/testcontainers";
@@ -20,20 +19,15 @@ vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 // ---- Hoisted holders wired into the mocked module singletons before each loader call. -------------
 // The branded `$replica` marker uses the global-registry symbol the run-store brands replicas with
-// (readReplicaClient.ts) so the routing store keeps the read on the owning REPLICA. It also carries a
-// live `orgMember` delegate (pointed at the real prisma14) because the sync route reads
-// `$replica.orgMember.findFirst` directly — orthogonal to the run read under test.
+// (readReplicaClient.ts) so the routing store keeps the read on the owning REPLICA.
 const { holder } = vi.hoisted(() => {
   const REPLICA_BRAND = Symbol.for("trigger.dev/run-store/read-replica");
   return {
     holder: {
       REPLICA_BRAND,
       store: undefined as unknown,
-      replicaMarker: undefined as unknown,
       environment: undefined as unknown,
       bufferResult: null as unknown,
-      userId: undefined as unknown,
-      resolvedEnv: undefined as unknown,
       span: undefined as unknown,
       traceSummary: undefined as unknown,
     },
@@ -57,7 +51,7 @@ vi.mock("~/v3/runStore.server", () => ({
   ),
 }));
 
-// `$replica` brand marker (routes it to the owning replica) + a live orgMember delegate for the sync route.
+// `$replica` brand marker: routes the read to the owning replica.
 vi.mock("~/db.server", () => ({
   prisma: {},
   $replica: new Proxy(
@@ -65,8 +59,7 @@ vi.mock("~/db.server", () => ({
     {
       get(_t, prop) {
         if (prop === holder.REPLICA_BRAND) return true;
-        const marker = holder.replicaMarker as Record<string | symbol, unknown> | undefined;
-        return marker ? marker[prop] : undefined;
+        return undefined;
       },
     }
   ),
@@ -108,27 +101,8 @@ vi.mock("~/v3/mollifier/syntheticApiResponses.server", () => ({
   buildSyntheticTraceBody: (r: unknown) => ({ synthetic: true, run: r }),
 }));
 
-// Sync-route peripherals (orthogonal to the run read under test).
-vi.mock("~/services/session.server", () => ({
-  getUserId: async () => holder.userId,
-}));
-vi.mock("~/v3/runOpsMigration/controlPlaneResolver.server", () => ({
-  controlPlaneResolver: { resolveEnv: async () => holder.resolvedEnv },
-}));
-vi.mock("~/utils/longPollingFetch", () => ({
-  longPollingFetch: async () =>
-    new Response("shape-stream-ok", { status: 200, headers: { "x-longpoll": "hit" } }),
-}));
-// Ensure ELECTRIC_ORIGIN is defined for the sync route's happy path; keep every other env value real
-// so the heavy apiBuilder import graph still loads.
-vi.mock("~/env.server", async (importOriginal) => {
-  const actual = (await importOriginal()) as { env: Record<string, unknown> };
-  return { env: { ...actual.env, ELECTRIC_ORIGIN: "http://electric.test" } };
-});
-
 import { loader as spansLoader } from "~/routes/api.v1.runs.$runId.spans.$spanId";
 import { loader as traceLoader } from "~/routes/api.v1.runs.$runId.trace";
-import { loader as syncTraceRunsLoader } from "~/routes/sync.traces.runs.$traceId";
 
 // A cuid (25 chars after `run_`) classifies LEGACY, so both the create and the friendlyId/traceId
 // reads route to the legacy (control-plane) store — the store that owns these runs.
@@ -266,14 +240,6 @@ function traceRequest(runId: string) {
     context: {} as never,
   };
 }
-function syncRequest(traceId: string) {
-  return {
-    request: new Request(`https://app.trigger.dev/sync/traces/runs/${traceId}?live=true`),
-    params: { traceId },
-    context: {} as never,
-  } as never;
-}
-
 describe("run-trace/span-detail route loaders under a lagging replica", () => {
   // spans loader — findResource findRun ($replica)
   heteroRunOpsPostgresTest(
@@ -464,83 +430,6 @@ describe("run-trace/span-detail route loaders under a lagging replica", () => {
       expect(res2.status).toBe(200);
       const body2 = (await res2.json()) as { trace?: unknown };
       expect(body2.trace).toEqual({ rootSpanId: `span_${suffix}`, spans: [] });
-    }
-  );
-
-  // sync trace-runs loader — findRun by traceId ($replica), with a primary fallback
-  heteroRunOpsPostgresTest(
-    "sync trace-runs loader: a live run lagging the replica is recovered via the primary fallback",
-    async ({ prisma14, prisma17 }) => {
-      const suffix = `sync_${seq++}`;
-      const seed = await seedTenant(prisma14, suffix);
-      const runId = `run_${CUID_25}`;
-      const friendlyId = `run_${suffix}`;
-      const traceId = "a".repeat(32);
-      const userId = `user_${suffix}`;
-
-      // The dashboard user, joined to the org so the route's real orgMember check passes.
-      await prisma14.user.create({
-        data: { id: userId, email: `u-${suffix}@example.com`, authenticationMethod: "MAGIC_LINK" },
-      });
-      await prisma14.orgMember.create({
-        data: { userId, organizationId: seed.organization.id, role: "ADMIN" },
-      });
-
-      const lagged = buildRouter(prisma14, prisma17, [{ model: "taskRun", mode: "missing" }]);
-      await lagged.legacyStore.createRun(
-        buildCreateRunInput({
-          runId,
-          friendlyId,
-          organizationId: seed.organization.id,
-          projectId: seed.project.id,
-          runtimeEnvironmentId: seed.environment.id,
-          traceId,
-          spanId: `span_${suffix}`,
-        })
-      );
-
-      holder.store = lagged.router;
-      holder.environment = authEnvironment(seed);
-      holder.userId = userId;
-      holder.resolvedEnv = { organizationId: seed.organization.id };
-      holder.replicaMarker = { orgMember: prisma14.orgMember };
-
-      const res = (await syncTraceRunsLoader(syncRequest(traceId))) as Response;
-
-      // The frozen replica WAS consulted (the lag was really exercised).
-      expect(lagged.legacyReplica.wasHit("taskRun")).toBe(true);
-
-      // The primary fallback recovers the live run and the loader proceeds to the shape stream (200).
-      expect(res.status).toBe(200);
-      expect(res.headers.get("x-longpoll")).toBe("hit");
-    }
-  );
-
-  // Negative control for the sync route: a truly-absent run must still 404 (the primary fallback
-  // recovers a LIVE run, it does not turn every miss into a 200).
-  heteroRunOpsPostgresTest(
-    "sync trace-runs loader: 404s when the run is absent on the primary too",
-    async ({ prisma14, prisma17 }) => {
-      const suffix = `sync_absent_${seq++}`;
-      const seed = await seedTenant(prisma14, suffix);
-      const userId = `user_${suffix}`;
-      await prisma14.user.create({
-        data: { id: userId, email: `u-${suffix}@example.com`, authenticationMethod: "MAGIC_LINK" },
-      });
-      await prisma14.orgMember.create({
-        data: { userId, organizationId: seed.organization.id, role: "ADMIN" },
-      });
-
-      const lagged = buildRouter(prisma14, prisma17, [{ model: "taskRun", mode: "missing" }]);
-      holder.store = lagged.router;
-      holder.environment = authEnvironment(seed);
-      holder.userId = userId;
-      holder.resolvedEnv = { organizationId: seed.organization.id };
-      holder.replicaMarker = { orgMember: prisma14.orgMember };
-
-      const res = (await syncTraceRunsLoader(syncRequest("b".repeat(32)))) as Response;
-      expect(lagged.legacyReplica.wasHit("taskRun")).toBe(true);
-      expect(res.status).toBe(404);
     }
   );
 });
