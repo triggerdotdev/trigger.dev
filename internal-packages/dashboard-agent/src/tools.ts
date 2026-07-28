@@ -529,12 +529,23 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         continue;
       }
 
-      const result = await ctx.investigations.upsert({
-        id: currentInvestigationId ?? continueId,
-        projectRef,
-        environmentRef: ctx.environmentId,
-        state: (block as InvestigationBlockBody).investigation,
-      });
+      // Tools return {error}, never throw — and a storage failure's message can
+      // carry the full SQL text, which must never reach the transcript.
+      let result: Awaited<ReturnType<InvestigationsCapability["upsert"]>>;
+      try {
+        result = await ctx.investigations.upsert({
+          id: currentInvestigationId ?? continueId,
+          projectRef,
+          environmentRef: ctx.environmentId,
+          state: (block as InvestigationBlockBody).investigation,
+        });
+      } catch (error) {
+        console.error("investigation upsert failed", error);
+        return {
+          error:
+            "Couldn't save the investigation right now. Answer in prose instead of rendering the card.",
+        };
+      }
 
       if (!result.ok) {
         // Either the investigation is gone or it belongs to another
