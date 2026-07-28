@@ -6,7 +6,11 @@ import type {
 import { applyMetadataOperations, parsePacket } from "@trigger.dev/core/v3";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { handleMetadataPacket, MetadataTooLargeError } from "~/utils/packets";
+import {
+  handleMetadataPacket,
+  handleMetadataPacketWithByteLength,
+  MetadataTooLargeError,
+} from "~/utils/packets";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { Effect, Schedule, Duration, Fiber } from "effect";
 import { type RuntimeFiber } from "effect/Fiber";
@@ -554,15 +558,18 @@ export class UpdateMetadataService {
     body: UpdateMetadataRequestBody,
     existingMetadata: IOPacket
   ): Promise<{ metadata: Record<string, unknown> | undefined; updatedAtMs?: number }> {
-    const metadataPacket = handleMetadataPacket(
+    const metadataPacketWithByteLength = handleMetadataPacketWithByteLength(
       body.metadata,
       "application/json",
       this.maximumSize
     );
 
-    if (!metadataPacket) {
+    if (!metadataPacketWithByteLength) {
       return { metadata: {} };
     }
+
+    const { packet: metadataPacket, byteLength: metadataSizeBytes } =
+      metadataPacketWithByteLength;
 
     let updatedAtMs: number | undefined;
 
@@ -573,7 +580,7 @@ export class UpdateMetadataService {
       if (this.flushLoggingEnabled) {
         this.logger.debug(`[updateRunMetadataDirectly] Updating metadata directly for run`, {
           runId,
-          metadataSizeBytes: Buffer.byteLength(metadataPacket.data ?? "", "utf8"),
+          metadataSizeBytes,
         });
       }
 
