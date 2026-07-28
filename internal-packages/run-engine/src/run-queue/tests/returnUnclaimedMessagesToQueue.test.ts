@@ -711,6 +711,59 @@ describe("RunQueue.returnUnclaimedMessagesToQueue", () => {
     }
   );
 
+  redisTest(
+    "isolates a run that fails to return and retries the pass",
+    async ({ redisContainer }) => {
+      const queue = createRunQueue(redisContainer);
+      const redis = createRedisClient(redisContainer);
+
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageFor({ runId: "r1" }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        await queue.processMasterQueueForEnvironment(authenticatedEnvDev.id, 10);
+
+        const envConcurrencyKey = `runqueue:test:${testOptions.keys.envCurrentConcurrencyKey(
+          authenticatedEnvDev
+        )}`;
+        const badMessageKey = `runqueue:test:${testOptions.keys.messageKey(
+          authenticatedEnvDev.organization.id,
+          "r-bad"
+        )}`;
+
+        await redis.sadd(envConcurrencyKey, "r-bad");
+        await redis.set(
+          badMessageKey,
+          JSON.stringify({
+            ...messageFor({ runId: "r-bad" }),
+            version: "2",
+            workerQueue: authenticatedEnvDev.id,
+            queue: "not-a-queue-key",
+          })
+        );
+
+        const result = await queue.returnUnclaimedMessagesToQueue({
+          env: authenticatedEnvDev,
+          passDelayMs: 10,
+        });
+
+        expect(result.errors).toBeGreaterThanOrEqual(1);
+        expect(result.passes).toBe(2);
+
+        expect(result.returned).toBe(1);
+        expect(await queue.lengthOfQueue(authenticatedEnvDev, "task/my-task")).toBe(1);
+        expect(await queue.peekAllOnWorkerQueue(authenticatedEnvDev.id)).toHaveLength(0);
+      } finally {
+        await redis.quit();
+        await queue.quit();
+      }
+    }
+  );
+
   redisTest("is idempotent when run twice", async ({ redisContainer }) => {
     const queue = createRunQueue(redisContainer);
 
