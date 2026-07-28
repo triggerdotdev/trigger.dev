@@ -13,9 +13,17 @@
  *   pnpm --filter webapp run db:seed:agent-examples -- --scale 0.1   # fast iteration
  *
  * Re-runnable: the project is identified by a fixed external ref, and every run
- * of the seeder wipes the data it owns (that project's runs/queues/metrics and
- * the chats it created) before writing it again. Nothing outside the project is
- * touched.
+ * of the seeder wipes the data it owns (both environments' runs/queues/metrics
+ * and the chats it created) before writing it again. Nothing outside the project
+ * is touched.
+ *
+ * Both prod and dev get the world, because dev is the environment the dashboard
+ * opens on by default: seeded prod-only, the project looks empty on arrival and
+ * the org-scoped chats look like the only thing in it. Each environment is
+ * generated separately rather than copied, so no two runs share a friendly id.
+ * Dev carries a fraction of prod's volume — it has to look alive, not identical.
+ * The transcripts are unchanged: they're org-scoped and their citations point at
+ * prod's entities.
  *
  * The story, one set of numbers everywhere: the environment has been pinned at
  * its concurrency ceiling for the last ~38 minutes while work keeps arriving, so
@@ -78,7 +86,15 @@ const { generateTraceId, generateSpanId } = eventCommon;
 const ORG_TITLE = "Agent Examples";
 const PROJECT_NAME = "agent-examples";
 const PROJECT_REF = "proj_agentexamplesseed01";
-const ENV_TYPE = "PRODUCTION" as const;
+/**
+ * Both environments get the same world. Dev matters because it's the one the
+ * dashboard opens on by default — seeded prod-only, the project looks empty and
+ * the org-scoped chats look like the only thing there is.
+ */
+const ENV_TYPES = ["PRODUCTION", "DEVELOPMENT"] as const;
+type SeededEnvType = (typeof ENV_TYPES)[number];
+/** Dev only has to look alive, so it carries a fraction of prod's volume. */
+const DEV_SCALE_FACTOR = 0.3;
 const DEPLOYMENT_VERSION = "20260726.4";
 const GIT_SHA = "9f3c1a2b7d4e6058ab1c2d3e4f5061728394a5b6";
 const SOURCE_PATH = "src/trigger/sendOrderReceipt.ts";
@@ -229,7 +245,7 @@ function rawClient(ch: ClickHouse): RawCommand {
   return (ch.writer as unknown as { client: RawCommand }).client;
 }
 
-async function resetClickhouse(ch: ClickHouse, environmentId: string) {
+async function resetClickhouse(ch: ClickHouse, environmentId: string, label: string) {
   const raw = rawClient(ch);
   const tables = [
     "task_runs_v2",
@@ -250,7 +266,7 @@ async function resetClickhouse(ch: ClickHouse, environmentId: string) {
       query: `DELETE FROM trigger_dev.${table} WHERE environment_id = '${environmentId}' SETTINGS mutations_sync = 2`,
     });
   }
-  console.log(`Cleared ClickHouse rows for environment ${environmentId}`);
+  console.log(`[${label}] cleared ClickHouse rows for environment ${environmentId}`);
   // A running dev server replicates this project's Postgres runs into
   // `task_runs_v2` itself, so after a re-seed the table also holds one tombstone
   // (`_is_deleted = 1`) per run the reset removed. A raw `count()` sees them; every
@@ -303,24 +319,35 @@ async function seedPostgresShell(userId: string) {
     data: { engine: "V2" },
   });
 
-  const environment = await prisma.runtimeEnvironment.findFirst({
-    where: { projectId: project.id, type: ENV_TYPE },
-  });
-  if (!environment) {
-    console.error(`No ${ENV_TYPE} environment on project ${project.slug}.`);
-    process.exit(1);
+  // Ordered as ENV_TYPES is: prod first, because prod's cast is the one the
+  // transcripts cite.
+  const environments = [];
+  for (const type of ENV_TYPES) {
+    const environment = await prisma.runtimeEnvironment.findFirst({
+      where: { projectId: project.id, type },
+    });
+    if (!environment) {
+      console.error(`No ${type} environment on project ${project.slug}.`);
+      process.exit(1);
+    }
+    // The report reads the ceiling from ClickHouse; keeping Postgres in step means
+    // the queues page and the report can't disagree.
+    await prisma.runtimeEnvironment.update({
+      where: { id: environment.id },
+      data: { maximumConcurrencyLimit: STORY.envConcurrencyLimit },
+    });
+    environments.push({
+      id: environment.id,
+      slug: environment.slug,
+      apiKey: environment.apiKey,
+      type: type as SeededEnvType,
+    });
   }
-  // The report reads the ceiling from ClickHouse; keeping Postgres in step means
-  // the queues page and the report can't disagree.
-  await prisma.runtimeEnvironment.update({
-    where: { id: environment.id },
-    data: { maximumConcurrencyLimit: STORY.envConcurrencyLimit },
-  });
 
-  return { org, project, environment };
+  return { org, project, environments };
 }
 
-async function resetPostgresData(environmentId: string, projectId: string) {
+async function resetPostgresData(environmentId: string, projectId: string, label: string) {
   await prisma.taskRun.deleteMany({ where: { runtimeEnvironmentId: environmentId } });
   await prisma.taskQueue.deleteMany({ where: { runtimeEnvironmentId: environmentId } });
   await prisma.workerDeploymentPromotion.deleteMany({ where: { environmentId } });
@@ -328,7 +355,7 @@ async function resetPostgresData(environmentId: string, projectId: string) {
   await prisma.backgroundWorker.deleteMany({
     where: { runtimeEnvironmentId: environmentId, projectId },
   });
-  console.log("Cleared this project's runs, queues, worker and deployment");
+  console.log(`[${label}] cleared this project's runs, queues, worker and deployment`);
 }
 
 async function seedWorkerAndDeployment(
@@ -425,7 +452,7 @@ async function seedWorkerAndDeployment(
   return { worker, deployment };
 }
 
-async function seedQueues(projectId: string, environmentId: string) {
+async function seedQueues(projectId: string, environmentId: string, label: string) {
   for (const [name, concurrencyLimit] of Object.entries(QUEUE_LIMITS)) {
     await prisma.taskQueue.create({
       data: {
@@ -440,7 +467,7 @@ async function seedQueues(projectId: string, environmentId: string) {
       },
     });
   }
-  console.log(`Created ${Object.keys(QUEUE_LIMITS).length} task queues`);
+  console.log(`[${label}] created ${Object.keys(QUEUE_LIMITS).length} task queues`);
 }
 
 // ---------------------------------------------------------------------------
@@ -615,7 +642,13 @@ function buildCastRuns(now: number, rng: () => number) {
 
 async function insertPostgresRuns(
   specs: RunSpec[],
-  ids: { projectId: string; environmentId: string; organizationId: string; workerId: string }
+  ids: {
+    projectId: string;
+    environmentId: string;
+    organizationId: string;
+    workerId: string;
+    environmentType: SeededEnvType;
+  }
 ): Promise<Map<string, string>> {
   const runIdByFriendlyId = new Map<string, string>();
   let number = 1;
@@ -632,7 +665,7 @@ async function insertPostgresRuns(
         traceId: spec.traceId,
         spanId: spec.spanId,
         runtimeEnvironmentId: ids.environmentId,
-        environmentType: ENV_TYPE,
+        environmentType: ids.environmentType,
         projectId: ids.projectId,
         organizationId: ids.organizationId,
         queue: spec.queue,
@@ -666,7 +699,8 @@ function taskRunRow(
   spec: RunSpec,
   runId: string,
   ids: ChIds,
-  version: string
+  version: string,
+  environmentType: SeededEnvType
 ): ReadonlyArray<unknown> {
   const failed = ["COMPLETED_WITH_ERRORS", "SYSTEM_FAILURE", "CRASHED", "TIMED_OUT"].includes(
     spec.status
@@ -679,7 +713,7 @@ function taskRunRow(
     updated_at: spec.createdAt.getTime(),
     created_at: spec.createdAt.getTime(),
     status: spec.status,
-    environment_type: ENV_TYPE,
+    environment_type: environmentType,
     friendly_id: spec.friendlyId,
     attempt: spec.attemptNumber ?? 1,
     engine: "V2",
@@ -1167,14 +1201,19 @@ async function insertQueueMetrics(ch: ClickHouse, rows: QueueMetricsRawV1Input[]
 // Redis: the live env-queue depth the report prefers over the metric series
 // ---------------------------------------------------------------------------
 
-async function stageRedisDepth(organizationId: string, environmentId: string, depth: number) {
+async function stageRedisDepth(
+  organizationId: string,
+  environmentId: string,
+  depth: number,
+  label: string
+) {
   const host = process.env.RUN_ENGINE_RUN_QUEUE_REDIS_HOST ?? process.env.REDIS_HOST ?? "localhost";
   const port = Number(
     process.env.RUN_ENGINE_RUN_QUEUE_REDIS_PORT ?? process.env.REDIS_PORT ?? 6379
   );
   const localHosts = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
   if (!localHosts.has(host)) {
-    console.warn(`Skipping Redis staging on a non-local host: ${host}`);
+    console.warn(`[${label}] skipping Redis staging on a non-local host: ${host}`);
     return;
   }
   try {
@@ -1192,9 +1231,12 @@ async function stageRedisDepth(organizationId: string, environmentId: string, de
       await redis.zadd(envQueueKey, ...args);
     }
     await redis.quit();
-    console.log(`Staged env-queue depth ${depth} in Redis`);
+    console.log(`[${label}] staged env-queue depth ${depth} in Redis`);
   } catch (error) {
-    console.warn("Redis staging skipped:", error instanceof Error ? error.message : error);
+    console.warn(
+      `[${label}] Redis staging skipped:`,
+      error instanceof Error ? error.message : error
+    );
   }
 }
 
@@ -1438,9 +1480,89 @@ Usage: pnpm --filter webapp run db:seed:agent-examples -- [flags]
 Flags:
   --scale <n>    scale the seeded run volume (default 1). 0.1 seeds a tenth of
                  the rows for fast iteration; the story's headline numbers stay
-                 the same, only the row counts shrink.
+                 the same, only the row counts shrink. Dev is seeded at
+                 ${DEV_SCALE_FACTOR}x this.
   --reset-only   delete everything this seeder owns and exit
   --help         this text`);
+}
+
+/**
+ * Everything that belongs to one environment. Called once per environment, so
+ * dev is not an empty shell — it's the same world, generated fresh (its own run
+ * ids, its own spans) rather than copied, which keeps friendly ids unique.
+ */
+async function seedEnvironment(opts: {
+  ch: ClickHouse;
+  organizationId: string;
+  projectId: string;
+  environment: { id: string; slug: string; apiKey: string; type: SeededEnvType };
+  userId: string;
+  now: number;
+  scale: number;
+  nonce: string;
+  rng: () => number;
+}) {
+  const { ch, organizationId, projectId, environment, userId, now, scale, nonce, rng } = opts;
+  const label = environment.slug;
+  const ids: ChIds = {
+    organization_id: organizationId,
+    project_id: projectId,
+    environment_id: environment.id,
+  };
+
+  const { worker } = await seedWorkerAndDeployment(
+    projectId,
+    environment.id,
+    userId,
+    new Date(now - 20 * 3600_000)
+  );
+  await seedQueues(projectId, environment.id, label);
+
+  // The cast: Postgres rows + ClickHouse rows + spans, so every citation opens.
+  const cast = buildCastRuns(now, rng);
+  const castSpecs = [cast.failed, cast.waiting, cast.slow, cast.prior, ...cast.background];
+  const runIdByFriendlyId = await insertPostgresRuns(castSpecs, {
+    projectId,
+    environmentId: environment.id,
+    organizationId,
+    workerId: worker.id,
+    environmentType: environment.type,
+  });
+  console.log(`[${label}] created ${castSpecs.length} runs in Postgres`);
+
+  const bulkSpecs = buildBulkRuns(now, scale, rng);
+  const runRows = [
+    ...castSpecs.map((spec) =>
+      taskRunRow(spec, runIdByFriendlyId.get(spec.friendlyId)!, ids, String(now), environment.type)
+    ),
+    ...bulkSpecs.map((spec) =>
+      taskRunRow(spec, syntheticRunId(), ids, String(now), environment.type)
+    ),
+  ];
+  await insertTaskRuns(ch, runRows, `${nonce}:${label}:runs`);
+  console.log(
+    `[${label}] inserted ${runRows.length} task_runs_v2 rows (${bulkSpecs.length} for volume)`
+  );
+
+  const spans = buildSpans(castSpecs, ids, now);
+  const [spanError] = await ch.taskEventsV2.insert(spans, {
+    params: { clickhouse_settings: { async_insert: 0 } },
+  });
+  if (spanError) {
+    console.error(`[${label}] task_events_v2 insert failed:`, spanError.message);
+    process.exit(1);
+  }
+  console.log(`[${label}] inserted ${spans.length} spans`);
+
+  const metricRows = buildQueueMetrics(ids, now, rng);
+  await insertQueueMetrics(ch, metricRows, `${nonce}:${label}:metrics`);
+  console.log(`[${label}] inserted ${metricRows.length} queue_metrics_raw_v1 rows`);
+
+  // The pending depth the report prefers over the metric series. The queue
+  // metrics are not scaled, so both environments tell the same depth story.
+  await stageRedisDepth(organizationId, environment.id, STORY.pending, label);
+
+  return { environment, cast, castSpecs, bulkSpecs };
 }
 
 async function main() {
@@ -1461,21 +1583,19 @@ async function main() {
     process.exit(1);
   }
 
-  const { org, project, environment } = await seedPostgresShell(user.id);
+  const { org, project, environments } = await seedPostgresShell(user.id);
   const ch = clickhouse();
-  const ids: ChIds = {
-    organization_id: org.id,
-    project_id: project.id,
-    environment_id: environment.id,
-  };
-
   const agentDbClient = agentDb();
 
-  await resetPostgresData(environment.id, project.id);
-  await resetClickhouse(ch, environment.id);
+  for (const environment of environments) {
+    await resetPostgresData(environment.id, project.id, environment.slug);
+    await resetClickhouse(ch, environment.id, environment.slug);
+  }
   if (flags["reset-only"] === "true") {
     await deleteSeededChats(agentDbClient, user.id);
-    await stageRedisDepth(org.id, environment.id, 0);
+    for (const environment of environments) {
+      await stageRedisDepth(org.id, environment.id, 0, environment.slug);
+    }
     await agentDbClient.close();
     await ch.close();
     console.log("Reset complete.");
@@ -1486,48 +1606,28 @@ async function main() {
   const rng = mulberry32(20260727);
   const nonce = `agentex-${now}`;
 
-  const { worker } = await seedWorkerAndDeployment(
-    project.id,
-    environment.id,
-    user.id,
-    new Date(now - 20 * 3600_000)
-  );
-  await seedQueues(project.id, environment.id);
-
-  // The cast: Postgres rows + ClickHouse rows + spans, so every citation opens.
-  const cast = buildCastRuns(now, rng);
-  const castSpecs = [cast.failed, cast.waiting, cast.slow, cast.prior, ...cast.background];
-  const runIdByFriendlyId = await insertPostgresRuns(castSpecs, {
-    projectId: project.id,
-    environmentId: environment.id,
-    organizationId: org.id,
-    workerId: worker.id,
-  });
-  console.log(`Created ${castSpecs.length} runs in Postgres`);
-
-  const bulkSpecs = buildBulkRuns(now, scale, rng);
-  const runRows = [
-    ...castSpecs.map((spec) =>
-      taskRunRow(spec, runIdByFriendlyId.get(spec.friendlyId)!, ids, String(now))
-    ),
-    ...bulkSpecs.map((spec) => taskRunRow(spec, syntheticRunId(), ids, String(now))),
-  ];
-  await insertTaskRuns(ch, runRows, `${nonce}:runs`);
-  console.log(`Inserted ${runRows.length} task_runs_v2 rows (${bulkSpecs.length} for volume)`);
-
-  const spans = buildSpans(castSpecs, ids, now);
-  const [spanError] = await ch.taskEventsV2.insert(spans, {
-    params: { clickhouse_settings: { async_insert: 0 } },
-  });
-  if (spanError) {
-    console.error("task_events_v2 insert failed:", spanError.message);
-    process.exit(1);
+  // Prod first: it's the environment the transcripts cite, so its cast is the one
+  // the world is built from.
+  const seeded = [];
+  for (const environment of environments) {
+    seeded.push(
+      await seedEnvironment({
+        ch,
+        organizationId: org.id,
+        projectId: project.id,
+        environment,
+        userId: user.id,
+        now,
+        // Dev exists so the project isn't empty on the page people land on; it
+        // doesn't need prod's row count to look alive.
+        scale: environment.type === "PRODUCTION" ? scale : scale * DEV_SCALE_FACTOR,
+        nonce,
+        rng,
+      })
+    );
   }
-  console.log(`Inserted ${spans.length} spans`);
-
-  const metricRows = buildQueueMetrics(ids, now, rng);
-  await insertQueueMetrics(ch, metricRows, `${nonce}:metrics`);
-  console.log(`Inserted ${metricRows.length} queue_metrics_raw_v1 rows`);
+  const prod = seeded[0];
+  const { environment, cast, castSpecs, bulkSpecs } = prod;
 
   // The rollups are AggregatingMergeTrees; the real pipeline waits for background
   // merges, and a seeder that is about to read them cannot.
@@ -1541,8 +1641,6 @@ async function main() {
   ]) {
     await raw.command({ query: `OPTIMIZE TABLE trigger_dev.${table} FINAL` });
   }
-
-  await stageRedisDepth(org.id, environment.id, STORY.pending);
 
   // The degraded card is the live report over the rows above, when the dev server
   // is up to serve it.
@@ -1613,7 +1711,9 @@ Done.
 
   Organization  ${org.title} (${org.slug})
   Project       ${project.name} (${project.slug}) — ${project.externalRef}
-  Environment   ${environment.slug} (${environment.id})
+  Environments  ${seeded
+    .map(({ environment: env }) => `${env.slug} (${env.id})`)
+    .join("\n                ")}
   Deployment    ${DEPLOYMENT_VERSION} @ ${GIT_SHA.slice(0, 7)}
   Error group   ${ERROR_FINGERPRINT}
   Cited runs    failed ${cast.failed.friendlyId}
@@ -1622,6 +1722,7 @@ Done.
                 prior  ${cast.prior.friendlyId}
 
   Dashboard     ${dashboardUrl}
+                (dev is seeded too — the cited runs above are prod's)
 
   Seeded chats (${chats.length}):`);
   for (const chat of chats) {
