@@ -21,6 +21,7 @@
     "db:seed": "tsx seed.ts",
     "db:seed:ai-spans": "tsx seed-ai-spans.mts",
     "db:seed:queue-metrics": "tsx seed-queue-metrics.mts",
+    "db:seed:agent-examples": "tsx seed-agent-examples.mts",
     "upload:sourcemaps": "bash ./upload-sourcemaps.sh",
     "test": "vitest --no-file-parallelism",
     "eval:dev": "evalite watch"
