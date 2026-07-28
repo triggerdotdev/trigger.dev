@@ -7,39 +7,26 @@
  * inside a 380px chat panel.
  *
  * It reuses the production semantics wherever they exist — the health message
- * catalog for every string, `sparklineFromSeries` for every trend — so the card
- * holds no report vocabulary of its own. Only the *formatting* is local, and
- * only because the markdown renderer keeps its formatters private.
+ * catalog for every string, the shared metric row and sparkline from
+ * `report-sparkline.tsx` for the layout — so the card holds no report vocabulary
+ * and no layout of its own. Only the *formatting* is local, and only because the
+ * markdown renderer keeps its formatters private.
  */
 import type {
   Finding,
   Metric,
   ReportViewModel,
-  Severity,
   Unit,
 } from "~/presenters/v3/reports/report-view-model";
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
-import { sparklineFromSeries } from "~/presenters/v3/reports/renderMarkdown";
 import { Badge } from "~/components/primitives/Badge";
 import { cn } from "~/utils/cn";
-
-const SEVERITY_DOT: Record<Severity, string> = {
-  ok: "bg-emerald-500",
-  warn: "bg-amber-500",
-  crit: "bg-rose-500",
-};
-
-const SEVERITY_TEXT: Record<Severity, string> = {
-  ok: "text-emerald-400",
-  warn: "text-amber-400",
-  crit: "text-rose-400",
-};
-
-const SEVERITY_BADGE: Record<Severity, string> = {
-  ok: "border-emerald-500/40 text-emerald-400",
-  warn: "border-amber-500/40 text-amber-400",
-  crit: "border-rose-500/40 text-rose-400",
-};
+import {
+  ReportMetricRow,
+  ReportSeverityIcon,
+  SEVERITY_BADGE,
+  SEVERITY_TEXT,
+} from "../../report-sparkline";
 
 // --- formatting -------------------------------------------------------------
 // Local copies of the markdown renderer's private formatters. Kept in sync by
@@ -95,40 +82,54 @@ function findingTokens(vm: ReportViewModel): Record<string, string | number> {
 
 // --- pieces ----------------------------------------------------------------
 
-function MetricRow({ vm, metric }: { vm: ReportViewModel; metric: Metric }) {
-  const label = healthMessages.metricLabel(metric.id);
-  const spark = metric.series?.points.length ? sparklineFromSeries(metric.series.points) : "";
-  const trailing = metric.annotation
+function fmtCount(value: number): string {
+  return Math.round(value).toLocaleString("en-US");
+}
+
+function MetricRow({
+  vm,
+  metric,
+  anomalyMinutes,
+}: {
+  vm: ReportViewModel;
+  metric: Metric;
+  anomalyMinutes?: number;
+}) {
+  const note = metric.annotation
     ? fillTokens(healthMessages.annotationMessage(metric.annotation.code), metricTokens(vm, metric))
     : metric.normal !== undefined
       ? `normal ~${fmtValue(metric.normal, metric.unit)}`
       : metric.series?.kind === "estimated"
-        ? "estimated"
-        : "";
+        ? "Estimated from a proxy signal, so read it as a shape, not a number."
+        : undefined;
 
   const composite = metric.unit === "perMin" && metric.breakdown?.done !== undefined;
 
   return (
-    <li className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
-      <span className="min-w-[5.5rem] text-text-dimmed">{label}</span>
-      <span className={cn("font-medium tabular-nums", SEVERITY_TEXT[metric.severity])}>
-        {fmtValue(metric.value, metric.unit)}
-      </span>
-      {composite ? (
-        <span className="text-text-dimmed">
-          ({Math.round(metric.breakdown!.done!).toLocaleString("en-US")} done ·{" "}
-          {Math.round(metric.breakdown!.triggered ?? 0).toLocaleString("en-US")} triggered)
-        </span>
-      ) : null}
-      {metric.delta?.mult && metric.delta.mult > 1 ? (
-        <span className="text-text-dimmed">
-          {metric.delta.dir === "up" ? "↑" : metric.delta.dir === "down" ? "↓" : ""}
-          {metric.delta.mult}×
-        </span>
-      ) : null}
-      {spark ? <span className="font-mono text-text-dimmed">{spark}</span> : null}
-      {trailing ? <span className="text-text-faint">{trailing}</span> : null}
-    </li>
+    <ReportMetricRow
+      label={healthMessages.metricLabel(metric.id)}
+      value={fmtValue(metric.value, metric.unit)}
+      severity={metric.severity}
+      breakdown={
+        composite
+          ? `${fmtCount(metric.breakdown!.done!)} done · ${fmtCount(
+              metric.breakdown!.triggered ?? 0
+            )} triggered`
+          : undefined
+      }
+      delta={
+        metric.delta?.mult && metric.delta.mult > 1
+          ? `${metric.delta.dir === "up" ? "↑" : metric.delta.dir === "down" ? "↓" : ""}${
+              metric.delta.mult
+            }×`
+          : undefined
+      }
+      note={note}
+      series={metric.series?.points}
+      windowMinutes={vm.windowMinutes}
+      anomalyMinutes={anomalyMinutes}
+      formatPoint={(value) => fmtValue(value, metric.unit)}
+    />
   );
 }
 
@@ -142,40 +143,51 @@ function FindingSection({ vm, finding }: { vm: ReportViewModel; finding: Finding
     .map((id) => vm.metrics.find((m) => m.id === id))
     .filter((m): m is Metric => m !== undefined);
 
+  // The anomaly window describes the finding's *driving* metric — the first id,
+  // since degraded findings list theirs in causal order.
+  const anomalyMinutes = finding.anomalyWindow?.touchesEnd
+    ? finding.anomalyWindow.minutes
+    : undefined;
+
   return (
     <div className="space-y-1.5">
-      <div className="flex items-baseline gap-2">
-        <span
-          className={cn("mt-1 size-1.5 shrink-0 rounded-full", SEVERITY_DOT[finding.severity])}
-        />
-        <span className="text-[10px] uppercase tracking-wide text-text-dimmed">{finding.type}</span>
-        <span className={cn("text-xs", degraded ? "text-text-bright" : "text-text-dimmed")}>
+      <div className="flex items-start gap-2">
+        <ReportSeverityIcon severity={finding.severity} className="mt-0.5" />
+        <span className="mt-px text-xs uppercase tracking-wide text-text-dimmed">
+          {finding.type}
+        </span>
+        <span className={cn("text-sm", degraded ? "text-text-bright" : "text-text-dimmed")}>
           {fillTokens(reason, tokens)}
           {finding.anomalyWindow?.touchesEnd ? ` (last ${finding.anomalyWindow.minutes} min)` : ""}
         </span>
       </div>
 
       {degraded ? (
-        <div className="space-y-1.5 pl-3.5">
+        <div className="space-y-1.5 pl-[1.375rem]">
           {finding.read ? (
-            <p className="text-xs text-text-dimmed">
+            <p className="text-sm text-text-dimmed">
               read: {fillTokens(healthMessages.readMessage(finding.read), tokens)}
             </p>
           ) : null}
           <ul className="space-y-1">
-            {metrics.map((metric) => (
-              <MetricRow key={metric.id} vm={vm} metric={metric} />
+            {metrics.map((metric, i) => (
+              <MetricRow
+                key={metric.id}
+                vm={vm}
+                metric={metric}
+                anomalyMinutes={i === 0 ? anomalyMinutes : undefined}
+              />
             ))}
           </ul>
           {finding.attribution ? (
-            <p className="text-xs text-text-dimmed">
+            <p className="text-sm text-text-dimmed">
               worst {finding.attribution.dim}:{" "}
               <span className="font-mono text-text-bright">{finding.attribution.key}</span> —{" "}
               {Math.round(finding.attribution.share * 100)}% of {finding.attribution.of}
             </p>
           ) : null}
           {(finding.exclusions ?? []).map((exclusion, i) => (
-            <p key={`x${i}`} className="text-xs text-text-faint">
+            <p key={`x${i}`} className="text-sm text-text-faint">
               {fillTokens(healthMessages.exclusionMessage(exclusion.code), {
                 ...tokens,
                 ...(exclusion.evidence ?? {}),
@@ -183,7 +195,7 @@ function FindingSection({ vm, finding }: { vm: ReportViewModel; finding: Finding
             </p>
           ))}
           {(finding.observations ?? []).map((observation, i) => (
-            <p key={`o${i}`} className="text-xs text-text-faint">
+            <p key={`o${i}`} className="text-sm text-text-faint">
               {fillTokens(healthMessages.observationMessage(observation.code), {
                 ...tokens,
                 ...(observation.evidence ?? {}),
@@ -224,11 +236,8 @@ export function DemoReportCard({
       <div className="space-y-3 px-3 py-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {vm.summary.statements.map((statement, i) => (
-            <span key={i} className="flex items-center gap-1.5 text-xs">
-              <span
-                className={cn("size-1.5 rounded-full", SEVERITY_DOT[statement.severity])}
-                aria-hidden
-              />
+            <span key={i} className="flex items-center gap-1.5 text-sm">
+              <ReportSeverityIcon severity={statement.severity} />
               <span className={SEVERITY_TEXT[statement.severity]}>
                 {healthMessages.statementMessage(
                   statement.findingType,
@@ -261,7 +270,7 @@ export function DemoReportCard({
                   key={i}
                   type="button"
                   onClick={() => onAction?.(label, url)}
-                  className="inline-flex items-center rounded border border-border-bright bg-background-bright px-2.5 py-1 text-xs text-text-bright transition-colors hover:border-border-brightest hover:bg-background-hover"
+                  className="inline-flex items-center rounded border border-border-bright bg-background-bright px-2.5 py-1 text-sm text-text-bright transition-colors hover:border-border-brightest hover:bg-background-hover"
                 >
                   {label}
                 </button>

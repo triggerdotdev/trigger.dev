@@ -24,7 +24,6 @@ import {
   type AgentIntent,
   type ReportFindingPayload,
   type ReportMetricPayload,
-  type ReportSeverity,
   type ReportUnit,
   type ReportViewModelPayload,
   type TriggerUri,
@@ -34,29 +33,16 @@ import { Badge } from "~/components/primitives/Badge";
 // catalog registers itself under the report's title on import.
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import { type ReportMessages } from "~/presenters/v3/reports/report-messages";
-import { sparklineFromSeries } from "~/presenters/v3/reports/renderMarkdown";
 import { cn } from "~/utils/cn";
 import { reportIsTrustworthy } from "./report-block-adapter";
+import {
+  ReportMetricRow,
+  ReportSeverityIcon,
+  SEVERITY_BADGE,
+  SEVERITY_TEXT,
+} from "./report-sparkline";
 
 export type ResolvedUri = { label: string; url: string };
-
-const SEVERITY_DOT: Record<ReportSeverity, string> = {
-  ok: "bg-success",
-  warn: "bg-warning",
-  crit: "bg-error",
-};
-
-const SEVERITY_TEXT: Record<ReportSeverity, string> = {
-  ok: "text-success",
-  warn: "text-warning",
-  crit: "text-error",
-};
-
-const SEVERITY_BADGE: Record<ReportSeverity, string> = {
-  ok: "border-success/40 text-success",
-  warn: "border-warning/40 text-warning",
-  crit: "border-error/40 text-error",
-};
 
 /**
  * Footer codes that state an option rather than offer an action ("nothing to do",
@@ -178,7 +164,7 @@ function classifyLink(
 }
 
 const ACTION_CLASS =
-  "inline-flex items-center rounded border border-border-bright bg-background-bright px-2.5 py-1 text-xs text-text-bright transition-colors hover:border-border-brightest hover:bg-background-hover";
+  "inline-flex items-center rounded border border-border-bright bg-background-bright px-2.5 py-1 text-sm text-text-bright transition-colors hover:border-border-brightest hover:bg-background-hover";
 
 /**
  * One footer action. External docs are a real link; anything in-app becomes a
@@ -207,7 +193,7 @@ function ActionButton({
       ? { kind: "navigate", target: target.uri }
       : { kind: "ask", prompt: `How do I ${lowerFirst(label)}?` };
 
-  if (!onIntent) return <span className="text-xs text-text-dimmed">{label}</span>;
+  if (!onIntent) return <span className="text-sm text-text-dimmed">{label}</span>;
 
   return (
     <button type="button" onClick={() => onIntent(intent)} className={ACTION_CLASS}>
@@ -226,43 +212,48 @@ function MetricRow({
   vm,
   metric,
   messages,
+  anomalyMinutes,
 }: {
   vm: ReportViewModelPayload;
   metric: ReportMetricPayload;
   messages: ReportMessages;
+  anomalyMinutes?: number;
 }) {
-  const spark = metric.series?.points.length ? sparklineFromSeries(metric.series.points) : "";
-  const trailing = metric.annotation
+  const note = metric.annotation
     ? fillTokens(messages.annotationMessage(metric.annotation.code), metricTokens(vm, metric))
     : metric.normal !== undefined
       ? `normal ~${fmtValue(metric.normal, metric.unit)}`
       : metric.series?.kind === "estimated"
-        ? "estimated"
-        : "";
+        ? "Estimated from a proxy signal, so read it as a shape, not a number."
+        : undefined;
 
   const composite = metric.unit === "perMin" && metric.breakdown?.done !== undefined;
 
   return (
-    <li className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
-      <span className="min-w-[5.5rem] text-text-dimmed">{messages.metricLabel(metric.id)}</span>
-      <span className={cn("font-medium tabular-nums", SEVERITY_TEXT[metric.severity])}>
-        {fmtValue(metric.value, metric.unit)}
-      </span>
-      {composite ? (
-        <span className="text-text-dimmed">
-          ({fmtCount(metric.breakdown!.done!)} done · {fmtCount(metric.breakdown!.triggered ?? 0)}{" "}
-          triggered)
-        </span>
-      ) : null}
-      {metric.delta?.mult && metric.delta.mult > 1 ? (
-        <span className="text-text-dimmed">
-          {metric.delta.dir === "up" ? "↑" : metric.delta.dir === "down" ? "↓" : ""}
-          {metric.delta.mult}×
-        </span>
-      ) : null}
-      {spark ? <span className="font-mono text-text-dimmed">{spark}</span> : null}
-      {trailing ? <span className="text-text-faint">{trailing}</span> : null}
-    </li>
+    <ReportMetricRow
+      label={messages.metricLabel(metric.id)}
+      value={fmtValue(metric.value, metric.unit)}
+      severity={metric.severity}
+      breakdown={
+        composite
+          ? `${fmtCount(metric.breakdown!.done!)} done · ${fmtCount(
+              metric.breakdown!.triggered ?? 0
+            )} triggered`
+          : undefined
+      }
+      delta={
+        metric.delta?.mult && metric.delta.mult > 1
+          ? `${metric.delta.dir === "up" ? "↑" : metric.delta.dir === "down" ? "↓" : ""}${
+              metric.delta.mult
+            }×`
+          : undefined
+      }
+      note={note}
+      series={metric.series?.points}
+      windowMinutes={vm.windowMinutes}
+      anomalyMinutes={anomalyMinutes}
+      formatPoint={(value) => fmtValue(value, metric.unit)}
+    />
   );
 }
 
@@ -283,41 +274,55 @@ function FindingSection({
     .map((id) => vm.metrics.find((m) => m.id === id))
     .filter((m): m is ReportMetricPayload => m !== undefined);
 
+  // The anomaly window describes the finding's *driving* metric — the first id,
+  // since degraded findings list theirs in causal order — so only that one
+  // sparkline highlights it.
+  const anomalyMinutes = finding.anomalyWindow?.touchesEnd
+    ? finding.anomalyWindow.minutes
+    : undefined;
+
   return (
     <div className="space-y-1.5">
-      <div className="flex items-baseline gap-2">
-        <span
-          className={cn("mt-1 size-1.5 shrink-0 rounded-full", SEVERITY_DOT[finding.severity])}
-          aria-hidden
-        />
-        <span className="text-[10px] uppercase tracking-wide text-text-dimmed">{finding.type}</span>
-        <span className={cn("text-xs", degraded ? "text-text-bright" : "text-text-dimmed")}>
+      <div className="flex items-start gap-2">
+        <ReportSeverityIcon severity={finding.severity} className="mt-0.5" />
+        <span className="mt-px text-xs uppercase tracking-wide text-text-dimmed">
+          {finding.type}
+        </span>
+        <span className={cn("text-sm", degraded ? "text-text-bright" : "text-text-dimmed")}>
           {fillTokens(reason, tokens)}
           {finding.anomalyWindow?.touchesEnd ? ` (last ${finding.anomalyWindow.minutes} min)` : ""}
         </span>
       </div>
 
       {degraded ? (
-        <div className="space-y-1.5 pl-3.5">
+        // Indented to clear the severity icon and its gap, so the metric grid
+        // starts under the finding's text.
+        <div className="space-y-1.5 pl-[1.375rem]">
           {finding.read ? (
-            <p className="text-xs text-text-dimmed">
+            <p className="text-sm text-text-dimmed">
               read: {fillTokens(messages.readMessage(finding.read), tokens)}
             </p>
           ) : null}
           <ul className="space-y-1">
-            {metrics.map((metric) => (
-              <MetricRow key={metric.id} vm={vm} metric={metric} messages={messages} />
+            {metrics.map((metric, i) => (
+              <MetricRow
+                key={metric.id}
+                vm={vm}
+                metric={metric}
+                messages={messages}
+                anomalyMinutes={i === 0 ? anomalyMinutes : undefined}
+              />
             ))}
           </ul>
           {finding.attribution ? (
-            <p className="text-xs text-text-dimmed">
+            <p className="text-sm text-text-dimmed">
               worst {finding.attribution.dim}:{" "}
               <span className="font-mono text-text-bright">{finding.attribution.key}</span> —{" "}
               {Math.round(finding.attribution.share * 100)}% of {finding.attribution.of}
             </p>
           ) : null}
           {(finding.exclusions ?? []).map((exclusion, i) => (
-            <p key={`x${i}`} className="text-xs text-text-faint">
+            <p key={`x${i}`} className="text-sm text-text-faint">
               {fillTokens(messages.exclusionMessage(exclusion.code), {
                 ...tokens,
                 ...(exclusion.evidence ?? {}),
@@ -325,7 +330,7 @@ function FindingSection({
             </p>
           ))}
           {(finding.observations ?? []).map((observation, i) => (
-            <p key={`o${i}`} className="text-xs text-text-faint">
+            <p key={`o${i}`} className="text-sm text-text-faint">
               {fillTokens(messages.observationMessage(observation.code), {
                 ...tokens,
                 ...(observation.evidence ?? {}),
@@ -398,11 +403,8 @@ export function ReportView({
       <div className={cn("space-y-3 px-3 py-3", trustworthy ? undefined : "opacity-80")}>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           {vm.summary.statements.map((statement, i) => (
-            <span key={i} className="flex items-center gap-1.5 text-xs">
-              <span
-                className={cn("size-1.5 rounded-full", SEVERITY_DOT[statement.severity])}
-                aria-hidden
-              />
+            <span key={i} className="flex items-center gap-1.5 text-sm">
+              <ReportSeverityIcon severity={statement.severity} />
               <span className={SEVERITY_TEXT[statement.severity]}>
                 {messages.statementMessage(
                   statement.findingType,
@@ -415,7 +417,7 @@ export function ReportView({
         </div>
 
         {trustworthy ? null : (
-          <p className="text-xs text-warning">
+          <p className="text-sm text-warning">
             The telemetry behind this report is stale, so the numbers below are informational only.
           </p>
         )}
@@ -441,7 +443,7 @@ export function ReportView({
               });
               if (NON_ACTION_CODES.has(entry.code)) {
                 return (
-                  <span key={i} className="text-xs text-text-dimmed">
+                  <span key={i} className="text-sm text-text-dimmed">
                     {label}
                   </span>
                 );
@@ -469,7 +471,7 @@ export function ReportView({
 
         {/* Resources the report cites, resolved to dashboard links by the host. */}
         {vm.links.length > 0 ? (
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
             {vm.links.map((link) => {
               const target = classifyLink(link.url, resolveUri);
               if (target.kind === "external") {
