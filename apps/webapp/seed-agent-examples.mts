@@ -11,6 +11,14 @@
  *
  *   pnpm --filter webapp run db:seed:agent-examples
  *   pnpm --filter webapp run db:seed:agent-examples -- --scale 0.1   # fast iteration
+ *   pnpm --filter webapp run db:seed:agent-examples -- --heartbeat    # keep it fresh
+ *
+ * `--heartbeat` is the answer to a stand that ages: it appends a minute of fresh
+ * telemetry to both environments every minute, so the report's liveness finding
+ * keeps reading "fresh" and `facts.trustworthy` stays true. It seeds nothing and
+ * wipes nothing — run the full seed first, then leave a heartbeat running beside
+ * it. See the heartbeat section below for what a tick writes and what it can't
+ * hold still.
  *
  * Re-runnable: the project is identified by a fixed external ref, and every run
  * of the seeder wipes the data it owns (both environments' runs/queues/metrics
@@ -766,6 +774,51 @@ function taskRunRow(
   return TASK_RUN_COLUMNS.map((column) => row[column]);
 }
 
+/** One volume run. Shared by the backfill and the heartbeat's per-tick trickle. */
+function makeRunSpec(opts: {
+  created: number;
+  task: string;
+  queue: string;
+  status: string;
+  waitMs: number;
+  durationMs: number;
+  failing: boolean;
+}): RunSpec {
+  const startedAt = new Date(opts.created + opts.waitMs);
+  const finished = opts.status !== "PENDING";
+  return {
+    friendlyId: generateFriendlyId("run"),
+    taskIdentifier: opts.task,
+    queue: opts.queue,
+    status: opts.status,
+    createdAt: new Date(opts.created),
+    queuedAt: new Date(opts.created),
+    ...(finished
+      ? {
+          startedAt,
+          executedAt: new Date(startedAt.getTime() + 200),
+          completedAt: new Date(startedAt.getTime() + 200 + opts.durationMs),
+        }
+      : {}),
+    attemptNumber: finished ? (opts.failing ? 3 : 1) : undefined,
+    ...(opts.failing ? { error: PROVIDER_ERROR } : {}),
+    payload: "{}",
+    spanId: generateSpanId(),
+    traceId: generateTraceId(),
+    machinePreset: "small-1x",
+    usageDurationMs: finished ? opts.durationMs : 0,
+    tags: [],
+  };
+}
+
+/** The tasks the volume rows spread across. */
+const VOLUME_TASKS: Array<{ id: string; queue: string }> = [
+  { id: TASK_ID, queue: QUEUE },
+  { id: "send-welcome-email", queue: QUEUE },
+  { id: "sync-inventory", queue: HEALTHY_QUEUE },
+  { id: SLOW_TASK_ID, queue: BACKLOG_QUEUE },
+];
+
 /**
  * The volume behind the report: an hour at the story's arrival rate, plus a calm
  * 7-day baseline.
@@ -787,39 +840,10 @@ function buildBulkRuns(now: number, scale: number, rng: () => number): RunSpec[]
     durationMs: number,
     failing: boolean
   ) => {
-    const startedAt = new Date(created + waitMs);
-    const finished = status !== "PENDING";
-    specs.push({
-      friendlyId: generateFriendlyId("run"),
-      taskIdentifier: task,
-      queue,
-      status,
-      createdAt: new Date(created),
-      queuedAt: new Date(created),
-      ...(finished
-        ? {
-            startedAt,
-            executedAt: new Date(startedAt.getTime() + 200),
-            completedAt: new Date(startedAt.getTime() + 200 + durationMs),
-          }
-        : {}),
-      attemptNumber: finished ? (failing ? 3 : 1) : undefined,
-      ...(failing ? { error: PROVIDER_ERROR } : {}),
-      payload: "{}",
-      spanId: generateSpanId(),
-      traceId: generateTraceId(),
-      machinePreset: "small-1x",
-      usageDurationMs: finished ? durationMs : 0,
-      tags: [],
-    });
+    specs.push(makeRunSpec({ created, task, queue, status, waitMs, durationMs, failing }));
   };
 
-  const tasks: Array<{ id: string; queue: string }> = [
-    { id: TASK_ID, queue: QUEUE },
-    { id: "send-welcome-email", queue: QUEUE },
-    { id: "sync-inventory", queue: HEALTHY_QUEUE },
-    { id: SLOW_TASK_ID, queue: BACKLOG_QUEUE },
-  ];
+  const tasks = VOLUME_TASKS;
 
   // Live window. Arrivals at the spike rate; completions at the drain rate, so
   // the remainder is the backlog the report attributes to the env limit.
@@ -1062,34 +1086,44 @@ function counterRow(
   return rows;
 }
 
-function buildQueueMetrics(ids: ChIds, now: number, rng: () => number): QueueMetricsRawV1Input[] {
-  const rows: QueueMetricsRawV1Input[] = [];
+type BucketShape = {
+  envRunning: number;
+  envQueued: number;
+  startedPerQueue: number;
+  arrivalsPerQueue: number;
+  waitMedianMs: number;
+  throttled: boolean;
+  /**
+   * Wait samples per bucket. The t-digest weights every sample equally, so a
+   * 5-minute baseline bucket has to carry proportionally more of them than a
+   * 10-second live bucket — otherwise the spike dominates the 7-day quantile
+   * and the report reports its own anomaly as the normal.
+   */
+  waitSamples: number;
+};
+
+/**
+ * A bucket emitter with the per-queue odometers held in its closure, so the
+ * backfill and the heartbeat can both append buckets without the counters
+ * disagreeing. A fresh emitter restarts its odometers at zero; the rollup reads
+ * that as a counter reset (`deltaSumTimestamp` is built for it) and keeps
+ * attributing deltas correctly, which is what lets a heartbeat process pick up
+ * where a previous one left off.
+ */
+function createBucketEmitter(ids: ChIds, epochMs: number, rng: () => number) {
   const odometers: Odometers = {};
   const queues = Object.keys(QUEUE_LIMITS);
   const envLimit = STORY.envConcurrencyLimit;
 
-  let seq = 0;
-  const orderKey = () => Math.floor(now / 1000) * 1_000_000 + seq++;
+  // Strictly increasing for the life of the emitter, seeded from the wall clock so
+  // a later process's keys always sort after an earlier one's. A counter rather
+  // than `base + seq` so a long-lived heartbeat can't run the sequence into the
+  // next second's base.
+  let key = Math.floor(epochMs / 1000) * 1_000_000;
+  const orderKey = () => ++key;
 
-  const bucket = (
-    bucketMs: number,
-    bucketSec: number,
-    opts: {
-      envRunning: number;
-      envQueued: number;
-      startedPerQueue: number;
-      arrivalsPerQueue: number;
-      waitMedianMs: number;
-      throttled: boolean;
-      /**
-       * Wait samples per bucket. The t-digest weights every sample equally, so a
-       * 5-minute baseline bucket has to carry proportionally more of them than a
-       * 10-second live bucket — otherwise the spike dominates the 7-day quantile
-       * and the report reports its own anomaly as the normal.
-       */
-      waitSamples: number;
-    }
-  ) => {
+  return (bucketMs: number, opts: BucketShape): QueueMetricsRawV1Input[] => {
+    const rows: QueueMetricsRawV1Input[] = [];
     const eventTime = chDateTime(new Date(bucketMs));
     for (const queueName of queues) {
       const share = QUEUE_PENDING_SHARE[queueName];
@@ -1133,6 +1167,16 @@ function buildQueueMetrics(ids: ChIds, now: number, rng: () => number): QueueMet
         );
       }
     }
+    return rows;
+  };
+}
+
+function buildQueueMetrics(ids: ChIds, now: number, rng: () => number): QueueMetricsRawV1Input[] {
+  const rows: QueueMetricsRawV1Input[] = [];
+  const emit = createBucketEmitter(ids, now, rng);
+  const envLimit = STORY.envConcurrencyLimit;
+  const bucket = (bucketMs: number, _bucketSec: number, opts: BucketShape) => {
+    rows.push(...emit(bucketMs, opts));
   };
 
   // 7-day calm baseline at 5-minute spacing.
@@ -1201,35 +1245,61 @@ async function insertQueueMetrics(ch: ClickHouse, rows: QueueMetricsRawV1Input[]
 // Redis: the live env-queue depth the report prefers over the metric series
 // ---------------------------------------------------------------------------
 
-async function stageRedisDepth(
-  organizationId: string,
-  environmentId: string,
-  depth: number,
-  label: string
-) {
+function redisConnection(): { host: string; port: number } | null {
   const host = process.env.RUN_ENGINE_RUN_QUEUE_REDIS_HOST ?? process.env.REDIS_HOST ?? "localhost";
   const port = Number(
     process.env.RUN_ENGINE_RUN_QUEUE_REDIS_PORT ?? process.env.REDIS_PORT ?? 6379
   );
   const localHosts = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
   if (!localHosts.has(host)) {
-    console.warn(`[${label}] skipping Redis staging on a non-local host: ${host}`);
-    return;
+    console.warn(`Skipping Redis staging on a non-local host: ${host}`);
+    return null;
   }
+  return { host, port };
+}
+
+function envQueueKey(organizationId: string, environmentId: string): string {
+  return `engine:runqueue:{org:${organizationId}}:env:${environmentId}`;
+}
+
+type RedisLike = {
+  del: (key: string) => Promise<unknown>;
+  zadd: (key: string, ...args: Array<string | number>) => Promise<unknown>;
+  zcard: (key: string) => Promise<number>;
+  quit: () => Promise<unknown>;
+};
+
+async function writeRedisDepth(
+  redis: RedisLike,
+  organizationId: string,
+  environmentId: string,
+  depth: number
+) {
+  const key = envQueueKey(organizationId, environmentId);
+  await redis.del(key);
+  const now = Date.now();
+  const BATCH = 1_000;
+  for (let i = 0; i < depth; i += BATCH) {
+    const args: Array<string | number> = [];
+    for (let j = i; j < Math.min(depth, i + BATCH); j++) {
+      args.push(now + j, `seed_agentex_queued_${j}`);
+    }
+    await redis.zadd(key, ...args);
+  }
+}
+
+async function stageRedisDepth(
+  organizationId: string,
+  environmentId: string,
+  depth: number,
+  label: string
+) {
+  const connection = redisConnection();
+  if (!connection) return;
   try {
     const { createRedisClient } = await import("@internal/redis");
-    const redis = createRedisClient({ host, port });
-    const envQueueKey = `engine:runqueue:{org:${organizationId}}:env:${environmentId}`;
-    await redis.del(envQueueKey);
-    const now = Date.now();
-    const BATCH = 1_000;
-    for (let i = 0; i < depth; i += BATCH) {
-      const args: Array<string | number> = [];
-      for (let j = i; j < Math.min(depth, i + BATCH); j++) {
-        args.push(now + j, `seed_agentex_queued_${j}`);
-      }
-      await redis.zadd(envQueueKey, ...args);
-    }
+    const redis = createRedisClient(connection) as unknown as RedisLike;
+    await writeRedisDepth(redis, organizationId, environmentId, depth);
     await redis.quit();
     console.log(`[${label}] staged env-queue depth ${depth} in Redis`);
   } catch (error) {
@@ -1237,6 +1307,33 @@ async function stageRedisDepth(
       `[${label}] Redis staging skipped:`,
       error instanceof Error ? error.message : error
     );
+  }
+}
+
+/**
+ * Per-tick depth top-up. The key has no TTL, so the usual case is a single ZCARD
+ * that finds it already correct — restaging ~5k members every minute would be
+ * most of the tick's budget for no gain.
+ */
+async function refreshRedisDepth(
+  organizationId: string,
+  envs: Array<{ environment: { id: string; slug: string } }>,
+  depth: number
+) {
+  const connection = redisConnection();
+  if (!connection) return;
+  try {
+    const { createRedisClient } = await import("@internal/redis");
+    const redis = createRedisClient(connection) as unknown as RedisLike;
+    for (const { environment } of envs) {
+      const current = await redis.zcard(envQueueKey(organizationId, environment.id));
+      if (Math.abs(current - depth) > depth * 0.01) {
+        await writeRedisDepth(redis, organizationId, environment.id, depth);
+      }
+    }
+    await redis.quit();
+  } catch (error) {
+    console.warn("Redis depth refresh skipped:", error instanceof Error ? error.message : error);
   }
 }
 
@@ -1468,6 +1565,225 @@ async function seedChats(
 }
 
 // ---------------------------------------------------------------------------
+// Heartbeat: keep the stand from ageing
+// ---------------------------------------------------------------------------
+
+/**
+ * A seeded stand ages. The health report's liveness finding measures how far
+ * behind the freshest telemetry is, so within the hour a stand that was seeded
+ * once reads as stale — `facts.trustworthy` flips and every other number on the
+ * card is caveated. Heartbeat mode fixes that by appending a thin slice of
+ * *now* on every tick, to both environments:
+ *
+ * - a handful of completed runs at roughly the calm baseline rate, so the runs
+ *   telemetry has a current timestamp;
+ * - the tick's worth of 10-second queue-metric buckets with the gauges still
+ *   pinned at the ceiling and the backlog held where the seed left it, so flow
+ *   keeps telling the same story instead of quietly recovering;
+ * - the live env-queue depth in Redis, if something has emptied it;
+ * - the executing cast run's `updatedAt`, so a run that has been busy for hours
+ *   doesn't look abandoned in a list ordered by it.
+ *
+ * The counter odometers restart at zero in a fresh heartbeat process, which the
+ * rollup reads as a counter reset and handles — so the trickle's arrival and
+ * completion rates are the *trickle's* rates, not the seed's. The pinned story
+ * is carried by the gauges (running vs limit, queued depth), which is where the
+ * cause tree reads it from. What does decay is the run-derived arrival rate: as
+ * the seeded spike hour ages out of the live window, throughput settles to the
+ * trickle. Re-run the full seed when you want the arrival-spike figures back.
+ *
+ * Ticks only ever append, so Ctrl-C at any point leaves a valid stand.
+ */
+/**
+ * Half the liveness finding's 60s "fresh" threshold. The reported age runs a
+ * little ahead of the cadence — buckets are floored to 10s and the report caches
+ * its queries — so a 45s tick measured ~50s and grazed the boundary. 30s keeps
+ * the finding green with room to spare, and a tick is ~100ms. (Trust is a
+ * separate, looser gate: `facts.trustworthy` only flips past 5 minutes.)
+ */
+const HEARTBEAT_INTERVAL_SEC = 30;
+/** The rate the trickle runs at, per environment, before per-env scaling. */
+const HEARTBEAT_RUNS_PER_MIN = STORY.baselineRunsPerMin;
+
+type HeartbeatEnv = {
+  environment: { id: string; slug: string; type: SeededEnvType };
+  ids: ChIds;
+  emit: ReturnType<typeof createBucketEmitter>;
+  runsPerTick: number;
+  /** The cast's still-executing run, whose `updatedAt` each tick touches. */
+  executingRunId: string | null;
+};
+
+/** One minute of runs and buckets, appended to one environment. */
+async function heartbeatTick(
+  ch: ClickHouse,
+  env: HeartbeatEnv,
+  now: number,
+  rng: () => number,
+  nonce: string,
+  tick: number
+): Promise<{ runs: number; metricRows: number }> {
+  const { ids, environment } = env;
+
+  // Runs: a healthy mix landing across the minute just gone.
+  const specs: RunSpec[] = [];
+  for (let i = 0; i < env.runsPerTick; i++) {
+    const created =
+      now -
+      HEARTBEAT_INTERVAL_SEC * 1000 +
+      Math.floor((i / env.runsPerTick) * (HEARTBEAT_INTERVAL_SEC - 5) * 1000);
+    const failing = rng() < STORY.baselineFailureRate;
+    const task = failing ? { id: TASK_ID, queue: QUEUE } : VOLUME_TASKS[i % VOLUME_TASKS.length];
+    specs.push(
+      makeRunSpec({
+        created,
+        task: task.id,
+        queue: task.queue,
+        status: failing ? "COMPLETED_WITH_ERRORS" : "COMPLETED_SUCCESSFULLY",
+        waitMs: lognormal(STORY.calmWaitMedianMs, STORY.waitSigma, rng),
+        durationMs: lognormal(STORY.durationMedianMs, STORY.waitSigma, rng),
+        failing,
+      })
+    );
+  }
+  const runRows = specs.map((spec) =>
+    taskRunRow(spec, syntheticRunId(), ids, String(now), environment.type)
+  );
+  await insertTaskRuns(ch, runRows, `${nonce}:${environment.slug}:tick${tick}:runs`);
+
+  // Buckets: the last minute at the live resolution, gauges still pinned. The
+  // backlog jitters by a fraction of a percent so it reads as live rather than
+  // frozen, without moving the number the card quotes.
+  const bucketsPerTick = Math.ceil(HEARTBEAT_INTERVAL_SEC / BUCKET_SEC);
+  const nowBucket = Math.floor(now / 1000 / BUCKET_SEC) * BUCKET_SEC * 1000;
+  const metricRows: QueueMetricsRawV1Input[] = [];
+  for (let b = 0; b < bucketsPerTick; b++) {
+    const bucketMs = nowBucket - (bucketsPerTick - 1 - b) * BUCKET_SEC * 1000;
+    metricRows.push(
+      ...env.emit(bucketMs, {
+        envRunning: STORY.envConcurrencyLimit,
+        envQueued: Math.round(STORY.pending * (0.995 + rng() * 0.01)),
+        startedPerQueue: (env.runsPerTick * BUCKET_SEC) / 60,
+        arrivalsPerQueue: (env.runsPerTick * BUCKET_SEC) / 60,
+        waitMedianMs: STORY.pinnedWaitMedianMs,
+        throttled: true,
+        waitSamples: LIVE_WAIT_SAMPLES,
+      })
+    );
+  }
+  await insertQueueMetrics(ch, metricRows, `${nonce}:${environment.slug}:tick${tick}:metrics`);
+
+  // The runs list can order by `updatedAt`; a run that has been "executing" for
+  // hours without its row moving looks abandoned rather than busy.
+  if (env.executingRunId) {
+    await prisma.taskRun.update({
+      where: { id: env.executingRunId },
+      data: { updatedAt: new Date(now) },
+    });
+  }
+
+  return { runs: runRows.length, metricRows: metricRows.length };
+}
+
+async function runHeartbeat(scale: number) {
+  const user = await prisma.user.findFirst({ where: { email: "local@trigger.dev" } });
+  if (!user) {
+    console.error("User local@trigger.dev not found. Run `pnpm run db:seed` first.");
+    process.exit(1);
+  }
+
+  // Heartbeat runs on top of an existing stand and never wipes, so it looks the
+  // world up instead of creating it.
+  const project = await prisma.project.findFirst({ where: { externalRef: PROJECT_REF } });
+  if (!project) {
+    console.error(
+      `No "${PROJECT_NAME}" project found. Run the full seed first:\n` +
+        `  pnpm --filter webapp run db:seed:agent-examples`
+    );
+    process.exit(1);
+  }
+  const organizationId = project.organizationId;
+
+  const ch = clickhouse();
+  const rng = mulberry32(Date.now() & 0xffff);
+  const nonce = `agentex-hb-${Date.now()}`;
+
+  const envs: HeartbeatEnv[] = [];
+  for (const type of ENV_TYPES) {
+    const environment = await prisma.runtimeEnvironment.findFirst({
+      where: { projectId: project.id, type },
+    });
+    if (!environment) {
+      console.error(`No ${type} environment on project ${project.slug}.`);
+      process.exit(1);
+    }
+    const ids: ChIds = {
+      organization_id: organizationId,
+      project_id: project.id,
+      environment_id: environment.id,
+    };
+    const executing = await prisma.taskRun.findFirst({
+      where: { runtimeEnvironmentId: environment.id, status: "EXECUTING" },
+      select: { id: true },
+    });
+    if (!executing) {
+      console.warn(
+        `[${environment.slug}] no executing run found — is this stand seeded? Continuing anyway.`
+      );
+    }
+    envs.push({
+      environment: { id: environment.id, slug: environment.slug, type: type as SeededEnvType },
+      ids,
+      emit: createBucketEmitter(ids, Date.now(), rng),
+      runsPerTick: Math.max(
+        1,
+        Math.round(
+          HEARTBEAT_RUNS_PER_MIN *
+            (HEARTBEAT_INTERVAL_SEC / 60) *
+            scale *
+            (type === "PRODUCTION" ? 1 : DEV_SCALE_FACTOR)
+        )
+      ),
+      executingRunId: executing?.id ?? null,
+    });
+  }
+
+  let stopping = false;
+  const stop = async () => {
+    if (stopping) return;
+    stopping = true;
+    console.log("\nStopped. The stand is intact — ticks only append.");
+    await ch.close();
+    process.exit(0);
+  };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+
+  console.log(
+    `Heartbeat every ${HEARTBEAT_INTERVAL_SEC}s for ${envs
+      .map((env) => `${env.environment.slug} ${env.runsPerTick} runs/tick`)
+      .join(", ")}. Ctrl-C to stop.`
+  );
+
+  for (let tick = 1; !stopping; tick++) {
+    const started = Date.now();
+    const counts: string[] = [];
+    for (const env of envs) {
+      const result = await heartbeatTick(ch, env, started, rng, nonce, tick);
+      counts.push(`${env.environment.slug} +${result.runs} runs +${result.metricRows} metric rows`);
+    }
+    await refreshRedisDepth(organizationId, envs, STORY.pending);
+    console.log(
+      `[${new Date(started).toISOString().slice(11, 19)}] tick ${tick} · ${counts.join(" · ")} · ${
+        Date.now() - started
+      }ms`
+    );
+    if (stopping) break;
+    await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_INTERVAL_SEC * 1000));
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -1482,6 +1798,10 @@ Flags:
                  the rows for fast iteration; the story's headline numbers stay
                  the same, only the row counts shrink. Dev is seeded at
                  ${DEV_SCALE_FACTOR}x this.
+  --heartbeat    don't seed — keep running and append a minute of fresh rows to
+                 both environments every ${HEARTBEAT_INTERVAL_SEC}s, so the health report never ages
+                 into "stale telemetry". Runs on top of an existing stand and
+                 never wipes; Ctrl-C leaves it intact.
   --reset-only   delete everything this seeder owns and exit
   --help         this text`);
 }
@@ -1575,6 +1895,12 @@ async function main() {
   if (!Number.isFinite(scale) || scale <= 0) {
     console.error(`--scale must be a positive number, got: ${flags.scale}`);
     process.exit(1);
+  }
+
+  // Before anything destructive: heartbeat runs on top of an existing stand.
+  if (flags.heartbeat === "true") {
+    await runHeartbeat(scale);
+    return;
   }
 
   const user = await prisma.user.findFirst({ where: { email: "local@trigger.dev" } });
