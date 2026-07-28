@@ -9,12 +9,19 @@ import {
   setChatPinned,
   softDeleteChat,
 } from "@internal/dashboard-agent-db";
+import { watchSpecSchema, type WatchSpec } from "@internal/dashboard-agent-contracts";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { UIMessage } from "ai";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import {
+  cancelWatchesForDeletedChat,
+  createDashboardAgentWatch,
+  listActiveWatchesForChats,
+} from "~/services/dashboardAgentWatches.server";
 import {
   dashboardAgentApiOrigin,
   isDashboardAgentConfigured,
@@ -39,7 +46,7 @@ const ENV_NAME_BY_TYPE: Record<string, string> = {
 };
 
 const ActionBody = z.object({
-  intent: z.enum(["start", "create", "token", "rename", "pin", "delete"]),
+  intent: z.enum(["start", "create", "token", "rename", "pin", "delete", "watch"]),
   // Omitted for `create` (the server generates it); required for the rest.
   chatId: z.string().min(1).optional(),
   // The first user message (JSON UIMessage), for `create`.
@@ -47,6 +54,8 @@ const ActionBody = z.object({
   clientData: z.string().optional(),
   title: z.string().optional(),
   pinned: z.enum(["true", "false"]).optional(),
+  // A JSON WatchSpec, for `watch`.
+  spec: z.string().optional(),
 });
 
 // History list, or — with ?chatId= — the stored transcript + session for resume.
@@ -82,7 +91,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     organizationId: project.organizationId,
     userId,
   });
-  return json({ chats });
+
+  // Active-watch chips for the list, in ONE query for all the listed chats — the
+  // history list must not fan out a query per row.
+  const watchesByChat = await listActiveWatchesForChats(chats.map((chat) => chat.id));
+
+  return json({
+    chats: chats.map((chat) => ({ ...chat, watches: watchesByChat[chat.id] ?? [] })),
+  });
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
@@ -266,8 +282,79 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
 
     case "delete": {
+      // Ownership first: the watch cascade is keyed on chatId alone, so a chatId
+      // the caller doesn't own must not reach it.
+      if (
+        !(await chatExists(dashboardAgentDb, {
+          chatId,
+          userId,
+          organizationId: project.organizationId,
+        }))
+      ) {
+        return json({ error: "Chat not found" }, { status: 404 });
+      }
       await softDeleteChat(dashboardAgentDb, { chatId, userId });
-      return json({ ok: true });
+      // A deleted chat has nowhere to deliver a watch outcome, so its watches end
+      // with it.
+      const cancelledWatches = await cancelWatchesForDeletedChat(chatId);
+      return json({ ok: true, cancelledWatches });
+    }
+
+    // Schedule a watch from the panel, under the user's own session. Same service
+    // the agent's UAT endpoint calls; project/env come from the URL and are
+    // authorized through the dashboard's own environment lookup.
+    case "watch": {
+      if (!parsed.data.spec) return json({ error: "spec is required" }, { status: 400 });
+
+      let spec: WatchSpec;
+      try {
+        const result = watchSpecSchema.safeParse(JSON.parse(parsed.data.spec));
+        if (!result.success) return json({ error: "Invalid watch spec" }, { status: 400 });
+        spec = result.data;
+      } catch {
+        return json({ error: "Invalid watch spec" }, { status: 400 });
+      }
+
+      if (
+        !(await chatExists(dashboardAgentDb, {
+          chatId,
+          userId,
+          organizationId: project.organizationId,
+        }))
+      ) {
+        return json({ error: "Chat not found" }, { status: 404 });
+      }
+
+      const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+      if (!environment) return json({ error: "Environment not found" }, { status: 404 });
+
+      const result = await createDashboardAgentWatch({ environment, userId, chatId, spec });
+      if (!result.ok) {
+        return json(
+          {
+            error: result.error,
+            code: result.code,
+            ...(result.existingId ? { existingId: result.existingId } : {}),
+          },
+          {
+            // Same codes the agent's endpoint uses, so the UI can share the copy.
+            status:
+              result.code === "limit_reached" || result.code === "duplicate"
+                ? 409
+                : result.code === "not_configured"
+                  ? 501
+                  : 400,
+          }
+        );
+      }
+
+      return json({
+        watchId: result.watchId,
+        identity: result.identity,
+        status: result.status,
+        expiresAt: result.expiresAt.toISOString(),
+        ...(result.immediate ? { immediate: result.immediate } : {}),
+      });
     }
   }
 };
