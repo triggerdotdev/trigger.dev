@@ -13,6 +13,7 @@ import {
   AgentDotMatrix,
   DOT_MATRIX_PALETTES,
   DOT_SHAPES,
+  EXTRA_FACE_SHAPES,
   FACE_SHAPES,
   type DotMatrixPaletteName,
   type DotShapeName,
@@ -147,6 +148,14 @@ function DotMatrixTab() {
         </div>
       </div>
       <Paragraph variant="small" className="max-w-3xl">
+        Face suite (small buttons, click to think):
+      </Paragraph>
+      <div className="flex max-w-4xl flex-wrap gap-3 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
+        {EXTRA_FACE_SHAPES.map((name) => (
+          <FaceButton key={name} name={name} />
+        ))}
+      </div>
+      <Paragraph variant="small" className="max-w-3xl">
         Face options (grid always visible here):
       </Paragraph>
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
@@ -205,6 +214,34 @@ function AskOttoButton({ variant, matrixSize }: { variant: ButtonVariant; matrix
       >
         <AgentDotMatrix size={matrixSize} active={active} palette="mono" restColor="#ffffff" />
         Ask Otto
+      </span>
+    </Button>
+  );
+}
+
+function FaceButton({ name }: { name: DotShapeName }) {
+  const [active, setActive] = useState(false);
+  const timeout = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => () => clearTimeout(timeout.current), []);
+
+  const trigger = () => {
+    setActive(true);
+    clearTimeout(timeout.current);
+    timeout.current = setTimeout(() => setActive(false), 5000);
+  };
+
+  return (
+    <Button variant="ask-ai/small" onClick={trigger} className="cursor-pointer">
+      <span className="flex items-center gap-x-1.5 text-text-bright">
+        <AgentDotMatrix
+          size={16}
+          active={active}
+          restShape={name}
+          palette="mono"
+          restColor="#ffffff"
+        />
+        {name}
       </span>
     </Button>
   );

@@ -36,6 +36,27 @@ export const DOT_SHAPES = {
   alien: [".ooo.", "ooooo", "o.o.o", ".ooo.", "..o.."],
   robot: ["ooooo", "o.o.o", "ooooo", "o...o", "ooooo"],
   ghost: [".ooo.", "ooooo", "o.o.o", "ooooo", "o.o.o"],
+  // Extended face set.
+  owl: ["o...o", "ooooo", "o.o.o", ".ooo.", "..o.."],
+  dog: ["o...o", "ooooo", "o.o.o", "ooooo", "..o.."],
+  bunny: [".o.o.", ".o.o.", "ooooo", "o.o.o", ".ooo."],
+  bear: [".o.o.", "ooooo", "o.o.o", "ooooo", ".ooo."],
+  fox: ["o...o", "oo.oo", "ooooo", ".ooo.", "..o.."],
+  mouse: ["oo.oo", "ooooo", "o.o.o", ".ooo.", "..o.."],
+  koala: ["oo.oo", "ooooo", "o.o.o", "ooooo", ".ooo."],
+  frog: [".o.o.", ".ooo.", "ooooo", "o.o.o", "ooooo"],
+  penguin: [".ooo.", "ooooo", "o.o.o", "ooooo", "o...o"],
+  bat: ["o...o", "ooooo", "o.o.o", ".o.o.", "..o.."],
+  crab: ["o...o", "o.o.o", "ooooo", "ooooo", ".o.o."],
+  spider: ["o.o.o", ".ooo.", "ooooo", ".ooo.", "o.o.o"],
+  octopus: [".ooo.", "ooooo", "o.o.o", ".ooo.", "o.o.o"],
+  skull: [".ooo.", "ooooo", "o.o.o", ".ooo.", ".o.o."],
+  cyclops: [".ooo.", "ooooo", "oo.oo", ".ooo.", "..o.."],
+  demon: ["o...o", ".ooo.", "ooooo", "o.o.o", ".ooo."],
+  clown: ["o.o.o", "ooooo", "o.o.o", "ooooo", ".ooo."],
+  mech: ["ooooo", "o.o.o", "ooooo", ".o.o.", "ooooo"],
+  angel: [".ooo.", ".....", "ooooo", "o.o.o", ".ooo."],
+  pumpkin: ["..o..", ".ooo.", "o.o.o", "ooooo", ".ooo."],
   // Cycle shapes.
   square: ["ooooo", "o...o", "o...o", "o...o", "ooooo"],
   rectH: [".....", "ooooo", "o...o", "ooooo", "....."],
@@ -49,6 +70,29 @@ export const DOT_SHAPES = {
 export type DotShapeName = keyof typeof DOT_SHAPES;
 
 export const FACE_SHAPES: DotShapeName[] = ["face", "invader", "cat", "alien", "robot", "ghost"];
+
+export const EXTRA_FACE_SHAPES: DotShapeName[] = [
+  "owl",
+  "dog",
+  "bunny",
+  "bear",
+  "fox",
+  "mouse",
+  "koala",
+  "frog",
+  "penguin",
+  "bat",
+  "crab",
+  "spider",
+  "octopus",
+  "skull",
+  "cyclops",
+  "demon",
+  "clown",
+  "mech",
+  "angel",
+  "pumpkin",
+];
 
 // Sequenced so every consecutive pair (including the wrap) shares dots — the
 // head hands off between shapes without ever jumping.
@@ -376,8 +420,13 @@ export function AgentDotMatrix({
     // Draw in device-pixel space with centers/radii snapped to whole device
     // pixels — dot positions never animate (only opacity), and unsnapped
     // fractional centers (e.g. 14px -> 2.8px pitch) blur every dot differently.
+    // Light mode gets a size boost (snapped to half pixels): dark-on-light dots
+    // read optically smaller than the same-size light-on-dark dots.
     const devCenter = (cell: number) => Math.round((cell + 0.5) * pitch * dpr);
-    const devDotR = Math.max(1, Math.round(dotR * dpr));
+    const devDotR =
+      mode === "light"
+        ? Math.max(1, Math.round(dotR * dpr * 1.15 * 2) / 2)
+        : Math.max(1, Math.round(dotR * dpr));
 
     const draw = () => {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
