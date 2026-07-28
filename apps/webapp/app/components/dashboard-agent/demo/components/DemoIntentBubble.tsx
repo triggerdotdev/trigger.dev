@@ -6,9 +6,18 @@
  * states the action in the past tense and shows the deep link it used. In demo
  * mode the link is a button, not a `Link`: clicking it reports what *would* have
  * happened and navigates nowhere.
+ *
+ * The outcome text keeps the default colour — honoured vs rejected is carried by
+ * the coloured icon, the same rule the run status cells follow.
  */
-import { ArrowTopRightOnSquareIcon, NoSymbolIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowTopRightOnSquareIcon,
+  CheckCircleIcon,
+  NoSymbolIcon,
+} from "@heroicons/react/20/solid";
+import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
+import { AgentStatusIcon } from "../../agent-badges";
 import type { DemoIntent } from "../fixtures/intents";
 
 /**
@@ -17,7 +26,7 @@ import type { DemoIntent } from "../fixtures/intents";
  */
 export function DemoNote({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-md border border-dashed border-border-bright bg-background-bright/40 px-2.5 py-1.5">
+    <div className="rounded-md border border-dashed border-border-bright bg-background-bright/40 px-3 py-2">
       <span className="text-xs text-text-dimmed">{children}</span>
     </div>
   );
@@ -36,25 +45,24 @@ export function DemoIntentBubble({
   return (
     <div
       className={cn(
-        "rounded-md border px-2.5 py-2",
+        "rounded-md border px-3 py-3",
         rejected
           ? "border-border-bright bg-background-bright/40"
           : "border-indigo-500/30 bg-indigo-500/5"
       )}
     >
-      <div className="flex items-start gap-1.5">
-        {rejected ? (
-          <NoSymbolIcon className="mt-0.5 size-3.5 shrink-0 text-text-dimmed" />
-        ) : (
-          <ArrowTopRightOnSquareIcon className="mt-0.5 size-3.5 shrink-0 text-indigo-400" />
-        )}
-        <div className="min-w-0 space-y-1">
-          <p className={cn("text-xs", rejected ? "text-text-dimmed" : "text-text-bright")}>
-            {intent.outcome}
-          </p>
+      <div className="flex items-start gap-2">
+        <AgentStatusIcon
+          tone={rejected ? "error" : "success"}
+          icon={rejected ? NoSymbolIcon : CheckCircleIcon}
+          className="mt-px"
+        />
+        <div className="min-w-0 space-y-2">
+          <p className="text-xs text-text-bright">{intent.outcome}</p>
           {intent.deepLinkLabel ? (
-            <button
-              type="button"
+            <Button
+              variant="secondary/small"
+              LeadingIcon={ArrowTopRightOnSquareIcon}
               onClick={() =>
                 onIntercept?.(
                   `would navigate to ${intent.deepLinkLabel} (${
@@ -62,10 +70,11 @@ export function DemoIntentBubble({
                   })`
                 )
               }
-              className="break-all text-left font-mono text-[10px] text-indigo-400 underline decoration-dotted hover:text-indigo-300"
             >
-              {intent.deepLinkLabel}
-            </button>
+              <span className="break-all text-left font-mono text-[10px]">
+                {intent.deepLinkLabel}
+              </span>
+            </Button>
           ) : null}
         </div>
       </div>

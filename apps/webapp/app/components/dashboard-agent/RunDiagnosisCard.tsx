@@ -1,7 +1,9 @@
+import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { Link } from "@remix-run/react";
 import type { DiagnosisBlock } from "@internal/dashboard-agent";
-import { Badge } from "~/components/primitives/Badge";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
+import { CategoryBadge, ConfidenceBadge, EVIDENCE_ROW_CLASS } from "./agent-badges";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
@@ -27,18 +29,6 @@ const CATEGORY_LABELS: Record<DiagnosisBlock["category"], string> = {
   cancellation: "Cancelled",
   unknown: "Unknown",
 };
-
-// Semantic tokens, not raw palette classes: those are tuned for the dark theme
-// only, and these tokens are what the theme layer remaps (see tailwind.css).
-const CONFIDENCE_STYLES: Record<DiagnosisBlock["confidence"], string> = {
-  high: "border-success/40 text-success",
-  medium: "border-warning/40 text-warning",
-  low: "border-border-bright text-text-dimmed",
-};
-
-// Same rationale as CONFIDENCE_STYLES; the category is always a failure, so it
-// reads as an error.
-const CATEGORY_BADGE_STYLE = "border-error/40 text-error";
 
 // Matches the app's link convention (TextLink `primary`), which holds up in both
 // themes.
@@ -101,34 +91,19 @@ function EvidenceReference({ reference }: { reference: string }) {
 }
 
 function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["actions"]> }) {
-  const buttonClass =
-    "inline-flex items-center rounded border border-border-bright bg-background-bright px-2.5 py-1 text-xs text-text-bright transition-colors hover:border-border-brightest hover:bg-background-hover";
   return (
-    <div className="flex flex-wrap gap-2 pt-1">
+    <div className="flex flex-wrap gap-2 pt-2">
       {actions.map((action, i) => {
         if (action.kind === "view_run" && isRunFriendlyId(action.target)) {
-          return (
-            <RunActionButton
-              key={i}
-              runId={action.target}
-              label={action.label}
-              className={buttonClass}
-            />
-          );
+          return <RunActionButton key={i} runId={action.target} label={action.label} />;
         }
         if (action.kind === "docs") {
           const safeUrl = toSafeUrl(action.target);
           if (!safeUrl) return null;
           return (
-            <a
-              key={i}
-              href={safeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonClass}
-            >
+            <LinkButton key={i} to={safeUrl} variant="docs/small" LeadingIcon={BookOpenIcon}>
               {action.label}
-            </a>
+            </LinkButton>
           );
         }
         return null;
@@ -137,21 +112,21 @@ function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["ac
   );
 }
 
-function RunActionButton({
-  runId,
-  label,
-  className,
-}: {
-  runId: string;
-  label: string;
-  className: string;
-}) {
+function RunActionButton({ runId, label }: { runId: string; label: string }) {
   const to = useRunPath(runId);
-  if (!to) return <span className={className}>{label}</span>;
+  // Off-context (e.g. the storybook page) there is nowhere to go, so the button
+  // stays visible but disabled rather than becoming plain text.
+  if (!to) {
+    return (
+      <Button variant="primary/small" disabled>
+        {label}
+      </Button>
+    );
+  }
   return (
-    <Link to={to} className={className}>
+    <LinkButton to={to} variant="primary/small">
       {label}
-    </Link>
+    </LinkButton>
   );
 }
 
@@ -162,18 +137,14 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
 
   return (
     <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-      <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-4 py-3">
         <span className="text-xs font-medium text-text-dimmed">Run diagnosis</span>
-        <Badge variant="small" className={CATEGORY_BADGE_STYLE}>
-          {CATEGORY_LABELS[block.category] ?? block.category}
-        </Badge>
-        <Badge variant="small" className={cn("uppercase", CONFIDENCE_STYLES[block.confidence])}>
-          {block.confidence} confidence
-        </Badge>
+        <CategoryBadge>{CATEGORY_LABELS[block.category] ?? block.category}</CategoryBadge>
+        <ConfidenceBadge confidence={block.confidence} />
         {block.runId ? <RunLink runId={block.runId} className="ml-auto font-mono text-xs" /> : null}
       </div>
 
-      <div className="space-y-3 px-3 py-3">
+      <div className="space-y-5 px-4 py-4">
         <p className="text-sm text-text-bright">{block.summary}</p>
 
         <Section title="Likely cause">
@@ -182,18 +153,22 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
 
         {evidence.length > 0 ? (
           <Section title="Evidence">
-            <ul className="space-y-1.5">
+            {/* Two columns: the type badges line up in a fixed left column, the
+                detail and its reference line up in the second. */}
+            <ul className="space-y-3">
               {evidence.map((item, i) => (
-                <li key={i} className="text-xs text-text-dimmed">
-                  <span className="mr-1.5 rounded-sm bg-background-raised px-1 py-0.5 text-[10px] uppercase tracking-wide text-text-dimmed">
+                <li key={i} className={EVIDENCE_ROW_CLASS}>
+                  <CategoryBadge className="justify-self-start">
                     {EVIDENCE_LABELS[item.type] ?? item.type}
-                  </span>
-                  <span className="text-text-bright">{item.detail}</span>
-                  {item.reference ? (
-                    <span className="ml-1.5">
-                      <EvidenceReference reference={item.reference} />
-                    </span>
-                  ) : null}
+                  </CategoryBadge>
+                  <div className="min-w-0 space-y-1 text-xs">
+                    <p className="text-text-bright">{item.detail}</p>
+                    {item.reference ? (
+                      <div className="break-all">
+                        <EvidenceReference reference={item.reference} />
+                      </div>
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -208,7 +183,7 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
 
         {nextSteps.length > 0 ? (
           <Section title="Next steps">
-            <ol className="list-decimal space-y-1 pl-4">
+            <ol className="list-decimal space-y-2 pl-5">
               {nextSteps.map((step, i) => (
                 <li key={i} className="text-sm text-text-dimmed">
                   {step}
@@ -226,7 +201,7 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       <h4 className="text-xs font-medium uppercase tracking-wide text-text-dimmed">{title}</h4>
       {children}
     </div>

@@ -14,9 +14,16 @@
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import type { Evidence } from "@internal/dashboard-agent-contracts";
 import { useState } from "react";
-import { Badge } from "~/components/primitives/Badge";
+import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Spinner } from "~/components/primitives/Spinner";
-import { cn } from "~/utils/cn";
+import {
+  CategoryBadge,
+  ConfidenceBadge,
+  EVIDENCE_ROW_CLASS,
+  SeverityBadge,
+  VerdictBadge,
+} from "../../agent-badges";
 import type {
   DemoHypothesis,
   DemoHypothesisVerdict,
@@ -24,28 +31,10 @@ import type {
   DemoInvestigationSeverity,
 } from "../fixtures/investigation";
 
-const SEVERITY_STYLES: Record<DemoInvestigationSeverity, string> = {
-  info: "border-border-bright text-text-dimmed",
-  warn: "border-amber-500/40 text-amber-400",
-  crit: "border-rose-500/40 text-rose-400",
-};
-
 const SEVERITY_LABELS: Record<DemoInvestigationSeverity, string> = {
   info: "Info",
   warn: "Degraded",
   crit: "Critical",
-};
-
-const CONFIDENCE_STYLES: Record<DemoInvestigation["confidence"], string> = {
-  high: "border-emerald-500/40 text-emerald-400",
-  medium: "border-amber-500/40 text-amber-400",
-  low: "border-border-bright text-text-dimmed",
-};
-
-const VERDICT_STYLES: Record<DemoHypothesisVerdict, string> = {
-  testing: "border-border-bright text-text-dimmed",
-  validated: "border-emerald-500/40 text-emerald-400",
-  invalidated: "border-border-bright text-text-dimmed line-through decoration-text-dimmed/60",
 };
 
 const VERDICT_LABELS: Record<DemoHypothesisVerdict, string> = {
@@ -56,7 +45,7 @@ const VERDICT_LABELS: Record<DemoHypothesisVerdict, string> = {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       <h4 className="text-xs font-medium uppercase tracking-wide text-text-dimmed">{title}</h4>
       {children}
     </div>
@@ -71,36 +60,34 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  */
 function EvidenceItem({ evidence }: { evidence: Evidence }) {
   return (
-    <li className="space-y-1">
-      <div className="flex flex-wrap items-baseline gap-1.5 text-xs">
-        <span className="rounded-sm bg-background-raised px-1 py-0.5 text-[10px] uppercase tracking-wide text-text-dimmed">
-          {evidence.kind}
-        </span>
-        <span className="text-text-bright">{evidence.label}</span>
+    <li className={EVIDENCE_ROW_CLASS}>
+      <CategoryBadge className="justify-self-start">{evidence.kind}</CategoryBadge>
+      <div className="min-w-0 space-y-1.5">
+        <p className="text-xs text-text-bright">{evidence.label}</p>
+        <div className="break-all font-mono text-[10px] text-text-dimmed">{evidence.uri}</div>
+        {evidence.excerpt ? (
+          <pre className="overflow-x-auto rounded-sm border border-grid-bright bg-background-bright px-2 py-1.5 font-mono text-[11px] leading-relaxed text-text-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+            {evidence.excerpt}
+          </pre>
+        ) : null}
       </div>
-      <div className="break-all font-mono text-[10px] text-text-dimmed">{evidence.uri}</div>
-      {evidence.excerpt ? (
-        <pre className="overflow-x-auto rounded-sm border border-grid-bright bg-background-bright px-2 py-1 font-mono text-[11px] leading-relaxed text-text-bright scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-          {evidence.excerpt}
-        </pre>
-      ) : null}
     </li>
   );
 }
 
 function HypothesisRow({ hypothesis }: { hypothesis: DemoHypothesis }) {
   return (
-    <li className="space-y-1.5 border-l-2 border-grid-bright pl-2.5">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="small" className={cn("uppercase", VERDICT_STYLES[hypothesis.verdict])}>
+    <li className="space-y-3 border-l-2 border-grid-bright pl-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <VerdictBadge verdict={hypothesis.verdict}>
           {VERDICT_LABELS[hypothesis.verdict]}
-        </Badge>
+        </VerdictBadge>
         {hypothesis.verdict === "testing" ? <Spinner className="size-3" /> : null}
       </div>
       <p className="text-sm text-text-bright">{hypothesis.statement}</p>
       {hypothesis.finding ? <p className="text-xs text-text-dimmed">{hypothesis.finding}</p> : null}
       {hypothesis.evidence.length > 0 ? (
-        <ul className="space-y-2 pt-0.5">
+        <ul className="space-y-3 pt-1">
           {hypothesis.evidence.map((evidence, i) => (
             <EvidenceItem key={i} evidence={evidence} />
           ))}
@@ -124,19 +111,14 @@ export function DemoInvestigationCard({
 
   return (
     <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-      <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-4 py-3">
         <span className="text-xs font-medium text-text-dimmed">Investigation</span>
-        <Badge variant="small" className={SEVERITY_STYLES[investigation.severity]}>
+        <SeverityBadge severity={investigation.severity}>
           {SEVERITY_LABELS[investigation.severity]}
-        </Badge>
-        <Badge
-          variant="small"
-          className={cn("uppercase", CONFIDENCE_STYLES[investigation.confidence])}
-        >
-          {investigation.confidence} confidence
-        </Badge>
+        </SeverityBadge>
+        <ConfidenceBadge confidence={investigation.confidence} />
         {inProgress ? (
-          <span className="ml-auto flex items-center gap-1.5 text-xs text-text-dimmed">
+          <span className="ml-auto flex items-center gap-2 text-xs text-text-dimmed">
             <Spinner className="size-3" />
             {investigation.progress ?? "Working"}
           </span>
@@ -145,7 +127,7 @@ export function DemoInvestigationCard({
         ) : null}
       </div>
 
-      <div className="space-y-3 px-3 py-3">
+      <div className="space-y-5 px-4 py-4">
         <p className="text-sm font-medium text-text-bright">{investigation.title}</p>
 
         <Section title={concluded ? "What happened" : "What we know"}>
@@ -162,7 +144,7 @@ export function DemoInvestigationCard({
 
         {investigation.checkNext && investigation.checkNext.length > 0 ? (
           <Section title="What to check next">
-            <ol className="list-decimal space-y-1 pl-4">
+            <ol className="list-decimal space-y-2 pl-5">
               {investigation.checkNext.map((item, i) => (
                 <li key={i} className="text-sm text-text-dimmed">
                   {item}
@@ -173,33 +155,29 @@ export function DemoInvestigationCard({
         ) : null}
 
         {investigation.caveat ? (
-          <div className="rounded-sm border border-amber-500/30 bg-amber-500/5 px-2.5 py-2">
-            <p className="text-xs text-amber-200/80">{investigation.caveat.message}</p>
-          </div>
+          <Callout variant="warning">{investigation.caveat.message}</Callout>
         ) : null}
 
-        <div className="space-y-2 border-t border-grid-bright pt-2">
-          <button
-            type="button"
+        <div className="space-y-4 border-t border-grid-bright pt-4">
+          <Button
+            variant="minimal/small"
             onClick={() => setExpanded((v) => !v)}
-            className="flex items-center gap-1 text-xs text-text-dimmed transition-colors hover:text-text-bright"
+            LeadingIcon={expanded ? ChevronDownIcon : ChevronRightIcon}
+            aria-expanded={expanded}
           >
-            {expanded ? (
-              <ChevronDownIcon className="size-3.5" />
-            ) : (
-              <ChevronRightIcon className="size-3.5" />
-            )}
-            {expanded ? "Hide how I worked this out" : "How I worked this out"}
-            <span className="text-text-faint">
-              ({investigation.hypotheses.length} hypothes
-              {investigation.hypotheses.length === 1 ? "is" : "es"})
+            <span className="flex items-center gap-1.5 text-xs text-text-dimmed">
+              {expanded ? "Hide how I worked this out" : "How I worked this out"}
+              <span className="text-text-faint">
+                ({investigation.hypotheses.length} hypothes
+                {investigation.hypotheses.length === 1 ? "is" : "es"})
+              </span>
             </span>
-          </button>
+          </Button>
 
           {expanded ? (
-            <div className="space-y-3 pt-1">
+            <div className="space-y-5 pt-1">
               <Section title="Hypotheses">
-                <ul className="space-y-3">
+                <ul className="space-y-5">
                   {investigation.hypotheses.map((hypothesis) => (
                     <HypothesisRow key={hypothesis.id} hypothesis={hypothesis} />
                   ))}
@@ -208,7 +186,7 @@ export function DemoInvestigationCard({
 
               {investigation.evidence.length > 0 ? (
                 <Section title="Evidence">
-                  <ul className="space-y-2">
+                  <ul className="space-y-3">
                     {investigation.evidence.map((evidence, i) => (
                       <EvidenceItem key={i} evidence={evidence} />
                     ))}

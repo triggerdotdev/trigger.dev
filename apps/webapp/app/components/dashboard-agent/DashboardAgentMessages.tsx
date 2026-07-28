@@ -1,10 +1,13 @@
 import type { UIMessage } from "@ai-sdk/react";
-import { ArrowPathIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { ArrowPathIcon, BookOpenIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { AgentIntent } from "@internal/dashboard-agent-contracts";
-import { memo } from "react";
-import { Button } from "~/components/primitives/Buttons";
+import { memo, Suspense } from "react";
+import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Spinner } from "~/components/primitives/Spinner";
-import { MessageBubble, renderPart } from "~/components/runs/v3/agent/AgentMessageView";
+import { MessageBubble, renderPart, toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
+import { ChatBubble, ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import type { ResolvedUri } from "./ReportView";
@@ -58,10 +61,95 @@ function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
   return report ? [report] : null;
 }
 
-// Renders one message. Assistant messages that include a card-producing part get
-// the catalog cards (plus the gather tool rows / lead-in text for transparency);
-// everything else uses the shared MessageBubble unchanged, so its streaming
-// memoization is preserved for the common case.
+/**
+ * A one-line progress indicator, to the left of the transcript. The same
+ * component backs the turn indicator ("Working…") and the line under an
+ * in-flight tool row, so progress always looks the same.
+ */
+function AgentProgressLine({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 text-sm text-text-dimmed">
+      <Spinner className="size-3" />
+      {children}
+    </div>
+  );
+}
+
+/** Assistant markdown at the dashboard's default text size, always rendered. */
+function AgentMarkdown({ text }: { text: string }) {
+  return (
+    <ChatBubble>
+      <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed wrap-anywhere">
+        <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
+          <StreamdownRenderer>{text}</StreamdownRenderer>
+        </Suspense>
+      </div>
+    </ChatBubble>
+  );
+}
+
+// A tool call that hasn't produced output yet. Progress for these goes on its own
+// line under the row, not inside it.
+const IN_FLIGHT_TOOL_STATES = new Set(["input-streaming", "input-available"]);
+
+/**
+ * One assistant part in the chat panel.
+ *
+ * Everything the panel styles itself is handled here; the rest falls through to
+ * the shared `renderPart` so agent output still looks the same across the app.
+ * The differences: text is always the rendered markdown (no raw toggle) at the
+ * dashboard's default size, a citation is a docs button rather than a bare link,
+ * and an in-flight tool row is static with the spinner on a separate line.
+ */
+function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
+  const p = part as {
+    type: string;
+    text?: string;
+    url?: string;
+    title?: string;
+    state?: string;
+    input?: unknown;
+    toolCallId?: string;
+  };
+  const type = part.type as string;
+
+  if (type === "text") {
+    return p.text ? <AgentMarkdown key={i} text={p.text} /> : null;
+  }
+
+  if (type === "source-url") {
+    const safeUrl = toSafeUrl(p.url);
+    const label = p.title || p.url;
+    if (!safeUrl || !label) return renderPart(part, i);
+    return (
+      <LinkButton key={i} to={safeUrl} variant="docs/small" LeadingIcon={BookOpenIcon}>
+        {label}
+      </LinkButton>
+    );
+  }
+
+  if (type.startsWith("tool-") && IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) {
+    const toolName = type.slice(5);
+    return (
+      <div key={i} className="space-y-2">
+        <ToolUseRow
+          tool={{
+            toolCallId: p.toolCallId ?? `tool-${i}`,
+            toolName,
+            inputJson: JSON.stringify(p.input ?? {}, null, 2),
+          }}
+        />
+        <AgentProgressLine>Running {toolName}…</AgentProgressLine>
+      </div>
+    );
+  }
+
+  return renderPart(part, i);
+}
+
+// Renders one message. User messages use the shared MessageBubble unchanged;
+// assistant parts go through the panel's own renderer, and a card-producing part
+// (render_view / get_report) becomes a catalog card instead of a tool row.
 const DashboardAgentMessageBubble = memo(function DashboardAgentMessageBubble({
   message,
   onIntent,
@@ -71,12 +159,14 @@ const DashboardAgentMessageBubble = memo(function DashboardAgentMessageBubble({
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
 }) {
-  if (message.role !== "assistant" || !message.parts?.some((p) => blocksFor(p))) {
+  if (message.role !== "assistant") {
     return <MessageBubble message={message} />;
   }
+  const parts = message.parts ?? [];
+  if (parts.length === 0) return null;
   return (
     <div className="space-y-2">
-      {message.parts.map((part, i) => {
+      {parts.map((part, i) => {
         const blocks = blocksFor(part);
         if (blocks) {
           return (
@@ -88,7 +178,7 @@ const DashboardAgentMessageBubble = memo(function DashboardAgentMessageBubble({
             />
           );
         }
-        return renderPart(part, i);
+        return renderDashboardPart(part, i);
       })}
     </div>
   );
@@ -133,35 +223,32 @@ export function DashboardAgentMessages({
             resolveUri={resolveUri}
           />
         ))}
-        {activity && (
-          <div className="flex items-center gap-2 text-sm text-text-dimmed">
-            <Spinner className="size-3" />
-            {ACTIVITY_LABELS[activity]}
-          </div>
-        )}
+        {activity && <AgentProgressLine>{ACTIVITY_LABELS[activity]}</AgentProgressLine>}
         {error && (
-          <div className="flex flex-col gap-2 rounded border border-error/30 bg-error/10 px-3 py-2">
-            <div className="flex items-start justify-between gap-2">
-              <span className="text-xs text-error">{error.message}</span>
-              {onDismissError && (
-                <button
-                  type="button"
-                  onClick={onDismissError}
-                  aria-label="Dismiss error"
-                  className="shrink-0 rounded p-0.5 text-text-dimmed transition hover:text-text-bright focus-custom"
-                >
-                  <XMarkIcon className="size-3.5" />
-                </button>
-              )}
-            </div>
-            {onRetry && (
-              <div>
-                <Button variant="tertiary/small" LeadingIcon={ArrowPathIcon} onClick={onRetry}>
-                  Try again
-                </Button>
-              </div>
-            )}
-          </div>
+          <Callout
+            variant="error"
+            cta={
+              (onRetry || onDismissError) && (
+                <div className="flex shrink-0 items-center gap-1">
+                  {onRetry && (
+                    <Button variant="primary/small" LeadingIcon={ArrowPathIcon} onClick={onRetry}>
+                      Try again
+                    </Button>
+                  )}
+                  {onDismissError && (
+                    <Button
+                      variant="minimal/small"
+                      LeadingIcon={XMarkIcon}
+                      onClick={onDismissError}
+                      aria-label="Dismiss error"
+                    />
+                  )}
+                </div>
+              )
+            }
+          >
+            {error.message}
+          </Callout>
         )}
       </div>
     </div>
