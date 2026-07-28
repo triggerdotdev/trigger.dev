@@ -419,9 +419,36 @@ export const dashboardAgent = chat.agent({
   // intact across this hook, so it's safe on a resume turn.
   prepareMessages: ({ messages }) => {
     if (messages.length === 0) return messages;
-    const last = messages[messages.length - 1];
+    // The model occasionally emits a no-arg tool call with a non-object input
+    // (empty string), which the SDK replays into history verbatim and the
+    // Anthropic API then rejects with "tool_use.input: Input should be an
+    // object" — a hard turn failure. Coerce those inputs back to {} on replay.
+    const sanitized = messages.map((message) => {
+      if (message.role !== "assistant" || !Array.isArray(message.content)) return message;
+      const needsFix = message.content.some(
+        (part) =>
+          typeof part === "object" &&
+          part !== null &&
+          (part as { type?: string }).type === "tool-call" &&
+          typeof (part as { input?: unknown }).input !== "object"
+      );
+      if (!needsFix) return message;
+      return {
+        ...message,
+        content: message.content.map((part) =>
+          typeof part === "object" &&
+          part !== null &&
+          (part as { type?: string }).type === "tool-call" &&
+          typeof (part as { input?: unknown }).input !== "object"
+            ? { ...part, input: {} }
+            : part
+        ),
+      };
+    }) as typeof messages;
+
+    const last = sanitized[sanitized.length - 1];
     return [
-      ...messages.slice(0, -1),
+      ...sanitized.slice(0, -1),
       {
         ...last,
         providerOptions: {
