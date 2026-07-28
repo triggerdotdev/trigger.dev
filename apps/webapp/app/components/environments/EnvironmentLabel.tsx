@@ -126,7 +126,7 @@ export function EnvironmentLabel({
         environmentTextClassName(environment),
         className
       )}
-      style={truncate ? undefined : labelOverflowFadeStyle(isTruncated)}
+      style={labelOverflowFadeStyle(!truncate && isTruncated)}
     >
       {text}
     </span>
