@@ -45,16 +45,16 @@ export const TONE_ICON_COLOR: Record<AgentTone, string> = {
 
 type IconComponent = (props: { className?: string }) => JSX.Element;
 
+// Text case follows the Badge `small` convention used across the app:
+// Capitalized labels, never uppercase.
 export function AgentBadge({
   tone = "neutral",
   icon: Icon,
-  uppercase = false,
   className,
   children,
 }: {
   tone?: AgentTone;
   icon?: IconComponent;
-  uppercase?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -63,7 +63,6 @@ export function AgentBadge({
       variant="small"
       className={cn(
         "px-1.5 [&>span]:flex [&>span]:items-center [&>span]:gap-1",
-        uppercase && "uppercase",
         TONE_BADGE[tone],
         className
       )}
@@ -103,10 +102,16 @@ const CONFIDENCE_ICON: Record<AgentConfidence, IconComponent> = {
   low: QuestionMarkCircleIcon,
 };
 
+const CONFIDENCE_LABEL: Record<AgentConfidence, string> = {
+  high: "High confidence",
+  medium: "Medium confidence",
+  low: "Low confidence",
+};
+
 export function ConfidenceBadge({ confidence }: { confidence: AgentConfidence }) {
   return (
-    <AgentBadge tone={CONFIDENCE_TONE[confidence]} icon={CONFIDENCE_ICON[confidence]} uppercase>
-      {confidence} confidence
+    <AgentBadge tone={CONFIDENCE_TONE[confidence]} icon={CONFIDENCE_ICON[confidence]}>
+      {CONFIDENCE_LABEL[confidence]}
     </AgentBadge>
   );
 }
@@ -161,7 +166,7 @@ export function VerdictBadge({
   children: React.ReactNode;
 }) {
   return (
-    <AgentBadge tone={VERDICT_TONE[verdict]} icon={VERDICT_ICON[verdict]} uppercase>
+    <AgentBadge tone={VERDICT_TONE[verdict]} icon={VERDICT_ICON[verdict]}>
       {children}
     </AgentBadge>
   );

@@ -160,11 +160,11 @@ function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["ac
 
 function RunActionButton({ runId, label }: { runId: string; label: string }) {
   const to = useRunPath(runId);
-  // Off-context (e.g. the storybook page) there is nowhere to go, so the button
-  // stays visible but disabled rather than becoming plain text.
+  // Off-context (the storybook gallery) there is nowhere to go, but the gallery
+  // exists to review the real look — render the button enabled and inert.
   if (!to) {
     return (
-      <Button variant="primary/small" disabled>
+      <Button variant="primary/small" onClick={() => {}}>
         {label}
       </Button>
     );
@@ -187,15 +187,19 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-text-dimmed">Run diagnosis</span>
           <ConfidenceBadge confidence={block.confidence} />
-          {block.runId ? (
-            <RunLink runId={block.runId} className="ml-auto font-mono text-xs" />
-          ) : null}
         </div>
         {/* The category as one humanized subtitle sentence; the key words are
             bold, no label prefix. */}
         <p className="text-sm text-text-dimmed">
           {CATEGORY_SENTENCES[block.category] ?? block.category}
         </p>
+        {/* The run id gets its own truncating line — it never fits reliably in
+            the badge row's right corner at panel width. */}
+        {block.runId ? (
+          <div className="truncate">
+            <RunLink runId={block.runId} className="font-mono text-xs" />
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-5 px-4 py-4">
