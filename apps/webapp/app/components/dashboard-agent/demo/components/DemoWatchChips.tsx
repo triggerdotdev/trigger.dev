@@ -63,7 +63,10 @@ export function DemoWatchChips({
         <span
           key={watch.id}
           title={`${watch.spec.note} · every ${watch.spec.checkEveryMinutes} min · ${STATUS_LABEL[watch.status]}`}
-          className="inline-flex items-center gap-2 rounded-full border border-border-bright bg-background-bright py-0.5 pl-2 pr-1 text-xs text-text-bright"
+          // The cancel affordance is revealed on hover/focus (the History rows'
+          // delete pattern): a resting chip shows only the state and the label —
+          // a spinner and a red button side by side read as noise.
+          className="group inline-flex items-center gap-2 rounded-full border border-border-bright bg-background-bright py-0.5 pl-2 pr-2 text-xs text-text-bright focus-within:pr-1 hover:pr-1"
         >
           <StatusIcon status={watch.status} />
           {watch.chipLabel}
@@ -77,7 +80,7 @@ export function DemoWatchChips({
                 <Button
                   variant="danger/small"
                   LeadingIcon={XMarkIcon}
-                  className="h-5 rounded-full px-1.5"
+                  className="hidden h-5 rounded-full px-1.5 focus-visible:inline-flex group-focus-within:inline-flex group-hover:inline-flex"
                   // Icon-only, so the label has to name the watch it cancels.
                   aria-label={`Cancel the ${watch.chipLabel} watch`}
                   onClick={() => onCancel?.(watch)}

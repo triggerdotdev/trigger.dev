@@ -164,6 +164,121 @@ export function ReportFindingLine({
   );
 }
 
+// --- prose highlighting -----------------------------------------------------
+
+/**
+ * The highlight rules for report prose ("why:" lines, "read:" lines). Fixed and
+ * deterministic — the same kind of thing is always emphasized the same way:
+ *
+ * 1. **Quantities** — numbers with their unit (`71%`, `~820/min`, `38 min`,
+ *    `6×`) render bright and tabular. Numbers are what the user scans for.
+ * 2. **Entities** — queue/task/run names the caller passes in render mono and
+ *    bright, like code.
+ * 3. **Verdict phrases** — the "whose problem is this" answers ("not your
+ *    code", "not a code problem", "not the workers") render in the success
+ *    color: they are the good news the card exists to deliver.
+ * 4. Everything else stays dimmed; causal arrows (→) are structure, not
+ *    content, and stay dimmed too.
+ */
+const QUANTITY_RE = /~?\d[\d,.]*\s?(?:%|×|\/min|ms\b|s\b|min\b|h\b)?/g;
+
+const VERDICT_PHRASES = [
+  "not your code",
+  "not a code problem",
+  "not the workers",
+  "not the platform",
+];
+
+type ProseSegment = { text: string; kind: "plain" | "quantity" | "entity" | "verdict" };
+
+function splitBy(
+  segments: ProseSegment[],
+  match: (text: string) => { start: number; end: number } | null,
+  kind: ProseSegment["kind"]
+): ProseSegment[] {
+  return segments.flatMap((segment) => {
+    if (segment.kind !== "plain") return [segment];
+    const out: ProseSegment[] = [];
+    let rest = segment.text;
+    for (;;) {
+      const hit = match(rest);
+      if (!hit) break;
+      if (hit.start > 0) out.push({ text: rest.slice(0, hit.start), kind: "plain" });
+      out.push({ text: rest.slice(hit.start, hit.end), kind });
+      rest = rest.slice(hit.end);
+    }
+    if (rest) out.push({ text: rest, kind: "plain" });
+    return out;
+  });
+}
+
+/** Apply the highlight rules to one resolved prose line. */
+export function ReportProse({ text, entities }: { text: string; entities?: string[] }) {
+  let segments: ProseSegment[] = [{ text, kind: "plain" }];
+
+  for (const entity of entities ?? []) {
+    if (!entity) continue;
+    segments = splitBy(
+      segments,
+      (t) => {
+        const i = t.indexOf(entity);
+        return i === -1 ? null : { start: i, end: i + entity.length };
+      },
+      "entity"
+    );
+  }
+
+  for (const phrase of VERDICT_PHRASES) {
+    segments = splitBy(
+      segments,
+      (t) => {
+        const i = t.toLowerCase().indexOf(phrase);
+        return i === -1 ? null : { start: i, end: i + phrase.length };
+      },
+      "verdict"
+    );
+  }
+
+  segments = splitBy(
+    segments,
+    (t) => {
+      QUANTITY_RE.lastIndex = 0;
+      const m = QUANTITY_RE.exec(t);
+      return m && m[0].trim().length > 0 ? { start: m.index, end: m.index + m[0].length } : null;
+    },
+    "quantity"
+  );
+
+  return (
+    <>
+      {segments.map((segment, i) => {
+        switch (segment.kind) {
+          case "quantity":
+            return (
+              <span key={i} className="font-medium tabular-nums text-text-bright">
+                {segment.text}
+              </span>
+            );
+          case "entity":
+            return (
+              <span key={i} className="font-mono text-xs text-text-bright">
+                {segment.text}
+              </span>
+            );
+          case "verdict":
+            return (
+              <span key={i} className="font-medium text-success">
+                {segment.text}
+              </span>
+            );
+          default:
+            return <Fragment key={i}>{segment.text}</Fragment>;
+        }
+      })}
+    </>
+  );
+}
+
 /**
  * A labelled block of lines — "why:" (what owns the problem, what it isn't) and
  * "read:" (the plain-language interpretation). The label sits in its own column

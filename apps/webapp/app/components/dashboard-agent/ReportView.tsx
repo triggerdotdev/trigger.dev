@@ -50,6 +50,7 @@ import {
   ReportMetricList,
   ReportMetricRow,
   ReportNoteBlock,
+  ReportProse,
   ReportProvenance,
   ReportSeverityIcon,
   reportDelta,
@@ -314,26 +315,30 @@ function FindingBody({
 
       <ReportNoteBlock label="why:">
         {finding.attribution ? (
-          <>
-            {Math.round(finding.attribution.share * 100)}% of {finding.attribution.of} is{" "}
-            <span className="font-mono text-text-bright">{finding.attribution.key}</span>
-          </>
+          <ReportProse
+            text={`${Math.round(finding.attribution.share * 100)}% of ${
+              finding.attribution.of
+            } is ${finding.attribution.key}`}
+            entities={[finding.attribution.key]}
+          />
         ) : null}
         {(finding.exclusions ?? []).map((exclusion, i) => (
-          <span key={`x${i}`}>
-            {fillTokens(messages.exclusionMessage(exclusion.code), {
+          <ReportProse
+            key={`x${i}`}
+            text={fillTokens(messages.exclusionMessage(exclusion.code), {
               ...tokens,
               ...(exclusion.evidence ?? {}),
             })}
-          </span>
+          />
         ))}
         {(finding.observations ?? []).map((observation, i) => (
-          <span key={`o${i}`}>
-            {fillTokens(messages.observationMessage(observation.code), {
+          <ReportProse
+            key={`o${i}`}
+            text={fillTokens(messages.observationMessage(observation.code), {
               ...tokens,
               ...(observation.evidence ?? {}),
             })}
-          </span>
+          />
         ))}
       </ReportNoteBlock>
     </div>
@@ -492,7 +497,7 @@ export function ReportView({
 
         <ReportNoteBlock label="read:">
           {reads.map((read, i) => (
-            <span key={i}>{read}</span>
+            <ReportProse key={i} text={read} />
           ))}
         </ReportNoteBlock>
 
