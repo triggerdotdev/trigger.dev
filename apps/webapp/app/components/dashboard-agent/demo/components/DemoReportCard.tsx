@@ -323,11 +323,19 @@ export function DemoReportCard({
       const style = reportFooterStyle(entry.code);
       return style === "action" || style === "docs";
     });
-    const label = offersControl ? "Watch for recovery" : "watch it recover";
-    footerItems.push({
+    const label = offersControl ? "Watch recovery" : "watch it recover";
+    const watchItem = {
       code: offersControl ? FOOTER_WATCH_CODE : FOOTER_WATCH_ONLY_CODE,
       node: <ReportFooterAction onClick={() => onAction?.(label)}>{label}</ReportFooterAction>,
-    });
+    };
+    // In the actions list the watch joins the buttons before the "or do
+    // nothing" prose; in the stale sentence it stays last.
+    const noteIndex = footerItems.findIndex((item) => reportFooterStyle(item.code) === "note");
+    if (offersControl && noteIndex !== -1) {
+      footerItems.splice(noteIndex, 0, watchItem);
+    } else {
+      footerItems.push(watchItem);
+    }
   }
 
   // Docs the report cites — demo mode has no host to resolve `trigger://` URIs,

@@ -350,22 +350,23 @@ export const FOOTER_WATCH_CODE = "watch_recovery";
 export const FOOTER_WATCH_ONLY_CODE = "watch_recovery_only";
 
 /**
- * The prose that carries each footer entry, so the footer reads as a sentence
- * instead of a row of chips: "→ you can [Contact us] , explore [Docs] or do
- * nothing — the backlog drains in ~27 min. Want me to [Watch for recovery]?"
+ * The prose that carries each footer entry. Action-bearing footers read as a
+ * list: "→ Possible actions: [Contact us] · [Read concurrency docs] · [Watch
+ * recovery] or do nothing — the backlog drains in ~27 min." The stale variant
+ * stays a sentence.
  *
  * Keyed by the report's own code. A code with no connector falls back to " · "
  * separation, which is what every other report's footer already looks like — so
  * adding a report never has to touch this table.
  */
 const FOOTER_CONNECTOR: Record<string, { before: string; after?: string }> = {
-  contact_us_raise_limit: { before: "you can " },
-  concurrency_docs: { before: ", explore " },
+  contact_us_raise_limit: { before: "Possible actions: " },
+  concurrency_docs: { before: " · " },
   // The catalog's text already begins "or do nothing — …", so this only spaces
   // it off the entry before it and closes the sentence.
   do_nothing_drains: { before: " ", after: "." },
   check_control_plane: { before: "there's nothing to fix on your side — please ", after: "." },
-  [FOOTER_WATCH_CODE]: { before: " Want me to ", after: "?" },
+  [FOOTER_WATCH_CODE]: { before: " · " },
   [FOOTER_WATCH_ONLY_CODE]: { before: " Or I can ", after: " for you." },
 };
 

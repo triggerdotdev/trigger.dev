@@ -463,14 +463,22 @@ export function ReportView({
   });
 
   if (recoveryWatch && onIntent) {
-    footerItems.push({
+    const watchItem: ReportFooterItem = {
       code: footerOffersControl ? FOOTER_WATCH_CODE : FOOTER_WATCH_ONLY_CODE,
       node: (
         <ReportFooterAction onClick={() => onIntent(recoveryWatch)}>
-          {footerOffersControl ? "Watch for recovery" : "watch it recover"}
+          {footerOffersControl ? "Watch recovery" : "watch it recover"}
         </ReportFooterAction>
       ),
-    });
+    };
+    // In the actions list the watch joins the other buttons, BEFORE the
+    // trailing "or do nothing" prose; in the stale sentence it stays last.
+    const noteIndex = footerItems.findIndex((item) => reportFooterStyle(item.code) === "note");
+    if (footerOffersControl && noteIndex !== -1) {
+      footerItems.splice(noteIndex, 0, watchItem);
+    } else {
+      footerItems.push(watchItem);
+    }
   }
 
   // Resources the report cites, resolved to dashboard links by the host. Cited,
