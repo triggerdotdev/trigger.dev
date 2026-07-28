@@ -1,6 +1,7 @@
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
@@ -44,6 +45,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
     include: {
       parentEnvironment: true,
+      // Feeds resolveProdApiOrigin; only loaded when internal-origin routing is possible.
+      ...(env.INTERNAL_API_ORIGIN ? { organization: { select: { featureFlags: true } } } : {}),
     },
   });
 

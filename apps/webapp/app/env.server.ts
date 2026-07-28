@@ -233,6 +233,11 @@ const EnvironmentSchema = z
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     API_ORIGIN: z.string().optional(),
+    // Alternative API origin for deployed runs whose org has the
+    // internalApiOriginEnabled feature flag on. Unset = flag is a no-op.
+    INTERNAL_API_ORIGIN: z.string().optional(),
+    // Global default for internalApiOriginEnabled when an org hasn't set it.
+    INTERNAL_API_ORIGIN_ENABLED: z.string().default("0"),
     STREAM_ORIGIN: z.string().optional(),
     ELECTRIC_ORIGIN: z.string().default("http://localhost:3060"),
     // A comma separated list of electric origins to shard into different electric instances by environmentId
@@ -462,6 +467,7 @@ const EnvironmentSchema = z
     // TTL/size of the per-org realtimeBackend flag cache used to pick the serving backend.
     REALTIME_BACKEND_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     REALTIME_BACKEND_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(50_000),
+    REALTIME_BACKEND_NATIVE_RUN_READS_FROM_PRIMARY: z.string().default("0"),
     // "1" enables the read-your-writes gate: wake hydrates wait out the measured replica lag
     // (anchored to the change record's updatedAtMs) and stale reads are retried.
     REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED: z.string().default("1"),

@@ -14,6 +14,7 @@ import {
   type inferSchemaOut,
   InputStreamOncePromise,
   type InputStreamOnceResult,
+  isAdditionalApiKey,
   isSchemaZodEsque,
   logger,
   type MachinePresetName,
@@ -10600,24 +10601,53 @@ async function mintPublicTokenWithOverride(args: {
     throw new Error("chat.createStartSessionAction: no API access token configured for JWT mint.");
   }
   const ctx: ChatStartSessionEndpointContext = { endpoint: "auth", chatId: args.chatId };
-  const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}/api/v1/auth/jwt/claims`;
+  const scopes = [`read:sessions:${args.chatId}`, `write:sessions:${args.chatId}`];
+  const serverMint = isAdditionalApiKey(accessToken);
+  const endpoint = serverMint ? "/api/v1/auth/public-tokens" : "/api/v1/auth/jwt/claims";
+  const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}${endpoint}`;
   const init: RequestInit = {
     method: "POST",
     headers: overrideRequestHeaders(accessToken),
+    ...(serverMint
+      ? {
+          body: JSON.stringify({
+            scopes,
+            expirationTime:
+              args.expirationTime instanceof Date
+                ? Math.floor(args.expirationTime.getTime() / 1000)
+                : args.expirationTime,
+          }),
+        }
+      : {}),
   };
   const response = args.fetchOverride
     ? await args.fetchOverride(url, init, ctx)
     : await fetch(url, init);
   if (!response.ok) {
+    // An additional API key cannot self-sign, so it must use the server mint
+    // endpoint. On a server too old to expose it, explain the recovery path
+    // instead of surfacing a bare 404 (mirrors auth.createServerPublicToken).
+    if (serverMint && response.status === 404) {
+      throw new Error(
+        "This additional API key cannot self-sign public tokens, and the server does not support public-token minting. Upgrade the server or use the root API key."
+      );
+    }
     const text = await response.text().catch(() => "");
     throw new Error(`auth.createPublicToken failed: ${response.status} ${text}`);
   }
-  const claims = (await response.json()) as Record<string, unknown>;
+  const responseBody = (await response.json()) as Record<string, unknown>;
+  if (serverMint) {
+    if (typeof responseBody.token !== "string") {
+      throw new Error("auth.createPublicToken failed: server response did not include a token");
+    }
+    return responseBody.token;
+  }
+
   return generateJWT({
     secretKey: accessToken,
     payload: {
-      ...claims,
-      scopes: [`read:sessions:${args.chatId}`, `write:sessions:${args.chatId}`],
+      ...responseBody,
+      scopes,
     },
     expirationTime: args.expirationTime,
   });

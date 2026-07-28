@@ -132,6 +132,44 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody?.triggerConfig.lockToVersion).toBe("20260101.1");
   });
 
+  it("server-mints override tokens for additional API keys", async () => {
+    const requests: Array<{ url: string; body: unknown }> = [];
+    const start = chat.createStartSessionAction("fake-chat", {
+      apiClient: {
+        baseURL: "https://example.invalid",
+        accessToken: "tr_prod_sk_0123456789abcdefghijklmn",
+      },
+      tokenTTL: "30m",
+      fetch: async (url, init, context) => {
+        requests.push({
+          url,
+          body: typeof init.body === "string" ? JSON.parse(init.body) : undefined,
+        });
+
+        if (context.endpoint === "sessions") {
+          return Response.json({
+            id: "session_fixture",
+            runId: "run_fixture",
+            publicAccessToken: "session-token",
+          });
+        }
+
+        return Response.json({ token: "server-minted-token" });
+      },
+    });
+
+    const result = await start({ chatId: "chat-additional-key" });
+
+    expect(result.publicAccessToken).toBe("server-minted-token");
+    expect(requests[1]).toEqual({
+      url: "https://example.invalid/api/v1/auth/public-tokens",
+      body: {
+        scopes: ["read:sessions:chat-additional-key", "write:sessions:chat-additional-key"],
+        expirationTime: "30m",
+      },
+    });
+  });
+
   it("keeps session-level metadata distinct from per-turn clientData", async () => {
     installStartFixture();
 

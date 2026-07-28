@@ -701,14 +701,12 @@ function DeploymentOnboardingSteps() {
               Deploy automatically with every push. Read the{" "}
               <TextLink to={docsPath("github-integration")}>full guide</TextLink>.
             </Paragraph>
-            <div className="w-fit">
-              <GitHubSettingsPanel
-                organizationSlug={organization.slug}
-                projectSlug={project.slug}
-                environmentSlug={environment.slug}
-                billingPath={v3BillingPath({ slug: organization.slug })}
-              />
-            </div>
+            <GitHubSettingsPanel
+              organizationSlug={organization.slug}
+              projectSlug={project.slug}
+              environmentSlug={environment.slug}
+              billingPath={v3BillingPath({ slug: organization.slug })}
+            />
           </StepContentContainer>
         </ClientTabsContent>
         <ClientTabsContent value={"cli"}>
