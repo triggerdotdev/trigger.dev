@@ -149,6 +149,8 @@ export default function Page() {
   const { deliveries, pagination, possibleWebhooks, hasFilters } =
     useTypedLoaderData<typeof loader>();
 
+  const { visibleDeliveries, newDeliveriesButton } = useLiveDeliveries(deliveries);
+
   return (
     <>
       <NavBar>
@@ -158,22 +160,27 @@ export default function Page() {
         <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
           <div className="flex items-start justify-between gap-x-2 p-2">
             <WebhookDeliveryFilters possibleWebhooks={possibleWebhooks} defaultPeriod="7d" />
-            <ListPagination list={{ pagination }} />
+            {/* The new-deliveries button sits inline, immediately left of the pager */}
+            <div className="flex items-center gap-x-2">
+              {newDeliveriesButton}
+              <ListPagination list={{ pagination }} />
+            </div>
           </div>
-          <LiveDeliveriesTable deliveries={deliveries} hasFilters={hasFilters} />
+          <div className="min-h-0 overflow-hidden">
+            <DeliveriesTable
+              deliveries={visibleDeliveries}
+              showWebhook
+              stickyHeader
+              hasFilters={hasFilters}
+            />
+          </div>
         </div>
       </PageBody>
     </>
   );
 }
 
-function LiveDeliveriesTable({
-  deliveries,
-  hasFilters,
-}: {
-  deliveries: WebhookDeliveryListItem[];
-  hasFilters: boolean;
-}) {
+function useLiveDeliveries(deliveries: WebhookDeliveryListItem[]) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -204,36 +211,22 @@ function LiveDeliveriesTable({
     revalidator.revalidate();
   };
 
-  return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {showNewDeliveriesBanner ? (
-        <div className="flex shrink-0 justify-end px-2 py-1.5">
-          <span className="flex duration-150 animate-in fade-in-0">
-            <Button
-              variant="secondary/small"
-              className="text-text-bright"
-              onClick={onClickShowNewDeliveries}
-              LeadingIcon={<PulsingDot className="h-2 w-2" />}
-              tooltip="Refresh to see new deliveries"
-              aria-label="New deliveries received. Refresh to see them."
-            >
-              {newDeliveriesCount >= 100
-                ? "99+ new deliveries"
-                : `${newDeliveriesCount} new ${
-                    newDeliveriesCount === 1 ? "delivery" : "deliveries"
-                  }`}
-            </Button>
-          </span>
-        </div>
-      ) : null}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <DeliveriesTable
-          deliveries={visibleDeliveries}
-          showWebhook
-          stickyHeader
-          hasFilters={hasFilters}
-        />
-      </div>
-    </div>
-  );
+  const newDeliveriesButton = showNewDeliveriesBanner ? (
+    <span className="flex duration-150 animate-in fade-in-0">
+      <Button
+        variant="secondary/small"
+        className="text-text-bright"
+        onClick={onClickShowNewDeliveries}
+        LeadingIcon={<PulsingDot className="h-2 w-2" />}
+        tooltip="Refresh to see new deliveries"
+        aria-label="New deliveries received. Refresh to see them."
+      >
+        {newDeliveriesCount >= 100
+          ? "99+ new deliveries"
+          : `${newDeliveriesCount} new ${newDeliveriesCount === 1 ? "delivery" : "deliveries"}`}
+      </Button>
+    </span>
+  ) : null;
+
+  return { visibleDeliveries, newDeliveriesButton };
 }

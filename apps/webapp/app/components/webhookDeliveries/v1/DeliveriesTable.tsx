@@ -3,6 +3,7 @@ import { useLocation, useNavigation } from "@remix-run/react";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { WebhookIcon } from "~/assets/icons/WebhookIcon";
+import { Badge } from "~/components/primitives/Badge";
 import { DateTime } from "~/components/primitives/DateTime";
 import { MiddleTruncate } from "~/components/primitives/MiddleTruncate";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -121,28 +122,26 @@ export function DeliveriesTable({
                   <TableCell to={webhookPath}>
                     {delivery.webhook ? (
                       <span className="flex items-center gap-x-1">
-                        <WebhookIcon className="size-4 text-webhooks" />
+                        <WebhookIcon className="size-4.5 min-w-4.5 text-webhooks" />
                         {delivery.webhook.slug}
                       </span>
                     ) : (
-                      <span className="text-text-dimmed">Unknown</span>
+                      <span className="text-text-dimmed group-hover/table-row:text-text-bright">
+                        Unknown
+                      </span>
                     )}
                   </TableCell>
                 )}
                 <TableCell to={deliveryPath}>
                   <span className="flex items-center gap-1.5">
                     <span className="font-mono text-xs">{delivery.friendlyId}</span>
-                    {delivery.isTest ? (
-                      <span className="rounded-sm bg-charcoal-700 px-1 py-0.5 text-xxs font-semibold uppercase tracking-wide text-text-dimmed">
-                        Test
-                      </span>
-                    ) : null}
+                    {delivery.isTest ? <Badge variant="extra-small">Test</Badge> : null}
                   </span>
                 </TableCell>
                 <TableCell to={deliveryPath}>
                   <DeliveryStatusBadge status={delivery.status} />
                 </TableCell>
-                <TableCell>
+                <TableCell to={deliveryPath}>
                   {delivery.externalDeliveryId ? (
                     <div className="w-[24ch]">
                       <MiddleTruncate
@@ -151,10 +150,13 @@ export function DeliveriesTable({
                       />
                     </div>
                   ) : (
-                    <span className="text-text-dimmed">None</span>
+                    <span className="text-text-dimmed group-hover/table-row:text-text-bright">
+                      None
+                    </span>
                   )}
                 </TableCell>
-                <TableCell to={sessionPath ?? runPath}>
+                {/* Falls back to the delivery so the whole row stays clickable when there is no target */}
+                <TableCell to={sessionPath ?? runPath ?? deliveryPath}>
                   {delivery.session ? (
                     <span className="flex items-center gap-x-1">
                       <AIChatIcon className="size-4 text-sessions" />
@@ -166,20 +168,24 @@ export function DeliveriesTable({
                       <span className="font-mono text-xs">{delivery.run.friendlyId}</span>
                     </span>
                   ) : (
-                    <span className="text-text-dimmed">None</span>
+                    <span className="text-text-dimmed group-hover/table-row:text-text-bright">
+                      None
+                    </span>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell to={deliveryPath}>
                   <DateTime date={delivery.createdAt} />
                 </TableCell>
-                <TableCell>
+                <TableCell to={deliveryPath}>
                   {delivery.processedAt ? (
                     <DateTime date={delivery.processedAt} />
                   ) : (
-                    <span className="text-text-dimmed">None</span>
+                    <span className="text-text-dimmed group-hover/table-row:text-text-bright">
+                      None
+                    </span>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell to={deliveryPath}>
                   {delivery.status === "FAILED" && delivery.errorMessage ? (
                     <SimpleTooltip
                       content={delivery.errorMessage}
@@ -190,7 +196,9 @@ export function DeliveriesTable({
                       }
                     />
                   ) : (
-                    <span className="text-text-dimmed">None</span>
+                    <span className="text-text-dimmed group-hover/table-row:text-text-bright">
+                      None
+                    </span>
                   )}
                 </TableCell>
                 <DeliveryActionsCell

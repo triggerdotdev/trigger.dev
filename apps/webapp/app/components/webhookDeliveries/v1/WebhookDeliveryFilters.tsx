@@ -155,20 +155,13 @@ function Menu(props: MenuProps) {
   }
 }
 
-function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: MenuProps) {
-  const filtered = useMemo(() => {
-    return filterTypes.filter((item) =>
-      item.title.toLowerCase().includes(searchValue.toLowerCase())
-    );
-  }, [searchValue]);
-
+function MainMenu({ trigger, clearSearchValue, setFilterType }: MenuProps) {
   return (
     <SelectProvider virtualFocus={true}>
       {trigger}
       <SelectPopover>
-        <ComboBox placeholder={"Filter by..."} shortcut={moreFiltersShortcut} value={searchValue} />
         <SelectList>
-          {filtered.map((type, index) => (
+          {filterTypes.map((type, index) => (
             <SelectButtonItem
               key={type.name}
               onClick={() => {
@@ -190,12 +183,10 @@ function MainMenu({ searchValue, trigger, clearSearchValue, setFilterType }: Men
 function StatusDropdown({
   trigger,
   clearSearchValue,
-  searchValue,
   onClose,
 }: {
   trigger: ReactNode;
   clearSearchValue: () => void;
-  searchValue: string;
   onClose?: () => void;
 }) {
   const { values, replace } = useSearchParams();
@@ -204,12 +195,6 @@ function StatusDropdown({
     clearSearchValue();
     replace({ statuses: values, cursor: undefined, direction: undefined });
   };
-
-  const filtered = useMemo(() => {
-    return deliveryStatuses.filter((item) =>
-      item.title.toLowerCase().includes(searchValue.toLowerCase())
-    );
-  }, [searchValue]);
 
   return (
     <SelectProvider value={values("statuses")} setValue={handleChange} virtualFocus={true}>
@@ -225,9 +210,8 @@ function StatusDropdown({
           return true;
         }}
       >
-        <ComboBox placeholder={"Filter by status..."} value={searchValue} />
         <SelectList>
-          {filtered.map((item, index) => (
+          {deliveryStatuses.map((item, index) => (
             <SelectItem
               key={item.value}
               value={item.value}
@@ -264,7 +248,7 @@ function PermanentStatusFilter() {
 
   return (
     <FilterMenuProvider>
-      {(search, setSearch) => (
+      {(_search, setSearch) => (
         <StatusDropdown
           trigger={
             <Ariakit.TooltipProvider timeout={200}>
@@ -309,7 +293,6 @@ function PermanentStatusFilter() {
               </Ariakit.Tooltip>
             </Ariakit.TooltipProvider>
           }
-          searchValue={search}
           clearSearchValue={() => setSearch("")}
         />
       )}
@@ -536,7 +519,7 @@ function PermanentTestFilter() {
               />
             ) : (
               <div className="flex h-6 items-center gap-1.5 rounded border border-charcoal-600 bg-secondary pl-1 pr-2 text-xs text-text-bright transition group-hover:border-charcoal-550 group-hover:bg-charcoal-600">
-                <BeakerIcon className="size-4 text-text-dimmed" />
+                <BeakerIcon className="size-4 text-text-bright" />
                 <span>Test</span>
               </div>
             )}

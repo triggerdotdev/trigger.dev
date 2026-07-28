@@ -9,7 +9,7 @@ import {
   type WebhookDeliveryListItem,
 } from "./WebhookDetailPresenter.server";
 
-const DELIVERIES_PAGE_SIZE = 25;
+const DELIVERIES_PAGE_SIZE = 60;
 type Direction = "forward" | "backward";
 
 export type WebhookDeliveriesListResult = {
