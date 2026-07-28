@@ -3,7 +3,8 @@ import { generateJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
 import type { PrismaClient } from "@trigger.dev/database";
 import { buildJwtAbility } from "@trigger.dev/plugins";
 import rbacPlugin, { type RbacAbility, type RoleBaseAccessController } from "@trigger.dev/rbac";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
 import { handlePublicTokenRequest } from "~/services/publicTokens.server";
 import { generateAdditionalApiKey, generateRootApiKey, hashApiKey } from "~/utils/apiKeys";
 import { createTestOrgProjectWithMember, uniqueId } from "./fixtures/environmentVariablesFixtures";
@@ -64,6 +65,13 @@ async function responseJson(response: Response) {
   return response.json() as Promise<Record<string, any>>;
 }
 
+function telemetryRecorder(): ApiKeyTelemetry {
+  return {
+    recordOperation: vi.fn(),
+    recordPublicTokenMint: vi.fn(),
+  };
+}
+
 describe("POST /api/v1/auth/public-tokens", () => {
   it("lets root and unrestricted additional keys mint arbitrary scopes", async () => {
     for (const controller of [
@@ -86,6 +94,31 @@ describe("POST /api/v1/auth/public-tokens", () => {
         scopes: ["read:runs", "custom:resources:value"],
       });
     }
+  });
+
+  it("records successful and rejected mint outcomes", async () => {
+    const telemetry = telemetryRecorder();
+    const controller = controllerWithAbility(buildJwtAbility(["read:runs"]));
+
+    const allowed = await handlePublicTokenRequest(
+      request({ scopes: ["read:runs"] }),
+      controller,
+      telemetry
+    );
+    const denied = await handlePublicTokenRequest(
+      request({ scopes: ["write:runs"] }),
+      controller,
+      telemetry
+    );
+
+    expect(allowed.status).toBe(200);
+    expect(denied.status).toBe(403);
+    expect(telemetry.recordPublicTokenMint).toHaveBeenNthCalledWith(1, "success");
+    expect(telemetry.recordPublicTokenMint).toHaveBeenNthCalledWith(
+      2,
+      "rejected",
+      "scope_not_allowed"
+    );
   });
 
   it("allows restricted subsets and rejects excess scopes", async () => {

@@ -10,6 +10,7 @@ import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import { prisma } from "~/db.server";
 import { RuntimeEnvironmentType } from "~/database-types";
 import { canIssueAdditionalApiKeys } from "~/services/additionalApiKeyIssuance.server";
+import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
 import { rbac } from "~/services/rbac.server";
 import { generateAdditionalApiKey, generateRootApiKey } from "~/utils/apiKeys";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
@@ -131,6 +132,7 @@ export async function createEnvironmentApiKey(
     prismaClient = prisma,
     rbacController = rbac,
     issuanceAllowed,
+    telemetryRecorder = apiKeyTelemetry,
   }: {
     prismaClient?: Pick<
       PrismaClient,
@@ -138,6 +140,7 @@ export async function createEnvironmentApiKey(
     >;
     rbacController?: Pick<HostRbacController, "prepareApiKeyPolicy">;
     issuanceAllowed?: (organizationId: string) => Promise<boolean>;
+    telemetryRecorder?: ApiKeyTelemetry;
   } = {}
 ) {
   const environment = await prismaClient.runtimeEnvironment.findFirst({
@@ -184,29 +187,45 @@ export async function createEnvironmentApiKey(
     }
   }
 
-  const prepared = await rbacController.prepareApiKeyPolicy({
-    organizationId: environment.organizationId,
-    presetId,
-    taskIdentifiers: selectedTasks.length > 0 ? selectedTasks : undefined,
-  });
-
-  if (!prepared.ok) {
-    throw new Error(prepared.error);
+  let prepared: Awaited<ReturnType<typeof rbacController.prepareApiKeyPolicy>>;
+  try {
+    prepared = await rbacController.prepareApiKeyPolicy({
+      organizationId: environment.organizationId,
+      presetId,
+      taskIdentifiers: selectedTasks.length > 0 ? selectedTasks : undefined,
+    });
+  } catch (error) {
+    telemetryRecorder.recordOperation("prepare_policy", "error", "policy_error");
+    throw error;
   }
 
+  if (!prepared.ok) {
+    telemetryRecorder.recordOperation("prepare_policy", "rejected", "policy_rejected");
+    throw new Error(prepared.error);
+  }
+  telemetryRecorder.recordOperation("prepare_policy", "success");
+
   const generated = generateAdditionalApiKey(environment.type);
-  const apiKey = await prismaClient.apiKey.create({
-    data: {
-      name,
-      keyHash: generated.keyHash,
-      lastFour: generated.lastFour,
-      runtimeEnvironmentId: environment.id,
-      createdByUserId: userId,
-      expiresAt,
-      presetId: prepared.policy.presetId,
-      scopes: prepared.policy.scopes,
-    },
-  });
+  const apiKey = await (async () => {
+    try {
+      return await prismaClient.apiKey.create({
+        data: {
+          name,
+          keyHash: generated.keyHash,
+          lastFour: generated.lastFour,
+          runtimeEnvironmentId: environment.id,
+          createdByUserId: userId,
+          expiresAt,
+          presetId: prepared.policy.presetId,
+          scopes: prepared.policy.scopes,
+        },
+      });
+    } catch (error) {
+      telemetryRecorder.recordOperation("create", "error", "database_error");
+      throw error;
+    }
+  })();
+  telemetryRecorder.recordOperation("create", "success");
 
   crumb("environment API key created", {
     apiKeyId: apiKey.id,
@@ -217,26 +236,44 @@ export async function createEnvironmentApiKey(
   return { apiKey, plaintext: generated.apiKey };
 }
 
-export async function revokeEnvironmentApiKey({
-  environmentId,
-  apiKeyId,
-}: {
-  environmentId: string;
-  apiKeyId: string;
-}) {
-  const result = await prisma.apiKey.updateMany({
-    where: {
-      id: apiKeyId,
-      runtimeEnvironmentId: environmentId,
-      revokedAt: null,
-    },
-    data: { revokedAt: new Date() },
-  });
+export async function revokeEnvironmentApiKey(
+  {
+    environmentId,
+    apiKeyId,
+  }: {
+    environmentId: string;
+    apiKeyId: string;
+  },
+  {
+    prismaClient = prisma,
+    telemetryRecorder = apiKeyTelemetry,
+  }: {
+    prismaClient?: Pick<PrismaClient, "apiKey">;
+    telemetryRecorder?: ApiKeyTelemetry;
+  } = {}
+) {
+  const result = await (async () => {
+    try {
+      return await prismaClient.apiKey.updateMany({
+        where: {
+          id: apiKeyId,
+          runtimeEnvironmentId: environmentId,
+          revokedAt: null,
+        },
+        data: { revokedAt: new Date() },
+      });
+    } catch (error) {
+      telemetryRecorder.recordOperation("revoke", "error", "database_error");
+      throw error;
+    }
+  })();
 
   if (result.count !== 1) {
+    telemetryRecorder.recordOperation("revoke", "rejected", "not_found_or_revoked");
     throw new Error("API key not found or already revoked");
   }
 
+  telemetryRecorder.recordOperation("revoke", "success");
   crumb("environment API key revoked", { apiKeyId, environmentId }); // @crumbs
 }
 

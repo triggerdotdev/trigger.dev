@@ -3,6 +3,7 @@ import type { RoleBaseAccessController } from "@trigger.dev/rbac";
 import { resolveJwtSigningKey, scopesWithinAbility } from "@trigger.dev/rbac";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { apiKeyTelemetry, type ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
 import { rbac } from "~/services/rbac.server";
 
 // Public access tokens may be valid for at most 30 days.
@@ -53,7 +54,8 @@ function expirationTimestamp(expirationTime: string | number, now: number): numb
 
 export async function handlePublicTokenRequest(
   request: Request,
-  controller: Pick<RoleBaseAccessController, "authenticateBearer"> = rbac
+  controller: Pick<RoleBaseAccessController, "authenticateBearer"> = rbac,
+  telemetryRecorder: ApiKeyTelemetry = apiKeyTelemetry
 ) {
   // Public JWTs are intentionally not enabled here. Only API keys may mint tokens.
   const authResult = await controller.authenticateBearer(request);
@@ -65,11 +67,13 @@ export async function handlePublicTokenRequest(
   try {
     body = await request.json();
   } catch {
+    telemetryRecorder.recordPublicTokenMint("rejected", "invalid_body");
     return json({ error: "Invalid request body" }, { status: 400 });
   }
 
   const parsedBody = RequestBodySchema.safeParse(body);
   if (!parsedBody.success) {
+    telemetryRecorder.recordPublicTokenMint("rejected", "invalid_body");
     return json(
       { error: "Invalid request body", issues: parsedBody.error.issues },
       { status: 400 }
@@ -78,6 +82,7 @@ export async function handlePublicTokenRequest(
 
   const scopeCheck = scopesWithinAbility(parsedBody.data.scopes, authResult.ability);
   if (!scopeCheck.ok) {
+    telemetryRecorder.recordPublicTokenMint("rejected", "scope_not_allowed");
     return json(
       {
         error: "Requested scopes exceed the API key's access",
@@ -92,32 +97,42 @@ export async function handlePublicTokenRequest(
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = expirationTimestamp(expirationTime, now);
   if (expiresAt === undefined) {
+    telemetryRecorder.recordPublicTokenMint("rejected", "invalid_expiration");
     return json({ error: "Invalid expiration time" }, { status: 400 });
   }
   // `expirationTimestamp` accepts past values ("-5m", "5m ago"), which would
   // otherwise mint an already-expired token behind a 200.
   if (expiresAt <= now) {
+    telemetryRecorder.recordPublicTokenMint("rejected", "expiration_not_future");
     return json({ error: "Expiration time must be in the future" }, { status: 400 });
   }
   if (expiresAt - now > MAX_PUBLIC_TOKEN_LIFETIME_SECONDS) {
+    telemetryRecorder.recordPublicTokenMint("rejected", "expiration_too_long");
     return json({ error: "Expiration time cannot exceed 30 days" }, { status: 400 });
   }
 
-  const token = await generateJWT({
-    secretKey: resolveJwtSigningKey(authResult.environment),
-    payload: {
-      sub: authResult.environment.id,
-      pub: true,
-      scopes: parsedBody.data.scopes,
-      ...(parsedBody.data.oneTimeUse ? { otu: true } : {}),
-      ...(parsedBody.data.realtime ? { realtime: parsedBody.data.realtime } : {}),
-    },
-    // Pass the absolute `exp` validated above, not the original string.
-    // `generateJWT` hands the string to jose's own parser, which would leave
-    // the 30-day cap enforced against a different computation than the one
-    // that actually sets the claim.
-    expirationTime: expiresAt,
-  });
+  let token: string;
+  try {
+    token = await generateJWT({
+      secretKey: resolveJwtSigningKey(authResult.environment),
+      payload: {
+        sub: authResult.environment.id,
+        pub: true,
+        scopes: parsedBody.data.scopes,
+        ...(parsedBody.data.oneTimeUse ? { otu: true } : {}),
+        ...(parsedBody.data.realtime ? { realtime: parsedBody.data.realtime } : {}),
+      },
+      // Pass the absolute `exp` validated above, not the original string.
+      // `generateJWT` hands the string to jose's own parser, which would leave
+      // the 30-day cap enforced against a different computation than the one
+      // that actually sets the claim.
+      expirationTime: expiresAt,
+    });
+  } catch (error) {
+    telemetryRecorder.recordPublicTokenMint("error", "signing_failed");
+    throw error;
+  }
 
+  telemetryRecorder.recordPublicTokenMint("success");
   return json({ token });
 }

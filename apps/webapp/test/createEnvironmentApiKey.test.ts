@@ -3,7 +3,8 @@ import type { PrismaClient } from "@trigger.dev/database";
 import rbacPlugin, { type RoleBaseAccessController } from "@trigger.dev/rbac";
 import { expect, vi } from "vitest";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
-import { createEnvironmentApiKey } from "~/models/api-key.server";
+import { createEnvironmentApiKey, revokeEnvironmentApiKey } from "~/models/api-key.server";
+import type { ApiKeyTelemetry } from "~/services/apiKeyTelemetry.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
   createRuntimeEnvironment,
@@ -17,6 +18,13 @@ function policyController(
   implementation: RoleBaseAccessController["prepareApiKeyPolicy"]
 ): Pick<RoleBaseAccessController, "prepareApiKeyPolicy"> {
   return { prepareApiKeyPolicy: vi.fn(implementation) };
+}
+
+function telemetryRecorder(): ApiKeyTelemetry {
+  return {
+    recordOperation: vi.fn(),
+    recordPublicTokenMint: vi.fn(),
+  };
 }
 
 async function setup(prisma: PrismaClient) {
@@ -77,6 +85,7 @@ containerTest(
 containerTest("standalone fallback creates one explicit full-access key", async ({ prisma }) => {
   const { user, environment } = await setup(prisma);
   const fallback = rbacPlugin.create({ primary: prisma, replica: prisma }, { forceFallback: true });
+  const telemetry = telemetryRecorder();
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
   const result = await createEnvironmentApiKey(
@@ -88,9 +97,11 @@ containerTest("standalone fallback creates one explicit full-access key", async 
       expiresAt,
       presetId: "FULL_ACCESS",
     },
-    { prismaClient: prisma, rbacController: fallback }
+    { prismaClient: prisma, rbacController: fallback, telemetryRecorder: telemetry }
   );
 
+  expect(telemetry.recordOperation).toHaveBeenNthCalledWith(1, "prepare_policy", "success");
+  expect(telemetry.recordOperation).toHaveBeenNthCalledWith(2, "create", "success");
   expect(result.plaintext).toMatch(/^tr_prod_sk_[A-Za-z0-9]{24}$/);
   expect(result.apiKey).toMatchObject({
     presetId: null,
@@ -100,6 +111,31 @@ containerTest("standalone fallback creates one explicit full-access key", async 
   await expect(
     prisma.apiKey.count({ where: { runtimeEnvironmentId: environment.id } })
   ).resolves.toBe(1);
+});
+
+containerTest("records successful API key revocation", async ({ prisma }) => {
+  const { user, environment } = await setup(prisma);
+  const apiKey = await prisma.apiKey.create({
+    data: {
+      name: "Revoke me",
+      keyHash: uniqueId("hash"),
+      lastFour: "last",
+      runtimeEnvironmentId: environment.id,
+      createdByUserId: user.id,
+      scopes: ["admin"],
+    },
+  });
+  const telemetry = telemetryRecorder();
+
+  await revokeEnvironmentApiKey(
+    { environmentId: environment.id, apiKeyId: apiKey.id },
+    { prismaClient: prisma, telemetryRecorder: telemetry }
+  );
+
+  expect(telemetry.recordOperation).toHaveBeenCalledWith("revoke", "success");
+  await expect(prisma.apiKey.findUnique({ where: { id: apiKey.id } })).resolves.toMatchObject({
+    revokedAt: expect.any(Date),
+  });
 });
 
 containerTest("persists trusted full-access and restricted cloud policies", async ({ prisma }) => {
@@ -155,6 +191,7 @@ containerTest("policy preparation failure inserts no credential", async ({ prism
     ok: false,
     error: "This API key access preset is not available on your plan",
   }));
+  const telemetry = telemetryRecorder();
 
   await expect(
     createEnvironmentApiKey(
@@ -165,10 +202,15 @@ containerTest("policy preparation failure inserts no credential", async ({ prism
         name: "Unavailable",
         presetId: "RESTRICTED",
       },
-      { prismaClient: prisma, rbacController: controller }
+      { prismaClient: prisma, rbacController: controller, telemetryRecorder: telemetry }
     )
   ).rejects.toThrow("not available on your plan");
 
+  expect(telemetry.recordOperation).toHaveBeenCalledWith(
+    "prepare_policy",
+    "rejected",
+    "policy_rejected"
+  );
   await expect(
     prisma.apiKey.count({ where: { runtimeEnvironmentId: environment.id } })
   ).resolves.toBe(0);
