@@ -4846,7 +4846,8 @@ if claimed == 0 then
   return 0
 end
 
--- An orphaned list entry (payload already acknowledged): the LREM above cleaned it up.
+-- Acknowledged between the candidate read and this script. The LREM above removed the
+-- stale entry; the completed run must not be written back onto the queue.
 if redis.call('EXISTS', messageKey) == 0 then
   return 0
 end
@@ -4927,7 +4928,8 @@ if claimed == 0 then
   return 0
 end
 
--- An orphaned list entry (payload already acknowledged): the LREM above cleaned it up.
+-- Acknowledged between the candidate read and this script. The LREM above removed the
+-- stale entry; the completed run must not be written back onto the queue.
 if redis.call('EXISTS', messageKey) == 0 then
   return 0
 end

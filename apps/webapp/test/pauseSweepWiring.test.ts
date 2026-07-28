@@ -24,7 +24,7 @@ vi.mock("~/v3/runQueue.server", () => ({
   }),
   returnUnclaimedMessagesToQueue: vi.fn(async () => ({
     returned: 0,
-    skipped: 0,
+    skippedLastPass: 0,
     errors: 0,
     passes: 1,
   })),

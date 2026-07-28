@@ -24,7 +24,7 @@ describe("sweepUnclaimedRuns", () => {
 
     returnUnclaimedMessagesToQueue.mockResolvedValueOnce({
       returned: 2,
-      skipped: 0,
+      skippedLastPass: 0,
       errors: 0,
       passes: 1,
     });
