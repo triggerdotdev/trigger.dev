@@ -93,7 +93,7 @@ const OBSERVATIONS: Record<string, string> = {
 
 /** Metric annotation shown on a cause line INSTEAD of "(normal ~x)". {tokens} filled by the renderer. */
 const ANNOTATIONS: Record<string, string> = {
-  pinned_minutes: "pinned {value} of last {window} min",
+  pinned_minutes: "{value} min at limit",
   idle_share: "idle — {value} running of {limit}",
   throttled_minutes: "throttled {value} of last {window} min",
   spike_mult: "{value}× the normal rate",
