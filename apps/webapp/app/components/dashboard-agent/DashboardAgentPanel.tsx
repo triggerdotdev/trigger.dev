@@ -291,7 +291,12 @@ export function DashboardAgentPanel({
   // open we only drop it into the composer, so we never inject a message into
   // the middle of someone's conversation. Waits for an in-flight restore/open so
   // it can tell which of the two it is.
-  const [prefill, setPrefill] = useState<{ text: string; seq: number } | undefined>(undefined);
+  // The prefill is bound to the chat it was meant for: DashboardAgentChat
+  // remounts (fresh guard ref) on every chat switch, so an unbound prefill
+  // would re-apply to each new chat and stomp whatever the user typed.
+  const [prefill, setPrefill] = useState<{ text: string; seq: number; chatId: string } | undefined>(
+    undefined
+  );
   const handledRequestSeq = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!requestedMessage || loading) return;
@@ -299,7 +304,7 @@ export function DashboardAgentPanel({
     handledRequestSeq.current = requestedMessage.seq;
     setView("chat");
     if (active) {
-      setPrefill(requestedMessage);
+      setPrefill({ ...requestedMessage, chatId: active.chatId });
     } else {
       void createChat(requestedMessage.text);
     }
@@ -417,7 +422,7 @@ export function DashboardAgentPanel({
           session={active.session}
           pendingFirstMessage={active.pendingFirstMessage}
           streaming={active.streaming}
-          prefill={prefill}
+          prefill={prefill && prefill.chatId === active.chatId ? prefill : undefined}
           clientData={clientData}
           apiOrigin={apiOrigin}
           actionPath={actionPath}
