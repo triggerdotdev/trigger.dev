@@ -31,9 +31,7 @@ import {
   type ReportViewModelPayload,
   type TriggerUri,
 } from "@internal/dashboard-agent-contracts";
-import { ArrowUpRightIcon, BookOpenIcon } from "@heroicons/react/20/solid";
 import { Badge } from "~/components/primitives/Badge";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
 // Imported for its registration side effect as much as its value: each report's
 // catalog registers itself under the report's title on import.
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
@@ -43,6 +41,7 @@ import {
   ReportBody,
   ReportCard,
   ReportFindingLine,
+  ReportFooterAction,
   ReportFooterLine,
   ReportFooterLink,
   ReportFooterNote,
@@ -196,18 +195,12 @@ function ActionButton({
   code?: string;
 }) {
   if (target.kind === "external") {
-    // Everything in the footer is a button: docs get the docs variant, any
-    // other external action (contact us, status page) the primary one.
-    const docs = (code ?? "").includes("docs") || /\bdocs?\b/i.test(label);
+    // Footer actions are link text, not boxed buttons — the footer reads as one
+    // sentence after the arrow.
     return (
-      <LinkButton
-        to={target.url}
-        variant={docs ? "docs/small" : "primary/small"}
-        LeadingIcon={docs ? BookOpenIcon : undefined}
-        TrailingIcon={docs ? undefined : ArrowUpRightIcon}
-      >
+      <ReportFooterLink href={target.url} external>
         {label}
-      </LinkButton>
+      </ReportFooterLink>
     );
   }
 
@@ -218,11 +211,7 @@ function ActionButton({
 
   if (!onIntent) return <ReportFooterNote>{label}</ReportFooterNote>;
 
-  return (
-    <Button variant="primary/small" onClick={() => onIntent(intent)}>
-      {label}
-    </Button>
-  );
+  return <ReportFooterAction onClick={() => onIntent(intent)}>{label}</ReportFooterAction>;
 }
 
 function lowerFirst(text: string): string {
@@ -532,9 +521,9 @@ export function ReportView({
             );
           })}
           {recoveryWatch && onIntent ? (
-            <Button variant="primary/small" onClick={() => onIntent(recoveryWatch)}>
-              Watch for recovery
-            </Button>
+            <ReportFooterAction onClick={() => onIntent(recoveryWatch)}>
+              watch for recovery
+            </ReportFooterAction>
           ) : null}
           {/* Resources the report cites, resolved to dashboard links by the host. */}
           {vm.links

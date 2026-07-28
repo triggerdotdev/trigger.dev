@@ -364,6 +364,29 @@ export function ReportFooterNote({ children }: { children: ReactNode }) {
   return <span className="text-text-dimmed">{children}</span>;
 }
 
+/**
+ * An in-app footer action, styled as link text so the footer reads as one
+ * sentence after the arrow (the reference rhythm: "→ review enrich-lead v142 ·
+ * open AI metrics dashboard") — a row of boxed buttons broke that line.
+ */
+export function ReportFooterAction({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-text-link transition focus-custom hover:underline"
+    >
+      {children}
+    </button>
+  );
+}
+
 /** Where the snapshot came from, in the report's own URI vocabulary. */
 export function ReportProvenance({ uri }: { uri: string }) {
   return <div className="break-all font-mono text-[10px] text-text-faint">{uri}</div>;

@@ -61,14 +61,17 @@ export function DemoWatchChips({
       {watches.map((watch) => (
         <span
           key={watch.id}
-          title={`${watch.spec.note} · every ${watch.spec.checkEveryMinutes} min · ${STATUS_LABEL[watch.status]}`}
-          // A plain × that is always there (no chrome, no size change on
-          // hover): faint at rest, red on its own hover. A revealed button made
-          // the chip grow under the cursor.
+          // No native `title` on the chip: it would stack with the custom
+          // tooltip when hovering the ×. The note/cadence tooltip lives on the
+          // label instead.
           className="inline-flex items-center gap-1.5 rounded-full border border-border-bright bg-background-bright py-0.5 pl-2 pr-1.5 text-xs text-text-bright"
         >
           <StatusIcon status={watch.status} />
-          {watch.chipLabel}
+          <SimpleTooltip
+            side="bottom"
+            content={`${watch.spec.note} · every ${watch.spec.checkEveryMinutes} min · ${STATUS_LABEL[watch.status]}`}
+            button={<span>{watch.chipLabel}</span>}
+          />
           {watch.cancellable ? (
             <SimpleTooltip
               asChild
