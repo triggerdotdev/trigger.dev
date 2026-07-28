@@ -26,18 +26,25 @@ import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
 
-// Restore the last open chat across panel re-opens and page reloads. Scoped by
-// org because chats are org-scoped. localStorage (not a cookie) since the panel
-// only mounts client-side — the server never needs this.
+// Restore the last open chat across panel re-opens and page reloads — but only
+// on the page it was last used on. A closed panel reopened on a DIFFERENT page
+// starts a fresh draft with that page's suggested prompts instead of dragging
+// the previous conversation along. Scoped by org because chats are org-scoped.
+// localStorage (not a cookie) since the panel only mounts client-side.
 const lastChatStorageKey = (organizationId: string) =>
   `tdev:dashboard-agent:last-chat:${organizationId}`;
 
-function readLastChatId(storageKey: string): string | null {
+function readLastChat(storageKey: string): { chatId: string; path: string } | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(storageKey);
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return null;
+    // Pre-path entries were the bare chat id — no page to match, start fresh.
+    if (!raw.startsWith("{")) return null;
+    const parsed = JSON.parse(raw) as { chatId?: string; path?: string };
+    return parsed.chatId && parsed.path ? { chatId: parsed.chatId, path: parsed.path } : null;
   } catch {
-    return null; // localStorage unavailable — start fresh
+    return null; // localStorage unavailable / corrupted — start fresh
   }
 }
 
@@ -103,10 +110,12 @@ export function DashboardAgentPanel({
   const [view, setView] = useState<"chat" | "history">("chat");
   const [chats, setChats] = useState<DashboardAgentChatListItem[]>([]);
   const [active, setActive] = useState<ActiveChat | null>(null);
-  // Starts true when there's a chat to restore, so the first render already
-  // knows a restore is coming — an `openWith` request waits for it instead of
-  // racing it into a new chat.
-  const [loading, setLoading] = useState(() => readLastChatId(storageKey) !== null);
+  // Starts true when there's a chat to restore ON THIS PAGE, so the first
+  // render already knows a restore is coming — an `openWith` request waits for
+  // it instead of racing it into a new chat.
+  const [loading, setLoading] = useState(
+    () => readLastChat(storageKey)?.path === location.pathname
+  );
 
   // What the banner shows. The agent gets the full pathname in `clientData`
   // (below) — this is display text only, derived from the same page context the
@@ -265,25 +274,33 @@ export function DashboardAgentPanel({
     if (restored.current) return;
     restored.current = true;
     void loadHistory();
-    const stored = readLastChatId(storageKey);
-    if (stored) {
-      void openChat(stored);
+    const stored = readLastChat(storageKey);
+    // Same page → pick the conversation back up. Different page → fresh draft
+    // with this page's prompts; the old chat stays one click away in History.
+    if (stored && stored.path === location.pathname) {
+      void openChat(stored.chatId);
     } else {
-      // `loading` starts true only when there was something to restore.
+      // `loading` starts true only when there was something to restore here.
       setLoading(false);
     }
+    // location is deliberately not a dep: this is a mount-time decision.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openChat, storageKey, loadHistory]);
 
-  // Persist the active chat as the one to restore next time. Demo chats are
-  // not persisted — they may not exist next session (flag off).
+  // Persist the active chat and the page it's being used on — navigating with
+  // the panel open keeps the chat, so the stored path follows along. Demo chats
+  // are not persisted — they may not exist next session (flag off).
   useEffect(() => {
     if (!active?.chatId || isDemoChatId(active.chatId)) return;
     try {
-      window.localStorage.setItem(storageKey, active.chatId);
+      window.localStorage.setItem(
+        storageKey,
+        JSON.stringify({ chatId: active.chatId, path: location.pathname })
+      );
     } catch {
       /* ignore */
     }
-  }, [active?.chatId, storageKey]);
+  }, [active?.chatId, storageKey, location.pathname]);
 
   // Text handed in by `openWith`. With no chat open we start one and send it
   // straight away (the launcher's caller already knows what to ask); with a chat
