@@ -299,7 +299,10 @@ function initializeQueueMetricsClickhouseClient(): ClickHouse {
   writerUrl.searchParams.delete("secure");
 
   const readerUrl = new URL(
-    env.QUEUE_METRICS_CLICKHOUSE_READER_URL ?? dedicated ?? env.QUERY_CLICKHOUSE_URL
+    env.QUEUE_METRICS_CLICKHOUSE_READER_URL ??
+      dedicated ??
+      env.QUERY_CLICKHOUSE_URL ??
+      env.CLICKHOUSE_URL
   );
   readerUrl.searchParams.delete("secure");
 
