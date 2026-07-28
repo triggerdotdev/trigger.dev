@@ -411,8 +411,9 @@ export function ReportMetricRow({
    */
   note,
   /**
-   * The one row that explains the finding gets its annotation spelled out under
-   * the value instead, pointed at with an arrow.
+   * The finding-explaining row's annotation. Joins `note` in the info tooltip —
+   * the fact itself already leads the card's headline, so the row doesn't
+   * repeat it in the flow.
    */
   heroNote,
   series,
@@ -449,7 +450,9 @@ export function ReportMetricRow({
           <span className={cn("text-sm font-medium tabular-nums", SEVERITY_TEXT[severity])}>
             {value}
           </span>
-          {note ? <InfoIconTooltip content={note} /> : null}
+          {note || heroNote ? (
+            <InfoIconTooltip content={[heroNote, note].filter(Boolean).join(" · ")} />
+          ) : null}
         </span>
         <span className={cn("whitespace-nowrap text-xs tabular-nums", deltaClass)}>
           {delta?.text ?? ""}
@@ -469,18 +472,6 @@ export function ReportMetricRow({
           <span aria-hidden />
         )}
       </li>
-
-      {heroNote ? (
-        // The hero note aligns with the delta column, so its ← sits under the
-        // row's ↑/→ arrow — one arrow vocabulary, one vertical line.
-        <li className={METRIC_ROW_CLASS}>
-          <span aria-hidden />
-          <span aria-hidden />
-          <span className={cn("col-span-2 whitespace-nowrap text-xs", SEVERITY_TEXT[severity])}>
-            ← {heroNote}
-          </span>
-        </li>
-      ) : null}
 
       {(subRows ?? []).map((sub) => (
         <li key={sub.label} className={METRIC_ROW_CLASS}>
