@@ -6,11 +6,27 @@ const prismaHolder = vi.hoisted(() => ({
   client: null as PrismaClient | null,
 }));
 
+type SetUserRoleParams = { userId: string; organizationId: string; roleId: string };
+type SetUserRoleResult = { ok: true } | { ok: false; error: string; code?: "last_owner" };
+
+const rbacHolder = vi.hoisted(() => ({
+  setUserRoleCalls: [] as SetUserRoleParams[],
+  setUserRoleResult: { ok: true } as SetUserRoleResult,
+}));
+
 vi.mock("~/services/rbac.server", () => ({
   rbac: {
-    setUserRole: async () => ({ ok: true as const }),
+    setUserRole: async (params: SetUserRoleParams) => {
+      rbacHolder.setUserRoleCalls.push(params);
+      return rbacHolder.setUserRoleResult;
+    },
   },
 }));
+
+function resetRbac(result: SetUserRoleResult = { ok: true }) {
+  rbacHolder.setUserRoleCalls.length = 0;
+  rbacHolder.setUserRoleResult = result;
+}
 
 vi.mock("~/db.server", () => ({
   get prisma() {
@@ -39,7 +55,7 @@ function randomHex(len = 12): string {
 
 async function seedInviteFixture(
   prisma: PrismaClient,
-  opts: { activeProjectCount: number; deletedProjectCount?: number }
+  opts: { activeProjectCount: number; deletedProjectCount?: number; rbacRoleId?: string }
 ) {
   const suffix = randomHex(8);
   const inviter = await prisma.user.create({
@@ -99,6 +115,7 @@ async function seedInviteFixture(
       organizationId: organization.id,
       inviterId: inviter.id,
       role: "MEMBER",
+      rbacRoleId: opts.rbacRoleId ?? null,
     },
   });
 
@@ -251,6 +268,153 @@ describe("acceptInvite", () => {
         where: { userId: invitee.id, organizationId: organization.id },
       });
       expect(member).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "applies the invite RBAC role when it creates the membership",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      resetRbac();
+      const { acceptInvite } = await import("../app/models/member.server");
+
+      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 1,
+        rbacRoleId: "role_admin",
+      });
+
+      await acceptInvite({
+        inviteId: invite.id,
+        organizationId: organization.id,
+        user: { id: invitee.id, email: invitee.email },
+      });
+
+      expect(rbacHolder.setUserRoleCalls).toEqual([
+        { userId: invitee.id, organizationId: organization.id, roleId: "role_admin" },
+      ]);
+    }
+  );
+
+  postgresTest(
+    "does not apply the invite RBAC role to a user who is already a member",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      resetRbac();
+      const { acceptInvite } = await import("../app/models/member.server");
+
+      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 1,
+        rbacRoleId: "role_admin",
+      });
+
+      // The user is already in the org, so accepting the invite must not touch
+      // their role — it could be a demotion.
+      await prisma.orgMember.create({
+        data: {
+          organizationId: organization.id,
+          userId: invitee.id,
+          role: "MEMBER",
+        },
+      });
+
+      await acceptInvite({
+        inviteId: invite.id,
+        organizationId: organization.id,
+        user: { id: invitee.id, email: invitee.email },
+      });
+
+      expect(rbacHolder.setUserRoleCalls).toEqual([]);
+
+      // The invite is still consumed and the membership left intact.
+      const remainingInvite = await prisma.orgMemberInvite.findFirst({
+        where: { id: invite.id },
+      });
+      expect(remainingInvite).toBeNull();
+
+      const member = await prisma.orgMember.findFirst({
+        where: { userId: invitee.id, organizationId: organization.id },
+      });
+      expect(member).not.toBeNull();
+    }
+  );
+
+  postgresTest(
+    "still joins the org when the RBAC role assignment is refused",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      resetRbac({
+        ok: false,
+        error: "An organisation must have at least one Owner",
+        code: "last_owner",
+      });
+      const { acceptInvite } = await import("../app/models/member.server");
+
+      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 1,
+        rbacRoleId: "role_admin",
+      });
+
+      const { organization: joinedOrg } = await acceptInvite({
+        inviteId: invite.id,
+        organizationId: organization.id,
+        user: { id: invitee.id, email: invitee.email },
+      });
+
+      expect(joinedOrg.id).toBe(organization.id);
+      expect(rbacHolder.setUserRoleCalls).toHaveLength(1);
+
+      const member = await prisma.orgMember.findFirst({
+        where: { userId: invitee.id, organizationId: organization.id },
+      });
+      expect(member).not.toBeNull();
+
+      resetRbac();
+    }
+  );
+});
+
+describe("inviteMembers", () => {
+  postgresTest(
+    "skips emails that already belong to a member of the org",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { inviteMembers } = await import("../app/models/member.server");
+
+      const { inviter, invitee, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 0,
+      });
+
+      // Drop the seeded pending invite so the skip can only come from the
+      // membership check, not from the pending-invite dedupe.
+      await prisma.orgMemberInvite.delete({ where: { id: invite.id } });
+
+      await prisma.orgMember.create({
+        data: {
+          organizationId: organization.id,
+          userId: invitee.id,
+          role: "MEMBER",
+        },
+      });
+
+      const newcomerEmail = `newcomer-${randomHex(8)}@test.local`;
+
+      const created = await inviteMembers({
+        slug: organization.slug,
+        emails: [invitee.email, newcomerEmail],
+        userId: inviter.id,
+      });
+
+      expect(created.map((row) => row.email)).toEqual([newcomerEmail]);
+
+      const invites = await prisma.orgMemberInvite.findMany({
+        where: { organizationId: organization.id },
+        select: { email: true },
+      });
+      expect(invites.map((pending) => pending.email)).toEqual([newcomerEmail]);
     }
   );
 });

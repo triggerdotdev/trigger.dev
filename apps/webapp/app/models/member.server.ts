@@ -100,6 +100,24 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
+  const uniqueEmails = new Set(emails);
+
+  // Emails that already belong to a member of this org. The unique constraint
+  // on the invite table dedupes against *pending invites* only, so nothing else
+  // stops an existing member being invited again — and accepting such an invite
+  // is a role change on an established membership, not a join (see
+  // `acceptInvite`). Skip those emails and report them exactly like an
+  // already-pending one: left out of the returned list, without failing the
+  // rest of the batch.
+  const existingMembers = await prisma.orgMember.findMany({
+    where: {
+      organizationId: org.id,
+      user: { email: { in: [...uniqueEmails] } },
+    },
+    select: { user: { select: { email: true } } },
+  });
+  const existingMemberEmails = new Set(existingMembers.map((member) => member.user.email));
+
   // Create one invite per unique email and return ONLY the invites actually
   // created by this call. A P2002 means the email is already invited to this org
   // (unique org+email) — skip it so one duplicate can't fail the batch, and
@@ -109,7 +127,11 @@ export async function inviteMembers({
     include: { organization: true; inviter: true };
   }>[] = [];
 
-  for (const email of new Set(emails)) {
+  for (const email of uniqueEmails) {
+    if (existingMemberEmails.has(email)) {
+      continue;
+    }
+
     try {
       const invite = await prisma.orgMemberInvite.create({
         data: {
@@ -276,12 +298,29 @@ async function assignInviteRbacRole({
       roleId: rbacRoleId,
     });
     if (!roleResult.ok) {
-      logger.error("acceptInvite: skipped RBAC role assignment", {
-        organizationId,
-        userId,
-        rbacRoleId,
-        reason: roleResult.error,
-      });
+      // An org must keep at least one Owner, so the plugin refuses a change
+      // that would remove the last one. That's expected, not a failure — the
+      // same outcome the directory-sync role paths log at info.
+      if (roleResult.code === "last_owner") {
+        logger.info("acceptInvite: kept last Owner, skipped RBAC role assignment", {
+          organizationId,
+          userId,
+          rbacRoleId,
+        });
+      } else {
+        // Any other refusal (plan gating, no plugin installed, a validation
+        // conflict) is a documented `{ok:false}` outcome of this contract, and
+        // this helper is best-effort and never throws — the membership stands
+        // either way. Log it and move on rather than treating it as an error.
+        // Unrecognised codes land here too, so a refusal that carries no code
+        // is still reported at a level that matches its impact.
+        logger.warn("acceptInvite: skipped RBAC role assignment", {
+          organizationId,
+          userId,
+          rbacRoleId,
+          reason: roleResult.error,
+        });
+      }
     }
   } catch (error) {
     logger.error("acceptInvite: RBAC role assignment threw", {
@@ -415,6 +454,13 @@ export async function acceptInvite({
     },
   });
 
+  // Whether this accept is what made the user a member. Only a membership
+  // created here gets the invite's RBAC role applied further down — for anyone
+  // who was already a member, applying it would be a role change rather than an
+  // initial assignment. A create that lost the P2002 race counts as existing
+  // too: whoever won it owns the role for that membership.
+  let membershipCreated = false;
+
   if (!member) {
     try {
       member = await prisma.orgMember.create({
@@ -424,6 +470,7 @@ export async function acceptInvite({
           role: invite.role,
         },
       });
+      membershipCreated = true;
     } catch (error) {
       if (
         error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
@@ -473,12 +520,19 @@ export async function acceptInvite({
 
   const remainingInvites = await getUsersInvites({ email: user.email });
 
-  // If the invite carried an explicit RBAC role, assign it. Best-effort: the
-  // invite is already consumed and membership created above, so a failure here
-  // — a returned {ok:false} or a thrown error from the plugin — must not block
-  // joining the org. Swallow and log either way; without the catch a plugin
-  // throw escapes and turns the whole invite-accept into a 400.
-  if (invite.rbacRoleId) {
+  // If the invite carried an explicit RBAC role, assign it — but only to a
+  // membership this accept actually created. For someone who was already a
+  // member this is a role *change*, not an initial assignment: we do NOT touch
+  // the existing role to avoid demoting a member who has since been promoted
+  // (a long-pending invite can carry a lesser role than they now hold), the
+  // same rule `ensureOrgMember` follows.
+  //
+  // Best-effort for a new member: the invite is already consumed and membership
+  // created above, so a failure here — a returned {ok:false} or a thrown error
+  // from the plugin — must not block joining the org. Swallow and log either
+  // way; without the catch a plugin throw escapes and turns the whole
+  // invite-accept into a 400.
+  if (invite.rbacRoleId && membershipCreated) {
     await assignInviteRbacRole({
       userId: user.id,
       organizationId: invite.organization.id,
