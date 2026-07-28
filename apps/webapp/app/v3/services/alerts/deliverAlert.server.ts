@@ -455,7 +455,10 @@ export class DeliverAlertService extends BaseService {
                 error,
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data, { webhookId: alert.channel.id, runId: alert.taskRun.friendlyId });
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+                runId: alert.taskRun.friendlyId,
+              });
               break;
             }
             case "v2": {
@@ -516,7 +519,10 @@ export class DeliverAlertService extends BaseService {
                 },
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data, { webhookId: alert.channel.id, runId: alert.taskRun.friendlyId });
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+                runId: alert.taskRun.friendlyId,
+              });
 
               break;
             }
@@ -577,7 +583,9 @@ export class DeliverAlertService extends BaseService {
                 vercel: this.#buildWebhookVercelObject(deploymentMeta.vercelDeploymentUrl),
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data, { webhookId: alert.channel.id });
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+              });
               break;
             }
             case "v2": {
@@ -616,7 +624,9 @@ export class DeliverAlertService extends BaseService {
                 },
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data, { webhookId: alert.channel.id });
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+              });
 
               break;
             }
@@ -671,7 +681,9 @@ export class DeliverAlertService extends BaseService {
                 vercel: this.#buildWebhookVercelObject(deploymentMeta.vercelDeploymentUrl),
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data, { webhookId: alert.channel.id });
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+              });
               break;
             }
             case "v2": {
@@ -716,7 +728,9 @@ export class DeliverAlertService extends BaseService {
                 },
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data, { webhookId: alert.channel.id });
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+              });
 
               break;
             }
@@ -1060,7 +1074,7 @@ export class DeliverAlertService extends BaseService {
         runId: context.runId,
       });
 
-      throw new Error(`Failed to send alert webhook to ${webhook.url}`);
+      throw new Error(`Failed to send alert webhook to ${safeUrlHost(webhook.url)}`);
     }
   }
 

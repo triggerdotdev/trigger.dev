@@ -573,7 +573,7 @@ export class UpdateMetadataService {
       if (this.flushLoggingEnabled) {
         this.logger.debug(`[updateRunMetadataDirectly] Updating metadata directly for run`, {
           runId,
-          metadataSizeBytes: metadataPacket.data?.length ?? 0,
+          metadataSizeBytes: Buffer.byteLength(metadataPacket.data ?? "", "utf8"),
         });
       }
 
