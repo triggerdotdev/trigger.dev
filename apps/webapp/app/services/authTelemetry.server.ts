@@ -46,12 +46,15 @@ export async function authenticateBearerWithTelemetry(
 
   try {
     const result = await rbac.authenticateBearer(request, options);
+    // The host LazyController always attaches `resolution`; fall back to the
+    // format-based classification if a caller (e.g. a test double) omits it.
+    const resolution = result.resolution ?? classified;
     final = {
-      credentialKind: result.resolution.credentialKind,
-      lookupPath: result.resolution.lookupPath,
+      credentialKind: resolution.credentialKind,
+      lookupPath: resolution.lookupPath,
       result: result.ok
         ? "success"
-        : result.resolution.lookupPath === "additional_skipped"
+        : resolution.lookupPath === "additional_skipped"
           ? "disabled"
           : result.status === 403
             ? "forbidden"

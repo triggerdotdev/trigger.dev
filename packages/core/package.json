@@ -152,6 +152,9 @@
       "v3/jwt": [
         "dist/commonjs/v3/jwt.d.ts"
       ],
+      "v3/apiKeys": [
+        "dist/commonjs/v3/apiKeys.d.ts"
+      ],
       "v3/runEngineWorker": [
         "dist/commonjs/v3/runEngineWorker/index.d.ts"
       ],
