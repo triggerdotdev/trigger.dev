@@ -79,3 +79,6 @@ ailogger-output.log
 
 # local git worktree checkouts (not source) — keeps oxfmt/oxlint from descending into them
 .worktrees/
+
+# local planning/design docs, not committed
+**/docs/superpowers/

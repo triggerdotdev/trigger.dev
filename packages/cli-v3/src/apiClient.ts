@@ -649,6 +649,7 @@ export class CliApiClient {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Content-Type": "application/json",
+        "x-trigger-cli-version": VERSION,
       },
       signal,
     });
