@@ -578,7 +578,8 @@ describe("buildDashboardAgentTools", () => {
   // these tests exercise the model-facing boundary and not a hand-built object.
   const renderInvestigation = async (
     tools: ReturnType<typeof buildDashboardAgentTools>,
-    state: Record<string, unknown> = investigationState
+    state: Record<string, unknown> = investigationState,
+    investigationId?: string
   ) => {
     const renderView = tools.render_view as {
       inputSchema: { parse: (input: unknown) => unknown };
@@ -586,8 +587,23 @@ describe("buildDashboardAgentTools", () => {
     };
     const input = renderView.inputSchema.parse({
       blocks: [{ type: "investigation", investigation: state }],
+      ...(investigationId ? { investigationId } : {}),
     });
     return renderView.execute(input, {});
+  };
+
+  const concludedState = {
+    ...investigationState,
+    outcome: "concluded",
+    confidence: "high",
+    remediation: "Raise minTimeoutInMs to 30s with a factor of 2.",
+    hypotheses: [
+      {
+        ...investigationState.hypotheses[0]!,
+        verdict: "validated",
+        finding: "All three attempts returned 429 inside 20 seconds.",
+      },
+    ],
   };
 
   it("render_view assigns an investigation's identity on the first render", async () => {
@@ -614,25 +630,72 @@ describe("buildDashboardAgentTools", () => {
     const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
 
     const first = await renderInvestigation(tools);
-    const second = await renderInvestigation(tools, {
-      ...investigationState,
-      outcome: "concluded",
-      confidence: "high",
-      remediation: "Raise minTimeoutInMs to 30s with a factor of 2.",
-      hypotheses: [
-        {
-          ...investigationState.hypotheses[0]!,
-          verdict: "validated",
-          finding: "All three attempts returned 429 inside 20 seconds.",
-        },
-      ],
-    });
+    const second = await renderInvestigation(tools, concludedState);
 
     // One investigation, two revisions — so the panel shows one live card.
     expect(rows.size).toBe(1);
     expect(second.investigationId).toBe(first.investigationId);
     expect(second.blocks[0].revision).toBe(1);
     expect(second.blocks[0].investigation.remediation).toBeDefined();
+  });
+
+  // A later turn gets a fresh tool set, so the closure is empty: the model
+  // continues an investigation by passing back the id the tool returned to it.
+  it("render_view continues a previous turn's investigation from the returned id", async () => {
+    const { capability, rows } = fakeInvestigations();
+
+    const first = await renderInvestigation(
+      buildDashboardAgentTools({ ...SCOPE, investigations: capability })
+    );
+
+    // Next turn — new tool set, same chat.
+    const second = await renderInvestigation(
+      buildDashboardAgentTools({ ...SCOPE, investigations: capability }),
+      concludedState,
+      first.investigationId
+    );
+
+    expect(rows.size).toBe(1);
+    expect(second.investigationId).toBe(first.investigationId);
+    expect(second.blocks[0].id).toBe(first.investigationId);
+    expect(second.blocks[0].revision).toBe(1);
+  });
+
+  it("render_view keeps the turn's own investigation when the model passes a different id", async () => {
+    const { capability, rows, upserts } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const first = await renderInvestigation(tools);
+    const second = await renderInvestigation(tools, concludedState, "inv_somewhere_else");
+
+    // The closure wins within a turn, so a mid-investigation redirect can't happen.
+    expect(rows.size).toBe(1);
+    expect(second.investigationId).toBe(first.investigationId);
+    expect(upserts[1]).toMatchObject({ id: first.investigationId });
+  });
+
+  it("render_view errors on an unknown investigationId and writes nothing", async () => {
+    const { capability, rows } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const output = await renderInvestigation(tools, investigationState, "inv_never_existed");
+
+    expect(typeof output.error).toBe("string");
+    expect(output.blocks).toBeUndefined();
+    expect(rows.size).toBe(0);
+  });
+
+  it("render_view errors on an investigationId from another chat and writes nothing", async () => {
+    // The store owns the chat/project/env check, so a foreign id comes back as a
+    // context mismatch no matter what the model claims.
+    const { capability, rows } = fakeInvestigations({ mismatch: true });
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const output = await renderInvestigation(tools, investigationState, "inv_other_chat");
+
+    expect(typeof output.error).toBe("string");
+    expect(output.blocks).toBeUndefined();
+    expect(rows.size).toBe(0);
   });
 
   it("render_view reports a context mismatch instead of overwriting", async () => {

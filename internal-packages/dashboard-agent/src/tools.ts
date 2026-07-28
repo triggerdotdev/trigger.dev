@@ -485,7 +485,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   // The investigation this tool set is working on. Assigned by the store on the
   // first investigation block and reused after that, so a second render revises
   // the same card instead of opening a second investigation. Scoped to the tool
-  // set (one per turn), which is why the model never has to carry the id.
+  // set (one per turn), which is why the model never has to carry the id within
+  // a turn — across turns it passes the id back (see `renderInvestigations`).
   let currentInvestigationId: string | undefined;
 
   /**
@@ -497,8 +498,16 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
    * So the executor writes first and stamps the envelope from what came back — the
    * transcript then carries canonical identity, and the panel collapses revisions
    * latest-wins onto one live card. Other block types pass through untouched.
+   *
+   * `continueId` is the tool-level `investigationId` the model may pass back on a
+   * later turn (the id an earlier render returned to it). The turn's own closure
+   * wins when it's set, so within-turn behavior is unchanged and the model can't
+   * redirect a render mid-investigation. The id is only ever a pointer: the store
+   * verifies the row belongs to this chat + project + environment (the chatId is
+   * bound server-side, not by the model), so a stale or hallucinated id fails as
+   * `not_found` / `context_mismatch` with nothing written.
    */
-  async function renderInvestigations(blocks: ViewBlockInput[]) {
+  async function renderInvestigations(blocks: ViewBlockInput[], continueId?: string) {
     if (!blocks.some((block) => block.type === "investigation")) return { blocks };
 
     if (!ctx.investigations) {
@@ -521,7 +530,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       }
 
       const result = await ctx.investigations.upsert({
-        id: currentInvestigationId,
+        id: currentInvestigationId ?? continueId,
         projectRef,
         environmentRef: ctx.environmentId,
         state: (block as InvestigationBlockBody).investigation,
@@ -535,7 +544,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           error:
             result.error === "context_mismatch"
               ? "That investigation belongs to a different chat, project, or environment, so it can't be updated here."
-              : "That investigation no longer exists, so there was nothing to update.",
+              : "That investigation no longer exists. Render again without an investigationId to start a new one.",
         };
       }
 
@@ -807,7 +816,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     // identity and commits each revision before the block reaches the transcript.
     render_view: tool({
       ...renderViewSchema,
-      execute: async (view) => renderInvestigations(view.blocks),
+      execute: async (view) => renderInvestigations(view.blocks, view.investigationId),
     }),
 
     get_report: tool({
