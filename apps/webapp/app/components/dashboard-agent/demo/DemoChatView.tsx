@@ -6,7 +6,7 @@
  * Two rules hold this together:
  *
  * 1. **Real renderers only.** Messages go through the production
- *    `DashboardAgentMessages` (which is also what puts view-catalog blocks on
+ *    `DashboardAgentTurns` (which is also what puts view-catalog blocks on
  *    screen), the banner and composer are the production components. The only
  *    demo-authored UI is the cards for payloads that don't exist yet
  *    (investigation, report) and the chart with canned rows.
@@ -15,19 +15,20 @@
  *    what *would* have happened. Nothing navigates, nothing is fetched, nothing
  *    is written.
  *
- * A "messages" item nests `DashboardAgentMessages` inside this component's own
- * scroll container. That is intentional and safe: its root is `flex-1
- * overflow-y-auto`, which in a block-layout parent resolves to content height
- * with nothing to scroll, so the outer container does all the scrolling while
- * each segment keeps the production spacing.
+ * Layout is not this component's business. It owns one `ChatTranscript` and maps
+ * each item kind onto a chat-layout micro-layout (see `../chat-layout` for the
+ * rules); a "messages" item renders the production turns via
+ * `DashboardAgentTurns` straight into that transcript, so a demo turn and a real
+ * turn are laid out by the same code.
  */
 import { useCallback, useState } from "react";
+import { ChatCardSlot, ChatNote, ChatTranscript, ChatTurn } from "../chat-layout";
 import { DashboardAgentComposer } from "../DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "../DashboardAgentContextBanner";
-import { DashboardAgentMessages } from "../DashboardAgentMessages";
+import { DashboardAgentTurns } from "../DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "../DashboardAgentSuggestedPrompts";
 import { DemoChartCard } from "./components/DemoChartCard";
-import { DemoIntentBubble, DemoNote } from "./components/DemoIntentBubble";
+import { DemoIntentBubble } from "./components/DemoIntentBubble";
 import { DemoInvestigationCard } from "./components/DemoInvestigationCard";
 import { DemoReportCard } from "./components/DemoReportCard";
 import { DemoSuggestedPromptsRow } from "./components/DemoSuggestedPromptsRow";
@@ -37,6 +38,11 @@ import { demoChatById, type DemoChat, type DemoItem } from "./demo-chats";
 // No demo banner: fixture chats are presented exactly like real ones so the
 // review judges the actual experience. Isolation stays mechanical (demo:* ids,
 // no transport, no writes) — it never depended on the visual marker.
+
+// #region chat-layout transcript
+// Item kind → micro-layout. Nothing here sets its own spacing: every case is a
+// `ChatTurn` (or the production turns) and one micro-layout from ../chat-layout.
+// `chat-layout.test.ts` fails if a spacing utility class appears in this region.
 
 function DemoItemView({
   item,
@@ -50,9 +56,10 @@ function DemoItemView({
   intercept: (message: string) => void;
 }) {
   switch (item.kind) {
+    // Production turns, dropped straight into this view's transcript.
     case "messages":
       return (
-        <DashboardAgentMessages
+        <DashboardAgentTurns
           messages={item.messages}
           activity={isLast ? (chat.activity ?? null) : null}
           error={isLast && chat.error ? new Error(chat.error) : undefined}
@@ -68,71 +75,86 @@ function DemoItemView({
       );
     case "investigation":
       return (
-        <div className="px-4">
-          <DemoInvestigationCard
-            investigation={item.investigation}
-            defaultExpanded={item.expanded}
-          />
-        </div>
+        <ChatTurn>
+          <ChatCardSlot>
+            <DemoInvestigationCard
+              investigation={item.investigation}
+              defaultExpanded={item.expanded}
+            />
+          </ChatCardSlot>
+        </ChatTurn>
       );
     case "report":
       return (
-        <div className="px-4">
-          <DemoReportCard
-            vm={item.report}
-            sourceUri={item.sourceUri}
-            onAction={(label, url) =>
-              intercept(`would run "${label}"${url ? ` and open ${url}` : ""}`)
-            }
-          />
-        </div>
+        <ChatTurn>
+          <ChatCardSlot>
+            <DemoReportCard
+              vm={item.report}
+              sourceUri={item.sourceUri}
+              onAction={(label, url) =>
+                intercept(`would run "${label}"${url ? ` and open ${url}` : ""}`)
+              }
+            />
+          </ChatCardSlot>
+        </ChatTurn>
       );
     case "chart":
       return (
-        <div className="px-4">
-          <DemoChartCard title={item.title} />
-        </div>
+        <ChatTurn>
+          <ChatCardSlot>
+            <DemoChartCard title={item.title} />
+          </ChatCardSlot>
+        </ChatTurn>
       );
     case "intent":
       return (
-        <div className="px-4">
-          <DemoIntentBubble intent={item.intent} onIntercept={intercept} />
-        </div>
+        <ChatTurn>
+          <ChatCardSlot>
+            <DemoIntentBubble intent={item.intent} onIntercept={intercept} />
+          </ChatCardSlot>
+        </ChatTurn>
       );
     case "watches":
       return (
-        <div className="px-4">
-          <DemoWatchChips
-            watches={item.watches}
-            onCancel={(watch) => intercept(`would cancel the ${watch.chipLabel} watch`)}
-          />
-        </div>
+        <ChatTurn>
+          <ChatCardSlot>
+            <DemoWatchChips
+              watches={item.watches}
+              onCancel={(watch) => intercept(`would cancel the ${watch.chipLabel} watch`)}
+            />
+          </ChatCardSlot>
+        </ChatTurn>
       );
     case "prompts":
       return (
-        <div className="px-4">
-          <DemoSuggestedPromptsRow
-            prompts={item.prompts}
-            context={item.context}
-            dismissedIds={item.dismissedIds}
-            onSelect={(prompt) => intercept(`would send: "${prompt.prompt}"`)}
-            onDismiss={(prompt) => intercept(`would dismiss the "${prompt.label}" chip`)}
-          />
-        </div>
+        <ChatTurn>
+          <ChatCardSlot>
+            <DemoSuggestedPromptsRow
+              prompts={item.prompts}
+              context={item.context}
+              dismissedIds={item.dismissedIds}
+              onSelect={(prompt) => intercept(`would send: "${prompt.prompt}"`)}
+              onDismiss={(prompt) => intercept(`would dismiss the "${prompt.label}" chip`)}
+            />
+          </ChatCardSlot>
+        </ChatTurn>
       );
     case "note":
       return (
-        <div className="px-4">
-          <DemoNote>{item.text}</DemoNote>
-        </div>
+        <ChatTurn>
+          <ChatNote>{item.text}</ChatNote>
+        </ChatTurn>
       );
+    // The banner spans the panel edge to edge — the one full-bleed insert.
     case "banner":
       return (
-        <DashboardAgentContextBanner
-          projectSlug={item.projectSlug}
-          environmentSlug={item.environmentSlug}
-          currentPage={item.currentPage}
-        />
+        <ChatTurn bleed>
+          <DashboardAgentContextBanner
+            projectSlug={item.projectSlug}
+            environmentSlug={item.environmentSlug}
+            currentPage={item.currentPage}
+          />
+        </ChatTurn>
       );
     default: {
       const unreachable: never = item;
@@ -140,6 +162,7 @@ function DemoItemView({
     }
   }
 }
+// #endregion chat-layout transcript
 
 export function DemoChatView({
   chatId,
@@ -193,33 +216,34 @@ export function DemoChatView({
       ) : null}
 
       {hasItems ? (
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-          <div className="space-y-2 py-2">
-            {chat.items.map((item, i) => (
-              <DemoItemView
-                key={i}
-                item={item}
-                isLast={i === chat.items.length - 1}
-                chat={chat}
-                intercept={intercept}
-              />
-            ))}
+        // #region chat-layout transcript
+        <ChatTranscript>
+          {chat.items.map((item, i) => (
+            <DemoItemView
+              key={i}
+              item={item}
+              isLast={i === chat.items.length - 1}
+              chat={chat}
+              intercept={intercept}
+            />
+          ))}
 
-            {intercepted.length > 0 ? (
-              <div className="space-y-1.5 px-4 pt-1">
-                {intercepted.map((message, i) => (
-                  <DemoNote key={i}>{message}</DemoNote>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
+          {/* The intent log, newest last: one turn, one note per entry. */}
+          {intercepted.length > 0 ? (
+            <ChatTurn>
+              {intercepted.map((message, i) => (
+                <ChatNote key={i}>{message}</ChatNote>
+              ))}
+            </ChatTurn>
+          ) : null}
+        </ChatTranscript>
       ) : (
         // Empty / first-open: the production prompt panel, chips intercepted.
         <DashboardAgentSuggestedPrompts
           onSelect={(prompt) => intercept(`would send: "${prompt}"`)}
         />
       )}
+      {/* #endregion chat-layout transcript */}
 
       <DashboardAgentComposer
         value={input}

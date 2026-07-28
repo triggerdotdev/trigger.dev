@@ -18,19 +18,17 @@ import {
 import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
 import { AgentStatusIcon } from "../../agent-badges";
+import { ChatNote, ChatStatusLine } from "../../chat-layout";
 import type { DemoIntent } from "../fixtures/intents";
 
 /**
  * A neutral inline note — the demo interceptor's voice, never the agent's.
  * Unlabelled on purpose: fixture chats present as real ones for review.
+ *
+ * The note is a transcript-level format, so it lives in the chat layout library
+ * as `ChatNote`; this is the demo's name for it.
  */
-export function DemoNote({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-md border border-dashed border-border-bright bg-background-bright/40 px-3 py-2">
-      <span className="text-xs text-text-dimmed">{children}</span>
-    </div>
-  );
-}
+export const DemoNote = ChatNote;
 
 export function DemoIntentBubble({
   intent,
@@ -51,33 +49,34 @@ export function DemoIntentBubble({
           : "border-indigo-500/30 bg-indigo-500/5"
       )}
     >
-      <div className="flex items-start gap-2">
-        <AgentStatusIcon
-          tone={rejected ? "error" : "success"}
-          icon={rejected ? NoSymbolIcon : CheckCircleIcon}
-          className="mt-px"
-        />
-        <div className="min-w-0 space-y-2">
-          <p className="text-xs text-text-bright">{intent.outcome}</p>
-          {intent.deepLinkLabel ? (
-            <Button
-              variant="secondary/small"
-              LeadingIcon={ArrowTopRightOnSquareIcon}
-              onClick={() =>
-                onIntercept?.(
-                  `would navigate to ${intent.deepLinkLabel} (${
-                    intent.intent.kind === "navigate" ? intent.intent.target : intent.intent.kind
-                  })`
-                )
-              }
-            >
-              <span className="break-all text-left font-mono text-[10px]">
-                {intent.deepLinkLabel}
-              </span>
-            </Button>
-          ) : null}
-        </div>
-      </div>
+      <ChatStatusLine
+        icon={
+          <AgentStatusIcon
+            tone={rejected ? "error" : "success"}
+            icon={rejected ? NoSymbolIcon : CheckCircleIcon}
+            className="mt-px"
+          />
+        }
+      >
+        <p className="text-xs text-text-bright">{intent.outcome}</p>
+        {intent.deepLinkLabel ? (
+          <Button
+            variant="secondary/small"
+            LeadingIcon={ArrowTopRightOnSquareIcon}
+            onClick={() =>
+              onIntercept?.(
+                `would navigate to ${intent.deepLinkLabel} (${
+                  intent.intent.kind === "navigate" ? intent.intent.target : intent.intent.kind
+                })`
+              )
+            }
+          >
+            <span className="break-all text-left font-mono text-[10px]">
+              {intent.deepLinkLabel}
+            </span>
+          </Button>
+        ) : null}
+      </ChatStatusLine>
     </div>
   );
 }

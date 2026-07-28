@@ -1,14 +1,21 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { ArrowPathIcon, BookOpenIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { AgentIntent } from "@internal/dashboard-agent-contracts";
-import { memo, Suspense } from "react";
-import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
+import { memo } from "react";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
-import { Spinner } from "~/components/primitives/Spinner";
-import { MessageBubble, renderPart, toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
-import { ChatBubble, ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
+import { renderPart, toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
+import { ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
+import {
+  ChatActionsRow,
+  ChatCardSlot,
+  ChatProgress,
+  ChatText,
+  ChatToolRow,
+  ChatTranscript,
+  ChatTurn,
+} from "./chat-layout";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import type { ResolvedUri } from "./ReportView";
 import { ViewBlocks } from "./view-catalog";
@@ -21,6 +28,21 @@ export type TurnActivity = "thinking" | "working";
 const ACTIVITY_LABELS: Record<TurnActivity, string> = {
   thinking: "Thinking…",
   working: "Working…",
+};
+
+export type DashboardAgentMessagesProps = {
+  messages: UIMessage[];
+  // What the turn is doing right now, or null when nothing is in flight. A turn
+  // spends most of its time streaming tool calls, so the indicator has to stay
+  // up for the whole turn — not just the initial submit.
+  activity: TurnActivity | null;
+  error?: Error;
+  onRetry?: () => void;
+  onDismissError?: () => void;
+  /** Where a card's actions go. Threaded down to the view catalog. */
+  onIntent?: (intent: AgentIntent) => void;
+  /** Host resolver for `trigger://` URIs a card cites. */
+  resolveUri?: (uri: string) => ResolvedUri | null;
 };
 
 // The shared MessageBubble renders `step-start` parts as a dashed "step"
@@ -61,36 +83,13 @@ function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
   return report ? [report] : null;
 }
 
-/**
- * A one-line progress indicator, to the left of the transcript. The same
- * component backs the turn indicator ("Working…") and the line under an
- * in-flight tool row, so progress always looks the same.
- */
-export function AgentProgressLine({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 text-sm text-text-dimmed">
-      <Spinner className="size-3" />
-      {children}
-    </div>
-  );
-}
-
-/** Assistant markdown at the dashboard's default text size, always rendered. */
-function AgentMarkdown({ text }: { text: string }) {
-  return (
-    <ChatBubble>
-      <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed wrap-anywhere">
-        <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
-          <StreamdownRenderer>{text}</StreamdownRenderer>
-        </Suspense>
-      </div>
-    </ChatBubble>
-  );
-}
-
 // A tool call that hasn't produced output yet. Progress for these goes on its own
 // line under the row, not inside it.
 const IN_FLIGHT_TOOL_STATES = new Set(["input-streaming", "input-available"]);
+
+// #region chat-layout transcript
+// Everything from here down composes via ./chat-layout only — see rule 1 there.
+// `chat-layout.test.ts` fails if a spacing utility class appears in this region.
 
 /**
  * One assistant part in the chat panel.
@@ -98,8 +97,9 @@ const IN_FLIGHT_TOOL_STATES = new Set(["input-streaming", "input-available"]);
  * Everything the panel styles itself is handled here; the rest falls through to
  * the shared `renderPart` so agent output still looks the same across the app.
  * The differences: text is always the rendered markdown (no raw toggle) at the
- * dashboard's default size, a citation is a docs button rather than a bare link,
- * and an in-flight tool row is static with the spinner on a separate line.
+ * dashboard's default size, and an in-flight tool row is static with the spinner
+ * on a separate line. Citations are handled a level up, where a run of them can
+ * be grouped into one row.
  */
 function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
   const p = part as {
@@ -114,24 +114,13 @@ function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
   const type = part.type as string;
 
   if (type === "text") {
-    return p.text ? <AgentMarkdown key={i} text={p.text} /> : null;
-  }
-
-  if (type === "source-url") {
-    const safeUrl = toSafeUrl(p.url);
-    const label = p.title || p.url;
-    if (!safeUrl || !label) return renderPart(part, i);
-    return (
-      <LinkButton key={i} to={safeUrl} variant="docs/small" LeadingIcon={BookOpenIcon}>
-        {label}
-      </LinkButton>
-    );
+    return p.text ? <ChatText key={i} text={p.text} /> : null;
   }
 
   if (type.startsWith("tool-") && IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) {
     const toolName = type.slice(5);
     return (
-      <div key={i} className="space-y-2">
+      <ChatToolRow key={i}>
         <ToolUseRow
           tool={{
             toolCallId: p.toolCallId ?? `tool-${i}`,
@@ -139,18 +128,41 @@ function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
             inputJson: JSON.stringify(p.input ?? {}, null, 2),
           }}
         />
-        <AgentProgressLine>Running {toolName}…</AgentProgressLine>
-      </div>
+        <ChatProgress>Running {toolName}…</ChatProgress>
+      </ChatToolRow>
     );
   }
 
   return renderPart(part, i);
 }
 
-// Renders one message. User messages use the shared MessageBubble unchanged;
-// assistant parts go through the panel's own renderer, and a card-producing part
+/**
+ * A citation the panel can render as a docs button: a `source-url` part with a
+ * safe URL and something to label it with. Anything else falls through to the
+ * shared renderer.
+ */
+function citationFor(part: UIMessage["parts"][number]): { url: string; label: string } | null {
+  const p = part as { type: string; url?: string; title?: string };
+  if (p.type !== "source-url") return null;
+  const url = toSafeUrl(p.url);
+  const label = p.title || p.url;
+  return url && label ? { url, label } : null;
+}
+
+/** The text of a user message: every text part, joined. */
+function userText(message: UIMessage): string {
+  return (
+    message.parts
+      ?.filter((part) => part.type === "text")
+      .map((part) => (part as { type: "text"; text: string }).text)
+      .join("") ?? ""
+  );
+}
+
+// Renders one message as one turn. A user turn is the accent bubble; assistant
+// parts go through the panel's own renderer, and a card-producing part
 // (render_view / get_report) becomes a catalog card instead of a tool row.
-const DashboardAgentMessageBubble = memo(function DashboardAgentMessageBubble({
+const DashboardAgentTurn = memo(function DashboardAgentTurn({
   message,
   onIntent,
   resolveUri,
@@ -159,36 +171,65 @@ const DashboardAgentMessageBubble = memo(function DashboardAgentMessageBubble({
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
 }) {
-  if (message.role !== "assistant") {
-    return <MessageBubble message={message} />;
+  if (message.role === "user") {
+    return (
+      <ChatTurn role="user">
+        <ChatText role="user" text={userText(message)} />
+      </ChatTurn>
+    );
   }
+  if (message.role !== "assistant") return null;
   const parts = message.parts ?? [];
   if (parts.length === 0) return null;
-  return (
-    <div className="space-y-2">
-      {parts.map((part, i) => {
-        const blocks = blocksFor(part);
-        if (blocks) {
-          return (
-            <ViewBlocks
-              key={i}
-              blocks={blocks as never}
-              onIntent={onIntent}
-              resolveUri={resolveUri}
-            />
-          );
-        }
-        return renderDashboardPart(part, i);
-      })}
-    </div>
-  );
+
+  const body: React.ReactNode[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]!;
+
+    const blocks = blocksFor(part);
+    if (blocks) {
+      body.push(
+        <ChatCardSlot key={i}>
+          <ViewBlocks blocks={blocks as never} onIntent={onIntent} resolveUri={resolveUri} />
+        </ChatCardSlot>
+      );
+      continue;
+    }
+
+    // Citations arrive one part each, but they read as a list of sources — so a
+    // run of consecutive ones becomes one wrapping row of docs buttons rather
+    // than a stack of full-width lines. A lone citation is that row with one
+    // button in it.
+    if (citationFor(part)) {
+      const start = i;
+      const buttons: React.ReactNode[] = [];
+      while (i < parts.length) {
+        const citation = citationFor(parts[i]!);
+        if (!citation) break;
+        buttons.push(
+          <LinkButton key={i} to={citation.url} variant="docs/small" LeadingIcon={BookOpenIcon}>
+            {citation.label}
+          </LinkButton>
+        );
+        i++;
+      }
+      i--;
+      body.push(<ChatActionsRow key={`citations-${start}`}>{buttons}</ChatActionsRow>);
+      continue;
+    }
+
+    body.push(renderDashboardPart(part, i));
+  }
+
+  return <ChatTurn>{body}</ChatTurn>;
 });
 
-// Renders the conversation with the shared agent message renderer — the same
-// MessageBubble the run inspector and playground use, so agent output looks
-// identical everywhere — except where the agent emits a view-catalog block,
-// which renders as a rich card.
-export function DashboardAgentMessages({
+/**
+ * The turns of a conversation, without the transcript around them — for a host
+ * that owns its own `ChatTranscript` and interleaves other content between
+ * turns (the demo playbook does exactly this).
+ */
+export function DashboardAgentTurns({
   messages,
   activity,
   error,
@@ -196,61 +237,66 @@ export function DashboardAgentMessages({
   onDismissError,
   onIntent,
   resolveUri,
-}: {
-  messages: UIMessage[];
-  // What the turn is doing right now, or null when nothing is in flight. A turn
-  // spends most of its time streaming tool calls, so the indicator has to stay
-  // up for the whole turn — not just the initial submit.
-  activity: TurnActivity | null;
-  error?: Error;
-  onRetry?: () => void;
-  onDismissError?: () => void;
-  /** Where a card's actions go. Threaded down to the view catalog. */
-  onIntent?: (intent: AgentIntent) => void;
-  /** Host resolver for `trigger://` URIs a card cites. */
-  resolveUri?: (uri: string) => ResolvedUri | null;
-}) {
-  const rootRef = useAutoScrollToBottom([messages, activity]);
-
+}: DashboardAgentMessagesProps) {
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-      <div ref={rootRef} className="space-y-4 p-4">
-        {messages.map((message) => (
-          <DashboardAgentMessageBubble
-            key={message.id}
-            message={stripStepParts(message)}
-            onIntent={onIntent}
-            resolveUri={resolveUri}
-          />
-        ))}
-        {activity && <AgentProgressLine>{ACTIVITY_LABELS[activity]}</AgentProgressLine>}
-        {error && (
-          <Callout
-            variant="error"
-            cta={
-              (onRetry || onDismissError) && (
-                <div className="flex shrink-0 items-center gap-1">
-                  {onRetry && (
-                    <Button variant="primary/small" LeadingIcon={ArrowPathIcon} onClick={onRetry}>
-                      Try again
-                    </Button>
-                  )}
-                  {onDismissError && (
-                    <Button
-                      variant="minimal/small"
-                      LeadingIcon={XMarkIcon}
-                      onClick={onDismissError}
-                      aria-label="Dismiss error"
-                    />
-                  )}
-                </div>
-              )
-            }
-          >
-            {error.message}
-          </Callout>
-        )}
-      </div>
-    </div>
+    <>
+      {messages.map((message) => (
+        <DashboardAgentTurn
+          key={message.id}
+          message={stripStepParts(message)}
+          onIntent={onIntent}
+          resolveUri={resolveUri}
+        />
+      ))}
+      {activity && (
+        <ChatTurn>
+          <ChatProgress>{ACTIVITY_LABELS[activity]}</ChatProgress>
+        </ChatTurn>
+      )}
+      {error && (
+        <ChatTurn>
+          <ChatCardSlot>
+            <Callout
+              variant="error"
+              cta={
+                (onRetry || onDismissError) && (
+                  <ChatActionsRow>
+                    {onRetry && (
+                      <Button variant="primary/small" LeadingIcon={ArrowPathIcon} onClick={onRetry}>
+                        Try again
+                      </Button>
+                    )}
+                    {onDismissError && (
+                      <Button
+                        variant="minimal/small"
+                        LeadingIcon={XMarkIcon}
+                        onClick={onDismissError}
+                        aria-label="Dismiss error"
+                      />
+                    )}
+                  </ChatActionsRow>
+                )
+              }
+            >
+              {error.message}
+            </Callout>
+          </ChatCardSlot>
+        </ChatTurn>
+      )}
+    </>
   );
 }
+
+// The conversation in its own scroll column. Layout — the inset, the rhythm
+// between turns, where a card or a progress line sits — is `./chat-layout`'s;
+// this component only decides what each part turns into.
+export function DashboardAgentMessages(props: DashboardAgentMessagesProps) {
+  const rootRef = useAutoScrollToBottom([props.messages, props.activity]);
+
+  return (
+    <ChatTranscript contentRef={rootRef}>
+      <DashboardAgentTurns {...props} />
+    </ChatTranscript>
+  );
+}
+// #endregion chat-layout transcript

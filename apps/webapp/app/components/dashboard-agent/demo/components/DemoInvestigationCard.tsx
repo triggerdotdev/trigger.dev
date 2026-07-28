@@ -17,7 +17,7 @@ import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Spinner } from "~/components/primitives/Spinner";
-import { AgentProgressLine } from "../../DashboardAgentMessages";
+import { ChatProgress } from "../../chat-layout";
 import {
   CategoryBadge,
   ConfidenceBadge,
@@ -196,12 +196,12 @@ export function DemoInvestigationCard({
             ) : null}
           </div>
         </div>
-        {/* Progress lives outside the card, on the left — the same line the chat
-          uses for "Working…" and in-flight tools. */}
-        {inProgress ? (
-          <AgentProgressLine>{investigation.progress ?? "Working…"}</AgentProgressLine>
-        ) : null}
       </div>
+      {/* Progress lives outside the card, on the left — the same line the chat
+        uses for "Working…" and in-flight tools. `ChatProgress` carries the
+        transcript's alignment itself, so it lines up with the card above it
+        instead of hugging the card's border. */}
+      {inProgress ? <ChatProgress>{investigation.progress ?? "Working…"}</ChatProgress> : null}
     </div>
   );
 }
