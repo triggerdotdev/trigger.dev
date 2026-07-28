@@ -50,7 +50,7 @@ function flattenArgs(args: Array<Record<string, unknown> | undefined>) {
 export const logger = new Logger(
   "webapp",
   (process.env.APP_LOG_LEVEL ?? "info") as LogLevel,
-  ["examples", "output", "connectionString", "payload"],
+  ["examples", "output", "connectionString", "payload", "metadata", "seedMetadata"],
   sensitiveDataReplacer,
   () => {
     const fields = currentFieldsStore.getStore();

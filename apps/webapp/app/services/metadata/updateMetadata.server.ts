@@ -91,9 +91,14 @@ export class UpdateMetadataService {
         this._bufferedOperations.clear();
 
         yield* Effect.sync(() => {
-          if (this.flushLoggingEnabled) {
+          if (this.flushLoggingEnabled && currentOperations.size > 0) {
+            const operationCount = Array.from(currentOperations.values()).reduce(
+              (sum, ops) => sum + ops.length,
+              0
+            );
             this.logger.debug(`[UpdateMetadataService] Flushing operations`, {
-              operations: Object.fromEntries(currentOperations),
+              runCount: currentOperations.size,
+              operationCount,
             });
           }
         });
@@ -520,9 +525,9 @@ export class UpdateMetadataService {
 
       if (this.flushLoggingEnabled) {
         this.logger.debug(`[updateRunMetadataWithOperations] Updated metadata for run`, {
-          metadata: applyResults.newMetadata,
-          operations: operations,
           runId,
+          metadataKeyCount: Object.keys(applyResults.newMetadata).length,
+          operationCount: operations.length,
         });
       }
 
@@ -567,8 +572,8 @@ export class UpdateMetadataService {
     ) {
       if (this.flushLoggingEnabled) {
         this.logger.debug(`[updateRunMetadataDirectly] Updating metadata directly for run`, {
-          metadata: metadataPacket.data,
           runId,
+          metadataSizeBytes: metadataPacket.data?.length ?? 0,
         });
       }
 
@@ -607,7 +612,7 @@ export class UpdateMetadataService {
     if (this.flushLoggingEnabled) {
       this.logger.debug(`[ingestRunOperations] Ingesting operations for run`, {
         runId,
-        bufferedOperations,
+        operationCount: bufferedOperations.length,
       });
     }
 
