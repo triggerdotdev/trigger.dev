@@ -66,7 +66,7 @@ function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
  * component backs the turn indicator ("Working…") and the line under an
  * in-flight tool row, so progress always looks the same.
  */
-function AgentProgressLine({ children }: { children: React.ReactNode }) {
+export function AgentProgressLine({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 text-sm text-text-dimmed">
       <Spinner className="size-3" />

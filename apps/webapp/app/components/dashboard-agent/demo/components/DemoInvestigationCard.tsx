@@ -17,6 +17,7 @@ import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Spinner } from "~/components/primitives/Spinner";
+import { AgentProgressLine } from "../../DashboardAgentMessages";
 import {
   CategoryBadge,
   ConfidenceBadge,
@@ -110,92 +111,96 @@ export function DemoInvestigationCard({
   const concluded = investigation.outcome === "concluded";
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-      <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-4 py-3">
-        <span className="text-xs font-medium text-text-dimmed">Investigation</span>
-        <SeverityBadge severity={investigation.severity}>
-          {SEVERITY_LABELS[investigation.severity]}
-        </SeverityBadge>
-        <ConfidenceBadge confidence={investigation.confidence} />
-        {inProgress ? (
-          <span className="ml-auto flex items-center gap-2 text-xs text-text-dimmed">
-            <Spinner className="size-3" />
-            {investigation.progress ?? "Working"}
-          </span>
-        ) : investigation.runId ? (
-          <span className="ml-auto font-mono text-xs text-text-dimmed">{investigation.runId}</span>
-        ) : null}
-      </div>
-
-      <div className="space-y-5 px-4 py-4">
-        <p className="text-sm font-medium text-text-bright">{investigation.title}</p>
-
-        <Section title={concluded ? "What happened" : "What we know"}>
-          <p className="text-sm text-text-dimmed">{investigation.headline}</p>
-        </Section>
-
-        {/* A fix is only ever shown for a concluded investigation. An
-            inconclusive one gets "What to check next" instead — never both. */}
-        {concluded && investigation.remediation ? (
-          <Section title="How to fix">
-            <p className="text-sm text-text-dimmed">{investigation.remediation}</p>
-          </Section>
-        ) : null}
-
-        {investigation.checkNext && investigation.checkNext.length > 0 ? (
-          <Section title="What to check next">
-            <ol className="list-decimal space-y-2 pl-5">
-              {investigation.checkNext.map((item, i) => (
-                <li key={i} className="text-sm text-text-dimmed">
-                  {item}
-                </li>
-              ))}
-            </ol>
-          </Section>
-        ) : null}
-
-        {investigation.caveat ? (
-          <Callout variant="warning">{investigation.caveat.message}</Callout>
-        ) : null}
-
-        <div className="space-y-4 border-t border-grid-bright pt-4">
-          <Button
-            variant="minimal/small"
-            onClick={() => setExpanded((v) => !v)}
-            LeadingIcon={expanded ? ChevronDownIcon : ChevronRightIcon}
-            aria-expanded={expanded}
-          >
-            <span className="flex items-center gap-1.5 text-xs text-text-dimmed">
-              {expanded ? "Hide how I worked this out" : "How I worked this out"}
-              <span className="text-text-faint">
-                ({investigation.hypotheses.length} hypothes
-                {investigation.hypotheses.length === 1 ? "is" : "es"})
-              </span>
+    <div className="space-y-2">
+      <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
+        <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-4 py-3">
+          <span className="text-xs font-medium text-text-dimmed">Investigation</span>
+          <SeverityBadge severity={investigation.severity}>
+            {SEVERITY_LABELS[investigation.severity]}
+          </SeverityBadge>
+          <ConfidenceBadge confidence={investigation.confidence} />
+          {investigation.runId ? (
+            <span className="ml-auto font-mono text-xs text-text-dimmed">
+              {investigation.runId}
             </span>
-          </Button>
+          ) : null}
+        </div>
 
-          {expanded ? (
-            <div className="space-y-5 pt-1">
-              <Section title="Hypotheses">
-                <ul className="space-y-5">
-                  {investigation.hypotheses.map((hypothesis) => (
-                    <HypothesisRow key={hypothesis.id} hypothesis={hypothesis} />
-                  ))}
-                </ul>
-              </Section>
+        <div className="space-y-5 px-4 py-4">
+          <p className="text-sm font-medium text-text-bright">{investigation.title}</p>
 
-              {investigation.evidence.length > 0 ? (
-                <Section title="Evidence">
-                  <ul className="space-y-3">
-                    {investigation.evidence.map((evidence, i) => (
-                      <EvidenceItem key={i} evidence={evidence} />
+          <Section title={concluded ? "What happened" : "What we know"}>
+            <p className="text-sm text-text-dimmed">{investigation.headline}</p>
+          </Section>
+
+          {/* A fix is only ever shown for a concluded investigation. An
+            inconclusive one gets "What to check next" instead — never both. */}
+          {concluded && investigation.remediation ? (
+            <Section title="How to fix">
+              <p className="text-sm text-text-dimmed">{investigation.remediation}</p>
+            </Section>
+          ) : null}
+
+          {investigation.checkNext && investigation.checkNext.length > 0 ? (
+            <Section title="What to check next">
+              <ol className="list-decimal space-y-2 pl-5">
+                {investigation.checkNext.map((item, i) => (
+                  <li key={i} className="text-sm text-text-dimmed">
+                    {item}
+                  </li>
+                ))}
+              </ol>
+            </Section>
+          ) : null}
+
+          {investigation.caveat ? (
+            <Callout variant="warning">{investigation.caveat.message}</Callout>
+          ) : null}
+
+          <div className="space-y-4 border-t border-grid-bright pt-4">
+            <Button
+              variant="minimal/small"
+              onClick={() => setExpanded((v) => !v)}
+              LeadingIcon={expanded ? ChevronDownIcon : ChevronRightIcon}
+              aria-expanded={expanded}
+            >
+              <span className="flex items-center gap-1.5 text-xs text-text-dimmed">
+                {expanded ? "Hide how I worked this out" : "How I worked this out"}
+                <span className="text-text-faint">
+                  ({investigation.hypotheses.length} hypothes
+                  {investigation.hypotheses.length === 1 ? "is" : "es"})
+                </span>
+              </span>
+            </Button>
+
+            {expanded ? (
+              <div className="space-y-5 pt-1">
+                <Section title="Hypotheses">
+                  <ul className="space-y-5">
+                    {investigation.hypotheses.map((hypothesis) => (
+                      <HypothesisRow key={hypothesis.id} hypothesis={hypothesis} />
                     ))}
                   </ul>
                 </Section>
-              ) : null}
-            </div>
-          ) : null}
+
+                {investigation.evidence.length > 0 ? (
+                  <Section title="Evidence">
+                    <ul className="space-y-3">
+                      {investigation.evidence.map((evidence, i) => (
+                        <EvidenceItem key={i} evidence={evidence} />
+                      ))}
+                    </ul>
+                  </Section>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
+        {/* Progress lives outside the card, on the left — the same line the chat
+          uses for "Working…" and in-flight tools. */}
+        {inProgress ? (
+          <AgentProgressLine>{investigation.progress ?? "Working…"}</AgentProgressLine>
+        ) : null}
       </div>
     </div>
   );
