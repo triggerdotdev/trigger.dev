@@ -220,14 +220,17 @@ function curateTrace(data: unknown) {
   const walk = (span: any, depth: number) => {
     if (!span || spans.length >= MAX_TRACE_SPANS) return;
     const d = span.data ?? {};
+    // The two flags are emitted only when true: absent means false, and a list of
+    // 60 spans that each spell out `isError: false, isPartial: false` spends ~2KB
+    // of context saying nothing.
     spans.push({
       depth,
       message: d.message,
       task: d.taskSlug,
       durationMs: d.duration,
       level: d.level,
-      isError: d.isError,
-      isPartial: d.isPartial,
+      ...(d.isError ? { isError: true } : {}),
+      ...(d.isPartial ? { isPartial: true } : {}),
     });
     for (const child of span.children ?? []) walk(child, depth + 1);
   };
@@ -324,7 +327,10 @@ function curateReport(data: unknown) {
       delta: m.delta,
       breakdown: m.breakdown,
       annotation: m.annotation,
-      availability: m.availability,
+      // Only the lossy case travels: "unknown" means `value` is a placeholder the
+      // model must not read as a real measurement. "measured" is the default and
+      // says nothing, so it's dropped.
+      ...(m.availability === "unknown" ? { availability: "unknown" } : {}),
       severity: m.severity,
     })),
     facts: {
@@ -456,13 +462,53 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   const origin = apiOrigin ? apiOrigin.replace(/\/$/, "") : "";
   const hasAuth = Boolean(userActorToken && origin);
 
-  // Exchange lazily and once per turn — turns that never touch an env tool
-  // never pay for the exchange.
-  let envJwtPromise: Promise<string | null> | undefined;
-  function getEnvJwt(): Promise<string | null> {
+  // Exchange lazily and once per turn — turns that never touch an env tool never
+  // pay for the exchange, and a turn with six env-scoped tool calls pays for one.
+  // The tool set is rebuilt per turn, so this Map is exactly turn-scoped: no TTL
+  // to reason about, and a JWT can't outlive the turn it was minted for. Keyed by
+  // project + environment so the cache can never hand a tool a token for another
+  // scope. The promise (not the token) is cached, so concurrent tool calls in one
+  // step share a single in-flight exchange.
+  const envJwts = new Map<string, Promise<string | null>>();
+  function getEnvJwt(refresh = false): Promise<string | null> {
     if (!hasAuth || !projectRef || !environmentName) return Promise.resolve(null);
-    envJwtPromise ??= exchangeEnvJwt(origin, userActorToken!, projectRef, environmentName);
-    return envJwtPromise;
+    const key = `${projectRef}/${environmentName}`;
+    if (refresh) envJwts.delete(key);
+    let pending = envJwts.get(key);
+    if (!pending) {
+      pending = exchangeEnvJwt(origin, userActorToken!, projectRef, environmentName);
+      envJwts.set(key, pending);
+    }
+    return pending;
+  }
+
+  /**
+   * Run an env-scoped API call with the turn's cached JWT.
+   *
+   * `null` means there is no current environment (the caller reports that in its
+   * own words). On an unauthorized result the cache entry is dropped and the call
+   * is retried once with a fresh exchange — a cached token can have been minted
+   * right at its expiry edge, and one extra exchange is far cheaper than failing
+   * the tool. Anything else (including a second 401) is returned as-is.
+   */
+  async function withEnvJwt<T>(
+    call: (jwt: string) => Promise<T>,
+    isUnauthorized: (result: T) => boolean
+  ): Promise<T | null> {
+    const jwt = await getEnvJwt();
+    if (!jwt) return null;
+    const first = await call(jwt);
+    if (!isUnauthorized(first)) return first;
+    const fresh = await getEnvJwt(true);
+    if (!fresh) return first;
+    return call(fresh);
+  }
+
+  const unauthorizedGet = (result: FetchResult) => !result.ok && result.status === 401;
+
+  // The common shape: a GET against an env-scoped route, with the retry above.
+  function envApiGet(path: string): Promise<FetchResult | null> {
+    return withEnvJwt((jwt) => apiGet(origin, path, jwt), unauthorizedGet);
   }
 
   // Run-SHA pinning: ask the webapp for a snapshot pinned to a specific run's
@@ -614,9 +660,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     get_run: tool({
       ...getRunSchema,
       execute: async ({ runId }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) return { error: "No current environment is available to read runs from." };
-        const result = await apiGet(origin, `/api/v3/runs/${runId}`, envJwt);
+        const result = await envApiGet(`/api/v3/runs/${runId}`);
+        if (!result) return { error: "No current environment is available to read runs from." };
         if (!result.ok) return { error: `Couldn't get run ${runId} (status ${result.status}).` };
         return curateRun(result.data);
       },
@@ -644,8 +689,6 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     list_runs: tool({
       ...listRunsSchema,
       execute: async ({ status, taskIdentifier, errorId, period, limit }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) return { error: "No current environment is available to read runs from." };
         const effectivePeriod = period ? clampPeriod(period) : undefined;
         const sp = new URLSearchParams();
         if (status) sp.append("filter[status]", status);
@@ -653,7 +696,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         if (errorId) sp.append("filter[error]", errorId);
         if (effectivePeriod) sp.append("filter[createdAt][period]", effectivePeriod);
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
-        const result = await apiGet(origin, `/api/v1/runs?${sp.toString()}`, envJwt);
+        const result = await envApiGet(`/api/v1/runs?${sp.toString()}`);
+        if (!result) return { error: "No current environment is available to read runs from." };
         if (!result.ok) return { error: `Couldn't list runs (status ${result.status}).` };
         return { ...curateRuns(result.data), period: effectivePeriod };
       },
@@ -662,9 +706,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     get_run_trace: tool({
       ...getRunTraceSchema,
       execute: async ({ runId }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) return { error: "No current environment is available to read runs from." };
-        const result = await apiGet(origin, `/api/v1/runs/${runId}/trace`, envJwt);
+        const result = await envApiGet(`/api/v1/runs/${runId}/trace`);
+        if (!result) return { error: "No current environment is available to read runs from." };
         if (!result.ok)
           return { error: `Couldn't get the trace for ${runId} (status ${result.status}).` };
         return curateTrace(result.data);
@@ -674,15 +717,14 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     list_errors: tool({
       ...listErrorsSchema,
       execute: async ({ status, taskIdentifier, search, period, limit }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) return { error: "No current environment is available to read errors from." };
         const sp = new URLSearchParams();
         if (status) sp.append("filter[status]", status);
         if (taskIdentifier) sp.append("filter[taskIdentifier]", taskIdentifier);
         if (search) sp.append("filter[search]", search);
         if (period) sp.append("filter[period]", period);
         sp.append("page[size]", String(Math.min(limit ?? 20, 100)));
-        const result = await apiGet(origin, `/api/v1/errors?${sp.toString()}`, envJwt);
+        const result = await envApiGet(`/api/v1/errors?${sp.toString()}`);
+        if (!result) return { error: "No current environment is available to read errors from." };
         if (!result.ok) return { error: `Couldn't list errors (status ${result.status}).` };
         return curateErrors(result.data);
       },
@@ -691,9 +733,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     get_error: tool({
       ...getErrorSchema,
       execute: async ({ errorId }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) return { error: "No current environment is available to read errors from." };
-        const result = await apiGet(origin, `/api/v1/errors/${errorId}`, envJwt);
+        const result = await envApiGet(`/api/v1/errors/${errorId}`);
+        if (!result) return { error: "No current environment is available to read errors from." };
         if (!result.ok)
           return { error: `Couldn't get error ${errorId} (status ${result.status}).` };
         return curateError(result.data);
@@ -703,9 +744,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     get_query_schema: tool({
       ...getQuerySchemaSchema,
       execute: async ({ table }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) return { error: "No current environment is available to query." };
-        const result = await apiGet(origin, "/api/v1/query/schema", envJwt);
+        const result = await envApiGet("/api/v1/query/schema");
+        if (!result) return { error: "No current environment is available to query." };
         if (!result.ok)
           return { error: `Couldn't load the query schema (status ${result.status}).` };
         const tables = ((result.data as { tables?: any[] })?.tables ?? []) as any[];
@@ -743,22 +783,31 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     run_query: tool({
       ...runQuerySchema,
       execute: async ({ query, period }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) return { error: "No current environment is available to query." };
-        let res: Response;
-        try {
-          res = await fetch(`${origin}/api/v1/query`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${envJwt}`,
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-            body: JSON.stringify({ query, scope: "environment", period, format: "json" }),
-          });
-        } catch (error) {
-          return { error: `Query request failed: ${(error as Error).message}` };
-        }
+        // POST, so it can't use envApiGet — same JWT cache and same one-shot
+        // re-exchange on a 401, spelled out around the query request.
+        const attempt = await withEnvJwt<{ res: Response } | { error: string }>(
+          async (jwt) => {
+            try {
+              return {
+                res: await fetch(`${origin}/api/v1/query`, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${jwt}`,
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                  },
+                  body: JSON.stringify({ query, scope: "environment", period, format: "json" }),
+                }),
+              };
+            } catch (error) {
+              return { error: `Query request failed: ${(error as Error).message}` };
+            }
+          },
+          (result) => "res" in result && result.res.status === 401
+        );
+        if (!attempt) return { error: "No current environment is available to query." };
+        if ("error" in attempt) return attempt;
+        const res = attempt.res;
         // The route returns 400 with { error } for invalid TRQL; surface it so
         // the model can fix the query rather than the turn dying.
         const data = (await res.json().catch(() => ({}))) as { results?: unknown; error?: string };
@@ -838,16 +887,13 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     get_report: tool({
       ...getReportSchema,
       execute: async ({ key, period }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) return { error: "No current environment is available to report on." };
         const reportKey = key ?? "health";
         const sp = new URLSearchParams({ format: "json" });
         if (period) sp.append("period", period);
-        const result = await apiGet(
-          origin,
-          `/api/v1/reports/${encodeURIComponent(reportKey)}?${sp.toString()}`,
-          envJwt
+        const result = await envApiGet(
+          `/api/v1/reports/${encodeURIComponent(reportKey)}?${sp.toString()}`
         );
+        if (!result) return { error: "No current environment is available to report on." };
         if (!result.ok) {
           return { error: `Couldn't get the ${reportKey} report (status ${result.status}).` };
         }
@@ -874,17 +920,14 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     get_queue: tool({
       ...getQueueSchema,
       execute: async ({ queue, type, period }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) return { error: "No current environment is available to read queues from." };
         const sp = new URLSearchParams({ type: type ?? "task" });
         if (period) sp.append("period", period);
         // Double-encode the name: a task queue's ClickHouse name carries a `task/`
         // prefix, and the route un-escapes `%2F` back to `/` itself.
-        const result = await apiGet(
-          origin,
-          `/api/v1/queues/${encodeURIComponent(queue)}/metrics?${sp.toString()}`,
-          envJwt
+        const result = await envApiGet(
+          `/api/v1/queues/${encodeURIComponent(queue)}/metrics?${sp.toString()}`
         );
+        if (!result) return { error: "No current environment is available to read queues from." };
         if (!result.ok) {
           return {
             error: `Couldn't get metrics for the ${queue} queue (status ${result.status}).`,
@@ -897,16 +940,15 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     list_deploys: tool({
       ...listDeploysSchema,
       execute: async ({ status, period, limit }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) {
-          return { error: "No current environment is available to read deployments from." };
-        }
         const effectivePeriod = period ? clampPeriod(period) : undefined;
         const sp = new URLSearchParams();
         if (status) sp.append("status", status);
         if (effectivePeriod) sp.append("period", effectivePeriod);
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
-        const result = await apiGet(origin, `/api/v1/deployments?${sp.toString()}`, envJwt);
+        const result = await envApiGet(`/api/v1/deployments?${sp.toString()}`);
+        if (!result) {
+          return { error: "No current environment is available to read deployments from." };
+        }
         if (!result.ok) return { error: `Couldn't list deployments (status ${result.status}).` };
         const rows = ((result.data as any)?.data ?? []) as any[];
         return {
@@ -920,13 +962,11 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     get_deploy: tool({
       ...getDeploySchema,
       execute: async ({ version }) => {
-        const envJwt = await getEnvJwt();
-        if (!envJwt) {
-          return { error: "No current environment is available to read deployments from." };
-        }
+        const noEnv = { error: "No current environment is available to read deployments from." };
         // No version: the promoted deployment, which is what new runs use.
         if (!version) {
-          const result = await apiGet(origin, "/api/v1/deployments/current", envJwt);
+          const result = await envApiGet("/api/v1/deployments/current");
+          if (!result) return noEnv;
           if (!result.ok) {
             return { error: `Couldn't get the current deployment (status ${result.status}).` };
           }
@@ -935,7 +975,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         // The public retrieve route is API-key-only, so find the version in the
         // JWT-reachable list instead. One page is plenty for "which deploy was
         // that"; anything older is a list_deploys question.
-        const result = await apiGet(origin, "/api/v1/deployments?page[size]=100", envJwt);
+        const result = await envApiGet("/api/v1/deployments?page[size]=100");
+        if (!result) return noEnv;
         if (!result.ok) return { error: `Couldn't look up deployments (status ${result.status}).` };
         const rows = ((result.data as any)?.data ?? []) as any[];
         const match = (Array.isArray(rows) ? rows : []).find(

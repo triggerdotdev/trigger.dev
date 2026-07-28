@@ -982,6 +982,136 @@ describe("buildDashboardAgentTools", () => {
     ).rejects.toThrow();
   });
 
+  // The env-JWT exchange is a webapp request plus DB work, so it is paid for once
+  // per tool set (= once per turn) no matter how many env-scoped tools run.
+  const ENV_CTX = {
+    userActorToken: "uat_token",
+    apiOrigin: "http://localhost:3030",
+    projectRef: "proj_abc",
+    environmentName: "prod",
+    environmentId: "env_abc",
+  };
+
+  // Stubs global fetch with a router and records every request path, so a test can
+  // count exchanges (`/jwt`) separately from the data reads.
+  function stubFetch(
+    respond: (url: string, init: RequestInit | undefined) => { status?: number; body: unknown }
+  ) {
+    const requests: Array<{ url: string; token?: string }> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      requests.push({ url: String(url), token: headers.Authorization });
+      const { status, body } = respond(String(url), init);
+      return new Response(JSON.stringify(body ?? {}), {
+        status: status ?? 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+    return {
+      requests,
+      exchanges: () => requests.filter((r) => r.url.endsWith("/jwt")).length,
+      restore: () => {
+        globalThis.fetch = original;
+      },
+    };
+  }
+
+  it("exchanges the env JWT once per tool set, however many env-scoped tools call the API", async () => {
+    const fetchStub = stubFetch((url) => {
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_1" } };
+      return { body: { data: [], results: [], trace: { traceId: "t1" } } };
+    });
+    try {
+      const tools = buildDashboardAgentTools(ENV_CTX);
+      const call = (name: string, input: unknown) =>
+        (tools[name] as { execute: (i: unknown, o: unknown) => Promise<any> }).execute(input, {});
+
+      await call("get_run", { runId: "run_1" });
+      await call("list_runs", {});
+      await call("list_errors", {});
+      await call("get_run_trace", { runId: "run_1" });
+      await call("get_report", {});
+      await call("run_query", { query: "select 1" });
+
+      expect(fetchStub.exchanges()).toBe(1);
+      // Six data reads, all carrying the one exchanged token.
+      const reads = fetchStub.requests.filter((r) => !r.url.endsWith("/jwt"));
+      expect(reads).toHaveLength(6);
+      expect(reads.every((r) => r.token === "Bearer jwt_1")).toBe(true);
+
+      // Concurrent calls share the one in-flight exchange too.
+      const parallel = buildDashboardAgentTools(ENV_CTX);
+      const parallelCall = (name: string, input: unknown) =>
+        (parallel[name] as { execute: (i: unknown, o: unknown) => Promise<any> }).execute(
+          input,
+          {}
+        );
+      const before = fetchStub.exchanges();
+      await Promise.all([
+        parallelCall("get_run", { runId: "run_1" }),
+        parallelCall("list_runs", {}),
+        parallelCall("list_errors", {}),
+      ]);
+      // A fresh tool set is a fresh turn, so exactly one more exchange.
+      expect(fetchStub.exchanges()).toBe(before + 1);
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("re-exchanges once and retries when the cached env JWT is rejected", async () => {
+    let minted = 0;
+    const fetchStub = stubFetch((url, init) => {
+      if (url.endsWith("/jwt")) return { body: { token: `jwt_${++minted}` } };
+      const token = (init?.headers as Record<string, string> | undefined)?.Authorization;
+      // The first token is stale (minted at its expiry edge); the second works.
+      if (token === "Bearer jwt_1") return { status: 401, body: {} };
+      return { body: { id: "run_1", status: "COMPLETED" } };
+    });
+    try {
+      const tools = buildDashboardAgentTools(ENV_CTX);
+      const getRun = tools.get_run as { execute: (i: unknown, o: unknown) => Promise<any> };
+
+      await expect(getRun.execute({ runId: "run_1" }, {})).resolves.toMatchObject({
+        id: "run_1",
+        status: "COMPLETED",
+      });
+      expect(fetchStub.exchanges()).toBe(2);
+      expect(fetchStub.requests.map((r) => r.token)).toEqual([
+        "Bearer uat_token",
+        "Bearer jwt_1",
+        "Bearer uat_token",
+        "Bearer jwt_2",
+      ]);
+
+      // The refreshed token is now the cached one, so the next call pays nothing.
+      await getRun.execute({ runId: "run_2" }, {});
+      expect(fetchStub.exchanges()).toBe(2);
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
+  it("retries an unauthorized env call only once, then reports the failure", async () => {
+    const fetchStub = stubFetch((url) => {
+      if (url.endsWith("/jwt")) return { body: { token: "jwt_x" } };
+      return { status: 401, body: {} };
+    });
+    try {
+      const tools = buildDashboardAgentTools(ENV_CTX);
+      const result = await (
+        tools.list_runs as { execute: (i: unknown, o: unknown) => Promise<any> }
+      ).execute({}, {});
+      expect(result.error).toContain("401");
+      // One retry, not a loop: two exchanges and two reads.
+      expect(fetchStub.exchanges()).toBe(2);
+      expect(fetchStub.requests).toHaveLength(4);
+    } finally {
+      fetchStub.restore();
+    }
+  });
+
   it("get_current_page returns the turn's structured page context", async () => {
     const pageContext = {
       page: { kind: "run" as const, runId: "run_1", status: "FAILED", taskId: "send-receipt" },

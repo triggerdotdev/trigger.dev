@@ -134,16 +134,28 @@ export function DashboardAgentPanel({
     [user.id, organization.id, project.id, environment.id, location.pathname, pageContextKey]
   );
 
+  // The list is reloaded from several places at once (open, every settled turn, a
+  // watch change), so a single in-flight request is shared instead of stacking:
+  // callers that arrive while one is running await that one and see its result.
+  const historyInFlight = useRef<Promise<void> | null>(null);
+
   const loadHistory = useCallback(async () => {
-    try {
-      const res = await fetch(actionPath);
-      if (!res.ok) throw new Error(`History request failed (${res.status})`);
-      const data = (await res.json()) as { chats?: DashboardAgentChatListItem[] };
-      setChats(data.chats ?? []);
-    } catch (error) {
-      console.error("Dashboard agent: failed to load chat history", error);
-      toast.error("We couldn't load your previous chats. Try again in a moment.");
-    }
+    if (historyInFlight.current) return historyInFlight.current;
+    const request = (async () => {
+      try {
+        const res = await fetch(actionPath);
+        if (!res.ok) throw new Error(`History request failed (${res.status})`);
+        const data = (await res.json()) as { chats?: DashboardAgentChatListItem[] };
+        setChats(data.chats ?? []);
+      } catch (error) {
+        console.error("Dashboard agent: failed to load chat history", error);
+        toast.error("We couldn't load your previous chats. Try again in a moment.");
+      } finally {
+        historyInFlight.current = null;
+      }
+    })();
+    historyInFlight.current = request;
+    return request;
   }, [actionPath, toast]);
 
   // Bumped on each open so a slower earlier open can't overwrite a newer one
