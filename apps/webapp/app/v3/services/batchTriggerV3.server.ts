@@ -47,9 +47,11 @@ function chunkArray<T>(items: T[], size: number): T[][] {
 // Summarizes a task-identifier -> items grouping for logging, without including the items
 // themselves (each item is `{ task, payload, options }`, and `options.metadata` is arbitrary
 // customer data that must never be written to logs whole).
-export function summarizeItemsByTask(
-  itemsByTask: Record<string, unknown[]>
-): { taskIdentifiers: string[]; itemCountsByTask: Record<string, number>; totalItemCount: number } {
+export function summarizeItemsByTask(itemsByTask: Record<string, unknown[]>): {
+  taskIdentifiers: string[];
+  itemCountsByTask: Record<string, number>;
+  totalItemCount: number;
+} {
   const itemCountsByTask: Record<string, number> = {};
   let totalItemCount = 0;
 
