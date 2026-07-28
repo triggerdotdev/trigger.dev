@@ -17,32 +17,63 @@ import { isRunFriendlyId } from "./run-id";
 // Everything here is plain presentation of validated fields; no markup comes
 // from the model, so there's nothing to sanitize beyond outbound URLs.
 
-const CATEGORY_LABELS: Record<DiagnosisBlock["category"], string> = {
-  user_code_error: "Code error",
-  configuration: "Configuration",
-  dependency: "Dependency",
-  timeout: "Timeout",
-  out_of_memory: "Out of memory",
-  rate_limit: "Rate limit",
-  external_service: "External service",
-  infrastructure: "Infrastructure",
-  cancellation: "Cancelled",
-  unknown: "Unknown",
-};
+// The category as one humanized sentence answering the triage question: whose
+// problem is this, roughly? Key words carry the weight, not a label prefix.
+function Em({ children }: { children: React.ReactNode }) {
+  return <span className="font-semibold text-text-bright">{children}</span>;
+}
 
-// One line answering the triage question a bare category label leaves open:
-// whose problem is this, roughly?
-const CATEGORY_EXPLANATIONS: Record<DiagnosisBlock["category"], string> = {
-  user_code_error: "A bug in the task's own code",
-  configuration: "A setting on the task, queue or environment",
-  dependency: "A package or build problem",
-  timeout: "The run exceeded its time limit",
-  out_of_memory: "The run exceeded its machine's memory",
-  rate_limit: "A rate limit was hit",
-  external_service: "A third-party service the task calls failed",
-  infrastructure: "A problem on the platform side, not in your code",
-  cancellation: "The run was cancelled before finishing",
-  unknown: "The cause couldn't be classified",
+const CATEGORY_SENTENCES: Record<DiagnosisBlock["category"], React.ReactNode> = {
+  user_code_error: (
+    <>
+      A <Em>bug</Em> in the task's own code
+    </>
+  ),
+  configuration: (
+    <>
+      A <Em>misconfigured setting</Em> on the task, queue or environment
+    </>
+  ),
+  dependency: (
+    <>
+      A <Em>package or build dependency</Em> problem
+    </>
+  ),
+  timeout: (
+    <>
+      The run hit its <Em>time limit</Em>
+    </>
+  ),
+  out_of_memory: (
+    <>
+      The run ran out of <Em>memory</Em>
+    </>
+  ),
+  rate_limit: (
+    <>
+      A <Em>rate limit</Em> was hit
+    </>
+  ),
+  external_service: (
+    <>
+      A <Em>third-party service</Em> the task calls failed
+    </>
+  ),
+  infrastructure: (
+    <>
+      A <Em>platform-side</Em> problem — not your code
+    </>
+  ),
+  cancellation: (
+    <>
+      The run was <Em>cancelled</Em> before finishing
+    </>
+  ),
+  unknown: (
+    <>
+      The cause <Em>couldn't be classified</Em>
+    </>
+  ),
 };
 
 // Matches the app's link convention (TextLink `primary`), which holds up in both
@@ -160,16 +191,10 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
             <RunLink runId={block.runId} className="ml-auto font-mono text-xs" />
           ) : null}
         </div>
-        {/* The category as a titled subtitle, not a bare chip: the label plus
-            the one-line "whose problem is this" answer. */}
-        <p className="text-sm">
-          <span className="font-medium text-text-bright">
-            {CATEGORY_LABELS[block.category] ?? block.category}
-          </span>
-          <span className="text-text-dimmed">
-            {" — "}
-            {CATEGORY_EXPLANATIONS[block.category] ?? "The diagnosed root-cause category"}
-          </span>
+        {/* The category as one humanized subtitle sentence; the key words are
+            bold, no label prefix. */}
+        <p className="text-sm text-text-dimmed">
+          {CATEGORY_SENTENCES[block.category] ?? block.category}
         </p>
       </div>
 
