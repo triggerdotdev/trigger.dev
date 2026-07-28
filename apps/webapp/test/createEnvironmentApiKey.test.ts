@@ -4,6 +4,7 @@ import rbacPlugin, { type RoleBaseAccessController } from "@trigger.dev/rbac";
 import { expect, vi } from "vitest";
 import { MAX_API_KEY_TASK_IDENTIFIERS } from "~/consts";
 import { createEnvironmentApiKey } from "~/models/api-key.server";
+import { FEATURE_FLAG } from "~/v3/featureFlags";
 import {
   createRuntimeEnvironment,
   createTestOrgProjectWithMember,
@@ -20,14 +21,58 @@ function policyController(
 
 async function setup(prisma: PrismaClient) {
   const { organization, project, user } = await createTestOrgProjectWithMember(prisma);
-  const environment = await createRuntimeEnvironment(prisma, {
-    projectId: project.id,
-    organizationId: organization.id,
-    type: "PRODUCTION",
-    slug: uniqueId("prod"),
-  });
+  const [environment] = await Promise.all([
+    createRuntimeEnvironment(prisma, {
+      projectId: project.id,
+      organizationId: organization.id,
+      type: "PRODUCTION",
+      slug: uniqueId("prod"),
+    }),
+    prisma.organization.update({
+      where: { id: organization.id },
+      data: { featureFlags: { [FEATURE_FLAG.additionalApiKeysEnabled]: true } },
+    }),
+    prisma.featureFlag.upsert({
+      where: { key: FEATURE_FLAG.additionalApiKeyIssuanceEnabled },
+      create: { key: FEATURE_FLAG.additionalApiKeyIssuanceEnabled, value: true },
+      update: { value: true },
+    }),
+  ]);
   return { organization, project, user, environment };
 }
+
+containerTest(
+  "rejects creation when the system-wide issuance gate is disabled",
+  async ({ prisma }) => {
+    const { user, environment } = await setup(prisma);
+    await prisma.featureFlag.update({
+      where: { key: FEATURE_FLAG.additionalApiKeyIssuanceEnabled },
+      data: { value: false },
+    });
+    const controller = policyController(async () => ({
+      ok: true,
+      policy: { presetId: null, scopes: ["admin"] },
+    }));
+
+    await expect(
+      createEnvironmentApiKey(
+        {
+          environmentId: environment.id,
+          taskEnvironmentId: environment.id,
+          userId: user.id,
+          name: "Disabled",
+          presetId: "FULL_ACCESS",
+        },
+        { prismaClient: prisma, rbacController: controller }
+      )
+    ).rejects.toThrow("Creating additional API keys is not enabled");
+
+    expect(controller.prepareApiKeyPolicy).not.toHaveBeenCalled();
+    await expect(
+      prisma.apiKey.count({ where: { runtimeEnvironmentId: environment.id } })
+    ).resolves.toBe(0);
+  }
+);
 
 containerTest("standalone fallback creates one explicit full-access key", async ({ prisma }) => {
   const { user, environment } = await setup(prisma);

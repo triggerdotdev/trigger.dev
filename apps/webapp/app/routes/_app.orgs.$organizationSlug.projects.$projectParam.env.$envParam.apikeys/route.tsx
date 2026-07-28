@@ -76,6 +76,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { FULL_ACCESS_PRESET_ID } from "@trigger.dev/rbac";
+import { canIssueAdditionalApiKeys } from "~/services/additionalApiKeyIssuance.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
@@ -181,16 +182,21 @@ export const loader = dashboardLoader(
       return organizationId ? { organizationId } : {};
     },
   },
-  async ({ params, searchParams, user, ability }) => {
+  async ({ params, searchParams, user, ability, context }) => {
     try {
       const presenter = new ApiKeysPresenter();
-      const data = await presenter.call({
-        userId: user.id,
-        organizationSlug: params.organizationSlug,
-        projectSlug: params.projectParam,
-        environmentSlug: params.envParam,
-        showRevoked: searchParams.showRevoked,
-      });
+      const [data, additionalApiKeyIssuanceEnabled] = await Promise.all([
+        presenter.call({
+          userId: user.id,
+          organizationSlug: params.organizationSlug,
+          projectSlug: params.projectParam,
+          environmentSlug: params.envParam,
+          showRevoked: searchParams.showRevoked,
+        }),
+        context.organizationId
+          ? canIssueAdditionalApiKeys(context.organizationId)
+          : Promise.resolve(false),
+      ]);
 
       const canReadApiKeys = ability.can("read", {
         type: "apiKeys",
@@ -215,6 +221,7 @@ export const loader = dashboardLoader(
         apiKeys: canReadApiKeys ? data.apiKeys : [],
         canReadApiKeys,
         canWriteApiKeys,
+        additionalApiKeyIssuanceEnabled,
         showRevoked: searchParams.showRevoked ?? false,
       });
     } catch (error) {
@@ -277,6 +284,15 @@ export const action = dashboardAction(
     try {
       switch (submission.data.action) {
         case "create": {
+          if (!(await canIssueAdditionalApiKeys(project.organizationId))) {
+            const message = "Creating additional API keys is not enabled.";
+            return typedJsonWithErrorMessage(
+              { ok: false as const, error: message },
+              request,
+              message
+            );
+          }
+
           const presets = await rbac.apiKeyPresets(project.organizationId);
           const preset = validateCreateApiKeyPreset({
             presets,
@@ -336,6 +352,7 @@ export default function Page() {
     apiKeys,
     canReadApiKeys,
     canWriteApiKeys,
+    additionalApiKeyIssuanceEnabled,
     showRevoked,
     hasVercelIntegration,
     availableTasks,
@@ -371,7 +388,7 @@ export default function Page() {
             API keys docs
           </LinkButton>
 
-          {canReadApiKeys ? (
+          {canReadApiKeys && additionalApiKeyIssuanceEnabled ? (
             <NewApiKeyDialog
               canWrite={canWriteApiKeys}
               availableTasks={availableTasks}
@@ -504,7 +521,7 @@ export default function Page() {
                       apiKey.createdBy?.displayName ??
                       apiKey.createdBy?.name ??
                       apiKey.createdBy?.email ??
-                      "Deleted user";
+                      "–";
 
                     return (
                       <TableRow key={apiKey.id} disabled={cannotAuthenticate}>
@@ -654,10 +671,10 @@ function NewApiKeyDialog({
               className="w-full"
             />
             <Callout variant="warning">
-              Requires a version of <InlineCode variant="extra-small">@trigger.dev/sdk</InlineCode>{" "}
-              that supports additional environment API keys. On older versions,{" "}
-              <InlineCode variant="extra-small">auth.createPublicToken()</InlineCode> will return a
-              token the server rejects, because only the root API key can sign one locally.
+              Use <InlineCode variant="extra-small">@trigger.dev/sdk</InlineCode> v4.5.8 or later.
+              Older SDK versions mint an unusable token when{" "}
+              <InlineCode variant="extra-small">auth.createPublicToken()</InlineCode> is called with
+              this API key.
             </Callout>
             <FormButtons
               confirmButton={
