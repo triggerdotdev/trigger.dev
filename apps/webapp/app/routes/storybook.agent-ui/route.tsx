@@ -4,6 +4,7 @@ import {
   safeParseTriggerUri,
   VIEW_BLOCK_VERSION,
   type AgentPageContext,
+  type InvestigationBlock,
   type ReportViewModelPayload,
   type SuggestedPrompt,
 } from "@internal/dashboard-agent-contracts";
@@ -22,6 +23,7 @@ import {
 import { DashboardAgentContextBanner } from "~/components/dashboard-agent/DashboardAgentContextBanner";
 import { DashboardAgentMessages } from "~/components/dashboard-agent/DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "~/components/dashboard-agent/DashboardAgentSuggestedPrompts";
+import { InvestigationCard } from "~/components/dashboard-agent/InvestigationCard";
 import { ReportView } from "~/components/dashboard-agent/ReportView";
 import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
 import { resolveSuggestedPrompts } from "~/components/dashboard-agent/suggested-prompts";
@@ -404,6 +406,25 @@ const untrustworthyReport: ReportViewModelPayload = {
  * resolves against the real environment (`resolveTriggerUri.server.ts`); here a
  * fixture resolver proves the seam exists without a project route.
  */
+/**
+ * The demo investigation fixtures, as the real `investigation` block: the demo
+ * type carries its identity inline (`investigationId` + `revision`) where the
+ * block carries it in the envelope, so the mapping is a move, not a rewrite —
+ * which is the point of having reviewed the demo payload.
+ */
+function investigationBlock(
+  fixture: (typeof demoInvestigations)[keyof typeof demoInvestigations]
+): InvestigationBlock {
+  const { investigationId, revision, ...investigation } = fixture;
+  return {
+    type: "investigation",
+    id: investigationId,
+    revision,
+    version: VIEW_BLOCK_VERSION,
+    investigation,
+  };
+}
+
 function fixtureResolveUri(uri: string): { label: string; url: string } | null {
   const parsed = safeParseTriggerUri(uri);
   if (!parsed.success) return null;
@@ -442,7 +463,46 @@ const STATES: Record<string, React.ReactNode> = {
     />
   ),
 
-  // --- Investigation card -------------------------------------------------
+  // --- Investigation card, the shipped one ---------------------------------
+  "investigation-card-streaming-rev0": (
+    <InvestigationCard block={investigationBlock(demoInvestigations.streamingRev0)} />
+  ),
+  "investigation-card-streaming-rev1": (
+    <InvestigationCard block={investigationBlock(demoInvestigations.streamingRev1)} />
+  ),
+  "investigation-card-concluded": (
+    <InvestigationCard block={investigationBlock(demoInvestigations.concluded)} />
+  ),
+  "investigation-card-concluded-expanded": (
+    <InvestigationCard
+      block={investigationBlock(demoInvestigations.concluded)}
+      defaultExpanded
+      resolveUri={fixtureResolveUri}
+    />
+  ),
+  "investigation-card-inconclusive": (
+    <InvestigationCard
+      block={investigationBlock(demoInvestigations.inconclusive)}
+      defaultExpanded
+      resolveUri={fixtureResolveUri}
+    />
+  ),
+  "investigation-card-dirty-commit": (
+    <InvestigationCard block={investigationBlock(demoInvestigations.dirtyCommit)} />
+  ),
+  // Through the production renderer: two revisions of one investigation reach
+  // the panel and latest-wins leaves a single, current card.
+  "investigation-card-revisions": (
+    <ViewBlocks
+      blocks={[
+        investigationBlock(demoInvestigations.streamingRev0),
+        investigationBlock(demoInvestigations.streamingRev1),
+      ]}
+      resolveUri={fixtureResolveUri}
+    />
+  ),
+
+  // --- Investigation card, the reviewed demo mockup ------------------------
   "investigation-streaming-rev0": (
     <DemoInvestigationCard investigation={demoInvestigations.streamingRev0} />
   ),

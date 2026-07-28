@@ -57,6 +57,12 @@ const NOOP_STORE: DashboardAgentStore = {
   persistMessages: async () => {},
   persistTurn: async () => {},
   setChatTitleIfDefault: async () => {},
+  upsertInvestigationRevision: async () => ({
+    ok: true,
+    id: "inv_eval",
+    revision: 0,
+    created: true,
+  }),
 };
 
 // Realistic, fixed tool results so the model has something concrete to act on

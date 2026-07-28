@@ -107,35 +107,72 @@ export const MANIFEST: GallerySection[] = [
     group: "view-blocks",
   },
 
-  // --- Investigation card (demo-only until M5) ------------------------------
+  // --- Investigation card ---------------------------------------------------
+  // The shipped `InvestigationCard` (fed the real block) first, then the demo
+  // mockup whose review froze the payload — kept so the two can be compared.
   {
-    sectionId: "investigation-streaming-rev0",
+    sectionId: "investigation-card-streaming-rev0",
     title: "Streaming, revision 0 — nothing settled",
     group: "investigation",
   },
   {
-    sectionId: "investigation-streaming-rev1",
+    sectionId: "investigation-card-streaming-rev1",
     title: "Streaming, revision 1 — one hypothesis settled",
     group: "investigation",
   },
   {
-    sectionId: "investigation-concluded",
+    sectionId: "investigation-card-concluded",
     title: "Concluded, collapsed",
     group: "investigation",
   },
   {
-    sectionId: "investigation-concluded-expanded",
+    sectionId: "investigation-card-concluded-expanded",
     title: "Concluded, details expanded",
     group: "investigation",
   },
   {
-    sectionId: "investigation-inconclusive",
+    sectionId: "investigation-card-inconclusive",
     title: "Inconclusive — no fix, what to check next",
     group: "investigation",
   },
   {
-    sectionId: "investigation-dirty-commit",
+    sectionId: "investigation-card-dirty-commit",
     title: "Dirty-commit caveat",
+    group: "investigation",
+  },
+  {
+    sectionId: "investigation-card-revisions",
+    title: "Two revisions of one investigation collapse to one card",
+    group: "investigation",
+  },
+  {
+    sectionId: "investigation-streaming-rev0",
+    title: "Demo mockup — streaming, revision 0",
+    group: "investigation",
+  },
+  {
+    sectionId: "investigation-streaming-rev1",
+    title: "Demo mockup — streaming, revision 1",
+    group: "investigation",
+  },
+  {
+    sectionId: "investigation-concluded",
+    title: "Demo mockup — concluded, collapsed",
+    group: "investigation",
+  },
+  {
+    sectionId: "investigation-concluded-expanded",
+    title: "Demo mockup — concluded, expanded",
+    group: "investigation",
+  },
+  {
+    sectionId: "investigation-inconclusive",
+    title: "Demo mockup — inconclusive",
+    group: "investigation",
+  },
+  {
+    sectionId: "investigation-dirty-commit",
+    title: "Demo mockup — dirty-commit caveat",
     group: "investigation",
   },
 

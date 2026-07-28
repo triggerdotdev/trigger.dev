@@ -1,5 +1,6 @@
 import type { AgentIntent, ViewBlock } from "@internal/dashboard-agent-contracts";
 import { AgentChart } from "./AgentChart";
+import { InvestigationCard } from "./InvestigationCard";
 import { ReportView, type ResolvedUri } from "./ReportView";
 import { RunDiagnosisCard } from "./RunDiagnosisCard";
 import { blockKey, latestRevisionBlocks } from "./view-blocks";
@@ -52,6 +53,10 @@ export function ViewBlocks({
             return <RunDiagnosisCard key={key} block={block} />;
           case "chart":
             return <AgentChart key={key} block={block} />;
+          // The one progressive block: revisions share the investigationId, so
+          // latest-wins above keeps a single live card.
+          case "investigation":
+            return <InvestigationCard key={key} block={block} resolveUri={resolveUri} />;
           case "report":
             return (
               <ReportView

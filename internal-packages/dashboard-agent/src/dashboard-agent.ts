@@ -5,7 +5,9 @@ import {
   persistMessages,
   persistTurn,
   setChatTitleIfDefault,
+  upsertInvestigationRevision,
   type DashboardAgentDbClient,
+  type UpsertInvestigationResult,
 } from "@internal/dashboard-agent-db";
 import { chat } from "@trigger.dev/sdk/ai";
 import { locals, logger, tasks } from "@trigger.dev/sdk";
@@ -73,6 +75,14 @@ export interface DashboardAgentStore {
   persistMessages(args: Parameters<typeof persistMessages>[1]): Promise<unknown>;
   persistTurn(args: Parameters<typeof persistTurn>[1]): Promise<unknown>;
   setChatTitleIfDefault(args: Parameters<typeof setChatTitleIfDefault>[1]): Promise<unknown>;
+  /**
+   * Commit one investigation revision. The only write the tool lane performs —
+   * `render_view`'s investigation executor calls it through the capability wired
+   * onto the tool context below.
+   */
+  upsertInvestigationRevision(
+    args: Parameters<typeof upsertInvestigationRevision>[1]
+  ): Promise<UpsertInvestigationResult>;
 }
 
 export const dashboardAgentStoreKey = locals.create<DashboardAgentStore>("dashboard-agent.store");
@@ -88,6 +98,7 @@ function getStore(): DashboardAgentStore {
     persistMessages: (args) => persistMessages(db, args),
     persistTurn: (args) => persistTurn(db, args),
     setChatTitleIfDefault: (args) => setChatTitleIfDefault(db, args),
+    upsertInvestigationRevision: (args) => upsertInvestigationRevision(db, args),
   });
 }
 
@@ -285,8 +296,18 @@ export const dashboardAgent = chat.agent({
   // Read-only tools, rebuilt per turn from the delegated token the `in` proxy
   // injects. Declaring them here (not just inside run) lets the SDK re-apply
   // each tool's output conversion when it replays prior-turn history.
-  tools: async ({ clientData }) =>
-    locals.get(dashboardAgentToolsKey) ?? buildDashboardAgentTools(clientData ?? {}),
+  // The `investigations` capability is the one seam from the tool lane to the
+  // agent's datastore: the store is reached here (where the chat id is known) and
+  // handed to the tools as a single narrow write, so `tools.ts` stays free of the
+  // database package.
+  tools: async ({ chatId, clientData }) =>
+    locals.get(dashboardAgentToolsKey) ??
+    buildDashboardAgentTools({
+      ...(clientData ?? {}),
+      investigations: {
+        upsert: (params) => getStore().upsertInvestigationRevision({ ...params, chatId }),
+      },
+    }),
 
   onBoot: async () => {
     // Establish the store (and, in production, its connection pool) once.

@@ -36,6 +36,30 @@ describe("latestRevisionBlocks", () => {
     expect(latestRevisionBlocks(blocks)).toEqual([legacy, enveloped("d1", 2)]);
   });
 
+  // The investigation block is the one *progressive* block: the executor commits
+  // a revision per render and stamps it on, so a chat that renders the same
+  // investigation three times must still show one card — the current one.
+  it("collapses an investigation's revisions to the current one", () => {
+    const revision = (n: number, outcome: string) => ({
+      type: "investigation",
+      id: "inv_abc123",
+      revision: n,
+      version: 1,
+      investigation: { outcome },
+    });
+    const blocks = [
+      revision(0, "in_progress"),
+      revision(1, "in_progress"),
+      revision(2, "concluded"),
+    ];
+    expect(latestRevisionBlocks(blocks)).toEqual([revision(2, "concluded")]);
+  });
+
+  it("keeps two different investigations apart", () => {
+    const blocks = [enveloped("inv_1", 1, "investigation"), enveloped("inv_2", 0, "investigation")];
+    expect(latestRevisionBlocks(blocks)).toEqual(blocks);
+  });
+
   it("tolerates a non-array", () => {
     expect(latestRevisionBlocks(undefined as unknown as unknown[])).toEqual([]);
   });

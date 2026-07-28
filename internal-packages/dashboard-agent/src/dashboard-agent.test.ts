@@ -88,6 +88,7 @@ type StoreCalls = {
   persistMessages: unknown[];
   persistTurn: unknown[];
   setChatTitleIfDefault: unknown[];
+  upsertInvestigationRevision: unknown[];
 };
 
 function fakeStore(): { store: DashboardAgentStore; calls: StoreCalls } {
@@ -96,12 +97,17 @@ function fakeStore(): { store: DashboardAgentStore; calls: StoreCalls } {
     persistMessages: [],
     persistTurn: [],
     setChatTitleIfDefault: [],
+    upsertInvestigationRevision: [],
   };
   const store: DashboardAgentStore = {
     ensureChat: async (args) => void calls.ensureChat.push(args),
     persistMessages: async (args) => void calls.persistMessages.push(args),
     persistTurn: async (args) => void calls.persistTurn.push(args),
     setChatTitleIfDefault: async (args) => void calls.setChatTitleIfDefault.push(args),
+    upsertInvestigationRevision: async (args) => {
+      calls.upsertInvestigationRevision.push(args);
+      return { ok: true, id: "inv_fake", revision: 0, created: true };
+    },
   };
   return { store, calls };
 }
@@ -503,6 +509,200 @@ describe("buildDashboardAgentTools", () => {
       {}
     );
     expect(typeof result.error).toBe("string");
+  });
+
+  // -------------------------------------------------------------------------
+  // render_view: the investigation executor owns identity
+  // -------------------------------------------------------------------------
+
+  // A fake of the `investigations` capability that behaves like the real query:
+  // no id creates at revision 0, an id bumps the revision atomically, and a
+  // foreign id reports a context mismatch without writing.
+  function fakeInvestigations(overrides: { mismatch?: boolean } = {}) {
+    const rows = new Map<string, { revision: number; state: unknown }>();
+    const upserts: Array<Record<string, unknown>> = [];
+    let next = 1;
+    return {
+      rows,
+      upserts,
+      capability: {
+        upsert: async (params: {
+          id?: string;
+          projectRef: string;
+          environmentRef: string;
+          state: unknown;
+        }) => {
+          upserts.push(params);
+          if (overrides.mismatch) return { ok: false as const, error: "context_mismatch" as const };
+          if (!params.id) {
+            const id = `inv_fake${next++}`;
+            rows.set(id, { revision: 0, state: params.state });
+            return { ok: true as const, id, revision: 0, created: true };
+          }
+          const row = rows.get(params.id);
+          if (!row) return { ok: false as const, error: "not_found" as const };
+          row.revision += 1;
+          row.state = params.state;
+          return { ok: true as const, id: params.id, revision: row.revision, created: false };
+        },
+      },
+    };
+  }
+
+  const investigationState = {
+    outcome: "in_progress",
+    severity: "warn",
+    confidence: "low",
+    runId: "run_abc123",
+    title: "Why is send-order-receipt failing?",
+    headline: "All three attempts ended in an error from the email provider.",
+    progress: "Reading the run's spans",
+    hypotheses: [
+      {
+        id: "hyp_rate_limit",
+        statement: "The provider is rate limiting this API key.",
+        verdict: "testing",
+        evidence: [],
+      },
+    ],
+    evidence: [
+      {
+        kind: "run",
+        uri: "trigger://proj_abc/env_abc/run/run_abc123",
+        label: "run_abc123 · failed after 3 attempts",
+      },
+    ],
+  };
+
+  // Parse through the tool's own inputSchema first, the way the AI SDK does, so
+  // these tests exercise the model-facing boundary and not a hand-built object.
+  const renderInvestigation = async (
+    tools: ReturnType<typeof buildDashboardAgentTools>,
+    state: Record<string, unknown> = investigationState
+  ) => {
+    const renderView = tools.render_view as {
+      inputSchema: { parse: (input: unknown) => unknown };
+      execute: (input: unknown, opts: unknown) => Promise<any>;
+    };
+    const input = renderView.inputSchema.parse({
+      blocks: [{ type: "investigation", investigation: state }],
+    });
+    return renderView.execute(input, {});
+  };
+
+  it("render_view assigns an investigation's identity on the first render", async () => {
+    const { capability, upserts } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const output = await renderInvestigation(tools);
+
+    // Revision 0 was committed with the turn's own project/environment, and the
+    // block that reaches the transcript carries the identity the store assigned.
+    expect(upserts).toHaveLength(1);
+    expect(upserts[0]).toMatchObject({
+      id: undefined,
+      projectRef: "proj_abc",
+      environmentRef: "env_abc",
+    });
+    expect(output.investigationId).toBe("inv_fake1");
+    expect(output.blocks[0]).toMatchObject({ id: "inv_fake1", revision: 0, version: 1 });
+    expect(output.blocks[0].investigation.title).toBe(investigationState.title);
+  });
+
+  it("render_view revises the same investigation on the next render", async () => {
+    const { capability, rows } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const first = await renderInvestigation(tools);
+    const second = await renderInvestigation(tools, {
+      ...investigationState,
+      outcome: "concluded",
+      confidence: "high",
+      remediation: "Raise minTimeoutInMs to 30s with a factor of 2.",
+      hypotheses: [
+        {
+          ...investigationState.hypotheses[0]!,
+          verdict: "validated",
+          finding: "All three attempts returned 429 inside 20 seconds.",
+        },
+      ],
+    });
+
+    // One investigation, two revisions — so the panel shows one live card.
+    expect(rows.size).toBe(1);
+    expect(second.investigationId).toBe(first.investigationId);
+    expect(second.blocks[0].revision).toBe(1);
+    expect(second.blocks[0].investigation.remediation).toBeDefined();
+  });
+
+  it("render_view reports a context mismatch instead of overwriting", async () => {
+    const { capability } = fakeInvestigations({ mismatch: true });
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const output = await renderInvestigation(tools);
+    expect(typeof output.error).toBe("string");
+    expect(output.blocks).toBeUndefined();
+  });
+
+  it("render_view fails closed when the turn can't scope an investigation", async () => {
+    const { capability } = fakeInvestigations();
+    // No store seam at all (an older turn), and no project/environment.
+    expect(typeof (await renderInvestigation(buildDashboardAgentTools({}))).error).toBe("string");
+    expect(
+      typeof (await renderInvestigation(buildDashboardAgentTools({ investigations: capability })))
+        .error
+    ).toBe("string");
+  });
+
+  it("render_view ignores an id the model tries to supply", async () => {
+    const { capability, upserts } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const renderView = tools.render_view as {
+      inputSchema: { parse: (input: unknown) => unknown };
+      execute: (input: unknown, opts: unknown) => Promise<any>;
+    };
+    const input = renderView.inputSchema.parse({
+      blocks: [
+        {
+          type: "investigation",
+          // Everything the model could try: envelope fields on the block and
+          // identity inside the payload. All stripped by the input schema.
+          id: "inv_smuggled",
+          revision: 42,
+          version: 9,
+          investigation: {
+            ...investigationState,
+            investigationId: "inv_smuggled",
+            revision: 42,
+          },
+        },
+      ],
+    });
+    const output = await renderView.execute(input, {});
+
+    expect(output.blocks[0].id).toBe("inv_fake1");
+    expect(output.blocks[0].revision).toBe(0);
+    expect(output.blocks[0].version).toBe(1);
+    // The state the store persisted carries no identity either.
+    expect(upserts[0]?.state).not.toHaveProperty("investigationId");
+    expect(upserts[0]?.state).not.toHaveProperty("revision");
+  });
+
+  it("render_view still echoes a spec with no investigation in it", async () => {
+    const { capability } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+    const renderView = tools.render_view as {
+      execute: (input: unknown, opts: unknown) => Promise<any>;
+    };
+    const chart = {
+      type: "chart",
+      query: "SELECT toStartOfHour(created_at) AS bucket, count() AS runs FROM runs",
+      chartType: "line",
+      xAxisColumn: "bucket",
+      yAxisColumns: ["runs"],
+    };
+    await expect(renderView.execute({ blocks: [chart] }, {})).resolves.toEqual({ blocks: [chart] });
   });
 
   it("get_current_page returns the turn's structured page context", async () => {

@@ -1,8 +1,12 @@
 import {
   agentIntentSchema,
   formatTriggerUri,
+  investigationBlockSchema,
+  VIEW_BLOCK_VERSION,
   type AgentPageContext,
+  type InvestigationBlockBody,
   type ParsedTriggerUri,
+  type ViewBlockInput,
 } from "@internal/dashboard-agent-contracts";
 import { tool, type ToolSet } from "ai";
 import {
@@ -62,6 +66,35 @@ export type DashboardAgentToolContext = {
   // Present only when the current project has a connected GitHub repo: a signed
   // archive pointer the code-mode file tools read from. Adds the source tools.
   repoSnapshot?: RepoSnapshot;
+  // The narrow seam to the agent's own datastore, supplied per turn by
+  // dashboard-agent.ts (which knows the chat id). Only the investigation
+  // executor uses it; everything else in this file reaches data through the API.
+  investigations?: InvestigationsCapability;
+};
+
+/**
+ * Committing one investigation revision — the only write the tool lane performs.
+ *
+ * Deliberately a capability rather than a database import: this file is the tool
+ * lane, and it must stay reachable without `@internal/dashboard-agent-db` (and
+ * its postgres/drizzle runtime). `dashboard-agent.ts` supplies the real
+ * implementation over `upsertInvestigationRevision`, tests inject a fake.
+ *
+ * Without an `id` the store creates the investigation at revision 0 and returns
+ * the id it generated; with one it bumps the revision atomically. The result
+ * mirrors the query's, so a mismatched context surfaces as an error the model can
+ * report instead of a silent overwrite.
+ */
+export type InvestigationsCapability = {
+  upsert(params: {
+    id?: string;
+    projectRef: string;
+    environmentRef: string;
+    state: unknown;
+  }): Promise<
+    | { ok: true; id: string; revision: number; created: boolean }
+    | { ok: false; error: "not_found" | "context_mismatch" }
+  >;
 };
 
 type FetchResult = { ok: true; data: unknown } | { ok: false; status: number };
@@ -449,6 +482,83 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     };
   };
 
+  // The investigation this tool set is working on. Assigned by the store on the
+  // first investigation block and reused after that, so a second render revises
+  // the same card instead of opening a second investigation. Scoped to the tool
+  // set (one per turn), which is why the model never has to carry the id.
+  let currentInvestigationId: string | undefined;
+
+  /**
+   * Stamp identity onto the spec's investigation blocks, committing a revision for
+   * each one first.
+   *
+   * The model emits investigation *state*; the row in the investigations table is
+   * what says which investigation that is and which revision this render makes.
+   * So the executor writes first and stamps the envelope from what came back — the
+   * transcript then carries canonical identity, and the panel collapses revisions
+   * latest-wins onto one live card. Other block types pass through untouched.
+   */
+  async function renderInvestigations(blocks: ViewBlockInput[]) {
+    if (!blocks.some((block) => block.type === "investigation")) return { blocks };
+
+    if (!ctx.investigations) {
+      return { error: "Investigations aren't available on this turn, so I can't render one." };
+    }
+    if (!projectRef || !ctx.environmentId) {
+      return {
+        error:
+          "No current project and environment for this turn, so an investigation can't be scoped. Answer in prose instead.",
+      };
+    }
+
+    const rendered: unknown[] = [];
+    let investigationId: string | undefined;
+
+    for (const block of blocks) {
+      if (block.type !== "investigation") {
+        rendered.push(block);
+        continue;
+      }
+
+      const result = await ctx.investigations.upsert({
+        id: currentInvestigationId,
+        projectRef,
+        environmentRef: ctx.environmentId,
+        state: (block as InvestigationBlockBody).investigation,
+      });
+
+      if (!result.ok) {
+        // Either the investigation is gone or it belongs to another
+        // chat/project/environment. Nothing was written; say so rather than
+        // rendering a card whose identity we couldn't establish.
+        return {
+          error:
+            result.error === "context_mismatch"
+              ? "That investigation belongs to a different chat, project, or environment, so it can't be updated here."
+              : "That investigation no longer exists, so there was nothing to update.",
+        };
+      }
+
+      currentInvestigationId = result.id;
+      investigationId = result.id;
+
+      const parsed = investigationBlockSchema.safeParse({
+        ...block,
+        id: result.id,
+        revision: result.revision,
+        version: VIEW_BLOCK_VERSION,
+      });
+      if (!parsed.success) {
+        return { error: "Couldn't render that investigation: the card payload didn't validate." };
+      }
+      rendered.push(parsed.data);
+    }
+
+    // Tell the model which investigation it just rendered, so it can talk about
+    // the card it produced without inventing (or needing to track) an id.
+    return { blocks: rendered, investigationId };
+  }
+
   const apiTools: ToolSet = {
     list_projects: tool({
       ...listProjectsSchema,
@@ -689,11 +799,15 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
     // Presentation tool, not a data tool: it renders a view spec the agent
     // composed from already-gathered data. zod validates the spec before this
-    // runs, so execute just echoes it back as the tool output for the dashboard
-    // render registry to pick up. No auth, no API call — always available.
+    // runs, so for most blocks execute just echoes it back as the tool output for
+    // the dashboard render registry to pick up.
+    //
+    // An `investigation` block is the exception — see `renderInvestigations`: it
+    // is the one progressive block, so the executor (not the model) owns its
+    // identity and commits each revision before the block reaches the transcript.
     render_view: tool({
       ...renderViewSchema,
-      execute: async (view) => view,
+      execute: async (view) => renderInvestigations(view.blocks),
     }),
 
     get_report: tool({

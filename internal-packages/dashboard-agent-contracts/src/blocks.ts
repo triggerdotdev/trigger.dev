@@ -26,6 +26,7 @@
  * `id` is a **non-revisable** block: it can never be replaced by a later revision
  * and is rendered in transcript order.
  */
+import { evidenceSchema } from "./evidence.js";
 import { triggerUriSchema } from "./trigger-uri.js";
 import { z } from "zod";
 
@@ -48,10 +49,7 @@ import { z } from "zod";
  *   `revision` is always 0 — reports are immutable snapshots of a moment.
  * - An **investigation** block's `id` is the `investigationId` and its `revision`
  *   increases as the investigation progresses, so the panel shows one live card
- *   rather than a stack of near-duplicates.
- *
- * The investigation payload schema is NOT defined here yet (M5 owns it) — only
- * its identity rule is frozen now.
+ *   rather than a stack of near-duplicates. It is the only progressive block.
  */
 export const blockEnvelopeSchema = z.object({
   id: z.string(),
@@ -376,6 +374,144 @@ const reportBlockBodySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// investigation
+// ---------------------------------------------------------------------------
+
+/**
+ * The investigation card's payload — the state of one investigation, as the
+ * agent currently understands it.
+ *
+ * Frozen by the design review of `DemoInvestigationCard` (see the demo card and
+ * its fixtures in the webapp): this schema is that card's props, so a reviewed
+ * layout and the shipped block can't drift.
+ *
+ * Two things are deliberately NOT in here: the `investigationId` and the
+ * `revision`. Identity is system-owned — it lives in the block envelope, stamped
+ * by the `render_view` executor after it commits the revision to the
+ * investigations table. The model reports state only, so it can neither invent an
+ * id nor claim a revision it didn't earn.
+ */
+export const investigationOutcomeSchema = z.enum(["in_progress", "concluded", "inconclusive"]);
+
+/** Mirrors the report's severity ladder minus `ok` — an investigation exists because something was wrong. */
+export const investigationSeveritySchema = z.enum(["info", "warn", "crit"]);
+
+/** `testing` is live; the other two are terminal. */
+export const hypothesisVerdictSchema = z.enum(["testing", "validated", "invalidated"]);
+
+export const investigationHypothesisSchema = z
+  .object({
+    id: z
+      .string()
+      .describe("A stable id for this hypothesis, so it keeps its place across revisions."),
+    statement: z.string().describe("The claim, as one falsifiable sentence."),
+    verdict: hypothesisVerdictSchema.describe(
+      "Where this hypothesis stands. `testing` while you're still working it."
+    ),
+    finding: z
+      .string()
+      .optional()
+      .describe("Why the verdict, in one sentence. Required once the verdict is `validated`."),
+    evidence: z.array(evidenceSchema).default([]).describe("The citations that settled it."),
+  })
+  .superRefine((hypothesis, ctx) => {
+    // A validated hypothesis with no finding is an assertion, not a conclusion.
+    if (hypothesis.verdict === "validated" && !hypothesis.finding?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["finding"],
+        message: "A validated hypothesis must say what settled it (`finding`).",
+      });
+    }
+  });
+
+/**
+ * A caveat qualifies the whole card. `dirty_commit` is the one v1 case: the
+ * source we read is the nearest repository snapshot, not provably the deployed
+ * code, so every source citation inherits the hedge. Adding a kind is additive.
+ */
+export const investigationCaveatSchema = z.object({
+  kind: z.literal("dirty_commit"),
+  message: z.string(),
+});
+
+export const investigationStateSchema = z
+  .object({
+    outcome: investigationOutcomeSchema.describe(
+      "`in_progress` while testing, `concluded` when there's a cause and a fix, `inconclusive` when the evidence ran out."
+    ),
+    severity: investigationSeveritySchema.describe("How bad it is."),
+    confidence: z
+      .enum(["high", "medium", "low"])
+      .describe("How much the evidence supports this. Be honest."),
+    runId: z.string().optional().describe("The run under investigation, e.g. run_abc123."),
+    title: z
+      .string()
+      .describe("Short headline, e.g. 'send-order-receipt is failing on every retry'."),
+    headline: z
+      .string()
+      .describe(
+        "The collapsed view's first paragraph: concluded — severity and cause in a sentence or two; otherwise what you've established so far."
+      ),
+    remediation: z
+      .string()
+      .optional()
+      .describe("How to fix it. ONLY when the outcome is `concluded` — never alongside checkNext."),
+    checkNext: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "What the user should check, most useful first. ONLY when the outcome is `inconclusive` — never invent a fix instead."
+      ),
+    progress: z
+      .string()
+      .optional()
+      .describe(
+        "What you're doing right now, e.g. 'Reading the run's spans'. Only while in_progress."
+      ),
+    hypotheses: z
+      .array(investigationHypothesisSchema)
+      .default([])
+      .describe("The hypotheses you posed, including the ones you ruled out."),
+    evidence: z
+      .array(evidenceSchema)
+      .default([])
+      .describe("Citations backing the headline itself, beyond the per-hypothesis ones."),
+    caveat: investigationCaveatSchema.optional().describe("A hedge that qualifies the whole card."),
+    /** Optional timestamps for the record. The card doesn't render them. */
+    startedAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .superRefine((investigation, ctx) => {
+    // Remediation XOR checkNext, decided by the outcome: a concluded
+    // investigation offers a fix, an inconclusive one offers what to check, and
+    // neither is allowed to borrow the other's ending.
+    if (investigation.remediation !== undefined && investigation.outcome !== "concluded") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["remediation"],
+        message: "Only a concluded investigation can offer a fix.",
+      });
+    }
+    if (
+      investigation.checkNext !== undefined &&
+      investigation.checkNext.length > 0 &&
+      investigation.outcome !== "inconclusive"
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["checkNext"],
+        message: "`checkNext` belongs to an inconclusive investigation.",
+      });
+    }
+  });
+
+const investigationBlockBodySchema = z.object({
+  type: z.literal("investigation"),
+  investigation: investigationStateSchema,
+});
+
+// ---------------------------------------------------------------------------
 // Model-facing input schemas (no envelope)
 // ---------------------------------------------------------------------------
 
@@ -388,10 +524,18 @@ const reportBlockBodySchema = z.object({
 export const viewBlockInputSchema = z.discriminatedUnion("type", [
   diagnosisBlockBodySchema,
   chartBlockBodySchema,
+  investigationBlockBodySchema,
 ]);
 
 export type DiagnosisBlockBody = z.infer<typeof diagnosisBlockBodySchema>;
 export type ChartBlockBody = z.infer<typeof chartBlockBodySchema>;
+export type InvestigationBlockBody = z.infer<typeof investigationBlockBodySchema>;
+export type InvestigationState = z.infer<typeof investigationStateSchema>;
+export type InvestigationHypothesis = z.infer<typeof investigationHypothesisSchema>;
+export type InvestigationOutcome = z.infer<typeof investigationOutcomeSchema>;
+export type InvestigationSeverity = z.infer<typeof investigationSeveritySchema>;
+export type HypothesisVerdict = z.infer<typeof hypothesisVerdictSchema>;
+export type InvestigationCaveat = z.infer<typeof investigationCaveatSchema>;
 export type ViewBlockInput = z.infer<typeof viewBlockInputSchema>;
 
 // ---------------------------------------------------------------------------
@@ -400,6 +544,14 @@ export type ViewBlockInput = z.infer<typeof viewBlockInputSchema>;
 
 export const diagnosisBlockSchema = diagnosisBlockBodySchema.merge(blockEnvelopeSchema);
 export const chartBlockSchema = chartBlockBodySchema.merge(blockEnvelopeSchema);
+
+/**
+ * An investigation at one point in time. `id` is the `investigationId` and
+ * `revision` is the revision the store committed — so re-emitting the same
+ * investigation with better information replaces the card instead of stacking a
+ * second one (latest-wins in `latestRevisionBlocks`).
+ */
+export const investigationBlockSchema = investigationBlockBodySchema.merge(blockEnvelopeSchema);
 
 /**
  * A report snapshot. `id` is the id of the `get_report` tool call that produced
@@ -416,11 +568,13 @@ export const viewBlockSchema = z.discriminatedUnion("type", [
   diagnosisBlockSchema,
   chartBlockSchema,
   reportBlockSchema,
+  investigationBlockSchema,
 ]);
 
 export type EnvelopedDiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
 export type EnvelopedChartBlock = z.infer<typeof chartBlockSchema>;
 export type EnvelopedReportBlock = z.infer<typeof reportBlockSchema>;
+export type EnvelopedInvestigationBlock = z.infer<typeof investigationBlockSchema>;
 export type EnvelopedViewBlock = z.infer<typeof viewBlockSchema>;
 
 // ---------------------------------------------------------------------------
@@ -430,12 +584,15 @@ export type EnvelopedViewBlock = z.infer<typeof viewBlockSchema>;
 export const legacyDiagnosisBlockSchema = diagnosisBlockBodySchema.extend(optionalEnvelopeShape);
 export const legacyChartBlockSchema = chartBlockBodySchema.extend(optionalEnvelopeShape);
 export const legacyReportBlockSchema = reportBlockBodySchema.extend(optionalEnvelopeShape);
+export const legacyInvestigationBlockSchema =
+  investigationBlockBodySchema.extend(optionalEnvelopeShape);
 
 /** Parse stored transcript blocks with this: pre-envelope blocks still validate. */
 export const legacyViewBlockSchema = z.discriminatedUnion("type", [
   legacyDiagnosisBlockSchema,
   legacyChartBlockSchema,
   legacyReportBlockSchema,
+  legacyInvestigationBlockSchema,
 ]);
 
 /**
@@ -448,6 +605,7 @@ export const legacyViewBlockSchema = z.discriminatedUnion("type", [
 export type DiagnosisBlock = z.infer<typeof legacyDiagnosisBlockSchema>;
 export type ChartBlock = z.infer<typeof legacyChartBlockSchema>;
 export type ReportBlock = z.infer<typeof legacyReportBlockSchema>;
+export type InvestigationBlock = z.infer<typeof legacyInvestigationBlockSchema>;
 export type ViewBlock = z.infer<typeof legacyViewBlockSchema>;
 
 /** Lenient parse of one stored block. */

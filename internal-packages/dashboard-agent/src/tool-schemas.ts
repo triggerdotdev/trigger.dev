@@ -330,14 +330,15 @@ export const navigateToSchema = tool({
 //
 // The tool takes `viewBlockInputSchema` — the BODY-only schema, with no
 // `{ id, revision, version }` envelope. Block identity is system-owned: the model
-// never supplies it, and the executor/persistence layer stamps the envelope on
-// (M5). The strict enveloped schema (`viewBlockSchema` in contracts) is for
-// renderers and storage, not for the model.
+// never supplies it, and the executor in `tools.ts` stamps the envelope on (for an
+// `investigation` it does that from the revision the store committed). The strict
+// enveloped schema (`viewBlockSchema` in contracts) is for renderers and storage,
+// not for the model.
 // ---------------------------------------------------------------------------
 
 export const renderViewSchema = tool({
   description:
-    "Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has two blocks: `diagnosis` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools) and `chart` (a line/bar chart of run_query results). Keep any accompanying message to a one-line lead-in.",
+    "Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has three blocks: `diagnosis` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools), `chart` (a line/bar chart of run_query results), and `investigation` (a live card for a hypothesis-driven investigation: report the state and the tool assigns and keeps its identity, so re-rendering it updates the same card). Keep any accompanying message to a one-line lead-in.",
   inputSchema: z.object({
     blocks: z.array(viewBlockInputSchema).min(1).describe("The blocks to render, top to bottom."),
   }),

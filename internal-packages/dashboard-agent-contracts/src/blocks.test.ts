@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   VIEW_BLOCK_VERSION,
+  investigationBlockSchema,
   isRevisableBlock,
   legacyViewBlockSchema,
   parseStoredViewBlock,
   reportBlockSchema,
   viewBlockInputSchema,
   viewBlockSchema,
+  type EnvelopedInvestigationBlock,
   type EnvelopedReportBlock,
   type EnvelopedViewBlock,
   type ViewBlock,
@@ -249,6 +251,149 @@ describe("report block", () => {
       false
     );
     expect(reportBlockSchema.safeParse({ ...reportBlock, vm: null }).success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// investigation
+// ---------------------------------------------------------------------------
+
+const runEvidence = {
+  kind: "run" as const,
+  uri: "trigger://proj_abc/env_abc/run/run_abc123",
+  label: "run_abc123 · failed after 3 attempts",
+  excerpt: "attempt 1 429 · attempt 2 429 · attempt 3 429",
+};
+
+const concludedInvestigation = {
+  outcome: "concluded",
+  severity: "crit",
+  confidence: "high",
+  runId: "run_abc123",
+  title: "send-order-receipt is failing on every retry",
+  headline: "The provider is rate limiting this key and all three retries land in the same window.",
+  remediation: "Raise minTimeoutInMs to 30s with a factor of 2 and cap the queue at 20.",
+  hypotheses: [
+    {
+      id: "hyp_rate_limit",
+      statement: "The email provider is rate limiting this API key.",
+      verdict: "validated",
+      finding: "All three attempts returned 429 rate_limit_exceeded inside 20 seconds.",
+      evidence: [runEvidence],
+    },
+  ],
+  evidence: [runEvidence],
+};
+
+const investigationBody = { type: "investigation", investigation: concludedInvestigation };
+const investigationBlock = { ...investigationBody, id: "inv_abc123", revision: 2, version: 1 };
+
+describe("investigation block", () => {
+  it("round-trips body and envelope", () => {
+    expect(viewBlockInputSchema.safeParse(investigationBody).success).toBe(true);
+
+    const strict: EnvelopedInvestigationBlock = investigationBlockSchema.parse(investigationBlock);
+    expect(strict.id).toBe("inv_abc123");
+    expect(strict.revision).toBe(2);
+    expect(strict.investigation.remediation).toBeDefined();
+    // And it survives the JSON round-trip that carries it into a transcript.
+    expect(investigationBlockSchema.parse(JSON.parse(JSON.stringify(strict)))).toEqual(strict);
+  });
+
+  it("is in the strict and the lenient unions", () => {
+    expect(viewBlockSchema.safeParse(investigationBlock).success).toBe(true);
+    // Enveloped values are assignable to the lenient renderer type.
+    const lenient: ViewBlock = investigationBlockSchema.parse(investigationBlock);
+    expect(lenient.type).toBe("investigation");
+    // A pre-envelope stored block still parses.
+    expect(parseStoredViewBlock(investigationBody).id).toBeUndefined();
+  });
+
+  it("strips identity the model tried to supply", () => {
+    const parsed = viewBlockInputSchema.parse({
+      ...investigationBody,
+      id: "inv_smuggled",
+      revision: 9,
+      version: 3,
+      investigation: { ...concludedInvestigation, investigationId: "inv_smuggled", revision: 9 },
+    }) as { investigation: Record<string, unknown> };
+    expect(parsed).not.toHaveProperty("id");
+    expect(parsed).not.toHaveProperty("revision");
+    expect(parsed.investigation).not.toHaveProperty("investigationId");
+    expect(parsed.investigation).not.toHaveProperty("revision");
+  });
+
+  it("lets a concluded investigation offer a fix, but never what-to-check-next", () => {
+    expect(
+      viewBlockInputSchema.safeParse({
+        ...investigationBody,
+        investigation: { ...concludedInvestigation, checkNext: ["Add a span"] },
+      }).success
+    ).toBe(false);
+  });
+
+  it("lets an inconclusive investigation say what to check, but never a fix", () => {
+    const inconclusive = {
+      ...concludedInvestigation,
+      outcome: "inconclusive",
+      remediation: undefined,
+      checkNext: ["Add a span around the aggregation step."],
+    };
+    expect(
+      viewBlockInputSchema.safeParse({ type: "investigation", investigation: inconclusive }).success
+    ).toBe(true);
+    expect(
+      viewBlockInputSchema.safeParse({
+        type: "investigation",
+        investigation: { ...inconclusive, remediation: "Just retry it." },
+      }).success
+    ).toBe(false);
+  });
+
+  it("requires a finding once a hypothesis is validated", () => {
+    const withoutFinding = {
+      ...concludedInvestigation,
+      hypotheses: [{ ...concludedInvestigation.hypotheses[0]!, finding: undefined }],
+    };
+    expect(
+      viewBlockInputSchema.safeParse({ type: "investigation", investigation: withoutFinding })
+        .success
+    ).toBe(false);
+    // A hypothesis still being tested doesn't need one.
+    expect(
+      viewBlockInputSchema.safeParse({
+        type: "investigation",
+        investigation: {
+          ...concludedInvestigation,
+          hypotheses: [
+            { id: "hyp_open", statement: "Something else.", verdict: "testing", evidence: [] },
+          ],
+        },
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects evidence that doesn't point at a trigger:// resource", () => {
+    expect(
+      viewBlockInputSchema.safeParse({
+        type: "investigation",
+        investigation: {
+          ...concludedInvestigation,
+          evidence: [{ kind: "run", uri: "https://example.com/run", label: "a run" }],
+        },
+      }).success
+    ).toBe(false);
+  });
+
+  it("is the one progressive block: revisions share an id and climb", () => {
+    const rev0 = investigationBlockSchema.parse({ ...investigationBlock, revision: 0 });
+    const rev1 = investigationBlockSchema.parse({ ...investigationBlock, revision: 1 });
+    expect(rev0.id).toBe(rev1.id);
+    expect(rev1.revision).toBeGreaterThan(rev0.revision);
+    // Unlike a report, whose revision is pinned to 0.
+    expect(
+      investigationBlockSchema.safeParse({ ...investigationBlock, revision: -1 }).success
+    ).toBe(false);
   });
 });
 
