@@ -152,7 +152,7 @@ export default function Page() {
   return (
     <>
       <NavBar>
-        <PageTitle title="Deliveries" />
+        <PageTitle title="Webhook deliveries" />
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">

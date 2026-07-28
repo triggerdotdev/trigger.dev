@@ -886,23 +886,6 @@ export function SideMenu({
     });
   }
 
-  if (user.admin || user.isImpersonating || featureFlags.hasWebhooksAccess) {
-    staticSections.push({
-      id: "webhooks",
-      title: "Webhooks",
-      items: [
-        {
-          id: "webhook-deliveries",
-          name: "Deliveries",
-          icon: WebhookIcon,
-          activeIconColor: "text-webhooks",
-          to: v3WebhooksPath(organization, project, environment),
-          dataAction: "webhook-deliveries",
-        },
-      ],
-    });
-  }
-
   staticSections.push({
     id: "deployments",
     title: "Deployments",
@@ -1204,6 +1187,19 @@ export function SideMenu({
                 isCollapsed={isCollapsed}
                 yieldActiveToFavorite
               />
+              {(user.admin || user.isImpersonating || featureFlags.hasWebhooksAccess) && (
+                <SideMenuItem
+                  name="Webhooks"
+                  icon={WebhookIcon}
+                  activeIconColor="text-webhooks"
+                  inactiveIconColor="text-text-dimmed"
+                  to={v3WebhooksPath(organization, project, environment)}
+                  data-action="webhooks"
+                  badge={<NewBadge />}
+                  isCollapsed={isCollapsed}
+                  yieldActiveToFavorite
+                />
+              )}
             </div>
 
             {orderedSectionIds.map((sectionId) => {
