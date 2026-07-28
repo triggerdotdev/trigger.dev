@@ -1,3 +1,5 @@
+import { redact } from "../../logger.js";
+
 type StructuredArgs = (Record<string, unknown> | undefined)[];
 
 export interface StructuredLogger {
@@ -88,14 +90,14 @@ export class SimpleStructuredLogger implements StructuredLogger {
     level: string,
     ...args: StructuredArgs
   ) {
-    const structuredLog = {
+    const structuredLog = redact({
       timestamp: new Date(),
       message,
       $name: this.name,
       $level: level,
       ...this.fields,
       ...(args.length === 1 ? args[0] : args),
-    };
+    }) as Record<string, unknown>;
 
     if (SimpleStructuredLogger.onLog) {
       try {

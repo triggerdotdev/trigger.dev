@@ -1,4 +1,5 @@
 import { Logger, redact } from "../src/logger.js";
+import { SimpleStructuredLogger } from "../src/v3/utils/structuredLogger.js";
 
 function captureLogLine(fn: () => void): Record<string, any> {
   const spy = vi.spyOn(console, "info").mockImplementation(() => {});
@@ -164,6 +165,26 @@ describe("Logger redaction", () => {
     const line = captureErrorLogLine(() => logger.error("boom", { error }));
 
     expect(line.error.message).toMatch(/^\[filtered/);
+  });
+});
+
+describe("SimpleStructuredLogger redaction", () => {
+  it("redacts fields and arguments with the default deny-list", () => {
+    const logger = new SimpleStructuredLogger("test");
+
+    const line = captureLogLine(() =>
+      logger.child({ headers: { authorization: "Bearer should-not-appear" } }).info("run started", {
+        payload: { secret: "value" },
+        apiKey: "tr_prod_should_not_appear",
+        harmless: "keep me",
+      })
+    );
+
+    expect(line.headers).toMatch(/^\[filtered/);
+    expect(line.payload).toMatch(/^\[filtered/);
+    expect(line.apiKey).toMatch(/^\[filtered/);
+    expect(line.harmless).toBe("keep me");
+    expect(JSON.stringify(line)).not.toContain("should-not-appear");
   });
 });
 
