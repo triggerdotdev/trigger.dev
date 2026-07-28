@@ -119,9 +119,12 @@ export async function inviteMembers({
   const created: Prisma.OrgMemberInviteGetPayload<{
     include: { organization: true; inviter: true };
   }>[] = [];
+  const alreadyMembers: string[] = [];
+  const alreadyInvited: string[] = [];
 
   for (const email of uniqueEmails) {
     if (existingMemberEmails.has(email)) {
+      alreadyMembers.push(email);
       continue;
     }
 
@@ -146,13 +149,14 @@ export async function inviteMembers({
         error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
         error.code === "P2002"
       ) {
+        alreadyInvited.push(email);
         continue;
       }
       throw error;
     }
   }
 
-  return created;
+  return { created, alreadyMembers, alreadyInvited };
 }
 
 export async function getInviteFromToken({ token }: { token: string }) {
@@ -279,12 +283,21 @@ async function assignInviteRbacRole({
   userId,
   organizationId,
   rbacRoleId,
+  onlyWhenUnassigned,
 }: {
   userId: string;
   organizationId: string;
   rbacRoleId: string;
+  onlyWhenUnassigned: boolean;
 }) {
   try {
+    if (onlyWhenUnassigned) {
+      const currentRole = await rbac.getUserRole({ userId, organizationId });
+      if (currentRole !== null) {
+        return;
+      }
+    }
+
     const roleResult = await rbac.setUserRole({
       userId,
       organizationId,
@@ -499,11 +512,12 @@ export async function acceptInvite({
 
   const remainingInvites = await getUsersInvites({ email: user.email });
 
-  if (invite.rbacRoleId && membershipCreated) {
+  if (invite.rbacRoleId) {
     await assignInviteRbacRole({
       userId: user.id,
       organizationId: invite.organization.id,
       rbacRoleId: invite.rbacRoleId,
+      onlyWhenUnassigned: !membershipCreated,
     });
   }
 

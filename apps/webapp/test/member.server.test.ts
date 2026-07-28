@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { describe, expect, vi } from "vitest";
+import { beforeEach, describe, expect, vi } from "vitest";
 import type { PrismaClient } from "@trigger.dev/database";
 
 const prismaHolder = vi.hoisted(() => ({
@@ -8,14 +8,17 @@ const prismaHolder = vi.hoisted(() => ({
 
 type SetUserRoleParams = { userId: string; organizationId: string; roleId: string };
 type SetUserRoleResult = { ok: true } | { ok: false; error: string; code?: "last_owner" };
+type CurrentRole = { id: string } | null;
 
 const rbacHolder = vi.hoisted(() => ({
   setUserRoleCalls: [] as SetUserRoleParams[],
   setUserRoleResult: { ok: true } as SetUserRoleResult,
+  currentRole: null as CurrentRole,
 }));
 
 vi.mock("~/services/rbac.server", () => ({
   rbac: {
+    getUserRole: async () => rbacHolder.currentRole,
     setUserRole: async (params: SetUserRoleParams) => {
       rbacHolder.setUserRoleCalls.push(params);
       return rbacHolder.setUserRoleResult;
@@ -23,25 +26,35 @@ vi.mock("~/services/rbac.server", () => ({
   },
 }));
 
-function resetRbac(result: SetUserRoleResult = { ok: true }) {
+function resetRbac(result: SetUserRoleResult = { ok: true }, currentRole: CurrentRole = null) {
   rbacHolder.setUserRoleCalls.length = 0;
   rbacHolder.setUserRoleResult = result;
+  rbacHolder.currentRole = currentRole;
 }
 
-vi.mock("~/db.server", () => ({
-  get prisma() {
-    if (!prismaHolder.client) {
-      throw new Error("test prisma not set");
-    }
-    return prismaHolder.client;
-  },
-  get $replica() {
-    if (!prismaHolder.client) {
-      throw new Error("test prisma not set");
-    }
-    return prismaHolder.client;
-  },
-}));
+beforeEach(() => {
+  resetRbac();
+});
+
+vi.mock("~/db.server", async () => {
+  const { Prisma } = await import("@trigger.dev/database");
+
+  return {
+    Prisma,
+    get prisma() {
+      if (!prismaHolder.client) {
+        throw new Error("test prisma not set");
+      }
+      return prismaHolder.client;
+    },
+    get $replica() {
+      if (!prismaHolder.client) {
+        throw new Error("test prisma not set");
+      }
+      return prismaHolder.client;
+    },
+  };
+});
 
 import { postgresTest } from "@internal/testcontainers";
 
@@ -276,7 +289,6 @@ describe("acceptInvite", () => {
     { timeout: 60_000 },
     async ({ prisma }) => {
       prismaHolder.client = prisma;
-      resetRbac();
       const { acceptInvite } = await import("../app/models/member.server");
 
       const { invitee, organization, invite } = await seedInviteFixture(prisma, {
@@ -297,11 +309,11 @@ describe("acceptInvite", () => {
   );
 
   postgresTest(
-    "does not apply the invite RBAC role to a user who is already a member",
+    "does not apply the invite RBAC role to a member who already has a role",
     { timeout: 60_000 },
     async ({ prisma }) => {
       prismaHolder.client = prisma;
-      resetRbac();
+      resetRbac({ ok: true }, { id: "role_owner" });
       const { acceptInvite } = await import("../app/models/member.server");
 
       const { invitee, organization, invite } = await seedInviteFixture(prisma, {
@@ -338,6 +350,39 @@ describe("acceptInvite", () => {
   );
 
   postgresTest(
+    "applies the invite RBAC role to an existing member who has no role assigned",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      resetRbac({ ok: true }, null);
+      const { acceptInvite } = await import("../app/models/member.server");
+
+      const { invitee, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 1,
+        rbacRoleId: "role_admin",
+      });
+
+      await prisma.orgMember.create({
+        data: {
+          organizationId: organization.id,
+          userId: invitee.id,
+          role: "MEMBER",
+        },
+      });
+
+      await acceptInvite({
+        inviteId: invite.id,
+        organizationId: organization.id,
+        user: { id: invitee.id, email: invitee.email },
+      });
+
+      expect(rbacHolder.setUserRoleCalls).toEqual([
+        { userId: invitee.id, organizationId: organization.id, roleId: "role_admin" },
+      ]);
+    }
+  );
+
+  postgresTest(
     "still joins the org when the RBAC role assignment is refused",
     { timeout: 60_000 },
     async ({ prisma }) => {
@@ -367,8 +412,6 @@ describe("acceptInvite", () => {
         where: { userId: invitee.id, organizationId: organization.id },
       });
       expect(member).not.toBeNull();
-
-      resetRbac();
     }
   );
 });
@@ -397,19 +440,46 @@ describe("inviteMembers", () => {
 
       const newcomerEmail = `newcomer-${randomHex(8)}@test.local`;
 
-      const created = await inviteMembers({
+      const { created, alreadyMembers, alreadyInvited } = await inviteMembers({
         slug: organization.slug,
         emails: [invitee.email, newcomerEmail],
         userId: inviter.id,
       });
 
       expect(created.map((row) => row.email)).toEqual([newcomerEmail]);
+      expect(alreadyMembers).toEqual([invitee.email]);
+      expect(alreadyInvited).toEqual([]);
 
       const invites = await prisma.orgMemberInvite.findMany({
         where: { organizationId: organization.id },
         select: { email: true },
       });
       expect(invites.map((pending) => pending.email)).toEqual([newcomerEmail]);
+    }
+  );
+
+  postgresTest(
+    "reports an email with a pending invitation as already invited",
+    { timeout: 60_000 },
+    async ({ prisma }) => {
+      prismaHolder.client = prisma;
+      const { inviteMembers } = await import("../app/models/member.server");
+
+      const { inviter, organization, invite } = await seedInviteFixture(prisma, {
+        activeProjectCount: 0,
+      });
+
+      const newcomerEmail = `newcomer-${randomHex(8)}@test.local`;
+
+      const { created, alreadyMembers, alreadyInvited } = await inviteMembers({
+        slug: organization.slug,
+        emails: [invite.email, newcomerEmail],
+        userId: inviter.id,
+      });
+
+      expect(created.map((row) => row.email)).toEqual([newcomerEmail]);
+      expect(alreadyInvited).toEqual([invite.email]);
+      expect(alreadyMembers).toEqual([]);
     }
   );
 });
