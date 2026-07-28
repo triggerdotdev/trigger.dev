@@ -59,9 +59,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  * showing the raw URI here is what lets the reviewer check that the agent cited
  * something addressable at all.
  */
-function EvidenceItem({ evidence }: { evidence: Evidence }) {
+function EvidenceItem({ evidence, stacked }: { evidence: Evidence; stacked?: boolean }) {
   return (
-    <li className={EVIDENCE_ROW_CLASS}>
+    <li className={stacked ? "space-y-1.5" : EVIDENCE_ROW_CLASS}>
       <CategoryBadge className="justify-self-start">{evidence.kind}</CategoryBadge>
       <div className="min-w-0 space-y-1.5">
         <p className="text-xs text-text-bright">{evidence.label}</p>
@@ -88,9 +88,11 @@ function HypothesisRow({ hypothesis }: { hypothesis: DemoHypothesis }) {
       <p className="text-sm text-text-bright">{hypothesis.statement}</p>
       {hypothesis.finding ? <p className="text-xs text-text-dimmed">{hypothesis.finding}</p> : null}
       {hypothesis.evidence.length > 0 ? (
+        // Stacked, not two-column: nested under the hypothesis's indent the
+        // content column would be too narrow for identifiers and excerpts.
         <ul className="space-y-3 pt-1">
           {hypothesis.evidence.map((evidence, i) => (
-            <EvidenceItem key={i} evidence={evidence} />
+            <EvidenceItem key={i} evidence={evidence} stacked />
           ))}
         </ul>
       ) : null}
@@ -113,16 +115,18 @@ export function DemoInvestigationCard({
   return (
     <div className="space-y-2">
       <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-        <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-4 py-3">
-          <span className="text-xs font-medium text-text-dimmed">Investigation</span>
-          <SeverityBadge severity={investigation.severity}>
-            {SEVERITY_LABELS[investigation.severity]}
-          </SeverityBadge>
-          <ConfidenceBadge confidence={investigation.confidence} />
+        <div className="space-y-1.5 border-b border-grid-bright bg-background-bright px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-text-dimmed">Investigation</span>
+            <SeverityBadge severity={investigation.severity}>
+              {SEVERITY_LABELS[investigation.severity]}
+            </SeverityBadge>
+            <ConfidenceBadge confidence={investigation.confidence} />
+          </div>
+          {/* Its own truncating line — the badge row's right corner can't hold a
+              run id reliably at panel width (same rule as RunDiagnosisCard). */}
           {investigation.runId ? (
-            <span className="ml-auto font-mono text-xs text-text-dimmed">
-              {investigation.runId}
-            </span>
+            <div className="truncate font-mono text-xs text-text-dimmed">{investigation.runId}</div>
           ) : null}
         </div>
 
