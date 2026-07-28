@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 const DIR = __dirname;
 
 /** Files whose transcript regions must compose via chat-layout only. */
-const CONSUMERS = ["DashboardAgentMessages.tsx", "demo/DemoChatView.tsx"];
+const CONSUMERS = ["DashboardAgentMessages.tsx"];
 
 const LIBRARY = "chat-layout.tsx";
 

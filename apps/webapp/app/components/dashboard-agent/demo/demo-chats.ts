@@ -1,13 +1,13 @@
 /**
  * The demo conversation registry — every v1 case as a canned transcript.
  *
- * A `DemoChat` is a script: an ordered list of items the panel replays through
- * the production renderers. Most items are real `UIMessage[]`; the rest are the
+ * A `DemoChat` is a script: an ordered list of items rendered through the
+ * production renderers. Most items are real `UIMessage[]`; the rest are the
  * demo-only cards that stand in for view blocks that don't exist yet
  * (investigation, report) or that would otherwise need the network (chart).
  *
- * Nothing here is persisted, fetched, or sent. `DemoChatView` renders these and
- * intercepts every affordance.
+ * Nothing here is persisted, fetched, or sent. The state gallery
+ * (`/storybook/agent-ui`) is the only consumer; the panel shows real chats.
  *
  * One rule for every case: a demo chat is one coherent story, as close to a real
  * conversation as fixtures allow. Variation matrices — the same card in four
@@ -17,7 +17,6 @@
 import type { UIMessage } from "@ai-sdk/react";
 import type { ReportViewModel } from "~/presenters/v3/reports/report-view-model";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
-import type { DashboardAgentChat as DashboardAgentChatListItem } from "../DashboardAgentHistory";
 import type { TurnActivity } from "../DashboardAgentMessages";
 import { DEMO_WORLD, demoId, demoInvestigationUri, demoReportUri } from "./ids";
 import {
@@ -1020,16 +1019,3 @@ export const demoChats: DemoChat[] = [
 export function demoChatById(id: string): DemoChat | undefined {
   return demoChats.find((chat) => chat.id === id);
 }
-
-/**
- * The demo chats as history-list rows, shaped exactly like the real list items
- * so the panel can concatenate them onto its own history with no mapping.
- */
-export const demoHistoryChats: DashboardAgentChatListItem[] = demoChats.map((chat) => ({
-  id: chat.id,
-  title: chat.title,
-  lastMessageAt: chat.lastMessageAt,
-}));
-
-/** The empty-history state, for the playbook's history case. */
-export const demoEmptyHistoryChats: DashboardAgentChatListItem[] = [];

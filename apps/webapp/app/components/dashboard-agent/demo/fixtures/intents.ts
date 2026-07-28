@@ -5,8 +5,8 @@
  * That sentence is what the design review is judging: the user has to be able to
  * tell, after the fact, what the agent just did to their screen.
  *
- * In demo mode nothing is honoured: `DemoChatView` intercepts every intent and
- * renders the outcome inline instead of navigating.
+ * Nothing here is honoured: the gallery renders the outcome inline instead of
+ * navigating.
  */
 import { isExecutableIntent, type AgentIntent } from "@internal/dashboard-agent-contracts";
 import { DEMO_WORLD, demoRunUri } from "../ids";

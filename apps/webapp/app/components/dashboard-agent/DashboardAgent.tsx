@@ -23,14 +23,10 @@ import { DashboardAgentProvider } from "./dashboardAgentLauncher";
 export function DashboardAgent({
   children,
   hasAccess = false,
-  demoEnabled = false,
   promotedPrompt,
 }: {
   children: React.ReactNode;
   hasAccess?: boolean;
-  // Demo mode (DASHBOARD_AGENT_DEMO): canned fixture conversations appear in
-  // the panel history for design review. Resolved server-side.
-  demoEnabled?: boolean;
   // The product-controlled promoted prompt chip, from the feature flag.
   promotedPrompt?: SuggestedPrompt;
 }) {
@@ -80,7 +76,6 @@ export function DashboardAgent({
             <DashboardAgentPanel
               onClose={() => setPanelOpen(false)}
               requestedMessage={requestedMessage}
-              demoEnabled={demoEnabled}
               promotedPrompt={promotedPrompt}
             />
           </ResizablePanel>

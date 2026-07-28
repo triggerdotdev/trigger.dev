@@ -6,8 +6,10 @@
  *   a) the storybook state gallery (`/storybook/agent-ui`) — one capture per
  *      row of `app/routes/storybook.agent-ui/manifest.ts`, which this script
  *      imports so the two can never disagree about what exists;
- *   b) every demo conversation, opened in the real panel on a real env page, so
- *      the review also sees the components in their actual container.
+ *   b) every conversation in the panel's history, opened in the real panel on a
+ *      real env page, so the review also sees the components in their actual
+ *      container. Point it at the seeded `agent-examples` project
+ *      (`pnpm --filter webapp run db:seed:agent-examples`) for the examples.
  *
  * Both phases run in dark and light. The app pins `data-theme="dark"` on
  * `<html>` in `root.tsx` and has no theme switch yet, so light is produced by
@@ -17,8 +19,8 @@
  *
  * Usage
  * -----
- *   # terminal 1, from the repo root, with DASHBOARD_AGENT_DEMO=1 in
- *   # apps/webapp/.env alongside DASHBOARD_AGENT_ENABLED=1
+ *   # terminal 1, from the repo root, with DASHBOARD_AGENT_ENABLED=1 in
+ *   # apps/webapp/.env
  *   pnpm run dev --filter webapp
  *
  *   # terminal 2, from apps/webapp
@@ -30,7 +32,8 @@
  *   BASE_URL             default http://localhost:3030
  *   SCREENSHOT_EMAIL     default local@trigger.dev (must be an admin — the
  *                        storybook route redirects everyone else)
- *   SCREENSHOT_ENV_PATH  an env-scoped dashboard path. Omit to skip phase (b).
+ *   SCREENSHOT_ENV_PATH  an env-scoped dashboard path whose org has chats.
+ *                        Omit to skip phase (b).
  *   SCREENSHOT_THEMES    default "dark,light"
  *   SCREENSHOT_OUT       default apps/webapp/screenshots/agent-ui
  *   SCREENSHOT_SCALE     device pixel ratio, default 2
@@ -69,9 +72,7 @@ const OUT_DIR = path.resolve(
 const SCALE = Number(process.env.SCREENSHOT_SCALE ?? 2);
 const HEADED = process.env.SCREENSHOT_HEADED === "1";
 
-/** The demo history rows are the only ones titled like this. */
-const DEMO_TITLE_PREFIX = "Demo ·";
-const DEMO_CHAT_GROUP = "demo-chats";
+const CHAT_GROUP = "chats";
 
 const GALLERY_PATH = "/storybook/agent-ui";
 const PANEL_SELECTOR = "#dashboard-agent-panel";
@@ -93,7 +94,7 @@ function log(message: string) {
   process.stdout.write(`${message}\n`);
 }
 
-/** Filename- and anchor-safe slug for a demo chat title. */
+/** Filename- and anchor-safe slug for a chat title. */
 function slugify(value: string): string {
   return (
     value
@@ -212,7 +213,7 @@ async function shootGallery(page: Page, theme: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase (b): the demo conversations, in the real panel
+// Phase (b): the stored conversations, in the real panel
 // ---------------------------------------------------------------------------
 
 /** Open the panel if it isn't already, and return it. */
@@ -242,37 +243,38 @@ async function showHistory(page: Page, panel: Locator) {
 }
 
 /**
- * The demo rows, as `{ index, title }`. Indices rather than text: the row
+ * The history rows, as `{ index, title }`. Indices rather than text: the row
  * button's accessible name includes a timestamp, and clicking by index survives
  * titles that share a prefix.
  */
-async function demoChatRows(panel: Locator): Promise<{ index: number; title: string }[]> {
+async function chatRows(panel: Locator): Promise<{ index: number; title: string }[]> {
   const rows = panel.locator("ol > li");
   const count = await rows.count();
   const found: { index: number; title: string }[] = [];
   for (let index = 0; index < count; index++) {
     const title = ((await rows.nth(index).locator("span").first().textContent()) ?? "").trim();
-    if (title.startsWith(DEMO_TITLE_PREFIX)) found.push({ index, title });
+    found.push({ index, title });
   }
   return found;
 }
 
-async function shootDemoChats(page: Page, theme: string) {
+async function shootChats(page: Page, theme: string) {
   if (!ENV_PATH) return;
-  log(`\nDemo chats · ${theme}`);
+  log(`\nChats · ${theme}`);
   await open(page, ENV_PATH, theme);
 
   let panel = await openPanel(page);
   await showHistory(page, panel);
-  const rows = await demoChatRows(panel);
+  const rows = await chatRows(panel);
 
   if (rows.length === 0) {
     throw new Error(
-      "No demo conversations in the panel history. Set DASHBOARD_AGENT_DEMO=1 in " +
-        "apps/webapp/.env and restart the webapp."
+      "No conversations in the panel history. Seed the examples with " +
+        "`pnpm --filter webapp run db:seed:agent-examples` and point " +
+        "SCREENSHOT_ENV_PATH at that project."
     );
   }
-  log(`  ${rows.length} demo conversations`);
+  log(`  ${rows.length} conversations`);
 
   for (const { index, title } of rows) {
     // Re-resolve every time: opening a chat leaves the history view, and the
@@ -284,7 +286,7 @@ async function shootDemoChats(page: Page, theme: string) {
     await freezeMotion(page);
     await capture(panel, {
       theme,
-      group: DEMO_CHAT_GROUP,
+      group: CHAT_GROUP,
       sectionId: slugify(title),
       title,
     });
@@ -323,7 +325,7 @@ async function main() {
   log(`Base URL: ${BASE_URL}`);
   log(`Themes:   ${THEMES.join(", ")}`);
   log(`Sections: ${MANIFEST.length} gallery states`);
-  log(`Env path: ${ENV_PATH ?? "(not set — skipping the demo-chat walk)"}`);
+  log(`Env path: ${ENV_PATH ?? "(not set — skipping the chat walk)"}`);
 
   let browser: Browser | undefined;
   const fatal: string[] = [];
@@ -343,7 +345,7 @@ async function main() {
     await login(page);
 
     for (const theme of THEMES) {
-      for (const phase of [shootGallery, shootDemoChats]) {
+      for (const phase of [shootGallery, shootChats]) {
         try {
           await phase(page, theme);
         } catch (error) {

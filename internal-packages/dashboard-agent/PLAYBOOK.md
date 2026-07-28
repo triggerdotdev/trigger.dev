@@ -1,49 +1,59 @@
 # Dashboard agent review playbook
 
-Demo mode is a set of **canned conversations** rendered by the real panel: real
-message renderer, real view-catalog cards, real banner and composer, with no
-transport, no agent run and no LLM. It exists so the v1 flows can be reviewed as
-UI before their backends land.
+The example conversations are **real stored chats over real data**. A seeder
+creates an isolated `agent-examples` project — runs, queues, a deployment, an
+error group, metrics — and stores the conversations as transcripts in the
+agent's own datastore. The panel loads them through the production path, so
+every id, queue name, version and citation resolves to a live dashboard page,
+and what a reviewer sees is what a real chat looks like.
 
-**All data in demo mode is fabricated.** Every run id, queue, error, report and
-investigation is a fixture. Nothing is fetched, nothing is written, and every
-affordance (deep links, report actions, prompt chips, watch cancel, Send) is
-intercepted — clicking one appends an inline `demo` note saying what *would*
-have happened.
+Each conversation is **one story**. Variation matrices — the same card in four
+states, one row across four page kinds — belong to the state gallery at the
+bottom of this page, never to a chat, where stacked variants read as a bug
+rather than a comparison.
 
-Each conversation is **one story**, as close to a real one as fixtures allow.
-Variation matrices — the same card in four states, one row across four page
-kinds — belong to the state gallery at the bottom of this page, never to a chat,
-where stacked variants read as a bug rather than a comparison.
-
-## Turning it on
+## Seeding it
 
 ```bash
-# apps/webapp/.env
-DASHBOARD_AGENT_DEMO=1
-DASHBOARD_AGENT_ENABLED=1   # or DASHBOARD_AGENT_ADMIN_PREVIEW=1 — the panel still has to be reachable
+pnpm run db:seed                                  # once, for the local user
+pnpm --filter webapp run db:seed:agent-examples   # the example project + chats
 ```
 
-Restart the webapp, open any project, open the agent panel, click the History
-icon. Demo conversations look exactly like real chats (deliberately — review the true experience); they are the extra history rows listed below. Pick one; it renders
-in place of a real chat.
+The webapp has to be running (the seeder fetches the live report card from it),
+and the panel has to be reachable: `DASHBOARD_AGENT_ENABLED=1` or
+`DASHBOARD_AGENT_ADMIN_PREVIEW=1` in `apps/webapp/.env`.
 
-An env var rather than a feature flag on purpose: demo mode is a local review
-tool, not a rollout, and a per-org flag would put fabricated runs one toggle away
-from a production org. It is independent of agent access, so a reviewer needs no
-Anthropic key and no deployed agent task — only a reachable panel.
+Re-runnable — it wipes only what it owns. Add `-- --scale 0.1` for a fast
+iteration, and leave `-- --heartbeat` running beside it to keep the report's
+liveness finding fresh. Read the header of
+`apps/webapp/seed-agent-examples.mts` for the story's numbers and the two
+caveats about baselines.
 
-Everything lives in `apps/webapp/app/components/dashboard-agent/demo/`; the
-fixtures are in `demo/fixtures/`, one file per flow.
+Then open the `agent-examples` project (org `agent-examples`), open the agent
+panel and click the History icon: the conversations below are the rows.
+
+A few cases have no stored form — a half-arrived message, a tool row mid-call,
+an unsent draft, the prompt chip row, the revising investigation card. A stored
+transcript can't be mid-flight and panel chrome isn't a transcript item, so
+those live in the state gallery instead;
+`apps/webapp/seed-agent-examples-chats.mts` records each one and why
+(`SKIPPED_DEMO_CHATS`).
+
+The fixtures behind the gallery live in
+`apps/webapp/app/components/dashboard-agent/demo/fixtures/`, one file per flow.
 
 ## What is real and what is a stand-in
 
 | Rendered by | Cases |
 | --- | --- |
-| Production components | messages, text/markdown, reasoning, tool rows, `diagnosis` and `chart` view blocks, context banner, suggested prompts, composer, history list |
-| Demo-only cards | investigation card (no block type until M5), report card (no `ReportView` until M2), chart card with canned rows (the real one fetches `/resources/metric`), watch chips, prompt row with promoted/dismissed states, navigate bubble |
+| Production components | messages, text/markdown, reasoning, tool rows, `diagnosis`, `chart` and report view blocks, context banner, suggested prompts, composer, history list |
+| Gallery-only stand-ins | investigation card (no block type until M5), watch chips, prompt row with promoted/dismissed states, navigate bubble, chart card with canned rows |
 
-The two stand-in cards are the ones to review hardest: **this review freezes
+The stored conversations only carry what the production renderer handles, so the
+beats that have no block type yet (investigations, watches, intents) are
+assistant text there, and the cards themselves are reviewed in the gallery.
+
+The stand-in cards are the ones to review hardest: **this review freezes
 their payloads.** The investigation card's props are written as the intended M5
 block payload (`hypotheses[]` with verdicts, `evidence[]` of `trigger://`
 citations, `confidence`, `outcome`, `severity`, `caveat`), and the report card
@@ -108,25 +118,25 @@ story and stacked variants of one row read as a bug.
 | `Queue health over time` | A replayed transcript whose `render_view` part carried three blocks: revisions 0 and 1 of one diagnosis (collapsed latest-wins) and one **pre-envelope block with no id** that still renders and can never be revised. | Should a resumed chat be marked as historical more strongly than the demo bar does? |
 | `Draft in the composer` | A question left half typed (`why did the send-order-receipt run from last nig`) sitting in the composer, over an empty conversation — so the first-open suggested-prompt panel is on screen behind it. Sending is intercepted. | Should a draft survive closing the panel? Should the prompt panel stay visible while someone is typing, or get out of the way? |
 | `Which page am I on?` | A real exchange: the agent names the page, project and environment from page context (`Runs`, `demo-storefront`, `prod`), says what it can already see on that page, offers to investigate the newest failure, then explains that context is re-read on every message. | Does the banner earn its row when the agent can say the same thing? Is “I read your page on every message” reassuring or unsettling? |
-| History list | Every demo row alongside real chats (demo rows are visually identical by design). `demoEmptyHistoryChats` is the empty state. | Does the mixed list read naturally? |
+| History list | Every seeded conversation as a row, newest first. A project with no chats yet is the empty state. | Does the list read naturally? Is a title enough to find a chat by? |
 
 ## Notes for reviewers
 
-- Run ids like `run_demo0f2c91` are fabricated. The `diagnosis` card links them
-  to real run pages, so those links 404 — expected.
+- Every run id, queue, error group and deployment version in a seeded chat
+  exists: follow the links. They point at the seeded project's prod
+  environment, while the dashboard opens on dev by default.
 - The `chart` view block inside `Queue health over time` is the *real*
-  `AgentChart`, which runs its query against your current environment. It may be
-  empty locally. Every other chart in demo mode uses canned rows.
-- `demo/` contains no server imports and no `fetch` calls; the only server file
-  is `demoFlag.server.ts`, which nothing in `demo/` imports. A vitest suite
-  (`demo/demo.test.ts`) enforces that, validates every fixture against the
-  contracts schemas, and checks the id namespacing.
+  `AgentChart`, which runs its query against your current environment.
+- The gallery fixtures under `demo/` contain no server imports and no `fetch`
+  calls. A vitest suite (`demo/demo.test.ts`) enforces that, validates every
+  fixture against the contracts schemas, and checks the id namespacing — a
+  fixture id can never pass for a real one.
 
 ---
 
 ## Gallery & screenshot pack
 
-The demo conversations show the flows. The **state gallery** shows the states:
+The seeded conversations show the flows. The **state gallery** shows the states:
 every card, chip row, prompt row, intent bubble and message-level state, in
 isolation, at panel width, fed by the same fixtures.
 
@@ -148,7 +158,6 @@ disappearing. Add a state by adding a manifest row and a `STATES` entry.
 
 ```bash
 # terminal 1, repo root — apps/webapp/.env needs
-#   DASHBOARD_AGENT_DEMO=1
 #   DASHBOARD_AGENT_ENABLED=1   # or DASHBOARD_AGENT_ADMIN_PREVIEW=1
 pnpm run dev --filter webapp
 
@@ -164,8 +173,10 @@ It logs in over the local magic-link flow (dev redirects straight to the link,
 so no email), then walks two things in each theme:
 
 1. every gallery section, captured by its `id`;
-2. every demo conversation, opened in the real panel on the env page you
-   passed, captured as the panel element.
+2. every conversation in the panel's history, opened in the real panel on the
+   env page you passed, captured as the panel element. Point
+   `SCREENSHOT_ENV_PATH` at the seeded `agent-examples` project to capture the
+   example chats.
 
 Drop `SCREENSHOT_ENV_PATH` to do the gallery only. Other knobs: `BASE_URL`
 (default `http://localhost:3030`), `SCREENSHOT_EMAIL` (default

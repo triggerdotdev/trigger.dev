@@ -8,7 +8,6 @@ import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import { tenantContext } from "~/services/tenantContext.server";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
-import { isDashboardAgentDemoEnabled } from "~/components/dashboard-agent/demo/demoFlag.server";
 import { getPromotedDashboardAgentPrompt } from "~/components/dashboard-agent/suggested-prompts/promotedPrompt.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
@@ -108,18 +107,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return {
     ...project,
     hasDashboardAgentAccess,
-    dashboardAgentDemo: isDashboardAgentDemoEnabled(),
     promotedDashboardAgentPrompt,
   };
 };
 
 export default function Page() {
-  const { hasDashboardAgentAccess, dashboardAgentDemo, promotedDashboardAgentPrompt } =
-    useLoaderData<typeof loader>();
+  const { hasDashboardAgentAccess, promotedDashboardAgentPrompt } = useLoaderData<typeof loader>();
   return (
     <DashboardAgent
       hasAccess={hasDashboardAgentAccess}
-      demoEnabled={dashboardAgentDemo}
       promotedPrompt={promotedDashboardAgentPrompt ?? undefined}
     >
       <Outlet />

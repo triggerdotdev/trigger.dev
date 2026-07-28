@@ -14,7 +14,7 @@ import {
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { demoChats, demoHistoryChats } from "./demo-chats";
+import { demoChats } from "./demo-chats";
 import * as fixtures from "./fixtures";
 import { DEMO_ID_PREFIX, DEMO_MARKER } from "./ids";
 
@@ -90,10 +90,6 @@ describe("demo ids", () => {
     })) {
       expect(id).toContain(DEMO_MARKER);
     }
-  });
-
-  it("exposes the history rows keyed by the same ids", () => {
-    expect(demoHistoryChats.map((chat) => chat.id)).toEqual(demoChats.map((chat) => chat.id));
   });
 });
 
@@ -372,7 +368,6 @@ describe("demo coverage", () => {
 describe("isolation", () => {
   it("imports no server module and no route", () => {
     for (const path of sourceFiles) {
-      if (path.endsWith(".server.ts")) continue; // the sanctioned flag file
       const specifiers = importSpecifiers(readFileSync(path, "utf8"));
       for (const specifier of specifiers) {
         expect(specifier.includes(".server"), `${path} -> ${specifier}`).toBe(false);
@@ -390,11 +385,7 @@ describe("isolation", () => {
     }
   });
 
-  it("keeps the one server file out of the demo module graph", () => {
-    for (const path of sourceFiles) {
-      if (path.endsWith("demoFlag.server.ts")) continue;
-      const specifiers = importSpecifiers(readFileSync(path, "utf8"));
-      expect(specifiers.some((specifier) => specifier.includes("demoFlag"))).toBe(false);
-    }
+  it("has no server file of its own", () => {
+    expect(sourceFiles.filter((path) => path.endsWith(".server.ts"))).toEqual([]);
   });
 });

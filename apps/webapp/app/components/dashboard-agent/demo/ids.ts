@@ -6,8 +6,8 @@
  * Two conventions, on purpose:
  *
  * 1. **Our own namespace** (chats, investigations, watches) uses the literal
- *    `demo:` prefix. `isDemoChatId` is the panel's only test for "this id is a
- *    fixture, do not talk to the server about it".
+ *    `demo:` prefix, so `isDemoChatId` answers "this id is a fixture, never
+ *    talk to the server about it".
  * 2. **Resource ids** (runs, queues, errors, deployments, source shas) keep
  *    their real-world shape but always carry the `demo` marker inside the id
  *    (`run_demo0f2c91`, `demo-email-sends`). They have to stay shaped like real
@@ -32,9 +32,8 @@ export function demoId(rest: string): string {
 }
 
 /**
- * True for a chat id the demo registry owns. The panel uses this to route a
- * chat to the fixture view instead of the transport, so it must be cheap and
- * total — no lookups, no async.
+ * True for a chat id the demo registry owns — cheap and total, no lookups and
+ * no async, so any renderer can ask before it touches the server.
  */
 export function isDemoChatId(id: string | null | undefined): boolean {
   return typeof id === "string" && id.startsWith(DEMO_ID_PREFIX);
