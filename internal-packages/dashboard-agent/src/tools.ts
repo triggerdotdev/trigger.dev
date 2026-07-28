@@ -29,6 +29,7 @@ import {
   navigateToSchema,
   renderViewSchema,
   runQuerySchema,
+  scheduleWatchSchema,
   searchDocsSchema,
 } from "./tool-schemas";
 import { buildRepoTools, type RepoSnapshot } from "./repo-tools";
@@ -60,6 +61,10 @@ export type DashboardAgentToolContext = {
   environmentId?: string;
   // The dashboard path the user is on, passed as context to ask_support.
   currentPage?: string;
+  // The chat this turn belongs to, supplied by dashboard-agent.ts (the same seam
+  // the investigations capability comes through). A watch belongs to a chat: it
+  // is guardrailed per chat and its wake is delivered back into this one.
+  chatId?: string;
   // Structured view of the same page, when the host could classify it. Read by
   // get_current_page so the agent can resolve "this run" without asking.
   pageContext?: AgentPageContext;
@@ -1056,6 +1061,96 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         } catch (error) {
           return { error: `Couldn't build a link for that: ${(error as Error).message}` };
         }
+      },
+    }),
+
+    // The one tool that schedules future work. The host owns everything the
+    // model shouldn't: the tenancy snapshot, the watch token, the periodic
+    // checks, and the guardrails (≤3 per chat, no duplicate on the same thing,
+    // 24h ceiling). The model composes the spec and gets back either the created
+    // watch or — when the condition already holds — the immediate outcome.
+    schedule_watch: tool({
+      ...scheduleWatchSchema,
+      execute: async ({ watch }) => {
+        if (!hasAuth) return NO_AUTH;
+        if (!ctx.chatId) {
+          return { error: "This turn isn't attached to a chat, so a watch can't be scheduled." };
+        }
+        let res: Response;
+        try {
+          res = await fetch(`${origin}/api/v1/dashboard-agent/watches`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${userActorToken!}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({ spec: watch, chatId: ctx.chatId }),
+          });
+        } catch (error) {
+          return { error: `Couldn't schedule the watch: ${(error as Error).message}` };
+        }
+
+        const data = (await res.json().catch(() => undefined)) as
+          | {
+              watchId?: string;
+              identity?: string;
+              status?: string;
+              expiresAt?: string;
+              immediate?: { result?: string; facts?: unknown };
+              existingId?: string;
+              error?: string;
+              code?: string;
+            }
+          | undefined;
+
+        if (!res.ok) {
+          switch (data?.code) {
+            case "limit_reached":
+              return {
+                error:
+                  "This chat already has the maximum of 3 active watches. Cancel one of them before adding another.",
+              };
+            case "duplicate":
+              return {
+                error: `That's already being watched in this chat${
+                  (data.existingId ?? data.watchId)
+                    ? ` (watch ${data.existingId ?? data.watchId})`
+                    : ""
+                }, so nothing new was scheduled. Tell the user the existing watch covers it.`,
+              };
+            case "invalid_target":
+              return {
+                error:
+                  data.error ??
+                  "That thing can't be watched — check the run id, queue, or error group is right.",
+              };
+            default:
+              return {
+                error: data?.error ?? `Couldn't schedule the watch (status ${res.status}).`,
+              };
+          }
+        }
+
+        // Already true at creation time: there is nothing to wait for, so the
+        // model must answer now instead of promising a message later.
+        if (data?.immediate) {
+          return {
+            immediate: data.immediate,
+            watching: false,
+            note: "The condition already holds, so no watch is running. Answer now.",
+          };
+        }
+
+        return {
+          watchId: data?.watchId,
+          identity: data?.identity,
+          status: data?.status ?? "active",
+          expiresAt: data?.expiresAt,
+          checkEveryMinutes: watch.checkEveryMinutes,
+          note: watch.note,
+          watching: true,
+        };
       },
     }),
   };

@@ -270,6 +270,90 @@ describe("dashboardAgent (mock harness)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Watch wakes — an action, not a turn
+// ---------------------------------------------------------------------------
+
+describe("watch wake narration", () => {
+  let harness: MockChatAgentHarness | undefined;
+
+  afterEach(async () => {
+    await harness?.close();
+    harness = undefined;
+  });
+
+  const WAKE = {
+    type: "watch.fired" as const,
+    id: "watch:watch_1:fired",
+    watchId: "watch_1",
+    identity: "backlog_drain:task/send-receipt",
+    spec: {
+      kind: "backlog_drain",
+      queue: "task/send-receipt",
+      checkEveryMinutes: 5,
+      maxHours: 2,
+      note: "tell me when the backlog drains",
+    },
+    facts: { pending: 0, peakPending: 412, drainedAt: "2026-01-01T12:40:00.000Z" },
+  };
+
+  it("narrates the wake once and persists it, and a redelivered wake narrates nothing", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
+      },
+    });
+
+    const first = await harness.sendAction(WAKE);
+    expect(collectText(first.chunks)).toBe("The backlog drained — 0 pending now.");
+
+    // An action is not a turn: no turn persistence ran, but the narration is in
+    // the display read-model under an id derived from the action.
+    expect(calls.persistTurn).toHaveLength(0);
+    expect(calls.persistMessages).toHaveLength(1);
+    const persisted = (calls.persistMessages[0] as { messages: UIMessage[] }).messages;
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]).toMatchObject({ id: "wake:watch:watch_1:fired", role: "assistant" });
+
+    // Same action id again (the watcher retried after appending): deduped.
+    const second = await harness.sendAction(WAKE);
+    expect(collectText(second.chunks)).toBe("");
+    expect(calls.persistMessages).toHaveLength(1);
+  });
+
+  it("a different outcome on the same watch is a different wake", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_wake_two",
+      clientData: CLIENT_DATA,
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("first"), textStep("second")]));
+      },
+    });
+
+    await harness.sendAction(WAKE);
+    await harness.sendAction({
+      ...WAKE,
+      type: "watch.expired",
+      id: "watch:watch_2:expired",
+      watchId: "watch_2",
+      facts: { verified: false, reason: "unverified_at_expiry" },
+    });
+
+    expect(calls.persistMessages).toHaveLength(2);
+    const latest = (calls.persistMessages[1] as { messages: UIMessage[] }).messages;
+    expect(latest.map((m) => m.id)).toEqual([
+      "wake:watch:watch_1:fired",
+      "wake:watch:watch_2:expired",
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Eval sampling
 // ---------------------------------------------------------------------------
 
@@ -410,6 +494,7 @@ describe("buildDashboardAgentTools", () => {
         "navigate_to",
         "run_query",
         "render_view",
+        "schedule_watch",
         "search_docs",
       ].sort()
     );
@@ -766,6 +851,135 @@ describe("buildDashboardAgentTools", () => {
       yAxisColumns: ["runs"],
     };
     await expect(renderView.execute({ blocks: [chart] }, {})).resolves.toEqual({ blocks: [chart] });
+  });
+
+  // -------------------------------------------------------------------------
+  // schedule_watch: the one tool that schedules future work
+  // -------------------------------------------------------------------------
+
+  const WATCH_CTX = {
+    userActorToken: "uat_token",
+    apiOrigin: "http://localhost:3030",
+    chatId: "chat_1",
+  };
+
+  const RUN_WATCH = {
+    kind: "run_finished" as const,
+    runId: "run_a1",
+    checkEveryMinutes: 1 as const,
+    maxHours: 2,
+    note: "tell me when the receipt run finishes",
+  };
+
+  // Runs schedule_watch against a stubbed global fetch and hands back both the
+  // tool's result and the request the host would have received.
+  async function scheduleWatch(
+    response: { status?: number; body: unknown },
+    input: unknown = { watch: RUN_WATCH },
+    ctx: Record<string, unknown> = WATCH_CTX
+  ) {
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify(response.body), {
+        status: response.status ?? 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      const tools = buildDashboardAgentTools(ctx);
+      const scheduleTool = tools.schedule_watch as {
+        inputSchema: { parse: (input: unknown) => unknown };
+        execute: (input: unknown, opts: unknown) => Promise<any>;
+      };
+      const result = await scheduleTool.execute(scheduleTool.inputSchema.parse(input), {});
+      return { result, requests };
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  it("schedule_watch posts the spec and the chat id as the user, and reports the created watch", async () => {
+    const { result, requests } = await scheduleWatch({
+      body: {
+        watchId: "watch_1",
+        identity: "run_finished:run_a1",
+        status: "active",
+        expiresAt: "2026-01-01T14:00:00.000Z",
+      },
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/watches");
+    expect(requests[0]?.init?.method).toBe("POST");
+    // The delegated user token — a watch is created with exactly the access of
+    // the user who asked for it.
+    expect((requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
+      "Bearer uat_token"
+    );
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      spec: RUN_WATCH,
+      chatId: "chat_1",
+    });
+
+    expect(result).toMatchObject({
+      watchId: "watch_1",
+      identity: "run_finished:run_a1",
+      status: "active",
+      expiresAt: "2026-01-01T14:00:00.000Z",
+      checkEveryMinutes: 1,
+      watching: true,
+    });
+  });
+
+  it("schedule_watch surfaces the limit and the duplicate as friendly text, naming the existing watch", async () => {
+    const limit = await scheduleWatch({
+      status: 400,
+      body: { error: "too many", code: "limit_reached" },
+    });
+    expect(limit.result.error).toContain("3 active watches");
+
+    const duplicate = await scheduleWatch({
+      status: 409,
+      body: { error: "already watching", code: "duplicate", existingId: "watch_existing" },
+    });
+    expect(duplicate.result.error).toContain("watch_existing");
+    expect(duplicate.result.error).toContain("already being watched");
+  });
+
+  it("schedule_watch reports an immediate outcome instead of a running watch", async () => {
+    const { result } = await scheduleWatch({
+      body: { immediate: { result: "satisfied", facts: { status: "COMPLETED" } } },
+    });
+    expect(result.watching).toBe(false);
+    expect(result.immediate).toEqual({ result: "satisfied", facts: { status: "COMPLETED" } });
+  });
+
+  it("schedule_watch fails closed with no chat and rejects a cadence the contract floors", async () => {
+    const noChat = await scheduleWatch({ body: {} }, { watch: RUN_WATCH }, {
+      userActorToken: "uat_token",
+      apiOrigin: "http://localhost:3030",
+    } as Record<string, unknown>);
+    expect(typeof noChat.result.error).toBe("string");
+    expect(noChat.requests).toHaveLength(0);
+
+    // Aggregate conditions are floored at 5 minutes by the contract's schema, so
+    // an over-eager watch never reaches the host.
+    await expect(
+      scheduleWatch(
+        { body: {} },
+        {
+          watch: {
+            kind: "backlog_drain",
+            queue: "task/x",
+            checkEveryMinutes: 1,
+            maxHours: 1,
+            note: "n",
+          },
+        }
+      )
+    ).rejects.toThrow();
   });
 
   it("get_current_page returns the turn's structured page context", async () => {

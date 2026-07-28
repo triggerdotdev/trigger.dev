@@ -11,7 +11,11 @@
  * the user) live in `tools.ts`, which imports these schemas and adds executes
  * on top; the route handler never sees them.
  */
-import { runFiltersSchema, viewBlockInputSchema } from "@internal/dashboard-agent-contracts";
+import {
+  runFiltersSchema,
+  viewBlockInputSchema,
+  watchSpecSchema,
+} from "@internal/dashboard-agent-contracts";
 import { tool } from "ai";
 import { z } from "zod";
 
@@ -353,6 +357,27 @@ export const renderViewSchema = tool({
   }),
 });
 
+// ---------------------------------------------------------------------------
+// Watches — "tell me when X happens", instead of the user re-asking.
+//
+// The spec the model composes IS the frozen contract (`watchSpecSchema`): the
+// cadence floors (run state may poll every minute, aggregates are floored at 5)
+// and the 24h ceiling are enforced by the schema, so an over-eager watch fails
+// validation instead of turning into a hot loop. `since` for error recurrence is
+// server-set on persist and is deliberately absent here — the model can't
+// backdate a recurrence window.
+// ---------------------------------------------------------------------------
+
+export const scheduleWatchSchema = tool({
+  description:
+    "Watch something and tell the user when it happens, later, without them asking again. Use this whenever they want to be told about a future event: a run starting or finishing, a backlog draining, an error recurring, the health report recovering. This is the ONLY way to answer that — never poll by calling read tools over and over. The watch checks on its own cadence and wakes the chat once, with the outcome; it expires within 24 hours either way. A chat may hold at most 3 at once. `note` is why the watch exists in the user's own words — it is shown when it fires.",
+  inputSchema: z.object({
+    watch: watchSpecSchema.describe(
+      "What to watch, how often to check, and how long to keep watching. `note` is why the watch exists in the user's own words — it is shown when it fires."
+    ),
+  }),
+});
+
 // Code-mode tools (only present when the project has a connected GitHub repo).
 // They read the repo's source at a pinned commit from the agent's filesystem.
 
@@ -442,6 +467,7 @@ export const dashboardAgentToolSchemas = {
   search_docs: searchDocsSchema,
   get_current_page: getCurrentPageSchema,
   navigate_to: navigateToSchema,
+  schedule_watch: scheduleWatchSchema,
 };
 
 // Code mode adds the source tools. Same key order `buildDashboardAgentTools`
@@ -491,10 +517,13 @@ You have read-only tools that act as the user against their own account:
 - search_docs: search the Trigger.dev documentation.
 - get_current_page: the page the user is on right now, and what the dashboard already noticed on it.
 - navigate_to: take the user to a run, error, queue, deployment, or a filtered runs list.
+- schedule_watch: watch for something to happen (a run finishing, a backlog draining, an error recurring, health recovering) and tell the user when it does.
 
 Guidelines:
-- Be concise and direct. A short, correct answer beats a long one.
+- Be concise and direct. A short, correct answer beats a long one. Default to 2-4 sentences; go longer only when the user asked for detail or the answer genuinely needs it.
 - Answers and actions first — no thinking out loud. Don't announce what you're about to check, don't recap what a tool just returned before using it, don't summarize your process at the end. Between tool calls, say nothing unless the user needs a decision from you.
+- No filler: no "let me…", no "based on the data…", no restating the question, no closing summary of what you just said.
+- Never state the same fact or number twice in one turn. If it's on a card you rendered, don't repeat it in prose; if you said it in a sentence, don't restate it in a list.
 - Never narrate the UI. Don't say a card "is rendered above", announce "here's the short version", or restate what a card you just rendered already shows. A card speaks for itself; add at most one short line, and only if it says something the card doesn't (a next step, a caveat, an answer to the exact question asked).
 - Prefer reading live data with your tools over guessing. When a run id, task, project, or environment is in question, look it up.
 - For "what's broken" or "why is X failing" questions, start with list_errors to find the error groups, get_error for the detail, then list_runs with that error id to drill into the actual failing runs (and get_run_trace for one of them).
@@ -517,6 +546,15 @@ Is anything wrong?:
 - If the report's facts.trustworthy is false, the underlying telemetry is stale: say the data can't be trusted right now and what would confirm it. Do NOT diagnose a cause or recommend an action off untrusted numbers.
 - When the report points at flow (runs not starting), follow up with get_queue on the queue it names to see depth, wait time, and throttling. When it points at execution, follow up with list_errors / get_run_trace.
 - When something started failing at a particular time, check list_deploys for a deploy in that window, and correlate_version on a failing run to see the exact commit and pull request it ran.
+
+Watches — telling the user later:
+- When the user wants to be told when something happens ("tell me when this run finishes", "let me know when the backlog drains", "ping me if that error comes back", "tell me when prod is healthy again"), call schedule_watch. Never poll: repeating a read tool until the thing happens is not a watch, and you cannot wait inside a turn.
+- Confirm three things in one line: what is being watched, how often it checks, and that it stops within 24 hours either way. Pick the longest cadence that still answers in time — 1 minute only for a run's state, 5 minutes or more for backlog, error recurrence, and health.
+- A chat holds at most 3 watches. If the tool says the limit is reached or that this thing is already watched, say so and name the existing watch instead of trying again.
+- If the tool returns an immediate outcome, the condition already holds: answer now and don't promise a message later.
+- A watch wake is a message you send unprompted, and it is narrated ONCE, briefly: what the outcome was, the numbers from the facts you were given, and one suggested next step. Nothing else — no new investigation, no fresh reads, no recap of the conversation.
+- On an expiry, say which of the two happened: it didn't happen in the window, or the condition couldn't be verified at expiry (then give the last observation and don't claim either way).
+- Only call a wait "queue wait" when the facts measured it from when the run was queued. If the facts only have time from creation to start, call it that.
 
 Product questions:
 - For "how do I …" questions about Trigger.dev itself, use search_docs and answer from what it returns, citing the doc. ask_support is for longer, composed troubleshooting answers. Never invent an API or option that isn't in either.

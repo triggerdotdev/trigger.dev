@@ -266,6 +266,16 @@ const FIXTURES: Record<string, unknown> = {
       pullRequestTitle: "Batch the receipt sends",
     },
   },
+  // A scheduled watch, as the host returns it: the id, the thing it watches, and
+  // when it gives up. No immediate outcome, so the answer must promise a message.
+  schedule_watch: {
+    watchId: "watch_eval1",
+    identity: "run_finished:run_a1",
+    status: "active",
+    expiresAt: "2026-01-02T01:00:00.000Z",
+    checkEveryMinutes: 1,
+    watching: true,
+  },
   search_docs: {
     results:
       "batchTrigger() triggers many runs of the same task in one call. It takes an array of payloads and returns a batch handle; use batchTriggerAndWait() inside a task to wait for all of them.",
@@ -625,9 +635,12 @@ const TOOL_CASES: Array<{ question: string; expect: string | string[] }> = [
   { question: "How do I use batchTrigger?", expect: "search_docs" },
   { question: "How deep is the email queue?", expect: "get_queue" },
   { question: "What was deployed recently?", expect: "list_deploys" },
+  // M6: "tell me when" is a watch, never a poll.
+  // Named id on purpose: "this run" would legitimately open on get_current_page.
+  { question: "Tell me when run run_a1 finishes.", expect: "schedule_watch" },
 ];
 
-// 20 cases; tolerate ~3 misses. A single nondeterministic miss shouldn't red the
+// 21 cases; tolerate ~3 misses. A single nondeterministic miss shouldn't red the
 // suite, a trend should.
 const TOOL_SELECTION_THRESHOLD = 0.83;
 
@@ -907,154 +920,164 @@ const TRUNCATED_FIXTURES: Record<string, unknown> = {
 };
 
 describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () => {
-  it("env-limit saturation: concludes on flow/config, not code", () =>
-    goldenCase(async () => {
-    const question =
-      "Runs stopped starting in production about half an hour ago. Investigate what's going on.";
-    const { calls, answer } = await runCase(question, { fixtures: SATURATION_FIXTURES });
-    const renders = investigationRenders(calls);
-    report("saturation", calls, answer, renders);
+  it(
+    "env-limit saturation: concludes on flow/config, not code",
+    () =>
+      goldenCase(async () => {
+        const question =
+          "Runs stopped starting in production about half an hour ago. Investigate what's going on.";
+        const { calls, answer } = await runCase(question, { fixtures: SATURATION_FIXTURES });
+        const renders = investigationRenders(calls);
+        report("saturation", calls, answer, renders);
 
-    // The card came out early and progressed on ONE investigation.
-    expect(renders.length).toBeGreaterThanOrEqual(2);
-    expect(renders[0]?.state.outcome).toBe("in_progress");
-    expect(renders[renders.length - 1]?.state.outcome).toBe("concluded");
-    // Every render after the first points back at the id the tool returned.
-    for (const render of renders.slice(1)) {
-      expect(render.investigationId).toBe(EVAL_INVESTIGATION_ID);
-    }
-    // A concluded card carries a fix and no what-to-check-next.
-    expect(renders[renders.length - 1]?.state.remediation).toBeTruthy();
-    // It answered inside the step ceiling instead of dying at it.
-    expect(answer.length).toBeGreaterThan(0);
+        // The card came out early and progressed on ONE investigation.
+        expect(renders.length).toBeGreaterThanOrEqual(2);
+        expect(renders[0]?.state.outcome).toBe("in_progress");
+        expect(renders[renders.length - 1]?.state.outcome).toBe("concluded");
+        // Every render after the first points back at the id the tool returned.
+        for (const render of renders.slice(1)) {
+          expect(render.investigationId).toBe(EVAL_INVESTIGATION_ID);
+        }
+        // A concluded card carries a fix and no what-to-check-next.
+        expect(renders[renders.length - 1]?.state.remediation).toBeTruthy();
+        // It answered inside the step ceiling instead of dying at it.
+        expect(answer.length).toBeGreaterThan(0);
 
-    const verdict = await judgeClaim({
-      question,
-      toolData: toolTranscript(calls),
-      answer,
-      card: renders[renders.length - 1]?.state,
-      claim:
-        "The conclusion attributes the cause to flow/configuration — the environment or queue concurrency limit throttling runs before they start — and does NOT blame a bug in the user's task code.",
-    });
-    process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
-    expect(verdict.holds).toBe(true);
-    }),
+        const verdict = await judgeClaim({
+          question,
+          toolData: toolTranscript(calls),
+          answer,
+          card: renders[renders.length - 1]?.state,
+          claim:
+            "The conclusion attributes the cause to flow/configuration — the environment or queue concurrency limit throttling runs before they start — and does NOT blame a bug in the user's task code.",
+        });
+        process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
+        expect(verdict.holds).toBe(true);
+      }),
     // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
 
-  it("schema drift: concludes on the source it read, citing the file", () =>
-    goldenCase(async () => {
-    const question =
-      "Every send-receipt run has failed since this morning's deploy. Investigate why.";
-    const { calls, answer } = await runCase(question, {
-      code: true,
-      fixtures: DRIFT_FIXTURES,
-    });
-    const renders = investigationRenders(calls);
-    report("schema drift", calls, answer, renders);
+  it(
+    "schema drift: concludes on the source it read, citing the file",
+    () =>
+      goldenCase(async () => {
+        const question =
+          "Every send-receipt run has failed since this morning's deploy. Investigate why.";
+        const { calls, answer } = await runCase(question, {
+          code: true,
+          fixtures: DRIFT_FIXTURES,
+        });
+        const renders = investigationRenders(calls);
+        report("schema drift", calls, answer, renders);
 
-    const final = renders[renders.length - 1];
-    expect(final?.state.outcome).toBe("concluded");
-    expect(calls.some((c) => c.tool === "read_file" || c.tool === "search_code")).toBe(true);
-    // The card points at the code that ran, not just at the error text.
-    expect(JSON.stringify(final?.state)).toContain("src/trigger/receipt.ts");
+        const final = renders[renders.length - 1];
+        expect(final?.state.outcome).toBe("concluded");
+        expect(calls.some((c) => c.tool === "read_file" || c.tool === "search_code")).toBe(true);
+        // The card points at the code that ran, not just at the error text.
+        expect(JSON.stringify(final?.state)).toContain("src/trigger/receipt.ts");
 
-    const verdict = await judgeClaim({
-      question,
-      toolData: toolTranscript(calls),
-      answer,
-      card: renders[renders.length - 1]?.state,
-      claim:
-        "The conclusion is grounded in the source that was actually read: it names the file (src/trigger/receipt.ts) and the field access that broke, rather than speculating about code it never read.",
-    });
-    process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
-    expect(verdict.holds).toBe(true);
-    }),
+        const verdict = await judgeClaim({
+          question,
+          toolData: toolTranscript(calls),
+          answer,
+          card: renders[renders.length - 1]?.state,
+          claim:
+            "The conclusion is grounded in the source that was actually read: it names the file (src/trigger/receipt.ts) and the field access that broke, rather than speculating about code it never read.",
+        });
+        process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
+        expect(verdict.holds).toBe(true);
+      }),
     // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
 
-  it("flaky upstream: stays inconclusive and offers no fix", () =>
-    goldenCase(async () => {
-    const question =
-      "send-receipt fails maybe one run in five and I can't see a pattern. What's causing it?";
-    const { calls, answer } = await runCase(question, { fixtures: FLAKY_FIXTURES });
-    const renders = investigationRenders(calls);
-    report("flaky upstream", calls, answer, renders);
+  it(
+    "flaky upstream: stays inconclusive and offers no fix",
+    () =>
+      goldenCase(async () => {
+        const question =
+          "send-receipt fails maybe one run in five and I can't see a pattern. What's causing it?";
+        const { calls, answer } = await runCase(question, { fixtures: FLAKY_FIXTURES });
+        const renders = investigationRenders(calls);
+        report("flaky upstream", calls, answer, renders);
 
-    const final = renders[renders.length - 1];
-    expect(final?.state.outcome).toBe("inconclusive");
-    // The endings are exclusive: what to check next, never a fix.
-    expect(final?.state.remediation).toBeFalsy();
-    expect((final?.state.checkNext ?? []).length).toBeGreaterThan(0);
+        const final = renders[renders.length - 1];
+        expect(final?.state.outcome).toBe("inconclusive");
+        // The endings are exclusive: what to check next, never a fix.
+        expect(final?.state.remediation).toBeFalsy();
+        expect((final?.state.checkNext ?? []).length).toBeGreaterThan(0);
 
-    const verdict = await judgeClaim({
-      question,
-      toolData: toolTranscript(calls),
-      answer,
-      card: renders[renders.length - 1]?.state,
-      claim:
-        "The answer says the cause is not established and suggests what to check next. It does NOT present a fix or a remedy as if the cause were known.",
-    });
-    process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
-    expect(verdict.holds).toBe(true);
-    }),
+        const verdict = await judgeClaim({
+          question,
+          toolData: toolTranscript(calls),
+          answer,
+          card: renders[renders.length - 1]?.state,
+          claim:
+            "The answer says the cause is not established and suggests what to check next. It does NOT present a fix or a remedy as if the cause were known.",
+        });
+        process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
+        expect(verdict.holds).toBe(true);
+      }),
     // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
 
-  it("dirty deploy: hedges the source as the nearest snapshot", () =>
-    goldenCase(async () => {
-    const question = "Why did run run_a1 fail? It's on the version we shipped this morning.";
-    const { calls, answer } = await runCase(question, { code: true, fixtures: DIRTY_FIXTURES });
-    const renders = investigationRenders(calls);
-    const card = JSON.stringify(renders[renders.length - 1]?.state ?? {});
-    report("dirty deploy", calls, answer, renders);
+  it(
+    "dirty deploy: hedges the source as the nearest snapshot",
+    () =>
+      goldenCase(async () => {
+        const question = "Why did run run_a1 fail? It's on the version we shipped this morning.";
+        const { calls, answer } = await runCase(question, { code: true, fixtures: DIRTY_FIXTURES });
+        const renders = investigationRenders(calls);
+        const card = JSON.stringify(renders[renders.length - 1]?.state ?? {});
+        report("dirty deploy", calls, answer, renders);
 
-    // The forbidden claim, in the prose and on the card: asserting the source it
-    // read IS what ran. (Naming the phrase to deny it — "the exact deployed code
-    // may differ" — is the hedge we want, so match the assertion, not the words.)
-    const identityClaim =
-      /(is|was|matches|reflects) (exactly )?(the )?(exact )?deployed code\b|is (exactly )?what (actually )?ran\b/i;
-    expect(answer).not.toMatch(identityClaim);
-    expect(card).not.toMatch(identityClaim);
-    // The hedge lands somewhere the user sees it.
-    expect(`${answer}\n${card}`).toMatch(/snapshot|not provably|may differ/i);
+        // The forbidden claim, in the prose and on the card: asserting the source it
+        // read IS what ran. (Naming the phrase to deny it — "the exact deployed code
+        // may differ" — is the hedge we want, so match the assertion, not the words.)
+        const identityClaim =
+          /(is|was|matches|reflects) (exactly )?(the )?(exact )?deployed code\b|is (exactly )?what (actually )?ran\b/i;
+        expect(answer).not.toMatch(identityClaim);
+        expect(card).not.toMatch(identityClaim);
+        // The hedge lands somewhere the user sees it.
+        expect(`${answer}\n${card}`).toMatch(/snapshot|not provably|may differ/i);
 
-    const verdict = await judgeClaim({
-      question,
-      toolData: toolTranscript(calls),
-      answer,
-      card: renders[renders.length - 1]?.state,
-      claim:
-        "Because the deployed version was built from a dirty working tree, the answer treats the source it read as the nearest repository snapshot rather than the exact deployed code, and says so. It never asserts the code it read is what ran.",
-    });
-    process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
-    expect(verdict.holds).toBe(true);
-    }),
+        const verdict = await judgeClaim({
+          question,
+          toolData: toolTranscript(calls),
+          answer,
+          card: renders[renders.length - 1]?.state,
+          claim:
+            "Because the deployed version was built from a dirty working tree, the answer treats the source it read as the nearest repository snapshot rather than the exact deployed code, and says so. It never asserts the code it read is what ran.",
+        });
+        process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
+        expect(verdict.holds).toBe(true);
+      }),
     // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
 
-  it("truncation trap: makes no absence claim off a truncated page", () =>
-    goldenCase(async () => {
-    const question = "Did anything other than send-receipt fail in the last hour?";
-    const { calls, answer } = await runCase(question, { fixtures: TRUNCATED_FIXTURES });
-    report("truncation trap", calls, answer);
+  it(
+    "truncation trap: makes no absence claim off a truncated page",
+    () =>
+      goldenCase(async () => {
+        const question = "Did anything other than send-receipt fail in the last hour?";
+        const { calls, answer } = await runCase(question, { fixtures: TRUNCATED_FIXTURES });
+        report("truncation trap", calls, answer);
 
-    expect(answer.length).toBeGreaterThan(0);
+        expect(answer.length).toBeGreaterThan(0);
 
-    const verdict = await judgeClaim({
-      question,
-      toolData: toolTranscript(calls),
-      answer,
-      claim:
-        "Every list the assistant read was explicitly truncated (truncated: true with a nextCursor). The answer therefore makes no claim about the WORLD: it never says that only send-receipt failed, that nothing else failed, or that no other task shows failures — not even hedged. Reporting what was on the page (\"the only group on this page was send-receipt\") is fine, and required, as long as the answer says the list was incomplete and that other failures can't be ruled out.",
-    });
-    process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
-    expect(verdict.holds).toBe(true);
-    }),
+        const verdict = await judgeClaim({
+          question,
+          toolData: toolTranscript(calls),
+          answer,
+          claim:
+            'Every list the assistant read was explicitly truncated (truncated: true with a nextCursor). The answer therefore makes no claim about the WORLD: it never says that only send-receipt failed, that nothing else failed, or that no other task shows failures — not even hedged. Reporting what was on the page ("the only group on this page was send-receipt") is fine, and required, as long as the answer says the list was incomplete and that other failures can\'t be ruled out.',
+        });
+        process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
+        expect(verdict.holds).toBe(true);
+      }),
     // Two attempts of a real-model turn plus a judge call each.
     840_000
   );
