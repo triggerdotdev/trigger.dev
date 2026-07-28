@@ -33,6 +33,14 @@
  * The transcripts are unchanged: they're org-scoped and their citations point at
  * prod's entities.
  *
+ * One invariant the whole file is arranged around: **the runs list gets its ids
+ * from ClickHouse and hydrates them from Postgres, dropping any id it can't find
+ * there.** So anything that can reach the first pages of that list needs a
+ * Postgres row, not just a ClickHouse one — the cast, the recent runs
+ * (`RECENT_PG_RUNS`, more than a page of them) and every heartbeat trickle run
+ * all have both. Only the deep volume rows are ClickHouse-only, and they are
+ * backdated behind the Postgres-backed ones so they can't surface on page 1.
+ *
  * The story, one set of numbers everywhere: the environment has been pinned at
  * its concurrency ceiling for the last ~38 minutes while work keeps arriving, so
  * flow is critical and execution is fine. `send-order-receipt` is failing on a
@@ -151,6 +159,22 @@ const QUEUE_PENDING_SHARE: Record<string, number> = {
   [HEALTHY_QUEUE]: 0.1,
 };
 
+/**
+ * How many Postgres-backed runs sit above the ClickHouse-only volume rows.
+ *
+ * The runs list pages 25 at a time (`DEFAULT_PAGE_SIZE` in
+ * `NextRunListPresenter`) and drops ids it can't hydrate from Postgres, so this
+ * has to comfortably exceed a page — two pages' worth, so the heartbeat and a bit
+ * of drift can't eat the margin.
+ */
+const RECENT_PG_RUNS = 60;
+/** The window those runs are spread across. */
+const RECENT_RUNS_WINDOW_MS = 170_000;
+/**
+ * Where the ClickHouse-only volume stops, comfortably older than the oldest
+ * Postgres-backed recent run — this gap is what keeps volume rows off page 1.
+ */
+const VOLUME_END_MS = RECENT_RUNS_WINDOW_MS + 10_000;
 const LIVE_WINDOW_MIN = 60;
 const BUCKET_SEC = 10;
 const BASELINE_DAYS = 7;
@@ -606,15 +630,25 @@ function buildCastRuns(now: number, rng: () => number) {
 
   // A believable recent list around the cast: mostly fine, a couple failing the
   // same way, a few still queued behind the limit.
+  //
+  // These have to outnumber a page of the runs list. The list gets its ids from
+  // ClickHouse and hydrates them from Postgres, dropping any id with no Postgres
+  // row — so a page whose newest ids are all volume rows renders empty. Every run
+  // built here has a Postgres row, they are all newer than the newest volume row
+  // (see `buildBulkRuns`), and there are more of them than `DEFAULT_PAGE_SIZE`.
   const background: RunSpec[] = [];
   const backgroundTasks = [
     { id: TASK_ID, queue: QUEUE },
     { id: "send-welcome-email", queue: QUEUE },
     { id: "sync-inventory", queue: HEALTHY_QUEUE },
   ];
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < RECENT_PG_RUNS; i++) {
     const task = backgroundTasks[i % backgroundTasks.length];
-    const created = new Date(now - 150_000 + i * 5_500);
+    const created = new Date(
+      now -
+        RECENT_RUNS_WINDOW_MS +
+        Math.floor((i / RECENT_PG_RUNS) * (RECENT_RUNS_WINDOW_MS - 8_000))
+    );
     const roll = rng();
     const wait = lognormal(STORY.pinnedWaitMedianMs, STORY.waitSigma, rng);
     const duration = lognormal(STORY.durationMedianMs, STORY.waitSigma, rng);
@@ -648,57 +682,73 @@ function buildCastRuns(now: number, rng: () => number) {
   return { failed, waiting, slow, prior, background };
 }
 
+/**
+ * A Prisma-shaped cuid. Supplied rather than defaulted so the whole batch can go
+ * in with one `createMany` and still be mapped back to its ClickHouse rows.
+ */
+function runRowId(): string {
+  let body = "";
+  while (body.length < 24) body += Math.random().toString(36).slice(2);
+  return `c${body.slice(0, 24)}`;
+}
+
 async function insertPostgresRuns(
   specs: RunSpec[],
   ids: {
     projectId: string;
     environmentId: string;
     organizationId: string;
-    workerId: string;
+    /** Null when the stand has no seeded deployment — the run is simply unlocked. */
+    workerId: string | null;
     environmentType: SeededEnvType;
+    /** Run numbers are per-environment and user-visible, so they keep climbing. */
+    startNumber?: number;
   }
 ): Promise<Map<string, string>> {
   const runIdByFriendlyId = new Map<string, string>();
-  let number = 1;
-  for (const spec of specs) {
-    const run = await prisma.taskRun.create({
-      data: {
-        number: number++,
-        friendlyId: spec.friendlyId,
-        engine: "V2",
-        status: spec.status as never,
-        taskIdentifier: spec.taskIdentifier,
-        payload: spec.payload,
-        payloadType: "application/json",
-        traceId: spec.traceId,
-        spanId: spec.spanId,
-        runtimeEnvironmentId: ids.environmentId,
-        environmentType: ids.environmentType,
-        projectId: ids.projectId,
-        organizationId: ids.organizationId,
-        queue: spec.queue,
-        workerQueue: "main",
-        lockedToVersionId: ids.workerId,
-        taskVersion: DEPLOYMENT_VERSION,
-        sdkVersion: "4.0.0",
-        cliVersion: "4.0.0",
-        machinePreset: spec.machinePreset,
-        attemptNumber: spec.attemptNumber ?? null,
-        createdAt: spec.createdAt,
-        queuedAt: spec.queuedAt,
-        queueTimestamp: spec.queuedAt,
-        startedAt: spec.startedAt ?? null,
-        executedAt: spec.executedAt ?? null,
-        completedAt: spec.completedAt ?? null,
-        usageDurationMs: spec.usageDurationMs,
-        maxAttempts: 3,
-        runTags: spec.tags,
-        error: (spec.error ?? null) as never,
-        taskEventStore: "clickhouse_v2",
-      },
-    });
-    runIdByFriendlyId.set(spec.friendlyId, run.id);
-  }
+  let number = ids.startNumber ?? 1;
+  const data = specs.map((spec) => {
+    const id = runRowId();
+    runIdByFriendlyId.set(spec.friendlyId, id);
+    return {
+      id,
+      number: number++,
+      friendlyId: spec.friendlyId,
+      engine: "V2" as const,
+      status: spec.status as never,
+      taskIdentifier: spec.taskIdentifier,
+      payload: spec.payload,
+      payloadType: "application/json",
+      traceId: spec.traceId,
+      spanId: spec.spanId,
+      runtimeEnvironmentId: ids.environmentId,
+      environmentType: ids.environmentType,
+      projectId: ids.projectId,
+      organizationId: ids.organizationId,
+      queue: spec.queue,
+      workerQueue: "main",
+      lockedToVersionId: ids.workerId,
+      taskVersion: DEPLOYMENT_VERSION,
+      sdkVersion: "4.0.0",
+      cliVersion: "4.0.0",
+      machinePreset: spec.machinePreset,
+      attemptNumber: spec.attemptNumber ?? null,
+      createdAt: spec.createdAt,
+      queuedAt: spec.queuedAt,
+      queueTimestamp: spec.queuedAt,
+      startedAt: spec.startedAt ?? null,
+      executedAt: spec.executedAt ?? null,
+      completedAt: spec.completedAt ?? null,
+      usageDurationMs: spec.usageDurationMs,
+      maxAttempts: 3,
+      runTags: spec.tags,
+      error: (spec.error ?? null) as never,
+      taskEventStore: "clickhouse_v2",
+    };
+  });
+  // One statement, not one per run: the heartbeat calls this every tick and its
+  // budget is a couple of hundred milliseconds for everything.
+  await prisma.taskRun.createMany({ data });
   return runIdByFriendlyId;
 }
 
@@ -783,6 +833,7 @@ function makeRunSpec(opts: {
   waitMs: number;
   durationMs: number;
   failing: boolean;
+  tags?: string[];
 }): RunSpec {
   const startedAt = new Date(opts.created + opts.waitMs);
   const finished = opts.status !== "PENDING";
@@ -807,7 +858,7 @@ function makeRunSpec(opts: {
     traceId: generateTraceId(),
     machinePreset: "small-1x",
     usageDurationMs: finished ? opts.durationMs : 0,
-    tags: [],
+    tags: opts.tags ?? [],
   };
 }
 
@@ -847,7 +898,7 @@ function buildBulkRuns(now: number, scale: number, rng: () => number): RunSpec[]
 
   // Live window. Arrivals at the spike rate; completions at the drain rate, so
   // the remainder is the backlog the report attributes to the env limit.
-  const liveEnd = now - 3 * 60_000;
+  const liveEnd = now - VOLUME_END_MS;
   const perMin = Math.max(1, Math.round(STORY.triggeredPerMin * scale));
   const donePerMin = Math.round(perMin * (STORY.donePerMin / STORY.triggeredPerMin));
   const spikeStart = now - STORY.pinnedMinutes * 60_000;
@@ -1575,8 +1626,10 @@ async function seedChats(
  * card is caveated. Heartbeat mode fixes that by appending a thin slice of
  * *now* on every tick, to both environments:
  *
- * - a handful of completed runs at roughly the calm baseline rate, so the runs
- *   telemetry has a current timestamp;
+ * - a handful of completed runs at roughly the calm baseline rate, in Postgres
+ *   *and* ClickHouse, so the runs telemetry has a current timestamp and the top
+ *   of the runs list still hydrates (a ClickHouse-only trickle empties page 1
+ *   within a few ticks);
  * - the tick's worth of 10-second queue-metric buckets with the gauges still
  *   pinned at the ceiling and the backlog held where the seed left it, so flow
  *   keeps telling the same story instead of quietly recovering;
@@ -1592,7 +1645,12 @@ async function seedChats(
  * the seeded spike hour ages out of the live window, throughput settles to the
  * trickle. Re-run the full seed when you want the arrival-spike figures back.
  *
- * Ticks only ever append, so Ctrl-C at any point leaves a valid stand.
+ * Every trickle run is tagged `seed:heartbeat`, which is how the per-tick prune
+ * finds its own Postgres rows once they pass `HEARTBEAT_RETENTION_HOURS` and
+ * nothing else — the cast and the seeded recent runs carry no such tag.
+ *
+ * Ticks only ever append (bar that prune), so Ctrl-C at any point leaves a valid
+ * stand.
  */
 /**
  * Half the liveness finding's 60s "fresh" threshold. The reported age runs a
@@ -1604,12 +1662,27 @@ async function seedChats(
 const HEARTBEAT_INTERVAL_SEC = 30;
 /** The rate the trickle runs at, per environment, before per-env scaling. */
 const HEARTBEAT_RUNS_PER_MIN = STORY.baselineRunsPerMin;
+/**
+ * Stamped on every trickle run so the prune can find its own rows and nothing
+ * else. The cast and the seeded recent runs carry no such tag, so they can never
+ * be caught by it however long a heartbeat runs.
+ */
+const HEARTBEAT_TAG = "seed:heartbeat";
+/** How long a trickle run stays in Postgres before the prune collects it. */
+const HEARTBEAT_RETENTION_HOURS = 24;
+/** Prune cadence, in ticks. ~10 minutes at a 30s tick. */
+const HEARTBEAT_PRUNE_EVERY_TICKS = 20;
 
 type HeartbeatEnv = {
   environment: { id: string; slug: string; type: SeededEnvType };
   ids: ChIds;
+  projectId: string;
+  /** The seeded deployment's worker, so trickle runs are locked to a version. */
+  workerId: string | null;
   emit: ReturnType<typeof createBucketEmitter>;
   runsPerTick: number;
+  /** Next per-environment run number, so the list's numbering keeps climbing. */
+  nextRunNumber: number;
   /** The cast's still-executing run, whose `updatedAt` each tick touches. */
   executingRunId: string | null;
 };
@@ -1622,10 +1695,10 @@ async function heartbeatTick(
   rng: () => number,
   nonce: string,
   tick: number
-): Promise<{ runs: number; metricRows: number }> {
+): Promise<{ runs: number; metricRows: number; pruned: number }> {
   const { ids, environment } = env;
 
-  // Runs: a healthy mix landing across the minute just gone.
+  // Runs: a healthy mix landing across the tick just gone.
   const specs: RunSpec[] = [];
   for (let i = 0; i < env.runsPerTick; i++) {
     const created =
@@ -1643,11 +1716,27 @@ async function heartbeatTick(
         waitMs: lognormal(STORY.calmWaitMedianMs, STORY.waitSigma, rng),
         durationMs: lognormal(STORY.durationMedianMs, STORY.waitSigma, rng),
         failing,
+        tags: [HEARTBEAT_TAG],
       })
     );
   }
+
+  // Postgres first, and for every trickle run — not just the volume treatment the
+  // seed's bulk rows get. The trickle lands at the very top of the runs list, and
+  // the list drops ClickHouse ids it can't hydrate from Postgres, so a
+  // ClickHouse-only trickle empties page 1 within a few ticks.
+  const runIdByFriendlyId = await insertPostgresRuns(specs, {
+    projectId: env.projectId,
+    environmentId: environment.id,
+    organizationId: ids.organization_id,
+    workerId: env.workerId,
+    environmentType: environment.type,
+    startNumber: env.nextRunNumber,
+  });
+  env.nextRunNumber += specs.length;
+
   const runRows = specs.map((spec) =>
-    taskRunRow(spec, syntheticRunId(), ids, String(now), environment.type)
+    taskRunRow(spec, runIdByFriendlyId.get(spec.friendlyId)!, ids, String(now), environment.type)
   );
   await insertTaskRuns(ch, runRows, `${nonce}:${environment.slug}:tick${tick}:runs`);
 
@@ -1682,7 +1771,23 @@ async function heartbeatTick(
     });
   }
 
-  return { runs: runRows.length, metricRows: metricRows.length };
+  // Prune the trickle's own Postgres rows once they're a day old, so a heartbeat
+  // left running for a week doesn't grow the table without bound. Scoped by the
+  // tag AND the age, so the cast and the seeded recent runs are untouchable.
+  // Nothing can be collectable more often than the retention window, so this runs
+  // on a slow cadence rather than every tick.
+  let pruned = 0;
+  if (tick % HEARTBEAT_PRUNE_EVERY_TICKS === 1) {
+    ({ count: pruned } = await prisma.taskRun.deleteMany({
+      where: {
+        runtimeEnvironmentId: environment.id,
+        runTags: { has: HEARTBEAT_TAG },
+        createdAt: { lt: new Date(now - HEARTBEAT_RETENTION_HOURS * 3600_000) },
+      },
+    }));
+  }
+
+  return { runs: runRows.length, metricRows: metricRows.length, pruned };
 }
 
 async function runHeartbeat(scale: number) {
@@ -1731,9 +1836,22 @@ async function runHeartbeat(scale: number) {
         `[${environment.slug}] no executing run found — is this stand seeded? Continuing anyway.`
       );
     }
+    // Trickle runs are locked to the seeded deployment, like every other run on
+    // the stand, so the list's version column isn't blank for the newest rows.
+    const worker = await prisma.backgroundWorker.findFirst({
+      where: { runtimeEnvironmentId: environment.id, version: DEPLOYMENT_VERSION },
+      select: { id: true },
+    });
+    const highestNumber = await prisma.taskRun.aggregate({
+      where: { runtimeEnvironmentId: environment.id },
+      _max: { number: true },
+    });
     envs.push({
       environment: { id: environment.id, slug: environment.slug, type: type as SeededEnvType },
       ids,
+      projectId: project.id,
+      workerId: worker?.id ?? null,
+      nextRunNumber: (highestNumber._max.number ?? 0) + 1,
       emit: createBucketEmitter(ids, Date.now(), rng),
       runsPerTick: Math.max(
         1,
@@ -1770,7 +1888,10 @@ async function runHeartbeat(scale: number) {
     const counts: string[] = [];
     for (const env of envs) {
       const result = await heartbeatTick(ch, env, started, rng, nonce, tick);
-      counts.push(`${env.environment.slug} +${result.runs} runs +${result.metricRows} metric rows`);
+      counts.push(
+        `${env.environment.slug} +${result.runs} runs +${result.metricRows} metric rows` +
+          (result.pruned > 0 ? ` -${result.pruned} pruned` : "")
+      );
     }
     await refreshRedisDepth(organizationId, envs, STORY.pending);
     console.log(
