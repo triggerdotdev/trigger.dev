@@ -20,10 +20,13 @@ import type {
 } from "~/presenters/v3/reports/report-view-model";
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import {
+  FOOTER_WATCH_CODE,
+  FOOTER_WATCH_ONLY_CODE,
   ReportBody,
   ReportCard,
   ReportFindingLine,
   ReportFooterAction,
+  ReportFooterActionLink,
   ReportFooterLine,
   ReportFooterLink,
   ReportFooterNote,
@@ -36,10 +39,9 @@ import {
   ReportProvenance,
   ReportSeverityIcon,
   reportDelta,
+  reportFooterStyle,
+  type ReportFooterItem,
 } from "../../report-sparkline";
-
-/** Footer codes that state an option rather than offer one — plain text, not a button. */
-const NON_ACTION_CODES = new Set(["nothing_to_do", "do_nothing_drains", "region_failover"]);
 
 // --- formatting -------------------------------------------------------------
 // Local copies of the markdown renderer's private formatters. Kept in sync by
@@ -264,6 +266,89 @@ export function DemoReportCard({
 
   const footerLinkKeys = new Set(vm.footer.map((entry) => entry.link).filter(Boolean));
 
+  // The footer reads as a sentence, and each entry's code decides what it is:
+  // a primary button for something that happens, the docs button for something
+  // to read, a text link for a place to look, prose for an option. Demo mode
+  // never navigates — pressing hands the label back so the transcript can show
+  // what would have happened.
+  const footerItems: ReportFooterItem[] = vm.footer.map((entry) => {
+    const label = fillTokens(healthMessages.actionMessage(entry.code), {
+      ...tokens,
+      value: entry.value ?? "",
+    });
+    const url = vm.links.find((link) => link.key === entry.link)?.url;
+    const style = reportFooterStyle(entry.code);
+    const external = url !== undefined && /^https?:\/\//i.test(url);
+
+    if (style === "note") {
+      return { code: entry.code, node: <ReportFooterNote>{label}</ReportFooterNote> };
+    }
+    if (style === "reference") {
+      return {
+        code: entry.code,
+        node: external ? (
+          <ReportFooterLink href={url!} external>
+            {label}
+          </ReportFooterLink>
+        ) : (
+          <ReportFooterNote>{label}</ReportFooterNote>
+        ),
+      };
+    }
+    if (style === "docs" && external) {
+      return {
+        code: entry.code,
+        node: (
+          <ReportFooterActionLink href={url!} docs>
+            {label}
+          </ReportFooterActionLink>
+        ),
+      };
+    }
+    if (style === "action" && external) {
+      return {
+        code: entry.code,
+        node: <ReportFooterActionLink href={url!}>{label}</ReportFooterActionLink>,
+      };
+    }
+    return {
+      code: entry.code,
+      node: <ReportFooterAction onClick={() => onAction?.(label, url)}>{label}</ReportFooterAction>,
+    };
+  });
+
+  // Same offer the shipped card makes when there is something to recover from.
+  if (severity !== "ok") {
+    const offersControl = vm.footer.some((entry) => {
+      const style = reportFooterStyle(entry.code);
+      return style === "action" || style === "docs";
+    });
+    const label = offersControl ? "Watch for recovery" : "watch it recover";
+    footerItems.push({
+      code: offersControl ? FOOTER_WATCH_CODE : FOOTER_WATCH_ONLY_CODE,
+      node: <ReportFooterAction onClick={() => onAction?.(label)}>{label}</ReportFooterAction>,
+    });
+  }
+
+  // Docs the report cites — demo mode has no host to resolve `trigger://` URIs,
+  // so only real URLs.
+  for (const link of vm.links) {
+    if (footerLinkKeys.has(link.key) || !/^https?:\/\//i.test(link.url)) continue;
+    footerItems.push({
+      code: link.key,
+      node:
+        reportFooterStyle(link.key) === "docs" ? (
+          <ReportFooterActionLink href={link.url} docs>
+            {link.label}
+          </ReportFooterActionLink>
+        ) : (
+          <ReportFooterLink href={link.url} external>
+            {link.label}
+          </ReportFooterLink>
+        ),
+    });
+  }
+
   return (
     <ReportCard>
       <ReportHeaderLine
@@ -331,35 +416,7 @@ export function DemoReportCard({
           ))}
         </ReportNoteBlock>
 
-        <ReportFooterLine>
-          {vm.footer.map((entry, i) => {
-            const label = fillTokens(healthMessages.actionMessage(entry.code), {
-              ...tokens,
-              value: entry.value ?? "",
-            });
-            const url = vm.links.find((link) => link.key === entry.link)?.url;
-            if (NON_ACTION_CODES.has(entry.code)) {
-              return <ReportFooterNote key={i}>{label}</ReportFooterNote>;
-            }
-            // Footer actions are link text — the footer reads as one sentence
-            // after the arrow. Demo mode never navigates: clicking hands the
-            // label back so the transcript can show what would happen.
-            return (
-              <ReportFooterAction key={i} onClick={() => onAction?.(label, url)}>
-                {label}
-              </ReportFooterAction>
-            );
-          })}
-          {/* Docs the report cites — reading matter, so links rather than buttons.
-              Demo mode has no host to resolve `trigger://` URIs, so only real URLs. */}
-          {vm.links
-            .filter((link) => !footerLinkKeys.has(link.key) && /^https?:\/\//i.test(link.url))
-            .map((link) => (
-              <ReportFooterLink key={link.key} href={link.url} external>
-                {link.label}
-              </ReportFooterLink>
-            ))}
-        </ReportFooterLine>
+        <ReportFooterLine items={footerItems} />
 
         {sourceUri ? <ReportProvenance uri={sourceUri} /> : null}
       </ReportBody>

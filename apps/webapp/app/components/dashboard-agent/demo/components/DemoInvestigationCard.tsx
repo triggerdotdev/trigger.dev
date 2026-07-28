@@ -62,7 +62,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function EvidenceItem({ evidence, stacked }: { evidence: Evidence; stacked?: boolean }) {
   return (
     <li className={stacked ? "space-y-1.5" : EVIDENCE_ROW_CLASS}>
-      <CategoryBadge className="justify-self-start">{evidence.kind}</CategoryBadge>
+      {/* `w-fit` is what keeps the badge its own size when it is a block child of
+          the stacked item — the Badge primitive is a grid, so it would otherwise
+          stretch the full width and read as a bar. */}
+      <CategoryBadge className="w-fit justify-self-start">{evidence.kind}</CategoryBadge>
       <div className="min-w-0 space-y-1.5">
         <p className="text-xs text-text-bright">{evidence.label}</p>
         <div className="break-all font-mono text-[10px] text-text-dimmed">{evidence.uri}</div>
@@ -89,8 +92,10 @@ function HypothesisRow({ hypothesis }: { hypothesis: DemoHypothesis }) {
       {hypothesis.finding ? <p className="text-xs text-text-dimmed">{hypothesis.finding}</p> : null}
       {hypothesis.evidence.length > 0 ? (
         // Stacked, not two-column: nested under the hypothesis's indent the
-        // content column would be too narrow for identifiers and excerpts.
-        <ul className="space-y-3 pt-1">
+        // content column would be too narrow for identifiers and excerpts. The
+        // wide gap is deliberate — stacked items have no column to separate them,
+        // so the space between them is the only thing that says "next citation".
+        <ul className="space-y-5 pt-1">
           {hypothesis.evidence.map((evidence, i) => (
             <EvidenceItem key={i} evidence={evidence} stacked />
           ))}

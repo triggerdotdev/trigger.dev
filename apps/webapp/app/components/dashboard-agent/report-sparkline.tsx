@@ -11,7 +11,9 @@
  *
  * PURE, like `ReportView`: no Remix hooks, no loader data, no router context.
  * Notes use the app's `InfoIconTooltip` primitive and the sparkline reuses the
- * queue metrics `MiniLineChart`; both are router-agnostic.
+ * queue metrics `MiniLineChart`; both are router-agnostic. The footer's
+ * `LinkButton`s are only ever given external URLs, which it renders as plain
+ * anchors — an in-app destination stays an intent, so no router is needed.
  */
 import {
   ArrowUpRightIcon,
@@ -22,6 +24,7 @@ import {
 import { Children, Fragment, type ReactNode } from "react";
 import { Bar, Cell, type TooltipProps } from "recharts";
 import { ActivityBarChart } from "~/components/metrics/ActivityBarChart";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
@@ -305,36 +308,100 @@ export function ReportNoteBlock({ label, children }: { label: string; children: 
   );
 }
 
+// --- footer -----------------------------------------------------------------
+
 /**
- * The footer: an arrow, then every action on one dot-separated line. Buttons for
- * things that happen in the app, links for things that live in the docs.
+ * How a footer entry renders. One rule, applied by code rather than by URL, so
+ * the same code always looks the same in both cards:
+ *
+ * - `action` — something happens when you press it: the violet primary button.
+ *   Still a button when its href leaves the app (contacting us about a limit is
+ *   an action even though it opens a web form); the arrow then says it leaves.
+ * - `docs` — reading matter we wrote: the docs button.
+ * - `reference` — a pointer with no action behind it (a status page): a text
+ *   link with the external arrow. A button would promise something happens here.
+ * - `note` — an option stated, not offered: prose.
  */
-export function ReportFooterLine({ children }: { children: ReactNode }) {
-  const items = Children.toArray(children).filter(Boolean);
-  if (items.length === 0) return null;
+export type ReportFooterStyle = "action" | "docs" | "reference" | "note";
+
+/** Footer codes that state an option rather than offer one. */
+const FOOTER_NOTE_CODES = new Set(["nothing_to_do", "do_nothing_drains", "region_failover"]);
+
+/** Footer codes that only cite a place to look, with nothing to press. */
+const FOOTER_REFERENCE_CODES = new Set(["check_control_plane", "check_platform_status"]);
+
+/** A doc entry names itself one: `concurrency_docs`, `retries_docs`, … */
+const FOOTER_DOCS_SUFFIX = "_docs";
+
+export function reportFooterStyle(code: string): ReportFooterStyle {
+  if (FOOTER_NOTE_CODES.has(code)) return "note";
+  if (code.endsWith(FOOTER_DOCS_SUFFIX)) return "docs";
+  if (FOOTER_REFERENCE_CODES.has(code)) return "reference";
+  return "action";
+}
+
+/**
+ * The footer's recovery-watch offer, which no report emits as a footer entry —
+ * the card adds it. Two codes because it is phrased two ways: as an addendum to
+ * actions the user was just given, and as the only thing on offer when the
+ * report has nothing for them to do.
+ */
+export const FOOTER_WATCH_CODE = "watch_recovery";
+export const FOOTER_WATCH_ONLY_CODE = "watch_recovery_only";
+
+/**
+ * The prose that carries each footer entry, so the footer reads as a sentence
+ * instead of a row of chips: "→ you can [Contact us] , explore [Docs] or do
+ * nothing — the backlog drains in ~27 min. Want me to [Watch for recovery]?"
+ *
+ * Keyed by the report's own code. A code with no connector falls back to " · "
+ * separation, which is what every other report's footer already looks like — so
+ * adding a report never has to touch this table.
+ */
+const FOOTER_CONNECTOR: Record<string, { before: string; after?: string }> = {
+  contact_us_raise_limit: { before: "you can " },
+  concurrency_docs: { before: ", explore " },
+  // The catalog's text already begins "or do nothing — …", so this only spaces
+  // it off the entry before it and closes the sentence.
+  do_nothing_drains: { before: " ", after: "." },
+  check_control_plane: { before: "there's nothing to fix on your side — please ", after: "." },
+  [FOOTER_WATCH_CODE]: { before: " Want me to ", after: "?" },
+  [FOOTER_WATCH_ONLY_CODE]: { before: " Or I can ", after: " for you." },
+};
+
+/** One resolved footer entry: the code it came from, and what it renders as. */
+export type ReportFooterItem = { code: string; node: ReactNode };
+
+/**
+ * The footer: an arrow, then the entries as one flowing sentence with the real
+ * controls inline. `leading-7` gives the `h-6` inline buttons a line box they
+ * fit inside, so a wrapped footer keeps an even rhythm.
+ */
+export function ReportFooterLine({ items }: { items: ReportFooterItem[] }) {
+  const entries = items.filter((item) => item.node);
+  if (entries.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-grid-bright pt-3 text-sm">
-      <span aria-hidden className="text-text-dimmed">
-        →
-      </span>
-      {items.map((item, i) => (
-        <Fragment key={i}>
-          {i > 0 ? (
-            <span aria-hidden className="text-text-faint">
-              ·
-            </span>
-          ) : null}
-          {item}
-        </Fragment>
-      ))}
-    </div>
+    <p className="border-t border-grid-bright pt-3 text-sm leading-7 text-text-dimmed">
+      <span aria-hidden>{"→ "}</span>
+      {entries.map((item, i) => {
+        const connector = FOOTER_CONNECTOR[item.code];
+        return (
+          <Fragment key={i}>
+            {connector ? connector.before : i > 0 ? " · " : null}
+            {item.node}
+            {connector?.after}
+          </Fragment>
+        );
+      })}
+    </p>
   );
 }
 
 /**
- * A footer entry that reads rather than acts — a doc page, a resolved resource.
- * Underlined text, never a button: a button promises something happens here.
+ * A footer entry that only cites a place to look — a status page, a resolved
+ * resource. Underlined text, never a button: a button promises something
+ * happens here.
  */
 export function ReportFooterLink({
   href,
@@ -351,10 +418,12 @@ export function ReportFooterLink({
       {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
       // The app's link token (readable on dark surfaces, theme-remapped) and
       // the app-wide external-link marker — see HelpAndFeedbackPopover.
-      className="inline-flex items-center gap-0.5 text-text-link transition hover:underline"
+      className="text-text-link underline decoration-text-link/40 underline-offset-2 transition hover:decoration-text-link"
     >
       {children}
-      {external ? <ArrowUpRightIcon className="size-3.5 text-text-dimmed" /> : null}
+      {external ? (
+        <ArrowUpRightIcon className="ml-0.5 inline-block size-3.5 align-[-0.15em] text-text-dimmed" />
+      ) : null}
     </a>
   );
 }
@@ -365,10 +434,12 @@ export function ReportFooterNote({ children }: { children: ReactNode }) {
 }
 
 /**
- * An in-app footer action, styled as link text so the footer reads as one
- * sentence after the arrow (the reference rhythm: "→ review enrich-lead v142 ·
- * open AI metrics dashboard") — a row of boxed buttons broke that line.
+ * Keeps an `h-6` control on the text baseline inside the footer sentence without
+ * stretching the line it sits on.
  */
+const INLINE_CONTROL = "inline-flex align-middle";
+
+/** An in-app footer action: it happens here, so it gets the primary button. */
 export function ReportFooterAction({
   onClick,
   children,
@@ -377,13 +448,38 @@ export function ReportFooterAction({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-text-link transition focus-custom hover:underline"
-    >
-      {children}
-    </button>
+    <span className={INLINE_CONTROL}>
+      <Button variant="primary/small" onClick={onClick}>
+        {children}
+      </Button>
+    </span>
+  );
+}
+
+/**
+ * A footer action that lives at a URL: the same button, as a link. `docs` gets
+ * the docs variant; an action leaving the app carries the external arrow.
+ */
+export function ReportFooterActionLink({
+  href,
+  docs,
+  children,
+}: {
+  href: string;
+  docs?: boolean;
+  children: ReactNode;
+}) {
+  const external = /^https?:\/\//i.test(href);
+  return (
+    <span className={INLINE_CONTROL}>
+      <LinkButton
+        to={href}
+        variant={docs ? "docs/small" : "primary/small"}
+        TrailingIcon={!docs && external ? ArrowUpRightIcon : undefined}
+      >
+        {children}
+      </LinkButton>
+    </span>
   );
 }
 
@@ -620,11 +716,17 @@ export function ReportMetricRow({
       </li>
 
       {(subRows ?? []).map((sub) => (
-        // Sub-values sit in the same column at the same size as the parent's
-        // value — only the dimmed color and the indented label say "part of".
+        // A sub-row lives entirely in the VALUE column: the label column stays
+        // empty and "done 773/min" starts on the same vertical as the parent's
+        // value. As a label-column entry it read like a metric of its own.
         <li key={sub.label} className={METRIC_ROW_CLASS}>
-          <span className={cn(LABEL_CLASS, "pl-2.5")}>{sub.label}</span>
-          <span className="text-sm tabular-nums text-text-dimmed">{sub.value}</span>
+          <span aria-hidden />
+          {/* Spans the delta column as well: a sub-row has no delta, and the two
+              words don't fit the value column alone at panel width. */}
+          <span className="col-span-2 flex min-w-0 items-baseline gap-1.5 whitespace-nowrap text-sm text-text-dimmed">
+            <span className={LABEL_CLASS}>{sub.label}</span>
+            <span className="tabular-nums">{sub.value}</span>
+          </span>
         </li>
       ))}
     </>

@@ -9,8 +9,8 @@
  *
  * The layout reads top to bottom as one argument: a quiet header line, one
  * headline that names the state, the metric grid that proves it, "why:" for what
- * owns it, "read:" for what it means, and a single line of actions. The pieces
- * live in `report-sparkline.tsx` and are shared with the demo card.
+ * owns it, "read:" for what it means, and a footer that puts the actions in a
+ * sentence. The pieces live in `report-sparkline.tsx`, shared with the demo card.
  *
  * PURE COMPONENT, on purpose: props in, no Remix hooks, no loader data, no
  * router context. That's what lets it render identically in the panel, in the
@@ -19,8 +19,9 @@
  * - `trigger://` URIs are resolved by the HOST via the `resolveUri` prop. The
  *   card knows a URI is a resource pointer; only the host knows the environment
  *   it should resolve against.
- * - Footer actions don't navigate. They emit an `AgentIntent` and the host
- *   decides whether to honour it — the same contract the rest of the agent uses.
+ * - Footer actions inside the app don't navigate. They emit an `AgentIntent` and
+ *   the host decides whether to honour it — the same contract the rest of the
+ *   agent uses. Only entries whose target is an external URL are real links.
  */
 import {
   isTriggerUri,
@@ -31,6 +32,7 @@ import {
   type ReportViewModelPayload,
   type TriggerUri,
 } from "@internal/dashboard-agent-contracts";
+import { type ReactNode } from "react";
 import { Badge } from "~/components/primitives/Badge";
 // Imported for its registration side effect as much as its value: each report's
 // catalog registers itself under the report's title on import.
@@ -38,10 +40,13 @@ import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import { type ReportMessages } from "~/presenters/v3/reports/report-messages";
 import { reportIsTrustworthy } from "./report-block-adapter";
 import {
+  FOOTER_WATCH_CODE,
+  FOOTER_WATCH_ONLY_CODE,
   ReportBody,
   ReportCard,
   ReportFindingLine,
   ReportFooterAction,
+  ReportFooterActionLink,
   ReportFooterLine,
   ReportFooterLink,
   ReportFooterNote,
@@ -54,16 +59,11 @@ import {
   ReportProvenance,
   ReportSeverityIcon,
   reportDelta,
+  reportFooterStyle,
+  type ReportFooterItem,
 } from "./report-sparkline";
 
 export type ResolvedUri = { label: string; url: string };
-
-/**
- * Footer codes that state an option rather than offer an action ("nothing to do",
- * "or do nothing — the backlog drains in ~26 min"). They render as a line of
- * text: making them buttons would invite a click that does nothing.
- */
-const NON_ACTION_CODES = new Set(["nothing_to_do", "do_nothing_drains", "region_failover"]);
 
 /** How often a recovery watch polls, and how long it lives. Aggregate conditions floor at 5m. */
 const RECOVERY_WATCH = { checkEveryMinutes: 5, maxHours: 6 } as const;
@@ -178,30 +178,50 @@ function classifyLink(
 }
 
 /**
- * One footer action. Docs live outside the app, so they stay a link; anything
- * in-app is a real action and gets the primary button, emitting a `navigate`
- * intent — or an `ask`, when the report named no target, so the user can still
- * pull the "how" out of the agent.
+ * One footer entry, rendered the way its code says (`reportFooterStyle`): a
+ * primary button for something that happens, the docs button for something to
+ * read, a text link for a place to look, prose for an option.
+ *
+ * An in-app action emits a `navigate` intent — or an `ask`, when the report named
+ * no target, so the user can still pull the "how" out of the agent.
  */
-function ActionButton({
+function footerEntryNode({
+  code,
   label,
   target,
   onIntent,
-  code,
 }: {
+  code: string;
   label: string;
   target: LinkTarget;
   onIntent?: (intent: AgentIntent) => void;
-  code?: string;
-}) {
+}): ReactNode {
+  const style = reportFooterStyle(code);
+
+  if (style === "note") return <ReportFooterNote>{label}</ReportFooterNote>;
+
+  if (style === "reference" || style === "docs") {
+    if (target.kind === "external") {
+      return style === "docs" ? (
+        <ReportFooterActionLink href={target.url} docs>
+          {label}
+        </ReportFooterActionLink>
+      ) : (
+        <ReportFooterLink href={target.url} external>
+          {label}
+        </ReportFooterLink>
+      );
+    }
+    if (target.kind === "resource" && target.resolved) {
+      return <ReportFooterLink href={target.resolved.url}>{label}</ReportFooterLink>;
+    }
+    return <ReportFooterNote>{label}</ReportFooterNote>;
+  }
+
+  // An action whose target is a URL stays a button — contacting us about a limit
+  // is an action even though it opens a web form; the arrow says it leaves.
   if (target.kind === "external") {
-    // Footer actions are link text, not boxed buttons — the footer reads as one
-    // sentence after the arrow.
-    return (
-      <ReportFooterLink href={target.url} external>
-        {label}
-      </ReportFooterLink>
-    );
+    return <ReportFooterActionLink href={target.url}>{label}</ReportFooterActionLink>;
   }
 
   const intent: AgentIntent =
@@ -422,6 +442,66 @@ export function ReportView({
   // Links a footer action already speaks for aren't repeated as reading matter.
   const footerLinkKeys = new Set(vm.footer.map((entry) => entry.link).filter(Boolean));
 
+  const footerItems: ReportFooterItem[] = vm.footer.map((entry) => ({
+    code: entry.code,
+    node: footerEntryNode({
+      code: entry.code,
+      label: fillTokens(messages.actionMessage(entry.code), {
+        ...tokens,
+        value: entry.value ?? "",
+      }),
+      target: classifyLink(linkByKey(entry.link), resolveUri),
+      onIntent,
+    }),
+  }));
+
+  // The watch is phrased as an addendum when the footer just handed the user
+  // something to press, and as the only offer when it didn't.
+  const footerOffersControl = vm.footer.some((entry) => {
+    const style = reportFooterStyle(entry.code);
+    return style === "action" || style === "docs";
+  });
+
+  if (recoveryWatch && onIntent) {
+    footerItems.push({
+      code: footerOffersControl ? FOOTER_WATCH_CODE : FOOTER_WATCH_ONLY_CODE,
+      node: (
+        <ReportFooterAction onClick={() => onIntent(recoveryWatch)}>
+          {footerOffersControl ? "Watch for recovery" : "watch it recover"}
+        </ReportFooterAction>
+      ),
+    });
+  }
+
+  // Resources the report cites, resolved to dashboard links by the host. Cited,
+  // not offered — so a text link (our docs still get the docs button).
+  for (const link of vm.links) {
+    if (footerLinkKeys.has(link.key)) continue;
+    const target = classifyLink(link.url, resolveUri);
+    if (target.kind === "external") {
+      footerItems.push({
+        code: link.key,
+        node:
+          reportFooterStyle(link.key) === "docs" ? (
+            <ReportFooterActionLink href={target.url} docs>
+              {link.label}
+            </ReportFooterActionLink>
+          ) : (
+            <ReportFooterLink href={target.url} external>
+              {link.label}
+            </ReportFooterLink>
+          ),
+      });
+    } else if (target.kind === "resource" && target.resolved) {
+      footerItems.push({
+        code: link.key,
+        node: (
+          <ReportFooterLink href={target.resolved.url}>{target.resolved.label}</ReportFooterLink>
+        ),
+      });
+    }
+  }
+
   return (
     <ReportCard>
       <ReportHeaderLine
@@ -501,52 +581,7 @@ export function ReportView({
           ))}
         </ReportNoteBlock>
 
-        <ReportFooterLine>
-          {vm.footer.map((entry, i) => {
-            const label = fillTokens(messages.actionMessage(entry.code), {
-              ...tokens,
-              value: entry.value ?? "",
-            });
-            if (NON_ACTION_CODES.has(entry.code)) {
-              return <ReportFooterNote key={i}>{label}</ReportFooterNote>;
-            }
-            return (
-              <ActionButton
-                key={i}
-                label={label}
-                code={entry.code}
-                target={classifyLink(linkByKey(entry.link), resolveUri)}
-                onIntent={onIntent}
-              />
-            );
-          })}
-          {recoveryWatch && onIntent ? (
-            <ReportFooterAction onClick={() => onIntent(recoveryWatch)}>
-              watch for recovery
-            </ReportFooterAction>
-          ) : null}
-          {/* Resources the report cites, resolved to dashboard links by the host. */}
-          {vm.links
-            .filter((link) => !footerLinkKeys.has(link.key))
-            .map((link) => {
-              const target = classifyLink(link.url, resolveUri);
-              if (target.kind === "external") {
-                return (
-                  <ReportFooterLink key={link.key} href={target.url} external>
-                    {link.label}
-                  </ReportFooterLink>
-                );
-              }
-              if (target.kind === "resource" && target.resolved) {
-                return (
-                  <ReportFooterLink key={link.key} href={target.resolved.url}>
-                    {target.resolved.label}
-                  </ReportFooterLink>
-                );
-              }
-              return null;
-            })}
-        </ReportFooterLine>
+        <ReportFooterLine items={footerItems} />
 
         {reportUri ? <ReportProvenance uri={reportUri} /> : null}
       </ReportBody>

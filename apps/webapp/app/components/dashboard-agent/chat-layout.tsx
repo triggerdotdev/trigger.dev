@@ -183,12 +183,17 @@ export function ChatCardSlot({ children }: { children: React.ReactNode }) {
  * It always carries the transcript's inset — either from the turn it sits in, or
  * by applying it itself when it is mounted loose (under a card, say). There is no
  * way to mount it flush against the panel edge, which is the point.
+ *
+ * The text wraps, so the spinner is pinned to the FIRST line (`items-start`) and
+ * nudged down to sit optically centred against it — `items-center` floated it to
+ * the middle of a two-line message.
  */
 export function ChatProgress({ children }: { children: React.ReactNode }) {
   const insetClass = useInsetClass();
   return (
-    <div className={cn(insetClass, "flex items-center text-sm text-text-dimmed", ROW_GAP)}>
-      <Spinner className="size-3" />
+    <div className={cn(insetClass, "flex items-start text-sm text-text-dimmed", ROW_GAP)}>
+      {/* text-sm line box is 20px, the spinner 12px: 4px centres it on line one. */}
+      <Spinner className="mt-1 size-3 shrink-0" />
       {children}
     </div>
   );
