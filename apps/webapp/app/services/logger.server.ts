@@ -21,7 +21,7 @@ Logger.onError = (message, ...args) => {
   const extra = redact(flattenArgs(args), SENTRY_EXTRA_FILTERED_KEYS) as Record<string, unknown>;
 
   if (error) {
-    captureException(error, {
+    captureException(redactError(error), {
       extra: {
         message,
         ...extra,
@@ -34,6 +34,17 @@ Logger.onError = (message, ...args) => {
     });
   }
 };
+
+function redactError(error: Error): Error {
+  const redactedError = new Error(redact(error.message) as string);
+  redactedError.name = error.name;
+
+  if (error.stack) {
+    redactedError.stack = redact(error.stack) as string;
+  }
+
+  return redactedError;
+}
 
 function extractErrorFromArgs(args: Array<Record<string, unknown> | undefined>) {
   for (const arg of args) {

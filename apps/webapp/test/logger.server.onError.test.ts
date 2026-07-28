@@ -30,17 +30,25 @@ describe("logger.server Logger.onError", () => {
     expect(JSON.stringify(options.extra)).not.toContain("tr_prod_should_not_leak");
   });
 
-  it("redacts the extra payload sent to Sentry on the captureException path", async () => {
+  it("redacts the exception and extra payload sent to Sentry", async () => {
     const { logger } = await import("~/services/logger.server");
+    const error = new Error("tr_prod_should_not_leak");
+    error.stack = "Bearer secret-token";
 
     logger.error("boom", {
-      error: new Error("bad thing happened"),
+      error,
       payload: { secret: "do-not-leak" },
     });
 
     expect(captureExceptionMock).toHaveBeenCalledTimes(1);
-    const [, options] = captureExceptionMock.mock.calls[0] as [Error, { extra: unknown }];
+    const [capturedError, options] = captureExceptionMock.mock.calls[0] as [
+      Error,
+      { extra: unknown },
+    ];
 
+    expect(capturedError).not.toBe(error);
+    expect(capturedError.message).not.toContain("tr_prod_should_not_leak");
+    expect(capturedError.stack).not.toContain("secret-token");
     expect(JSON.stringify(options.extra)).not.toContain("do-not-leak");
   });
 
