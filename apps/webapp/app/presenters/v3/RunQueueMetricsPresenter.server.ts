@@ -145,7 +145,7 @@ async function delaySummary(input: {
   try {
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       input.organizationId,
-      "query"
+      "queueMetrics"
     );
 
     const endMs = Math.ceil(Date.now() / DELAY_GRID_MS) * DELAY_GRID_MS;

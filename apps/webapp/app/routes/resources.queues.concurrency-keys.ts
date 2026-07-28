@@ -122,7 +122,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       organizationId,
-      "query"
+      "queueMetrics"
     );
 
     const [rankingError, rankingRows] = await clickhouse.queueMetrics.concurrencyKeyRanking({

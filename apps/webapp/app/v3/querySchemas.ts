@@ -823,6 +823,7 @@ export const queueMetricsSchema: TableSchema = {
   // logical columns, ~30x fewer rows).
   rollups: [{ minIntervalSeconds: 300, clickhouseName: "trigger_dev.queue_metrics_5m_v1" }],
   queryCache: { ttlSeconds: 30, alignSeconds: 30 },
+  queryClient: "queueMetrics",
 };
 
 /**
@@ -935,6 +936,7 @@ export const envMetricsSchema: TableSchema = {
     { maxRangeSeconds: 365 * 24 * 60 * 60, interval: { value: 1, unit: "WEEK" } },
   ] satisfies BucketThreshold[],
   queryCache: { ttlSeconds: 30, alignSeconds: 30 },
+  queryClient: "queueMetrics",
 };
 
 /**
@@ -1429,6 +1431,7 @@ export const queueMetricsByKeySchema: TableSchema = {
     { maxRangeSeconds: 365 * 24 * 60 * 60, interval: { value: 1, unit: "WEEK" } },
   ] satisfies BucketThreshold[],
   queryCache: { ttlSeconds: 30, alignSeconds: 30 },
+  queryClient: "queueMetrics",
 };
 
 export const querySchemas: TableSchema[] = [

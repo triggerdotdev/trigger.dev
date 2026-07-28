@@ -72,7 +72,7 @@ export class QueueMetricsPresenter {
     try {
       const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
         environment.organizationId,
-        "query"
+        "queueMetrics"
       );
 
       // End bound snaps up to the bucket grid so repeated loads within a bucket produce

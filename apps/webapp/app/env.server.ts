@@ -1952,6 +1952,22 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    /**
+     * Dedicated ClickHouse service for queue metrics: the ingestion consumer's inserts and every
+     * queue-metrics read (dashboards, queue pages, run inspector, health report) go through it, so
+     * metrics traffic never competes with runs-list or trace reads. Unset keeps the previous
+     * wiring: inserts on CLICKHOUSE_URL, reads on the query pool.
+     */
+    QUEUE_METRICS_CLICKHOUSE_URL: z.string().optional(),
+    /** Reader split so the consumer's inserts can never land on a read endpoint. Defaults to QUEUE_METRICS_CLICKHOUSE_URL. */
+    QUEUE_METRICS_CLICKHOUSE_READER_URL: z.string().optional(),
+    QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    QUEUE_METRICS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    QUEUE_METRICS_CLICKHOUSE_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    QUEUE_METRICS_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
     EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     METRICS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(10000),
