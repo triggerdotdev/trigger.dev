@@ -568,8 +568,7 @@ export class UpdateMetadataService {
       return { metadata: {} };
     }
 
-    const { packet: metadataPacket, byteLength: metadataSizeBytes } =
-      metadataPacketWithByteLength;
+    const { packet: metadataPacket, byteLength: metadataSizeBytes } = metadataPacketWithByteLength;
 
     let updatedAtMs: number | undefined;
 
