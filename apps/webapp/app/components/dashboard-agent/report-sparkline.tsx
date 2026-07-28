@@ -14,6 +14,7 @@
  * queue metrics `MiniLineChart`; both are router-agnostic.
  */
 import {
+  ArrowUpRightIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
@@ -175,8 +176,8 @@ export function ReportFindingLine({
  * 2. **Entities** — queue/task/run names the caller passes in render mono and
  *    bright, like code.
  * 3. **Verdict phrases** — the "whose problem is this" answers ("not your
- *    code", "not a code problem", "not the workers") render in the success
- *    color: they are the good news the card exists to deliver.
+ *    code", "not a code problem", "not the workers") render bright and medium:
+ *    emphasis without another color (color stays reserved for severity).
  * 4. Everything else stays dimmed; causal arrows (→) are structure, not
  *    content, and stay dimmed too.
  */
@@ -267,7 +268,7 @@ export function ReportProse({ text, entities }: { text: string; entities?: strin
             );
           case "verdict":
             return (
-              <span key={i} className="font-medium text-success">
+              <span key={i} className="font-medium text-text-bright">
                 {segment.text}
               </span>
             );
@@ -344,9 +345,12 @@ export function ReportFooterLink({
     <a
       href={href}
       {...(external ? { target: "_blank", rel: "noreferrer" } : {})}
-      className="text-indigo-500 underline underline-offset-2 transition hover:text-indigo-400"
+      // The app's link token (readable on dark surfaces, theme-remapped) and
+      // the app-wide external-link marker — see HelpAndFeedbackPopover.
+      className="inline-flex items-center gap-0.5 text-text-link transition hover:underline"
     >
       {children}
+      {external ? <ArrowUpRightIcon className="size-3.5 text-text-dimmed" /> : null}
     </a>
   );
 }
