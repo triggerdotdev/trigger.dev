@@ -5,13 +5,9 @@
  * never prose. Every string on this card is resolved through the report's own
  * message catalog (`report-messages.ts`), which is also what the markdown and
  * ANSI renderers use — so the chat card, the CLI and the agent's own grounding
- * can't drift into three different vocabularies.
- *
- * The LOOK lives in `report-skin.tsx` — the terminal skin (monospace body, fixed
- * label column, left-aligned sparklines, colour on values not on sentences, real
- * buttons in the footer). This file decides *what* a report says; the skin
- * decides how a report looks, and `demo/components/DemoReportCard.tsx` wears the
- * same skin so a design review of one holds for the other.
+ * can't drift into three different vocabularies. Layout is inherited from the
+ * design-reviewed demo card (`demo/components/DemoReportCard.tsx`), which stays
+ * as the mockup it is.
  *
  * PURE COMPONENT, on purpose: props in, no Remix hooks, no loader data, no
  * router context. That's what lets it render identically in the panel, in the
@@ -28,40 +24,39 @@ import {
   type AgentIntent,
   type ReportFindingPayload,
   type ReportMetricPayload,
+  type ReportSeverity,
   type ReportUnit,
   type ReportViewModelPayload,
   type TriggerUri,
 } from "@internal/dashboard-agent-contracts";
+import { Badge } from "~/components/primitives/Badge";
 // Imported for its registration side effect as much as its value: each report's
 // catalog registers itself under the report's title on import.
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import { type ReportMessages } from "~/presenters/v3/reports/report-messages";
 import { sparklineFromSeries } from "~/presenters/v3/reports/renderMarkdown";
+import { cn } from "~/utils/cn";
 import { reportIsTrustworthy } from "./report-block-adapter";
-import {
-  REPORT_SEVERITY_TONE,
-  ReportActionButton,
-  ReportActionNote,
-  ReportActions,
-  ReportBlock,
-  ReportCommandLine,
-  ReportEntity,
-  ReportHeadline,
-  ReportLink,
-  ReportMeta,
-  ReportNotice,
-  ReportRow,
-  ReportRows,
-  ReportRule,
-  ReportSpark,
-  ReportStatement,
-  ReportSurface,
-  ReportText,
-  ReportValue,
-  type ReportActionTone,
-} from "./report-skin";
 
 export type ResolvedUri = { label: string; url: string };
+
+const SEVERITY_DOT: Record<ReportSeverity, string> = {
+  ok: "bg-success",
+  warn: "bg-warning",
+  crit: "bg-error",
+};
+
+const SEVERITY_TEXT: Record<ReportSeverity, string> = {
+  ok: "text-success",
+  warn: "text-warning",
+  crit: "text-error",
+};
+
+const SEVERITY_BADGE: Record<ReportSeverity, string> = {
+  ok: "border-success/40 text-success",
+  warn: "border-warning/40 text-warning",
+  crit: "border-error/40 text-error",
+};
 
 /**
  * Footer codes that state an option rather than offer an action ("nothing to do",
@@ -69,12 +64,6 @@ export type ResolvedUri = { label: string; url: string };
  * text: making them buttons would invite a click that does nothing.
  */
 const NON_ACTION_CODES = new Set(["nothing_to_do", "do_nothing_drains", "region_failover"]);
-
-/**
- * Codes whose action removes or stops work. Matched by verb rather than listed,
- * so a report shipping `cancel_*` / `purge_*` gets the danger button for free.
- */
-const DESTRUCTIVE_CODE = /^(cancel|purge|delete|drop|pause|stop)_/;
 
 /** How often a recovery watch polls, and how long it lives. Aggregate conditions floor at 5m. */
 const RECOVERY_WATCH = { checkEveryMinutes: 5, maxHours: 6 } as const;
@@ -188,31 +177,28 @@ function classifyLink(
   return { kind: "none" };
 }
 
+const ACTION_CLASS =
+  "inline-flex items-center rounded border border-border-bright bg-background-bright px-2.5 py-1 text-xs text-text-bright transition-colors hover:border-border-brightest hover:bg-background-hover";
+
 /**
- * One footer action, as a real button. External docs are a link button; anything
- * in-app becomes a `navigate` intent, and an action with no target at all becomes
- * an `ask` so the user can still pull the "how" out of the agent.
- *
- * The variant follows what the action does, not where it sits: navigation is the
- * primary (violet) action, docs get the docs treatment, a destructive code gets
- * danger, and asking the agent gets the secondary.
+ * One footer action. External docs are a real link; anything in-app becomes a
+ * `navigate` intent, and an action with no target at all becomes an `ask` so the
+ * user can still pull the "how" out of the agent.
  */
 function ActionButton({
-  code,
   label,
   target,
   onIntent,
 }: {
-  code: string;
   label: string;
   target: LinkTarget;
   onIntent?: (intent: AgentIntent) => void;
 }) {
-  const destructive = DESTRUCTIVE_CODE.test(code);
-
   if (target.kind === "external") {
     return (
-      <ReportActionButton label={label} tone={destructive ? "danger" : "docs"} href={target.url} />
+      <a href={target.url} target="_blank" rel="noreferrer" className={ACTION_CLASS}>
+        {label}
+      </a>
     );
   }
 
@@ -221,17 +207,13 @@ function ActionButton({
       ? { kind: "navigate", target: target.uri }
       : { kind: "ask", prompt: `How do I ${lowerFirst(label)}?` };
 
-  const tone: ReportActionTone = destructive
-    ? "danger"
-    : target.kind === "resource"
-      ? "navigate"
-      : "support";
+  if (!onIntent) return <span className="text-xs text-text-dimmed">{label}</span>;
 
-  // Without a host to receive the intent there is nothing to click, so it stops
-  // being a button rather than becoming a dead one.
-  if (!onIntent) return <ReportActionNote>{label}</ReportActionNote>;
-
-  return <ReportActionButton label={label} tone={tone} onClick={() => onIntent(intent)} />;
+  return (
+    <button type="button" onClick={() => onIntent(intent)} className={ACTION_CLASS}>
+      {label}
+    </button>
+  );
 }
 
 function lowerFirst(text: string): string {
@@ -259,29 +241,28 @@ function MetricRow({
         : "";
 
   const composite = metric.unit === "perMin" && metric.breakdown?.done !== undefined;
-  const tone = REPORT_SEVERITY_TONE[metric.severity];
 
   return (
-    <ReportRow label={messages.metricLabel(metric.id)}>
-      <ReportValue tone={tone}>{fmtValue(metric.value, metric.unit)}</ReportValue>
-      {/* The sparkline sits immediately after the value, still in the content
-          column, so every trend on the card starts at the same x. */}
-      {spark ? <ReportSpark>{spark}</ReportSpark> : null}
-      {metric.delta?.mult && metric.delta.mult > 1 ? (
-        // A delta only earns a colour when the metric it belongs to is degraded.
-        <ReportValue tone={metric.severity === "ok" ? "dimmed" : tone}>
-          {metric.delta.dir === "up" ? "↑" : metric.delta.dir === "down" ? "↓" : ""}
-          {metric.delta.mult}×
-        </ReportValue>
-      ) : null}
+    <li className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
+      <span className="min-w-[5.5rem] text-text-dimmed">{messages.metricLabel(metric.id)}</span>
+      <span className={cn("font-medium tabular-nums", SEVERITY_TEXT[metric.severity])}>
+        {fmtValue(metric.value, metric.unit)}
+      </span>
       {composite ? (
-        <ReportValue tone="dimmed">
+        <span className="text-text-dimmed">
           ({fmtCount(metric.breakdown!.done!)} done · {fmtCount(metric.breakdown!.triggered ?? 0)}{" "}
           triggered)
-        </ReportValue>
+        </span>
       ) : null}
+      {metric.delta?.mult && metric.delta.mult > 1 ? (
+        <span className="text-text-dimmed">
+          {metric.delta.dir === "up" ? "↑" : metric.delta.dir === "down" ? "↓" : ""}
+          {metric.delta.mult}×
+        </span>
+      ) : null}
+      {spark ? <span className="font-mono text-text-dimmed">{spark}</span> : null}
       {trailing ? <span className="text-text-faint">{trailing}</span> : null}
-    </ReportRow>
+    </li>
   );
 }
 
@@ -303,50 +284,57 @@ function FindingSection({
     .filter((m): m is ReportMetricPayload => m !== undefined);
 
   return (
-    <ReportBlock>
-      <ReportStatement severity={finding.severity} tone={degraded ? "default" : "dimmed"}>
-        <span className="text-text-dimmed">{finding.type}</span> {fillTokens(reason, tokens)}
-        {finding.anomalyWindow?.touchesEnd ? ` (last ${finding.anomalyWindow.minutes} min)` : ""}
-      </ReportStatement>
+    <div className="space-y-1.5">
+      <div className="flex items-baseline gap-2">
+        <span
+          className={cn("mt-1 size-1.5 shrink-0 rounded-full", SEVERITY_DOT[finding.severity])}
+          aria-hidden
+        />
+        <span className="text-[10px] uppercase tracking-wide text-text-dimmed">{finding.type}</span>
+        <span className={cn("text-xs", degraded ? "text-text-bright" : "text-text-dimmed")}>
+          {fillTokens(reason, tokens)}
+          {finding.anomalyWindow?.touchesEnd ? ` (last ${finding.anomalyWindow.minutes} min)` : ""}
+        </span>
+      </div>
 
       {degraded ? (
-        // Indented to the statement's text, so the icon column stays the card's
-        // only left edge for severity.
-        <div className="space-y-1.5 pl-6">
+        <div className="space-y-1.5 pl-3.5">
           {finding.read ? (
-            <ReportText>read: {fillTokens(messages.readMessage(finding.read), tokens)}</ReportText>
+            <p className="text-xs text-text-dimmed">
+              read: {fillTokens(messages.readMessage(finding.read), tokens)}
+            </p>
           ) : null}
-          <ReportRows>
+          <ul className="space-y-1">
             {metrics.map((metric) => (
               <MetricRow key={metric.id} vm={vm} metric={metric} messages={messages} />
             ))}
-          </ReportRows>
+          </ul>
           {finding.attribution ? (
-            <ReportText>
+            <p className="text-xs text-text-dimmed">
               worst {finding.attribution.dim}:{" "}
-              <ReportEntity>{finding.attribution.key}</ReportEntity> —{" "}
+              <span className="font-mono text-text-bright">{finding.attribution.key}</span> —{" "}
               {Math.round(finding.attribution.share * 100)}% of {finding.attribution.of}
-            </ReportText>
+            </p>
           ) : null}
           {(finding.exclusions ?? []).map((exclusion, i) => (
-            <ReportText key={`x${i}`} tone="faint">
+            <p key={`x${i}`} className="text-xs text-text-faint">
               {fillTokens(messages.exclusionMessage(exclusion.code), {
                 ...tokens,
                 ...(exclusion.evidence ?? {}),
               })}
-            </ReportText>
+            </p>
           ))}
           {(finding.observations ?? []).map((observation, i) => (
-            <ReportText key={`o${i}`} tone="faint">
+            <p key={`o${i}`} className="text-xs text-text-faint">
               {fillTokens(messages.observationMessage(observation.code), {
                 ...tokens,
                 ...(observation.evidence ?? {}),
               })}
-            </ReportText>
+            </p>
           ))}
         </div>
       ) : null}
-    </ReportBlock>
+    </div>
   );
 }
 
@@ -390,59 +378,77 @@ export function ReportView({
       : null;
 
   return (
-    <ReportSurface dimmed={!trustworthy}>
-      {/* The command that produced this, so the card reads as an answer. */}
-      <ReportCommandLine>/report {vm.title}</ReportCommandLine>
-
-      <ReportHeadline>
-        {capitalize(vm.title)} · {vm.scope} · {vm.period}
-        {vm.baselineLabel ? ` · ${vm.baselineLabel}` : ""}
-      </ReportHeadline>
-
-      <ReportBlock>
-        {vm.summary.statements.map((statement, i) => (
-          <ReportStatement key={i} severity={statement.severity}>
-            {messages.statementMessage(statement.findingType, statement.severity, statement.reason)}
-          </ReportStatement>
-        ))}
-      </ReportBlock>
-
-      {trustworthy ? null : (
-        <ReportNotice severity="warn">
-          The telemetry behind this report is stale, so the numbers below are informational only.
-        </ReportNotice>
-      )}
-
-      <ReportRule />
-
-      <div className="space-y-2.5">
-        {vm.findings.map((finding, i) => (
-          <FindingSection
-            key={`${finding.type}-${i}`}
-            vm={vm}
-            finding={finding}
-            messages={messages}
-            tokens={tokens}
-          />
-        ))}
+    <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
+      <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-3 py-2">
+        <span className="text-xs font-medium capitalize text-text-dimmed">{vm.title} report</span>
+        <Badge variant="small" className={SEVERITY_BADGE[severity]}>
+          {vm.scope}
+        </Badge>
+        {trustworthy ? null : (
+          <Badge variant="small" className="border-warning/40 text-warning">
+            stale data
+          </Badge>
+        )}
+        <span className="ml-auto text-xs text-text-dimmed">
+          {vm.period}
+          {vm.baselineLabel ? ` · ${vm.baselineLabel}` : ""}
+        </span>
       </div>
 
-      {vm.footer.length > 0 || recoveryWatch ? (
-        <>
-          <ReportRule />
-          <ReportActions>
+      <div className={cn("space-y-3 px-3 py-3", trustworthy ? undefined : "opacity-80")}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {vm.summary.statements.map((statement, i) => (
+            <span key={i} className="flex items-center gap-1.5 text-xs">
+              <span
+                className={cn("size-1.5 rounded-full", SEVERITY_DOT[statement.severity])}
+                aria-hidden
+              />
+              <span className={SEVERITY_TEXT[statement.severity]}>
+                {messages.statementMessage(
+                  statement.findingType,
+                  statement.severity,
+                  statement.reason
+                )}
+              </span>
+            </span>
+          ))}
+        </div>
+
+        {trustworthy ? null : (
+          <p className="text-xs text-warning">
+            The telemetry behind this report is stale, so the numbers below are informational only.
+          </p>
+        )}
+
+        <div className="space-y-2.5 border-t border-grid-bright pt-2.5">
+          {vm.findings.map((finding, i) => (
+            <FindingSection
+              key={`${finding.type}-${i}`}
+              vm={vm}
+              finding={finding}
+              messages={messages}
+              tokens={tokens}
+            />
+          ))}
+        </div>
+
+        {vm.footer.length > 0 || recoveryWatch ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-grid-bright pt-2.5">
             {vm.footer.map((entry, i) => {
               const label = fillTokens(messages.actionMessage(entry.code), {
                 ...tokens,
                 value: entry.value ?? "",
               });
               if (NON_ACTION_CODES.has(entry.code)) {
-                return <ReportActionNote key={i}>{label}</ReportActionNote>;
+                return (
+                  <span key={i} className="text-xs text-text-dimmed">
+                    {label}
+                  </span>
+                );
               }
               return (
                 <ActionButton
                   key={i}
-                  code={entry.code}
                   label={label}
                   target={classifyLink(linkByKey(entry.link), resolveUri)}
                   onIntent={onIntent}
@@ -450,45 +456,55 @@ export function ReportView({
               );
             })}
             {recoveryWatch && onIntent ? (
-              <ReportActionButton
-                label="Watch for recovery"
-                tone="support"
+              <button
+                type="button"
                 onClick={() => onIntent(recoveryWatch)}
-              />
+                className={ACTION_CLASS}
+              >
+                Watch for recovery
+              </button>
             ) : null}
-          </ReportActions>
-        </>
-      ) : null}
+          </div>
+        ) : null}
 
-      {/* Resources the report cites, resolved to dashboard links by the host. */}
-      {vm.links.length > 0 ? (
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {vm.links.map((link) => {
-            const target = classifyLink(link.url, resolveUri);
-            if (target.kind === "external") {
-              return (
-                <ReportLink key={link.key} href={target.url}>
-                  {link.label}
-                </ReportLink>
-              );
-            }
-            if (target.kind === "resource" && target.resolved) {
-              return (
-                <ReportLink key={link.key} href={target.resolved.url}>
-                  {target.resolved.label}
-                </ReportLink>
-              );
-            }
-            return null;
-          })}
-        </div>
-      ) : null}
+        {/* Resources the report cites, resolved to dashboard links by the host. */}
+        {vm.links.length > 0 ? (
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+            {vm.links.map((link) => {
+              const target = classifyLink(link.url, resolveUri);
+              if (target.kind === "external") {
+                return (
+                  <a
+                    key={link.key}
+                    href={target.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-indigo-500 transition hover:text-indigo-400"
+                  >
+                    {link.label}
+                  </a>
+                );
+              }
+              if (target.kind === "resource" && target.resolved) {
+                return (
+                  <a
+                    key={link.key}
+                    href={target.resolved.url}
+                    className="text-indigo-500 transition hover:text-indigo-400"
+                  >
+                    {target.resolved.label}
+                  </a>
+                );
+              }
+              return null;
+            })}
+          </div>
+        ) : null}
 
-      {reportUri ? <ReportMeta>{reportUri}</ReportMeta> : null}
-    </ReportSurface>
+        {reportUri ? (
+          <div className="break-all font-mono text-[10px] text-text-faint">{reportUri}</div>
+        ) : null}
+      </div>
+    </div>
   );
-}
-
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }
