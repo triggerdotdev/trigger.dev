@@ -19,8 +19,12 @@ import {
   ExclamationTriangleIcon,
 } from "@heroicons/react/20/solid";
 import { Children, Fragment, type ReactNode } from "react";
-import { MiniLineChart } from "~/components/metrics/MiniLineChart";
+import { Bar, Cell, type TooltipProps } from "recharts";
+import { ActivityBarChart } from "~/components/metrics/ActivityBarChart";
+import { formatDateTime } from "~/components/primitives/DateTime";
+import { Header3 } from "~/components/primitives/Headers";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
+import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { cn } from "~/utils/cn";
 import { AgentStatusIcon, type AgentTone } from "./agent-badges";
 
@@ -245,30 +249,64 @@ export function ReportProvenance({ uri }: { uri: string }) {
 // --- sparkline --------------------------------------------------------------
 
 /** The fixed sparkline column — this is what puts every sparkline on one line. */
-const SPARK_WIDTH_CLASS = "w-[5.5rem]";
+const SPARK_WIDTH_CLASS = "w-[7rem]";
 
-/** …and the same width in px, for the chart itself. */
-const SPARK_WIDTH = 88;
+/** The chart's own width; the trailing peak label uses the column's remainder. */
+const SPARK_WIDTH = 72;
 
-const SPARK_HEIGHT = 24;
+/** The number of bars a 60-point series is condensed to — chunky, hoverable. */
+const MAX_BARS = 18;
+
+/** Average adjacent points down so each bar is wide enough to read and hover. */
+function condense(points: number[], maxBars: number): number[] {
+  if (points.length <= maxBars) return points;
+  const perBar = points.length / maxBars;
+  return Array.from({ length: maxBars }, (_, i) => {
+    const slice = points.slice(Math.floor(i * perBar), Math.max(Math.floor((i + 1) * perBar), 1));
+    return slice.reduce((sum, v) => sum + v, 0) / Math.max(slice.length, 1);
+  });
+}
+
+type ReportSparkDatum = { count: number; date: Date; hot: boolean };
+
+function ReportSparkTooltip({
+  active,
+  payload,
+  formatPoint,
+}: TooltipProps<number, string> & { formatPoint: (value: number) => string }) {
+  if (!active || !payload || payload.length === 0) return null;
+  const entry = payload[0].payload as ReportSparkDatum;
+  return (
+    <TooltipPortal active={active}>
+      <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
+        <Header3 className="border-b border-b-border-bright pb-2">
+          {formatDateTime(entry.date, "UTC", [], false, true)}
+        </Header3>
+        <div className="mt-2 text-xs tabular-nums text-text-bright">{formatPoint(entry.count)}</div>
+        {entry.hot ? <div className="mt-1 text-xs text-warning">in the anomaly window</div> : null}
+      </div>
+    </TooltipPortal>
+  );
+}
 
 /**
- * A metric's series as the queue metrics mini line chart, coloured by the
- * metric's severity. Where the finding's anomaly window runs, the same line is
- * retraced in the warning colour (`MiniLineChart`'s overlay), so the breach
- * reads as one line changing colour rather than a second series.
+ * A metric's series as the tasks-page mini bar chart (`ActivityBarChart`):
+ * chunky severity-coloured bars with the shared baseline, dashed peak line and
+ * trailing peak label. Bars inside the finding's anomaly window paint at full
+ * strength; the rest recede to a muted tint of the same colour, so the breach
+ * reads as one chart changing intensity, not a second series.
  */
 export function ReportSparkline({
   points,
   severity,
-  /** Minutes the whole series covers — sets the bucket width behind the tooltip. */
+  /** Minutes the whole series covers — turns a bar into its tooltip time. */
   windowMinutes,
   /**
    * Length of the finding's anomaly window, when it runs to the end of the
-   * series. The matching trailing buckets are retraced in the warning colour.
+   * series. The matching trailing bars paint at full strength.
    */
   anomalyMinutes,
-  /** The metric's own formatter, used for the chart's accessible summary. */
+  /** The metric's own formatter, used by the tooltip and the peak label. */
   formatPoint,
   label,
   className,
@@ -281,24 +319,27 @@ export function ReportSparkline({
   label: string;
   className?: string;
 }) {
+  const bars = condense(points, MAX_BARS);
   const windowMs = windowMinutes * 60_000;
-  // The view model carries buckets, not timestamps, so the timing the chart's
-  // tooltip needs is synthesised from the window: the series ends now.
-  const bucketIntervalMs = points.length > 0 ? windowMs / points.length : windowMs;
-  const bucketStartMs = Date.now() - windowMs;
+  // The view model carries buckets, not timestamps — synthesise them: the
+  // series ends now.
+  const barIntervalMs = bars.length > 0 ? windowMs / bars.length : windowMs;
+  const startMs = Date.now() - windowMs;
 
-  const minutesPerBucket = points.length > 0 ? windowMinutes / points.length : 0;
-  const hotBuckets =
-    anomalyMinutes && minutesPerBucket > 0
-      ? Math.min(points.length, Math.max(1, Math.round(anomalyMinutes / minutesPerBucket)))
+  const minutesPerBar = bars.length > 0 ? windowMinutes / bars.length : 0;
+  const hotBars =
+    anomalyMinutes && minutesPerBar > 0
+      ? Math.min(bars.length, Math.max(1, Math.round(anomalyMinutes / minutesPerBar)))
       : 0;
-  // Masked to the trailing anomaly buckets: the overlay paints wherever this is
-  // non-zero, so everything before the window is zeroed out.
-  const anomalySeries =
-    hotBuckets > 0
-      ? points.map((value, i) => (i >= points.length - hotBuckets ? value : 0))
-      : undefined;
 
+  const data: ReportSparkDatum[] = bars.map((count, i) => ({
+    count,
+    date: new Date(startMs + i * barIntervalMs),
+    hot: i >= bars.length - hotBars,
+  }));
+
+  const color = SEVERITY_COLOR[severity];
+  const calm = `color-mix(in srgb, ${color} 35%, transparent)`;
   const peak = points.length > 0 ? Math.max(...points) : 0;
 
   return (
@@ -307,20 +348,19 @@ export function ReportSparkline({
       role="img"
       aria-label={`${label} over the last ${windowMinutes} minutes, peak ${formatPoint(peak)}`}
     >
-      <MiniLineChart
-        data={points}
-        throttled={anomalySeries}
-        overlayLabel="in the anomaly window"
-        bucketStartMs={bucketStartMs}
-        bucketIntervalMs={bucketIntervalMs}
-        color={SEVERITY_COLOR[severity]}
+      <ActivityBarChart
+        data={data}
+        max={Math.max(...bars, 1)}
         width={SPARK_WIDTH}
-        height={SPARK_HEIGHT}
-        // The peak label belongs to a list row with room for it; here the value
-        // is already the first thing in the metric row.
-        showPeak={false}
-        unitLabel={{ singular: label, plural: label }}
-      />
+        peak={formatPoint(peak)}
+        tooltip={<ReportSparkTooltip formatPoint={formatPoint} />}
+      >
+        <Bar dataKey="count" isAnimationActive={false} minPointSize={1}>
+          {data.map((entry, i) => (
+            <Cell key={i} fill={entry.hot || hotBars === 0 ? color : calm} />
+          ))}
+        </Bar>
+      </ActivityBarChart>
     </div>
   );
 }
@@ -332,10 +372,11 @@ export function ReportSparkline({
  * point of the grid: every row's label starts and every row's chart starts on
  * the same vertical line, whatever the value's width.
  */
-const METRIC_ROW_CLASS =
-  "grid grid-cols-[4.25rem_minmax(0,1fr)_2.75rem_5.5rem] items-center gap-x-2";
+const METRIC_ROW_CLASS = "grid grid-cols-[6rem_minmax(0,1fr)_2.75rem_7rem] items-center gap-x-2";
 
-const LABEL_CLASS = "truncate text-xs uppercase tracking-wide text-text-dimmed";
+// Labels are never truncated — the column is sized for the longest label and
+// anything longer wraps to a second line.
+const LABEL_CLASS = "text-xs uppercase leading-tight tracking-wide text-text-dimmed";
 
 /** A metric's movement against its baseline. Direction is an arrow, always. */
 export type ReportDelta = { text: string; dir: "up" | "down" | "flat" };
