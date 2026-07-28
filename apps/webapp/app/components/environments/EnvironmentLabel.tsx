@@ -89,10 +89,7 @@ export function EnvironmentLabel({
   tooltipSideOffset?: number;
   tooltipSide?: "top" | "right" | "bottom" | "left";
   disableTooltip?: boolean;
-  /**
-   * When false, an overflowing label fades out at its right edge instead of ending in an ellipsis,
-   * matching the other side menu labels. Defaults true.
-   */
+  /** When false, an overflowing label fades at its right edge instead of ending in an ellipsis. */
   truncate?: boolean;
 }) {
   const spanRef = useRef<HTMLSpanElement>(null);
