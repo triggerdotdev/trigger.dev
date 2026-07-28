@@ -125,6 +125,8 @@ const ACTIONS: Record<string, string> = {
   check_control_plane: "Check control plane",
   check_platform_status: "Check status.trigger.dev — no action needed on yours",
   raise_env_limit: "Raise the env concurrency limit",
+  contact_us_raise_limit: "Contact us to raise the limit",
+  concurrency_docs: "Concurrency docs",
   raise_queue_limit: "Raise the queue's concurrency limit",
   do_nothing_drains: "or do nothing — backlog drains in ~{value} min once triggers ease",
   region_failover: "region move? ask your agent — depends on your failover setup",

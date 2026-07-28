@@ -123,9 +123,15 @@ function buildFooter(
   const dominant = dominantFinding(findings);
   if (!dominant?.recommendation) return [{ code: "nothing_to_do" }];
 
-  const footer: FooterEntry[] = [
-    { code: dominant.recommendation.code, link: dominant.recommendation.link },
-  ];
+  // Raising the env concurrency limit is a plan quota, not a self-serve
+  // setting — the actionable step is contacting us, with the docs alongside.
+  const footer: FooterEntry[] =
+    dominant.recommendation.code === "raise_env_limit"
+      ? [
+          { code: "contact_us_raise_limit", link: "contact" },
+          { code: "concurrency_docs", link: dominant.recommendation.link },
+        ]
+      : [{ code: dominant.recommendation.code, link: dominant.recommendation.link }];
 
   // Second entry: do-nothing when the backlog drains, or the region-move hedge for a
   // dequeue stall (the one place it stays plausible).
