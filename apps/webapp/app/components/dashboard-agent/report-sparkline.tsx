@@ -471,9 +471,14 @@ export function ReportMetricRow({
       </li>
 
       {heroNote ? (
+        // The hero note aligns with the delta column, so its ← sits under the
+        // row's ↑/→ arrow — one arrow vocabulary, one vertical line.
         <li className={METRIC_ROW_CLASS}>
           <span aria-hidden />
-          <span className={cn("col-span-3 text-xs", SEVERITY_TEXT[severity])}>← {heroNote}</span>
+          <span aria-hidden />
+          <span className={cn("col-span-2 whitespace-nowrap text-xs", SEVERITY_TEXT[severity])}>
+            ← {heroNote}
+          </span>
         </li>
       ) : null}
 
