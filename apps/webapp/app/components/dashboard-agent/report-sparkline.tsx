@@ -364,7 +364,7 @@ export function ReportProvenance({ uri }: { uri: string }) {
 // --- sparkline --------------------------------------------------------------
 
 /** The fixed sparkline column — this is what puts every sparkline on one line. */
-const SPARK_WIDTH_CLASS = "w-[7rem]";
+const SPARK_WIDTH_CLASS = "w-[6.5rem]";
 
 /** The chart's own width; the trailing peak label uses the column's remainder. */
 const SPARK_WIDTH = 72;
@@ -487,7 +487,7 @@ export function ReportSparkline({
  * point of the grid: every row's label starts and every row's chart starts on
  * the same vertical line, whatever the value's width.
  */
-const METRIC_ROW_CLASS = "grid grid-cols-[6rem_minmax(0,1fr)_2.75rem_7rem] items-center gap-x-2";
+const METRIC_ROW_CLASS = "grid grid-cols-[7rem_minmax(0,1fr)_2.75rem_6.5rem] items-center gap-x-2";
 
 // Labels are never truncated — the column is sized for the longest label and
 // anything longer wraps to a second line.
@@ -589,9 +589,11 @@ export function ReportMetricRow({
       </li>
 
       {(subRows ?? []).map((sub) => (
+        // Sub-values sit in the same column at the same size as the parent's
+        // value — only the dimmed color and the indented label say "part of".
         <li key={sub.label} className={METRIC_ROW_CLASS}>
           <span className={cn(LABEL_CLASS, "pl-2.5")}>{sub.label}</span>
-          <span className="text-xs tabular-nums text-text-dimmed">{sub.value}</span>
+          <span className="text-sm tabular-nums text-text-dimmed">{sub.value}</span>
         </li>
       ))}
     </>
