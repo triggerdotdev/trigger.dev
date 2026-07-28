@@ -240,6 +240,7 @@ function traceRequest(runId: string) {
     context: {} as never,
   };
 }
+
 describe("run-trace/span-detail route loaders under a lagging replica", () => {
   // spans loader — findResource findRun ($replica)
   heteroRunOpsPostgresTest(
