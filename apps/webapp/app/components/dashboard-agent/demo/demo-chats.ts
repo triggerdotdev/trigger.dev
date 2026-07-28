@@ -8,6 +8,11 @@
  *
  * Nothing here is persisted, fetched, or sent. `DemoChatView` renders these and
  * intercepts every affordance.
+ *
+ * One rule for every case: a demo chat is one coherent story, as close to a real
+ * conversation as fixtures allow. Variation matrices — the same card in four
+ * states, a banner across four page kinds — belong to the state gallery, never to
+ * a chat, where stacked variants read as a bug.
  */
 import type { UIMessage } from "@ai-sdk/react";
 import type { ReportViewModel } from "~/presenters/v3/reports/report-view-model";
@@ -31,7 +36,6 @@ import {
   demoLegacyDiagnosisBlock,
   demoPageContexts,
   demoPromptSets,
-  demoDismissedPromptIds,
   demoShowCodeMarkdown,
   demoWatchNarration,
   demoWatches,
@@ -68,7 +72,11 @@ export type DemoItem =
     }
   /** A demo-voice aside explaining what the reviewer is looking at. */
   | { kind: "note"; text: string }
-  /** A context banner variant, rendered inline so several can be compared. */
+  /**
+   * A context banner rendered inline, full-bleed. No chat uses it now: a chat
+   * gets one banner — its own, at the top — and comparing banner variants is the
+   * gallery's job. Kept for a case that needs a banner mid-transcript.
+   */
   | { kind: "banner"; projectSlug: string; environmentSlug: string; currentPage: string };
 
 export type DemoChat = {
@@ -501,32 +509,14 @@ const promptsPageAware: DemoChat = {
   title: "What should I look at here?",
   flow: "prompts",
   summary:
-    "The chip row per page kind, with the promoted slot first. The last row shows what a dismissal leaves behind.",
+    "One page, one chip row: a run that failed a minute ago, the context line it was derived from, and the fresh-failure prompt promoted to the top slot.",
   banner: { ...PROD_BANNER, currentPage: "Run detail" },
   lastMessageAt: "2026-07-27T10:22:00.000Z",
   items: [
     {
-      kind: "note",
-      text: "Fixture data for the M4 registry: one page context per kind, and the chips a good resolver should produce for it.",
-    },
-    {
       kind: "prompts",
       prompts: demoPromptSets.failedRun,
       context: demoPageContexts.failedRun,
-    },
-    {
-      kind: "prompts",
-      prompts: demoPromptSets.waitingRun,
-      context: demoPageContexts.waitingRun,
-    },
-    { kind: "prompts", prompts: demoPromptSets.slowRun, context: demoPageContexts.slowRun },
-    { kind: "prompts", prompts: demoPromptSets.queue, context: demoPageContexts.queue },
-    { kind: "note", text: "Same page, after the user dismissed one chip." },
-    {
-      kind: "prompts",
-      prompts: demoPromptSets.failedRun,
-      context: demoPageContexts.failedRun,
-      dismissedIds: demoDismissedPromptIds,
     },
   ],
 };
@@ -776,16 +766,6 @@ const docsAnswer: DemoChat = {
 // Base states
 // ---------------------------------------------------------------------------
 
-const baseEmpty: DemoChat = {
-  id: demoId("base-empty"),
-  title: "Chat",
-  flow: "base",
-  summary: "First open: the production suggested-prompt panel and an empty composer.",
-  banner: PROD_BANNER,
-  lastMessageAt: "2026-07-27T10:00:00.000Z",
-  items: [],
-};
-
 const baseStreaming: DemoChat = {
   id: demoId("base-streaming"),
   title: "Summarize today's failures",
@@ -931,44 +911,59 @@ const baseResumed: DemoChat = {
 
 const baseComposerDraft: DemoChat = {
   id: demoId("base-composer-draft"),
-  title: "New chat",
+  title: "Draft in the composer",
   flow: "base",
   summary:
-    "The composer pre-filled the way `openWith` fills it from a page — the user reads and edits before sending.",
+    "A question half typed and left there: the conversation is still empty (suggested prompts on screen) and the composer holds the unsent draft, cursor mid-word.",
   banner: { ...PROD_BANNER, currentPage: "Run detail" },
-  draft: `Investigate why ${DEMO_WORLD.failedRunId} failed and tell me whether it's my code.`,
+  // Deliberately unfinished mid-word: the state being reviewed is a draft, not a
+  // prefill, so it has to look like someone stopped typing.
+  draft: "why did the send-order-receipt run from last nig",
   lastMessageAt: "2026-07-27T10:28:00.000Z",
-  items: [
-    {
-      kind: "note",
-      text: "Sending is intercepted: the composer is live so the layout can be reviewed, but nothing is sent.",
-    },
-  ],
+  // Empty on purpose: an unsent draft means nothing has been said yet, so the
+  // transcript is the first-open prompt panel.
+  items: [],
 };
 
-const baseBanners: DemoChat = {
-  id: demoId("base-banners"),
+const basePageContext: DemoChat = {
+  id: demoId("base-page-context"),
   title: "Which page am I on?",
   flow: "base",
-  summary: "The context banner across page kinds, plus the watch chip row that sits under it.",
+  summary:
+    "The agent answers from page context alone: it names the page, project and environment shown in the banner, says what it can already see there, and offers the next step.",
   banner: PROD_BANNER,
   lastMessageAt: "2026-07-27T10:29:00.000Z",
   items: [
-    { kind: "banner", ...PROD_BANNER },
-    { kind: "banner", ...PROD_BANNER, currentPage: "Run detail" },
     {
-      kind: "banner",
-      projectSlug: "demo-storefront",
-      environmentSlug: "staging",
-      currentPage: "Queue detail",
+      kind: "messages",
+      messages: [userMessage("ctx-q", "Which page am I on?")],
     },
     {
-      kind: "banner",
-      projectSlug: "demo-storefront",
-      environmentSlug: "preview/demo-branch",
-      currentPage: "Deployments",
+      kind: "messages",
+      messages: [
+        assistantMessage("ctx-a", [
+          textPart(
+            `You're on the **Runs** list of \`demo-storefront\`, in \`prod\` — the same three things the bar at the top of this panel shows. I get that with every message, so I don't have to ask where you are.
+
+From here I can see the list you're looking at: 41 runs of \`${DEMO_WORLD.taskId}\` failed in the last 24 hours, all with the same 429 from the email provider, and \`${DEMO_WORLD.failedRunId}\` is the most recent. Want me to take that one apart?`
+          ),
+        ]),
+      ],
     },
-    { kind: "watches", watches: demoWatches.activeRow },
+    {
+      kind: "messages",
+      messages: [userMessage("ctx-followup", "Does that change if I navigate somewhere else?")],
+    },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("ctx-followup-a", [
+          textPart(
+            `Yes — the page is read fresh on every message, so if you open a run, or switch to \`staging\`, my next answer is about that page and that environment. Nothing carries over silently: if I'm still talking about \`${DEMO_WORLD.failedRunId}\` after you've moved, it's because you asked about it, not because I didn't notice.`
+          ),
+        ]),
+      ],
+    },
   ],
 };
 
@@ -1013,13 +1008,12 @@ export const demoChats: DemoChat[] = [
   reportHealthy,
   reportDegraded,
   docsAnswer,
-  baseEmpty,
   baseStreaming,
   baseToolInFlight,
   baseErrorRetry,
   baseResumed,
   baseComposerDraft,
-  baseBanners,
+  basePageContext,
   baseInvestigationDeepLink,
 ];
 

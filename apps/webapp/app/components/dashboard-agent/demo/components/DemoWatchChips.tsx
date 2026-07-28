@@ -12,6 +12,7 @@ import { CheckCircleIcon, ClockIcon, NoSymbolIcon, XMarkIcon } from "@heroicons/
 import type { WatchStatus } from "@internal/dashboard-agent-contracts";
 import { Button } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { cn } from "~/utils/cn";
 import { type AgentTone, TONE_ICON_COLOR } from "../../agent-badges";
 import type { DemoWatch } from "../fixtures/watches";
@@ -67,12 +68,21 @@ export function DemoWatchChips({
           <StatusIcon status={watch.status} />
           {watch.chipLabel}
           {watch.cancellable ? (
-            <Button
-              variant="danger/small"
-              LeadingIcon={XMarkIcon}
-              className="h-5 rounded-full px-1.5"
-              aria-label={`Stop watching ${watch.chipLabel}`}
-              onClick={() => onCancel?.(watch)}
+            <SimpleTooltip
+              asChild
+              tabbable
+              side="bottom"
+              content={`Cancel the ${watch.chipLabel} watch`}
+              button={
+                <Button
+                  variant="danger/small"
+                  LeadingIcon={XMarkIcon}
+                  className="h-5 rounded-full px-1.5"
+                  // Icon-only, so the label has to name the watch it cancels.
+                  aria-label={`Cancel the ${watch.chipLabel} watch`}
+                  onClick={() => onCancel?.(watch)}
+                />
+              }
             />
           ) : null}
         </span>

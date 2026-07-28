@@ -319,16 +319,44 @@ describe("demo coverage", () => {
   it("covers the base panel states", () => {
     const ids = demoChats.map((chat) => chat.id);
     for (const suffix of [
-      "base-empty",
       "base-streaming",
       "base-tool-in-flight",
       "base-error-retry",
       "base-resumed",
       "base-composer-draft",
-      "base-banners",
+      "base-page-context",
     ]) {
       expect(ids).toContain(`${DEMO_ID_PREFIX}${suffix}`);
     }
+  });
+
+  it("keeps the draft case an unsent draft over an empty conversation", () => {
+    // The first-open prompt panel and the composer draft are the same case: the
+    // transcript has to be empty for the panel to show, and the draft has to be
+    // there for the case to have a point.
+    const draftChat = demoChats.find((chat) => chat.id === `${DEMO_ID_PREFIX}base-composer-draft`);
+    expect(draftChat?.draft?.length ?? 0).toBeGreaterThan(0);
+    expect(draftChat?.items).toEqual([]);
+  });
+
+  it("keeps every chat to one story rather than a variant matrix", () => {
+    // Stacked variants of the same thing read as a bug in a conversation; they
+    // belong to the state gallery. One banner (the chat's own) and at most one
+    // prompt row per chat.
+    for (const chat of demoChats) {
+      const count = (kind: string) => chat.items.filter((item) => item.kind === kind).length;
+      expect(count("banner"), chat.id).toBe(0);
+      expect(count("prompts"), chat.id).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("answers the page-context question with a real exchange", () => {
+    const chat = demoChats.find((c) => c.id === `${DEMO_ID_PREFIX}base-page-context`);
+    const messages = (chat?.items ?? []).flatMap((item) =>
+      item.kind === "messages" ? item.messages : []
+    );
+    expect(messages.some((message) => message.role === "user")).toBe(true);
+    expect(messages.some((message) => message.role === "assistant")).toBe(true);
   });
 
   it("gives every chat a playbook summary and a natural title", () => {

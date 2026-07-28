@@ -11,6 +11,11 @@ affordance (deep links, report actions, prompt chips, watch cancel, Send) is
 intercepted — clicking one appends an inline `demo` note saying what *would*
 have happened.
 
+Each conversation is **one story**, as close to a real one as fixtures allow.
+Variation matrices — the same card in four states, one row across four page
+kinds — belong to the state gallery at the bottom of this page, never to a chat,
+where stacked variants read as a bug rather than a comparison.
+
 ## Turning it on
 
 ```bash
@@ -69,19 +74,21 @@ message catalog.
 
 | Open | You should see | Feedback wanted |
 | --- | --- | --- |
-| `What should I look at here?` | Four chip rows — failed run, waiting run, slow run, saturated queue — each headed by the page context and signals it came from, promoted chip first in indigo. Last row: the same page after one chip was dismissed. | Is one promoted slot right? Is the promoted styling too strong? Do the chips read as *offers* rather than commands? Is dismissal worth building? |
+| `What should I look at here?` | One chip row for one page: a run that failed a minute ago, the context line it was derived from above it, and the fresh-failure prompt promoted to the top slot in indigo. Chips are intercepted; the dismiss `×` appears on hover. | Is one promoted slot right? Is the promoted styling too strong? Do the chips read as *offers* rather than commands? Is dismissal worth building? |
 
 Fixture data for M4's registry lives in `demo/fixtures/page-context.ts`: one
 `AgentPageContext` per page kind (with `fresh_failure`, `waiting_run`,
 `slow_run`, `concurrency_saturation` signals) and the chip set a good resolver
-should return for it.
+should return for it. The chat shows only the failed-run page — the other page
+kinds and the post-dismissal row are in the state gallery, because a chat is one
+story and stacked variants of one row read as a bug.
 
 ## Watch
 
 | Open | You should see | Feedback wanted |
 | --- | --- | --- |
 | `Tell me when the backlog drains` | A watch intent, the chip row under the banner (`send-order-receipt`, `backlog-drain`), then an unprompted wake narration minutes later. | Does an unprompted message need more framing than the note above it? Is the chip row the right home for watches? |
-| `Watch for that error recurring` | Chips in all four states (watching / fired / expired / cancelled), an expiry narration, the **couldn't verify at expiry** variant, and a cancel confirmation. Cancel `×` is intercepted. | Is the "couldn't verify" wording clearly different from "it didn't happen"? Should an expired watch offer to renew itself? |
+| `Watch for that error recurring` | Chips in all four states (watching / fired / expired / cancelled), an expiry narration, the **couldn't verify at expiry** variant, and a cancel confirmation. The cancel control on an active chip is a labelled icon button (“Cancel the backlog-drain watch”, tooltip on hover) and is intercepted. | Is the "couldn't verify" wording clearly different from "it didn't happen"? Should an expired watch offer to renew itself? |
 
 ## Reports
 
@@ -95,13 +102,12 @@ should return for it.
 
 | Open | You should see | Feedback wanted |
 | --- | --- | --- |
-| `Chat` | The production suggested-prompt panel and an empty composer. | Is the first-open screen doing enough work? |
 | `Summarize today's failures` | A partially streamed assistant message with the "Thinking…" row under it. | Does a half-sentence read as progress or as breakage? |
 | `How deep is the email queue?` | A finished tool row above one still "calling…". **Click a row to expand its input/output.** | Should tool rows be visible by default, or collapsed behind one "worked on it" line? |
 | `List yesterday's runs` | A failed tool row, the panel's error row, and a Retry button (intercepted). | Is the error message useful? Should retry be automatic? |
 | `Queue health over time` | A replayed transcript whose `render_view` part carried three blocks: revisions 0 and 1 of one diagnosis (collapsed latest-wins) and one **pre-envelope block with no id** that still renders and can never be revised. | Should a resumed chat be marked as historical more strongly than the demo bar does? |
-| `New chat` | The composer pre-filled the way `openWith` fills it from a page. Sending is intercepted. | Should a prefilled question send itself, or always wait for the user? |
-| `Which page am I on?` | The context banner across four page/env shapes (including a preview branch), plus the watch chip row. | Does the banner earn its row? Does a long preview-branch name break it? |
+| `Draft in the composer` | A question left half typed (`why did the send-order-receipt run from last nig`) sitting in the composer, over an empty conversation — so the first-open suggested-prompt panel is on screen behind it. Sending is intercepted. | Should a draft survive closing the panel? Should the prompt panel stay visible while someone is typing, or get out of the way? |
+| `Which page am I on?` | A real exchange: the agent names the page, project and environment from page context (`Runs`, `demo-storefront`, `prod`), says what it can already see on that page, offers to investigate the newest failure, then explains that context is re-read on every message. | Does the banner earn its row when the agent can say the same thing? Is “I read your page on every message” reassuring or unsettling? |
 | History list | Every demo row alongside real chats (demo rows are visually identical by design). `demoEmptyHistoryChats` is the empty state. | Does the mixed list read naturally? |
 
 ## Notes for reviewers
