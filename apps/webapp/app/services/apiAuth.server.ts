@@ -30,7 +30,10 @@ import {
 } from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
-import { rbac } from "./rbac.server";
+import {
+  authenticateBearerWithTelemetry,
+  observeLegacyBearerAuthentication,
+} from "~/services/authTelemetry.server";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -92,9 +95,9 @@ export async function authenticateApiRequest(
     return;
   }
 
-  const authentication = await authenticateApiKey(apiKey, { ...options, branchName });
-
-  return authentication;
+  return observeLegacyBearerAuthentication(request, () =>
+    authenticateApiKey(apiKey, { ...options, branchName })
+  );
 }
 
 /**
@@ -114,9 +117,9 @@ export async function authenticateApiRequestWithFailure(
     };
   }
 
-  const authentication = await authenticateApiKeyWithFailure(apiKey, { ...options, branchName });
-
-  return authentication;
+  return observeLegacyBearerAuthentication(request, () =>
+    authenticateApiKeyWithFailure(apiKey, { ...options, branchName })
+  );
 }
 
 /**
@@ -306,13 +309,10 @@ export async function authenticateApiKeyWithScope(
     return { ok: false, status: 401, error: "Invalid or Missing API key" };
   }
 
-  const result = await rbac.authenticateAuthorizeBearer(
-    request,
-    { action, resource },
-    { allowJWT }
-  );
-  if (!result.ok) {
-    return result;
+  const result = await authenticateBearerWithTelemetry(request, { allowJWT });
+  if (!result.ok) return result;
+  if (!result.ability.can(action, resource)) {
+    return { ok: false, status: 403, error: "Unauthorized" };
   }
 
   return {

@@ -13,6 +13,33 @@ export type BearerCredentialClients = {
   replica: PrismaClient;
 };
 
+export type BearerCredentialKind =
+  | "root_api_key"
+  | "additional_api_key"
+  | "public_jwt"
+  | "legacy_public_key"
+  | "unknown";
+
+export type BearerLookupPath =
+  | "plugin"
+  | "root_current"
+  | "root_rotated"
+  | "additional"
+  | "additional_skipped"
+  | "jwt_current"
+  | "jwt_rotated"
+  | "legacy_public"
+  | "not_found";
+
+export type BearerResolution = {
+  credentialKind: BearerCredentialKind;
+  lookupPath: BearerLookupPath;
+};
+
+export type BearerCredentialResult = BearerAuthResult & {
+  resolution: BearerResolution;
+};
+
 // JWT-signing material. Today this is the environment's root apiKey (or the
 // parent's, for branch envs) — which is why rotating a root key needs the
 // grace-window retry in `authenticate`. When a dedicated per-environment
@@ -43,7 +70,10 @@ export class BearerCredentialResolver {
   private readonly prisma: PrismaClient;
   private readonly replica: PrismaClient;
 
-  constructor(clients: BearerCredentialClients) {
+  constructor(
+    clients: BearerCredentialClients,
+    private readonly additionalApiKeyLookupEnabled: () => boolean = () => true
+  ) {
     this.prisma = clients.primary;
     this.replica = clients.replica;
   }
@@ -51,7 +81,7 @@ export class BearerCredentialResolver {
   async authenticate(
     request: Request,
     options?: { allowJWT?: boolean }
-  ): Promise<BearerAuthResult> {
+  ): Promise<BearerCredentialResult> {
     // Deprecated public API keys (`pk_*` minted long before public JWTs
     // landed) are intentionally NOT handled here. That token format hasn't
     // been issued for years; any `pk_*` bearer on an apiBuilder route returns
@@ -60,11 +90,25 @@ export class BearerCredentialResolver {
       .get("Authorization")
       ?.replace(/^Bearer /, "")
       .trim();
-    if (!rawToken) return { ok: false, status: 401, error: "Invalid or Missing API key" };
+    if (!rawToken) {
+      return {
+        ok: false,
+        status: 401,
+        error: "Invalid or Missing API key",
+        resolution: { credentialKind: "unknown", lookupPath: "not_found" },
+      };
+    }
 
     if (options?.allowJWT && isPublicJWT(rawToken)) {
       const envId = extractJWTSub(rawToken);
-      if (!envId) return { ok: false, status: 401, error: "Invalid Public Access Token" };
+      if (!envId) {
+        return {
+          ok: false,
+          status: 401,
+          error: "Invalid Public Access Token",
+          resolution: { credentialKind: "public_jwt", lookupPath: "not_found" },
+        };
+      }
 
       // Match the include shape of the slim AuthenticatedEnvironment so
       // the bridge can use the returned env without a follow-up fetch.
@@ -85,9 +129,15 @@ export class BearerCredentialResolver {
         },
       });
       if (!env || env.project.deletedAt !== null) {
-        return { ok: false, status: 401, error: "Invalid Public Access Token" };
+        return {
+          ok: false,
+          status: 401,
+          error: "Invalid Public Access Token",
+          resolution: { credentialKind: "public_jwt", lookupPath: "not_found" },
+        };
       }
 
+      let lookupPath: BearerLookupPath = "jwt_current";
       let result = await validateJWT(rawToken, resolveJwtSigningKey(env));
 
       // Root-key rotation grace window, mirroring the bearer path below: a
@@ -111,6 +161,8 @@ export class BearerCredentialResolver {
           select: { apiKey: true },
         });
 
+        if (revoked.length > 0) lookupPath = "jwt_rotated";
+
         for (const candidate of revoked) {
           const retried = await validateJWT(rawToken, candidate.apiKey);
           if (retried.ok) {
@@ -120,7 +172,14 @@ export class BearerCredentialResolver {
         }
       }
 
-      if (!result.ok) return { ok: false, status: 401, error: "Public Access Token is invalid" };
+      if (!result.ok) {
+        return {
+          ok: false,
+          status: 401,
+          error: "Public Access Token is invalid",
+          resolution: { credentialKind: "public_jwt", lookupPath },
+        };
+      }
 
       const scopes = Array.isArray(result.payload.scopes)
         ? (result.payload.scopes as string[])
@@ -143,6 +202,7 @@ export class BearerCredentialResolver {
         },
         ability: buildJwtAbility(scopes),
         jwt: { realtime, oneTimeUse, ...(actSub ? { act: { sub: actSub } } : {}) },
+        resolution: { credentialKind: "public_jwt", lookupPath },
       };
     }
 
@@ -165,6 +225,18 @@ export class BearerCredentialResolver {
     } as const;
     const now = new Date();
     const routesToAdditionalKey = isAdditionalApiKey(rawToken);
+    if (routesToAdditionalKey && !this.additionalApiKeyLookupEnabled()) {
+      return {
+        ok: false,
+        status: 401,
+        error: "Invalid API key",
+        resolution: {
+          credentialKind: "additional_api_key",
+          lookupPath: "additional_skipped",
+        },
+      };
+    }
+
     let rootEnvironment = routesToAdditionalKey
       ? null
       : await this.replica.runtimeEnvironment.findFirst({
@@ -175,6 +247,7 @@ export class BearerCredentialResolver {
     // Revoked API key grace window — recently rotated keys keep working until
     // their `expiresAt`; without this a customer who rotates an env API key
     // gets immediate 401s on the new auth path.
+    let resolvedRotatedRoot = false;
     if (!routesToAdditionalKey && !rootEnvironment) {
       const revoked = await this.replica.revokedApiKey.findFirst({
         where: {
@@ -184,6 +257,7 @@ export class BearerCredentialResolver {
         include: { runtimeEnvironment: { include } },
       });
       rootEnvironment = revoked?.runtimeEnvironment ?? null;
+      resolvedRotatedRoot = rootEnvironment !== null;
     }
 
     const match = routesToAdditionalKey
@@ -207,7 +281,15 @@ export class BearerCredentialResolver {
     let env = rootEnvironment ?? match?.runtimeEnvironment ?? null;
 
     if (!env || env.project.deletedAt !== null) {
-      return { ok: false, status: 401, error: "Invalid API key" };
+      return {
+        ok: false,
+        status: 401,
+        error: "Invalid API key",
+        resolution: {
+          credentialKind: routesToAdditionalKey ? "additional_api_key" : "root_api_key",
+          lookupPath: routesToAdditionalKey ? "additional" : "not_found",
+        },
+      };
     }
 
     if (
@@ -234,6 +316,7 @@ export class BearerCredentialResolver {
         ok: false,
         status: 401,
         error: "x-trigger-branch header required for preview env",
+        resolution: bearerResolution(additionalApiKey !== null, resolvedRotatedRoot),
       };
     }
 
@@ -245,7 +328,12 @@ export class BearerCredentialResolver {
       if (branchName !== null && !isDevAndDefault) {
         const child = env.childEnvironments?.[0];
         if (!child) {
-          return { ok: false, status: 401, error: "No matching branch env" };
+          return {
+            ok: false,
+            status: 401,
+            error: "No matching branch env",
+            resolution: bearerResolution(additionalApiKey !== null, resolvedRotatedRoot),
+          };
         }
         // Pivot to the child env: child's id/type/branchName, parent's
         // apiKey/orgMember/organization/project.
@@ -284,8 +372,21 @@ export class BearerCredentialResolver {
       environment: toAuthenticatedEnvironment(env),
       subject,
       ability: additionalApiKey ? buildJwtAbility(additionalApiKey.scopes) : permissiveAbility,
+      resolution: bearerResolution(additionalApiKey !== null, resolvedRotatedRoot),
     };
   }
+}
+
+function bearerResolution(
+  additionalApiKey: boolean,
+  resolvedRotatedRoot: boolean
+): BearerResolution {
+  return additionalApiKey
+    ? { credentialKind: "additional_api_key", lookupPath: "additional" }
+    : {
+        credentialKind: "root_api_key",
+        lookupPath: resolvedRotatedRoot ? "root_rotated" : "root_current",
+      };
 }
 
 // Coerce a Prisma RuntimeEnvironment payload (with project/organization/

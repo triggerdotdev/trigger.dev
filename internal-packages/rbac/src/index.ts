@@ -1,6 +1,7 @@
 import type {
   ApiKeyPolicyDescription,
   ApiKeyPreset,
+  BearerAuthResult,
   Permission,
   PrepareApiKeyPolicyResult,
   RbacAbility,
@@ -17,8 +18,13 @@ import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isPublicJWT } from "@trigger.dev/core/v3/jwt";
 
 import { RoleBaseAccessFallback } from "./fallback.js";
-import { BearerCredentialResolver } from "./bearerCredentials.js";
+import { BearerCredentialResolver, type BearerResolution } from "./bearerCredentials.js";
 export type { RoleBaseAccessController, RbacAbility, RbacResource } from "@trigger.dev/plugins";
+export type {
+  BearerCredentialKind,
+  BearerLookupPath,
+  BearerResolution,
+} from "./bearerCredentials.js";
 
 /**
  * The controller surface as the HOST sees it, after LazyController has filled in
@@ -30,7 +36,14 @@ export type { RoleBaseAccessController, RbacAbility, RbacResource } from "@trigg
  * method — so host consumers should depend on this type, not on the plugin
  * contract, and get a total surface without writing their own guards.
  */
-export type HostRbacController = Required<RoleBaseAccessController>;
+export type HostBearerAuthResult = BearerAuthResult & { resolution: BearerResolution };
+
+export type HostRbacController = Omit<Required<RoleBaseAccessController>, "authenticateBearer"> & {
+  authenticateBearer(
+    request: Request,
+    options?: { allowJWT?: boolean }
+  ): Promise<HostBearerAuthResult>;
+};
 export type { UserActorAuthResult, UserActorClaims } from "@trigger.dev/plugins";
 export { buildJwtAbility, scopesWithinAbility } from "./ability.js";
 export { FULL_ACCESS_PRESET_ID, scopesGrantFullAccess } from "@trigger.dev/plugins";
@@ -61,6 +74,9 @@ export type RbacCreateOptions = {
   // follows the host's writer/replica topology. The fallback ignores this —
   // it queries through the Prisma clients passed as `RbacPrismaInput`.
   database?: RbacDatabaseConfig;
+  // Synchronous host-owned rollout control. Defaults to enabled for non-webapp
+  // consumers; the webapp passes its cold-safe global flag reader.
+  additionalApiKeyLookupEnabled?: () => boolean;
 };
 
 // Route actions that historically authorised via the legacy checkAuthorization's
@@ -97,7 +113,8 @@ class LazyController implements RoleBaseAccessController {
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
     this._hostCredentialResolver = new BearerCredentialResolver(
-      "primary" in prisma ? prisma : { primary: prisma, replica: prisma }
+      "primary" in prisma ? prisma : { primary: prisma, replica: prisma },
+      options?.additionalApiKeyLookupEnabled
     );
     this._init = this.load(prisma, options);
     // load() runs eagerly but the result is awaited lazily on first method
@@ -116,6 +133,7 @@ class LazyController implements RoleBaseAccessController {
     if (options?.forceFallback) {
       return new RoleBaseAccessFallback(prisma, {
         userActorSecret: options?.userActorSecret,
+        additionalApiKeyLookupEnabled: options?.additionalApiKeyLookupEnabled,
       }).create();
     }
     const moduleName = "@triggerdotdev/plugins/rbac";
@@ -175,6 +193,7 @@ class LazyController implements RoleBaseAccessController {
 
       return new RoleBaseAccessFallback(prisma, {
         userActorSecret: options?.userActorSecret,
+        additionalApiKeyLookupEnabled: options?.additionalApiKeyLookupEnabled,
       }).create();
     }
   }
@@ -208,13 +227,35 @@ class LazyController implements RoleBaseAccessController {
         ? await this._hostCredentialResolver.authenticate(...args)
         : await controller.authenticateBearer(...args);
 
+    const resolution: BearerResolution =
+      "resolution" in result
+        ? (result.resolution as BearerResolution)
+        : useHostForAdditionalKey
+          ? { credentialKind: "additional_api_key", lookupPath: "additional" }
+          : useHostForPublicJWT
+            ? { credentialKind: "public_jwt", lookupPath: "jwt_current" }
+            : {
+                credentialKind: rawToken?.startsWith("tr_") ? "root_api_key" : "unknown",
+                lookupPath: usingPlugin ? "plugin" : "not_found",
+              };
+
     // The format is only a routing hint. A successful host resolution on the
     // additional-key path must still produce the expected principal type.
     if (useHostForAdditionalKey && result.ok && result.subject.type !== "apiKey") {
-      return { ok: false as const, status: 401 as const, error: "Invalid API key" };
+      return {
+        ok: false as const,
+        status: 401 as const,
+        error: "Invalid API key",
+        resolution: {
+          credentialKind: "additional_api_key" as const,
+          lookupPath: "additional" as const,
+        },
+      };
     }
 
-    return result.ok ? { ...result, ability: withActionAliases(result.ability) } : result;
+    return result.ok
+      ? { ...result, ability: withActionAliases(result.ability), resolution }
+      : { ...result, resolution };
   }
 
   async authenticateSession(...args: Parameters<RoleBaseAccessController["authenticateSession"]>) {

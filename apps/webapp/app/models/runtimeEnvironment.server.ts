@@ -9,6 +9,7 @@ import { hashApiKey } from "~/utils/apiKeys";
 import { isAdditionalApiKey } from "@trigger.dev/core/v3/apiKeys";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { scopesGrantFullAccess } from "@trigger.dev/rbac";
+import { authFeatureControls } from "~/services/authFeatureControls.server";
 
 export type { RuntimeEnvironment };
 
@@ -98,7 +99,7 @@ export function toAuthenticated(
 
 export type ApiKeyEnvironmentResolution =
   | { ok: true; environment: AuthenticatedEnvironment }
-  | { ok: false; reason: "not-found" | "restricted" };
+  | { ok: false; reason: "not-found" | "restricted" | "disabled" };
 
 /**
  * Resolve an environment from a raw API key for legacy routes that do not
@@ -109,7 +110,8 @@ export type ApiKeyEnvironmentResolution =
 async function resolveEnvironmentByApiKey(
   apiKey: string,
   branchName: string | undefined,
-  tx: PrismaClientOrTransaction
+  tx: PrismaClientOrTransaction,
+  additionalApiKeyLookupEnabled: () => boolean
 ): Promise<ApiKeyEnvironmentResolution> {
   const branch = sanitizeBranchName(branchName) ?? undefined;
 
@@ -127,6 +129,10 @@ async function resolveEnvironmentByApiKey(
 
   const now = new Date();
   const routesToAdditionalKey = isAdditionalApiKey(apiKey);
+  if (routesToAdditionalKey && !additionalApiKeyLookupEnabled()) {
+    return { ok: false, reason: "disabled" };
+  }
+
   let rootEnvironment = routesToAdditionalKey
     ? null
     : await tx.runtimeEnvironment.findFirst({
@@ -269,9 +275,15 @@ async function resolveEnvironmentByApiKey(
 export async function findEnvironmentByApiKey(
   apiKey: string,
   branchName: string | undefined,
-  tx: PrismaClientOrTransaction = $replica
+  tx: PrismaClientOrTransaction = $replica,
+  additionalApiKeyLookupEnabled = authFeatureControls.additionalApiKeyLookupEnabled
 ): Promise<AuthenticatedEnvironment | null> {
-  const resolution = await resolveEnvironmentByApiKey(apiKey, branchName, tx);
+  const resolution = await resolveEnvironmentByApiKey(
+    apiKey,
+    branchName,
+    tx,
+    additionalApiKeyLookupEnabled
+  );
   return resolution.ok ? resolution.environment : null;
 }
 
@@ -283,9 +295,10 @@ export async function findEnvironmentByApiKey(
 export async function findEnvironmentByApiKeyWithResolution(
   apiKey: string,
   branchName: string | undefined,
-  tx: PrismaClientOrTransaction = $replica
+  tx: PrismaClientOrTransaction = $replica,
+  additionalApiKeyLookupEnabled = authFeatureControls.additionalApiKeyLookupEnabled
 ): Promise<ApiKeyEnvironmentResolution> {
-  return resolveEnvironmentByApiKey(apiKey, branchName, tx);
+  return resolveEnvironmentByApiKey(apiKey, branchName, tx, additionalApiKeyLookupEnabled);
 }
 
 /**

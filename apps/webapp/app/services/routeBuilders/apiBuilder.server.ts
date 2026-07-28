@@ -6,6 +6,7 @@ import { fromZodError } from "zod-validation-error";
 import { apiCors } from "~/utils/apiCors";
 import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
+import { authenticateBearerWithTelemetry } from "~/services/authTelemetry.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import { isUserActorToken } from "@trigger.dev/rbac";
 import type { PersonalAccessTokenAuthenticationResult } from "../personalAccessToken.server";
@@ -60,7 +61,7 @@ async function authenticateRequestForApiBuilder(
       restrictedApiKey: boolean;
     }
 > {
-  const result = await rbac.authenticateBearer(request, { allowJWT });
+  const result = await authenticateBearerWithTelemetry(request, { allowJWT });
   if (!result.ok) {
     // Plugin auth distinguishes 401 (who are you?) from 403 (you're not
     // allowed) — e.g. a suspended account or IP block returns 403.

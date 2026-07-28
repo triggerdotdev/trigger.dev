@@ -151,9 +151,9 @@ describe("API-key policy controller composition", () => {
     } as unknown as RoleBaseAccessController;
     const controller = installPlugin(plugin, hostAuthenticate);
 
-    await expect(controller.authenticateBearer(bearerRequest(ADDITIONAL_API_KEY))).resolves.toEqual(
-      hostFailure
-    );
+    await expect(
+      controller.authenticateBearer(bearerRequest(ADDITIONAL_API_KEY))
+    ).resolves.toMatchObject(hostFailure);
     expect(hostAuthenticate).toHaveBeenCalledOnce();
     expect(pluginAuthenticate).not.toHaveBeenCalled();
   });
@@ -193,9 +193,9 @@ describe("API-key policy controller composition", () => {
       } as unknown as RoleBaseAccessController;
       const controller = installPlugin(plugin, hostAuthenticate);
 
-      await expect(controller.authenticateBearer(bearerRequest(ROOT_API_KEY))).resolves.toEqual(
-        pluginFailure
-      );
+      await expect(
+        controller.authenticateBearer(bearerRequest(ROOT_API_KEY))
+      ).resolves.toMatchObject(pluginFailure);
       expect(pluginAuthenticate).toHaveBeenCalledOnce();
       expect(hostAuthenticate).not.toHaveBeenCalled();
     }
@@ -210,13 +210,13 @@ describe("API-key policy controller composition", () => {
     } as unknown as RoleBaseAccessController;
     const controller = installPlugin(plugin, hostAuthenticate);
 
-    await expect(controller.authenticateBearer(bearerRequest(ADDITIONAL_API_KEY))).resolves.toEqual(
-      {
-        ok: false,
-        status: 401,
-        error: "Invalid API key",
-      }
-    );
+    await expect(
+      controller.authenticateBearer(bearerRequest(ADDITIONAL_API_KEY))
+    ).resolves.toMatchObject({
+      ok: false,
+      status: 401,
+      error: "Invalid API key",
+    });
     expect(pluginAuthenticate).not.toHaveBeenCalled();
   });
 

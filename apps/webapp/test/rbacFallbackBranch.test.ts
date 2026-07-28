@@ -3,7 +3,7 @@ import plugin from "@trigger.dev/rbac";
 import { createHash } from "node:crypto";
 import { generateJWT } from "@trigger.dev/core/v3/jwt";
 import { type PrismaClient } from "@trigger.dev/database";
-import { describe, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { generateAdditionalApiKey } from "~/utils/apiKeys";
 import { createTestOrgProjectWithMember, uniqueId } from "./fixtures/environmentVariablesFixtures";
 
@@ -14,8 +14,11 @@ vi.setConfig({ testTimeout: 60_000 });
 // mirrors findEnvironmentByApiKey, but is a separate implementation, so it
 // needs its own coverage. forceFallback skips loading the closed-source plugin
 // and uses the in-repo fallback directly.
-function makeController(prisma: PrismaClient) {
-  return plugin.create({ primary: prisma, replica: prisma }, { forceFallback: true });
+function makeController(prisma: PrismaClient, additionalApiKeyLookupEnabled?: () => boolean) {
+  return plugin.create(
+    { primary: prisma, replica: prisma },
+    { forceFallback: true, additionalApiKeyLookupEnabled }
+  );
 }
 
 function bearerRequest(apiKey: string, branch?: string) {
@@ -147,6 +150,30 @@ describe("RBAC fallback — DEVELOPMENT branch pivot", () => {
 });
 
 describe("RBAC fallback — additional keys", () => {
+  it("rejects a disabled additional-key lookup without querying", async () => {
+    const runtimeEnvironmentFind = vi.fn();
+    const revokedApiKeyFind = vi.fn();
+    const apiKeyFind = vi.fn();
+    const prisma = {
+      runtimeEnvironment: { findFirst: runtimeEnvironmentFind },
+      revokedApiKey: { findFirst: revokedApiKeyFind },
+      apiKey: { findFirst: apiKeyFind },
+    } as unknown as PrismaClient;
+    const rbac = makeController(prisma, () => false);
+    const key = "tr_prod_sk_0123456789abcdefghijklmn";
+
+    await expect(rbac.authenticateBearer(bearerRequest(key))).resolves.toMatchObject({
+      ok: false,
+      resolution: {
+        credentialKind: "additional_api_key",
+        lookupPath: "additional_skipped",
+      },
+    });
+    expect(runtimeEnvironmentFind).not.toHaveBeenCalled();
+    expect(revokedApiKeyFind).not.toHaveBeenCalled();
+    expect(apiKeyFind).not.toHaveBeenCalled();
+  });
+
   postgresTest("authenticates an additional key and records its use", async ({ prisma }) => {
     const { organization, project, orgMember, user } = await createTestOrgProjectWithMember(prisma);
     const rbac = makeController(prisma);

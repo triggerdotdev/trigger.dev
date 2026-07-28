@@ -174,9 +174,27 @@ describe("findEnvironmentByApiKey — non-branchable", () => {
     } as unknown as PrismaClient;
 
     await expect(
-      findEnvironmentByApiKey("tr_prod_sk_0123456789abcdefghijklmn", undefined, tx)
+      findEnvironmentByApiKey("tr_prod_sk_0123456789abcdefghijklmn", undefined, tx, () => true)
     ).resolves.toBeNull();
     expect(apiKeyFind).toHaveBeenCalledOnce();
+    expect(runtimeEnvironmentFind).not.toHaveBeenCalled();
+    expect(revokedApiKeyFind).not.toHaveBeenCalled();
+  });
+
+  it("skips the additional-key store when lookup is disabled", async () => {
+    const runtimeEnvironmentFind = vi.fn();
+    const revokedApiKeyFind = vi.fn();
+    const apiKeyFind = vi.fn();
+    const tx = {
+      runtimeEnvironment: { findFirst: runtimeEnvironmentFind },
+      revokedApiKey: { findFirst: revokedApiKeyFind },
+      apiKey: { findFirst: apiKeyFind },
+    } as unknown as PrismaClient;
+
+    await expect(
+      findEnvironmentByApiKey("tr_prod_sk_0123456789abcdefghijklmn", undefined, tx, () => false)
+    ).resolves.toBeNull();
+    expect(apiKeyFind).not.toHaveBeenCalled();
     expect(runtimeEnvironmentFind).not.toHaveBeenCalled();
     expect(revokedApiKeyFind).not.toHaveBeenCalled();
   });
@@ -221,7 +239,7 @@ describe("findEnvironmentByApiKey — additional and disabled keys", () => {
       },
     });
 
-    const resolved = await findEnvironmentByApiKey(plaintext, undefined, prisma);
+    const resolved = await findEnvironmentByApiKey(plaintext, undefined, prisma, () => true);
 
     expect(resolved?.id).toBe(environment.id);
     expect(resolved?.apiKey).toBe(environment.apiKey);
@@ -248,7 +266,9 @@ describe("findEnvironmentByApiKey — additional and disabled keys", () => {
         },
       });
 
-      await expect(findEnvironmentByApiKey(plaintext, undefined, prisma)).resolves.toBeNull();
+      await expect(
+        findEnvironmentByApiKey(plaintext, undefined, prisma, () => true)
+      ).resolves.toBeNull();
     }
   );
 
@@ -271,7 +291,9 @@ describe("findEnvironmentByApiKey — additional and disabled keys", () => {
       },
     });
 
-    await expect(findEnvironmentByApiKey(plaintext, undefined, prisma)).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(plaintext, undefined, prisma, () => true)
+    ).resolves.toBeNull();
   });
 
   postgresTest("rejects revoked and expired additional keys", async ({ prisma }) => {
@@ -307,8 +329,12 @@ describe("findEnvironmentByApiKey — additional and disabled keys", () => {
       ],
     });
 
-    await expect(findEnvironmentByApiKey(revoked, undefined, prisma)).resolves.toBeNull();
-    await expect(findEnvironmentByApiKey(expired, undefined, prisma)).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(revoked, undefined, prisma, () => true)
+    ).resolves.toBeNull();
+    await expect(
+      findEnvironmentByApiKey(expired, undefined, prisma, () => true)
+    ).resolves.toBeNull();
   });
 
   postgresTest(
@@ -335,9 +361,9 @@ describe("findEnvironmentByApiKey — additional and disabled keys", () => {
       await expect(
         findEnvironmentByApiKey(environment.apiKey, undefined, prisma)
       ).resolves.toMatchObject({ id: environment.id });
-      await expect(findEnvironmentByApiKey(additional, undefined, prisma)).resolves.toMatchObject({
-        id: environment.id,
-      });
+      await expect(
+        findEnvironmentByApiKey(additional, undefined, prisma, () => true)
+      ).resolves.toMatchObject({ id: environment.id });
     }
   );
 });
