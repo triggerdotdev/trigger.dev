@@ -75,7 +75,7 @@ const LIGHT_MONO = {
 function DotMatrixTab() {
   return (
     <div className="flex flex-col gap-6 py-6">
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         5×5 grid. A bright head walks each shape's route on a fixed beat, 2 cycles per shape,
         handing off at shared dots. Click to toggle.
       </Paragraph>
@@ -89,7 +89,7 @@ function DotMatrixTab() {
           </div>
         ))}
       </div>
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         The <code className="text-text-bright">ask-ai</code> Button variant. Mono logo, click to
         think for 5s.
       </Paragraph>
@@ -107,7 +107,7 @@ function DotMatrixTab() {
           </div>
         ))}
       </div>
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         Small-button icon size comparison (crispness):
       </Paragraph>
       <div className="flex flex-wrap items-center gap-6 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
@@ -128,7 +128,7 @@ function DotMatrixTab() {
           </div>
         ))}
       </div>
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         Mono on dark (charcoal-800) and light (charcoal-100):
       </Paragraph>
       <div className="flex flex-wrap gap-4">
@@ -147,7 +147,7 @@ function DotMatrixTab() {
           />
         </div>
       </div>
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         Face suite (small buttons, click to think):
       </Paragraph>
       <div className="flex max-w-4xl flex-wrap gap-3 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
@@ -155,7 +155,7 @@ function DotMatrixTab() {
           <FaceButton key={name} name={name} />
         ))}
       </div>
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         Face options (grid always visible here):
       </Paragraph>
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
@@ -166,7 +166,7 @@ function DotMatrixTab() {
           </div>
         ))}
       </div>
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         Palettes (always running):
       </Paragraph>
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
@@ -177,7 +177,7 @@ function DotMatrixTab() {
           </div>
         ))}
       </div>
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         Shape library (5-line string bitmaps):
       </Paragraph>
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
@@ -275,7 +275,7 @@ function ToggleableMatrix({
 function LogoMorphTab() {
   return (
     <div className="flex flex-col gap-6 py-6">
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         Crisp logo at rest; dots born on its outline fly out to orbits. Click or scrub.
       </Paragraph>
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
@@ -360,7 +360,7 @@ function LogoMorphScrubber({ size = 140 }: { size?: number }) {
 function OrbitDotsTab() {
   return (
     <div className="flex flex-col gap-6 py-6">
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         Dotted triangle ↔ tilted 3D orbits. White at rest, palette while working.
       </Paragraph>
       <section className="flex flex-col gap-3">
@@ -428,7 +428,7 @@ const LOGO_CLOUD: Partial<AgentOrbProps> = {
 function LogoCloudTab() {
   return (
     <div className="flex flex-col gap-6 py-6">
-      <Paragraph variant="small" className="max-w-3xl">
+      <Paragraph variant="small" className="mt-2 -mb-3 max-w-3xl">
         600 dots in the logo silhouette; morphs into a working cloud.
       </Paragraph>
       <div className="flex flex-wrap items-end gap-8 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
