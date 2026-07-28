@@ -30,6 +30,21 @@ const CATEGORY_LABELS: Record<DiagnosisBlock["category"], string> = {
   unknown: "Unknown",
 };
 
+// One line answering the triage question a bare category label leaves open:
+// whose problem is this, roughly?
+const CATEGORY_EXPLANATIONS: Record<DiagnosisBlock["category"], string> = {
+  user_code_error: "A bug in the task's own code",
+  configuration: "A setting on the task, queue or environment",
+  dependency: "A package or build problem",
+  timeout: "The run exceeded its time limit",
+  out_of_memory: "The run exceeded its machine's memory",
+  rate_limit: "A rate limit was hit",
+  external_service: "A third-party service the task calls failed",
+  infrastructure: "A problem on the platform side, not in your code",
+  cancellation: "The run was cancelled before finishing",
+  unknown: "The cause couldn't be classified",
+};
+
 // Matches the app's link convention (TextLink `primary`), which holds up in both
 // themes.
 const LINK_STYLE = "text-indigo-500 transition hover:text-indigo-400";
@@ -137,11 +152,25 @@ export function RunDiagnosisCard({ block }: { block: DiagnosisBlock }) {
 
   return (
     <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
-      <div className="flex flex-wrap items-center gap-2 border-b border-grid-bright bg-background-bright px-4 py-3">
-        <span className="text-xs font-medium text-text-dimmed">Run diagnosis</span>
-        <CategoryBadge>{CATEGORY_LABELS[block.category] ?? block.category}</CategoryBadge>
-        <ConfidenceBadge confidence={block.confidence} />
-        {block.runId ? <RunLink runId={block.runId} className="ml-auto font-mono text-xs" /> : null}
+      <div className="space-y-1.5 border-b border-grid-bright bg-background-bright px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-text-dimmed">Run diagnosis</span>
+          <ConfidenceBadge confidence={block.confidence} />
+          {block.runId ? (
+            <RunLink runId={block.runId} className="ml-auto font-mono text-xs" />
+          ) : null}
+        </div>
+        {/* The category as a titled subtitle, not a bare chip: the label plus
+            the one-line "whose problem is this" answer. */}
+        <p className="text-sm">
+          <span className="font-medium text-text-bright">
+            {CATEGORY_LABELS[block.category] ?? block.category}
+          </span>
+          <span className="text-text-dimmed">
+            {" — "}
+            {CATEGORY_EXPLANATIONS[block.category] ?? "The diagnosed root-cause category"}
+          </span>
+        </p>
       </div>
 
       <div className="space-y-5 px-4 py-4">
