@@ -322,33 +322,44 @@ function filterKeys(obj: unknown, keys: Set<string>, depth = 0): any {
 
   if (Array.isArray(obj)) {
     const isTruncated = obj.length > MAX_ARRAY_LENGTH;
-    const items = (isTruncated ? obj.slice(0, MAX_ARRAY_LENGTH) : obj).map((item) =>
-      filterKeys(item, keys, depth + 1)
-    );
+    const length = isTruncated ? MAX_ARRAY_LENGTH : obj.length;
+    let filteredItems: unknown[] | undefined = isTruncated ? [] : undefined;
+
+    for (let index = 0; index < length; index++) {
+      const item = obj[index];
+      const filteredItem = filterKeys(item, keys, depth + 1);
+
+      if (filteredItems) {
+        filteredItems.push(filteredItem);
+      } else if (filteredItem !== item) {
+        filteredItems = obj.slice(0, index);
+        filteredItems.push(filteredItem);
+      }
+    }
 
     if (isTruncated) {
-      items.push(`[truncated ${obj.length - MAX_ARRAY_LENGTH} more items]`);
+      filteredItems!.push(`[truncated ${obj.length - MAX_ARRAY_LENGTH} more items]`);
     }
 
-    return items;
+    return filteredItems ?? obj;
   }
 
-  const filteredObj: any = {};
+  let filteredObj: Record<string, unknown> | undefined;
 
   for (const [key, value] of Object.entries(obj)) {
-    if (keys.has(key.toLowerCase())) {
-      if (value) {
-        filteredObj[key] = `[filtered ${prettyPrintBytes(value)}]`;
-      } else {
-        filteredObj[key] = value;
-      }
-      continue;
-    }
+    const filteredValue = keys.has(key.toLowerCase())
+      ? value
+        ? `[filtered ${prettyPrintBytes(value)}]`
+        : value
+      : filterKeys(value, keys, depth + 1);
 
-    filteredObj[key] = filterKeys(value, keys, depth + 1);
+    if (filteredValue !== value) {
+      filteredObj ??= { ...(obj as Record<string, unknown>) };
+      filteredObj[key] = filteredValue;
+    }
   }
 
-  return filteredObj;
+  return filteredObj ?? obj;
 }
 
 function truncateString(value: string): string {
