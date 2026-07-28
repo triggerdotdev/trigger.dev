@@ -23,6 +23,8 @@ import { BugIcon } from "~/assets/icons/BugIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { errorGroupPrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { ErrorStatusBadge } from "~/components/errors/ErrorStatusBadge";
 import {
   CustomIgnoreDialog,
@@ -578,8 +580,16 @@ function ErrorDetailSidebar({
 }) {
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="border-b border-grid-dimmed px-3 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 py-2">
         <Header2 className="truncate">Details</Header2>
+        {/* Hand this error group to the agent. Hidden when the agent isn't available. */}
+        <InvestigateButton
+          prompt={errorGroupPrompt(
+            ErrorId.toFriendlyId(errorGroup.fingerprint),
+            errorGroup.taskIdentifier
+          )}
+          label="Investigate this error"
+        />
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         <div className="flex flex-col gap-4">

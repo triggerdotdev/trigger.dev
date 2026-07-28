@@ -27,6 +27,12 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import {
+  failedRunPrompt,
+  isFailedRunStatus,
+  waitingRunPrompt,
+} from "~/components/dashboard-agent/investigate-prompts";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
@@ -1136,11 +1142,20 @@ function RunBody({
                   waiting={queueMetrics.waiting}
                   status={run.status}
                   createdAt={run.createdAt}
+                  runFriendlyId={run.friendlyId}
                 />
               ) : null}
               <RunTimeline run={run} />
 
               {run.error && <RunError error={run.error} />}
+
+              {/* Hand the failure to the agent, prefilled with this run's id. Hidden when the
+                  agent isn't available. */}
+              {isFailedRunStatus(run.status) ? (
+                <div className="flex">
+                  <InvestigateButton prompt={failedRunPrompt(run.friendlyId)} />
+                </div>
+              ) : null}
 
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
@@ -1250,6 +1265,7 @@ function WaitingInQueueBlock({
   waiting,
   status,
   createdAt,
+  runFriendlyId,
 }: {
   queueName: string;
   queuePath: string | undefined;
@@ -1257,6 +1273,7 @@ function WaitingInQueueBlock({
   waiting: RunQueueWaiting;
   status: SpanRun["status"];
   createdAt: Date;
+  runFriendlyId: string;
 }) {
   // Latest gauges from ClickHouse (as on the queue page), polled so the blocks keep ticking. Trust
   // the newest bucket only while fresh; otherwise fall back to the loader's live values.
@@ -1328,6 +1345,14 @@ function WaitingInQueueBlock({
         <MiniStat
           title="Waiting for"
           value={formatDurationMilliseconds(waitedMs, { style: "short", maxDecimalPoints: 0 })}
+        />
+      </div>
+
+      {/* Ask the agent why this run hasn't started. Hidden when the agent isn't available. */}
+      <div className="flex">
+        <InvestigateButton
+          prompt={waitingRunPrompt(runFriendlyId, queueName)}
+          label="Why is this run waiting?"
         />
       </div>
 

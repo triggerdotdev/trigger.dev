@@ -19,6 +19,8 @@ import { RunsIcon } from "~/assets/icons/RunsIcon";
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
+import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
+import { queueBacklogPrompt } from "~/components/dashboard-agent/investigate-prompts";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { MetricsLayout } from "~/components/layout/MetricsLayout";
@@ -941,6 +943,21 @@ function QueuesWithMetricsView() {
                                 />
                               )}
 
+                              {/* Only for a queue that's actually struggling; hidden when the
+                                  agent isn't available. */}
+                              {queueNeedsAttention({
+                                paused: queue.paused,
+                                running: queue.running,
+                                queued: queue.queued,
+                                limit,
+                              }) ? (
+                                <InvestigateButton
+                                  prompt={queueBacklogPrompt(queue.name)}
+                                  variant="minimal"
+                                  fullWidth
+                                />
+                              ) : null}
+
                               <PopoverMenuItem
                                 icon={RunsIcon}
                                 leadingIconClassName="text-runs size-[1.125rem]"
@@ -1561,6 +1578,16 @@ function queueHealthLabel({ paused, running, queued, limit }: QueueHealth): Queu
   if (queued > 0) return "Backlogged";
   if (running > 0) return "Active";
   return "Idle";
+}
+
+/**
+ * Health states worth handing to the agent: a queue at capacity or with a backlog. Paused is a
+ * warning too, but its cause is already on screen (and the row offers Resume), so it's left out.
+ */
+const QUEUE_HEALTH_NEEDS_ATTENTION = new Set<QueueHealthLabel>(["At capacity", "Backlogged"]);
+
+function queueNeedsAttention(health: QueueHealth): boolean {
+  return QUEUE_HEALTH_NEEDS_ATTENTION.has(queueHealthLabel(health));
 }
 
 const QUEUE_HEALTH_STYLES: Record<QueueHealthLabel, string> = {
