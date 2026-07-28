@@ -371,7 +371,6 @@ export function DashboardAgentPanel({
           chats={chats}
           currentChatId={active?.chatId ?? ""}
           onSelect={switchChat}
-          onNewChat={newChat}
           onDelete={deleteChat}
         />
       ) : loading ? (

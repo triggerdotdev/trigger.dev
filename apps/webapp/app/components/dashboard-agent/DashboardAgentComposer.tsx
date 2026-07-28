@@ -34,8 +34,12 @@ export function DashboardAgentComposer({
     <div className="border-t border-grid-bright p-3">
       <div className="rounded-2xl border border-border-bright bg-background-bright p-2 transition focus-within:border-border-brighter">
         <div className="flex items-end gap-2">
+          {/* One text line tall at rest (matches the Send button height), grows
+              with content up to the cap. rows={1} + field-sizing-content do the
+              work; the old min-h forced a second line's worth of empty space. */}
           <textarea
             ref={ref}
+            rows={1}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={(e) => {
@@ -47,7 +51,7 @@ export function DashboardAgentComposer({
             placeholder="Type a message…"
             aria-label="Message the dashboard agent"
             className={cn(
-              "max-h-[40vh] min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:outline-hidden focus:ring-0"
+              "max-h-[40vh] flex-1 resize-none border-0 bg-transparent px-2 py-1 text-sm leading-6 text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:outline-hidden focus:ring-0"
             )}
           />
           {isStreaming ? (

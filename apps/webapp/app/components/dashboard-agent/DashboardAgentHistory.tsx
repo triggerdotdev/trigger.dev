@@ -1,4 +1,4 @@
-import { PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { TrashIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -18,13 +18,11 @@ export function DashboardAgentHistory({
   chats,
   currentChatId,
   onSelect,
-  onNewChat,
   onDelete,
 }: {
   chats: DashboardAgentChat[];
   currentChatId: string;
   onSelect: (chatId: string) => void;
-  onNewChat: () => void;
   onDelete: (chatId: string) => void;
 }) {
   // Deleting a chat is irreversible, so it goes through a confirm step. Holding
@@ -34,15 +32,7 @@ export function DashboardAgentHistory({
   return (
     <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
       <div className="p-2">
-        <button
-          type="button"
-          onClick={onNewChat}
-          className="mb-1.5 flex w-full items-center gap-2 rounded-md border border-transparent px-3 py-2 text-left text-sm text-text-bright transition hover:bg-background-bright"
-        >
-          <PlusIcon className="size-4 text-green-500" />
-          New chat
-        </button>
-
+        {/* New chat lives as the header icon button only — no duplicate row here. */}
         {chats.length === 0 ? (
           <Paragraph variant="small" className="p-2 text-text-dimmed">
             No previous chats yet.
