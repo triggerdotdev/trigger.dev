@@ -28,6 +28,7 @@ import { ReportView } from "~/components/dashboard-agent/ReportView";
 import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
 import { resolveSuggestedPrompts } from "~/components/dashboard-agent/suggested-prompts";
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
+import { WatchChips, type WatchChip } from "~/components/dashboard-agent/WatchChips";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { cn } from "~/utils/cn";
@@ -425,6 +426,19 @@ function investigationBlock(
   };
 }
 
+/** A watch fixture in the shape the panel's loader hands to `WatchChips`. */
+function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
+  return {
+    id: watch.id,
+    identity: watch.identity,
+    status: watch.status,
+    kind: watch.spec.kind,
+    note: watch.spec.note,
+    checkEveryMinutes: watch.spec.checkEveryMinutes,
+    expiresAt: watch.expiresAt,
+  };
+}
+
 function fixtureResolveUri(uri: string): { label: string; url: string } | null {
   const parsed = safeParseTriggerUri(uri);
   if (!parsed.success) return null;
@@ -565,6 +579,10 @@ const STATES: Record<string, React.ReactNode> = {
   "watches-expired": <DemoWatchChips watches={[demoWatches.healthRecovery]} />,
   "watches-cancelled": <DemoWatchChips watches={[demoWatches.cancelled]} />,
   "watches-all-states": <DemoWatchChips watches={demoWatches.row} onCancel={noop} />,
+  // The real panel component, fed the same fixtures through the shape its loader
+  // hands over — so its labels (derived from the watch identity) and the demo
+  // chips above can be compared side by side.
+  "watches-live": <WatchChips watches={demoWatches.row.map(toWatchChip)} onCancel={noop} />,
 
   // --- Suggested prompts --------------------------------------------------
   // The real component, resolving the registry against each fixture context.

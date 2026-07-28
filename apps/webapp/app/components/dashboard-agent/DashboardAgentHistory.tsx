@@ -6,12 +6,15 @@ import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dia
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { AgentList, AgentListRow, AgentListRowAction } from "./list-row";
+import type { WatchChip } from "./WatchChips";
 
 // Date fields arrive as strings over the loader's JSON.
 export type DashboardAgentChat = {
   id: string;
   title: string;
   lastMessageAt: string | null;
+  /** The chat's active watches, for the panel's chip row. */
+  watches?: WatchChip[];
 };
 
 export function DashboardAgentHistory({

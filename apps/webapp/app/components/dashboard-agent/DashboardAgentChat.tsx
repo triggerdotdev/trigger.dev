@@ -1,14 +1,17 @@
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
-import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
+import type { AgentIntent, SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useToast } from "~/components/primitives/Toast";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
 import type { AgentPageContext } from "./page-context-types";
+import { immediateWatchMessage } from "./watch-chips";
+import { WatchChips, type WatchChip } from "./WatchChips";
 
 // The persisted session for a chat: the session-scoped token plus the stream
 // cursor. Resuming with `lastEventId` is what stops the agent's `.out` stream
@@ -52,6 +55,9 @@ export function DashboardAgentChat({
   streaming,
   prefill,
   promotedPrompt,
+  watches,
+  onCancelWatch,
+  onWatchesChanged,
   onTurnSettled,
 }: {
   chatId: string;
@@ -78,9 +84,15 @@ export function DashboardAgentChat({
   // The product-controlled promoted chip, from the feature flag. Only used for
   // the suggested prompts on an empty chat.
   promotedPrompt?: SuggestedPrompt;
+  // This chat's active watches, from the panel's history load.
+  watches: WatchChip[];
+  onCancelWatch: (watchId: string) => void;
+  /** A watch was created — tell the panel to re-read the chips. */
+  onWatchesChanged: () => void;
   onTurnSettled: () => void;
 }) {
   const [input, setInput] = useState("");
+  const toast = useToast();
 
   // Put requested text in the composer rather than sending it: a chat is already
   // open, so the user gets to read and edit before it goes.
@@ -199,6 +211,61 @@ export function DashboardAgentChat({
     if (text) void sendMessage({ text });
   }, [messages, sendMessage, clearError]);
 
+  // Start watching, from a card's action. This is a plain POST, not a message:
+  // the card already carries the spec, so there is nothing for the model to
+  // decide and no turn to pay for. A condition that has already resolved comes
+  // back as `immediate` and is said in a toast — there's no chip to show for a
+  // watch that is already over.
+  const startWatch = useCallback(
+    async (spec: WatchSpec) => {
+      const body = new FormData();
+      body.set("intent", "watch");
+      body.set("chatId", chatId);
+      body.set("spec", JSON.stringify(spec));
+      try {
+        const res = await fetch(actionPath, { method: "POST", body });
+        const data = (await res.json()) as {
+          watchId?: string;
+          immediate?: { result: string };
+          error?: string;
+        };
+        if (!res.ok) {
+          toast.error(data.error ?? "We couldn't start watching that. Try again in a moment.");
+          return;
+        }
+        if (data.immediate) toast.success(immediateWatchMessage(data.immediate.result));
+        onWatchesChanged();
+      } catch (error) {
+        console.error("Dashboard agent: failed to start a watch", error);
+        toast.error("We couldn't start watching that. Try again in a moment.");
+      }
+    },
+    [actionPath, chatId, toast, onWatchesChanged]
+  );
+
+  // What a card's action does. An `ask` goes back into the conversation as the
+  // user's own question; a `watch` is executed here without a turn.
+  //
+  // `navigate` needs a `trigger://` -> dashboard-path resolver, which the panel
+  // doesn't have yet (no `resolveUri` is threaded either, so cards render those
+  // targets as plain text rather than as buttons). `propose_fix` is reserved and
+  // must never be executed.
+  const handleIntent = useCallback(
+    (intent: AgentIntent) => {
+      switch (intent.kind) {
+        case "ask":
+          submit(intent.prompt);
+          return;
+        case "watch":
+          void startWatch(intent.spec);
+          return;
+        default:
+          console.warn(`Dashboard agent: unhandled intent "${intent.kind}"`);
+      }
+    },
+    [submit, startWatch]
+  );
+
   const stop = useCallback(() => {
     transport.stopGeneration(chatId);
     aiStop();
@@ -221,6 +288,10 @@ export function DashboardAgentChat({
         environmentSlug={environmentSlug}
         currentPage={currentPage}
       />
+      {/* What this chat is watching, right under the banner: a watch outcome
+          arrives in the transcript unprompted, so the chips are what explain
+          where those messages will come from. */}
+      <WatchChips watches={watches} onCancel={onCancelWatch} />
       {/* A cold-start chat mounts with no messages and a first message about to
           be sent, so the prompts would flash for a frame before the transcript
           replaced them. Gate on that pending send. */}
@@ -237,6 +308,7 @@ export function DashboardAgentChat({
           error={error}
           onRetry={retry}
           onDismissError={clearError}
+          onIntent={handleIntent}
         />
       )}
       <DashboardAgentComposer

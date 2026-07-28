@@ -339,6 +339,36 @@ export function DashboardAgentPanel({
     [actionPath, active?.chatId, newChat, loadHistory, toast]
   );
 
+  // Stop watching, from the chip's ×. The chip goes immediately (the cancel is a
+  // single guarded UPDATE and hardly ever fails), and the reload right after
+  // restores the truth either way.
+  const cancelWatch = useCallback(
+    async (watchId: string) => {
+      const chatId = active?.chatId;
+      if (!chatId) return;
+      setChats((previous) =>
+        previous.map((chat) =>
+          chat.id === chatId
+            ? { ...chat, watches: (chat.watches ?? []).filter((watch) => watch.id !== watchId) }
+            : chat
+        )
+      );
+      const body = new FormData();
+      body.set("intent", "watch-cancel");
+      body.set("chatId", chatId);
+      body.set("watchId", watchId);
+      try {
+        const res = await fetch(actionPath, { method: "POST", body });
+        if (!res.ok) throw new Error(`Watch cancel failed (${res.status})`);
+      } catch (error) {
+        console.error("Dashboard agent: failed to cancel watch", error);
+        toast.error("We couldn't stop that watch. Try again in a moment.");
+      }
+      void loadHistory();
+    },
+    [actionPath, active?.chatId, loadHistory, toast]
+  );
+
   const toggleHistory = useCallback(() => {
     setView((v) => {
       if (v === "chat") void loadHistory();
@@ -349,12 +379,14 @@ export function DashboardAgentPanel({
   // The header names what you're looking at. Titles come from the history list
   // (the agent writes one when the first turn settles), so a brand-new chat has
   // none yet and falls back to "Chat".
+  const activeChat = active ? chats.find((chat) => chat.id === active.chatId) : undefined;
   const headerTitle =
-    view === "history"
-      ? "Chat history"
-      : active
-        ? (chats.find((chat) => chat.id === active.chatId)?.title ?? "Chat")
-        : "New chat";
+    view === "history" ? "Chat history" : active ? (activeChat?.title ?? "Chat") : "New chat";
+
+  // The chips ride along on the history list (one query for every chat), so they
+  // refresh whenever it does: on open, when a turn settles, and after a watch is
+  // created or cancelled. Filtered to active because a chip is an offer to cancel.
+  const activeWatches = (activeChat?.watches ?? []).filter((watch) => watch.status === "active");
 
   return (
     <div className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150">
@@ -393,6 +425,9 @@ export function DashboardAgentPanel({
           environmentSlug={environment.slug}
           currentPage={currentPage}
           promotedPrompt={promotedPrompt}
+          watches={activeWatches}
+          onCancelWatch={cancelWatch}
+          onWatchesChanged={loadHistory}
           onTurnSettled={loadHistory}
         />
       ) : (

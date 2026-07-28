@@ -1,4 +1,4 @@
-import { and, desc, eq, sql, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, isNull } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId, generateWatchId } from "./ids.js";
 import {
@@ -13,6 +13,7 @@ import {
   type PersistedWatchSpec,
   type Watch,
   type WatchCancelReason,
+  type WatchStatus,
 } from "./schema.js";
 
 /**
@@ -538,6 +539,113 @@ export async function listActiveWatchesForChat(
     .from(watches)
     .where(and(eq(watches.chatId, params.chatId), eq(watches.status, "active")))
     .orderBy(desc(watches.createdAt));
+}
+
+/** One active watch of a chat, in the shape the chip row needs. */
+export interface ActiveWatchSummary {
+  id: string;
+  chatId: string;
+  identity: string;
+  status: WatchStatus;
+  kind: string;
+  note: string;
+  checkEveryMinutes: number;
+  expiresAt: Date;
+}
+
+/**
+ * #13 Active watches for MANY chats in one query, keyed by chatId — the history
+ * list renders up to 50 chats and must not fan out a query per row.
+ *
+ * Tenancy floor is the join, not the caller: the chats are re-scoped by
+ * `organizationId` + `userId` + not-deleted here, so a chat id from anywhere
+ * (including a client) can only ever match a chat this user owns.
+ */
+export async function listActiveWatchesForChats(
+  db: DashboardAgentDb,
+  params: { chatIds: string[]; organizationId: string; userId: string }
+): Promise<Record<string, ActiveWatchSummary[]>> {
+  if (params.chatIds.length === 0) return {};
+
+  const rows = await db
+    .select({
+      id: watches.id,
+      chatId: watches.chatId,
+      identity: watches.identity,
+      status: watches.status,
+      spec: watches.spec,
+      expiresAt: watches.expiresAt,
+    })
+    .from(watches)
+    .innerJoin(chats, eq(chats.id, watches.chatId))
+    .where(
+      and(
+        inArray(watches.chatId, params.chatIds),
+        eq(watches.status, "active"),
+        eq(chats.organizationId, params.organizationId),
+        eq(chats.userId, params.userId),
+        isNull(chats.deletedAt)
+      )
+    )
+    .orderBy(desc(watches.createdAt));
+
+  const byChat: Record<string, ActiveWatchSummary[]> = {};
+  for (const row of rows) {
+    (byChat[row.chatId] ??= []).push({
+      id: row.id,
+      chatId: row.chatId,
+      identity: row.identity,
+      status: row.status,
+      kind: row.spec.kind,
+      note: row.spec.note,
+      checkEveryMinutes: row.spec.checkEveryMinutes,
+      expiresAt: row.expiresAt,
+    });
+  }
+  return byChat;
+}
+
+/** A chat's org plus the project/environment context stored on it. */
+export interface ChatWatchContext {
+  organizationId: string;
+  projectRef?: string;
+  environmentId?: string;
+}
+
+/**
+ * #13 Ownership check AND context read in one query: a live chat with this id
+ * owned by this user, plus the project/environment its turns ran in.
+ *
+ * The agent's `schedule_watch` tool posts only `{ spec, chatId }` — its delegated
+ * token carries a userId and nothing else — so the environment comes from the
+ * chat's own stored context rather than from the request. It is still only a
+ * CLAIM: the caller re-authorizes the resolved environment for this user before
+ * anything is created, so the worst a stale or wrong context can do is fail.
+ *
+ * `metadata.context` is the clientData snapshot the panel stored when the chat was
+ * created.
+ */
+export async function getChatWatchContext(
+  db: DashboardAgentDb,
+  params: { chatId: string; userId: string }
+): Promise<ChatWatchContext | null> {
+  const rows = await db
+    .select({ organizationId: chats.organizationId, metadata: chats.metadata })
+    .from(chats)
+    .where(
+      and(eq(chats.id, params.chatId), eq(chats.userId, params.userId), isNull(chats.deletedAt))
+    )
+    .limit(1);
+
+  const chat = rows[0];
+  if (!chat) return null;
+
+  const context = (chat.metadata as { context?: Record<string, unknown> } | null)?.context;
+  const projectRef = typeof context?.projectRef === "string" ? context.projectRef : undefined;
+  const environmentId =
+    typeof context?.environmentId === "string" ? context.environmentId : undefined;
+
+  return { organizationId: chat.organizationId, projectRef, environmentId };
 }
 
 /**

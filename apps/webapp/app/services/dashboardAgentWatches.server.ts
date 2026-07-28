@@ -15,8 +15,11 @@ import {
   cancelActiveWatchesForChat,
   chatExists,
   createWatch,
+  getChatWatchContext,
+  listActiveWatchesForChats as listActiveWatchesForChatsQuery,
   markWatchDelivered,
   transitionWatchCondition,
+  type ChatWatchContext,
   type PersistedWatchSpec,
   type WatchStatus,
 } from "@internal/dashboard-agent-db";
@@ -412,51 +415,46 @@ export async function cancelWatchesForDeletedChat(chatId: string): Promise<numbe
   return cancelled.length;
 }
 
-/** What the history list needs to show a chat's watch chips. */
+/**
+ * What the panel needs to show a chat's watch chips. The dates are strings
+ * because this crosses a loader's JSON boundary.
+ */
 export type ChatWatchChip = {
   id: string;
   identity: string;
   status: WatchStatus;
   kind: string;
   note: string;
+  checkEveryMinutes: number;
   expiresAt: string;
 };
 
 /**
- * Active watches for many chats in ONE query, keyed by chatId — the history list
- * renders up to 50 chats and must not fan out per row.
- *
- * NOTE: this belongs in `@internal/dashboard-agent-db`'s access-pattern layer next
- * to `listActiveWatchesForChat`; it lives here only because that package is owned
- * by another workstream right now. It is tenant-safe as written: the chat ids come
- * from `listChats`, which is already scoped by org + user.
+ * Active watches for many chats in ONE query, keyed by chatId — the panel and
+ * history list must not fan out a query per chat. The query layer re-scopes the
+ * chat ids by org + user, so this is safe with ids from any source.
  */
-export async function listActiveWatchesForChats(
-  chatIds: string[]
-): Promise<Record<string, ChatWatchChip[]>> {
-  if (chatIds.length === 0) return {};
+export async function listActiveWatchesForChats(params: {
+  chatIds: string[];
+  organizationId: string;
+  userId: string;
+}): Promise<Record<string, ChatWatchChip[]>> {
+  const byChat = await listActiveWatchesForChatsQuery(dashboardAgentDb, params);
 
-  // Drizzle's relational query API, so the operators come from the callback and
-  // the webapp needs no direct `drizzle-orm` dependency of its own.
-  const rows = await dashboardAgentDb.query.watches.findMany({
-    columns: { id: true, chatId: true, identity: true, status: true, spec: true, expiresAt: true },
-    where: (watch, { and, eq, inArray }) =>
-      and(inArray(watch.chatId, chatIds), eq(watch.status, "active")),
-    orderBy: (watch, { desc }) => desc(watch.createdAt),
-  });
-
-  const byChat: Record<string, ChatWatchChip[]> = {};
-  for (const row of rows) {
-    (byChat[row.chatId] ??= []).push({
-      id: row.id,
-      identity: row.identity,
-      status: row.status,
-      kind: row.spec.kind,
-      note: row.spec.note,
-      expiresAt: row.expiresAt.toISOString(),
-    });
-  }
-  return byChat;
+  return Object.fromEntries(
+    Object.entries(byChat).map(([chatId, watches]) => [
+      chatId,
+      watches.map((watch) => ({
+        id: watch.id,
+        identity: watch.identity,
+        status: watch.status,
+        kind: watch.kind,
+        note: watch.note,
+        checkEveryMinutes: watch.checkEveryMinutes,
+        expiresAt: watch.expiresAt.toISOString(),
+      })),
+    ])
+  );
 }
 
 /** Owner check for a chat, for the adapters. */
@@ -468,45 +466,16 @@ export function chatBelongsToUser(params: {
   return chatExists(dashboardAgentDb, params);
 }
 
-/** A chat's org plus the project/env context stored on it. */
-export type ChatWatchContext = {
-  organizationId: string;
-  projectRef?: string;
-  environmentId?: string;
-};
+export type { ChatWatchContext };
 
 /**
- * Ownership check AND context read in one query: a live chat with this id owned by
- * this user, plus the project/environment its turns ran in.
- *
- * The agent's `schedule_watch` tool posts only `{ spec, chatId }` — its delegated
- * token carries a userId and nothing else — so the environment comes from the
- * chat's own stored context rather than from the request. It is still only a
- * CLAIM: the caller re-authorizes the resolved environment for this user before
- * anything is created, so the worst a stale or wrong context can do is fail.
- *
- * NOTE: like `listActiveWatchesForChats`, this read belongs in
- * `@internal/dashboard-agent-db`'s access-pattern layer; it lives here only
- * because that package is owned by another workstream right now. Scoped by
- * `userId` + not-deleted, so it can't read someone else's chat.
+ * Ownership check AND context read in one query — a live chat owned by this user,
+ * plus the project/environment its turns ran in. See `getChatWatchContext` for why
+ * the context is a claim and not an authorization.
  */
-export async function resolveChatWatchContext(params: {
+export function resolveChatWatchContext(params: {
   chatId: string;
   userId: string;
 }): Promise<ChatWatchContext | null> {
-  const chat = await dashboardAgentDb.query.chats.findFirst({
-    columns: { organizationId: true, metadata: true },
-    where: (row, { and, eq, isNull }) =>
-      and(eq(row.id, params.chatId), eq(row.userId, params.userId), isNull(row.deletedAt)),
-  });
-  if (!chat) return null;
-
-  // `metadata.context` is the clientData snapshot the panel sent when the chat was
-  // created (see the panel's `create` intent).
-  const context = (chat.metadata as { context?: Record<string, unknown> } | null)?.context;
-  const projectRef = typeof context?.projectRef === "string" ? context.projectRef : undefined;
-  const environmentId =
-    typeof context?.environmentId === "string" ? context.environmentId : undefined;
-
-  return { organizationId: chat.organizationId, projectRef, environmentId };
+  return getChatWatchContext(dashboardAgentDb, params);
 }

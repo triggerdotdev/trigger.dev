@@ -1,9 +1,11 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
+  cancelWatch,
   chatExists,
   createChat,
   getChatMessages,
   getSession,
+  getWatch,
   listChats,
   renameChat,
   setChatPinned,
@@ -46,7 +48,7 @@ const ENV_NAME_BY_TYPE: Record<string, string> = {
 };
 
 const ActionBody = z.object({
-  intent: z.enum(["start", "create", "token", "rename", "pin", "delete", "watch"]),
+  intent: z.enum(["start", "create", "token", "rename", "pin", "delete", "watch", "watch-cancel"]),
   // Omitted for `create` (the server generates it); required for the rest.
   chatId: z.string().min(1).optional(),
   // The first user message (JSON UIMessage), for `create`.
@@ -56,6 +58,8 @@ const ActionBody = z.object({
   pinned: z.enum(["true", "false"]).optional(),
   // A JSON WatchSpec, for `watch`.
   spec: z.string().optional(),
+  // The watch to cancel, for `watch-cancel`.
+  watchId: z.string().min(1).optional(),
 });
 
 // History list, or — with ?chatId= — the stored transcript + session for resume.
@@ -94,7 +98,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Active-watch chips for the list, in ONE query for all the listed chats — the
   // history list must not fan out a query per row.
-  const watchesByChat = await listActiveWatchesForChats(chats.map((chat) => chat.id));
+  const watchesByChat = await listActiveWatchesForChats({
+    chatIds: chats.map((chat) => chat.id),
+    organizationId: project.organizationId,
+    userId,
+  });
 
   return json({
     chats: chats.map((chat) => ({ ...chat, watches: watchesByChat[chat.id] ?? [] })),
@@ -355,6 +363,35 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         expiresAt: result.expiresAt.toISOString(),
         ...(result.immediate ? { immediate: result.immediate } : {}),
       });
+    }
+
+    // Stop watching, from the chip's ×. Ownership goes through the chat: the watch
+    // must belong to the chat named in the request, and that chat must belong to
+    // this user in this org — so a watch id alone can never cancel someone else's
+    // watch.
+    case "watch-cancel": {
+      const watchId = parsed.data.watchId;
+      if (!watchId) return json({ error: "watchId is required" }, { status: 400 });
+
+      const watch = await getWatch(dashboardAgentDb, { id: watchId });
+      if (!watch || watch.chatId !== chatId) {
+        return json({ error: "Watch not found" }, { status: 404 });
+      }
+
+      if (
+        !(await chatExists(dashboardAgentDb, {
+          chatId,
+          userId,
+          organizationId: project.organizationId,
+        }))
+      ) {
+        return json({ error: "Chat not found" }, { status: 404 });
+      }
+
+      // A watch that already fired or expired keeps its outcome — `cancelWatch`
+      // only touches an active row, so this is a no-op then, not an error.
+      await cancelWatch(dashboardAgentDb, { id: watchId, reason: "user" });
+      return json({ ok: true });
     }
   }
 };

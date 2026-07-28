@@ -203,6 +203,7 @@ export const MANIFEST: GallerySection[] = [
   { sectionId: "watches-expired", title: "Expired", group: "watches" },
   { sectionId: "watches-cancelled", title: "Cancelled", group: "watches" },
   { sectionId: "watches-all-states", title: "All four states in one row", group: "watches" },
+  { sectionId: "watches-live", title: "The panel's own chips (real component)", group: "watches" },
 
   // --- Suggested prompts ---------------------------------------------------
   { sectionId: "prompts-default", title: "Default set, no page context", group: "prompts" },
