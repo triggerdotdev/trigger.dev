@@ -119,7 +119,7 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
       LIVENESS    🟢 fresh — telemetry current, updated 4s ago
 
       → Contact us to raise the limit
-        Concurrency docs
+        Read concurrency docs
         or do nothing — backlog drains in ~2.3 min once triggers ease"
     `);
   });
