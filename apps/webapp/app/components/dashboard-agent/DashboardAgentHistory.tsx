@@ -5,7 +5,7 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { cn } from "~/utils/cn";
+import { AgentList, AgentListRow, AgentListRowAction } from "./list-row";
 
 // Date fields arrive as strings over the loader's JSON.
 export type DashboardAgentChat = {
@@ -37,7 +37,7 @@ export function DashboardAgentHistory({
         <button
           type="button"
           onClick={onNewChat}
-          className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-text-bright transition hover:bg-background-bright"
+          className="mb-1.5 flex w-full items-center gap-2 rounded-md border border-transparent px-3 py-2 text-left text-sm text-text-bright transition hover:bg-background-bright"
         >
           <PlusIcon className="size-4 text-green-500" />
           New chat
@@ -48,39 +48,29 @@ export function DashboardAgentHistory({
             No previous chats yet.
           </Paragraph>
         ) : (
-          <ol className="space-y-0.5">
+          <AgentList>
             {chats.map((chat) => (
-              <li key={chat.id}>
-                <div
-                  className={cn(
-                    "group flex items-center gap-2 rounded-sm px-2 py-1.5 transition-colors hover:bg-background-bright",
-                    chat.id === currentChatId && "bg-background-hover hover:bg-background-hover"
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onSelect(chat.id)}
-                    className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-left outline-hidden focus-custom"
-                  >
-                    <span className="line-clamp-1 text-sm text-text-bright">{chat.title}</span>
-                    {chat.lastMessageAt && (
-                      <span className="text-xs text-text-dimmed">
-                        <DateTime date={chat.lastMessageAt} showTooltip={false} />
-                      </span>
-                    )}
-                  </button>
-                  <button
-                    type="button"
+              <AgentListRow
+                key={chat.id}
+                label={chat.title}
+                meta={
+                  chat.lastMessageAt ? (
+                    <DateTime date={chat.lastMessageAt} showTooltip={false} />
+                  ) : undefined
+                }
+                variant={chat.id === currentChatId ? "selected" : "default"}
+                onSelect={() => onSelect(chat.id)}
+                action={
+                  <AgentListRowAction
+                    icon={TrashIcon}
+                    label={`Delete chat: ${chat.title}`}
                     onClick={() => setPendingDelete(chat)}
-                    aria-label={`Delete chat: ${chat.title}`}
-                    className="shrink-0 rounded p-1 text-text-dimmed opacity-0 transition-opacity hover:text-error group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-custom"
-                  >
-                    <TrashIcon className="size-3.5" />
-                  </button>
-                </div>
-              </li>
+                    danger
+                  />
+                }
+              />
             ))}
-          </ol>
+          </AgentList>
         )}
       </div>
 

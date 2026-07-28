@@ -1,11 +1,19 @@
 /**
  * Turning a page context into the chips the panel shows.
  *
- * Ordering is the whole design: promoted -> contextual -> page defaults, capped
- * at `SUGGESTED_PROMPT_CAP`. So a product-chosen chip always gets the top slot,
- * anything abnormal about the page comes next, and the evergreen questions fill
- * whatever's left. Dismissed chips are dropped before the cap, so dismissing one
- * promotes the next candidate rather than shrinking the row.
+ * The row is a fixed set of slots, in this order:
+ *
+ * 1. `promoted` — the product-chosen chip, when one is configured.
+ * 2. `investigate` — when the page or its signals make one relevant.
+ * 3. `watch` — when there's something worth watching (a waiting run, a saturated
+ *    queue, a recurring error).
+ * 4. `explain` — the evergreen explain/find/show question. Always present.
+ * 5. `docs` — a doc-flavored question. Always present, always last.
+ *
+ * Slots nothing can fill collapse, so the row shows what exists rather than
+ * padding itself. Each slot has an ordered candidate list (signal chips first,
+ * then the page-kind default), so dismissing a chip promotes the next candidate
+ * for that slot instead of leaving a hole.
  */
 import {
   SUGGESTED_PROMPT_CAP,
@@ -13,7 +21,7 @@ import {
   type SuggestedPrompt,
   type SuggestedPromptResolver,
 } from "@internal/dashboard-agent-contracts";
-import { contextualPrompts, pageDefaultPrompts } from "./registry";
+import { contextualPromptsBySlot, pageSlotPrompts, PROMPT_SLOTS } from "./registry";
 
 export type ResolveSuggestedPromptsOptions = {
   /** The product-controlled slot, taken as-is and forced to `promoted`. */
@@ -31,25 +39,32 @@ export function resolveSuggestedPrompts(
   const now = opts.now ?? Date.now();
   const dismissed = new Set(opts.dismissedIds ?? []);
 
-  const candidates: SuggestedPrompt[] = [
-    // Whatever the flag says, it occupies the promoted slot — the caller doesn't
-    // have to remember to set `source`.
-    ...(opts.promoted ? [{ ...opts.promoted, source: "promoted" as const }] : []),
-    ...contextualPrompts(context, now),
-    ...pageDefaultPrompts(context.page),
-  ];
+  const contextual = contextualPromptsBySlot(context, now);
+  const pageSlots = pageSlotPrompts(context.page);
 
   const resolved: SuggestedPrompt[] = [];
   const seen = new Set<string>();
 
-  for (const prompt of candidates) {
-    if (dismissed.has(prompt.id) || seen.has(prompt.id)) continue;
-    seen.add(prompt.id);
-    resolved.push(prompt);
-    if (resolved.length === SUGGESTED_PROMPT_CAP) break;
+  const take = (candidates: (SuggestedPrompt | undefined)[]): void => {
+    for (const candidate of candidates) {
+      if (!candidate || dismissed.has(candidate.id) || seen.has(candidate.id)) continue;
+      seen.add(candidate.id);
+      resolved.push(candidate);
+      return;
+    }
+  };
+
+  // Whatever the flag says, it occupies the promoted slot — the caller doesn't
+  // have to remember to set `source`.
+  if (opts.promoted) {
+    take([{ ...opts.promoted, source: "promoted" }]);
   }
 
-  return resolved;
+  for (const slot of PROMPT_SLOTS) {
+    take([...contextual[slot], pageSlots[slot]]);
+  }
+
+  return resolved.slice(0, SUGGESTED_PROMPT_CAP);
 }
 
 /**

@@ -2,18 +2,24 @@
  * The suggested-prompt registry: the chips the panel can offer, and the rules
  * that pick them.
  *
- * Two sources, no LLM and no queries:
+ * The row is a discoverability surface, so it's built from fixed slots rather
+ * than a ranked pile:
  *
- * - **Page-kind defaults** — what's worth asking on a runs list vs. a queue vs.
- *   a deployment. Wording comes from the demo fixtures
- *   (`demo/fixtures/page-context.ts`), which is the review-approved copy, so the
- *   gallery and the panel can't disagree about what a chip says.
- * - **Contextual prompts** — one per signal the page emitted. A signal only
- *   exists for abnormal state (the route `handle` mappers enforce that), so a
- *   contextual chip appearing is itself the news.
+ * - `investigate` — "something is wrong, dig in". Filled by a fresh_failure or
+ *   slow_run signal, or by the page kind when the page is inherently about a
+ *   failure (an error or a single run).
+ * - `watch` — "tell me when this changes". Filled by a waiting_run or
+ *   saturation signal, or by a queue/error page.
+ * - `explain` — the evergreen explain/find/show question. Always present.
+ * - `docs` — a doc-flavored "how do I …". Always present, always last.
  *
- * `resolver.ts` orders and caps them. This file is pure: no React, no server
- * imports, no clock beyond the `now` passed in.
+ * A signal only exists for abnormal state (the route `handle` mappers enforce
+ * that), so an `investigate`/`watch` chip appearing is itself the news. Wording
+ * follows the demo fixtures (`demo/fixtures/page-context.ts`), which is the
+ * review-approved copy.
+ *
+ * `resolver.ts` orders the slots and applies the cap. This file is pure: no
+ * React, no server imports, no clock beyond the `now` passed in.
  */
 import type {
   AgentPage,
@@ -43,118 +49,170 @@ function make(
 const def = (id: string, label: string, prompt: string) => make(id, label, prompt, "default");
 const ctx = (id: string, label: string, prompt: string) => make(id, label, prompt, "contextual");
 
-// ---------------------------------------------------------------------------
-// Page-independent defaults. The tail of every page's chip list.
-// ---------------------------------------------------------------------------
+/** The slots after the promoted one, in display order. */
+export const PROMPT_SLOTS = ["investigate", "watch", "explain", "docs"] as const;
 
-const CAPABILITIES = def(
-  "capabilities",
-  "What can you help me with?",
-  "What can you help me with?"
-);
-const RETRIES = def("retries", "How do retries work?", "How do retries work in Trigger.dev?");
-const ENV_HEALTH = def(
-  "env-health",
-  "How's my environment?",
-  "Give me a health report for this environment."
-);
-
-/** Always-available, page-independent chips, in offer order. */
-export const GENERIC_PROMPTS: SuggestedPrompt[] = [CAPABILITIES, RETRIES, ENV_HEALTH];
-
-// ---------------------------------------------------------------------------
-// Page-kind defaults. What to ask on this kind of page when nothing is wrong.
-// ---------------------------------------------------------------------------
+export type PromptSlot = (typeof PROMPT_SLOTS)[number];
 
 /**
- * The chips for a page, before signals and before the promoted slot. Ends with
- * the generic set so a short page-specific list still fills the row.
+ * The slot a page kind can fill. `explain` and `docs` are required — every page
+ * must be able to fill the last two slots.
  */
-export function pageDefaultPrompts(page: AgentPage): SuggestedPrompt[] {
+export type PageSlotPrompts = {
+  investigate?: SuggestedPrompt;
+  watch?: SuggestedPrompt;
+  explain: SuggestedPrompt;
+  docs: SuggestedPrompt;
+};
+
+// ---------------------------------------------------------------------------
+// Page-independent chips, for pages we haven't classified.
+// ---------------------------------------------------------------------------
+
+const EXPLAIN_PAGE = def(
+  "explain-page",
+  "Explain this page",
+  "Explain what this page shows and what I can do here."
+);
+const DOCS_GENERIC = def(
+  "docs-generic",
+  "How do I use Trigger.dev?",
+  "How do I get started with Trigger.dev? Point me at the docs."
+);
+const DOCS_RETRIES = def(
+  "docs-retries",
+  "How do retries work?",
+  "How do retries work in Trigger.dev?"
+);
+
+/** The slots an unclassified page fills: explain, then docs. */
+export const GENERIC_PROMPTS: SuggestedPrompt[] = [EXPLAIN_PAGE, DOCS_GENERIC];
+
+// ---------------------------------------------------------------------------
+// Page-kind slots. What to ask on this kind of page when nothing is wrong.
+// ---------------------------------------------------------------------------
+
+/** The slot chips a page kind can fill, before signals and the promoted slot. */
+export function pageSlotPrompts(page: AgentPage): PageSlotPrompts {
   switch (page.kind) {
     case "runs":
-      return [
-        def(
-          "runs-failure-pattern",
-          "What's failing most?",
+      return {
+        explain: def(
+          "runs-failing-most",
+          "Show me failed runs from today",
           "Which tasks are failing most in the last 24 hours?"
         ),
-        def(
-          "runs-chart-failures",
-          "Chart the failures",
-          "Chart failed runs per hour by task over the last 24 hours."
+        docs: def(
+          "docs-run-filters",
+          "How do I filter runs?",
+          "How do I filter and search runs in Trigger.dev?"
         ),
-        ENV_HEALTH,
-        CAPABILITIES,
-      ];
+      };
 
     case "run":
-      return [
-        def("run-summarize", "What did this run do?", `Summarize what ${page.runId} did.`),
-        def(
+      return {
+        investigate: def(
+          "run-investigate",
+          "What happened in this run?",
+          `Investigate ${page.runId} — walk me through what happened.`
+        ),
+        explain: def(
           "run-task-health",
           "Is this task healthy?",
           `How has ${page.taskId} been performing recently?`
         ),
-        RETRIES,
-        CAPABILITIES,
-      ];
+        docs: DOCS_RETRIES,
+      };
 
     case "error":
-      return [
-        def(
-          "error-explain",
-          "Explain this error",
-          "Explain this error and what usually causes it."
+      return {
+        investigate: def(
+          "error-cause",
+          "What's causing this error?",
+          "Investigate this error — what's causing it and which runs are affected?"
         ),
-        def(
+        watch: def(
           "error-watch-recurrence",
           "Tell me if it comes back",
           "Watch this error and tell me if it happens again."
         ),
-        RETRIES,
-        CAPABILITIES,
-      ];
+        explain: def(
+          "error-similar",
+          "Find similar failures",
+          "Find other failures that look like this one."
+        ),
+        docs: def(
+          "docs-errors",
+          "How do I handle errors?",
+          "How do I catch and handle errors in Trigger.dev tasks?"
+        ),
+      };
 
     case "queue":
-      return [
-        def(
+      return {
+        watch: def(
+          "queue-watch-drain",
+          "Tell me when the backlog drains",
+          `Watch the ${page.name} queue and tell me when the backlog drains.`
+        ),
+        explain: def(
           "queue-state",
           "How is this queue doing?",
           `Explain the current state of the ${page.name} queue.`
         ),
-        def(
-          "queue-raise-limit",
-          "Should I raise the limit?",
-          "Should I raise the concurrency limit on this queue?"
+        docs: def(
+          "docs-concurrency",
+          "How does concurrency work?",
+          "How do queues and concurrency limits work in Trigger.dev?"
         ),
-        ENV_HEALTH,
-        CAPABILITIES,
-      ];
+      };
 
     case "deployment":
-      return [
-        def(
+      return {
+        explain: def(
           "deployment-diff",
           "What changed in this deploy?",
           `What changed in deployment ${page.version}?`
         ),
-        CAPABILITIES,
-        RETRIES,
-      ];
+        docs: def(
+          "docs-deploys",
+          "How do deploys work?",
+          "How do deployments and versions work in Trigger.dev?"
+        ),
+      };
 
     case "other":
-      return GENERIC_PROMPTS;
+      return { explain: EXPLAIN_PAGE, docs: DOCS_GENERIC };
   }
+}
+
+/**
+ * The page's slot chips as a flat list in display order. Slots the page can't
+ * fill are simply absent — the row collapses rather than padding itself.
+ */
+export function pageDefaultPrompts(page: AgentPage): SuggestedPrompt[] {
+  const slots = pageSlotPrompts(page);
+  return PROMPT_SLOTS.map((slot) => slots[slot]).filter(
+    (prompt): prompt is SuggestedPrompt => prompt !== undefined
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Contextual prompts, one per signal.
 // ---------------------------------------------------------------------------
 
+/** Which slot a signal's chip competes for. */
+export const SIGNAL_SLOT: Record<AgentPageSignalKind, PromptSlot> = {
+  fresh_failure: "investigate",
+  slow_run: "investigate",
+  waiting_run: "watch",
+  concurrency_saturation: "watch",
+};
+
 /**
- * Signal precedence. `fresh_failure` wins: a run that just failed is why the
- * user opened the panel. Mirrors `demoSignalsByPriority` in the fixtures.
+ * Signal precedence within a slot. `fresh_failure` wins: a run that just failed
+ * is why the user opened the panel. Mirrors `demoSignalsByPriority` in the
+ * fixtures.
  */
 export const SIGNAL_PRIORITY: AgentPageSignalKind[] = [
   "fresh_failure",
@@ -197,10 +255,10 @@ export function promptForSignal(signal: AgentPageSignal, now: number): Suggested
     case "waiting_run":
       return ctx(
         "waiting-run",
-        "Why is this run waiting?",
+        "Tell me when this run starts",
         signal.queue
-          ? `Why is ${signal.runId} still waiting in the ${signal.queue} queue?`
-          : `Why is ${signal.runId} still waiting?`
+          ? `Watch ${signal.runId} and tell me when it leaves the ${signal.queue} queue.`
+          : `Watch ${signal.runId} and tell me when it starts running.`
       );
 
     case "slow_run": {
@@ -216,8 +274,8 @@ export function promptForSignal(signal: AgentPageSignal, now: number): Suggested
     case "concurrency_saturation":
       return ctx(
         "concurrency-saturation",
-        "Explain current saturation",
-        "Concurrency is saturated right now. Explain what's causing it and what I should do."
+        "Tell me when the backlog drains",
+        "Concurrency is saturated right now. Watch it and tell me when the backlog drains."
       );
   }
 }
@@ -233,4 +291,30 @@ export function contextualPrompts(context: AgentPageContext, now: number): Sugge
     }
   }
   return prompts;
+}
+
+/**
+ * Contextual chips grouped by the slot they compete for, each group in
+ * precedence order.
+ */
+export function contextualPromptsBySlot(
+  context: AgentPageContext,
+  now: number
+): Record<PromptSlot, SuggestedPrompt[]> {
+  const bySlot: Record<PromptSlot, SuggestedPrompt[]> = {
+    investigate: [],
+    watch: [],
+    explain: [],
+    docs: [],
+  };
+
+  for (const kind of SIGNAL_PRIORITY) {
+    for (const signal of context.signals) {
+      if (signal.kind !== kind) continue;
+      const prompt = promptForSignal(signal, now);
+      if (prompt) bySlot[SIGNAL_SLOT[kind]].push(prompt);
+    }
+  }
+
+  return bySlot;
 }

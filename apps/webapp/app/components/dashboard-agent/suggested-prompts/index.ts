@@ -5,12 +5,18 @@
  */
 export {
   contextualPrompts,
+  contextualPromptsBySlot,
   formatAgo,
   formatMultiplier,
   GENERIC_PROMPTS,
   pageDefaultPrompts,
+  pageSlotPrompts,
+  PROMPT_SLOTS,
   promptForSignal,
   SIGNAL_PRIORITY,
+  SIGNAL_SLOT,
+  type PageSlotPrompts,
+  type PromptSlot,
 } from "./registry";
 export {
   makeSuggestedPromptResolver,

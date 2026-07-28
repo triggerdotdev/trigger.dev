@@ -124,6 +124,6 @@ describe("suggested prompts", () => {
         source: "contextual",
       }).success
     ).toBe(true);
-    expect(SUGGESTED_PROMPT_CAP).toBe(4);
+    expect(SUGGESTED_PROMPT_CAP).toBe(5);
   });
 });

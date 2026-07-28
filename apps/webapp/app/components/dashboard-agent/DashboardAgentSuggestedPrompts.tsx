@@ -2,7 +2,7 @@ import { SparklesIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useCallback, useMemo, useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { cn } from "~/utils/cn";
+import { AgentList, AgentListRow, AgentListRowAction } from "./list-row";
 import {
   readDismissedPromptIds,
   resolveSuggestedPrompts,
@@ -72,32 +72,23 @@ export function DashboardAgentSuggestedPrompts({
           Ask about your runs, errors, or how Trigger.dev works.
         </Paragraph>
       </div>
-      <div className="flex w-full flex-col gap-1.5">
+      <AgentList>
         {prompts.map((prompt) => (
-          <div key={prompt.id} className="group flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => onSelect(prompt.prompt)}
-              className={cn(
-                "flex-1 rounded-md border px-3 py-2 text-left text-sm transition",
-                prompt.source === "promoted"
-                  ? "border-indigo-500/40 bg-indigo-500/5 text-text-bright hover:border-indigo-500/60"
-                  : "border-grid-bright bg-background-bright/40 text-text-dimmed hover:border-border-bright hover:text-text-bright"
-              )}
-            >
-              {prompt.label}
-            </button>
-            <button
-              type="button"
-              aria-label={`Dismiss ${prompt.label}`}
-              onClick={() => dismiss(prompt.id)}
-              className="shrink-0 rounded p-1 text-text-faint opacity-0 transition-opacity hover:text-text-bright group-hover:opacity-100 focus-visible:opacity-100"
-            >
-              <XMarkIcon className="size-3.5" />
-            </button>
-          </div>
+          <AgentListRow
+            key={prompt.id}
+            label={prompt.label}
+            variant={prompt.source === "promoted" ? "promoted" : "default"}
+            onSelect={() => onSelect(prompt.prompt)}
+            action={
+              <AgentListRowAction
+                icon={XMarkIcon}
+                label={`Dismiss ${prompt.label}`}
+                onClick={() => dismiss(prompt.id)}
+              />
+            }
+          />
         ))}
-      </div>
+      </AgentList>
     </div>
   );
 }

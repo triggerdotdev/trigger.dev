@@ -23,7 +23,10 @@ export const suggestedPromptSchema = z.object({
 
 export type SuggestedPrompt = z.infer<typeof suggestedPromptSchema>;
 
-/** Never show more than this many chips at once. */
-export const SUGGESTED_PROMPT_CAP = 4;
+/**
+ * Never show more than this many chips at once: the promoted slot plus the four
+ * slots the host's resolver fills (investigate, watch, explain, docs).
+ */
+export const SUGGESTED_PROMPT_CAP = 5;
 
 export type SuggestedPromptResolver = (context: AgentPageContext) => SuggestedPrompt[];
