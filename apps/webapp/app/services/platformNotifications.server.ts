@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 import { errAsync, fromPromise, type ResultAsync } from "neverthrow";
 import { prisma } from "~/db.server";
 import {
@@ -6,64 +6,20 @@ import {
   type PlatformNotificationSurface,
 } from "@trigger.dev/database";
 import { incrementCliRequestCounter } from "./platformNotificationCounter.server";
+import {
+  CreatePlatformNotificationSchema,
+  type CreatePlatformNotificationInput,
+  type PayloadV1,
+  PayloadV1Schema,
+  UpdatePlatformNotificationSchema,
+} from "./platformNotificationSchemas";
+import { isCliVersionEligible } from "./platformNotificationVersionTargeting";
 
-// --- Payload schema (spec v1) ---
-
-const DiscoverySchema = z.object({
-  filePatterns: z.array(z.string().min(1)).min(1),
-  contentPattern: z
-    .string()
-    .max(200)
-    .optional()
-    .refine(
-      (val) => {
-        if (!val) return true;
-        try {
-          new RegExp(val);
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      { message: "contentPattern must be a valid regular expression" }
-    ),
-  matchBehavior: z.enum(["show-if-found", "show-if-not-found"]),
-});
-
-// Constrain URL fields to http/https; `.url()` alone accepts other schemes
-// that would be unsafe to render into an `<a href>`.
-const httpUrl = z
-  .string()
-  .url()
-  .refine(
-    (v) => {
-      try {
-        const proto = new URL(v).protocol;
-        return proto === "http:" || proto === "https:";
-      } catch {
-        return false;
-      }
-    },
-    { message: "URL must use http or https" }
-  );
-
-const CardDataV1Schema = z.object({
-  type: z.enum(["card", "info", "warn", "error", "success", "changelog"]),
-  title: z.string(),
-  description: z.string(),
-  image: httpUrl.optional(),
-  actionLabel: z.string().optional(),
-  actionUrl: httpUrl.optional(),
-  dismissOnAction: z.boolean().optional(),
-  discovery: DiscoverySchema.optional(),
-});
-
-const PayloadV1Schema = z.object({
-  version: z.literal("1"),
-  data: CardDataV1Schema,
-});
-
-export type PayloadV1 = z.infer<typeof PayloadV1Schema>;
+export {
+  CreatePlatformNotificationSchema,
+  UpdatePlatformNotificationSchema,
+} from "./platformNotificationSchemas";
+export type { CreatePlatformNotificationInput, PayloadV1 } from "./platformNotificationSchemas";
 
 export type PlatformNotificationWithPayload = {
   id: string;
@@ -136,6 +92,9 @@ export async function getAdminNotificationsList({
           ? (parsed.data.data.dismissOnAction ?? false)
           : false,
         payloadDiscovery: parsed.success ? (parsed.data.data.discovery ?? null) : null,
+        payloadMinimumCliVersion: parsed.success
+          ? (parsed.data.data.minimumCliVersion ?? null)
+          : null,
         cliMaxShowCount: n.cliMaxShowCount,
         cliMaxDaysAfterFirstSeen: n.cliMaxDaysAfterFirstSeen,
         cliShowEvery: n.cliShowEvery,
@@ -435,9 +394,11 @@ function isCliNotificationExpired(
 export async function getNextCliNotification({
   userId,
   projectRef,
+  cliVersion,
 }: {
   userId: string;
   projectRef?: string;
+  cliVersion?: string;
 }): Promise<{
   id: string;
   payload: PayloadV1;
@@ -520,10 +481,11 @@ export async function getNextCliNotification({
     const interaction = n.interactions[0] ?? null;
 
     if (interaction?.cliDismissedAt) continue;
-    if (isCliNotificationExpired(interaction, n)) continue;
 
     const parsed = PayloadV1Schema.safeParse(n.payload);
     if (!parsed.success) continue;
+    if (!isCliVersionEligible(parsed.data.data.minimumCliVersion, cliVersion)) continue;
+    if (isCliNotificationExpired(interaction, n)) continue;
 
     // Check cliShowEvery using the global request counter
     if (n.cliShowEvery !== null && requestCounter % n.cliShowEvery !== 0) {
@@ -562,161 +524,7 @@ export async function getNextCliNotification({
   return null;
 }
 
-// --- Create: admin endpoint support ---
-
-const SCOPE_REQUIRED_FK: Record<string, "userId" | "organizationId" | "projectId"> = {
-  USER: "userId",
-  ORGANIZATION: "organizationId",
-  PROJECT: "projectId",
-};
-
-const ALL_FK_FIELDS = ["userId", "organizationId", "projectId"] as const;
-const CLI_ONLY_FIELDS = ["cliMaxDaysAfterFirstSeen", "cliMaxShowCount", "cliShowEvery"] as const;
-
-const NotificationBaseFields = {
-  title: z.string().min(1),
-  payload: PayloadV1Schema,
-  surface: z.enum(["WEBAPP", "CLI"]),
-  scope: z.enum(["USER", "PROJECT", "ORGANIZATION", "GLOBAL"]),
-  userId: z.string().optional(),
-  organizationId: z.string().optional(),
-  projectId: z.string().optional(),
-  endsAt: z
-    .string()
-    .datetime()
-    .transform((s) => new Date(s)),
-  priority: z.number().int().default(0),
-  cliMaxDaysAfterFirstSeen: z.number().int().positive().optional(),
-  cliMaxShowCount: z.number().int().positive().optional(),
-  cliShowEvery: z.number().int().min(2).optional(),
-};
-
-export const CreatePlatformNotificationSchema = z
-  .object({
-    ...NotificationBaseFields,
-    startsAt: z
-      .string()
-      .datetime()
-      .transform((s) => new Date(s))
-      .optional(),
-  })
-  .superRefine((data, ctx) => {
-    validateScopeForeignKeys(data, ctx);
-    validateSurfaceFields(data, ctx);
-    validatePayloadTypeForSurface(data, ctx);
-    validateStartsAt(data, ctx);
-    validateEndsAt(data, ctx);
-  });
-
-function validateScopeForeignKeys(
-  data: { scope: string; userId?: string; organizationId?: string; projectId?: string },
-  ctx: z.RefinementCtx
-) {
-  const requiredFk = SCOPE_REQUIRED_FK[data.scope];
-
-  if (requiredFk && !data[requiredFk]) {
-    ctx.addIssue({
-      code: "custom",
-      message: `${requiredFk} is required when scope is ${data.scope}`,
-      path: [requiredFk],
-    });
-  }
-
-  const forbiddenFks = ALL_FK_FIELDS.filter((fk) => fk !== requiredFk);
-  for (const fk of forbiddenFks) {
-    if (data[fk]) {
-      ctx.addIssue({
-        code: "custom",
-        message: `${fk} must not be set when scope is ${data.scope}`,
-        path: [fk],
-      });
-    }
-  }
-}
-
-function validateSurfaceFields(
-  data: {
-    surface: string;
-    cliMaxDaysAfterFirstSeen?: number;
-    cliMaxShowCount?: number;
-    cliShowEvery?: number;
-  },
-  ctx: z.RefinementCtx
-) {
-  if (data.surface !== "WEBAPP") return;
-
-  for (const field of CLI_ONLY_FIELDS) {
-    if (data[field] !== undefined) {
-      ctx.addIssue({
-        code: "custom",
-        message: `${field} is not allowed for WEBAPP surface`,
-        path: [field],
-      });
-    }
-  }
-}
-
-function validateStartsAt(data: { startsAt?: Date }, ctx: z.RefinementCtx) {
-  if (!data.startsAt) return;
-
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  if (data.startsAt < oneHourAgo) {
-    ctx.addIssue({
-      code: "custom",
-      message: "startsAt must be within the last hour or in the future",
-      path: ["startsAt"],
-    });
-  }
-}
-
-const CLI_TYPES = new Set(["info", "warn", "error", "success"]);
-const WEBAPP_TYPES = new Set(["card", "changelog"]);
-
-function validatePayloadTypeForSurface(
-  data: { surface: string; payload: PayloadV1 },
-  ctx: z.RefinementCtx
-) {
-  const allowedTypes = data.surface === "CLI" ? CLI_TYPES : WEBAPP_TYPES;
-  if (!allowedTypes.has(data.payload.data.type)) {
-    ctx.addIssue({
-      code: "custom",
-      message: `payload.data.type "${data.payload.data.type}" is not allowed for ${data.surface} surface`,
-      path: ["payload", "data", "type"],
-    });
-  }
-}
-
-function validateEndsAt(data: { startsAt?: Date; endsAt: Date }, ctx: z.RefinementCtx) {
-  const effectiveStart = data.startsAt ?? new Date();
-  if (data.endsAt <= effectiveStart) {
-    ctx.addIssue({
-      code: "custom",
-      message: "endsAt must be after startsAt",
-      path: ["endsAt"],
-    });
-  }
-}
-
-export type CreatePlatformNotificationInput = z.input<typeof CreatePlatformNotificationSchema>;
-
-// --- Update: admin endpoint support ---
-
-export const UpdatePlatformNotificationSchema = z
-  .object({
-    ...NotificationBaseFields,
-    id: z.string().min(1),
-    startsAt: z
-      .string()
-      .datetime()
-      .transform((s) => new Date(s)),
-  })
-  .superRefine((data, ctx) => {
-    validateScopeForeignKeys(data, ctx);
-    validateSurfaceFields(data, ctx);
-    validatePayloadTypeForSurface(data, ctx);
-    // NOTE: No validateStartsAt — existing notifications may have past startsAt
-    validateEndsAt(data, ctx);
-  });
+// --- Create and update: admin endpoint support ---
 
 type CreateError = { type: "validation"; issues: z.ZodIssue[] } | { type: "db"; message: string };
 
