@@ -309,8 +309,6 @@ describe("acceptInvite", () => {
         rbacRoleId: "role_admin",
       });
 
-      // The user is already in the org, so accepting the invite must not touch
-      // their role — it could be a demotion.
       await prisma.orgMember.create({
         data: {
           organizationId: organization.id,
@@ -327,7 +325,6 @@ describe("acceptInvite", () => {
 
       expect(rbacHolder.setUserRoleCalls).toEqual([]);
 
-      // The invite is still consumed and the membership left intact.
       const remainingInvite = await prisma.orgMemberInvite.findFirst({
         where: { id: invite.id },
       });
@@ -388,8 +385,6 @@ describe("inviteMembers", () => {
         activeProjectCount: 0,
       });
 
-      // Drop the seeded pending invite so the skip can only come from the
-      // membership check, not from the pending-invite dedupe.
       await prisma.orgMemberInvite.delete({ where: { id: invite.id } });
 
       await prisma.orgMember.create({
