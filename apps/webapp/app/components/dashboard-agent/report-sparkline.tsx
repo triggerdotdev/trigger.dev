@@ -494,5 +494,5 @@ export function ReportMetricRow({
 
 /** The metric grid. Rows are `ReportMetricRow`s, which may expand to several. */
 export function ReportMetricList({ children }: { children: ReactNode }) {
-  return <ul className="space-y-1">{children}</ul>;
+  return <ul className="space-y-2.5">{children}</ul>;
 }
