@@ -16,6 +16,7 @@
 import type { Evidence } from "@internal/dashboard-agent-contracts";
 import {
   DEMO_WORLD,
+  demoDeploymentUri,
   demoErrorUri,
   demoId,
   demoQueueUri,
@@ -135,6 +136,21 @@ const runEvidence: Evidence = {
   kind: "run",
   uri: runUri,
   label: `${DEMO_WORLD.failedRunId} · failed after 3 attempts`,
+  excerpt: "attempt 1 429 · attempt 2 429 · attempt 3 429 — all within 19.4s",
+};
+
+const priorRunEvidence: Evidence = {
+  kind: "run",
+  uri: demoRunUri(DEMO_WORLD.priorRunId),
+  label: `${DEMO_WORLD.priorRunId} · same payload, completed in 1.2s`,
+  excerpt: "2,104 runs with this payload shape succeeded earlier today",
+};
+
+const deploymentEvidence: Evidence = {
+  kind: "deployment",
+  uri: demoDeploymentUri(DEMO_WORLD.deploymentVersion),
+  label: `${DEMO_WORLD.deploymentVersion} · deployed 19h before the first failure`,
+  excerpt: "first failure 09:02, deploy 14:11 the previous day — no overlap",
 };
 
 // ---------------------------------------------------------------------------
@@ -150,7 +166,8 @@ export const demoInvestigationStreamingRev0: DemoInvestigation = {
   confidence: "low",
   runId: DEMO_WORLD.failedRunId,
   title: `Why is ${DEMO_WORLD.taskId} failing?`,
-  headline: "Reading the failed run and its retries.",
+  headline:
+    "All three attempts of this run ended in an error from the email provider. I'm reading the spans to see which call failed and whether the retries had a chance to succeed.",
   progress: "Reading the run's spans",
   hypotheses: [
     {
@@ -165,8 +182,14 @@ export const demoInvestigationStreamingRev0: DemoInvestigation = {
       verdict: "testing",
       evidence: [],
     },
+    {
+      id: demoId("hyp-retry-window"),
+      statement: "The retry schedule keeps every attempt inside one rate-limit window.",
+      verdict: "testing",
+      evidence: [],
+    },
   ],
-  evidence: [runEvidence],
+  evidence: [runEvidence, spanEvidence],
   startedAt: "2026-07-27T10:14:02.000Z",
   updatedAt: "2026-07-27T10:14:06.000Z",
 };
@@ -176,7 +199,8 @@ export const demoInvestigationStreamingRev1: DemoInvestigation = {
   ...demoInvestigationStreamingRev0,
   revision: 1,
   confidence: "medium",
-  headline: "Every attempt came back 429. Checking whether the retries made it worse.",
+  headline:
+    "Every attempt came back 429 rate_limit_exceeded, and 41 other runs of this task hit the same error in the last hour. Checking whether the retry schedule made it worse.",
   progress: "Comparing against the last hour of runs on this queue",
   hypotheses: [
     {
@@ -187,10 +211,18 @@ export const demoInvestigationStreamingRev1: DemoInvestigation = {
     },
     {
       ...demoInvestigationStreamingRev0.hypotheses[1]!,
+      verdict: "invalidated",
+      finding:
+        "The same payload shape succeeded on 2,104 runs earlier today, and the provider never returned a 4xx other than 429.",
+      evidence: [priorRunEvidence],
+    },
+    {
+      ...demoInvestigationStreamingRev0.hypotheses[2]!,
       verdict: "testing",
+      evidence: [queueEvidence],
     },
   ],
-  evidence: [runEvidence, errorEvidence],
+  evidence: [runEvidence, errorEvidence, queueEvidence],
   updatedAt: "2026-07-27T10:14:11.000Z",
 };
 
@@ -225,7 +257,7 @@ export const demoInvestigationConcluded: DemoInvestigation = {
       verdict: "invalidated",
       finding:
         "The same payload succeeded on 2,104 runs earlier today; the provider never returned a 4xx other than 429.",
-      evidence: [runEvidence],
+      evidence: [priorRunEvidence, runEvidence],
     },
     {
       id: demoId("hyp-retry-window"),
@@ -233,10 +265,26 @@ export const demoInvestigationConcluded: DemoInvestigation = {
       verdict: "validated",
       finding:
         "maxAttempts 3 with a 1s base delay and factor 1 puts all three attempts inside 20 seconds.",
-      evidence: [sourceEvidence],
+      evidence: [sourceEvidence, spanEvidence],
+    },
+    {
+      id: demoId("hyp-queue-burst"),
+      statement: "The queue is bursting into the provider faster than its per-second ceiling.",
+      verdict: "validated",
+      finding:
+        "The queue sat at its concurrency limit of 50 for 38 of the last 60 minutes, so ~50 sends land on the provider at once every time it drains.",
+      evidence: [queueEvidence],
+    },
+    {
+      id: demoId("hyp-deploy-regression"),
+      statement: "Yesterday's deploy introduced the failure.",
+      verdict: "invalidated",
+      finding:
+        "The deploy went out 19 hours before the first failure and the task ran clean for most of that window, so the timing rules it out.",
+      evidence: [deploymentEvidence],
     },
   ],
-  evidence: [errorEvidence, spanEvidence, sourceEvidence, queueEvidence],
+  evidence: [errorEvidence, spanEvidence, sourceEvidence, queueEvidence, deploymentEvidence],
   startedAt: "2026-07-27T10:14:02.000Z",
   updatedAt: "2026-07-27T10:14:24.000Z",
 };
@@ -265,8 +313,31 @@ export const demoInvestigationInconclusive: DemoInvestigation = {
       id: demoId("hyp-slow-oom"),
       statement: "The run is thrashing against its memory limit.",
       verdict: "invalidated",
-      finding: "Peak memory stayed at 38% of the machine's limit for the whole run.",
-      evidence: [{ kind: "run", uri: demoRunUri(DEMO_WORLD.slowRunId), label: "machine metrics" }],
+      finding:
+        "Peak memory stayed at 38% of the machine's limit for the whole run, and there is no OOM signal on the attempt.",
+      evidence: [
+        {
+          kind: "run",
+          uri: demoRunUri(DEMO_WORLD.slowRunId),
+          label: `${DEMO_WORLD.slowRunId} · machine metrics, large-1x`,
+          excerpt: "memory peak 38% · cpu 11% avg · no restarts",
+        },
+      ],
+    },
+    {
+      id: demoId("hyp-slow-queue-wait"),
+      statement: "The run spent the time waiting for a worker rather than executing.",
+      verdict: "invalidated",
+      finding:
+        "It was dequeued 40ms after it was triggered and has been executing ever since — the time is inside the attempt, not in front of it.",
+      evidence: [
+        {
+          kind: "queue",
+          uri: demoQueueUri(DEMO_WORLD.backlogQueue),
+          label: `${DEMO_WORLD.backlogQueue} · 3 of 20 concurrency in use`,
+          excerpt: "dequeued 40ms after trigger · no queue wait",
+        },
+      ],
     },
     {
       id: demoId("hyp-slow-upstream"),
@@ -285,9 +356,16 @@ export const demoInvestigationInconclusive: DemoInvestigation = {
   ],
   evidence: [
     {
+      kind: "run",
+      uri: demoRunUri(DEMO_WORLD.slowRunId),
+      label: `${DEMO_WORLD.slowRunId} · executing for 24m, p95 is 3m`,
+      excerpt: "status EXECUTING · attempt 1 · started 09:17:22",
+    },
+    {
       kind: "span",
       uri: demoSpanUri(DEMO_WORLD.slowRunId, "span_demoe71f"),
       label: "aggregate span · 23m 41s, no children",
+      excerpt: "aggregate  23m41s  ●  (no child spans)",
     },
   ],
   startedAt: "2026-07-27T09:41:00.000Z",

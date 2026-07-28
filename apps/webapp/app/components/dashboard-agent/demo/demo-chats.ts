@@ -115,7 +115,7 @@ const investigateStreaming: DemoChat = {
   title: "Why did this run fail?",
   flow: "investigate",
   summary:
-    "The investigation card mid-flight: two revisions of the same card, hypotheses marked testing, one settling to validated.",
+    "The investigation card mid-flight: two revisions of the same card, three hypotheses posed and testing, then one validated, one ruled out and one still open — with the narration in between.",
   banner: { ...PROD_BANNER, currentPage: "Run detail" },
   activity: "working",
   lastMessageAt: "2026-07-27T10:14:11.000Z",
@@ -139,15 +139,34 @@ const investigateStreaming: DemoChat = {
             },
             "get-run-details"
           ),
+          textPart(
+            `\`${DEMO_WORLD.failedRunId}\` failed three times in 19 seconds, every attempt with the same error from the email provider. Three things could produce that, so I'll test them one at a time rather than settle on the first plausible one.`
+          ),
         ]),
       ],
     },
-    { kind: "investigation", investigation: demoInvestigationStreamingRev0 },
+    { kind: "investigation", investigation: demoInvestigationStreamingRev0, expanded: true },
     {
       kind: "note",
       text: "Revision 0 above, revision 1 below — the same investigation id. In the live panel the card is replaced in place; here both are shown so the change is visible.",
     },
-    { kind: "investigation", investigation: demoInvestigationStreamingRev1 },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("inv-step2", [
+          toolPart(
+            "query_runs",
+            { taskIdentifier: DEMO_WORLD.taskId, status: "failed", period: "1h" },
+            { matches: 41, fingerprints: { [DEMO_WORLD.errorFingerprint]: 41 } },
+            "query-runs-streaming-rev1"
+          ),
+          textPart(
+            `The rate limit is confirmed and the payload is ruled out — 41 runs in the last hour share one error fingerprint, while the same payload shape succeeded 2,104 times earlier today. Still open: whether \`${DEMO_WORLD.queue}\` is bursting into the provider faster than it allows.`
+          ),
+        ]),
+      ],
+    },
+    { kind: "investigation", investigation: demoInvestigationStreamingRev1, expanded: true },
   ],
 };
 
@@ -156,7 +175,7 @@ const investigateConcluded: DemoChat = {
   title: "send-order-receipt failure",
   flow: "investigate",
   summary:
-    "The concluded card collapsed: What happened (severity + cause) and How to fix. Expand it for three tested hypotheses, verdict chips, cited evidence and a source excerpt.",
+    "A full post-incident turn: four tools, the conclusion narrated, the card open on four tested hypotheses with verdict chips and cited evidence, then a follow-up about whether the failed runs retry themselves.",
   banner: { ...PROD_BANNER, currentPage: "Run detail" },
   lastMessageAt: "2026-07-27T10:14:24.000Z",
   items: [
@@ -168,11 +187,26 @@ const investigateConcluded: DemoChat = {
       kind: "messages",
       messages: [
         assistantMessage("inv-c-tools", [
+          reasoningPart(
+            "Four candidates: the provider's rate limit, a bad payload, the retry schedule, and yesterday's deploy. Each one has a check that can rule it out, so run all four before writing a conclusion."
+          ),
           toolPart(
             "query_runs",
             { fingerprint: DEMO_WORLD.errorFingerprint, period: "1h" },
-            { matches: 41, tasks: [DEMO_WORLD.taskId] },
+            { matches: 41, tasks: [DEMO_WORLD.taskId], firstSeen: "09:02", lastSeen: "10:11" },
             "query-runs"
+          ),
+          toolPart(
+            "get_queue_health",
+            { queue: DEMO_WORLD.queue, period: "1h" },
+            { concurrency: 50, limit: 50, pinnedMinutes: 38, pending: 4_812 },
+            "get-queue-health-concluded"
+          ),
+          toolPart(
+            "list_deploys",
+            { period: "48h" },
+            { latest: DEMO_WORLD.deploymentVersion, deployedAt: "2026-07-26T14:11:00.000Z" },
+            "list-deploys-concluded"
           ),
           toolPart(
             "read_source",
@@ -180,16 +214,41 @@ const investigateConcluded: DemoChat = {
             { lines: "14-20", excerpt: "retry: { maxAttempts: 3, minTimeoutInMs: 1_000 }" },
             "read-source"
           ),
+          textPart(
+            `Two of the four hold up. The provider is rate limiting this key, and the retry config puts all three attempts inside the same limit window — so a run that hits the limit once is guaranteed to fail. The payload and yesterday's deploy are both ruled out.`
+          ),
         ]),
       ],
     },
-    { kind: "investigation", investigation: demoInvestigationConcluded },
+    { kind: "investigation", investigation: demoInvestigationConcluded, expanded: true },
     {
       kind: "messages",
       messages: [
         assistantMessage("inv-c-close", [
           textPart(
-            "The fix is a config change, not a code fix — I haven't changed anything. Want me to watch the next retry?"
+            `The fix is a config change, not a code fix — I haven't changed anything. Raising \`minTimeoutInMs\` to 30s with a factor of 2 spreads the three attempts across ~2 minutes, and capping \`${DEMO_WORLD.queue}\` at 20 stops the burst that trips the limit in the first place. The queue cap you can set from the dashboard without a deploy.`
+          ),
+        ]),
+      ],
+    },
+    {
+      kind: "messages",
+      messages: [
+        userMessage("inv-c-followup", "Do the 41 failed runs retry on their own once I fix this?"),
+      ],
+    },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("inv-c-followup-a", [
+          toolPart(
+            "query_runs",
+            { fingerprint: DEMO_WORLD.errorFingerprint, period: "1h", status: "failed" },
+            { matches: 41, retriesRemaining: 0, oldest: DEMO_WORLD.priorRunId },
+            "query-runs-followup"
+          ),
+          textPart(
+            `No — all 41 used their three attempts, so they're final. They'll need re-triggering after the config change; the oldest is \`${DEMO_WORLD.priorRunId}\`, from 09:02. Fix the retry config first, otherwise a bulk replay will hit the same limit and burn its attempts the same way.`
           ),
         ]),
       ],
@@ -202,7 +261,7 @@ const investigateInconclusive: DemoChat = {
   title: "Intermittent upstream timeouts",
   flow: "investigate",
   summary:
-    "No cause found: What we know + What to check next, and deliberately no fix section. One hypothesis ruled out, one still open.",
+    "No cause found: What we know + What to check next, and deliberately no fix section. Two hypotheses ruled out with numbers, one still open, and a follow-up that refuses to advise on cancelling.",
   banner: { ...PROD_BANNER, currentPage: "Run detail" },
   lastMessageAt: "2026-07-27T09:41:38.000Z",
   items: [
@@ -210,13 +269,55 @@ const investigateInconclusive: DemoChat = {
       kind: "messages",
       messages: [userMessage("inv-i-q", `Why is ${DEMO_WORLD.slowRunId} taking so long?`)],
     },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("inv-i-tools", [
+          toolPart(
+            "get_run_details",
+            { runId: DEMO_WORLD.slowRunId },
+            {
+              runId: DEMO_WORLD.slowRunId,
+              status: "EXECUTING",
+              attempt: 1,
+              durationMs: 1_452_000,
+              machine: "large-1x",
+            },
+            "get-run-details-slow"
+          ),
+          toolPart(
+            "get_span_details",
+            { runId: DEMO_WORLD.slowRunId, spanId: "span_demoe71f" },
+            { name: "aggregate", durationMs: 1_421_000, children: 0, events: 0 },
+            "get-span-details-slow"
+          ),
+          textPart(
+            `\`${DEMO_WORLD.slowTaskId}\` has been executing for 24 minutes against a p95 of 3 minutes, and 23m41s of that sits inside a single \`aggregate\` span with no children and no events. I checked memory and queue wait to rule out the two usual suspects, but I can't see inside that span.`
+          ),
+        ]),
+      ],
+    },
     { kind: "investigation", investigation: demoInvestigationInconclusive, expanded: true },
     {
       kind: "messages",
       messages: [
         assistantMessage("inv-i-close", [
           textPart(
-            "I'd rather say I don't know than guess: the time is inside a span with no children, so there's nothing in the telemetry to attribute it to."
+            "I'd rather say I don't know than guess: the time is inside a span with no children, so there's nothing in the telemetry to attribute it to. Memory peaked at 38% and the run was dequeued 40ms after it was triggered, so it isn't starved and it isn't waiting — it's genuinely working, somewhere I can't see."
+          ),
+        ]),
+      ],
+    },
+    {
+      kind: "messages",
+      messages: [userMessage("inv-i-followup", "Should I kill it?")],
+    },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("inv-i-followup-a", [
+          textPart(
+            `Your call — I can't cancel runs. It's 8x its normal duration but still holding one of the 20 concurrency slots on \`${DEMO_WORLD.backlogQueue}\`, and nothing else is queued behind it, so letting it run costs you little. If you do cancel it, add a span around the aggregation step first, otherwise the next run tells you exactly as little as this one.`
           ),
         ]),
       ],
@@ -249,6 +350,16 @@ const investigateShowCode: DemoChat = {
         ]),
       ],
     },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("code-a2", [
+          textPart(
+            `This half needs a deploy. The other half — capping \`${DEMO_WORLD.queue}\` at 20 concurrency — is a dashboard setting, and it's the one that stops the burst, so it's worth doing first even if the deploy waits for your next release.`
+          ),
+        ]),
+      ],
+    },
   ],
 };
 
@@ -265,7 +376,38 @@ const investigateDirtyCommit: DemoChat = {
       kind: "messages",
       messages: [userMessage("dirty-q", "Same question, but this deploy wasn't a clean build.")],
     },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("dirty-tools", [
+          toolPart(
+            "list_deploys",
+            { version: DEMO_WORLD.deploymentVersion },
+            {
+              version: DEMO_WORLD.deploymentVersion,
+              gitSha: DEMO_WORLD.sourceSha,
+              dirty: true,
+              uncommittedFiles: 3,
+            },
+            "list-deploys-dirty"
+          ),
+          textPart(
+            `\`${DEMO_WORLD.deploymentVersion}\` was built from a working tree with 3 uncommitted files, so \`${DEMO_WORLD.sourcePath}\` as I can read it is the nearest snapshot — not provably the code that ran. The conclusion is the same, but I'm dropping confidence to medium and saying which parts of the evidence that affects.`
+          ),
+        ]),
+      ],
+    },
     { kind: "investigation", investigation: demoInvestigationDirtyCommit, expanded: true },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("dirty-close", [
+          textPart(
+            "The run, span and error evidence comes from telemetry, so it stands regardless. Only the retry-config citation is hedged — if you deploy from a clean tree I can confirm that line exactly rather than approximately."
+          ),
+        ]),
+      ],
+    },
   ],
 };
 
@@ -295,7 +437,19 @@ const navigateFilteredRuns: DemoChat = {
       kind: "messages",
       messages: [
         assistantMessage("nav-a", [
-          textPart("41 runs failed in the last 24 hours, all with the same rate-limit error."),
+          toolPart(
+            "query_runs",
+            { taskIdentifier: DEMO_WORLD.taskId, status: "failed", period: "24h" },
+            {
+              matches: 41,
+              fingerprints: { [DEMO_WORLD.errorFingerprint]: 41 },
+              firstSeen: "09:02",
+            },
+            "query-runs-nav"
+          ),
+          textPart(
+            `41 runs of \`${DEMO_WORLD.taskId}\` failed in the last 24 hours, and they all share one error fingerprint — a 429 from the email provider. The first one was at 09:02 today; nothing failed before that. I've filtered your runs list to exactly those, so the deep link and what you see on screen agree.`
+          ),
         ]),
       ],
     },
@@ -306,7 +460,7 @@ const navigateFilteredRuns: DemoChat = {
       messages: [
         assistantMessage("nav-a2", [
           textPart(
-            "The spike starts at 09:00 and is confined to `send-order-receipt` — the other tasks are flat."
+            `The spike starts at 09:00 and is confined to \`${DEMO_WORLD.taskId}\` — every other task on \`${DEMO_WORLD.queue}\` is flat through the same window. That shape matters: a provider-wide outage would have taken the other senders with it, so this is specific to this task's key and its retry schedule. Ask me to investigate one of those runs and I'll take it apart.`
           ),
         ]),
       ],
@@ -330,7 +484,7 @@ const navigateRejectedIntent: DemoChat = {
       messages: [
         assistantMessage("fix-a", [
           textPart(
-            "I can't change your project — I only read. Here's the change to make, and where to make it."
+            `I can't change your project — I only read. Here's what needs changing and where: in \`${DEMO_WORLD.sourcePath}:18\`, raise \`minTimeoutInMs\` to 30s with a factor of 2 so the three attempts stop sharing one rate-limit window, and cap \`${DEMO_WORLD.queue}\` at 20 concurrency from the queue's settings page. The second one takes effect immediately, without a deploy. I'll walk through either if you want the diff.`
           ),
         ]),
       ],
@@ -386,7 +540,7 @@ const watchCreatedAndWake: DemoChat = {
   title: "Tell me when the backlog drains",
   flow: "watch",
   summary:
-    "A watch is created from a conversation, shows as a chip, and later speaks unprompted when it fires.",
+    "The full watch arc: created from a conversation with the cadence stated out loud, shown as a chip, speaking unprompted when it fires, then offering the next watch worth having.",
   banner: { ...PROD_BANNER, currentPage: "Run detail" },
   headerWatches: demoWatches.activeRow,
   lastMessageAt: "2026-07-27T10:19:30.000Z",
@@ -396,6 +550,16 @@ const watchCreatedAndWake: DemoChat = {
       messages: [userMessage("watch-q", "Tell me when the retry finishes.")],
     },
     { kind: "intent", intent: demoIntents.watch },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("watch-created", [
+          textPart(
+            `Watching \`${DEMO_WORLD.failedRunId}\` — I'll check every minute for up to 2 hours and tell you the moment it settles, whichever way it goes. You'll also see it as a chip at the top of the panel until then, and you can cancel it from there. I only speak once per watch, so it won't repeat itself.`
+          ),
+        ]),
+      ],
+    },
     { kind: "watches", watches: demoWatches.activeRow },
     {
       kind: "note",
@@ -406,6 +570,16 @@ const watchCreatedAndWake: DemoChat = {
       messages: [assistantMessage("watch-wake", [textPart(demoWatchNarration.wake)])],
     },
     { kind: "watches", watches: [demoWatches.errorRecurrence] },
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("watch-next", [
+          textPart(
+            `Two things you might want next: the 40 remaining runs from the 09:02 burst are still queued behind \`${DEMO_WORLD.queue}\`'s concurrency limit, and the rate-limit error itself is worth a watch for the next 12 hours in case the fix didn't take. Say the word for either.`
+          ),
+        ]),
+      ],
+    },
   ],
 };
 
@@ -419,6 +593,16 @@ const watchExpiryAndCancel: DemoChat = {
   headerWatches: demoWatches.row,
   lastMessageAt: "2026-07-27T15:02:00.000Z",
   items: [
+    {
+      kind: "messages",
+      messages: [
+        assistantMessage("watch-row-intro", [
+          textPart(
+            `Four watches from this conversation, in every state they can end in. One is still live on \`${DEMO_WORLD.failedRunId}\`; the rest have finished, and each one said so exactly once — below, in the order they spoke.`
+          ),
+        ]),
+      ],
+    },
     { kind: "watches", watches: demoWatches.row },
     {
       kind: "messages",
@@ -464,8 +648,16 @@ const reportHealthy: DemoChat = {
           toolPart(
             "get_report",
             { report: "health", period: "1h" },
-            { title: "health" },
+            {
+              title: "health",
+              severity: "ok",
+              windowMinutes: 60,
+              findings: ["flow", "execution", "liveness"],
+            },
             "get-report-healthy"
+          ),
+          textPart(
+            "Short answer: prod is fine. Here's the last hour against your 7-day normal — flow, execution and telemetry freshness, each with the numbers behind the verdict."
           ),
         ]),
       ],
@@ -479,7 +671,9 @@ const reportHealthy: DemoChat = {
       kind: "messages",
       messages: [
         assistantMessage("rep-h-close", [
-          textPart("Nothing needs you. Starts, failures and durations are all at their normal."),
+          textPart(
+            "Nothing needs you. Runs are starting in 6.8s at p95 against a 7s normal, 0.4% of them failed where 0.5% is usual, and 34 are pending — all inside the band you've run at for the past week. Telemetry is 21 seconds behind, so this is a current picture rather than a stale one."
+          ),
         ]),
       ],
     },
@@ -500,6 +694,28 @@ const reportDegraded: DemoChat = {
       messages: [userMessage("rep-d-q", "Something feels slow. What's going on?")],
     },
     {
+      kind: "messages",
+      messages: [
+        assistantMessage("rep-d-tool", [
+          toolPart(
+            "get_report",
+            { report: "health", period: "1h" },
+            {
+              title: "health",
+              severity: "crit",
+              windowMinutes: 60,
+              worstQueue: DEMO_WORLD.queue,
+              pending: 4_812,
+            },
+            "get-report-degraded"
+          ),
+          textPart(
+            "It is slow, and it's a queueing problem rather than a code problem. Work is arriving faster than the environment's concurrency limit lets it start, so runs are waiting in front of execution instead of failing inside it."
+          ),
+        ]),
+      ],
+    },
+    {
       kind: "report",
       report: demoDegradedReport,
       sourceUri: demoReportUri(DEMO_WORLD.reportKey),
@@ -510,7 +726,7 @@ const reportDegraded: DemoChat = {
       messages: [
         assistantMessage("rep-d-close", [
           textPart(
-            "Your code is fine — you're at the environment's concurrency ceiling and work is queueing behind it. Raising the limit or waiting ~27 minutes both work."
+            `Your code is fine — 0.6% of runs failed against a 0.5% normal and p95 duration hasn't moved. You've been pinned at the environment's concurrency ceiling of 50 for 38 of the last 60 minutes, 4,812 runs are pending, and \`${DEMO_WORLD.queue}\` accounts for 71% of them. Raising the limit clears it now; doing nothing clears it in about 27 minutes, once the 1,000-a-minute arrival spike drops back under the 820 a minute you're completing.`
           ),
         ]),
       ],
@@ -609,6 +825,16 @@ const baseToolInFlight: DemoChat = {
     {
       kind: "messages",
       messages: [
+        assistantMessage("tool-intro", [
+          textPart(
+            `Counting what's pending across the environment first, then pulling \`${DEMO_WORLD.queue}\` on its own so we can see whether the depth is one queue or all of them.`
+          ),
+        ]),
+      ],
+    },
+    {
+      kind: "messages",
+      messages: [
         assistantMessage("tool-a", [
           toolPart(
             "run_query",
@@ -672,7 +898,9 @@ const baseResumed: DemoChat = {
       kind: "messages",
       messages: [
         assistantMessage("res-a", [
-          textPart("Yes — same error, same task, three weeks ago."),
+          textPart(
+            `Yes — same error, same task, three weeks ago. \`${DEMO_WORLD.taskId}\` hit the same rate limit on 6 July and it was diagnosed then too; the card below is that diagnosis, replayed from this conversation rather than re-run. The retry config hasn't changed since, which is why it came back.`
+          ),
           // Two revisions of the same block plus one legacy block with no
           // envelope: the renderer keeps revision 1 and renders the legacy card
           // in transcript order.
@@ -758,7 +986,7 @@ const baseInvestigationDeepLink: DemoChat = {
       messages: [
         assistantMessage("uri-a", [
           textPart(
-            `The full investigation is at \`${demoInvestigationUri(demoInvestigationConcluded.investigationId)}\` — that id is stable, so asking me about it again resumes the same card rather than starting over.`
+            `The full investigation is at \`${demoInvestigationUri(demoInvestigationConcluded.investigationId)}\` — that id is stable, so asking me about it again resumes the same card rather than starting over. It covers four hypotheses on \`${DEMO_WORLD.failedRunId}\`: the provider's rate limit and the retry window held up, the payload and yesterday's deploy were ruled out. I've put you on the run itself, since that's where the evidence points.`
           ),
         ]),
       ],
