@@ -83,14 +83,21 @@ export function useMetricResourceQuery(query: string, opts: MetricResourceQueryO
   const [isLoading, setIsLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const loadedKeyRef = useRef<string | null>(null);
 
   const load = useCallback(() => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    // Paint cached rows immediately (no skeleton) on remount / key change while we revalidate.
-    const cached = responseCache.get(cacheKey);
-    if (cached) setRows(cached);
+    // On a new query signature the rows and failure on screen belong to a different query. Paint
+    // this key's cached rows if we have them (no skeleton on remount / back-navigation), otherwise
+    // clear them so a genuinely new query shows a loading state instead of another query's data.
+    // Interval and on-focus refreshes reuse the same signature, so they keep what's on screen.
+    if (loadedKeyRef.current !== cacheKey) {
+      loadedKeyRef.current = cacheKey;
+      setRows(responseCache.get(cacheKey) ?? null);
+      setFailed(false);
+    }
     setIsLoading(true);
     fetch("/resources/metric", {
       method: "POST",

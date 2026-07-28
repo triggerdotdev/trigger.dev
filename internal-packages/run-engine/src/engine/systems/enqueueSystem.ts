@@ -105,9 +105,9 @@ export class EnqueueSystem {
       const timestamp = queuePositionMs - run.priorityMs;
       const eligibleAtMs = includeTtl ? queuePositionMs : Date.now();
 
-      // Include TTL only when explicitly requested (first enqueue from trigger or the
-      // delayed-run system). Re-enqueues (waitpoint, checkpoint, pending version) must
-      // not add TTL.
+      // Include TTL only when explicitly requested: the first enqueue from trigger, the
+      // delayed-run system, and the pending-version promotion (each is a run's first real
+      // entry into the queue). Waitpoint and checkpoint re-enqueues must not add TTL.
       let ttlExpiresAt: number | undefined;
       if (includeTtl && run.ttl) {
         const expireAt = parseNaturalLanguageDuration(run.ttl);
