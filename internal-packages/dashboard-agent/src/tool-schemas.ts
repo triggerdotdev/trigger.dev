@@ -378,6 +378,39 @@ export const scheduleWatchSchema = tool({
   }),
 });
 
+// ---------------------------------------------------------------------------
+// Watch alerts — an email on top of the always-on dashboard notification.
+//
+// Project-level subscriptions to the watch alert type, so a wake reaches the
+// user when they aren't looking at the dashboard. Creating one is a write the
+// user has to ask for, and it can be denied by plan or feature flag (403).
+// ---------------------------------------------------------------------------
+
+export const listAlertsSchema = tool({
+  description:
+    'List this project\'s alert subscriptions for watch fires — who gets notified when a watch fires, and whether each one is enabled. Use this to answer "what alerts do I have?".',
+  inputSchema: z.object({}),
+});
+
+export const createAlertSchema = tool({
+  description:
+    "Subscribe to an email alert for every watch that fires in this project. Defaults to the user's account email. ONLY call this when the user explicitly asked for an alert — never as a helpful extra. If it comes back denied by plan or feature flag, relay that honestly and offer the dashboard notification, which is always on, instead.",
+  inputSchema: z.object({
+    email: z
+      .string()
+      .optional()
+      .describe("Email to alert. Omit to use the user's own account email."),
+  }),
+});
+
+export const deleteAlertSchema = tool({
+  description:
+    "Turn one alert subscription off, by its id from list_alerts. Watch fires still show in the dashboard.",
+  inputSchema: z.object({
+    alertId: z.string().describe("The alert id returned by list_alerts."),
+  }),
+});
+
 // Code-mode tools (only present when the project has a connected GitHub repo).
 // They read the repo's source at a pinned commit from the agent's filesystem.
 
@@ -468,6 +501,9 @@ export const dashboardAgentToolSchemas = {
   get_current_page: getCurrentPageSchema,
   navigate_to: navigateToSchema,
   schedule_watch: scheduleWatchSchema,
+  list_alerts: listAlertsSchema,
+  create_alert: createAlertSchema,
+  delete_alert: deleteAlertSchema,
 };
 
 // Code mode adds the source tools. Same key order `buildDashboardAgentTools`
@@ -518,6 +554,9 @@ You have read-only tools that act as the user against their own account:
 - get_current_page: the page the user is on right now, and what the dashboard already noticed on it.
 - navigate_to: take the user to a run, error, queue, deployment, or a filtered runs list.
 - schedule_watch: watch for something to happen (a run finishing, a backlog draining, an error recurring, health recovering) and tell the user when it does.
+- list_alerts: the project's alert subscriptions for watch fires.
+- create_alert: subscribe the user to an email alert for watch fires in this project.
+- delete_alert: turn one alert subscription off.
 
 Guidelines:
 - Be concise and direct. A short, correct answer beats a long one. Default to 2-4 sentences; go longer only when the user asked for detail or the answer genuinely needs it.
@@ -555,6 +594,9 @@ Watches — telling the user later:
 - A watch wake is a message you send unprompted, and it is narrated ONCE, briefly: what the outcome was, the numbers from the facts you were given, and one suggested next step. Nothing else — no new investigation, no fresh reads, no recap of the conversation.
 - On an expiry, say which of the two happened: it didn't happen in the window, or the condition couldn't be verified at expiry (then give the last observation and don't claim either way).
 - Only call a wait "queue wait" when the facts measured it from when the run was queued. If the facts only have time from creation to start, call it that.
+- After a wake that fired, your ONE suggested next step may be an email alert for future fires — ask whether they want one, in one short line. Never create it unprompted.
+- Call create_alert only after the user confirms. If it comes back denied (plan or feature flag), say so plainly and add that the dashboard still shows the notification badge for every fire.
+- "What alerts do I have?" is list_alerts. Turning one off is delete_alert — if which one is ambiguous, list them and ask which.
 
 Product questions:
 - For "how do I …" questions about Trigger.dev itself, use search_docs and answer from what it returns, citing the doc. ask_support is for longer, composed troubleshooting answers. Never invent an API or option that isn't in either.

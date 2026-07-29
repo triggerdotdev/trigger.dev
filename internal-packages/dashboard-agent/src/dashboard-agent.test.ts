@@ -517,6 +517,8 @@ describe("buildDashboardAgentTools", () => {
       [
         "ask_support",
         "correlate_version",
+        "create_alert",
+        "delete_alert",
         "get_current_page",
         "get_deploy",
         "get_error",
@@ -525,6 +527,7 @@ describe("buildDashboardAgentTools", () => {
         "get_report",
         "get_run",
         "get_run_trace",
+        "list_alerts",
         "list_deploys",
         "list_environments",
         "list_errors",
@@ -1215,5 +1218,129 @@ describe("buildDashboardAgentTools", () => {
     const blind = await callTool("get_current_page", {}, {});
     expect(blind.page).toBeNull();
     expect(typeof blind.note).toBe("string");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Watch alert tools — project-level subscriptions, as the user
+// ---------------------------------------------------------------------------
+
+describe("watch alert tools", () => {
+  const ALERT_CTX = {
+    userActorToken: "uat_token",
+    apiOrigin: "http://localhost:3030",
+    projectRef: "proj_abc",
+    environmentName: "prod",
+  };
+
+  // Runs one alert tool against a stubbed global fetch, handing back the tool's
+  // result and the request the webapp would have received.
+  async function callAlertTool(
+    name: string,
+    input: unknown,
+    response: { status?: number; body: unknown },
+    ctx: Record<string, unknown> = ALERT_CTX
+  ) {
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      requests.push({ url: String(url), init });
+      return new Response(JSON.stringify(response.body), {
+        status: response.status ?? 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      const tools = buildDashboardAgentTools(ctx);
+      const tool = tools[name] as {
+        inputSchema: { parse: (input: unknown) => unknown };
+        execute: (input: unknown, opts: unknown) => Promise<any>;
+      };
+      const result = await tool.execute(tool.inputSchema.parse(input), {});
+      return { result, requests };
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  it("list_alerts reads the project's subscriptions as the user", async () => {
+    const alerts = [{ id: "alert_1", type: "EMAIL", label: "k***@trigger.dev", enabled: true }];
+    const { result, requests } = await callAlertTool("list_alerts", {}, { body: { alerts } });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts");
+    expect(requests[0]?.init?.method).toBe("GET");
+    expect((requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
+      "Bearer uat_token"
+    );
+    expect(result).toEqual({ alerts });
+  });
+
+  it("create_alert posts the email channel and reports the created alert", async () => {
+    const { result, requests } = await callAlertTool(
+      "create_alert",
+      { email: "someone@example.com" },
+      { body: { ok: true, alert: { id: "alert_2", type: "EMAIL" } } }
+    );
+
+    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts");
+    expect(requests[0]?.init?.method).toBe("POST");
+    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      channel: "email",
+      email: "someone@example.com",
+    });
+    expect(result).toEqual({ created: true, alert: { id: "alert_2", type: "EMAIL" } });
+
+    // No email given: the host defaults to the user's account email, so the body
+    // carries the channel only.
+    const noEmail = await callAlertTool("create_alert", {}, { body: { ok: true } });
+    expect(JSON.parse(String(noEmail.requests[0]?.init?.body))).toEqual({ channel: "email" });
+  });
+
+  it("create_alert relays a 403 with the reason the host gave", async () => {
+    const plan = await callAlertTool(
+      "create_alert",
+      {},
+      { status: 403, body: { error: "denied", reason: "plan" } }
+    );
+    expect(plan.result.error).toContain("aren't available on this plan");
+    expect(plan.result.error).toContain("dashboard");
+
+    const flag = await callAlertTool(
+      "create_alert",
+      {},
+      { status: 403, body: { error: "denied", reason: "flag" } }
+    );
+    expect(flag.result.error).toContain("aren't enabled here");
+  });
+
+  it("delete_alert deletes by id and surfaces a failure as text", async () => {
+    const { result, requests } = await callAlertTool(
+      "delete_alert",
+      { alertId: "alert_1" },
+      { body: { ok: true } }
+    );
+    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts/alert_1");
+    expect(requests[0]?.init?.method).toBe("DELETE");
+    expect(result).toEqual({ deleted: true, alertId: "alert_1" });
+
+    const missing = await callAlertTool(
+      "delete_alert",
+      { alertId: "alert_gone" },
+      { status: 404, body: { error: "No such alert." } }
+    );
+    expect(missing.result.error).toBe("No such alert.");
+  });
+
+  it("the alert tools fail closed with no delegated token, without hitting the network", async () => {
+    for (const [name, input] of [
+      ["list_alerts", {}],
+      ["create_alert", {}],
+      ["delete_alert", { alertId: "alert_1" }],
+    ] as const) {
+      const { result, requests } = await callAlertTool(name, input, { body: {} }, {});
+      expect(typeof result.error).toBe("string");
+      expect(requests).toHaveLength(0);
+    }
   });
 });

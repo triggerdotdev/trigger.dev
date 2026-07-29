@@ -17,6 +17,8 @@ import { tool, type ToolSet } from "ai";
 import {
   askSupportSchema,
   correlateVersionSchema,
+  createAlertSchema,
+  deleteAlertSchema,
   getCurrentPageSchema,
   getDeploySchema,
   getErrorSchema,
@@ -25,6 +27,7 @@ import {
   getReportSchema,
   getRunSchema,
   getRunTraceSchema,
+  listAlertsSchema,
   listDeploysSchema,
   listEnvironmentsSchema,
   listErrorsSchema,
@@ -514,6 +517,51 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   // The common shape: a GET against an env-scoped route, with the retry above.
   function envApiGet(path: string): Promise<FetchResult | null> {
     return withEnvJwt((jwt) => apiGet(origin, path, jwt), unauthorizedGet);
+  }
+
+  /**
+   * One request to the watch-alerts routes, as the user (delegated token).
+   *
+   * Failures come back as `{ error }` in the model's own terms — including the
+   * 403, whose `reason` says whether the plan or the feature flag denied it, so
+   * the model can relay that instead of inventing a cause.
+   */
+  async function alertsRequest(
+    method: "GET" | "POST" | "DELETE",
+    path: string,
+    body?: unknown
+  ): Promise<{ data: unknown } | { error: string }> {
+    let res: Response;
+    try {
+      res = await fetch(`${origin}${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${userActorToken!}`,
+          Accept: "application/json",
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    } catch (error) {
+      return { error: `Couldn't reach the alerts API: ${(error as Error).message}` };
+    }
+
+    const data = (await res.json().catch(() => undefined)) as
+      | { error?: string; reason?: string }
+      | undefined;
+
+    if (res.status === 403) {
+      return {
+        error:
+          data?.reason === "plan"
+            ? "Email alerts aren't available on this plan. Tell the user that, and that watch fires still show in the dashboard."
+            : "Email alerts aren't enabled here. Tell the user that, and that watch fires still show in the dashboard.",
+      };
+    }
+    if (!res.ok) {
+      return { error: data?.error ?? `The alerts API failed (status ${res.status}).` };
+    }
+    return { data };
   }
 
   // Run-SHA pinning: ask the webapp for a snapshot pinned to a specific run's
@@ -1297,6 +1345,45 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           note: watch.note,
           watching: true,
         };
+      },
+    }),
+
+    // Watch alerts. Project-level subscriptions, so they authenticate as the user
+    // with the delegated token (the same lane as watch creation) — not the env JWT.
+    list_alerts: tool({
+      ...listAlertsSchema,
+      execute: async () => {
+        if (!hasAuth) return NO_AUTH;
+        const result = await alertsRequest("GET", "/api/v1/dashboard-agent/alerts");
+        if ("error" in result) return result;
+        const alerts = (result.data as { alerts?: unknown } | undefined)?.alerts;
+        return { alerts: Array.isArray(alerts) ? alerts : [] };
+      },
+    }),
+
+    create_alert: tool({
+      ...createAlertSchema,
+      execute: async ({ email }) => {
+        if (!hasAuth) return NO_AUTH;
+        const result = await alertsRequest("POST", "/api/v1/dashboard-agent/alerts", {
+          channel: "email",
+          ...(email ? { email } : {}),
+        });
+        if ("error" in result) return result;
+        return { created: true, alert: (result.data as { alert?: unknown } | undefined)?.alert };
+      },
+    }),
+
+    delete_alert: tool({
+      ...deleteAlertSchema,
+      execute: async ({ alertId }) => {
+        if (!hasAuth) return NO_AUTH;
+        const result = await alertsRequest(
+          "DELETE",
+          `/api/v1/dashboard-agent/alerts/${encodeURIComponent(alertId)}`
+        );
+        if ("error" in result) return result;
+        return { deleted: true, alertId };
       },
     }),
   };
