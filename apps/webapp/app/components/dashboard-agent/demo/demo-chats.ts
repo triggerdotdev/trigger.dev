@@ -795,7 +795,7 @@ const baseToolInFlight: DemoChat = {
   title: "How deep is the email queue?",
   flow: "base",
   summary:
-    "A tool row mid-call ('calling…') above a finished one. Click either row to expand its input/output.",
+    "A pending pill for the call still in flight, under a finished tool row. Click the finished row to expand its input/output.",
   banner: PROD_BANNER,
   activity: "working",
   lastMessageAt: "2026-07-27T10:26:00.000Z",
@@ -821,10 +821,12 @@ const baseToolInFlight: DemoChat = {
             { rows: [{ "count()": 4812 }] },
             "run-query-done"
           ),
+          // A real tool name, so the pending pill shows its real phrase rather
+          // than the unknown-tool fallback.
           pendingToolPart(
-            "get_queue_health",
+            "get_queue",
             { queue: DEMO_WORLD.queue, period: "1h" },
-            "get-queue-health-pending"
+            "get-queue-pending"
           ),
         ]),
       ],

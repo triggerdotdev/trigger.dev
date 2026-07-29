@@ -22,6 +22,7 @@
  *                         card (diagnosis, investigation, report, chart), a
  *                         callout, a chip row
  *   - `ChatProgress`    — a spinner and one line of progress
+ *   - `ChatPendingTool` — a tool call still in flight, as a compact pill
  *   - `ChatToolRow`     — a tool-call row, optionally with progress under it
  *   - `ChatNote`        — an inline system / interceptor note
  *   - `ChatWakeSlot`    — an unprompted turn: its banner and the narration under
@@ -65,6 +66,8 @@ const TURN_GAP = "space-y-4";
 const TURN_BODY_GAP = "space-y-2";
 /** Gap inside a single-line row (icon to text, button to button). */
 const ROW_GAP = "gap-2";
+/** Gap inside a chip (icon to label). Tighter than a row — same as a watch chip. */
+const CHIP_GAP = "gap-1.5";
 /** Rhythm inside one unit — a banner and the text it introduces. */
 const UNIT_GAP = "space-y-1.5";
 
@@ -199,6 +202,33 @@ export function ChatProgress({ children }: { children: React.ReactNode }) {
       {/* text-sm line box is 20px, the spinner 12px: 4px centres it on line one. */}
       <Spinner className="mt-1 size-3 shrink-0" />
       {children}
+    </div>
+  );
+}
+
+/**
+ * A tool call still in flight, as a compact pill: a spinner and one short phrase
+ * saying what the agent is doing.
+ *
+ * It replaces the tool row for the whole in-flight phase, so the transcript never
+ * shows a half-streamed blob of input JSON that then flips to a card. The pill is
+ * deliberately the smallest thing that fits the transcript's chip language (the
+ * watch chips are its sibling) — when the call lands, whatever the result renders
+ * as takes its place, and the jump is one line high.
+ */
+export function ChatPendingTool({ label }: { label: string }) {
+  const insetClass = useInsetClass();
+  return (
+    <div className={cn(insetClass, "flex min-w-0")}>
+      <span
+        className={cn(
+          "inline-flex h-6 min-w-0 items-center rounded-full border border-border-bright bg-background-bright px-2.5 text-xs text-text-dimmed",
+          CHIP_GAP
+        )}
+      >
+        <Spinner className="size-3 shrink-0" />
+        <span className="truncate">{label}</span>
+      </span>
     </div>
   );
 }

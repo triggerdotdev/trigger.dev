@@ -265,6 +265,37 @@ function MessageHarness({
   );
 }
 
+/**
+ * Every pending pill next to each other, one turn per in-flight tool.
+ *
+ * A real turn only ever has one call in flight, so this is a label sheet rather
+ * than a transcript: the phrasing has to hold up read as a set, and the two tools
+ * that used to stream the most input JSON before flipping to a card (`render_view`,
+ * `get_report`) have to look like every other wait. The last one is a tool the
+ * label map doesn't know, showing the `Running <name>` fallback.
+ */
+const PENDING_PILL_TOOLS: { tool: string; input: unknown }[] = [
+  { tool: "render_view", input: { blocks: [{ type: "diagnosis" }] } },
+  { tool: "get_report", input: { window: "24h" } },
+  { tool: "get_run", input: { runId: "run_demo" } },
+  { tool: "run_query", input: { query: "SELECT count() FROM task_runs" } },
+  { tool: "search_docs", input: { query: "concurrency limits" } },
+  { tool: "brand_new_tool", input: {} },
+];
+
+function PendingPillsHarness() {
+  const messages: UIMessage[] = PENDING_PILL_TOOLS.map(({ tool, input }) =>
+    demoFixtures.assistantMessage(`pending-${tool}`, [
+      demoFixtures.pendingToolPart(tool, input, `pending-${tool}`),
+    ])
+  );
+  return (
+    <div className="rounded-lg border border-grid-bright bg-background-bright">
+      <DashboardAgentMessages messages={messages} activity={null} />
+    </div>
+  );
+}
+
 /** The demo chart card's frame around an empty result set. */
 function EmptyChartCard() {
   return (
@@ -704,6 +735,7 @@ const STATES: Record<string, React.ReactNode> = {
   "messages-streaming-text": <MessageHarness chatId={demoId("base-streaming")} />,
   "messages-reasoning": <MessageHarness chatId={demoId("investigate-streaming")} />,
   "messages-tool-in-flight": <MessageHarness chatId={demoId("base-tool-in-flight")} />,
+  "messages-tool-pending-pills": <PendingPillsHarness />,
   "messages-tool-expanded": <MessageHarness chatId={demoId("base-tool-in-flight")} />,
   "messages-error-retry": <MessageHarness chatId={demoId("base-error-retry")} withError />,
   // Two turns only: the resumed chat's third turn is a live `chart` block, and

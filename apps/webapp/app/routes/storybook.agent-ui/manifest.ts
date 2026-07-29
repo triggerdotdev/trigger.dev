@@ -273,7 +273,16 @@ export const MANIFEST: GallerySection[] = [
     group: "messages",
   },
   { sectionId: "messages-reasoning", title: "Reasoning part", group: "messages" },
-  { sectionId: "messages-tool-in-flight", title: "Tool call in flight", group: "messages" },
+  {
+    sectionId: "messages-tool-in-flight",
+    title: "Tool call in flight — pending pill",
+    group: "messages",
+  },
+  {
+    sectionId: "messages-tool-pending-pills",
+    title: "Pending pills — the labels, including a card tool",
+    group: "messages",
+  },
   {
     sectionId: "messages-tool-expanded",
     title: "Tool call expanded on its output",

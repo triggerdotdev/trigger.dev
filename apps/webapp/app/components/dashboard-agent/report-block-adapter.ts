@@ -13,8 +13,8 @@
  * have different ids and therefore never collapse into one card.
  *
  * Every failure mode returns `null`. A malformed or half-streamed tool part must
- * degrade to "no card" (the caller then shows the raw tool row), never to a crash
- * or a card full of blanks.
+ * degrade to "no card" (the caller then shows the pending pill or the raw tool
+ * row), never to a crash or a card full of blanks.
  */
 import {
   VIEW_BLOCK_VERSION,
@@ -48,8 +48,8 @@ export function reportBlockFromToolPart(part: unknown): EnvelopedReportBlock | n
   const p = (part ?? {}) as MaybeToolPart;
 
   if (p.type !== REPORT_TOOL_PART_TYPE) return null;
-  // Only a finished call has a snapshot. `output-error` and the in-flight states
-  // stay as the generic tool row so the failure is visible.
+  // Only a finished call has a snapshot. The in-flight states fall back to the
+  // pending pill, `output-error` to the generic tool row so the failure is visible.
   if (p.state !== "output-available") return null;
   // Identity is the tool call's. Without it the block couldn't be keyed stably
   // across re-renders, so we'd rather render nothing than a card that remounts.

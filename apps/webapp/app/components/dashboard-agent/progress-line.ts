@@ -1,13 +1,13 @@
 /**
  * Which progress line the transcript shows.
  *
- * There are two candidates: a tool's own line ("Running render_view…", rendered
- * under the in-flight tool row) and the turn's generic activity ("Thinking…" /
- * "Working…"). Both were showing at once. The specific line always says more, so
- * it wins and the generic one stands down — exactly one status line at a time.
+ * There are two candidates: a tool's own line (the pending pill, "Rendering a
+ * card…") and the turn's generic activity ("Thinking…" / "Working…"). Both were
+ * showing at once. The specific line always says more, so it wins and the generic
+ * one stands down — exactly one status line at a time.
  */
 
-/** A tool call that hasn't produced output yet, so its row carries a spinner. */
+/** A tool call that hasn't produced output yet, so it shows as a pending pill. */
 export const IN_FLIGHT_TOOL_STATES = new Set(["input-streaming", "input-available"]);
 
 type ProgressMessage = { role?: string; parts?: ReadonlyArray<unknown> };

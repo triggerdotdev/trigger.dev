@@ -6,20 +6,20 @@ import { memo } from "react";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { renderPart, toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
-import { ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
 import { sameOriginPath } from "./navigate-target";
 import { hasToolProgressLine, IN_FLIGHT_TOOL_STATES } from "./progress-line";
 import { useTranscriptAutoScroll } from "./useTranscriptAutoScroll";
 import {
   ChatActionsRow,
   ChatCardSlot,
+  ChatPendingTool,
   ChatProgress,
   ChatText,
-  ChatToolRow,
   ChatTranscript,
   ChatTurn,
   ChatWakeSlot,
 } from "./chat-layout";
+import { toolPendingLabel } from "./tool-labels";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import type { ResolvedUri } from "./ReportView";
 import { ViewBlocks } from "./view-catalog";
@@ -85,8 +85,9 @@ function viewSpecFor(part: UIMessage["parts"][number]): { blocks: unknown[] } | 
  *   it retyped.
  *
  * Both replace the generic tool row: a rendered card already says everything the
- * raw JSON would. A `get_report` part that can't be adapted (still streaming, or
- * an error) returns null and keeps its tool row, so the failure stays visible.
+ * raw JSON would. A `get_report` part that can't be adapted returns null and
+ * falls through — to the pending pill while it is still streaming, to the tool row
+ * once it has failed, so the failure stays visible.
  */
 function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
   const spec = viewSpecFor(part);
@@ -105,9 +106,12 @@ function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
  * Everything the panel styles itself is handled here; the rest falls through to
  * the shared `renderPart` so agent output still looks the same across the app.
  * The differences: text is always the rendered markdown (no raw toggle) at the
- * dashboard's default size, and an in-flight tool row is static with the spinner
- * on a separate line. Citations are handled a level up, where a run of them can
- * be grouped into one row.
+ * dashboard's default size, and an in-flight tool call is a pending pill rather
+ * than a tool row streaming its input JSON — the input is the agent's business,
+ * and watching it arrive character by character only to have it replaced by a
+ * card is noise. Once the call lands, the part renders exactly as it always did.
+ * Citations are handled a level up, where a run of them can be grouped into one
+ * row.
  */
 function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
   const p = part as {
@@ -116,8 +120,6 @@ function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
     url?: string;
     title?: string;
     state?: string;
-    input?: unknown;
-    toolCallId?: string;
   };
   const type = part.type as string;
 
@@ -126,19 +128,7 @@ function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
   }
 
   if (type.startsWith("tool-") && IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) {
-    const toolName = type.slice(5);
-    return (
-      <ChatToolRow key={i}>
-        <ToolUseRow
-          tool={{
-            toolCallId: p.toolCallId ?? `tool-${i}`,
-            toolName,
-            inputJson: JSON.stringify(p.input ?? {}, null, 2),
-          }}
-        />
-        <ChatProgress>Running {toolName}…</ChatProgress>
-      </ChatToolRow>
-    );
+    return <ChatPendingTool key={i} label={`${toolPendingLabel(type.slice(5))}…`} />;
   }
 
   return renderPart(part, i);
