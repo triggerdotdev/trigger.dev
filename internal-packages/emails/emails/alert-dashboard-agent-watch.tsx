@@ -1,17 +1,21 @@
-import { Body, Container, Head, Html, Link, Preview, Text } from "@react-email/components";
+import {
+  Body,
+  Button,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Link,
+  Preview,
+  Section,
+  Tailwind,
+  Text,
+} from "@react-email/components";
 import React from "react";
 import { z } from "zod";
 import { Footer } from "./components/Footer";
 import { Image } from "./components/Image";
-import {
-  anchor,
-  container,
-  footerItalic,
-  h1,
-  main,
-  paragraphLight,
-  paragraphTight,
-} from "./components/styles";
+import { footerAnchor, footerItalic } from "./components/styles";
 
 export const AlertDashboardAgentWatchEmailSchema = z.object({
   email: z.literal("alert-dashboard-agent-watch"),
@@ -50,6 +54,17 @@ const previewDefaults: AlertDashboardAgentWatchEmailProps = {
   environment: "Production",
 };
 
+/** ISO timestamps read badly in prose, so shorten to `2026-07-29 12:00 UTC`. */
+function formatFiredAt(firedAt: string) {
+  const date = new Date(firedAt);
+
+  if (Number.isNaN(date.getTime())) {
+    return firedAt;
+  }
+
+  return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
 export default function Email(props: AlertDashboardAgentWatchEmailProps) {
   const {
     identity,
@@ -64,48 +79,57 @@ export default function Email(props: AlertDashboardAgentWatchEmailProps) {
     environment,
   } = { ...previewDefaults, ...props };
 
+  const details = [identity, ...facts.slice(0, 3).map((fact) => `${fact.label}: ${fact.value}`)];
+
   return (
     <Html>
       <Head />
       <Preview>{`${organization}: your watch fired — ${identity}`}</Preview>
-      <Body style={main}>
-        <Container style={container}>
-          <Text style={h1}>Your watch fired: {identity}</Text>
+      <Tailwind>
+        <Body className="bg-[#15171A] my-auto mx-auto font-sans">
+          <Container className="my-[40px] mx-auto p-[20px] max-w-[600px]">
+            <Section className="mt-[32px]">
+              <Image
+                path="/emails/logo-mono.png"
+                width="120"
+                height="22"
+                alt="Trigger.dev"
+                className="my-0"
+              />
+            </Section>
+            <Section>
+              <Heading className="text-[#D7D9DD] text-[30px] font-normal leading-[35px] p-0 my-[30px] mx-0">
+                Your watch fired: <strong className="text-[#A8FF53]">{kind}</strong>
+              </Heading>
+              <Text className="text-[#D7D9DD] text-[16px] leading-[24px]">
+                I was keeping an eye on {project} ({environment}) for you, and this just fired at{" "}
+                {formatFiredAt(firedAt)}. Your note on this watch: “{note}”.
+              </Text>
+              <Text className="text-[#878C99] text-[14px] leading-[20px]">
+                {details.join(" · ")}
+              </Text>
+            </Section>
+            <Section className="mt-[32px] mb-[32px]">
+              <Button
+                href={dashboardLink}
+                className="bg-[#A8FF53] rounded text-[#121317] text-[16px] no-underline text-center px-4 py-3"
+              >
+                Open the dashboard
+              </Button>
+            </Section>
 
-          <Text style={paragraphLight}>You asked to be told when: {note}</Text>
+            {unsubscribeLink && (
+              <Text style={footerItalic}>
+                <Link href={unsubscribeLink} target="_blank" style={footerAnchor}>
+                  Turn off these alerts
+                </Link>
+              </Text>
+            )}
 
-          <Text style={paragraphTight}>Organization: {organization}</Text>
-          <Text style={paragraphTight}>Project: {project}</Text>
-          <Text style={paragraphTight}>Environment: {environment}</Text>
-          <Text style={paragraphTight}>Watching: {kind}</Text>
-          <Text style={paragraphTight}>Fired at: {firedAt}</Text>
-
-          {facts.map((fact) => (
-            <Text key={fact.label} style={paragraphTight}>
-              {fact.label}: {fact.value}
-            </Text>
-          ))}
-
-          <Link
-            href={dashboardLink}
-            target="_blank"
-            style={{ ...anchor, display: "block", marginBottom: "50px" }}
-          >
-            Open the dashboard
-          </Link>
-
-          {unsubscribeLink && (
-            <Text style={footerItalic}>
-              <Link href={unsubscribeLink} target="_blank">
-                Turn off these alerts
-              </Link>
-            </Text>
-          )}
-
-          <Image path="/emails/logo-mono.png" width="120" height="22" alt="Trigger.dev" />
-          <Footer />
-        </Container>
-      </Body>
+            <Footer />
+          </Container>
+        </Body>
+      </Tailwind>
     </Html>
   );
 }
