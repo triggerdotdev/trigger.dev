@@ -133,13 +133,12 @@ export class BatchSystem {
         return;
       }
 
-      const enqueuedCount = (batch.successfulRunCount ?? 0) + (batch.failedRunCount ?? 0);
       const error: TaskRunError = {
         type: "STRING_ERROR",
         raw:
-          `Batch ${batch.friendlyId} was never fully created: only ${enqueuedCount} of ` +
-          `${batch.expectedCount} items were received before it timed out, so it can never ` +
-          `complete. batchTriggerAndWait failed rather than waiting forever.`,
+          `Batch ${batch.friendlyId} was never fully created: its ${batch.expectedCount} ` +
+          `items could not be streamed before it timed out, so the batch can never complete. ` +
+          `batchTriggerAndWait failed rather than waiting forever.`,
       };
 
       await this.waitpointSystem.completeWaitpoint({
@@ -152,7 +151,6 @@ export class BatchSystem {
       this.$.logger.warn("expireBatch: aborted an unsealed batch and resumed its parent", {
         batchId,
         waitpointId: waitpoint.id,
-        enqueuedCount,
         expectedCount: batch.expectedCount,
       });
     });
