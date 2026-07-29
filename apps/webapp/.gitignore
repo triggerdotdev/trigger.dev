@@ -24,3 +24,5 @@ storybook-static
 /prisma/seed.js
 /prisma/populate.js
 .memory-snapshots
+# Heartbeat story mode for seed-agent-examples (degraded | calm)
+.agent-examples-heartbeat-mode
