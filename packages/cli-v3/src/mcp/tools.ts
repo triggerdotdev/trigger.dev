@@ -12,6 +12,7 @@ import { startDevServerTool, stopDevServerTool, devServerStatusTool } from "./to
 import { listPreviewBranchesTool } from "./tools/previewBranches.js";
 import { listProfilesTool, switchProfileTool, whoamiTool } from "./tools/profiles.js";
 import { getQuerySchemaTool, queryTool } from "./tools/query.js";
+import { getReportTool } from "./tools/report.js";
 import {
   cancelRunTool,
   getRunDetailsTool,
@@ -89,6 +90,7 @@ export function registerTools(context: McpContext) {
     startAgentChatTool,
     sendAgentMessageTool,
     closeAgentChatTool,
+    getReportTool,
   ];
 
   for (const tool of tools) {
@@ -112,7 +114,9 @@ export function registerTools(context: McpContext) {
       },
       async (input, extra) => {
         try {
-          return tool.handler(input, { ...extra, ctx: context });
+          // await so a rejected async handler (e.g. a network failure in get_report) is caught
+          // here and wrapped, not surfaced as an unhandled rejection.
+          return await tool.handler(input, { ...extra, ctx: context });
         } catch (error) {
           return respondWithError(error);
         }

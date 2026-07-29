@@ -7,11 +7,17 @@ import {
   type TSQLQueryResult,
 } from "@internal/clickhouse";
 import type { CustomerQuerySource } from "@trigger.dev/database";
-import type { TableSchema, WhereClauseCondition } from "@internal/tsql";
+import {
+  calculateTimeBucketInterval,
+  type TableSchema,
+  type TimeBucketInterval,
+  type WhereClauseCondition,
+} from "@internal/tsql";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { clickhouseFactory } from "./clickhouse/clickhouseFactoryInstance.server";
+import type { ClientType } from "./clickhouse/clickhouseFactory.server";
 import {
   queryConcurrencyLimiter,
   DEFAULT_ORG_CONCURRENCY_LIMIT,
@@ -110,6 +116,66 @@ export type ExecuteQueryResult<T> =
     }
   | { success: false; error: Error };
 
+/** Own-property flag tagged on the transient "query concurrency exceeded" rejection (retryable). */
+const QUERY_CONCURRENCY_REJECTION_FLAG = "__queryConcurrencyRejection";
+
+/** True for the transient concurrency-limit rejection — a stable signal callers can retry on. */
+export function isQueryConcurrencyRejection(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as Record<string, unknown>)[QUERY_CONCURRENCY_REJECTION_FLAG] === true
+  );
+}
+
+const INTERVAL_UNIT_SECONDS: Record<TimeBucketInterval["unit"], number> = {
+  SECOND: 1,
+  MINUTE: 60,
+  HOUR: 3_600,
+  DAY: 86_400,
+  WEEK: 604_800,
+  MONTH: 2_592_000,
+};
+
+function floorToSeconds(date: Date, alignSeconds: number): Date {
+  const ms = alignSeconds * 1000;
+  return new Date(Math.floor(date.getTime() / ms) * ms);
+}
+
+/**
+ * ClickHouse client a table's reads run on. A table can name its own pool (`queryClient`) so a
+ * heavy read family lands on its own service; everything else shares the query pool.
+ */
+function resolveQueryClientType(schema: TableSchema | undefined): ClientType {
+  switch (schema?.queryClient) {
+    case "queueMetrics":
+      return "queueMetrics";
+    default:
+      return "query";
+  }
+}
+
+/**
+ * Swap a table for one of its rollups when the query's bucket interval is at least the
+ * rollup's granularity. The rollup has identical logical columns, so only the physical
+ * table (and therefore rows read) changes.
+ */
+function resolveRollup(schema: TableSchema, timeRange: { from: Date; to: Date }): TableSchema {
+  if (!schema.rollups || schema.rollups.length === 0) {
+    return schema;
+  }
+  const interval = calculateTimeBucketInterval(
+    timeRange.from,
+    timeRange.to,
+    schema.timeBucketThresholds
+  );
+  const intervalSeconds = interval.value * INTERVAL_UNIT_SECONDS[interval.unit];
+  const best = [...schema.rollups]
+    .sort((a, b) => b.minIntervalSeconds - a.minIntervalSeconds)
+    .find((r) => r.minIntervalSeconds <= intervalSeconds);
+  return best ? { ...schema, clickhouseName: best.clickhouseName } : schema;
+}
+
 export async function getDefaultPeriod(organizationId: string): Promise<string> {
   const idealDefaultPeriodDays = 7;
   const maxQueryPeriod = await getLimit(organizationId, "queryPeriodDays", 30);
@@ -164,7 +230,11 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       acquireResult.reason === "key_limit"
         ? `You've exceeded your query concurrency of ${orgLimit} for this project. Please try again later.`
         : "We're experiencing a lot of queries at the moment. Please try again later.";
-    return { success: false, error: new QueryError(errorMessage, { query: options.query }) };
+    const error = new QueryError(errorMessage, { query: options.query });
+    // Stable marker so callers can retry on a transient concurrency rejection without
+    // matching the message text (which is free to change).
+    Object.assign(error, { [QUERY_CONCURRENCY_REJECTION_FLAG]: true });
+    return { success: false, error };
   }
 
   // Detect which table the query targets to determine the time column
@@ -183,6 +253,14 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     defaultPeriod,
   });
 
+  // Align the time bounds so repeated auto-refresh queries produce identical query
+  // params and can share ClickHouse query-cache entries (params are part of the key).
+  const alignSeconds = matchedSchema?.queryCache?.alignSeconds;
+  if (alignSeconds) {
+    if (timeFilter.from) timeFilter.from = floorToSeconds(timeFilter.from, alignSeconds);
+    if (timeFilter.to) timeFilter.to = floorToSeconds(timeFilter.to, alignSeconds);
+  }
+
   // Calculate the effective "from" date the user is requesting (for period clipping check)
   // This is null only when the user specifies just a "to" date (rare case)
   let requestedFromDate: Date | null = null;
@@ -192,6 +270,9 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     // Period specified (or default) - calculate from now
     const periodMs = parse(timeFilter.period ?? defaultPeriod) ?? 7 * 24 * 60 * 60 * 1000;
     requestedFromDate = new Date(Date.now() - periodMs);
+    if (alignSeconds) {
+      requestedFromDate = floorToSeconds(requestedFromDate, alignSeconds);
+    }
   }
 
   // Build the fallback WHERE condition based on what the user specified
@@ -207,7 +288,10 @@ export async function executeQuery<TOut extends z.ZodSchema>(
   }
 
   const maxQueryPeriod = await getLimit(organizationId, "queryPeriodDays", 30);
-  const maxQueryPeriodDate = new Date(Date.now() - maxQueryPeriod * 24 * 60 * 60 * 1000);
+  let maxQueryPeriodDate = new Date(Date.now() - maxQueryPeriod * 24 * 60 * 60 * 1000);
+  if (alignSeconds) {
+    maxQueryPeriodDate = floorToSeconds(maxQueryPeriodDate, alignSeconds);
+  }
 
   // Check if the requested time period exceeds the plan limit
   const periodClipped = requestedFromDate !== null && requestedFromDate < maxQueryPeriodDate;
@@ -255,6 +339,10 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     to: to ?? undefined,
     defaultPeriod,
   });
+  if (alignSeconds) {
+    timeRange.from = floorToSeconds(timeRange.from, alignSeconds);
+    timeRange.to = floorToSeconds(timeRange.to, alignSeconds);
+  }
 
   try {
     // Build field mappings for project_ref → project_id and environment_id → slug translation
@@ -275,12 +363,21 @@ export async function executeQuery<TOut extends z.ZodSchema>(
 
     const queryClickhouse = await clickhouseFactory.getClickhouseForOrganization(
       organizationId,
-      "query"
+      resolveQueryClientType(matchedSchema)
     );
+    // Serve coarse-bucket queries from the table's rollup when one qualifies.
+    const effectiveSchemas = matchedSchema?.rollups
+      ? querySchemas.map((s) => (s === matchedSchema ? resolveRollup(s, timeRange) : s))
+      : querySchemas;
+
+    const queryCacheSettings: ClickHouseSettings = matchedSchema?.queryCache
+      ? { use_query_cache: 1, query_cache_ttl: matchedSchema.queryCache.ttlSeconds }
+      : {};
+
     const result = await executeTSQL(queryClickhouse.reader, {
       ...baseOptions,
       schema: z.record(z.any()),
-      tableSchema: querySchemas,
+      tableSchema: effectiveSchemas,
       transformValues: true,
       enforcedWhereClause,
       fieldMappings,
@@ -290,6 +387,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       timeRange,
       clickhouseSettings: {
         ...getDefaultClickhouseSettings(),
+        ...queryCacheSettings,
         ...baseOptions.clickhouseSettings, // Allow caller overrides if needed
       },
       querySettings: {

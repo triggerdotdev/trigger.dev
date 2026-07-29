@@ -55,6 +55,7 @@
     "@internal/dashboard-agent": "workspace:*",
     "@internal/dashboard-agent-db": "workspace:*",
     "@internal/llm-model-catalog": "workspace:*",
+    "@internal/metrics-pipeline": "workspace:*",
     "@internal/redis": "workspace:*",
     "@internal/run-engine": "workspace:*",
     "@internal/run-ops-database": "workspace:*",

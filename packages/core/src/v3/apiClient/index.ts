@@ -1997,6 +1997,39 @@ export class ApiClient {
     );
   }
 
+  /**
+   * Fetch a server-rendered report (text + sparkline). Thin pass-through — the string
+   * is ready to display. `format`: "markdown" (default, agents/chat) or "ansi" (terminal).
+   */
+  async getReport(
+    key: string,
+    options?: { period?: string; format?: "markdown" | "ansi" }
+  ): Promise<string> {
+    const searchParams = new URLSearchParams({ format: options?.format ?? "markdown" });
+    if (options?.period) {
+      searchParams.set("period", options.period);
+    }
+
+    const response = await fetch(
+      `${this.baseUrl}/api/v1/reports/${encodeURIComponent(key)}?${searchParams.toString()}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      }
+    );
+
+    if (!response.ok) {
+      const bodySnippet = await readBodySnippet(response);
+      throw new Error(
+        `Failed to fetch report "${key}": ${response.status} ${response.statusText}${
+          bodySnippet ? ` — ${bodySnippet}` : ""
+        }`
+      );
+    }
+
+    return response.text();
+  }
+
   #getHeaders(spanParentAsLink: boolean, additionalHeaders?: Record<string, string | undefined>) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -2472,6 +2505,22 @@ function shouldRetryStreamBatchItems(
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Best-effort read of a (likely error) response body for inclusion in a thrown Error.
+ * Never throws, and truncates so we don't dump a huge HTML page into an error message.
+ */
+async function readBodySnippet(response: Response, maxLength = 500): Promise<string> {
+  try {
+    const text = (await response.text()).trim();
+    if (!text) {
+      return "";
+    }
+    return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+  } catch {
+    return "";
+  }
 }
 
 /**

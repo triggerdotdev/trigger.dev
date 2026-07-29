@@ -23,6 +23,7 @@ export const FEATURE_FLAG = {
   // Grace-linger stamp carried alongside runOpsMintKind on flip. See mintFlipGrace.ts.
   runOpsMintKindPrev: "runOpsMintKindPrev",
   runOpsMintKindFlippedAt: "runOpsMintKindFlippedAt",
+  queueMetricsUiEnabled: "queueMetricsUiEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -68,6 +69,9 @@ export const FeatureFlagCatalog = {
   // by stampMintKindFlip on a genuine flip. Display-only (see ORG_LOCKED_FLAGS).
   [FEATURE_FLAG.runOpsMintKindPrev]: z.enum(["cuid", "runOpsId"]),
   [FEATURE_FLAG.runOpsMintKindFlippedAt]: z.string().datetime(),
+  // Per-org access to the Queue Metrics dashboard UI (view only; emission is global and
+  // separate). Off unless enabled for the org.
+  [FEATURE_FLAG.queueMetricsUiEnabled]: z.coerce.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

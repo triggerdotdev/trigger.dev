@@ -368,6 +368,49 @@ export class CliApiClient {
     );
   }
 
+  /**
+   * Fetch a server-rendered report (text + sparkline). Thin pass-through. `format`:
+   * "markdown" (agents/chat) or "ansi" (terminal). Uses this client's env API key.
+   */
+  async getReport(
+    key: string,
+    options?: { period?: string; format?: "markdown" | "ansi" }
+  ): Promise<string> {
+    if (!this.accessToken) {
+      throw new Error("getReport: No access token");
+    }
+
+    const searchParams = new URLSearchParams({ format: options?.format ?? "markdown" });
+    if (options?.period) {
+      searchParams.set("period", options.period);
+    }
+
+    const response = await fetch(
+      `${this.apiURL}/api/v1/reports/${encodeURIComponent(key)}?${searchParams.toString()}`,
+      {
+        method: "GET",
+        headers: this.getHeaders(),
+      }
+    );
+
+    if (!response.ok) {
+      let bodySnippet = "";
+      try {
+        const text = (await response.text()).trim();
+        bodySnippet = text.length > 500 ? `${text.slice(0, 500)}…` : text;
+      } catch {
+        // best-effort; ignore
+      }
+      throw new Error(
+        `Failed to fetch report "${key}": ${response.status} ${response.statusText}${
+          bodySnippet ? ` — ${bodySnippet}` : ""
+        }`
+      );
+    }
+
+    return response.text();
+  }
+
   async importEnvVars(
     projectRef: string,
     slug: string,

@@ -125,6 +125,9 @@ export class PrinterContext {
    */
   readonly timeRange?: TimeRange;
 
+  /** When true, time-bucketed queries emit rows for empty buckets (opt-in). */
+  readonly fillGaps?: boolean;
+
   constructor(
     /** Schema registry containing allowed tables and columns */
     public readonly schema: SchemaRegistry,
@@ -138,13 +141,16 @@ export class PrinterContext {
      */
     enforcedWhereClause: Record<string, WhereClauseCondition> = {},
     /** Time range for timeBucket() interval calculation */
-    timeRange?: TimeRange
+    timeRange?: TimeRange,
+    /** Opt-in gap-fill for time-bucketed queries */
+    fillGaps?: boolean
   ) {
     // Initialize with default settings
     this.settings = { ...DEFAULT_QUERY_SETTINGS, ...settings };
     this.fieldMappings = fieldMappings;
     this.enforcedWhereClause = enforcedWhereClause;
     this.timeRange = timeRange;
+    this.fillGaps = fillGaps;
   }
 
   /**
@@ -225,7 +231,8 @@ export class PrinterContext {
       this.settings,
       this.fieldMappings,
       this.enforcedWhereClause,
-      this.timeRange
+      this.timeRange,
+      this.fillGaps
     );
     // Share the same values map so parameters are unified
     child.values = this.values;
@@ -277,6 +284,8 @@ export interface PrinterContextOptions {
    * When provided, `timeBucket()` uses this to determine the appropriate bucket size.
    */
   timeRange?: TimeRange;
+  /** When true, time-bucketed queries emit rows for empty buckets (opt-in). */
+  fillGaps?: boolean;
 }
 
 /**
@@ -288,6 +297,7 @@ export function createPrinterContext(options: PrinterContextOptions): PrinterCon
     options.settings,
     options.fieldMappings,
     options.enforcedWhereClause,
-    options.timeRange
+    options.timeRange,
+    options.fillGaps
   );
 }
