@@ -2,9 +2,14 @@ import {
   agentIntentSchema,
   formatTriggerUri,
   investigationBlockSchema,
+  isTriggerUri,
   VIEW_BLOCK_VERSION,
   type AgentPageContext,
-  type InvestigationBlockBody,
+  type Evidence,
+  type EvidenceRef,
+  type InvestigationBlockBodyInput,
+  type InvestigationState,
+  type InvestigationStateInput,
   type ParsedTriggerUri,
   type ViewBlockInput,
 } from "@internal/dashboard-agent-contracts";
@@ -558,6 +563,83 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
    * bound server-side, not by the model), so a stale or hallucinated id fails as
    * `not_found` / `context_mismatch` with nothing written.
    */
+  /**
+   * Build the canonical `trigger://` URI for one model-cited evidence ref.
+   *
+   * The model cites resources by the bare ids the read tools returned (it can't
+   * construct URIs — the grammar embeds the environment id, which it never
+   * sees). A ref that is already a full trigger:// URI passes through. A ref
+   * that can't be resolved (a kind whose URI needs parts the model doesn't
+   * have, like a span or a source location) returns null and the item is
+   * dropped — a card with one citation fewer beats no card at all.
+   */
+  function canonicalizeEvidence(
+    items: EvidenceRef[],
+    scope: { projectRef: string; environmentId: string }
+  ): Evidence[] {
+    const out: Evidence[] = [];
+    for (const item of items) {
+      const ref = item.uri.trim();
+      if (isTriggerUri(ref)) {
+        out.push({ ...item, uri: ref });
+        continue;
+      }
+      const base = { projectRef: scope.projectRef, environmentId: scope.environmentId };
+      let parsed: ParsedTriggerUri | undefined;
+      switch (item.kind) {
+        case "run":
+          parsed = { ...base, kind: "run", runId: ref };
+          break;
+        case "error":
+          parsed = { ...base, kind: "error", fingerprint: ref };
+          break;
+        case "queue":
+          parsed = { ...base, kind: "queue", name: ref };
+          break;
+        case "deployment":
+          parsed = { ...base, kind: "deployment", version: ref };
+          break;
+        case "report":
+          parsed = { ...base, kind: "report", key: ref };
+          break;
+        case "investigation":
+          parsed = { ...base, kind: "investigation", investigationId: ref };
+          break;
+        case "runs":
+          parsed = { ...base, kind: "runs" };
+          break;
+        // span needs a runId + spanId pair and source needs a commit sha —
+        // neither is expressible as one bare id, so only a full URI works.
+        case "span":
+        case "source":
+          break;
+      }
+      if (!parsed) {
+        console.warn("dropping investigation evidence with unresolvable uri", {
+          kind: item.kind,
+          uri: ref,
+        });
+        continue;
+      }
+      out.push({ ...item, uri: formatTriggerUri(parsed) });
+    }
+    return out;
+  }
+
+  function canonicalizeInvestigationState(
+    state: InvestigationStateInput,
+    scope: { projectRef: string; environmentId: string }
+  ): InvestigationState {
+    return {
+      ...state,
+      evidence: canonicalizeEvidence(state.evidence, scope),
+      hypotheses: state.hypotheses.map((hypothesis) => ({
+        ...hypothesis,
+        evidence: canonicalizeEvidence(hypothesis.evidence, scope),
+      })),
+    };
+  }
+
   async function renderInvestigations(blocks: ViewBlockInput[], continueId?: string) {
     if (!blocks.some((block) => block.type === "investigation")) return { blocks };
 
@@ -580,6 +662,13 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         continue;
       }
 
+      // The model cites evidence by bare ids; the canonical trigger:// URIs are
+      // built here, before anything is stored or emitted.
+      const state = canonicalizeInvestigationState(
+        (block as InvestigationBlockBodyInput).investigation,
+        { projectRef, environmentId: ctx.environmentId }
+      );
+
       // Tools return {error}, never throw — and a storage failure's message can
       // carry the full SQL text, which must never reach the transcript.
       let result: Awaited<ReturnType<InvestigationsCapability["upsert"]>>;
@@ -588,7 +677,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           id: currentInvestigationId ?? continueId,
           projectRef,
           environmentRef: ctx.environmentId,
-          state: (block as InvestigationBlockBody).investigation,
+          state,
         });
       } catch (error) {
         console.error("investigation upsert failed", error);
@@ -615,6 +704,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
       const parsed = investigationBlockSchema.safeParse({
         ...block,
+        investigation: state,
         id: result.id,
         revision: result.revision,
         version: VIEW_BLOCK_VERSION,

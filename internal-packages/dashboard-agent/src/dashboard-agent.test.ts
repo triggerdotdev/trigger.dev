@@ -750,6 +750,41 @@ describe("buildDashboardAgentTools", () => {
     expect(output.blocks[0].investigation.title).toBe(investigationState.title);
   });
 
+  it("render_view canonicalizes bare evidence ids into trigger:// URIs and drops unresolvable ones", async () => {
+    const { capability, upserts } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const output = await renderInvestigation(tools, {
+      ...investigationState,
+      hypotheses: [
+        {
+          ...investigationState.hypotheses[0]!,
+          evidence: [
+            { kind: "error", uri: "error_c4b4a797397a9c43", label: "the error group" },
+            { kind: "deployment", uri: "20260726.4", label: "the deploy before the failures" },
+          ],
+        },
+      ],
+      evidence: [
+        // Already canonical — passes through untouched.
+        ...investigationState.evidence,
+        // A span can't be built from one bare id — dropped, not failed.
+        { kind: "span", uri: "span_123", label: "the failing span" },
+      ],
+    });
+
+    expect(output.error).toBeUndefined();
+    const investigation = output.blocks[0].investigation;
+    expect(investigation.hypotheses[0].evidence.map((e: { uri: string }) => e.uri)).toEqual([
+      "trigger://proj_abc/env_abc/error/error_c4b4a797397a9c43",
+      "trigger://proj_abc/env_abc/deployment/20260726.4",
+    ]);
+    expect(investigation.evidence).toHaveLength(1);
+    expect(investigation.evidence[0].uri).toBe("trigger://proj_abc/env_abc/run/run_abc123");
+    // The store received the canonical form, not the bare ids.
+    expect(JSON.stringify(upserts[0])).not.toContain('"uri":"error_c4b4a797397a9c43"');
+  });
+
   it("render_view revises the same investigation on the next render", async () => {
     const { capability, rows } = fakeInvestigations();
     const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });

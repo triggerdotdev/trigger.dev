@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   VIEW_BLOCK_VERSION,
   investigationBlockSchema,
+  investigationStateSchema,
   isRevisableBlock,
   legacyViewBlockSchema,
   parseStoredViewBlock,
@@ -373,14 +374,23 @@ describe("investigation block", () => {
     ).toBe(true);
   });
 
-  it("rejects evidence that doesn't point at a trigger:// resource", () => {
+  it("the model-facing input accepts bare resource ids; the strict schema still demands trigger:// URIs", () => {
+    // Input boundary: the model cites by bare id (it can't build the URI — the
+    // grammar embeds the environment id); the executor canonicalizes.
     expect(
       viewBlockInputSchema.safeParse({
         type: "investigation",
         investigation: {
           ...concludedInvestigation,
-          evidence: [{ kind: "run", uri: "https://example.com/run", label: "a run" }],
+          evidence: [{ kind: "run", uri: "run_abc123", label: "a run" }],
         },
+      }).success
+    ).toBe(true);
+    // Persist/emit boundary: anything that isn't a canonical URI stays rejected.
+    expect(
+      investigationStateSchema.safeParse({
+        ...concludedInvestigation,
+        evidence: [{ kind: "run", uri: "run_abc123", label: "a run" }],
       }).success
     ).toBe(false);
   });

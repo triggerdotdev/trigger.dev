@@ -26,7 +26,7 @@
  * `id` is a **non-revisable** block: it can never be replaced by a later revision
  * and is rendered in transcript order.
  */
-import { evidenceSchema } from "./evidence.js";
+import { evidenceRefSchema, evidenceSchema } from "./evidence.js";
 import { triggerUriSchema } from "./trigger-uri.js";
 import { z } from "zod";
 
@@ -399,31 +399,41 @@ export const investigationSeveritySchema = z.enum(["info", "warn", "crit"]);
 /** `testing` is live; the other two are terminal. */
 export const hypothesisVerdictSchema = z.enum(["testing", "validated", "invalidated"]);
 
-export const investigationHypothesisSchema = z
-  .object({
-    id: z
-      .string()
-      .describe("A stable id for this hypothesis, so it keeps its place across revisions."),
-    statement: z.string().describe("The claim, as one falsifiable sentence."),
-    verdict: hypothesisVerdictSchema.describe(
-      "Where this hypothesis stands. `testing` while you're still working it."
-    ),
-    finding: z
-      .string()
-      .optional()
-      .describe("Why the verdict, in one sentence. Required once the verdict is `validated`."),
-    evidence: z.array(evidenceSchema).default([]).describe("The citations that settled it."),
-  })
-  .superRefine((hypothesis, ctx) => {
-    // A validated hypothesis with no finding is an assertion, not a conclusion.
-    if (hypothesis.verdict === "validated" && !hypothesis.finding?.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["finding"],
-        message: "A validated hypothesis must say what settled it (`finding`).",
-      });
-    }
-  });
+// The hypothesis and state schemas exist in two variants that differ only in
+// their evidence element: strict (`evidenceSchema`, canonical trigger:// URIs —
+// persisted and rendered) and input (`evidenceRefSchema`, bare resource ids —
+// what the model writes; the executor builds the URIs). Parametrized so the two
+// can never drift apart.
+const investigationHypothesisSchemaWith = <T extends z.ZodTypeAny>(evidence: T) =>
+  z
+    .object({
+      id: z
+        .string()
+        .describe("A stable id for this hypothesis, so it keeps its place across revisions."),
+      statement: z.string().describe("The claim, as one falsifiable sentence."),
+      verdict: hypothesisVerdictSchema.describe(
+        "Where this hypothesis stands. `testing` while you're still working it."
+      ),
+      finding: z
+        .string()
+        .optional()
+        .describe("Why the verdict, in one sentence. Required once the verdict is `validated`."),
+      evidence: z.array(evidence).default([]).describe("The citations that settled it."),
+    })
+    .superRefine((hypothesis, ctx) => {
+      // A validated hypothesis with no finding is an assertion, not a conclusion.
+      if (hypothesis.verdict === "validated" && !hypothesis.finding?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["finding"],
+          message: "A validated hypothesis must say what settled it (`finding`).",
+        });
+      }
+    });
+
+export const investigationHypothesisSchema = investigationHypothesisSchemaWith(evidenceSchema);
+export const investigationHypothesisInputSchema =
+  investigationHypothesisSchemaWith(evidenceRefSchema);
 
 /**
  * A caveat qualifies the whole card. `dirty_commit` is the one v1 case: the
@@ -435,80 +445,103 @@ export const investigationCaveatSchema = z.object({
   message: z.string(),
 });
 
-export const investigationStateSchema = z
-  .object({
-    outcome: investigationOutcomeSchema.describe(
-      "`in_progress` while testing, `concluded` when there's a cause and a fix, `inconclusive` when the evidence ran out."
-    ),
-    severity: investigationSeveritySchema.describe("How bad it is."),
-    confidence: z
-      .enum(["high", "medium", "low"])
-      .describe("How much the evidence supports this. Be honest."),
-    runId: z.string().optional().describe("The run under investigation, e.g. run_abc123."),
-    title: z
-      .string()
-      .describe("Short headline, e.g. 'send-order-receipt is failing on every retry'."),
-    headline: z
-      .string()
-      .describe(
-        "The collapsed view's first paragraph: concluded — severity and cause in a sentence or two; otherwise what you've established so far."
+const investigationStateSchemaWith = <H extends z.ZodTypeAny, E extends z.ZodTypeAny>(
+  hypothesis: H,
+  evidence: E
+) =>
+  z
+    .object({
+      outcome: investigationOutcomeSchema.describe(
+        "`in_progress` while testing, `concluded` when there's a cause and a fix, `inconclusive` when the evidence ran out."
       ),
-    remediation: z
-      .string()
-      .optional()
-      .describe("How to fix it. ONLY when the outcome is `concluded` — never alongside checkNext."),
-    checkNext: z
-      .array(z.string())
-      .optional()
-      .describe(
-        "What the user should check, most useful first. ONLY when the outcome is `inconclusive` — never invent a fix instead."
-      ),
-    progress: z
-      .string()
-      .optional()
-      .describe(
-        "What you're doing right now, e.g. 'Reading the run's spans'. Only while in_progress."
-      ),
-    hypotheses: z
-      .array(investigationHypothesisSchema)
-      .default([])
-      .describe("The hypotheses you posed, including the ones you ruled out."),
-    evidence: z
-      .array(evidenceSchema)
-      .default([])
-      .describe("Citations backing the headline itself, beyond the per-hypothesis ones."),
-    caveat: investigationCaveatSchema.optional().describe("A hedge that qualifies the whole card."),
-    /** Optional timestamps for the record. The card doesn't render them. */
-    startedAt: z.string().optional(),
-    updatedAt: z.string().optional(),
-  })
-  .superRefine((investigation, ctx) => {
-    // Remediation XOR checkNext, decided by the outcome: a concluded
-    // investigation offers a fix, an inconclusive one offers what to check, and
-    // neither is allowed to borrow the other's ending.
-    if (investigation.remediation !== undefined && investigation.outcome !== "concluded") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["remediation"],
-        message: "Only a concluded investigation can offer a fix.",
-      });
-    }
-    if (
-      investigation.checkNext !== undefined &&
-      investigation.checkNext.length > 0 &&
-      investigation.outcome !== "inconclusive"
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["checkNext"],
-        message: "`checkNext` belongs to an inconclusive investigation.",
-      });
-    }
-  });
+      severity: investigationSeveritySchema.describe("How bad it is."),
+      confidence: z
+        .enum(["high", "medium", "low"])
+        .describe("How much the evidence supports this. Be honest."),
+      runId: z.string().optional().describe("The run under investigation, e.g. run_abc123."),
+      title: z
+        .string()
+        .describe("Short headline, e.g. 'send-order-receipt is failing on every retry'."),
+      headline: z
+        .string()
+        .describe(
+          "The collapsed view's first paragraph: concluded — severity and cause in a sentence or two; otherwise what you've established so far."
+        ),
+      remediation: z
+        .string()
+        .optional()
+        .describe(
+          "How to fix it. ONLY when the outcome is `concluded` — never alongside checkNext."
+        ),
+      checkNext: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "What the user should check, most useful first. ONLY when the outcome is `inconclusive` — never invent a fix instead."
+        ),
+      progress: z
+        .string()
+        .optional()
+        .describe(
+          "What you're doing right now, e.g. 'Reading the run's spans'. Only while in_progress."
+        ),
+      hypotheses: z
+        .array(hypothesis)
+        .default([])
+        .describe("The hypotheses you posed, including the ones you ruled out."),
+      evidence: z
+        .array(evidence)
+        .default([])
+        .describe("Citations backing the headline itself, beyond the per-hypothesis ones."),
+      caveat: investigationCaveatSchema
+        .optional()
+        .describe("A hedge that qualifies the whole card."),
+      /** Optional timestamps for the record. The card doesn't render them. */
+      startedAt: z.string().optional(),
+      updatedAt: z.string().optional(),
+    })
+    .superRefine((investigation, ctx) => {
+      // Remediation XOR checkNext, decided by the outcome: a concluded
+      // investigation offers a fix, an inconclusive one offers what to check, and
+      // neither is allowed to borrow the other's ending.
+      if (investigation.remediation !== undefined && investigation.outcome !== "concluded") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["remediation"],
+          message: "Only a concluded investigation can offer a fix.",
+        });
+      }
+      if (
+        investigation.checkNext !== undefined &&
+        investigation.checkNext.length > 0 &&
+        investigation.outcome !== "inconclusive"
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["checkNext"],
+          message: "`checkNext` belongs to an inconclusive investigation.",
+        });
+      }
+    });
+
+export const investigationStateSchema = investigationStateSchemaWith(
+  investigationHypothesisSchema,
+  evidenceSchema
+);
+/** The model-facing variant: evidence cites bare resource ids (`evidenceRefSchema`). */
+export const investigationStateInputSchema = investigationStateSchemaWith(
+  investigationHypothesisInputSchema,
+  evidenceRefSchema
+);
 
 const investigationBlockBodySchema = z.object({
   type: z.literal("investigation"),
   investigation: investigationStateSchema,
+});
+
+const investigationBlockBodyInputSchema = z.object({
+  type: z.literal("investigation"),
+  investigation: investigationStateInputSchema,
 });
 
 // ---------------------------------------------------------------------------
@@ -524,13 +557,15 @@ const investigationBlockBodySchema = z.object({
 export const viewBlockInputSchema = z.discriminatedUnion("type", [
   diagnosisBlockBodySchema,
   chartBlockBodySchema,
-  investigationBlockBodySchema,
+  investigationBlockBodyInputSchema,
 ]);
 
 export type DiagnosisBlockBody = z.infer<typeof diagnosisBlockBodySchema>;
 export type ChartBlockBody = z.infer<typeof chartBlockBodySchema>;
 export type InvestigationBlockBody = z.infer<typeof investigationBlockBodySchema>;
+export type InvestigationBlockBodyInput = z.infer<typeof investigationBlockBodyInputSchema>;
 export type InvestigationState = z.infer<typeof investigationStateSchema>;
+export type InvestigationStateInput = z.infer<typeof investigationStateInputSchema>;
 export type InvestigationHypothesis = z.infer<typeof investigationHypothesisSchema>;
 export type InvestigationOutcome = z.infer<typeof investigationOutcomeSchema>;
 export type InvestigationSeverity = z.infer<typeof investigationSeveritySchema>;
