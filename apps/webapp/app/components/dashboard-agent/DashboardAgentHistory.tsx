@@ -1,4 +1,4 @@
-import { EyeIcon, MagnifyingGlassIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { MagnifyingGlassIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -52,13 +52,9 @@ function ProcessIcon({ process }: { process: ChatProcess }) {
     <span title={label} aria-label={label} role="img" className="shrink-0 text-text-dimmed">
       {process === "investigating" ? (
         <MagnifyingGlassIcon className="size-3.5" />
-      ) : process === "watching" ? (
-        // A watch is passive — an eye, not a spinner, so it can't be read as
-        // "the agent is busy in this chat".
-        <EyeIcon className="size-3.5" />
       ) : (
-        // Same spinner the transcript's progress line uses — a spinner means
-        // "the agent is working right now".
+        // Thinking and watching both spin — "something is going on here"; the
+        // hover title says which.
         <Spinner className="size-3.5" />
       )}
     </span>
@@ -114,7 +110,9 @@ export function DashboardAgentHistory({
                   key={chat.id}
                   label={chat.title}
                   unread={chat.hasUnreadWake ?? false}
-                  status={process ? <ProcessIcon process={process} /> : undefined}
+                  // null keeps the leading slot so every title starts at the
+                  // same x whether or not this chat has a status.
+                  status={process ? <ProcessIcon process={process} /> : null}
                   meta={
                     chat.lastMessageAt ? (
                       <DateTime date={chat.lastMessageAt} showTooltip={false} />

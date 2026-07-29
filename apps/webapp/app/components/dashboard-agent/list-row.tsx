@@ -67,6 +67,11 @@ export function AgentListRow({
           unread && "text-text-bright"
         )}
       >
+        {/* Fixed leading slot so every label starts at the same x, with or
+            without a status icon. */}
+        {status !== undefined ? (
+          <span className="flex w-4 shrink-0 items-center justify-center">{status}</span>
+        ) : null}
         {unread ? (
           <>
             <span aria-hidden className="size-2 shrink-0 rounded-full bg-indigo-500" />
@@ -74,7 +79,6 @@ export function AgentListRow({
           </>
         ) : null}
         <span className="line-clamp-1 min-w-0 flex-1">{label}</span>
-        {status}
         {meta ? <span className="shrink-0 text-xs text-text-faint">{meta}</span> : null}
       </button>
       {action}
