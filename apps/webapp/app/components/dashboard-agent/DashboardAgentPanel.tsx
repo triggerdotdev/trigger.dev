@@ -493,7 +493,6 @@ export function DashboardAgentPanel({
           promotedPrompt={promotedPrompt}
           watches={activeWatches}
           onCancelWatch={cancelWatch}
-          onWatchesChanged={loadHistory}
           onTurnSettled={loadHistory}
           onActivityChange={handleActivityChange}
         />

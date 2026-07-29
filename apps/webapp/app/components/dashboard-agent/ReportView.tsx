@@ -200,28 +200,37 @@ function footerEntryNode({
 
   if (style === "note") return <ReportFooterNote>{label}</ReportFooterNote>;
 
-  if (style === "reference" || style === "docs") {
-    if (target.kind === "external") {
-      return style === "docs" ? (
-        <ReportFooterActionLink href={target.url} docs>
+  // A docs entry is ALWAYS the docs button, whatever shape its link arrived in —
+  // external URL, resolved resource, or nothing (then its canonical docs page).
+  if (style === "docs") {
+    const href =
+      target.kind === "external"
+        ? target.url
+        : target.kind === "resource" && target.resolved
+          ? target.resolved.url
+          : DOCS_URL_FALLBACK[code];
+    if (href) {
+      return (
+        <ReportFooterActionLink href={href} docs>
           {label}
         </ReportFooterActionLink>
-      ) : (
-        <ReportFooterLink href={target.url} external>
-          {label}
-        </ReportFooterLink>
       );
     }
-    if (target.kind === "resource" && target.resolved) {
-      return <ReportFooterLink href={target.resolved.url}>{label}</ReportFooterLink>;
-    }
-    // A docs entry the report didn't attach a URL to still has a canonical home.
-    const fallback = style === "docs" ? DOCS_URL_FALLBACK[code] : undefined;
-    if (fallback) {
+    return <ReportFooterNote>{label}</ReportFooterNote>;
+  }
+
+  if (style === "reference") {
+    const href =
+      target.kind === "external"
+        ? target.url
+        : target.kind === "resource" && target.resolved
+          ? target.resolved.url
+          : REFERENCE_URL_FALLBACK[code];
+    if (href) {
       return (
-        <ReportFooterActionLink href={fallback} docs>
+        <ReportFooterLink href={href} external={!href.startsWith("/")}>
           {label}
-        </ReportFooterActionLink>
+        </ReportFooterLink>
       );
     }
     return <ReportFooterNote>{label}</ReportFooterNote>;
@@ -255,6 +264,12 @@ const DOCS_URL_FALLBACK: Record<string, string> = {
   concurrency_docs: "https://trigger.dev/docs/queue-concurrency",
   retries_docs: "https://trigger.dev/docs/errors-retrying",
   queues_docs: "https://trigger.dev/docs/queues",
+};
+
+/** Same idea for cited references: a place to look must stay a link. */
+const REFERENCE_URL_FALLBACK: Record<string, string> = {
+  check_control_plane: "https://status.trigger.dev",
+  check_platform_status: "https://status.trigger.dev",
 };
 
 // --- pieces -----------------------------------------------------------------

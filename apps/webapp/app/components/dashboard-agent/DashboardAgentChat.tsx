@@ -10,7 +10,27 @@ import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
 import type { AgentPageContext } from "./page-context-types";
-import { immediateWatchMessage } from "./watch-chips";
+/**
+ * The message a card's watch button sends on the user's behalf. Written the way
+ * the user would ask, so the transcript reads as a request the agent then
+ * confirms (via schedule_watch), not as UI state that changed silently.
+ */
+function watchRequestText(spec: WatchSpec): string {
+  const note = "note" in spec && spec.note ? spec.note.trim() : "";
+  if (note) return `Watch this for me — tell me when ${note}.`;
+  switch (spec.kind) {
+    case "backlog_drain":
+      return `Watch this for me — tell me when the ${spec.queue} backlog drains.`;
+    case "run_start":
+      return `Watch this for me — tell me when run ${spec.runId} starts.`;
+    case "run_finished":
+      return `Watch this for me — tell me when run ${spec.runId} finishes.`;
+    case "error_recurrence":
+      return `Watch this for me — ping me if error ${spec.fingerprint} comes back.`;
+    case "health_recovery":
+      return "Watch this for me — tell me when health is back to normal.";
+  }
+}
 import { WatchChips, type WatchChip } from "./WatchChips";
 
 // The persisted session for a chat: the session-scoped token plus the stream
@@ -57,7 +77,6 @@ export function DashboardAgentChat({
   promotedPrompt,
   watches,
   onCancelWatch,
-  onWatchesChanged,
   onTurnSettled,
   onActivityChange,
 }: {
@@ -89,7 +108,6 @@ export function DashboardAgentChat({
   watches: WatchChip[];
   onCancelWatch: (watchId: string) => void;
   /** A watch was created — tell the panel to re-read the chips. */
-  onWatchesChanged: () => void;
   onTurnSettled: () => void;
   /**
    * Whether a turn is in flight, for the History list's row marker. Only this
@@ -218,40 +236,12 @@ export function DashboardAgentChat({
     if (text) void sendMessage({ text });
   }, [messages, sendMessage, clearError]);
 
-  // Start watching, from a card's action. This is a plain POST, not a message:
-  // the card already carries the spec, so there is nothing for the model to
-  // decide and no turn to pay for. A condition that has already resolved comes
-  // back as `immediate` and is said in a toast — there's no chip to show for a
-  // watch that is already over.
-  const startWatch = useCallback(
-    async (spec: WatchSpec) => {
-      const body = new FormData();
-      body.set("intent", "watch");
-      body.set("chatId", chatId);
-      body.set("spec", JSON.stringify(spec));
-      try {
-        const res = await fetch(actionPath, { method: "POST", body });
-        const data = (await res.json()) as {
-          watchId?: string;
-          immediate?: { result: string };
-          error?: string;
-        };
-        if (!res.ok) {
-          toast.error(data.error ?? "We couldn't start watching that. Try again in a moment.");
-          return;
-        }
-        if (data.immediate) toast.success(immediateWatchMessage(data.immediate.result));
-        onWatchesChanged();
-      } catch (error) {
-        console.error("Dashboard agent: failed to start a watch", error);
-        toast.error("We couldn't start watching that. Try again in a moment.");
-      }
-    },
-    [actionPath, chatId, toast, onWatchesChanged]
-  );
-
   // What a card's action does. An `ask` goes back into the conversation as the
-  // user's own question; a `watch` is executed here without a turn.
+  // user's own question — and so does a `watch`: the click becomes a visible
+  // request ("Watch this for me…") and the agent answers it with schedule_watch,
+  // confirming in its own words and offering an email alert when none is set up.
+  // A silent POST would be cheaper, but a watch the transcript never mentions
+  // reads as nothing having happened.
   //
   // `navigate` needs a `trigger://` -> dashboard-path resolver, which the panel
   // doesn't have yet (no `resolveUri` is threaded either, so cards render those
@@ -264,13 +254,13 @@ export function DashboardAgentChat({
           submit(intent.prompt);
           return;
         case "watch":
-          void startWatch(intent.spec);
+          submit(watchRequestText(intent.spec));
           return;
         default:
           console.warn(`Dashboard agent: unhandled intent "${intent.kind}"`);
       }
     },
-    [submit, startWatch]
+    [submit]
   );
 
   const stop = useCallback(() => {
