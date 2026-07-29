@@ -469,9 +469,13 @@ async function main() {
         [ep.spec.signatureHeader.toLowerCase()]:
           status === "FAILED" ? "tampered" : `sig_${nanoid()}`,
       };
+      // friendlyId must be the id plus the prefix, matching WebhookDeliveryId. The detail
+      // lookup strips "whd_" and queries Postgres by `id`, so minting the two independently
+      // makes every seeded delivery's detail page 404.
+      const deliveryId = nanoid();
       rows.push({
-        id: nanoid(),
-        friendlyId: `whd_${nanoid()}`,
+        id: deliveryId,
+        friendlyId: `whd_${deliveryId}`,
         endpointId: ep.id,
         source: ep.spec.source,
         status,
