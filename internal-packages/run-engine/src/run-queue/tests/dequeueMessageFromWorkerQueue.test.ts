@@ -138,6 +138,59 @@ describe("RunQueue.dequeueMessageFromWorkerQueue", () => {
   });
 
   redisTest(
+    "tracks a message waiting in the worker queue as concurrent but not yet dequeued",
+    async ({ redisContainer }) => {
+      const queue = new RunQueue({
+        ...testOptions,
+        queueSelectionStrategy: new FairQueueSelectionStrategy({
+          redis: {
+            keyPrefix: "runqueue:test:",
+            host: redisContainer.getHost(),
+            port: redisContainer.getPort(),
+          },
+          keys: testOptions.keys,
+        }),
+        redis: {
+          keyPrefix: "runqueue:test:",
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+        },
+      });
+
+      try {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: "main",
+        });
+
+        await setTimeout(1000);
+
+        expect(await queue.peekAllOnWorkerQueue("main")).toHaveLength(1);
+        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvDev, messageDev.queue)).toBe(
+          1
+        );
+        expect(await queue.currentDequeuedOfQueue(authenticatedEnvDev, messageDev.queue)).toBe(0);
+        expect(await queue.operationalCurrentConcurrencyOfEnvironment(authenticatedEnvDev)).toBe(1);
+        expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev)).toBe(0);
+
+        const dequeued = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
+        assertNonNullable(dequeued);
+
+        expect(await queue.peekAllOnWorkerQueue("main")).toHaveLength(0);
+        expect(await queue.currentConcurrencyOfQueue(authenticatedEnvDev, messageDev.queue)).toBe(
+          1
+        );
+        expect(await queue.currentDequeuedOfQueue(authenticatedEnvDev, messageDev.queue)).toBe(1);
+        expect(await queue.operationalCurrentConcurrencyOfEnvironment(authenticatedEnvDev)).toBe(1);
+        expect(await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev)).toBe(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
     "should not dequeue when env current concurrency equals env concurrency limit",
     async ({ redisContainer }) => {
       const queue = new RunQueue({

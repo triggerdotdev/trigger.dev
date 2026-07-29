@@ -4,7 +4,11 @@ import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { determineEngineVersion } from "../engineVersion.server";
-import { removeQueueConcurrencyLimits, updateQueueConcurrencyLimits } from "../runQueue.server";
+import {
+  removeQueueConcurrencyLimits,
+  sweepUnclaimedRuns,
+  updateQueueConcurrencyLimits,
+} from "../runQueue.server";
 import { engine } from "../runEngine.server";
 
 export type PauseStatus = "paused" | "resumed";
@@ -72,6 +76,10 @@ export class PauseQueueService extends BaseService {
         action,
         environmentId: environment.id,
       });
+
+      if (action === "paused") {
+        await sweepUnclaimedRuns(environment, queue.name);
+      }
 
       const results = await Promise.all([
         engine.lengthOfQueues(environment, [queue.name]),

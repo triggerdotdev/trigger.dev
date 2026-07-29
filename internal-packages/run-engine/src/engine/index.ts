@@ -49,7 +49,7 @@ import type {
   BatchCompletionCallback,
 } from "../batch-queue/types.js";
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
-import { RunQueue } from "../run-queue/index.js";
+import { RunQueue, type ReturnUnclaimedMessagesResult } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import type { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
@@ -1632,6 +1632,24 @@ export class RunEngine {
     queues: string[]
   ): Promise<Record<string, number>> {
     return this.runQueue.currentConcurrencyOfQueues(environment, queues);
+  }
+
+  /**
+   * Returns runs that have been admitted for execution but that no worker has claimed yet
+   * back into their queue, at the position they held before.
+   *
+   * Pausing only stops runs being admitted; anything already handed to a worker queue would
+   * otherwise still execute. Call this after the queue has been made ineligible for
+   * dequeuing, never before — see `RunQueue.returnUnclaimedMessagesToQueue`.
+   */
+  async returnUnclaimedMessagesToQueue({
+    environment,
+    queue,
+  }: {
+    environment: MinimalAuthenticatedEnvironment;
+    queue?: string;
+  }): Promise<ReturnUnclaimedMessagesResult> {
+    return this.runQueue.returnUnclaimedMessagesToQueue({ env: environment, queue });
   }
 
   async removeEnvironmentQueuesFromMasterQueue({
