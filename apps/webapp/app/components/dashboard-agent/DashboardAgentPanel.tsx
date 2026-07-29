@@ -448,10 +448,12 @@ export function DashboardAgentPanel({
   const headerTitle =
     view === "history" ? "Chat history" : active ? (activeChat?.title ?? "Chat") : "New chat";
 
-  // The chips ride along on the history list (one query for every chat), so they
-  // refresh whenever it does: on open, when a turn settles, and after a watch is
-  // created or cancelled. Filtered to active because a chip is an offer to cancel.
-  const activeWatches = (activeChat?.watches ?? []).filter((watch) => watch.status === "active");
+  // The watches ride along on the history list (one query for every chat), so
+  // they refresh whenever it does: on open, when a turn settles, and after a
+  // watch is created or cancelled. The FULL list goes down — the chips filter
+  // to active themselves (a chip is an offer to cancel), while the wake banner
+  // needs the kind of a watch that has already fired.
+  const chatWatches = activeChat?.watches ?? [];
 
   return (
     <div className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150">
@@ -491,7 +493,7 @@ export function DashboardAgentPanel({
           environmentSlug={environment.slug}
           currentPage={currentPage}
           promotedPrompt={promotedPrompt}
-          watches={activeWatches}
+          watches={chatWatches}
           onCancelWatch={cancelWatch}
           onTurnSettled={loadHistory}
           onActivityChange={handleActivityChange}

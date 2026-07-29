@@ -163,7 +163,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         hasUnreadWake: unreadChatIds.has(chat.id),
         // Both are row markers in the history list: the chat has something
         // running in it. Derived here so the list doesn't re-derive per render.
-        hasActiveWatch: watches.length > 0,
+        // The list now carries fired/expired watches too (the wake banner needs
+        // their kind), so "something is running" means active specifically.
+        hasActiveWatch: watches.some((watch) => watch.status === "active"),
         hasOpenInvestigation: investigatingChatIds.has(chat.id),
       };
     }),

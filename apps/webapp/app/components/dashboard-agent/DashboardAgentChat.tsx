@@ -294,7 +294,12 @@ export function DashboardAgentChat({
       {/* What this chat is watching, right under the banner: a watch outcome
           arrives in the transcript unprompted, so the chips are what explain
           where those messages will come from. */}
-      <WatchChips watches={watches} onCancel={onCancelWatch} />
+      {/* Chips are an offer to cancel, so only live watches get one; the full
+          list still flows to the messages for the wake banner's tone. */}
+      <WatchChips
+        watches={watches.filter((watch) => watch.status === "active")}
+        onCancel={onCancelWatch}
+      />
       {/* A cold-start chat mounts with no messages and a first message about to
           be sent, so the prompts would flash for a frame before the transcript
           replaced them. Gate on that pending send. */}

@@ -609,8 +609,12 @@ export interface ActiveWatchSummary {
 }
 
 /**
- * #13 Active watches for MANY chats in one query, keyed by chatId — the history
- * list renders up to 50 chats and must not fan out a query per row.
+ * #13 Watches for MANY chats in one query, keyed by chatId — the history list
+ * renders up to 50 chats and must not fan out a query per row.
+ *
+ * Returns every non-cancelled watch, not only the active ones: the chips
+ * filter to `active` client-side, while the wake banner needs the KIND of a
+ * watch that has already fired to pick its tone.
  *
  * Tenancy floor is the join, not the caller: the chats are re-scoped by
  * `organizationId` + `userId` + not-deleted here, so a chat id from anywhere
@@ -636,7 +640,7 @@ export async function listActiveWatchesForChats(
     .where(
       and(
         inArray(watches.chatId, params.chatIds),
-        eq(watches.status, "active"),
+        inArray(watches.status, ["active", "fired", "expired"]),
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
         isNull(chats.deletedAt)
