@@ -1694,6 +1694,55 @@ describe("TSQL Error Log Levels", () => {
     }
   );
 
+  clickhouseTest(
+    "logs invalid caller-written SQL as a warning",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const [error] = await executeTSQL(client, {
+        name: "test-user-authored-invalid",
+        query: "SELECT status, sum(is_test) AS n FROM task_runs",
+        schema: z.object({ status: z.string(), n: z.number() }),
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+        },
+        tableSchema: [taskRunsSchema],
+        userAuthoredQuery: true,
+      });
+
+      expect(error).not.toBeNull();
+      expect(logged(warnSpy)).toContain("ClickHouse rejected an invalid query");
+      expect(logged(errorSpy)).not.toContain("Error querying clickhouse");
+    }
+  );
+
+  clickhouseTest(
+    "keeps invalid SQL we generated at error level",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const [error] = await executeTSQL(client, {
+        name: "test-internal-invalid",
+        query: "SELECT status, sum(is_test) AS n FROM task_runs",
+        schema: z.object({ status: z.string(), n: z.number() }),
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+        },
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error).not.toBeNull();
+      expect(logged(errorSpy)).toContain("Error querying clickhouse");
+      expect(logged(warnSpy)).not.toContain("ClickHouse rejected an invalid query");
+    }
+  );
+
   clickhouseTest("logs a ClickHouse limit breach as a warning", async ({ clickhouseContainer }) => {
     const client = new ClickhouseClient({
       name: "test",

@@ -100,6 +100,13 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   };
   /** Custom per-org concurrency limit (overrides default) */
   customOrgConcurrencyLimit?: number;
+  /**
+   * Set when the caller wrote `query` themselves, as on the public query API and
+   * the query editor. ClickHouse rejecting their SQL is then their mistake, so it
+   * is logged as a warning instead of raising an alert. Leave unset for TRQL we
+   * generate, where the same rejection is a bug worth alerting on.
+   */
+  userAuthoredQuery?: boolean;
 };
 
 /**

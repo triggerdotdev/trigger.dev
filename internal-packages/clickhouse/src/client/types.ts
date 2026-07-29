@@ -140,6 +140,11 @@ export interface ClickhouseReader {
      * record what produced the SQL, e.g. the TSQL a caller actually wrote.
      */
     logFields?: Record<string, unknown>;
+    /**
+     * Set when the SQL originates from whoever made the request rather than
+     * from us. Invalid-SQL rejections are then their mistake, not a bug.
+     */
+    userAuthoredQuery?: boolean;
   }): ClickhouseQueryWithStatsFunction<z.input<TIn>, z.output<TOut>>;
 
   queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {

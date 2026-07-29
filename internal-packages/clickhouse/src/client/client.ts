@@ -179,10 +179,15 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             queryId,
           };
 
-          if (isClickhouseQuotaError(clickhouseError)) {
-            this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
-          } else {
-            this.logger.error("Error querying clickhouse", errorLogFields);
+          switch (classifyClickhouseError(clickhouseError, false)) {
+            case "quota":
+              this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
+              break;
+            case "invalid-sql":
+              this.logger.warn("ClickHouse rejected an invalid query", errorLogFields);
+              break;
+            default:
+              this.logger.error("Error querying clickhouse", errorLogFields);
           }
 
           recordClickhouseError(span, clickhouseError);
@@ -271,6 +276,11 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
      * record what produced the SQL, e.g. the TSQL a caller actually wrote.
      */
     logFields?: Record<string, unknown>;
+    /**
+     * Set when the SQL originates from whoever made the request rather than
+     * from us. Invalid-SQL rejections are then their mistake, not a bug.
+     */
+    userAuthoredQuery?: boolean;
   }): ClickhouseQueryWithStatsFunction<z.input<TIn>, z.output<TOut>> {
     return async (params, options) => {
       const queryId = randomUUID();
@@ -340,10 +350,15 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             queryId,
           };
 
-          if (isClickhouseQuotaError(clickhouseError)) {
-            this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
-          } else {
-            this.logger.error("Error querying clickhouse", errorLogFields);
+          switch (classifyClickhouseError(clickhouseError, req.userAuthoredQuery)) {
+            case "quota":
+              this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
+              break;
+            case "invalid-sql":
+              this.logger.warn("ClickHouse rejected an invalid query", errorLogFields);
+              break;
+            default:
+              this.logger.error("Error querying clickhouse", errorLogFields);
           }
 
           recordClickhouseError(span, clickhouseError);
@@ -479,10 +494,15 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             queryId,
           };
 
-          if (isClickhouseQuotaError(clickhouseError)) {
-            this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
-          } else {
-            this.logger.error("Error querying clickhouse", errorLogFields);
+          switch (classifyClickhouseError(clickhouseError, false)) {
+            case "quota":
+              this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
+              break;
+            case "invalid-sql":
+              this.logger.warn("ClickHouse rejected an invalid query", errorLogFields);
+              break;
+            default:
+              this.logger.error("Error querying clickhouse", errorLogFields);
           }
 
           recordClickhouseError(span, clickhouseError);
@@ -631,7 +651,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           queryId,
         };
 
-        if (error instanceof Error && isClickhouseQuotaError(error)) {
+        if (error instanceof Error && classifyClickhouseError(error, false) === "quota") {
           self.logger.warn("Streamed query exceeded a ClickHouse limit", errorLogFields);
         } else {
           self.logger.error("Error streaming clickhouse", errorLogFields);
@@ -1043,15 +1063,51 @@ const CLICKHOUSE_QUOTA_ERROR_TYPES = new Set([
   "TOO_MANY_ROWS",
   "TOO_MANY_BYTES",
   "TOO_MANY_ROWS_OR_BYTES",
-  "QUERY_WAS_CANCELLED",
 ]);
 
-function isClickhouseQuotaError(error: Error): boolean {
-  return (
-    error instanceof ClickHouseError &&
-    error.type !== undefined &&
-    CLICKHOUSE_QUOTA_ERROR_TYPES.has(error.type)
-  );
+/**
+ * ClickHouse error types that mean the SQL itself is wrong. Only treated as the
+ * caller's fault when the query was written by the caller — the same error on a
+ * query we generated is our bug and has to keep alerting.
+ */
+const CLICKHOUSE_INVALID_SQL_ERROR_TYPES = new Set([
+  "NOT_AN_AGGREGATE",
+  "ILLEGAL_AGGREGATION",
+  "UNKNOWN_IDENTIFIER",
+  "UNKNOWN_FUNCTION",
+  "UNKNOWN_TABLE",
+  "AMBIGUOUS_COLUMN_NAME",
+  "MULTIPLE_EXPRESSIONS_FOR_ALIAS",
+  "SYNTAX_ERROR",
+  "BAD_ARGUMENTS",
+  "TYPE_MISMATCH",
+  "NO_COMMON_TYPE",
+  "ILLEGAL_TYPE_OF_ARGUMENT",
+  "ILLEGAL_COLUMN",
+  "CANNOT_CONVERT_TYPE",
+  "CANNOT_PARSE_TEXT",
+  "CANNOT_PARSE_NUMBER",
+  "CANNOT_PARSE_DATE",
+  "CANNOT_PARSE_DATETIME",
+  "CANNOT_PARSE_INPUT_ASSERTION_FAILED",
+]);
+
+type ClickhouseErrorCategory = "quota" | "invalid-sql" | "fault";
+
+function classifyClickhouseError(
+  error: Error,
+  userAuthoredQuery: boolean | undefined
+): ClickhouseErrorCategory {
+  if (!(error instanceof ClickHouseError) || error.type === undefined) {
+    return "fault";
+  }
+  if (CLICKHOUSE_QUOTA_ERROR_TYPES.has(error.type)) {
+    return "quota";
+  }
+  if (userAuthoredQuery && CLICKHOUSE_INVALID_SQL_ERROR_TYPES.has(error.type)) {
+    return "invalid-sql";
+  }
+  return "fault";
 }
 
 function recordClickhouseError(span: Span, error: Error): void {

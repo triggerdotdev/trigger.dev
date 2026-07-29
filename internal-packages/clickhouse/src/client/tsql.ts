@@ -114,6 +114,11 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
    * (counters zero-fill, gauges carry forward). Off by default.
    */
   fillGaps?: boolean;
+  /**
+   * Set when `query` was written by whoever made the request rather than by us.
+   * A rejection of their SQL is then their mistake, not a bug on our side.
+   */
+  userAuthoredQuery?: boolean;
 }
 
 /**
@@ -215,6 +220,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       schema: isExplain ? z.object({ explain: z.string() }) : options.schema,
       settings: options.clickhouseSettings,
       logFields: { tsql: options.query },
+      userAuthoredQuery: options.userAuthoredQuery,
     });
 
     const [error, result] = await queryFn(params);
@@ -249,6 +255,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
             schema: z.object({ explain: z.string() }),
             settings: options.clickhouseSettings,
             logFields: { tsql: options.query },
+            userAuthoredQuery: options.userAuthoredQuery,
           });
 
           const [additionalError, additionalResult] = await additionalQueryFn(params);
