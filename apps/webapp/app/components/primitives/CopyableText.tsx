@@ -12,6 +12,7 @@ export function CopyableText({
   asChild,
   variant,
   hideTooltip,
+  truncate,
 }: {
   value: string;
   copyValue?: string;
@@ -24,6 +25,12 @@ export function CopyableText({
    * fire Radix's global "one tooltip open at a time" close and dismiss the parent.
    */
   hideTooltip?: boolean;
+  /**
+   * Ellipsise the value rather than letting it overflow its column. For unbreakable strings
+   * (hashes, opaque ids) that offer no wrap opportunity. The copy button moves into a reserved
+   * right gutter so it stays visible instead of sitting outside the column.
+   */
+  truncate?: boolean;
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const { copy, copied } = useCopy(copyValue ?? value);
@@ -51,15 +58,26 @@ export function CopyableText({
 
     return (
       <span
-        className={cn("group relative inline-flex h-6 items-center", className)}
+        className={cn(
+          "group relative inline-flex h-6 items-center",
+          truncate && "max-w-full pr-7",
+          className
+        )}
         onMouseLeave={() => setIsHovered(false)}
       >
-        <span onMouseEnter={() => setIsHovered(true)}>{value}</span>
+        <span
+          className={cn(truncate && "min-w-0 truncate")}
+          onMouseEnter={() => setIsHovered(true)}
+        >
+          {value}
+        </span>
         <span
           onClick={copy}
           onMouseDown={(e) => e.stopPropagation()}
           className={cn(
-            "absolute -right-6 top-0 z-10 size-6 font-sans",
+            "absolute top-0 z-10 size-6 font-sans",
+            // Truncated values reserve a right gutter, so the button sits inside it
+            truncate ? "right-0" : "-right-6",
             isHovered ? "flex" : "hidden"
           )}
         >

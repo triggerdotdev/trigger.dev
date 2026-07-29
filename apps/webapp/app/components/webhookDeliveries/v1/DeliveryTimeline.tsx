@@ -30,6 +30,9 @@ export function DeliveryTimeline({ delivery, runPath, sessionPath }: DeliveryTim
               key={item.id}
               state={item.state}
               variant={item.variant}
+              // "Received" is a thin start-cap, so a thick line here begins the bar and has to
+              // round its own top. Thin ("light") lines, as in the FILTERED case, need nothing.
+              roundedTop={item.variant === "normal"}
               title={
                 <span className="flex items-center gap-1.5">
                   {item.to ? (

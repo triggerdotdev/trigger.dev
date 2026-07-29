@@ -1,7 +1,7 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
@@ -106,6 +106,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({ delivery, retentionDays: env.WEBHOOK_PARTITION_RETENTION_DAYS });
 };
 
+/** Centred placeholder for a tab whose content was never captured. */
+function EmptyTabMessage({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <Paragraph variant="base" className="text-center text-text-dimmed">
+        {children}
+      </Paragraph>
+    </div>
+  );
+}
+
 function formatDuration(createdAt: Date, processedAt: Date | null): string | null {
   if (!processedAt) return null;
   const ms = processedAt.getTime() - createdAt.getTime();
@@ -183,7 +194,6 @@ export default function Page() {
             <span className="flex items-center gap-2">
               <WebhookIcon className="size-4.5 text-webhooks" />
               <span className="font-mono">{delivery.friendlyId}</span>
-              <DeliveryStatusBadge status={delivery.status} />
             </span>
           }
         />
@@ -224,9 +234,9 @@ export default function Page() {
                   eventJson ? (
                     <CodeBlock code={eventJson} language="json" showLineNumbers maxLines={1000} />
                   ) : (
-                    <Paragraph variant="small" className="text-text-dimmed">
+                    <EmptyTabMessage>
                       No event payload was captured for this delivery.
-                    </Paragraph>
+                    </EmptyTabMessage>
                   )
                 ) : headersJson ? (
                   <CodeBlock
@@ -236,9 +246,9 @@ export default function Page() {
                     maxLines={200}
                   />
                 ) : (
-                  <Paragraph variant="small" className="text-text-dimmed">
+                  <EmptyTabMessage>
                     No request headers were captured for this delivery.
-                  </Paragraph>
+                  </EmptyTabMessage>
                 )}
               </div>
             </div>
@@ -262,7 +272,11 @@ export default function Page() {
                   <Property.Item>
                     <Property.Label>ID</Property.Label>
                     <Property.Value>
-                      <CopyableText value={delivery.friendlyId} className="font-mono text-xs" />
+                      <CopyableText
+                        value={delivery.friendlyId}
+                        className="font-mono text-sm"
+                        truncate
+                      />
                     </Property.Value>
                   </Property.Item>
                   <Property.Item>
@@ -305,7 +319,7 @@ export default function Page() {
                       <Property.Value>
                         <TextLink
                           to={sessionPath}
-                          className="inline-flex items-center gap-1 font-mono text-xs"
+                          className="inline-flex items-center gap-1 font-mono text-sm"
                         >
                           <AIChatIcon className="size-4 text-sessions" />
                           {delivery.session.friendlyId}
@@ -319,7 +333,7 @@ export default function Page() {
                       {delivery.run && runPath ? (
                         <TextLink
                           to={runPath}
-                          className="inline-flex items-center gap-1 font-mono text-xs"
+                          className="inline-flex items-center gap-1 font-mono text-sm"
                         >
                           <RunsIcon className="size-4 text-runs" />
                           {delivery.run.friendlyId}
@@ -335,7 +349,8 @@ export default function Page() {
                       {delivery.externalDeliveryId ? (
                         <CopyableText
                           value={delivery.externalDeliveryId}
-                          className="font-mono text-xs"
+                          className="font-mono text-sm"
+                          truncate
                         />
                       ) : (
                         <span className="text-text-dimmed">None</span>
@@ -348,7 +363,8 @@ export default function Page() {
                       {delivery.idempotencyKey ? (
                         <CopyableText
                           value={delivery.idempotencyKey}
-                          className="font-mono text-xs"
+                          className="font-mono text-sm"
+                          truncate
                         />
                       ) : (
                         <span className="text-text-dimmed">None</span>
@@ -359,7 +375,11 @@ export default function Page() {
                     <Property.Label>Raw body hash</Property.Label>
                     <Property.Value>
                       {delivery.rawBodyHash ? (
-                        <CopyableText value={delivery.rawBodyHash} className="font-mono text-xs" />
+                        <CopyableText
+                          value={delivery.rawBodyHash}
+                          className="font-mono text-sm"
+                          truncate
+                        />
                       ) : (
                         <span className="text-text-dimmed">None</span>
                       )}
