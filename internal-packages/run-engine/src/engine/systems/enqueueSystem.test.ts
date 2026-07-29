@@ -44,10 +44,10 @@ function createEngineOptions(redisOptions: any, prisma: any, store?: PostgresRun
 }
 
 /**
- * A real PostgresRunStore subclass that counts the snapshot create method that enqueueRun's
- * snapshot write routes through (via executionSnapshotSystem.createExecutionSnapshot). super.*
- * runs the genuine store implementation, so the routing is observed over real containers without
- * ever mocking prisma or the store.
+ * A real PostgresRunStore subclass that counts the store methods a run's QUEUED snapshot can be
+ * written through: nested in `createRun` on the trigger path, or standalone via
+ * `createExecutionSnapshot` on every re-enqueue. super.* runs the genuine store implementation, so
+ * the routing is observed over real containers without ever mocking prisma or the store.
  */
 class CountingPostgresRunStore extends PostgresRunStore {
   public snapshotCreates = 0;
@@ -59,12 +59,19 @@ class CountingPostgresRunStore extends PostgresRunStore {
     this.snapshotCreates++;
     return super.createExecutionSnapshot(input, tx);
   }
+
+  override async createRun(
+    params: Parameters<PostgresRunStore["createRun"]>[0],
+    tx?: any
+  ): ReturnType<PostgresRunStore["createRun"]> {
+    this.snapshotCreates++;
+    return super.createRun(params, tx);
+  }
 }
 
 describe("RunEngine enqueueRun store routing", () => {
-  // The QUEUED snapshot written while enqueuing a run routes through the injected store.
   containerTest(
-    "enqueueRun snapshot routes through the store",
+    "the QUEUED snapshot routes through the store",
     async ({ prisma, redisOptions }) => {
       const countingStore = new CountingPostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const engine = new RunEngine(createEngineOptions(redisOptions, prisma, countingStore));

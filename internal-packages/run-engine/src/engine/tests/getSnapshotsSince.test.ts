@@ -1149,9 +1149,14 @@ describe("RunEngine getSnapshotsSince", () => {
         );
 
         await setTimeout(500);
-        await engine.dequeueFromWorkerQueue({
+        const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_replica_stale_tail",
           workerQueue: "main",
+        });
+
+        await engine.startRunAttempt({
+          runId: dequeued[0].run.id,
+          snapshotId: dequeued[0].snapshot.id,
         });
 
         const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
