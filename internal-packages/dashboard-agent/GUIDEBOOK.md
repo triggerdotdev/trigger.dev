@@ -142,7 +142,9 @@ the thing in front of you, an explain-this-page one, and a docs one.
 
 ## The demo script — four acts, ~15 minutes
 
-Run `-- --degrade` first so prod starts unhealthy. One terminal stays open for
+Run `-- --degrade` RIGHT BEFORE the demo, not ahead of time — a degradation
+left running for a while blends into the baselines and starts reading as
+normal (re-run `--degrade` if the report says ok). One terminal stays open for
 the act-four commands.
 
 **Act 1 — hello (30 seconds)**
