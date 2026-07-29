@@ -579,10 +579,25 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   ): Evidence[] {
     const out: Evidence[] = [];
     for (const item of items) {
-      const ref = item.uri.trim();
+      let ref = item.uri.trim();
       if (isTriggerUri(ref)) {
         out.push({ ...item, uri: ref });
         continue;
+      }
+      // An improvised almost-URI ("trigger://errors/error_abc", a dashboard
+      // URL): the bare id is its last path segment — salvage that rather than
+      // encoding the whole string into a nonsense URI.
+      if (ref.includes("://")) {
+        const segments = ref.split("?")[0]!.split("/").filter(Boolean);
+        const last = segments[segments.length - 1];
+        if (!last || last.includes(":")) {
+          console.warn("dropping investigation evidence with unresolvable uri", {
+            kind: item.kind,
+            uri: ref,
+          });
+          continue;
+        }
+        ref = last;
       }
       const base = { projectRef: scope.projectRef, environmentId: scope.environmentId };
       let parsed: ParsedTriggerUri | undefined;

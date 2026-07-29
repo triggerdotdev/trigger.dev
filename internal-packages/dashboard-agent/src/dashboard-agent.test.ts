@@ -762,6 +762,8 @@ describe("buildDashboardAgentTools", () => {
           evidence: [
             { kind: "error", uri: "error_c4b4a797397a9c43", label: "the error group" },
             { kind: "deployment", uri: "20260726.4", label: "the deploy before the failures" },
+            // An improvised almost-URI: the bare id is salvaged from the last segment.
+            { kind: "error", uri: "trigger://errors/error_c4b4a797397a9c43", label: "improvised" },
           ],
         },
       ],
@@ -778,6 +780,7 @@ describe("buildDashboardAgentTools", () => {
     expect(investigation.hypotheses[0].evidence.map((e: { uri: string }) => e.uri)).toEqual([
       "trigger://proj_abc/env_abc/error/error_c4b4a797397a9c43",
       "trigger://proj_abc/env_abc/deployment/20260726.4",
+      "trigger://proj_abc/env_abc/error/error_c4b4a797397a9c43",
     ]);
     expect(investigation.evidence).toHaveLength(1);
     expect(investigation.evidence[0].uri).toBe("trigger://proj_abc/env_abc/run/run_abc123");
