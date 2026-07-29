@@ -47,6 +47,9 @@ jobs:
       image_repo: ${{ steps.set_tags.outputs.image_repo }}
       digest: ${{ steps.build_push.outputs.digest }}
     steps:
+      - name: 🏭 Setup Depot CLI
+        uses: depot/setup-action@15c09a5f77a0840ad4bce955686522a257853461 # v1.7.1
+
       - name: ⬇️ Checkout repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -116,9 +119,8 @@ jobs:
 
       - name: 🐳 Build image and push to GitHub Container Registry
         id: build_push
-        uses: WarpBuilds/build-push-action@3def804c1ad57a9c97bc2469b14558d60643ac29 # v6
+        uses: depot/build-push-action@98e78adca7817480b8185f474a400b451d74e287 # v1.18.0
         with:
-          profile-name: trigger-images-benchmark
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.set_tags.outputs.image_tags }}

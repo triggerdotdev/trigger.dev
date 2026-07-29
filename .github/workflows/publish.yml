@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      skip_units:
+        description: Skip unit test jobs
+        required: false
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       image_tag:
@@ -20,6 +25,11 @@ on:
         type: string
       typecheck_only:
         description: Only run the typecheck job
+        required: false
+        default: false
+        type: boolean
+      skip_units:
+        description: Skip unit test jobs
         required: false
         default: false
         type: boolean
@@ -73,7 +83,7 @@ jobs:
     uses: ./.github/workflows/typecheck.yml
 
   units:
-    if: ${{ !inputs.typecheck_only }}
+    if: ${{ !inputs.typecheck_only && !inputs.skip_units }}
     uses: ./.github/workflows/unit-tests.yml
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
