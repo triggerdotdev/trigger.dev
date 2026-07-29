@@ -734,7 +734,9 @@ export function ReportMetricRow({
         // number sits in the VALUE column — on the same vertical as the
         // parent's +12/min and every other row's value.
         <li key={sub.label} className={METRIC_ROW_CLASS}>
-          <span className={cn(LABEL_CLASS, "pl-[3.5rem]")}>{sub.label}</span>
+          {/* Indented under the parent label, but shallow enough that even
+              "triggered" stays inside the 7rem label column. */}
+          <span className={cn(LABEL_CLASS, "pl-6")}>{sub.label}</span>
           <span className="whitespace-nowrap text-sm tabular-nums text-text-dimmed">
             {sub.value}
           </span>
