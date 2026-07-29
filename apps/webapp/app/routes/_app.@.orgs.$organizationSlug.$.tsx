@@ -6,89 +6,20 @@ import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { $replica, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
-import { clearImpersonation, redirectWithImpersonation } from "~/models/admin.server";
+import {
+  clearImpersonation,
+  findImpersonationTarget,
+  startImpersonation,
+} from "~/models/admin.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import { isSameOriginNavigation } from "~/utils/sameOriginNavigation";
 
-type ImpersonationTarget =
-  | { success: true; userId: string; organizationName: string }
-  | { success: false; reason: "org-not-found" | "no-confirmed-member" };
-
-/**
- * Read-only lookup of who a `/@/orgs/<slug>/…` link would impersonate: the
- * first organization member who has confirmed their basic details. Writes
- * nothing, so it is safe to call while only rendering the consent page.
- */
-export async function findImpersonationTarget(
-  organizationSlug: string,
-  prismaClient: PrismaClientOrTransaction = $replica
-): Promise<ImpersonationTarget> {
-  const org = await prismaClient.organization.findFirst({
-    where: {
-      slug: organizationSlug,
-      deletedAt: null,
-    },
-    select: {
-      title: true,
-      members: {
-        select: {
-          user: {
-            select: {
-              id: true,
-              confirmedBasicDetails: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  if (!org) {
-    return { success: false, reason: "org-not-found" };
-  }
-
-  const firstValidMember = org.members.find((m) => m.user.confirmedBasicDetails);
-
-  if (!firstValidMember) {
-    return { success: false, reason: "no-confirmed-member" };
-  }
-
-  return { success: true, userId: firstValidMember.user.id, organizationName: org.title };
-}
-
-/**
- * Starts impersonating the organization's first confirmed member and lands on
- * the requested path with the `/@` prefix stripped. Shared by the same-origin
- * loader path and the consent page's POST so there is one implementation.
- */
-export async function startImpersonation(
-  request: Request,
-  organizationSlug: string,
-  path: string,
-  currentUser: { id: string; admin: boolean },
-  clients: { read: PrismaClientOrTransaction; write: PrismaClientOrTransaction } = {
-    read: $replica,
-    write: prisma,
-  }
-) {
-  const target = await findImpersonationTarget(organizationSlug, clients.read);
-
-  if (!target.success) {
-    logger.debug("Cannot impersonate organization", { organizationSlug, reason: target.reason });
-    return clearImpersonation(request, "/admin");
-  }
-
-  return redirectWithImpersonation(
-    request,
-    target.userId,
-    `/orgs/${organizationSlug}/${path}`,
-    currentUser,
-    clients.write
-  );
-}
+// Everything this route's loader and action touch on the server lives in
+// `~/models/admin.server` on purpose: Remix only strips `loader`, `action` and
+// `headers` from a route module for the browser bundle, so any other export
+// here would drag server-only modules into the client build.
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const user = await requireUser(request);

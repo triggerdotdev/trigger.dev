@@ -1,9 +1,6 @@
 import { containerTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
-import {
-  findImpersonationTarget,
-  startImpersonation,
-} from "~/routes/_app.@.orgs.$organizationSlug.$";
+import { findImpersonationTarget, startImpersonation } from "~/models/admin.server";
 
 vi.setConfig({ testTimeout: 30_000 });
 
