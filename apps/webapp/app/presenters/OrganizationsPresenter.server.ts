@@ -235,7 +235,7 @@ export class OrganizationsPresenter {
       if (!env) {
         logger.info("Not Found: environment", {
           environmentSlug,
-          environments,
+          environmentCount: environments.length,
         });
       }
     }
