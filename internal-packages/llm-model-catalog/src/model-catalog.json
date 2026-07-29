@@ -1,4 +1,34 @@
 {
+  "MiniMax-M2.7": {
+    "provider": "minimax",
+    "description": "MiniMax's text-only large language model with a 204,800-token context window and always-on thinking for step-by-step reasoning.",
+    "contextWindow": 204800,
+    "maxOutputTokens": null,
+    "capabilities": ["extended_thinking"],
+    "releaseDate": null,
+    "isHidden": false,
+    "supportsStructuredOutput": false,
+    "supportsParallelToolCalls": false,
+    "supportsStreamingToolCalls": false,
+    "deprecationDate": null,
+    "knowledgeCutoff": null,
+    "resolvedAt": "2026-07-29T00:00:00.000Z"
+  },
+  "MiniMax-M3": {
+    "provider": "minimax",
+    "description": "MiniMax's large language model with a 1,000,000-token context window that accepts text, image, and video input and supports adaptive thinking that can be switched on or off.",
+    "contextWindow": 1000000,
+    "maxOutputTokens": null,
+    "capabilities": ["vision", "extended_thinking"],
+    "releaseDate": null,
+    "isHidden": false,
+    "supportsStructuredOutput": false,
+    "supportsParallelToolCalls": false,
+    "supportsStreamingToolCalls": false,
+    "deprecationDate": null,
+    "knowledgeCutoff": null,
+    "resolvedAt": "2026-07-29T00:00:00.000Z"
+  },
   "chatgpt-4o-latest": {
     "provider": "openai",
     "description": "OpenAI's flagship multimodal model optimized for speed and cost, capable of processing text, images, and audio with strong performance across reasoning, coding, and creative tasks.",

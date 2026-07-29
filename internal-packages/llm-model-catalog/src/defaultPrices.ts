@@ -3108,4 +3108,41 @@ export const defaultModelPrices: DefaultModelDefinition[] = [
       },
     ],
   },
+  {
+    modelName: "MiniMax-M3",
+    matchPattern: "(?i)^(minimax/)?(MiniMax-M3)$",
+    startDate: "2026-07-29T00:00:00.000Z",
+    pricingTiers: [
+      {
+        name: "Standard",
+        isDefault: true,
+        priority: 0,
+        conditions: [],
+        prices: {
+          input: 6e-7,
+          output: 0.0000024,
+          input_cache_read: 1.2e-7,
+        },
+      },
+    ],
+  },
+  {
+    modelName: "MiniMax-M2.7",
+    matchPattern: "(?i)^(minimax/)?(MiniMax-M2.7)$",
+    startDate: "2026-07-29T00:00:00.000Z",
+    pricingTiers: [
+      {
+        name: "Standard",
+        isDefault: true,
+        priority: 0,
+        conditions: [],
+        prices: {
+          input: 3e-7,
+          output: 0.0000012,
+          input_cache_read: 6e-8,
+          input_cache_creation: 3.75e-7,
+        },
+      },
+    ],
+  },
 ];

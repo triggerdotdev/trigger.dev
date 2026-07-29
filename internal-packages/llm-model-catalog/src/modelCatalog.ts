@@ -4,6 +4,40 @@ import type { ModelCatalogEntry } from "./types.js";
 // Run `pnpm run generate-catalog` to update the JSON, then `pnpm run generate` to regenerate.
 
 export const modelCatalog: Record<string, ModelCatalogEntry> = {
+  "MiniMax-M2.7": {
+    provider: "minimax",
+    description:
+      "MiniMax's text-only large language model with a 204,800-token context window and always-on thinking for step-by-step reasoning.",
+    contextWindow: 204800,
+    maxOutputTokens: null,
+    capabilities: ["extended_thinking"],
+    releaseDate: null,
+    isHidden: false,
+    supportsStructuredOutput: false,
+    supportsParallelToolCalls: false,
+    supportsStreamingToolCalls: false,
+    deprecationDate: null,
+    knowledgeCutoff: null,
+    resolvedAt: "2026-07-29T00:00:00.000Z",
+    baseModelName: null,
+  },
+  "MiniMax-M3": {
+    provider: "minimax",
+    description:
+      "MiniMax's large language model with a 1,000,000-token context window that accepts text, image, and video input and supports adaptive thinking that can be switched on or off.",
+    contextWindow: 1000000,
+    maxOutputTokens: null,
+    capabilities: ["vision", "extended_thinking"],
+    releaseDate: null,
+    isHidden: false,
+    supportsStructuredOutput: false,
+    supportsParallelToolCalls: false,
+    supportsStreamingToolCalls: false,
+    deprecationDate: null,
+    knowledgeCutoff: null,
+    resolvedAt: "2026-07-29T00:00:00.000Z",
+    baseModelName: null,
+  },
   "chatgpt-4o-latest": {
     provider: "openai",
     description:
