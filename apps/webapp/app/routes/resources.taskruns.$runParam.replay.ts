@@ -8,7 +8,7 @@ import { $replica, prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
-import { requireUser } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
@@ -169,7 +169,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     new RegionsPresenter().call({
       userId,
       projectSlug,
-      isAdmin: user.admin || user.isImpersonating,
+      isAdmin: hasAdminDisplayAccess(user),
     }),
   ]);
 

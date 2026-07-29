@@ -61,11 +61,16 @@ describe("impersonation consent page", () => {
       expect(await prisma.impersonationAuditLog.count()).toBe(0);
 
       // The consent page's POST: same-origin, and it does start impersonation.
+      // The `?span=` is what a `/@/runs/<id>` link redirects with, so it has to
+      // survive to the destination or the run opens with no span selected.
       const response = await startImpersonation(
-        new Request(`http://localhost:3030/@/orgs/${org.slug}/projects/p/runs/run_123`, {
-          method: "POST",
-          headers: { "sec-fetch-site": "same-origin" },
-        }),
+        new Request(
+          `http://localhost:3030/@/orgs/${org.slug}/projects/p/runs/run_123?span=span_abc`,
+          {
+            method: "POST",
+            headers: { "sec-fetch-site": "same-origin" },
+          }
+        ),
         org.slug,
         "projects/p/runs/run_123",
         { id: admin.id, admin: true },
@@ -73,8 +78,10 @@ describe("impersonation consent page", () => {
       );
 
       expect(response.status).toBe(302);
-      // The splat path is preserved, with the `/@` prefix stripped.
-      expect(response.headers.get("location")).toBe(`/orgs/${org.slug}/projects/p/runs/run_123`);
+      // The splat path and query string are preserved, `/@` prefix stripped.
+      expect(response.headers.get("location")).toBe(
+        `/orgs/${org.slug}/projects/p/runs/run_123?span=span_abc`
+      );
       expect(response.headers.get("set-cookie")).toContain("__impersonate=");
 
       const auditLogs = await prisma.impersonationAuditLog.findMany();

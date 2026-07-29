@@ -62,6 +62,41 @@ export function impersonate(path: string) {
   return `/@${path}`;
 }
 
+/**
+ * Where a `/@/orgs/<slug>/<splat>` impersonation link lands once impersonation
+ * has started: the same deep link with the `/@` prefix stripped.
+ *
+ * `search` must be carried through explicitly. A `/@/runs/<id>` link redirects
+ * to a `v3RunSpanPath`, whose `?span=<spanId>` selects the span to open, so
+ * dropping it lands the admin on the run with nothing selected.
+ */
+export function impersonationDestinationPath(
+  organizationSlug: string,
+  splatPath: string,
+  search: string = ""
+) {
+  return `/orgs/${organizationSlug}/${splatPath}${search}`;
+}
+
+/**
+ * Where the impersonation consent page's form must POST back to.
+ *
+ * The form has to name this path explicitly. A `<Form>` with no `action`
+ * resolves to `useResolvedPath(".")`, and because this app does not enable
+ * `future.v3_relativeSplatPath`, that resolves to the matched route's
+ * `pathnameBase` — which excludes the splat. The form would post to
+ * `/@/orgs/<slug>`, the action would see an empty splat, and the admin would
+ * land on the organization root instead of the deep link the consent page just
+ * promised them.
+ */
+export function impersonationConsentPostBackPath(
+  organizationSlug: string,
+  splatPath: string,
+  search: string = ""
+) {
+  return impersonate(impersonationDestinationPath(organizationSlug, splatPath, search));
+}
+
 export function accountPath() {
   return `/account`;
 }

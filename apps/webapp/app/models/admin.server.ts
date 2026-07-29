@@ -11,6 +11,7 @@ import {
 import { authenticator } from "~/services/auth.server";
 import { requireUser } from "~/services/session.server";
 import { extractClientIp } from "~/utils/extractClientIp.server";
+import { impersonationDestinationPath } from "~/utils/pathBuilder";
 
 const pageSize = 20;
 
@@ -298,6 +299,10 @@ export async function findImpersonationTarget(
  * Starts impersonating the organization's first confirmed member and lands on
  * the requested path with the `/@` prefix stripped. Shared by the same-origin
  * loader path and the consent page's POST so there is one implementation.
+ *
+ * The destination keeps the incoming query string: both entry points are served
+ * at the `/@`-prefixed URL, so `request.url` carries the same search the link
+ * arrived with (for example the `?span=` a `/@/runs/<id>` link redirects with).
  */
 export async function startImpersonation(
   request: Request,
@@ -319,7 +324,7 @@ export async function startImpersonation(
   return redirectWithImpersonation(
     request,
     target.userId,
-    `/orgs/${organizationSlug}/${path}`,
+    impersonationDestinationPath(organizationSlug, path, new URL(request.url).search),
     currentUser,
     clients.write
   );

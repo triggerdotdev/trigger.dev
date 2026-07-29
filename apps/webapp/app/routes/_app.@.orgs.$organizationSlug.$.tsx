@@ -14,6 +14,10 @@ import {
 } from "~/models/admin.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
+import {
+  impersonationConsentPostBackPath,
+  impersonationDestinationPath,
+} from "~/utils/pathBuilder";
 import { isSameOriginNavigation } from "~/utils/sameOriginNavigation";
 
 // Everything this route's loader and action touch on the server lives in
@@ -57,10 +61,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw await startImpersonation(request, organizationSlug, path, user);
   }
 
-  logger.warn("Cross-site impersonation entry, showing consent page", {
+  // Expected for any link opened outside the app (address bar, bookmark, a link
+  // shared elsewhere), so this is routine rather than suspicious. Only the
+  // referer's origin is logged — the full referer can carry another site's path
+  // and query string.
+  logger.info("Impersonation entry outside the app, showing consent page", {
     userId: user.id,
     organizationSlug,
-    referer: request.headers.get("referer"),
+    refererOrigin: refererOrigin(request),
     secFetchSite: request.headers.get("sec-fetch-site"),
   });
 
@@ -68,12 +76,25 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // until the admin confirms with the POST below.
   const target = await findImpersonationTarget(organizationSlug);
 
+  const search = new URL(request.url).search;
+
   return typedjson({
     organizationSlug,
     organizationName: target.success ? target.organizationName : undefined,
-    destinationPath: `/orgs/${organizationSlug}/${path}`,
+    destinationPath: impersonationDestinationPath(organizationSlug, path, search),
+    postBackPath: impersonationConsentPostBackPath(organizationSlug, path, search),
     canImpersonate: target.success,
   });
+}
+
+function refererOrigin(request: Request): string | undefined {
+  const referer = request.headers.get("referer");
+  if (!referer) return undefined;
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -105,13 +126,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return clearImpersonation(request, "/admin");
   }
 
-  // The form has no `action`, so it posts to the current URL and the
-  // organization slug plus the splat path arrive here unchanged.
+  // The consent form posts to an explicit absolute path (see
+  // `impersonationConsentPostBackPath`), so the organization slug, the splat
+  // path and the query string all arrive here intact.
   return startImpersonation(request, organizationSlug, params["*"] ?? "", user);
 }
 
 export default function Page() {
-  const { organizationSlug, organizationName, destinationPath, canImpersonate } =
+  const { organizationSlug, organizationName, destinationPath, postBackPath, canImpersonate } =
     useTypedLoaderData<typeof loader>();
 
   return (
@@ -125,7 +147,7 @@ export default function Page() {
               <span className="text-text-bright">{organizationName ?? organizationSlug}</span> and
               open <span className="text-text-bright">{destinationPath}</span>.
             </Paragraph>
-            <Form method="post" reloadDocument>
+            <Form method="post" action={postBackPath} reloadDocument>
               <Button type="submit" variant="primary/medium" fullWidth shortcut={{ key: "enter" }}>
                 Impersonate
               </Button>
