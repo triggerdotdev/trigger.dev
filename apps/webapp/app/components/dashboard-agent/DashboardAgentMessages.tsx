@@ -1,12 +1,15 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { ArrowPathIcon, BookOpenIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { AgentIntent } from "@internal/dashboard-agent-contracts";
+import { useNavigate } from "@remix-run/react";
 import { memo } from "react";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { renderPart, toSafeUrl } from "~/components/runs/v3/agent/AgentMessageView";
 import { ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
-import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
+import { sameOriginPath } from "./navigate-target";
+import { hasToolProgressLine, IN_FLIGHT_TOOL_STATES } from "./progress-line";
+import { useTranscriptAutoScroll } from "./useTranscriptAutoScroll";
 import {
   ChatActionsRow,
   ChatCardSlot,
@@ -92,10 +95,6 @@ function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
   return report ? [report] : null;
 }
 
-// A tool call that hasn't produced output yet. Progress for these goes on its own
-// line under the row, not inside it.
-const IN_FLIGHT_TOOL_STATES = new Set(["input-streaming", "input-available"]);
-
 // #region chat-layout transcript
 // Everything from here down composes via ./chat-layout only — see rule 1 there.
 // `chat-layout.test.ts` fails if a spacing utility class appears in this region.
@@ -158,6 +157,33 @@ function citationFor(part: UIMessage["parts"][number]): { url: string; label: st
   return url && label ? { url, label } : null;
 }
 
+/**
+ * One citation, as a button.
+ *
+ * A citation into our own dashboard is a place in this app, so it navigates in
+ * place — as an absolute URL it would otherwise render as an external link and
+ * open a second copy of the dashboard in a new tab. Real external links keep
+ * their new tab.
+ */
+function CitationButton({ url, label }: { url: string; label: string }) {
+  const navigate = useNavigate();
+  const path = typeof window === "undefined" ? null : sameOriginPath(url, window.location.origin);
+
+  if (path) {
+    return (
+      <Button variant="docs/small" LeadingIcon={BookOpenIcon} onClick={() => navigate(path)}>
+        {label}
+      </Button>
+    );
+  }
+
+  return (
+    <LinkButton to={url} variant="docs/small" LeadingIcon={BookOpenIcon}>
+      {label}
+    </LinkButton>
+  );
+}
+
 /** The text of a user message: every text part, joined. */
 function userText(message: UIMessage): string {
   return (
@@ -218,11 +244,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
       while (i < parts.length) {
         const citation = citationFor(parts[i]!);
         if (!citation) break;
-        buttons.push(
-          <LinkButton key={i} to={citation.url} variant="docs/small" LeadingIcon={BookOpenIcon}>
-            {citation.label}
-          </LinkButton>
-        );
+        buttons.push(<CitationButton key={i} url={citation.url} label={citation.label} />);
         i++;
       }
       i--;
@@ -269,6 +291,9 @@ export function DashboardAgentTurns({
   resolveUri,
   watches,
 }: DashboardAgentMessagesProps) {
+  // One status line at a time: a tool's own progress beats the generic activity.
+  const showActivity = activity !== null && !hasToolProgressLine(messages);
+
   return (
     <>
       {messages.map((message) => (
@@ -280,7 +305,7 @@ export function DashboardAgentTurns({
           watches={watches}
         />
       ))}
-      {activity && (
+      {showActivity && activity && (
         <ChatTurn>
           <ChatProgress>{ACTIVITY_LABELS[activity]}</ChatProgress>
         </ChatTurn>
@@ -323,7 +348,7 @@ export function DashboardAgentTurns({
 // between turns, where a card or a progress line sits — is `./chat-layout`'s;
 // this component only decides what each part turns into.
 export function DashboardAgentMessages(props: DashboardAgentMessagesProps) {
-  const rootRef = useAutoScrollToBottom([props.messages, props.activity]);
+  const rootRef = useTranscriptAutoScroll(props.messages, props.activity);
 
   return (
     <ChatTranscript contentRef={rootRef}>

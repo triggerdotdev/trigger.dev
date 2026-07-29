@@ -2,12 +2,16 @@ import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "@ai-sdk/react";
 import type { dashboardAgent } from "@internal/dashboard-agent";
 import type { AgentIntent, SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
+import { useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useToast } from "~/components/primitives/Toast";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
+import { createTranscriptOrder, orderTranscript } from "./message-order";
+import { appendRunFilters, pendingNavigateIntents } from "./navigate-target";
 import type { AgentPageContext } from "./page-context-types";
 import { WatchChips, type WatchChip } from "./WatchChips";
 
@@ -117,6 +121,8 @@ export function DashboardAgentChat({
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
 }) {
   const [input, setInput] = useState("");
+  const navigate = useNavigate();
+  const toast = useToast();
 
   // Put requested text in the composer rather than sending it: a chat is already
   // open, so the user gets to read and edit before it goes.
@@ -180,7 +186,7 @@ export function DashboardAgentChat({
   });
 
   const {
-    messages,
+    messages: rawMessages,
     sendMessage,
     status,
     stop: aiStop,
@@ -194,6 +200,13 @@ export function DashboardAgentChat({
     // session but nothing to resume yet — it sends its first message instead.
     resume: !!session && !pendingFirstMessage,
   });
+
+  // The transcript in stable order. The store's copy is the base; live arrivals
+  // go after it, and a turn the stream replays goes back into its own slot — so
+  // a message sent right after a remount can't land between older turns. See
+  // `message-order.ts`.
+  const orderRef = useRef(createTranscriptOrder(initialMessages));
+  const messages = orderTranscript(rawMessages, orderRef.current);
 
   const isStreaming = status === "streaming";
   // A turn is in flight from submit until it settles. Deriving the indicator
@@ -235,6 +248,29 @@ export function DashboardAgentChat({
     if (text) void sendMessage({ text });
   }, [messages, sendMessage, clearError]);
 
+  // Take the user where a `navigate` intent points. The target is a `trigger://`
+  // URI, so the path comes from the server (the route's `resolve` intent, which
+  // owns the environment scope the resolver needs); the intent's runs-list
+  // filters are applied on top. Same-origin, so this is a client-side navigation
+  // — the panel lives in the env layout and survives it.
+  const goTo = useCallback(
+    async (intent: Extract<AgentIntent, { kind: "navigate" }>) => {
+      const body = new FormData();
+      body.set("intent", "resolve");
+      body.set("uri", intent.target);
+      try {
+        const res = await fetch(actionPath, { method: "POST", body });
+        const data = (await res.json()) as { path?: string };
+        if (!res.ok || !data.path) throw new Error(`Resolve failed (${res.status})`);
+        navigate(appendRunFilters(data.path, intent.filters));
+      } catch (error) {
+        console.error("Dashboard agent: failed to resolve a navigate target", error);
+        toast.error("Couldn't open that page.");
+      }
+    },
+    [actionPath, navigate, toast]
+  );
+
   // What a card's action does. An `ask` goes back into the conversation as the
   // user's own question — and so does a `watch`: the click becomes a visible
   // request ("Watch this for me…") and the agent answers it with schedule_watch,
@@ -242,10 +278,7 @@ export function DashboardAgentChat({
   // A silent POST would be cheaper, but a watch the transcript never mentions
   // reads as nothing having happened.
   //
-  // `navigate` needs a `trigger://` -> dashboard-path resolver, which the panel
-  // doesn't have yet (no `resolveUri` is threaded either, so cards render those
-  // targets as plain text rather than as buttons). `propose_fix` is reserved and
-  // must never be executed.
+  // `propose_fix` is reserved and must never be executed.
   const handleIntent = useCallback(
     (intent: AgentIntent) => {
       switch (intent.kind) {
@@ -255,12 +288,32 @@ export function DashboardAgentChat({
         case "watch":
           submit(watchRequestText(intent.spec));
           return;
+        case "navigate":
+          void goTo(intent);
+          return;
         default:
           console.warn(`Dashboard agent: unhandled intent "${intent.kind}"`);
       }
     },
-    [submit]
+    [submit, goTo]
   );
+
+  // The `navigate_to` tool answers with an intent and the agent then narrates it
+  // in the past tense ("you're now on…"), so the panel has to actually move.
+  // Seeded with the loaded transcript before the first render, so opening a chat
+  // whose history contains a navigation never navigates on replay — only calls
+  // that land while this chat is open are honoured, once each.
+  const navigatedRef = useRef<Set<string> | null>(null);
+  if (navigatedRef.current === null) {
+    navigatedRef.current = new Set();
+    pendingNavigateIntents(initialMessages, navigatedRef.current);
+  }
+  useEffect(() => {
+    const pending = pendingNavigateIntents(messages, navigatedRef.current!);
+    // Only the last one matters — the earlier destinations are already history.
+    const target = pending.at(-1);
+    if (target?.kind === "navigate") void goTo(target);
+  }, [messages, goTo]);
 
   const stop = useCallback(() => {
     transport.stopGeneration(chatId);

@@ -33,6 +33,17 @@ export default function Story() {
         </Callout>
         <Callout variant="pending">This is a pending callout</Callout>
         <Callout variant="pricing">This is a pricing callout</Callout>
+        <Callout variant="agent">This is an agent callout</Callout>
+        <Callout
+          variant="agent"
+          cta={
+            <Button variant="secondary/small" onClick={() => {}}>
+              Open chat
+            </Button>
+          }
+        >
+          This is an agent callout with an action
+        </Callout>
         <Callout variant="error">
           This is an error message which runs over multiple lines. This is an error message which
           runs over multiple lines. This is an error message which runs over multiple lines.
@@ -63,6 +74,9 @@ export default function Story() {
         </Callout>
         <Callout to="#" variant="pricing">
           This is a pricing callout
+        </Callout>
+        <Callout to="#" variant="agent">
+          This is an agent callout
         </Callout>
         <Callout variant="info" to="https://google.com">
           This uses an http link

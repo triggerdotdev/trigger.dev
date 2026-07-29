@@ -82,6 +82,7 @@ type ActiveChat = {
 export function DashboardAgentPanel({
   onClose,
   requestedMessage,
+  openChatRequest,
   promotedPrompt,
   onChatRead,
 }: {
@@ -89,6 +90,9 @@ export function DashboardAgentPanel({
   // Text handed to the panel from outside (`openWith`). `seq` distinguishes
   // repeat requests with the same text.
   requestedMessage?: { text: string; seq: number };
+  // A specific chat to show, from outside the panel (a wake toast). `seq`
+  // distinguishes repeat requests for the same chat.
+  openChatRequest?: { chatId: string; seq: number };
   // The product-controlled promoted prompt chip, from the feature flag.
   promotedPrompt?: SuggestedPrompt;
   // The chat in front of the user changed, so its watch wakes are seen — clears
@@ -309,6 +313,22 @@ export function DashboardAgentPanel({
     // location is deliberately not a dep: this is a mount-time decision.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openChat, storageKey, loadHistory]);
+
+  // A chat asked for from outside: a wake toast is about one conversation, so it
+  // opens that one. Runs after the mount-time restore, and `openChat` invalidates
+  // any request already in flight, so the asked-for chat is the one that lands.
+  const handledOpenChatSeq = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!openChatRequest || handledOpenChatSeq.current === openChatRequest.seq) return;
+    handledOpenChatSeq.current = openChatRequest.seq;
+    setView("chat");
+    // Already the visible transcript — nothing to load, and reloading it would
+    // drop a turn in flight.
+    if (openChatRequest.chatId === active?.chatId) return;
+    void openChat(openChatRequest.chatId);
+    // `active` is read, not tracked: a later change must not re-run the request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openChatRequest, openChat]);
 
   // Persist the active chat and the page it's being used on — navigating with
   // the panel open keeps the chat, so the stored path follows along.

@@ -1,4 +1,5 @@
 import {
+  ChatBubbleLeftRightIcon,
   CreditCardIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
@@ -58,6 +59,14 @@ export const variantClasses = {
     icon: <Spinner className="h-5 w-5 shrink-0 " />,
     textColor: "text-callout-pending-text",
     linkClassName: "transition hover:bg-callout-pending/20",
+  },
+  // Something the dashboard agent has to say, carrying a way into the chat.
+  // Indigo is the agent's accent, and the icon is the launcher's own.
+  agent: {
+    className: "border-indigo-500/20 bg-indigo-500/10",
+    icon: <ChatBubbleLeftRightIcon className="h-5 w-5 shrink-0 text-indigo-500" />,
+    textColor: "text-text-bright",
+    linkClassName: "transition hover:bg-indigo-500/20",
   },
   pricing: {
     className: "border-callout-pricing/20 bg-callout-pricing-bg/30",

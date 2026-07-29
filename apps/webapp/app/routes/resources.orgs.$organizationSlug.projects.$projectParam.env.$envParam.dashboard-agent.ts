@@ -40,6 +40,7 @@ import {
 import { startDashboardAgentHeadStart } from "~/services/dashboardAgentHeadStart.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
+import { resolveTriggerUri } from "~/services/resolveTriggerUri.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
@@ -61,6 +62,7 @@ const ActionBody = z.object({
     "pin",
     "delete",
     "read",
+    "resolve",
     "watch",
     "watch-cancel",
   ]),
@@ -71,6 +73,8 @@ const ActionBody = z.object({
   clientData: z.string().optional(),
   title: z.string().optional(),
   pinned: z.enum(["true", "false"]).optional(),
+  // A `trigger://` URI, for `resolve`.
+  uri: z.string().optional(),
   // A JSON WatchSpec, for `watch`.
   spec: z.string().optional(),
   // The watch to cancel, for `watch-cancel`.
@@ -277,6 +281,23 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         { status: 500 }
       );
     }
+  }
+
+  // Turn a `trigger://` URI into the dashboard path it points at, so the panel
+  // can honour a `navigate` intent. Chat-independent (a card in any chat cites
+  // the same resources), and scoped by the environment in the URL — the resolver
+  // refuses a URI naming a different project or environment.
+  if (parsed.data.intent === "resolve") {
+    const uri = parsed.data.uri;
+    if (!uri) return json({ error: "uri is required" }, { status: 400 });
+
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment) return json({ error: "Environment not found" }, { status: 404 });
+
+    const resolved = resolveTriggerUri(environment, uri);
+    if (!resolved) return json({ error: "Nothing to open for that link" }, { status: 404 });
+
+    return json({ path: resolved.url, label: resolved.label });
   }
 
   const { intent, chatId } = parsed.data;

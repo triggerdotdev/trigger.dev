@@ -7,16 +7,17 @@
  * a 5s timer. Dismissing does NOT mark the chat read — reading happens in the
  * panel, so the dot survives a swatted toast.
  *
- * Styled to match `~/components/primitives/Toast` (same `toast.custom` render
- * pattern, same shell) instead of importing its `ToastUI`, which is fixed to the
- * success/error icons.
+ * The content is the standard `Callout` in its `agent` variant (the launcher's
+ * chat icon, the agent's indigo accent), inside the sonner shell the app's other
+ * toasts use — so a wake looks like everything else the dashboard says, not like
+ * a one-off panel.
  */
-import { BoltIcon, EyeIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { XMarkIcon } from "@heroicons/react/20/solid";
 import { toast } from "sonner";
 import { Button } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { cn } from "~/utils/cn";
 
 /** Matches sonner's default toast width, same as the app's other toasts. */
 const TOAST_WIDTH = 356;
@@ -35,38 +36,35 @@ function WakeToastUI({
   t,
   title,
   message,
-  outcome,
   onOpenChat,
 }: {
   t: string;
   title: string;
   message: string;
-  outcome?: "fired" | "expired";
   onOpenChat: () => void;
 }) {
-  // A fire is the watch's news; an expiry is the watch giving up.
-  const Icon = outcome === "expired" ? EyeIcon : BoltIcon;
-
   return (
-    <div
-      className="self-end rounded-md border border-grid-bright bg-background-dimmed"
-      style={{ width: TOAST_WIDTH }}
-    >
-      <div className="flex w-full items-start gap-2 rounded-lg p-3">
-        <Icon
-          className={cn(
-            "mt-1 size-4 min-w-4",
-            outcome === "expired" ? "text-text-dimmed" : "text-indigo-500"
-          )}
-        />
-        <div className="flex flex-col">
+    // Opaque base under the callout: a callout is translucent by design, and a
+    // toast has to read over whatever page is behind it.
+    <div className="self-end rounded-md bg-background-dimmed" style={{ width: TOAST_WIDTH }}>
+      <Callout
+        variant="agent"
+        cta={
+          <button
+            className="-mr-1 -mt-1 rounded p-1 text-text-dimmed transition hover:text-text-bright"
+            aria-label="Dismiss"
+            onClick={() => toast.dismiss(t)}
+          >
+            <XMarkIcon className="size-4" />
+          </button>
+        }
+      >
+        <div className="flex flex-col items-start gap-1">
           <Header2 className="pt-0">{title}</Header2>
-          <Paragraph variant="small/dimmed" className="pb-1 pt-0.5">
-            {message}
-          </Paragraph>
+          <Paragraph variant="small/dimmed">{message}</Paragraph>
           <Button
             variant="secondary/small"
-            className="my-2"
+            className="mt-1"
             onClick={() => {
               onOpenChat();
               toast.dismiss(t);
@@ -75,14 +73,7 @@ function WakeToastUI({
             Open chat
           </Button>
         </div>
-        <button
-          className="-mr-1 -mt-1 ms-auto rounded p-2 text-text-dimmed transition hover:text-text-bright"
-          aria-label="Dismiss"
-          onClick={() => toast.dismiss(t)}
-        >
-          <XMarkIcon className="size-4" />
-        </button>
-      </div>
+      </Callout>
     </div>
   );
 }
@@ -96,16 +87,19 @@ function show(node: (t: string) => React.ReactElement, id: string) {
   });
 }
 
-/** One persistent toast for a single wake. */
-export function showWatchWakeToast(wake: WatchWake, onOpenChat: () => void) {
+/**
+ * One persistent toast for a single wake. `onOpenChat` is given the chat the wake
+ * happened in — the toast is about that conversation, so it must open that one
+ * rather than whichever chat the panel had last.
+ */
+export function showWatchWakeToast(wake: WatchWake, onOpenChat: (chatId: string) => void) {
   show(
     (t) => (
       <WakeToastUI
         t={t}
         title="Watch update"
         message={wake.note}
-        outcome={wake.outcome}
-        onOpenChat={onOpenChat}
+        onOpenChat={() => onOpenChat(wake.chatId)}
       />
     ),
     `watch-wake-${wake.watchId}`

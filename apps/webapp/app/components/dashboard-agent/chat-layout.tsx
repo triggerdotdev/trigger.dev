@@ -97,7 +97,7 @@ function useInsetClass(): string | undefined {
  * between turns live here, so no consumer sets either.
  *
  * `contentRef` is attached to the padded column *inside* the scroller — that is
- * what `useAutoScrollToBottom` expects (it walks up to find the scroller).
+ * what `useTranscriptAutoScroll` expects (it walks up to find the scroller).
  */
 export function ChatTranscript({
   children,

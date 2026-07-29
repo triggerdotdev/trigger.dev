@@ -60,12 +60,30 @@ export function DashboardAgent({
   const [requestedMessage, setRequestedMessage] = useState<
     { text: string; seq: number } | undefined
   >(undefined);
+  // A specific chat to open, from a wake toast. `seq` so the same chat can be
+  // asked for twice (a second wake in a chat the user has already left).
+  const [openChatRequest, setOpenChatRequest] = useState<
+    { chatId: string; seq: number } | undefined
+  >(undefined);
 
   // Closing drops any pending request, so reopening the panel later doesn't
   // replay text the user has moved on from.
   const setPanelOpen = useCallback((next: boolean) => {
     setOpen(next);
-    if (!next) setRequestedMessage(undefined);
+    // Closing drops both pending requests: the panel unmounts, so a stale one
+    // would re-apply on the next open instead of restoring the last chat.
+    if (!next) {
+      setRequestedMessage(undefined);
+      setOpenChatRequest(undefined);
+    }
+  }, []);
+
+  // Open the panel on the chat a wake happened in. Without the chat id the panel
+  // would just restore whatever it had open last, which is rarely the one the
+  // toast is about.
+  const openChat = useCallback((chatId: string) => {
+    setOpen(true);
+    setOpenChatRequest((current) => ({ chatId, seq: (current?.seq ?? 0) + 1 }));
   }, []);
 
   const openWith = useCallback((text: string) => {
@@ -101,7 +119,7 @@ export function DashboardAgent({
         } else {
           // Oldest first, so the newest wake ends up nearest the user.
           for (const wake of [...fresh].reverse()) {
-            showWatchWakeToast(wake, () => setPanelOpen(true));
+            showWatchWakeToast(wake, openChat);
           }
         }
       } catch {
@@ -115,7 +133,7 @@ export function DashboardAgent({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [hasAccess, open, actionPath, setPanelOpen]);
+  }, [hasAccess, open, actionPath, setPanelOpen, openChat]);
 
   // A chat the user is now looking at has no unread wakes. Zeroes the dot right
   // away (the poll restores the truth on close if another chat still has one) and
@@ -161,6 +179,7 @@ export function DashboardAgent({
             <DashboardAgentPanel
               onClose={() => setPanelOpen(false)}
               requestedMessage={requestedMessage}
+              openChatRequest={openChatRequest}
               promotedPrompt={promotedPrompt}
               onChatRead={markChatRead}
             />
