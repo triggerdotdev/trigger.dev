@@ -29,7 +29,8 @@ of truth.
 
 - `chats` — one row per conversation: org/user scope, title, a `messages` JSONB
   display copy of the transcript, and `metadata` (the project/env context the chat
-  ran in). Soft-deleted via `deleted_at`, pinned via `pinned_at`.
+  ran in). Soft-deleted via `deleted_at`, pinned via `pinned_at`, read-marked via
+  `last_read_at` (NULL = never read, so every watch wake in it counts as unread).
 - `chat_sessions` — live transport state keyed by `chat_id`: the session-scoped
   `public_access_token` and `last_event_id` for resume. Separate table so the
   secret token is isolated from list queries and the hot per-turn write stays off

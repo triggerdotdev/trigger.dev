@@ -22,6 +22,13 @@
       "when": 1785152602605,
       "tag": "0002_luxuriant_king_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785320232281,
+      "tag": "0003_famous_champions",
+      "breakpoints": true
     }
   ]
 }

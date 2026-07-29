@@ -48,6 +48,10 @@ export const chats = dashboardAgentSchema.table(
     // Project/env context + model choice + page snapshot. Flexible by design.
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    // When the user last had this chat in front of them. NULL means never read,
+    // so everything in it counts as unread — the launcher's dot compares watch
+    // wakes against this.
+    lastReadAt: timestamp("last_read_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -82,6 +82,7 @@ export function DashboardAgentPanel({
   onClose,
   requestedMessage,
   promotedPrompt,
+  onChatRead,
 }: {
   onClose: () => void;
   // Text handed to the panel from outside (`openWith`). `seq` distinguishes
@@ -89,6 +90,9 @@ export function DashboardAgentPanel({
   requestedMessage?: { text: string; seq: number };
   // The product-controlled promoted prompt chip, from the feature flag.
   promotedPrompt?: SuggestedPrompt;
+  // The chat in front of the user changed, so its watch wakes are seen — clears
+  // the launcher's unread dot.
+  onChatRead?: (chatId: string) => void;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -297,6 +301,18 @@ export function DashboardAgentPanel({
       /* ignore */
     }
   }, [active?.chatId, storageKey, location.pathname]);
+
+  // A chat becoming the visible transcript is the user reading it — mark it read
+  // so the launcher's dot clears. Fires on open, on every chat switch, and when
+  // the History view is left for the chat again; a draft has nothing to read.
+  useEffect(() => {
+    if (view !== "chat" || !active?.chatId) return;
+    const chatId = active.chatId;
+    onChatRead?.(chatId);
+    // Read it again on the way out, so a wake that landed while the chat was in
+    // front of the user doesn't come back as unread when the panel closes.
+    return () => onChatRead?.(chatId);
+  }, [view, active?.chatId, onChatRead]);
 
   // Text handed in by `openWith`. With no chat open we start one and send it
   // straight away (the launcher's caller already knows what to ask); with a chat

@@ -2,11 +2,13 @@ import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-r
 import {
   cancelWatch,
   chatExists,
+  countUnreadWatchWakes,
   createChat,
   getChatMessages,
   getSession,
   getWatch,
   listChats,
+  markChatRead,
   renameChat,
   setChatPinned,
   softDeleteChat,
@@ -48,7 +50,17 @@ const ENV_NAME_BY_TYPE: Record<string, string> = {
 };
 
 const ActionBody = z.object({
-  intent: z.enum(["start", "create", "token", "rename", "pin", "delete", "watch", "watch-cancel"]),
+  intent: z.enum([
+    "start",
+    "create",
+    "token",
+    "rename",
+    "pin",
+    "delete",
+    "read",
+    "watch",
+    "watch-cancel",
+  ]),
   // Omitted for `create` (the server generates it); required for the rest.
   chatId: z.string().min(1).optional(),
   // The first user message (JSON UIMessage), for `create`.
@@ -62,7 +74,9 @@ const ActionBody = z.object({
   watchId: z.string().min(1).optional(),
 });
 
-// History list, or — with ?chatId= — the stored transcript + session for resume.
+// History list, or — with ?chatId= — the stored transcript + session for resume,
+// or — with ?unread=1 — just the unread wake count (the launcher's dot polls it
+// while the panel is closed, so it must stay cheap).
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
@@ -82,7 +96,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
 
-  const chatId = new URL(request.url).searchParams.get("chatId");
+  const searchParams = new URL(request.url).searchParams;
+
+  if (searchParams.get("unread") === "1") {
+    return json({
+      unreadWakes: await countUnreadWatchWakes(dashboardAgentDb, {
+        organizationId: project.organizationId,
+        userId,
+      }),
+    });
+  }
+
+  const chatId = searchParams.get("chatId");
   if (chatId) {
     const [messages, session] = await Promise.all([
       getChatMessages(dashboardAgentDb, { chatId, userId }),
@@ -98,14 +123,21 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   // Active-watch chips for the list, in ONE query for all the listed chats — the
   // history list must not fan out a query per row.
-  const watchesByChat = await listActiveWatchesForChats({
-    chatIds: chats.map((chat) => chat.id),
-    organizationId: project.organizationId,
-    userId,
-  });
+  const [watchesByChat, unreadWakes] = await Promise.all([
+    listActiveWatchesForChats({
+      chatIds: chats.map((chat) => chat.id),
+      organizationId: project.organizationId,
+      userId,
+    }),
+    countUnreadWatchWakes(dashboardAgentDb, {
+      organizationId: project.organizationId,
+      userId,
+    }),
+  ]);
 
   return json({
     chats: chats.map((chat) => ({ ...chat, watches: watchesByChat[chat.id] ?? [] })),
+    unreadWakes,
   });
 };
 
@@ -286,6 +318,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         userId,
         pinned: parsed.data.pinned === "true",
       });
+      return json({ ok: true });
+    }
+
+    // The user has this chat in front of them, so its watch wakes are seen. The
+    // update is owner-scoped, so a chatId the caller doesn't own is a no-op.
+    case "read": {
+      await markChatRead(dashboardAgentDb, { chatId, userId });
       return json({ ok: true });
     }
 

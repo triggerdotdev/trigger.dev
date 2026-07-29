@@ -200,6 +200,20 @@ export async function setChatPinned(
     .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)));
 }
 
+/**
+ * #5 Mark a chat read up to `at` (default now). Scoped to the owner, so a chatId
+ * from a client can only ever clear the caller's own unread state.
+ */
+export async function markChatRead(
+  db: DashboardAgentDb,
+  params: { chatId: string; userId: string; at?: Date }
+): Promise<void> {
+  await db
+    .update(chats)
+    .set({ lastReadAt: params.at ?? sql`now()` })
+    .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)));
+}
+
 /** #5 Soft-delete. */
 export async function softDeleteChat(
   db: DashboardAgentDb,
@@ -603,6 +617,39 @@ export async function listActiveWatchesForChats(
     });
   }
   return byChat;
+}
+
+/**
+ * #13 How many watch wakes this user hasn't seen — what the launcher's dot shows
+ * while the panel is closed.
+ *
+ * A wake is a watch that resolved (`fired` or `expired`; a cancelled watch is
+ * never narrated) after the chat was last read. `last_read_at is null` means the
+ * chat was never opened since the column existed, so every wake in it is unread.
+ * The resolution time is `fired_at` for a fire and `last_checked_at` for an
+ * expiry — `transitionWatchCondition` writes both in the same statement.
+ *
+ * Tenancy floor is the join, same as `listActiveWatchesForChats`: org + user +
+ * not-deleted on the chat, so nothing outside this user's chats can be counted.
+ */
+export async function countUnreadWatchWakes(
+  db: DashboardAgentDb,
+  params: { organizationId: string; userId: string }
+): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(watches)
+    .innerJoin(chats, eq(chats.id, watches.chatId))
+    .where(
+      and(
+        inArray(watches.status, ["fired", "expired"]),
+        eq(chats.organizationId, params.organizationId),
+        eq(chats.userId, params.userId),
+        isNull(chats.deletedAt),
+        sql`(${chats.lastReadAt} is null or coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) > ${chats.lastReadAt})`
+      )
+    );
+  return rows[0]?.count ?? 0;
 }
 
 /** A chat's org plus the project/environment context stored on it. */
