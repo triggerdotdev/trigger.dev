@@ -93,6 +93,29 @@ trusted for advice.
 filtered page), TRQL data questions with live charts, deploy correlation
 ("did the last deploy cause this?"), docs answers with source links.
 
+## The full toolbox — what's convenient to do through the agent
+
+Everything it can reach, phrased as things you'd actually say. ⭐ = the
+scenarios worth trying first.
+
+| Say | It does |
+| --- | --- |
+| ⭐ "Why did this run fail?" / *Investigate* | full investigation card with tested hypotheses and cited evidence |
+| ⭐ "Tell me when the backlog drains" / "…when this run starts" | durable watch that wakes the chat (and emails you, if subscribed) |
+| ⭐ "Is anything wrong right now?" | the deterministic health report as a card |
+| ⭐ "Show me the failing code" (repo connected) | reads your source at the run's deployed commit, cites file:line |
+| "Where am I?" / "what is this page showing?" | explains the current page — it always knows where you are |
+| "Take me to the email-sends queue" / "show failed runs from the last 24h" | navigates the dashboard for you, filters applied |
+| "What happened to run_abc?" / "show its timeline" | run details and its trace, span by span |
+| "What errors are recurring?" / "how widespread is this one?" | error groups, counts, first/last seen |
+| "What's queued right now, and why isn't it moving?" | queue depth, throughput, limiting cause, drain estimate |
+| "How many runs failed yesterday, by task?" / "chart it" | TRQL query over your run data, rendered as a live chart |
+| "What's deployed right now?" / "did the last deploy cause this?" | deploy list, current version, run→commit correlation |
+| "What tasks does this project have?" | the task list with file paths |
+| "How do retries work?" / "how do I set a concurrency limit?" | docs answer with source links |
+| "What alerts do I have?" / "turn off the email alert" | lists and manages your watch-fire subscriptions |
+| "This looks broken, can you flag it to support?" | files the context to the support channel |
+
 ## Where the UI got updates
 
 - **Chat button (page header)** — unread dot when a watch woke a chat you
