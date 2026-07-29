@@ -697,57 +697,50 @@ export function ReportMetricRow({
         ? "text-text-dimmed"
         : "text-text-faint";
 
-  const valueText = (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <span className={cn("text-sm font-medium tabular-nums", SEVERITY_TEXT[severity])}>
-        {value}
-      </span>
-      {note || heroNote ? (
-        <InfoIconTooltip content={[heroNote, note].filter(Boolean).join(" · ")} />
-      ) : null}
-    </span>
-  );
-
   return (
-    <li className={METRIC_ROW_CLASS}>
-      {/* items-center on the grid row keeps the label (and the delta and
-          sparkline) vertically centered against the value cell — which for a
-          composite metric is a three-line block. */}
-      <span className={LABEL_CLASS}>{label}</span>
-      {subRows && subRows.length > 0 ? (
-        // A composite value is a stack whose every line starts with the number,
-        // so 842 and 830 sit on the same vertical as the parent's +12/min and
-        // as the other rows' values; the sub label follows its number.
-        <span className="flex min-w-0 flex-col gap-y-0.5">
-          {valueText}
-          {subRows.map((sub) => (
-            <span key={sub.label} className="flex items-baseline gap-1.5 whitespace-nowrap">
-              <span className="text-sm tabular-nums text-text-dimmed">{sub.value}</span>
-              <span className={LABEL_CLASS}>{sub.label}</span>
-            </span>
-          ))}
+    <>
+      <li className={METRIC_ROW_CLASS}>
+        <span className={LABEL_CLASS}>{label}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className={cn("text-sm font-medium tabular-nums", SEVERITY_TEXT[severity])}>
+            {value}
+          </span>
+          {note || heroNote ? (
+            <InfoIconTooltip content={[heroNote, note].filter(Boolean).join(" · ")} />
+          ) : null}
         </span>
-      ) : (
-        valueText
-      )}
-      <span className={cn("whitespace-nowrap text-xs tabular-nums", deltaClass)}>
-        {delta?.text ?? ""}
-      </span>
-      {series && series.length > 0 ? (
-        <ReportSparkline
-          points={series}
-          severity={severity}
-          windowMinutes={windowMinutes}
-          anomalyMinutes={anomalyMinutes}
-          formatPoint={formatPoint}
-          label={label}
-        />
-      ) : (
-        // Keeps the column occupied so a series-less metric doesn't pull the
-        // rows out of alignment.
-        <span aria-hidden />
-      )}
-    </li>
+        <span className={cn("whitespace-nowrap text-xs tabular-nums", deltaClass)}>
+          {delta?.text ?? ""}
+        </span>
+        {series && series.length > 0 ? (
+          <ReportSparkline
+            points={series}
+            severity={severity}
+            windowMinutes={windowMinutes}
+            anomalyMinutes={anomalyMinutes}
+            formatPoint={formatPoint}
+            label={label}
+          />
+        ) : (
+          // Keeps the column occupied so a series-less metric doesn't pull the
+          // rows out of alignment.
+          <span aria-hidden />
+        )}
+      </li>
+
+      {(subRows ?? []).map((sub) => (
+        // A sub-row keeps the grid's columns: its label sits in the LABEL
+        // column, indented to the middle of the parent label above it, and its
+        // number sits in the VALUE column — on the same vertical as the
+        // parent's +12/min and every other row's value.
+        <li key={sub.label} className={METRIC_ROW_CLASS}>
+          <span className={cn(LABEL_CLASS, "pl-[3.5rem]")}>{sub.label}</span>
+          <span className="whitespace-nowrap text-sm tabular-nums text-text-dimmed">
+            {sub.value}
+          </span>
+        </li>
+      ))}
+    </>
   );
 }
 
