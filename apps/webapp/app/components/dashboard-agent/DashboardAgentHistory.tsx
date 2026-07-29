@@ -1,10 +1,11 @@
-import { TrashIcon } from "@heroicons/react/20/solid";
+import { EyeIcon, MagnifyingGlassIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
 import { AgentList, AgentListRow, AgentListRowAction } from "./list-row";
 import type { WatchChip } from "./WatchChips";
 
@@ -17,7 +18,52 @@ export type DashboardAgentChat = {
   watches?: WatchChip[];
   /** A watch resolved in this chat and the user hasn't opened it since. */
   hasUnreadWake?: boolean;
+  /** The chat holds at least one active watch. */
+  hasActiveWatch?: boolean;
+  /** The chat's latest investigation is still `in_progress`. */
+  hasOpenInvestigation?: boolean;
 };
+
+/** Something is running in this chat. One per row, most immediate first. */
+type ChatProcess = "thinking" | "investigating" | "watching";
+
+const PROCESS_LABELS: Record<ChatProcess, string> = {
+  thinking: "Agent is thinking",
+  investigating: "Investigation in progress",
+  watching: "Watch active",
+};
+
+/**
+ * `thinking` outranks the rest: a turn in flight is the thing that's about to
+ * change, an investigation or a watch just sits there.
+ */
+function chatProcess(chat: DashboardAgentChat, isThinking: boolean): ChatProcess | null {
+  if (isThinking) return "thinking";
+  if (chat.hasOpenInvestigation) return "investigating";
+  if (chat.hasActiveWatch) return "watching";
+  return null;
+}
+
+function ProcessIcon({ process }: { process: ChatProcess }) {
+  const label = PROCESS_LABELS[process];
+  // No custom tooltip: the row is a button, so a tooltip trigger here would nest
+  // one button in another. `title` says the same thing.
+  return (
+    <span title={label} aria-label={label} role="img" className="shrink-0 text-text-dimmed">
+      {process === "investigating" ? (
+        <MagnifyingGlassIcon className="size-3.5" />
+      ) : process === "watching" ? (
+        // A watch is passive — an eye, not a spinner, so it can't be read as
+        // "the agent is busy in this chat".
+        <EyeIcon className="size-3.5" />
+      ) : (
+        // Same spinner the transcript's progress line uses — a spinner means
+        // "the agent is working right now".
+        <Spinner className="size-3.5" />
+      )}
+    </span>
+  );
+}
 
 /**
  * Chats with an unread wake go to the top — a watch that fired is the reason to
@@ -33,11 +79,17 @@ function unreadFirst(chats: DashboardAgentChat[]): DashboardAgentChat[] {
 export function DashboardAgentHistory({
   chats,
   currentChatId,
+  thinkingChatId,
   onSelect,
   onDelete,
 }: {
   chats: DashboardAgentChat[];
   currentChatId: string;
+  /**
+   * The chat with a turn in flight, if any. Client-side only — nothing marks a
+   * live turn server-side, so this is knowable for the open chat alone.
+   */
+  thinkingChatId?: string | null;
   onSelect: (chatId: string) => void;
   onDelete: (chatId: string) => void;
 }) {
@@ -55,28 +107,32 @@ export function DashboardAgentHistory({
           </Paragraph>
         ) : (
           <AgentList>
-            {unreadFirst(chats).map((chat) => (
-              <AgentListRow
-                key={chat.id}
-                label={chat.title}
-                unread={chat.hasUnreadWake ?? false}
-                meta={
-                  chat.lastMessageAt ? (
-                    <DateTime date={chat.lastMessageAt} showTooltip={false} />
-                  ) : undefined
-                }
-                variant={chat.id === currentChatId ? "selected" : "default"}
-                onSelect={() => onSelect(chat.id)}
-                action={
-                  <AgentListRowAction
-                    icon={TrashIcon}
-                    label={`Delete chat: ${chat.title}`}
-                    onClick={() => setPendingDelete(chat)}
-                    danger
-                  />
-                }
-              />
-            ))}
+            {unreadFirst(chats).map((chat) => {
+              const process = chatProcess(chat, chat.id === thinkingChatId);
+              return (
+                <AgentListRow
+                  key={chat.id}
+                  label={chat.title}
+                  unread={chat.hasUnreadWake ?? false}
+                  status={process ? <ProcessIcon process={process} /> : undefined}
+                  meta={
+                    chat.lastMessageAt ? (
+                      <DateTime date={chat.lastMessageAt} showTooltip={false} />
+                    ) : undefined
+                  }
+                  variant={chat.id === currentChatId ? "selected" : "default"}
+                  onSelect={() => onSelect(chat.id)}
+                  action={
+                    <AgentListRowAction
+                      icon={TrashIcon}
+                      label={`Delete chat: ${chat.title}`}
+                      onClick={() => setPendingDelete(chat)}
+                      danger
+                    />
+                  }
+                />
+              );
+            })}
           </AgentList>
         )}
       </div>

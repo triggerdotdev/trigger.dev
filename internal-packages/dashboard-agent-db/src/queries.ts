@@ -394,6 +394,47 @@ export async function listInvestigationsForChat(
     .limit(params.limit ?? 20);
 }
 
+/**
+ * #12 WHICH chats are mid-investigation — the history list marks those rows.
+ *
+ * Latest one wins: a chat can hold several investigations, so only the newest
+ * one's outcome says whether the chat is still being investigated. `distinct on
+ * (chat_id)` picks that row (newest `updated_at`, revision as the tie-break) and
+ * the outcome is checked on it — a chat whose old investigation stopped at
+ * `in_progress` but has a newer concluded one is NOT investigating.
+ *
+ * Tenancy floor is the join, same as {@link listActiveWatchesForChats}: org +
+ * user + not-deleted on the chat, so nothing outside this user's chats can match.
+ */
+export async function listChatIdsWithOpenInvestigations(
+  db: DashboardAgentDb,
+  params: { organizationId: string; userId: string }
+): Promise<Set<string>> {
+  const latest = db
+    .selectDistinctOn([investigations.chatId], {
+      chatId: investigations.chatId,
+      outcome: sql<string | null>`${investigations.state}->>'outcome'`.as("outcome"),
+    })
+    .from(investigations)
+    .innerJoin(chats, eq(chats.id, investigations.chatId))
+    .where(
+      and(
+        eq(chats.organizationId, params.organizationId),
+        eq(chats.userId, params.userId),
+        isNull(chats.deletedAt)
+      )
+    )
+    .orderBy(investigations.chatId, desc(investigations.updatedAt), desc(investigations.revision))
+    .as("latest");
+
+  const rows = await db
+    .select({ chatId: latest.chatId })
+    .from(latest)
+    .where(eq(latest.outcome, "in_progress"));
+
+  return new Set(rows.map((row) => row.chatId));
+}
+
 /* ------------------------------------------------------------------ *
  * Watches
  * ------------------------------------------------------------------ */

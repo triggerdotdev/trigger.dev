@@ -59,6 +59,7 @@ export function DashboardAgentChat({
   onCancelWatch,
   onWatchesChanged,
   onTurnSettled,
+  onActivityChange,
 }: {
   chatId: string;
   initialMessages: UIMessage[];
@@ -90,6 +91,12 @@ export function DashboardAgentChat({
   /** A watch was created — tell the panel to re-read the chips. */
   onWatchesChanged: () => void;
   onTurnSettled: () => void;
+  /**
+   * Whether a turn is in flight, for the History list's row marker. Only this
+   * component knows — the turn status is `useChat`'s, with nothing server-side
+   * to read it back from.
+   */
+  onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
 }) {
   const [input, setInput] = useState("");
   const toast = useToast();
@@ -280,6 +287,13 @@ export function DashboardAgentChat({
     if (wasInFlight && nowSettled) onTurnSettled();
     prevStatus.current = status;
   }, [status, onTurnSettled]);
+
+  // Report the turn's activity up, so the History list can mark this chat while
+  // it's working. Not cleared on unmount: opening History unmounts this chat but
+  // the turn carries on server-side, and it reports again when it remounts.
+  useEffect(() => {
+    onActivityChange?.(chatId, activity);
+  }, [chatId, activity, onActivityChange]);
 
   return (
     <>

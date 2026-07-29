@@ -16,6 +16,7 @@ import {
   type DashboardAgentSession,
 } from "./DashboardAgentChat";
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
+import type { TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentHeader } from "./DashboardAgentHeader";
 import {
   DashboardAgentHistory,
@@ -137,6 +138,16 @@ export function DashboardAgentPanel({
     }),
     [user.id, organization.id, project.id, environment.id, location.pathname, pageContextKey]
   );
+
+  // Which chat has a turn in flight, for the History list's marker. Client-side
+  // only: nothing server-side records a live turn, so this is the chat the panel
+  // has open (or had open when History was opened — the turn keeps running).
+  const [thinkingChatId, setThinkingChatId] = useState<string | null>(null);
+  const handleActivityChange = useCallback((chatId: string, activity: TurnActivity | null) => {
+    setThinkingChatId((previous) =>
+      activity !== null ? chatId : previous === chatId ? null : previous
+    );
+  }, []);
 
   // The list is reloaded from several places at once (open, every settled turn, a
   // watch change), so a single in-flight request is shared instead of stacking:
@@ -386,6 +397,7 @@ export function DashboardAgentPanel({
         toast.error("We couldn't delete that chat. Try again in a moment.");
         return;
       }
+      setThinkingChatId((previous) => (previous === id ? null : previous));
       if (id === active?.chatId) newChat();
       void loadHistory();
     },
@@ -455,6 +467,7 @@ export function DashboardAgentPanel({
         <DashboardAgentHistory
           chats={chats}
           currentChatId={active?.chatId ?? ""}
+          thinkingChatId={thinkingChatId}
           onSelect={switchChat}
           onDelete={deleteChat}
         />
@@ -482,6 +495,7 @@ export function DashboardAgentPanel({
           onCancelWatch={cancelWatch}
           onWatchesChanged={loadHistory}
           onTurnSettled={loadHistory}
+          onActivityChange={handleActivityChange}
         />
       ) : (
         <DashboardAgentDraft

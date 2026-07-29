@@ -7,6 +7,7 @@ import {
   getChatMessages,
   getSession,
   getWatch,
+  listChatIdsWithOpenInvestigations,
   listChatIdsWithUnreadWakes,
   listChats,
   markChatRead,
@@ -122,10 +123,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     userId,
   });
 
-  // Active-watch chips for the list, plus which chats woke unseen — both in ONE
-  // query for all the listed chats, because the history list must not fan out a
-  // query per row.
-  const [watchesByChat, unreadWakes, unreadChatIds] = await Promise.all([
+  // Active-watch chips for the list, which chats woke unseen, and which are
+  // mid-investigation — one query each for ALL the listed chats, because the
+  // history list must not fan out a query per row.
+  const [watchesByChat, unreadWakes, unreadChatIds, investigatingChatIds] = await Promise.all([
     listActiveWatchesForChats({
       chatIds: chats.map((chat) => chat.id),
       organizationId: project.organizationId,
@@ -139,14 +140,25 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       organizationId: project.organizationId,
       userId,
     }),
+    listChatIdsWithOpenInvestigations(dashboardAgentDb, {
+      organizationId: project.organizationId,
+      userId,
+    }),
   ]);
 
   return json({
-    chats: chats.map((chat) => ({
-      ...chat,
-      watches: watchesByChat[chat.id] ?? [],
-      hasUnreadWake: unreadChatIds.has(chat.id),
-    })),
+    chats: chats.map((chat) => {
+      const watches = watchesByChat[chat.id] ?? [];
+      return {
+        ...chat,
+        watches,
+        hasUnreadWake: unreadChatIds.has(chat.id),
+        // Both are row markers in the history list: the chat has something
+        // running in it. Derived here so the list doesn't re-derive per render.
+        hasActiveWatch: watches.length > 0,
+        hasOpenInvestigation: investigatingChatIds.has(chat.id),
+      };
+    }),
     unreadWakes,
   });
 };

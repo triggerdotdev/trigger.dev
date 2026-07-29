@@ -31,6 +31,7 @@ const ROW_VARIANTS: Record<AgentListRowVariant, string> = {
 export function AgentListRow({
   label,
   meta,
+  status,
   variant = "default",
   unread = false,
   onSelect,
@@ -40,6 +41,11 @@ export function AgentListRow({
   label: ReactNode;
   /** Small right-aligned detail, e.g. when a chat was last active. */
   meta?: ReactNode;
+  /**
+   * Trailing icon for something ongoing in this row, e.g. a chat the agent is
+   * still working in. Sits before {@link meta}, inside the row's own button.
+   */
+  status?: ReactNode;
   variant?: AgentListRowVariant;
   /**
    * Something happened here the user hasn't seen. Brightens the label and adds
@@ -68,6 +74,7 @@ export function AgentListRow({
           </>
         ) : null}
         <span className="line-clamp-1 min-w-0 flex-1">{label}</span>
+        {status}
         {meta ? <span className="shrink-0 text-xs text-text-faint">{meta}</span> : null}
       </button>
       {action}
