@@ -300,6 +300,38 @@ describe("error_recurrence", () => {
     );
     expect(outcome.result).toBe("unavailable");
   });
+
+  // The model cites the API error id; ClickHouse stores the raw fingerprint.
+  it("strips the `error_` prefix before reading, and reports the raw fingerprint", async () => {
+    let seen: string | undefined;
+    const outcome = await check(
+      { ...errorRecurrence, fingerprint: "error_abc123" } as WatchSpec,
+      deps({
+        readErrorRecurrence: async (fingerprint) => {
+          seen = fingerprint;
+          return null;
+        },
+      })
+    );
+
+    expect(seen).toBe("abc123");
+    expect(outcome.facts.fingerprint).toBe("abc123");
+  });
+
+  it("passes a raw fingerprint through unchanged", async () => {
+    let seen: string | undefined;
+    await check(
+      { ...errorRecurrence, fingerprint: "abc123" } as WatchSpec,
+      deps({
+        readErrorRecurrence: async (fingerprint) => {
+          seen = fingerprint;
+          return null;
+        },
+      })
+    );
+
+    expect(seen).toBe("abc123");
+  });
 });
 
 describe("health_recovery", () => {

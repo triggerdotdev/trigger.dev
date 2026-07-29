@@ -18,6 +18,7 @@
  *    labelled a queue wait when `queuedAt` exists.
  */
 
+import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 import type { WatchCheckResult, WatchSpec } from "@internal/dashboard-agent-contracts";
 
@@ -281,6 +282,15 @@ export async function checkBacklogDrain(
 }
 
 /**
+ * The model cites the API error id (`error_<fingerprint>`), but ClickHouse stores
+ * the raw fingerprint — same normalization the errors API route uses. Raw
+ * fingerprints pass through unchanged.
+ */
+export function normalizeErrorFingerprint(fingerprint: string): string {
+  return ErrorId.toId(fingerprint);
+}
+
+/**
  * error_recurrence — satisfied on the first occurrence strictly after the
  * server-set `since`. `since` is never caller-set, so the model can't backdate
  * the window and make a pre-existing error look like a recurrence.
@@ -290,8 +300,9 @@ export async function checkErrorRecurrence(
   deps: WatchCheckDeps,
   input: WatchCheckInput
 ): Promise<WatchCheckOutcome> {
-  const recurrence = await deps.readErrorRecurrence(spec.fingerprint, input.since);
-  const base = { fingerprint: spec.fingerprint, since: input.since.toISOString() };
+  const fingerprint = normalizeErrorFingerprint(spec.fingerprint);
+  const recurrence = await deps.readErrorRecurrence(fingerprint, input.since);
+  const base = { fingerprint, since: input.since.toISOString() };
 
   if (!recurrence) {
     return { result: "pending", facts: { ...base, countSince: 0 } };
