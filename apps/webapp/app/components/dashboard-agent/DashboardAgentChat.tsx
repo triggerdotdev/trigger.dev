@@ -4,12 +4,13 @@ import type { dashboardAgent } from "@internal/dashboard-agent";
 import type { AgentIntent, SuggestedPrompt, WatchSpec } from "@internal/dashboard-agent-contracts";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useToast } from "~/components/primitives/Toast";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts";
 import type { AgentPageContext } from "./page-context-types";
+import { WatchChips, type WatchChip } from "./WatchChips";
+
 /**
  * The message a card's watch button sends on the user's behalf. Written the way
  * the user would ask, so the transcript reads as a request the agent then
@@ -31,7 +32,6 @@ function watchRequestText(spec: WatchSpec): string {
       return "Watch this for me — tell me when health is back to normal.";
   }
 }
-import { WatchChips, type WatchChip } from "./WatchChips";
 
 // The persisted session for a chat: the session-scoped token plus the stream
 // cursor. Resuming with `lastEventId` is what stops the agent's `.out` stream
@@ -117,7 +117,6 @@ export function DashboardAgentChat({
   onActivityChange?: (chatId: string, activity: TurnActivity | null) => void;
 }) {
   const [input, setInput] = useState("");
-  const toast = useToast();
 
   // Put requested text in the composer rather than sending it: a chat is already
   // open, so the user gets to read and edit before it goes.

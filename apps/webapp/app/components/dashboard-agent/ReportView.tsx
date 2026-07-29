@@ -41,7 +41,6 @@ import { type ReportMessages } from "~/presenters/v3/reports/report-messages";
 import { reportIsTrustworthy } from "./report-block-adapter";
 import {
   FOOTER_WATCH_CODE,
-  FOOTER_WATCH_ONLY_CODE,
   ReportBody,
   ReportCard,
   ReportFindingLine,
