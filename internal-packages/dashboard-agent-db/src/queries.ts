@@ -693,6 +693,66 @@ export async function countUnreadWatchWakes(
   return rows[0]?.count ?? 0;
 }
 
+/** An unread wake, as the dashboard toast narrates it. */
+export interface UnreadWatchWake {
+  watchId: string;
+  chatId: string;
+  outcome: "fired" | "expired";
+  /** The watch's note, or its identity when the note is blank. */
+  note: string;
+  /** When the watch resolved: `fired_at` for a fire, `last_checked_at` for an expiry. */
+  firedAt: Date;
+}
+
+// The toast fires one per wake, so a long-unopened panel doesn't need the whole
+// backlog — enough to name the recent ones, and the count carries the rest.
+const UNREAD_WAKE_LIST_LIMIT = 10;
+
+/**
+ * #13 The unread wakes themselves, newest first — what the dashboard toast reads
+ * from. Same wake definition and tenancy floor as {@link countUnreadWatchWakes};
+ * this one returns rows instead of a total, capped at
+ * {@link UNREAD_WAKE_LIST_LIMIT}.
+ */
+export async function listUnreadWatchWakes(
+  db: DashboardAgentDb,
+  params: { organizationId: string; userId: string }
+): Promise<UnreadWatchWake[]> {
+  const resolvedAt = sql<Date>`coalesce(${watches.firedAt}, ${watches.lastCheckedAt})`;
+
+  const rows = await db
+    .select({
+      watchId: watches.id,
+      chatId: watches.chatId,
+      status: watches.status,
+      identity: watches.identity,
+      spec: watches.spec,
+      resolvedAt,
+    })
+    .from(watches)
+    .innerJoin(chats, eq(chats.id, watches.chatId))
+    .where(
+      and(
+        inArray(watches.status, ["fired", "expired"]),
+        eq(chats.organizationId, params.organizationId),
+        eq(chats.userId, params.userId),
+        isNull(chats.deletedAt),
+        sql`(${chats.lastReadAt} is null or coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) > ${chats.lastReadAt})`
+      )
+    )
+    .orderBy(desc(resolvedAt))
+    .limit(UNREAD_WAKE_LIST_LIMIT);
+
+  return rows.map((row) => ({
+    watchId: row.watchId,
+    chatId: row.chatId,
+    // Narrowed by the `in` clause above; only these two statuses are wakes.
+    outcome: row.status as "fired" | "expired",
+    note: row.spec.note?.trim() || row.identity,
+    firedAt: new Date(row.resolvedAt),
+  }));
+}
+
 /**
  * #13 WHICH chats have unread wakes — the history list sorts them first and
  * highlights them. Same wake definition and tenancy floor as

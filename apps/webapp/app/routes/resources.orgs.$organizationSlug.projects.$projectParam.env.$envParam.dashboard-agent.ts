@@ -10,6 +10,7 @@ import {
   listChatIdsWithOpenInvestigations,
   listChatIdsWithUnreadWakes,
   listChats,
+  listUnreadWatchWakes,
   markChatRead,
   renameChat,
   setChatPinned,
@@ -77,8 +78,9 @@ const ActionBody = z.object({
 });
 
 // History list, or — with ?chatId= — the stored transcript + session for resume,
-// or — with ?unread=1 — just the unread wake count (the launcher's dot polls it
-// while the panel is closed, so it must stay cheap).
+// or — with ?unread=1 — just the unread wake count plus the capped list of those
+// wakes (the launcher's dot and the wake toast poll it while the panel is closed,
+// so it must stay cheap).
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
@@ -101,12 +103,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const searchParams = new URL(request.url).searchParams;
 
   if (searchParams.get("unread") === "1") {
-    return json({
-      unreadWakes: await countUnreadWatchWakes(dashboardAgentDb, {
+    // The count drives the dot, the capped list drives one toast per wake.
+    const [unreadWakes, wakes] = await Promise.all([
+      countUnreadWatchWakes(dashboardAgentDb, {
         organizationId: project.organizationId,
         userId,
       }),
-    });
+      listUnreadWatchWakes(dashboardAgentDb, {
+        organizationId: project.organizationId,
+        userId,
+      }),
+    ]);
+    return json({ unreadWakes, wakes });
   }
 
   const chatId = searchParams.get("chatId");

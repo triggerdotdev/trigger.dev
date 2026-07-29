@@ -24,6 +24,8 @@
  *   - `ChatProgress`    — a spinner and one line of progress
  *   - `ChatToolRow`     — a tool-call row, optionally with progress under it
  *   - `ChatNote`        — an inline system / interceptor note
+ *   - `ChatWakeSlot`    — an unprompted turn: its banner and the narration under
+ *                         it, kept together as one unit
  *   - `ChatStatusLine`  — an icon and one line of status
  *   - `ChatActionsRow`  — a row of buttons
  *
@@ -63,6 +65,8 @@ const TURN_GAP = "space-y-4";
 const TURN_BODY_GAP = "space-y-2";
 /** Gap inside a single-line row (icon to text, button to button). */
 const ROW_GAP = "gap-2";
+/** Rhythm inside one unit — a banner and the text it introduces. */
+const UNIT_GAP = "space-y-1.5";
 
 const SCROLLER =
   "flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control";
@@ -245,6 +249,26 @@ export function ChatStatusLine({
     <div className={cn("flex items-start", ROW_GAP)}>
       {icon}
       <div className={cn("min-w-0", TURN_BODY_GAP)}>{children}</div>
+    </div>
+  );
+}
+
+/**
+ * An unprompted turn: the banner that says what woke the chat, then the body it
+ * introduces — tighter than the gap between two independent micro-layouts,
+ * because the two read as one thing.
+ */
+export function ChatWakeSlot({
+  banner,
+  children,
+}: {
+  banner: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn("min-w-0", UNIT_GAP)}>
+      {banner}
+      {children}
     </div>
   );
 }

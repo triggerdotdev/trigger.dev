@@ -24,6 +24,7 @@ export type GalleryGroup =
   | "report"
   | "chart"
   | "watches"
+  | "wakes"
   | "prompts"
   | "intents"
   | "messages"
@@ -51,6 +52,7 @@ export const GALLERY_GROUPS: { group: GalleryGroup; label: string }[] = [
   { group: "report", label: "Report card" },
   { group: "chart", label: "Chart card" },
   { group: "watches", label: "Watch chips" },
+  { group: "wakes", label: "Wake banners" },
   { group: "prompts", label: "Suggested prompts" },
   { group: "intents", label: "Intent bubbles" },
   { group: "messages", label: "Message-level states" },
@@ -204,6 +206,18 @@ export const MANIFEST: GallerySection[] = [
   { sectionId: "watches-cancelled", title: "Cancelled", group: "watches" },
   { sectionId: "watches-all-states", title: "All four states in one row", group: "watches" },
   { sectionId: "watches-live", title: "The panel's own chips (real component)", group: "watches" },
+
+  // --- Wake banners --------------------------------------------------------
+  // A wake narration through the production renderer: the banner plus the prose
+  // the agent wrote, as the panel shows them.
+  { sectionId: "wake-fired-good-news", title: "Fired — good news", group: "wakes" },
+  { sectionId: "wake-fired-attention", title: "Fired — needs attention", group: "wakes" },
+  { sectionId: "wake-expired", title: "Expired — no answer", group: "wakes" },
+  {
+    sectionId: "wake-unknown-watch",
+    title: "Fired, watch not in hand — kind-agnostic",
+    group: "wakes",
+  },
 
   // --- Suggested prompts ---------------------------------------------------
   { sectionId: "prompts-default", title: "Default set, no page context", group: "prompts" },

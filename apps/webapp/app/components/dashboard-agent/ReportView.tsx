@@ -215,6 +215,15 @@ function footerEntryNode({
     if (target.kind === "resource" && target.resolved) {
       return <ReportFooterLink href={target.resolved.url}>{label}</ReportFooterLink>;
     }
+    // A docs entry the report didn't attach a URL to still has a canonical home.
+    const fallback = style === "docs" ? DOCS_URL_FALLBACK[code] : undefined;
+    if (fallback) {
+      return (
+        <ReportFooterActionLink href={fallback} docs>
+          {label}
+        </ReportFooterActionLink>
+      );
+    }
     return <ReportFooterNote>{label}</ReportFooterNote>;
   }
 
@@ -237,6 +246,16 @@ function footerEntryNode({
 function lowerFirst(text: string): string {
   return text.charAt(0).toLowerCase() + text.slice(1);
 }
+
+/**
+ * Canonical docs pages for footer codes whose report entry carries no URL —
+ * without one the entry silently degrades to prose, which reads as a bug.
+ */
+const DOCS_URL_FALLBACK: Record<string, string> = {
+  concurrency_docs: "https://trigger.dev/docs/queue-concurrency",
+  retries_docs: "https://trigger.dev/docs/errors-retrying",
+  queues_docs: "https://trigger.dev/docs/queues",
+};
 
 // --- pieces -----------------------------------------------------------------
 
@@ -455,26 +474,19 @@ export function ReportView({
     }),
   }));
 
-  // The watch is phrased as an addendum when the footer just handed the user
-  // something to press, and as the only offer when it didn't.
-  const footerOffersControl = vm.footer.some((entry) => {
-    const style = reportFooterStyle(entry.code);
-    return style === "action" || style === "docs";
-  });
-
   if (recoveryWatch && onIntent) {
     const watchItem: ReportFooterItem = {
-      code: footerOffersControl ? FOOTER_WATCH_CODE : FOOTER_WATCH_ONLY_CODE,
+      code: FOOTER_WATCH_CODE,
       node: (
         <ReportFooterAction onClick={() => onIntent(recoveryWatch)}>
-          {footerOffersControl ? "Watch recovery" : "watch it recover"}
+          Watch recovery
         </ReportFooterAction>
       ),
     };
-    // In the actions list the watch joins the other buttons, BEFORE the
-    // trailing "or do nothing" prose; in the stale sentence it stays last.
+    // The watch joins the other buttons in the row, BEFORE the trailing
+    // "or do nothing" prose.
     const noteIndex = footerItems.findIndex((item) => reportFooterStyle(item.code) === "note");
-    if (footerOffersControl && noteIndex !== -1) {
+    if (noteIndex !== -1) {
       footerItems.splice(noteIndex, 0, watchItem);
     } else {
       footerItems.push(watchItem);

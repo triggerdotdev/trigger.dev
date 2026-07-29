@@ -350,52 +350,60 @@ export const FOOTER_WATCH_CODE = "watch_recovery";
 export const FOOTER_WATCH_ONLY_CODE = "watch_recovery_only";
 
 /**
- * The prose that carries each footer entry. Action-bearing footers read as a
- * list: "→ Possible actions: [Contact us] · [Read concurrency docs] · [Watch
- * recovery] or do nothing — the backlog drains in ~27 min." The stale variant
- * stays a sentence.
- *
- * Keyed by the report's own code. A code with no connector falls back to " · "
- * separation, which is what every other report's footer already looks like — so
- * adding a report never has to touch this table.
+ * A dimmed line that accompanies a row entry — prose the old sentence footer
+ * carried around the control, kept as a note under the row.
  */
-const FOOTER_CONNECTOR: Record<string, { before: string; after?: string }> = {
-  contact_us_raise_limit: { before: "Possible actions: " },
-  concurrency_docs: { before: " · " },
-  // The catalog's text already begins "or do nothing — …", so this only spaces
-  // it off the entry before it and closes the sentence.
-  do_nothing_drains: { before: " ", after: "." },
-  check_control_plane: { before: "there's nothing to fix on your side — please ", after: "." },
-  [FOOTER_WATCH_CODE]: { before: " · " },
-  [FOOTER_WATCH_ONLY_CODE]: { before: " Or I can ", after: " for you." },
+const FOOTER_NOTE_LINES: Record<string, string> = {
+  check_control_plane: "There's nothing to fix on your side.",
 };
 
 /** One resolved footer entry: the code it came from, and what it renders as. */
 export type ReportFooterItem = { code: string; node: ReactNode };
 
+function isRowEntry(item: ReportFooterItem): boolean {
+  const style = reportFooterStyle(item.code);
+  return style === "action" || style === "docs" || style === "reference";
+}
+
 /**
- * The footer: an arrow, then the entries as one flowing sentence with the real
- * controls inline. `leading-7` gives the `h-6` inline buttons a line box they
- * fit inside, so a wrapped footer keeps an even rhythm.
+ * The footer. Every report ends the way the diagnosis card does: a "Next
+ * steps" section heading, the controls (buttons, docs buttons, cited links) in
+ * one wrapping row, and stated options ("or do nothing — …") as a dimmed line
+ * under the row.
  */
 export function ReportFooterLine({ items }: { items: ReportFooterItem[] }) {
   const entries = items.filter((item) => item.node);
   if (entries.length === 0) return null;
 
+  const row = entries.filter(isRowEntry);
+  const noteLines = entries
+    .map((item) => FOOTER_NOTE_LINES[item.code])
+    .filter((line): line is string => Boolean(line));
+  const rest = entries.filter((item) => !isRowEntry(item));
+
   return (
-    <p className="border-t border-grid-bright pt-3 text-sm leading-7 text-text-dimmed">
-      <span aria-hidden>{"→ "}</span>
-      {entries.map((item, i) => {
-        const connector = FOOTER_CONNECTOR[item.code];
-        return (
-          <Fragment key={i}>
-            {connector ? connector.before : i > 0 ? " · " : null}
-            {item.node}
-            {connector?.after}
-          </Fragment>
-        );
-      })}
-    </p>
+    <div className="space-y-2 border-t border-grid-bright pt-3">
+      <h4 className="text-xs font-medium uppercase tracking-wide text-text-dimmed">Next steps</h4>
+      {row.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {row.map((item, i) => (
+            <Fragment key={i}>{item.node}</Fragment>
+          ))}
+        </div>
+      ) : null}
+      {rest.length > 0 || noteLines.length > 0 ? (
+        <p className="text-sm leading-6 text-text-dimmed">
+          {noteLines.join(" ")}
+          {noteLines.length > 0 && rest.length > 0 ? " " : null}
+          {rest.map((item, i) => (
+            <Fragment key={i}>
+              {i > 0 ? " " : null}
+              {item.node}
+            </Fragment>
+          ))}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

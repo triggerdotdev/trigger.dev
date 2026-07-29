@@ -323,6 +323,7 @@ export function DashboardAgentChat({
           onRetry={retry}
           onDismissError={clearError}
           onIntent={handleIntent}
+          watches={watches}
         />
       )}
       <DashboardAgentComposer

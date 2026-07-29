@@ -1,5 +1,5 @@
 import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -10,6 +10,12 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
 import { DashboardAgentProvider } from "./dashboardAgentLauncher";
+import {
+  showWatchWakesSummaryToast,
+  showWatchWakeToast,
+  WAKE_TOAST_MAX_INDIVIDUAL,
+  type WatchWake,
+} from "./WatchWakeToast";
 
 // How often the closed panel asks whether a watch woke a chat. A wake is worth
 // noticing within a minute, and the count is one indexed query.
@@ -44,6 +50,11 @@ export function DashboardAgent({
 
   const [open, setOpen] = useState(false);
   const [unreadWakes, setUnreadWakes] = useState(0);
+  // Wakes already toasted this session. Session-scoped on purpose: a wake that
+  // arrived overnight deserves the toast on the first poll after a reload, but a
+  // wake the user has already been shown (and maybe dismissed) must not come
+  // back every 60s while the chat stays unread.
+  const toastedWakes = useRef(new Set<string>());
   // A request from `openWith`, handed to the panel. `seq` makes repeat requests
   // with the same text distinct, so the panel can tell them apart.
   const [requestedMessage, setRequestedMessage] = useState<
@@ -64,10 +75,10 @@ export function DashboardAgent({
     setRequestedMessage((current) => ({ text: trimmed, seq: (current?.seq ?? 0) + 1 }));
   }, []);
 
-  // The dot's poll. Runs only while the panel is CLOSED — an open panel shows the
-  // wake in the transcript, so polling then would only race the read marker. Both
-  // the interval and the on-close refresh come from this effect re-running on
-  // `open`.
+  // The dot's poll, and the toast's. Runs only while the panel is CLOSED — an
+  // open panel shows the wake in the transcript, so polling then would only race
+  // the read marker. Both the interval and the on-close refresh come from this
+  // effect re-running on `open`.
   useEffect(() => {
     if (!hasAccess || open) return;
 
@@ -76,8 +87,23 @@ export function DashboardAgent({
       try {
         const res = await fetch(`${actionPath}?unread=1`);
         if (!res.ok) return;
-        const data = (await res.json()) as { unreadWakes?: number };
-        if (!cancelled) setUnreadWakes(data.unreadWakes ?? 0);
+        const data = (await res.json()) as { unreadWakes?: number; wakes?: WatchWake[] };
+        if (cancelled) return;
+        setUnreadWakes(data.unreadWakes ?? 0);
+
+        const fresh = (data.wakes ?? []).filter((wake) => !toastedWakes.current.has(wake.watchId));
+        for (const wake of fresh) toastedWakes.current.add(wake.watchId);
+
+        // A burst gets one summary toast: a stack of persistent toasts is a wall,
+        // not a notification.
+        if (fresh.length > WAKE_TOAST_MAX_INDIVIDUAL) {
+          showWatchWakesSummaryToast(fresh.length, () => setPanelOpen(true));
+        } else {
+          // Oldest first, so the newest wake ends up nearest the user.
+          for (const wake of [...fresh].reverse()) {
+            showWatchWakeToast(wake, () => setPanelOpen(true));
+          }
+        }
       } catch {
         // Offline or a hiccup — leave the dot as it is and try again next tick.
       }
@@ -89,7 +115,7 @@ export function DashboardAgent({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [hasAccess, open, actionPath]);
+  }, [hasAccess, open, actionPath, setPanelOpen]);
 
   // A chat the user is now looking at has no unread wakes. Zeroes the dot right
   // away (the poll restores the truth on close if another chat still has one) and

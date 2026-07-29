@@ -28,6 +28,7 @@ import { ReportView } from "~/components/dashboard-agent/ReportView";
 import { RunDiagnosisCard } from "~/components/dashboard-agent/RunDiagnosisCard";
 import { resolveSuggestedPrompts } from "~/components/dashboard-agent/suggested-prompts";
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
+import type { WakeWatch } from "~/components/dashboard-agent/WakeBanner";
 import { WatchChips, type WatchChip } from "~/components/dashboard-agent/WatchChips";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -439,6 +440,50 @@ function toWatchChip(watch: (typeof demoWatches.row)[number]): WatchChip {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Wake fixtures, written here rather than pulled from the demo conversations: a
+// wake is a message *id* plus the watch it names, and no demo chat carries one.
+// ---------------------------------------------------------------------------
+
+/** A wake narration, in the shape the panel merges live stream and history into. */
+function wakeMessage(watchId: string, outcome: "fired" | "expired", text: string): UIMessage {
+  return {
+    id: `wake:watch:${watchId}:${outcome}`,
+    role: "assistant",
+    parts: [{ type: "text", text }],
+  };
+}
+
+const wakeWatches: WakeWatch[] = [
+  {
+    id: "watch_health",
+    kind: "health_recovery",
+    note: "prod health back to normal",
+    identity: "health_recovery:",
+  },
+  {
+    id: "watch_error",
+    kind: "error_recurrence",
+    note: "tell me if that TypeError comes back",
+    identity: "error_recurrence:a1b2c3d4e5f6",
+  },
+  {
+    id: "watch_run",
+    kind: "run_finished",
+    note: "ping me when the nightly backfill finishes",
+    identity: "run_finished:run_a1b2c3d4e5",
+  },
+];
+
+/** One wake through the production renderer, with the watches the panel would have. */
+function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeWatch[] }) {
+  return (
+    <div className="rounded-lg border border-grid-bright bg-background-bright">
+      <DashboardAgentMessages messages={[message]} activity={null} watches={watches} />
+    </div>
+  );
+}
+
 function fixtureResolveUri(uri: string): { label: string; url: string } | null {
   const parsed = safeParseTriggerUri(uri);
   if (!parsed.success) return null;
@@ -583,6 +628,49 @@ const STATES: Record<string, React.ReactNode> = {
   // hands over — so its labels (derived from the watch identity) and the demo
   // chips above can be compared side by side.
   "watches-live": <WatchChips watches={demoWatches.row.map(toWatchChip)} onCancel={noop} />,
+
+  // --- Wake banners -------------------------------------------------------
+  "wake-fired-good-news": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_health",
+        "fired",
+        "Production is back to normal: the failure rate has been under 1% for the last 15 minutes and the queue has drained. Nothing left for me to watch here."
+      )}
+    />
+  ),
+  "wake-fired-attention": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_error",
+        "fired",
+        "That TypeError is back — 6 runs of process-order failed with it in the last 10 minutes, all on version 20260620.2. Same empty-items payload as before."
+      )}
+    />
+  ),
+  "wake-expired": (
+    <WakeHarness
+      watches={wakeWatches}
+      message={wakeMessage(
+        "watch_run",
+        "expired",
+        "I stopped watching the nightly backfill: it still hasn't finished, and the watch has run out. Ask me again if you want me to keep an eye on it."
+      )}
+    />
+  ),
+  // No watches in hand (an older chat, or a watch already swept away): the
+  // banner still fires, without claiming an outcome it can't know.
+  "wake-unknown-watch": (
+    <WakeHarness
+      message={wakeMessage(
+        "watch_gone",
+        "fired",
+        "The condition you asked me to watch for just happened. Here's what the check found."
+      )}
+    />
+  ),
 
   // --- Suggested prompts --------------------------------------------------
   // The real component, resolving the registry against each fixture context.

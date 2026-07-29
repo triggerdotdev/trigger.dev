@@ -15,10 +15,12 @@ import {
   ChatToolRow,
   ChatTranscript,
   ChatTurn,
+  ChatWakeSlot,
 } from "./chat-layout";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import type { ResolvedUri } from "./ReportView";
 import { ViewBlocks } from "./view-catalog";
+import { findWakeWatch, WakeBanner, wakeRefFromMessageId, type WakeWatch } from "./WakeBanner";
 
 // "thinking" — the turn is submitted but nothing has come back yet.
 // "working" — the turn is streaming: text, or (more often) tool calls, which can
@@ -43,6 +45,13 @@ export type DashboardAgentMessagesProps = {
   onIntent?: (intent: AgentIntent) => void;
   /** Host resolver for `trigger://` URIs a card cites. */
   resolveUri?: (uri: string) => ResolvedUri | null;
+  /**
+   * The chat's watches, when the host has them. A wake message names the watch
+   * it came from, so this is what lets its banner say *what* was being watched
+   * and colour the outcome by kind. Without it a wake still gets a banner, in
+   * kind-agnostic wording.
+   */
+  watches?: WakeWatch[];
 };
 
 // The shared MessageBubble renders `step-start` parts as a dashed "step"
@@ -161,15 +170,18 @@ function userText(message: UIMessage): string {
 
 // Renders one message as one turn. A user turn is the accent bubble; assistant
 // parts go through the panel's own renderer, and a card-producing part
-// (render_view / get_report) becomes a catalog card instead of a tool row.
+// (render_view / get_report) becomes a catalog card instead of a tool row. A
+// wake — an assistant turn nobody asked for — keeps the same body under a banner.
 const DashboardAgentTurn = memo(function DashboardAgentTurn({
   message,
   onIntent,
   resolveUri,
+  watches,
 }: {
   message: UIMessage;
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
+  watches?: WakeWatch[];
 }) {
   if (message.role === "user") {
     return (
@@ -221,6 +233,24 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
     body.push(renderDashboardPart(part, i));
   }
 
+  // A wake narration is identified by the message id the agent wrote it under,
+  // so nothing about the parts has to change: same prose, with a banner above it
+  // saying the watch — not the user — started this turn.
+  const wake = wakeRefFromMessageId(message.id);
+  if (wake) {
+    return (
+      <ChatTurn>
+        <ChatWakeSlot
+          banner={
+            <WakeBanner outcome={wake.outcome} watch={findWakeWatch(watches, wake.watchId)} />
+          }
+        >
+          {body}
+        </ChatWakeSlot>
+      </ChatTurn>
+    );
+  }
+
   return <ChatTurn>{body}</ChatTurn>;
 });
 
@@ -237,6 +267,7 @@ export function DashboardAgentTurns({
   onDismissError,
   onIntent,
   resolveUri,
+  watches,
 }: DashboardAgentMessagesProps) {
   return (
     <>
@@ -246,6 +277,7 @@ export function DashboardAgentTurns({
           message={stripStepParts(message)}
           onIntent={onIntent}
           resolveUri={resolveUri}
+          watches={watches}
         />
       ))}
       {activity && (
