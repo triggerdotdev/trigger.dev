@@ -36,7 +36,12 @@ vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 // `authUser`, `resolvedEnv`, `logDetail`, `project`, `environment` feed the mocked fix-orthogonal deps.
 const cp = vi.hoisted(() => ({ client: undefined as any }));
 const router = vi.hoisted(() => ({ store: undefined as any }));
-const authUser = vi.hoisted(() => ({ id: "user_rrg_guard", admin: false, isImpersonating: false }));
+const authUser = vi.hoisted(() => ({
+  id: "user_rrg_guard",
+  admin: false,
+  isImpersonating: false,
+  isViewingAsUser: false,
+}));
 const resolved = vi.hoisted(() => ({
   authEnv: undefined as any,
   env: undefined as any,
@@ -104,11 +109,20 @@ vi.mock("~/v3/runStore.server", () => ({
   ),
 }));
 
-// Auth/session (orthogonal): fixed user id.
+// Auth/session (orthogonal): fixed user id. `hasAdminDisplayAccess` mirrors the real predicate
+// rather than importing it: a factory mock replaces the whole module, and pulling the original in
+// would evaluate session.server's server-only import graph, which this test deliberately keeps out.
+// Only the replay loader's region-picker flag reads it, and RegionsPresenter is mocked below, so the
+// value is orthogonal to every proof here — it just has to exist, or the mock throws on access.
 vi.mock("~/services/session.server", () => ({
   requireUserId: async () => authUser.id,
   requireUser: async () => authUser,
   getUserId: async () => authUser.id,
+  hasAdminDisplayAccess: (user: {
+    admin: boolean;
+    isImpersonating: boolean;
+    isViewingAsUser: boolean;
+  }) => (user.admin || user.isImpersonating) && !user.isViewingAsUser,
 }));
 
 // Control-plane env resolution (a downstream cross-DB lookup, orthogonal to the run-store read):
