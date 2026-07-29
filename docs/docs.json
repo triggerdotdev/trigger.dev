@@ -722,6 +722,21 @@
   },
   "redirects": [
     {
+      "source": "/config/extensions",
+      "destination": "/config/extensions/overview",
+      "permanent": true
+    },
+    {
+      "source": "/upgrading-beta",
+      "destination": "/upgrading-packages",
+      "permanent": true
+    },
+    {
+      "source": "/guides/new-build-system-preview",
+      "destination": "/upgrading-packages",
+      "permanent": true
+    },
+    {
       "source": "/cli-dev",
       "destination": "/cli-dev-commands",
       "permanent": true
