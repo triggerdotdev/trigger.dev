@@ -1,0 +1,175 @@
+import { assertNonNullable, containerTest } from "@internal/testcontainers";
+import { trace } from "@internal/tracing";
+import type { PrismaClient, TaskRunExecutionStatus } from "@trigger.dev/database";
+import { setTimeout } from "node:timers/promises";
+import { expect } from "vitest";
+import { RunEngine } from "../index.js";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
+
+vi.setConfig({ testTimeout: 60_000 });
+
+async function snapshotStatuses(
+  prisma: PrismaClient,
+  runId: string
+): Promise<TaskRunExecutionStatus[]> {
+  const snapshots = await prisma.taskRunExecutionSnapshot.findMany({
+    where: { runId },
+    orderBy: { createdAt: "asc" },
+    select: { executionStatus: true },
+  });
+
+  return snapshots.map((snapshot) => snapshot.executionStatus);
+}
+
+describe("RunEngine trigger() execution snapshots", () => {
+  containerTest(
+    "a non-delayed run is created with a single QUEUED snapshot",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1234",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_collapse_1",
+            spanId: "s_collapse_1",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        expect(await snapshotStatuses(prisma, run.id)).toEqual(["QUEUED"]);
+
+        const queueLength = await engine.runQueue.lengthOfQueue(
+          authenticatedEnvironment,
+          run.queue
+        );
+        expect(queueLength).toBe(1);
+
+        const executionData = await engine.getRunExecutionData({ runId: run.id });
+        assertNonNullable(executionData);
+        expect(executionData.snapshot.executionStatus).toBe("QUEUED");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "a delayed run keeps DELAYED and QUEUED as separate snapshots",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1235",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_collapse_2",
+            spanId: "s_collapse_2",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            delayUntil: new Date(Date.now() + 500),
+          },
+          prisma
+        );
+
+        expect(await snapshotStatuses(prisma, run.id)).toEqual(["DELAYED"]);
+
+        await setTimeout(1_500);
+
+        expect(await snapshotStatuses(prisma, run.id)).toEqual(["DELAYED", "QUEUED"]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+});

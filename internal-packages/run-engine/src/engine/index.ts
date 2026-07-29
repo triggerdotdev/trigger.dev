@@ -23,6 +23,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import {
+  generateInternalId,
   parseNaturalLanguageDurationInMs,
   RunId,
   WaitpointId,
@@ -950,6 +951,7 @@ export class RunEngine {
 
         let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
         const taskRunId = RunId.fromFriendlyId(friendlyId);
+        const initialSnapshotId = generateInternalId();
 
         // App-level replacement for the dropped TaskRun env/project Cascade FKs.
         await this.controlPlaneResolver.assertEnvExists(environment.id);
@@ -1035,9 +1037,10 @@ export class RunEngine {
                 annotations,
               },
               snapshot: {
+                id: initialSnapshotId,
                 engine: "V2",
-                executionStatus: delayUntil ? "DELAYED" : "RUN_CREATED",
-                description: delayUntil ? "Run is delayed" : "Run was created",
+                executionStatus: delayUntil ? "DELAYED" : "QUEUED",
+                description: delayUntil ? "Run is delayed" : "Run was QUEUED",
                 runStatus: status,
                 environmentId: environment.id,
                 environmentType: environment.type,
@@ -1164,13 +1167,29 @@ export class RunEngine {
               await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
             }
 
-            await this.enqueueSystem.enqueueRun({
+            this.eventBus.emit("executionSnapshotCreated", {
+              time: taskRun.createdAt,
+              run: {
+                id: taskRun.id,
+              },
+              snapshot: {
+                id: initialSnapshotId,
+                executionStatus: "QUEUED",
+                description: "Run was QUEUED",
+                runStatus: taskRun.status,
+                attemptNumber: taskRun.attemptNumber ?? null,
+                checkpointId: null,
+                workerId: workerId ?? null,
+                runnerId: runnerId ?? null,
+                isValid: true,
+                error: null,
+                completedWaitpointIds: [],
+              },
+            });
+
+            await this.enqueueSystem.publishRun({
               run: taskRun,
               env: environment,
-              workerId,
-              runnerId,
-              tx: prisma,
-              skipRunLock: true,
               includeTtl: true,
               anchorEligibilityAtQueuePosition: true,
               enableFastPath,
