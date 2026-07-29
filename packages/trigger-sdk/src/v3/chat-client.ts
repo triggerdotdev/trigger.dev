@@ -576,10 +576,18 @@ export class AgentChat<TAgent = unknown> {
     }
   }
 
-  /** Reconnect to the response stream (e.g. after a disconnect). */
+  /**
+   * Reconnect to the response stream (e.g. after a disconnect). Requests the
+   * caught-up settle probe (`X-Peek-Settled`) so a resumed stream already at a
+   * turn-complete tail closes promptly instead of holding the full SSE window,
+   * mirroring the browser transport's `reconnectToStream`.
+   */
   async reconnect(abortSignal?: AbortSignal): Promise<ReadableStream<UIMessageChunk> | null> {
     if (!this.state.started) return null;
-    return this.subscribeToSessionStream(abortSignal, { sendStopOnAbort: false });
+    return this.subscribeToSessionStream(abortSignal, {
+      sendStopOnAbort: false,
+      peekSettled: true,
+    });
   }
 
   // ─── Private ───────────────────────────────────────────────────
@@ -681,7 +689,7 @@ export class AgentChat<TAgent = unknown> {
 
   private subscribeToSessionStream(
     abortSignal: AbortSignal | undefined,
-    options?: { sendStopOnAbort?: boolean }
+    options?: { sendStopOnAbort?: boolean; peekSettled?: boolean }
   ): ReadableStream<UIMessageChunk> {
     const state = this.state;
     const accessToken = apiClientManager.accessToken ?? "";
@@ -743,6 +751,7 @@ export class AgentChat<TAgent = unknown> {
               ...(apiClientManager.branchName
                 ? { "x-trigger-branch": apiClientManager.branchName }
                 : {}),
+              ...(options?.peekSettled ? { "X-Peek-Settled": "1" } : {}),
             },
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,
