@@ -12,11 +12,9 @@ import { motion } from "framer-motion";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { type RenderIcon, Icon } from "../primitives/Icon";
+import { labelOverflowFadeStyle } from "../primitives/labelOverflowFade";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { useActiveFavoriteId } from "./favoritePages";
-
-/** Right-edge fade shown instead of a hard clip, only while the label actually overflows. */
-const LABEL_OVERFLOW_MASK = "linear-gradient(to right, black calc(100% - 1.5rem), transparent)";
 
 /**
  * A menu label that fades out at its right edge when (and only when) the text overflows. Text
@@ -56,12 +54,7 @@ export function SideMenuLabel({
     <span
       ref={ref}
       className={cn("overflow-hidden whitespace-nowrap", className)}
-      style={{
-        ...style,
-        ...(isOverflowing
-          ? { maskImage: LABEL_OVERFLOW_MASK, WebkitMaskImage: LABEL_OVERFLOW_MASK }
-          : undefined),
-      }}
+      style={{ ...style, ...labelOverflowFadeStyle(isOverflowing) }}
     >
       {children}
     </span>
