@@ -321,7 +321,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       generatedParams: generatedParams ?? {},
     };
 
-    const callerWroteABadQuery = error instanceof ExposedTSQLError;
+    const callerWroteABadQuery = options.userAuthoredQuery && error instanceof ExposedTSQLError;
 
     if (callerWroteABadQuery) {
       logger.warn("[TSQL] Invalid query", logFields);

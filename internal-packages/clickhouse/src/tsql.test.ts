@@ -1642,6 +1642,7 @@ describe("TSQL Error Log Levels", () => {
         organization_id: { op: "eq", value: "org_tenant1" },
       },
       tableSchema: [taskRunsSchema],
+      userAuthoredQuery: true,
     });
 
     expect(error).not.toBeNull();
@@ -1663,6 +1664,7 @@ describe("TSQL Error Log Levels", () => {
         organization_id: { op: "eq", value: "org_tenant1" },
       },
       tableSchema: [taskRunsSchema],
+      userAuthoredQuery: true,
     });
 
     expect(error).not.toBeNull();
@@ -1691,6 +1693,30 @@ describe("TSQL Error Log Levels", () => {
       expect(error).not.toBeNull();
       expect(logged(errorSpy)).toContain("Error querying clickhouse");
       expect(logged(errorSpy)).toContain("SELECT toDateTime(tags) AS bad FROM task_runs");
+    }
+  );
+
+  clickhouseTest(
+    "keeps a compile failure on TRQL we generated at error level",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const [error] = await executeTSQL(client, {
+        name: "test-internal-compile-error",
+        query: "SELECT nope FROM task_runs",
+        schema: z.object({ nope: z.string() }),
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+        },
+        tableSchema: [taskRunsSchema],
+      });
+
+      expect(error).not.toBeNull();
+      expect(logged(errorSpy)).toContain("[TSQL] Query error");
+      expect(logged(warnSpy)).not.toContain("[TSQL] Invalid query");
     }
   );
 
