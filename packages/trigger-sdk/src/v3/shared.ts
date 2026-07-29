@@ -724,6 +724,13 @@ export async function batchTriggerById<TTask extends AnyTask>(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
 
+        // Process item-specific idempotency key and extract options for storage
+        const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+        const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+        const idempotencyKeyOptions = itemIdempotencyKey
+          ? getIdempotencyKeyOptions(itemIdempotencyKey)
+          : undefined;
+
         return {
           index,
           task: item.id,
@@ -739,9 +746,9 @@ export async function batchTriggerById<TTask extends AnyTask>(
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKey?.toString(),
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            idempotencyKeyOptions,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -980,6 +987,13 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
 
+        // Process item-specific idempotency key and extract options for storage
+        const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+        const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+        const idempotencyKeyOptions = itemIdempotencyKey
+          ? getIdempotencyKeyOptions(itemIdempotencyKey)
+          : undefined;
+
         return {
           index,
           task: item.id,
@@ -996,9 +1010,9 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKey?.toString(),
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            idempotencyKeyOptions,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -1246,6 +1260,13 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
 
+        // Process item-specific idempotency key and extract options for storage
+        const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+        const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+        const idempotencyKeyOptions = itemIdempotencyKey
+          ? getIdempotencyKeyOptions(itemIdempotencyKey)
+          : undefined;
+
         return {
           index,
           task: item.task.id,
@@ -1261,9 +1282,9 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKey?.toString(),
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            idempotencyKeyOptions,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -1507,6 +1528,13 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
         );
 
+        // Process item-specific idempotency key and extract options for storage
+        const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+        const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+        const idempotencyKeyOptions = itemIdempotencyKey
+          ? getIdempotencyKeyOptions(itemIdempotencyKey)
+          : undefined;
+
         return {
           index,
           task: item.task.id,
@@ -1523,9 +1551,9 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
             maxAttempts: item.options?.maxAttempts,
             metadata: item.options?.metadata,
             maxDuration: item.options?.maxDuration,
-            idempotencyKey:
-              (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+            idempotencyKey: finalIdempotencyKey?.toString(),
             idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+            idempotencyKeyOptions,
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
@@ -1899,6 +1927,13 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
 
+    // Process item-specific idempotency key and extract options for storage
+    const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+    const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+    const idempotencyKeyOptions = itemIdempotencyKey
+      ? getIdempotencyKeyOptions(itemIdempotencyKey)
+      : undefined;
+
     yield {
       index: index++,
       task: item.id,
@@ -1914,9 +1949,9 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKey?.toString(),
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        idempotencyKeyOptions,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -1951,6 +1986,13 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
 
+    // Process item-specific idempotency key and extract options for storage
+    const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+    const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+    const idempotencyKeyOptions = itemIdempotencyKey
+      ? getIdempotencyKeyOptions(itemIdempotencyKey)
+      : undefined;
+
     yield {
       index: index++,
       task: item.id,
@@ -1967,9 +2009,9 @@ async function* transformBatchItemsStreamForWait<TTask extends AnyTask>(
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKey?.toString(),
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        idempotencyKeyOptions,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -2002,6 +2044,13 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
 
+    // Process item-specific idempotency key and extract options for storage
+    const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+    const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+    const idempotencyKeyOptions = itemIdempotencyKey
+      ? getIdempotencyKeyOptions(itemIdempotencyKey)
+      : undefined;
+
     yield {
       index: index++,
       task: item.task.id,
@@ -2017,9 +2066,9 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKey?.toString(),
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        idempotencyKeyOptions,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -2053,6 +2102,13 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
 
+    // Process item-specific idempotency key and extract options for storage
+    const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+    const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+    const idempotencyKeyOptions = itemIdempotencyKey
+      ? getIdempotencyKeyOptions(itemIdempotencyKey)
+      : undefined;
+
     yield {
       index: index++,
       task: item.task.id,
@@ -2069,9 +2125,9 @@ async function* transformBatchByTaskItemsStreamForWait<TTasks extends readonly A
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKey?.toString(),
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        idempotencyKeyOptions,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
@@ -2102,6 +2158,13 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
       flattenIdempotencyKey([options?.idempotencyKey, `${index}`])
     );
 
+    // Process item-specific idempotency key and extract options for storage
+    const itemIdempotencyKey = await makeIdempotencyKey(item.options?.idempotencyKey);
+    const finalIdempotencyKey = itemIdempotencyKey ?? batchItemIdempotencyKey;
+    const idempotencyKeyOptions = itemIdempotencyKey
+      ? getIdempotencyKeyOptions(itemIdempotencyKey)
+      : undefined;
+
     yield {
       index: index++,
       task: taskIdentifier,
@@ -2121,9 +2184,9 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
         maxAttempts: item.options?.maxAttempts,
         metadata: item.options?.metadata,
         maxDuration: item.options?.maxDuration,
-        idempotencyKey:
-          (await makeIdempotencyKey(item.options?.idempotencyKey)) ?? batchItemIdempotencyKey,
+        idempotencyKey: finalIdempotencyKey?.toString(),
         idempotencyKeyTTL: item.options?.idempotencyKeyTTL ?? options?.idempotencyKeyTTL,
+        idempotencyKeyOptions,
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
