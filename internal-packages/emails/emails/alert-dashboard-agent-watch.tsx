@@ -65,6 +65,26 @@ function formatFiredAt(firedAt: string) {
   return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
+/**
+ * The chat's wake banner, in email form. Same tone mapping as the panel's
+ * WakeBanner: a fired good-news kind is "all clear", a recurred error "needs
+ * your attention", anything else states the fact.
+ */
+const GOOD_NEWS_KINDS = new Set([
+  "health_recovery",
+  "backlog_drain",
+  "run_start",
+  "run_finished",
+]);
+
+function outcomeLine(kind: string): { text: string; color: string } {
+  if (GOOD_NEWS_KINDS.has(kind)) return { text: "Watch update — all clear", color: "#A8FF53" };
+  if (kind === "error_recurrence") {
+    return { text: "Watch update — needs your attention", color: "#F87171" };
+  }
+  return { text: "Watch update — condition met", color: "#D7D9DD" };
+}
+
 export default function Email(props: AlertDashboardAgentWatchEmailProps) {
   const {
     identity,
@@ -80,6 +100,7 @@ export default function Email(props: AlertDashboardAgentWatchEmailProps) {
   } = { ...previewDefaults, ...props };
 
   const details = [identity, ...facts.slice(0, 3).map((fact) => `${fact.label}: ${fact.value}`)];
+  const outcome = outcomeLine(kind);
 
   return (
     <Html>
@@ -98,7 +119,13 @@ export default function Email(props: AlertDashboardAgentWatchEmailProps) {
               />
             </Section>
             <Section>
-              <Heading className="text-[#D7D9DD] text-[30px] font-normal leading-[35px] p-0 my-[30px] mx-0">
+              <Text
+                className="text-[13px] font-semibold uppercase tracking-wide mb-0 mt-[30px]"
+                style={{ color: outcome.color }}
+              >
+                {outcome.text}
+              </Text>
+              <Heading className="text-[#D7D9DD] text-[30px] font-normal leading-[35px] p-0 mt-[8px] mb-[30px] mx-0">
                 Your watch fired: <strong className="text-[#A8FF53]">{kind}</strong>
               </Heading>
               <Text className="text-[#D7D9DD] text-[16px] leading-[24px]">
