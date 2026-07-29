@@ -37,6 +37,7 @@ export class EnqueueSystem {
     runnerId,
     skipRunLock,
     includeTtl = false,
+    anchorEligibilityAtQueuePosition = false,
     enableFastPath = false,
     store,
   }: {
@@ -58,8 +59,25 @@ export class EnqueueSystem {
     workerId?: string;
     runnerId?: string;
     skipRunLock?: boolean;
-    /** When true, include TTL in the queued message (only for first enqueue from trigger). Default false. */
+    /**
+     * When true, arm the run's TTL on the queued message. Set by every path that is the run's
+     * first real entry into the queue: trigger, a delayed run coming due, and the pending-version
+     * promotion. Waitpoint and checkpoint re-enqueues must not re-arm it. Default false.
+     */
     includeTtl?: boolean;
+    /**
+     * When true, the scheduling-delay clock starts at the run's queue position (its
+     * `queueTimestamp`, which for a delayed run is `delayUntil`) rather than now. Set only where
+     * the run was genuinely eligible to execute from that moment: trigger and a delayed run
+     * coming due.
+     *
+     * Deliberately separate from `includeTtl`, because the two disagree on the pending-version
+     * promotion: that promotion is the run's first entry into the queue (so TTL arms there), but
+     * the run was NOT runnable while it waited for a worker version, and its `queueTimestamp`
+     * still holds the original trigger time. Anchoring there would bill the whole wait-for-deploy
+     * period as queue scheduling delay. Default false, so a new call site has to opt in.
+     */
+    anchorEligibilityAtQueuePosition?: boolean;
     /** When true, allow the queue to push directly to worker queue if concurrency is available. */
     enableFastPath?: boolean;
     /**
@@ -98,16 +116,10 @@ export class EnqueueSystem {
       // Force development runs to use the environment id as the worker queue.
       const workerQueue = env.type === "DEVELOPMENT" ? env.id : run.workerQueue;
 
-      // Ordering keeps the run's original position; the scheduling-delay anchor is the
-      // trigger/delay time only on first enqueue (includeTtl). Re-enqueues anchor to now,
-      // else the wait metric absorbs the whole waitpoint/checkpoint duration.
       const queuePositionMs = (run.queueTimestamp ?? run.createdAt).getTime();
       const timestamp = queuePositionMs - run.priorityMs;
-      const eligibleAtMs = includeTtl ? queuePositionMs : Date.now();
+      const eligibleAtMs = anchorEligibilityAtQueuePosition ? queuePositionMs : Date.now();
 
-      // Include TTL only when explicitly requested: the first enqueue from trigger, the
-      // delayed-run system, and the pending-version promotion (each is a run's first real
-      // entry into the queue). Waitpoint and checkpoint re-enqueues must not add TTL.
       let ttlExpiresAt: number | undefined;
       if (includeTtl && run.ttl) {
         const expireAt = parseNaturalLanguageDuration(run.ttl);

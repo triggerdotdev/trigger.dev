@@ -1169,6 +1169,7 @@ export class RunEngine {
               tx: prisma,
               skipRunLock: true,
               includeTtl: true,
+              anchorEligibilityAtQueuePosition: true,
               enableFastPath,
             });
           } catch (enqueueError) {
