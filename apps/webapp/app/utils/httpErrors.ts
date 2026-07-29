@@ -41,3 +41,24 @@ export function friendlyErrorDisplay(statusCode: number, statusText?: string) {
       };
   }
 }
+
+/**
+ * Safely extract a user-facing message from a Remix route error response.
+ * `error.data` can be null, a string, or an object — never assume `.message`.
+ */
+export function getRouteErrorMessage(status: number, statusText: string, data: unknown): string {
+  const fallback = friendlyErrorDisplay(status, statusText).message;
+
+  if (typeof data === "string" && data.length > 0) {
+    return data;
+  }
+
+  if (data && typeof data === "object" && "message" in data) {
+    const message = (data as { message: unknown }).message;
+    if (typeof message === "string" && message.length > 0) {
+      return message;
+    }
+  }
+
+  return fallback;
+}

@@ -1,6 +1,6 @@
 import { HomeIcon } from "@heroicons/react/20/solid";
 import { isRouteErrorResponse, useRouteError } from "@remix-run/react";
-import { friendlyErrorDisplay } from "~/utils/httpErrors";
+import { friendlyErrorDisplay, getRouteErrorMessage } from "~/utils/httpErrors";
 import { permissionDeniedMessage } from "~/utils/permissionDenied";
 import { LinkButton } from "./primitives/Buttons";
 import { Header1 } from "./primitives/Headers";
@@ -39,9 +39,7 @@ export function RouteErrorDisplay(options?: ErrorDisplayOptions) {
       {isRouteErrorResponse(error) ? (
         <ErrorDisplay
           title={friendlyErrorDisplay(error.status, error.statusText).title}
-          message={
-            error.data.message ?? friendlyErrorDisplay(error.status, error.statusText).message
-          }
+          message={getRouteErrorMessage(error.status, error.statusText, error.data)}
           {...options}
         />
       ) : error instanceof Error ? (
