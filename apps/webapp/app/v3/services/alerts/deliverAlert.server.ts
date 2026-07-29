@@ -455,7 +455,10 @@ export class DeliverAlertService extends BaseService {
                 error,
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data);
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+                runId: alert.taskRun.friendlyId,
+              });
               break;
             }
             case "v2": {
@@ -516,7 +519,10 @@ export class DeliverAlertService extends BaseService {
                 },
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data);
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+                runId: alert.taskRun.friendlyId,
+              });
 
               break;
             }
@@ -577,7 +583,9 @@ export class DeliverAlertService extends BaseService {
                 vercel: this.#buildWebhookVercelObject(deploymentMeta.vercelDeploymentUrl),
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data);
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+              });
               break;
             }
             case "v2": {
@@ -616,7 +624,9 @@ export class DeliverAlertService extends BaseService {
                 },
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data);
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+              });
 
               break;
             }
@@ -671,7 +681,9 @@ export class DeliverAlertService extends BaseService {
                 vercel: this.#buildWebhookVercelObject(deploymentMeta.vercelDeploymentUrl),
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data);
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+              });
               break;
             }
             case "v2": {
@@ -716,7 +728,9 @@ export class DeliverAlertService extends BaseService {
                 },
               };
 
-              await this.#deliverWebhook(payload, webhookProperties.data);
+              await this.#deliverWebhook(payload, webhookProperties.data, {
+                webhookId: alert.channel.id,
+              });
 
               break;
             }
@@ -1017,7 +1031,11 @@ export class DeliverAlertService extends BaseService {
     }
   }
 
-  async #deliverWebhook<T>(payload: T, webhook: ProjectAlertWebhookProperties) {
+  async #deliverWebhook<T>(
+    payload: T,
+    webhook: ProjectAlertWebhookProperties,
+    context: { webhookId: string; runId?: string }
+  ) {
     const rawPayload = JSON.stringify(payload);
     const hashPayload = Buffer.from(rawPayload, "utf-8");
 
@@ -1046,15 +1064,17 @@ export class DeliverAlertService extends BaseService {
     });
 
     if (!response.ok) {
+      // Never log the request/response body here: it is customer-controlled alert
+      // content and may include stack traces or other application data.
       logger.info("[DeliverAlert] Failed to send alert webhook", {
         status: response.status,
         statusText: response.statusText,
-        url: webhook.url,
-        body: payload,
-        signature,
+        urlHost: safeUrlHost(webhook.url),
+        webhookId: context.webhookId,
+        runId: context.runId,
       });
 
-      throw new Error(`Failed to send alert webhook to ${webhook.url}`);
+      throw new Error(`Failed to send alert webhook to ${safeUrlHost(webhook.url)}`);
     }
   }
 
@@ -1434,4 +1454,12 @@ function isWebAPIHTTPError(error: unknown): error is WebAPIHTTPError {
 
 function isWebAPIRateLimitedError(error: unknown): error is WebAPIRateLimitedError {
   return (error as WebAPIRateLimitedError).code === ErrorCode.RateLimitedError;
+}
+
+function safeUrlHost(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "unknown";
+  }
 }
