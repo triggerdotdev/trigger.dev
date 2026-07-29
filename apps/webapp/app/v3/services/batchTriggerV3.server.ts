@@ -43,29 +43,6 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   }
   return chunks;
 }
-
-// Summarizes a task-identifier -> items grouping for logging, without including the items
-// themselves (each item is `{ task, payload, options }`, and `options.metadata` is arbitrary
-// customer data that must never be written to logs whole).
-export function summarizeItemsByTask(itemsByTask: Record<string, unknown[]>): {
-  taskIdentifiers: string[];
-  itemCountsByTask: Record<string, number>;
-  totalItemCount: number;
-} {
-  const itemCountsByTask: Record<string, number> = {};
-  let totalItemCount = 0;
-
-  for (const [taskIdentifier, items] of Object.entries(itemsByTask)) {
-    itemCountsByTask[taskIdentifier] = items.length;
-    totalItemCount += items.length;
-  }
-
-  return {
-    taskIdentifiers: Object.keys(itemsByTask),
-    itemCountsByTask,
-    totalItemCount,
-  };
-}
 const ASYNC_BATCH_PROCESS_SIZE_THRESHOLD = 20;
 const MAX_ATTEMPTS = 10;
 
@@ -430,11 +407,6 @@ export class BatchTriggerV3Service extends BaseService {
         return acc;
       },
       {} as Record<string, typeof body.items>
-    );
-
-    logger.debug(
-      "[BatchTriggerV2][call] Grouped items by task identifier",
-      summarizeItemsByTask(itemsByTask)
     );
 
     const idempotencyKeyLookups = Object.entries(itemsByTask).flatMap(([taskIdentifier, items]) => {
