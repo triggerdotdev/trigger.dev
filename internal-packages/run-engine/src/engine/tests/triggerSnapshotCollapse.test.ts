@@ -101,6 +101,87 @@ describe("RunEngine trigger() execution snapshots", () => {
   );
 
   containerTest(
+    "the QUEUED snapshot event is stamped at write time, not at an overridden run createdAt",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const stampedTimes: Date[] = [];
+        engine.eventBus.on("executionSnapshotCreated", ({ time }) => {
+          stampedTimes.push(time);
+        });
+
+        const backdatedCreatedAt = new Date(Date.now() - 60 * 60 * 1000);
+        const triggeredAt = Date.now();
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1236",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_collapse_3",
+            spanId: "s_collapse_3",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            createdAt: backdatedCreatedAt,
+          },
+          prisma
+        );
+
+        const storedRun = await prisma.taskRun.findUnique({ where: { id: run.id } });
+        expect(storedRun?.createdAt.getTime()).toBe(backdatedCreatedAt.getTime());
+
+        expect(stampedTimes.length).toBe(1);
+        expect(stampedTimes[0].getTime()).toBeGreaterThanOrEqual(triggeredAt);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
     "a delayed run keeps DELAYED and QUEUED as separate snapshots",
     async ({ prisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
