@@ -1354,12 +1354,18 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     }),
 
     // Watch alerts. Project-level subscriptions, so they authenticate as the user
-    // with the delegated token (the same lane as watch creation) — not the env JWT.
+    // with the delegated token (the same lane as watch creation) — not the env
+    // JWT. Every call carries the chat id: the API scopes its authorization
+    // through the chat, exactly like watch creation does.
     list_alerts: tool({
       ...listAlertsSchema,
       execute: async () => {
         if (!hasAuth) return NO_AUTH;
-        const result = await alertsRequest("GET", "/api/v1/dashboard-agent/alerts");
+        if (!ctx.chatId) return { error: "No chat is available to read alerts from." };
+        const result = await alertsRequest(
+          "GET",
+          `/api/v1/dashboard-agent/alerts?chatId=${encodeURIComponent(ctx.chatId)}`
+        );
         if ("error" in result) return result;
         const alerts = (result.data as { alerts?: unknown } | undefined)?.alerts;
         return { alerts: Array.isArray(alerts) ? alerts : [] };
@@ -1370,7 +1376,9 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       ...createAlertSchema,
       execute: async ({ email }) => {
         if (!hasAuth) return NO_AUTH;
+        if (!ctx.chatId) return { error: "No chat is available to create an alert from." };
         const result = await alertsRequest("POST", "/api/v1/dashboard-agent/alerts", {
+          chatId: ctx.chatId,
           channel: "email",
           ...(email ? { email } : {}),
         });
@@ -1383,9 +1391,11 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       ...deleteAlertSchema,
       execute: async ({ alertId }) => {
         if (!hasAuth) return NO_AUTH;
+        if (!ctx.chatId) return { error: "No chat is available to change alerts from." };
         const result = await alertsRequest(
           "DELETE",
-          `/api/v1/dashboard-agent/alerts/${encodeURIComponent(alertId)}`
+          `/api/v1/dashboard-agent/alerts/${encodeURIComponent(alertId)}`,
+          { chatId: ctx.chatId }
         );
         if ("error" in result) return result;
         return { deleted: true, alertId };

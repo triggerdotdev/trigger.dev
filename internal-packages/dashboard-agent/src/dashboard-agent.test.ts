@@ -1248,6 +1248,7 @@ describe("watch alert tools", () => {
     apiOrigin: "http://localhost:3030",
     projectRef: "proj_abc",
     environmentName: "prod",
+    chatId: "chat_alerts",
   };
 
   // Runs one alert tool against a stubbed global fetch, handing back the tool's
@@ -1285,7 +1286,9 @@ describe("watch alert tools", () => {
     const { result, requests } = await callAlertTool("list_alerts", {}, { body: { alerts } });
 
     expect(requests).toHaveLength(1);
-    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts");
+    expect(requests[0]?.url).toBe(
+      "http://localhost:3030/api/v1/dashboard-agent/alerts?chatId=chat_alerts"
+    );
     expect(requests[0]?.init?.method).toBe("GET");
     expect((requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
       "Bearer uat_token"
@@ -1303,15 +1306,19 @@ describe("watch alert tools", () => {
     expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts");
     expect(requests[0]?.init?.method).toBe("POST");
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
+      chatId: "chat_alerts",
       channel: "email",
       email: "someone@example.com",
     });
     expect(result).toEqual({ created: true, alert: { id: "alert_2", type: "EMAIL" } });
 
     // No email given: the host defaults to the user's account email, so the body
-    // carries the channel only.
+    // carries only the chat scope and the channel.
     const noEmail = await callAlertTool("create_alert", {}, { body: { ok: true } });
-    expect(JSON.parse(String(noEmail.requests[0]?.init?.body))).toEqual({ channel: "email" });
+    expect(JSON.parse(String(noEmail.requests[0]?.init?.body))).toEqual({
+      chatId: "chat_alerts",
+      channel: "email",
+    });
   });
 
   it("create_alert relays a 403 with the reason the host gave", async () => {
