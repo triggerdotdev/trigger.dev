@@ -31,7 +31,7 @@ jobs:
       - name: Restore Turbo cache
         uses: WarpBuilds/cache@40f3443ae7b70e568d6e2070ea897f3df94d7553 # v1
         with:
-          path: .turbo
+          path: node_modules/.cache/turbo
           key: turbo-typecheck-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: |
             turbo-typecheck-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-

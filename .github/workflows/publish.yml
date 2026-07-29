@@ -7,12 +7,22 @@ on:
         description: The image tag to publish
         required: true
         type: string
+      typecheck_only:
+        description: Only run the typecheck job
+        required: false
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       image_tag:
         description: The image tag to publish
         required: true
         type: string
+      typecheck_only:
+        description: Only run the typecheck job
+        required: false
+        default: false
+        type: boolean
     secrets:
       DOCKERHUB_USERNAME:
         required: false
@@ -63,12 +73,14 @@ jobs:
     uses: ./.github/workflows/typecheck.yml
 
   units:
+    if: ${{ !inputs.typecheck_only }}
     uses: ./.github/workflows/unit-tests.yml
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   publish-webapp:
+    if: ${{ !inputs.typecheck_only }}
     needs: [typecheck]
     permissions:
       contents: read
@@ -85,6 +97,7 @@ jobs:
       image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
 
   publish-worker-v4:
+    if: ${{ !inputs.typecheck_only }}
     needs: [typecheck]
     permissions:
       contents: read
