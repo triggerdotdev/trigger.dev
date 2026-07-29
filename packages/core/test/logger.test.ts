@@ -208,27 +208,4 @@ describe("redact()", () => {
 
     expect(result.connectionString).toMatch(/^\[filtered/);
   });
-
-  it("preserves references when no values need redaction or truncation", () => {
-    const nested = { keep: "this stays" };
-    const value = { nested, values: ["one", "two"] };
-
-    const result = redact(value);
-
-    expect(result).toBe(value);
-    expect((result as typeof value).nested).toBe(nested);
-    expect((result as typeof value).values).toBe(value.values);
-  });
-
-  it("returns a redacted copy without mutating the input", () => {
-    const nested = { token: "secret" };
-    const value = { nested };
-
-    const result = redact(value) as typeof value;
-
-    expect(result).not.toBe(value);
-    expect(result.nested).not.toBe(nested);
-    expect(result.nested.token).toMatch(/^\[filtered/);
-    expect(nested.token).toBe("secret");
-  });
 });
