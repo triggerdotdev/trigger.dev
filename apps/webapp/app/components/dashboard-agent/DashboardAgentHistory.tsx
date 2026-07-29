@@ -15,7 +15,20 @@ export type DashboardAgentChat = {
   lastMessageAt: string | null;
   /** The chat's active watches, for the panel's chip row. */
   watches?: WatchChip[];
+  /** A watch resolved in this chat and the user hasn't opened it since. */
+  hasUnreadWake?: boolean;
 };
+
+/**
+ * Chats with an unread wake go to the top — a watch that fired is the reason to
+ * open the panel at all. Everything else keeps the server's order (pinned first,
+ * then most recent), so this is a stable sort on one key.
+ */
+function unreadFirst(chats: DashboardAgentChat[]): DashboardAgentChat[] {
+  return [...chats].sort(
+    (a, b) => Number(b.hasUnreadWake ?? false) - Number(a.hasUnreadWake ?? false)
+  );
+}
 
 export function DashboardAgentHistory({
   chats,
@@ -42,10 +55,11 @@ export function DashboardAgentHistory({
           </Paragraph>
         ) : (
           <AgentList>
-            {chats.map((chat) => (
+            {unreadFirst(chats).map((chat) => (
               <AgentListRow
                 key={chat.id}
                 label={chat.title}
+                unread={chat.hasUnreadWake ?? false}
                 meta={
                   chat.lastMessageAt ? (
                     <DateTime date={chat.lastMessageAt} showTooltip={false} />

@@ -143,6 +143,11 @@ export function DashboardAgentPanel({
   // callers that arrive while one is running await that one and see its result.
   const historyInFlight = useRef<Promise<void> | null>(null);
 
+  // Chats read since the last reload. The read POST and the reload it triggers
+  // can land out of order, so the next list is masked with what we know was
+  // read; the ids are then dropped, so a later wake in the same chat still shows.
+  const justRead = useRef<Set<string>>(new Set());
+
   const loadHistory = useCallback(async () => {
     if (historyInFlight.current) return historyInFlight.current;
     const request = (async () => {
@@ -150,7 +155,13 @@ export function DashboardAgentPanel({
         const res = await fetch(actionPath);
         if (!res.ok) throw new Error(`History request failed (${res.status})`);
         const data = (await res.json()) as { chats?: DashboardAgentChatListItem[] };
-        setChats(data.chats ?? []);
+        const read = justRead.current;
+        justRead.current = new Set();
+        setChats(
+          (data.chats ?? []).map((chat) =>
+            read.has(chat.id) ? { ...chat, hasUnreadWake: false } : chat
+          )
+        );
       } catch (error) {
         console.error("Dashboard agent: failed to load chat history", error);
         toast.error("We couldn't load your previous chats. Try again in a moment.");
@@ -309,9 +320,18 @@ export function DashboardAgentPanel({
     if (view !== "chat" || !active?.chatId) return;
     const chatId = active.chatId;
     onChatRead?.(chatId);
+    // Clear the row's highlight now rather than waiting for the next history
+    // reload, so going back to History after reading doesn't show it as unread.
+    justRead.current.add(chatId);
+    setChats((previous) =>
+      previous.map((chat) => (chat.id === chatId ? { ...chat, hasUnreadWake: false } : chat))
+    );
     // Read it again on the way out, so a wake that landed while the chat was in
     // front of the user doesn't come back as unread when the panel closes.
-    return () => onChatRead?.(chatId);
+    return () => {
+      onChatRead?.(chatId);
+      justRead.current.add(chatId);
+    };
   }, [view, active?.chatId, onChatRead]);
 
   // Text handed in by `openWith`. With no chat open we start one and send it

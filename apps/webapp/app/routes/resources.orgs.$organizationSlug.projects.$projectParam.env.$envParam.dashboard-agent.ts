@@ -7,6 +7,7 @@ import {
   getChatMessages,
   getSession,
   getWatch,
+  listChatIdsWithUnreadWakes,
   listChats,
   markChatRead,
   renameChat,
@@ -121,9 +122,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     userId,
   });
 
-  // Active-watch chips for the list, in ONE query for all the listed chats — the
-  // history list must not fan out a query per row.
-  const [watchesByChat, unreadWakes] = await Promise.all([
+  // Active-watch chips for the list, plus which chats woke unseen — both in ONE
+  // query for all the listed chats, because the history list must not fan out a
+  // query per row.
+  const [watchesByChat, unreadWakes, unreadChatIds] = await Promise.all([
     listActiveWatchesForChats({
       chatIds: chats.map((chat) => chat.id),
       organizationId: project.organizationId,
@@ -133,10 +135,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       organizationId: project.organizationId,
       userId,
     }),
+    listChatIdsWithUnreadWakes(dashboardAgentDb, {
+      organizationId: project.organizationId,
+      userId,
+    }),
   ]);
 
   return json({
-    chats: chats.map((chat) => ({ ...chat, watches: watchesByChat[chat.id] ?? [] })),
+    chats: chats.map((chat) => ({
+      ...chat,
+      watches: watchesByChat[chat.id] ?? [],
+      hasUnreadWake: unreadChatIds.has(chat.id),
+    })),
     unreadWakes,
   });
 };

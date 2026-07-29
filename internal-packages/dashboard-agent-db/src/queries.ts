@@ -652,6 +652,35 @@ export async function countUnreadWatchWakes(
   return rows[0]?.count ?? 0;
 }
 
+/**
+ * #13 WHICH chats have unread wakes — the history list sorts them first and
+ * highlights them. Same wake definition and tenancy floor as
+ * {@link countUnreadWatchWakes}; this one groups instead of totalling.
+ *
+ * Not scoped to the listed chat ids: the set is small (only chats with a
+ * resolved, unseen watch) and the caller is listing every chat the user owns
+ * anyway, so a second `in` clause would only narrow what the join already does.
+ */
+export async function listChatIdsWithUnreadWakes(
+  db: DashboardAgentDb,
+  params: { organizationId: string; userId: string }
+): Promise<Set<string>> {
+  const rows = await db
+    .selectDistinct({ chatId: watches.chatId })
+    .from(watches)
+    .innerJoin(chats, eq(chats.id, watches.chatId))
+    .where(
+      and(
+        inArray(watches.status, ["fired", "expired"]),
+        eq(chats.organizationId, params.organizationId),
+        eq(chats.userId, params.userId),
+        isNull(chats.deletedAt),
+        sql`(${chats.lastReadAt} is null or coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) > ${chats.lastReadAt})`
+      )
+    );
+  return new Set(rows.map((row) => row.chatId));
+}
+
 /** A chat's org plus the project/environment context stored on it. */
 export interface ChatWatchContext {
   organizationId: string;
