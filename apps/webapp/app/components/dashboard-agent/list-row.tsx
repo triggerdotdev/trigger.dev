@@ -67,9 +67,7 @@ export function AgentListRow({
           unread && "text-text-bright"
         )}
       >
-        {/* Fixed leading slot so every label starts at the same x, with or
-            without a status icon. */}
-        {status !== undefined ? (
+        {status ? (
           <span className="flex w-4 shrink-0 items-center justify-center">{status}</span>
         ) : null}
         {unread ? (
