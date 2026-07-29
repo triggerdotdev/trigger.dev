@@ -2,6 +2,11 @@ name: 🚀 Publish Trigger.dev Docker
 
 on:
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: The image tag to publish
+        required: true
+        type: string
   workflow_call:
     inputs:
       image_tag:
