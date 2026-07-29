@@ -140,6 +140,50 @@ An empty chat offers up to five, picked from where you are: a promoted one
 (product-controlled), *Investigate* for the failure on screen, a watch for
 the thing in front of you, an explain-this-page one, and a docs one.
 
+## The demo script — four acts, ~15 minutes
+
+Run `-- --degrade` first so prod starts unhealthy. One terminal stays open for
+the act-four commands.
+
+**Act 1 — hello (30 seconds)**
+1. Any page → chat button → *"Where am I? What is this page showing?"* — it
+   knows where you are, no clarification needed.
+2. *"Take me to the email-sends queue"* — it drives the dashboard for you.
+
+**Act 2 — something's wrong (the centerpiece)**
+3. *"Is anything wrong right now?"* → the terminal-style report card: crit,
+   pinned concurrency, sparklines, "not your code", a *Next steps* row of real
+   buttons.
+4. Click **[Watch recovery]** → your request appears in the chat → the agent
+   confirms: checks every 5 minutes, fires once, gives up after N hours — and
+   offers an email alert. Say *"yes"* and the channel appears on the Alerts
+   page.
+5. While the watch ticks — **Investigate**: open the failing
+   `send-order-receipt` error → *Investigate* → a live card: hypotheses tested
+   in front of you, a concluded verdict citing runs, spans, and the deploy
+   (a 429 rate limit).
+6. Bonus, same chat: *"Show me the failing code"* — file:line at the deployed
+   commit.
+
+**Act 3 — data and knowledge (the interlude)**
+7. *"How many runs failed yesterday, by task? Chart it"* — TRQL + a live chart.
+8. *"Did the last deploy cause this?"* — run → commit → deploy correlation.
+9. *"How do retries work?"* — a docs answer with source buttons.
+
+**Act 4 — the finale: it comes back on its own**
+10. In the terminal: `pnpm --filter webapp run db:seed:agent-examples -- --recover`.
+    Close the panel and wander the dashboard.
+11. Within ~5 minutes, unprompted: a persistent "Watch update" toast, a dot on
+    the chat button, the chat on top of History highlighted — inside, the green
+    **"Watch update — all clear"** banner — and the email in Mailpit
+    (localhost:8025) with the same headline and one-click unsubscribe.
+12. Curtain: *"What alerts do I have?"* → the list; *"turn it off"* →
+    unsubscribed right from the chat.
+
+Safety nets: History ships seeded example conversations (browsable without
+spending a token), and every card state lives in the gallery at
+`/storybook/agent-ui`. `-- --degrade` resets the stage for a repeat run.
+
 ## Try these
 
 | Where | Say / click | You'll see |
