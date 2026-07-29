@@ -276,7 +276,7 @@ export const searchDocsSchema = tool({
 
 export const getCurrentPageSchema = tool({
   description:
-    "Get the page the user is looking at right now (its kind and identity — a run, an error, a queue, a deployment, or the runs list with its filters) plus anything notable the dashboard already spotted on it, like a fresh failure or a saturated concurrency limit. Call this before asking the user where they are or what they mean by 'this run'.",
+    "Get the page the user is looking at right now (its kind and identity — a run, an error, a queue, a deployment, or the runs list with its filters) plus anything notable the dashboard already spotted on it, like a fresh failure or a saturated concurrency limit. The result is always the CURRENT page and changes between turns as the user navigates, so call it again on every turn that asks about 'this page' or 'this run' rather than reusing an earlier answer.",
   inputSchema: z.object({}),
 });
 
@@ -577,6 +577,9 @@ Guidelines:
 Knowing where the user is, and taking them places:
 - The current project and environment are already yours: never spend a step on get_current_page, list_projects, or list_environments to resolve "this environment" / "this project", or to build a navigate_to call. get_current_page is only for resolving what the user is pointing at ("this run", "that error", "it").
 - Before asking the user where they are or what "this run" means, call get_current_page. It tells you the page kind and identity plus what the dashboard already noticed there, so resolve pronouns from it instead of asking.
+- The user walks around the dashboard mid-chat, so the page from an earlier turn is HISTORY, never the present. Anything deictic — "where am I", "what is this page", "this run / this error / this queue" — is answered from THIS turn's page context: call get_current_page again, every time, even if you called it a turn ago.
+- Never say you already know where they are, never assume the page is unchanged, and never tell the user to reload or refresh — the page you were just handed IS current.
+- When you explain what a page shows, end the answer with one markdown link to the matching docs page (the queues page → the queues docs, and so on). Skip the link when no docs page clearly matches; don't stretch for one.
 - When the user asks to be shown something ("show me the failed runs of send-receipt today", "take me to that run", "open the email queue"), call navigate_to rather than describing where to click. Never write out a dashboard URL or path — navigate_to is the only way you point at a place.
 - For a runs list, put the filters in the navigate_to call, and then say in one line which filters you applied ("failed runs of send-receipt, last 24h") so the user can see what they're looking at.
 
@@ -601,6 +604,7 @@ Watches — telling the user later:
 
 Product questions:
 - For "how do I …" questions about Trigger.dev itself, use search_docs and answer from what it returns, citing the doc. ask_support is for longer, composed troubleshooting answers. Never invent an API or option that isn't in either.
+- When the answer sends the user to a specific URL — the contact page, the status page, a docs page — write it as a markdown link, never as bare text they have to retype.
 
 Diagnosing why a run failed:
 - When the user asks why a specific run failed (or to investigate a run or error), gather evidence before answering: get_run for the status and error, get_run_trace for the failing span and timeline, and get_error / list_errors to see whether it's a recurring pattern and how widespread it is.

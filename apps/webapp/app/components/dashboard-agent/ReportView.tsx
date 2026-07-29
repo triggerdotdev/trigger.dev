@@ -237,8 +237,14 @@ function footerEntryNode({
 
   // An action whose target is a URL stays a button — contacting us about a limit
   // is an action even though it opens a web form; the arrow says it leaves.
-  if (target.kind === "external") {
-    return <ReportFooterActionLink href={target.url}>{label}</ReportFooterActionLink>;
+  const actionHref =
+    target.kind === "external"
+      ? target.url
+      : target.kind === "none"
+        ? ACTION_URL_FALLBACK[code]
+        : undefined;
+  if (actionHref) {
+    return <ReportFooterActionLink href={actionHref}>{label}</ReportFooterActionLink>;
   }
 
   const intent: AgentIntent =
@@ -263,6 +269,15 @@ const DOCS_URL_FALLBACK: Record<string, string> = {
   concurrency_docs: "https://trigger.dev/docs/queue-concurrency",
   retries_docs: "https://trigger.dev/docs/errors-retrying",
   queues_docs: "https://trigger.dev/docs/queues",
+};
+
+/**
+ * Canonical destinations for action codes whose report entry carries no URL, so
+ * the button opens the page directly instead of falling back to asking the agent
+ * how to get there. Unknown codes keep the `ask` fallback.
+ */
+const ACTION_URL_FALLBACK: Record<string, string> = {
+  contact_us_raise_limit: "https://trigger.dev/contact",
 };
 
 /** Same idea for cited references: a place to look must stay a link. */

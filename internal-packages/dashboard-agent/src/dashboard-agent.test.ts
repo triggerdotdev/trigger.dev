@@ -1236,6 +1236,28 @@ describe("buildDashboardAgentTools", () => {
     expect(blind.page).toBeNull();
     expect(typeof blind.note).toBe("string");
   });
+
+  // The tools are rebuilt from the turn's clientData, so a user who navigates
+  // mid-chat gets the new page — a stale answer can only come from the model
+  // reusing an earlier turn instead of calling again.
+  it("get_current_page follows the user between turns", async () => {
+    const first = await callTool(
+      "get_current_page",
+      {},
+      { ...SCOPE, pageContext: { page: { kind: "queue" as const, name: "email" }, signals: [] } }
+    );
+    const second = await callTool(
+      "get_current_page",
+      {},
+      {
+        ...SCOPE,
+        pageContext: { page: { kind: "run" as const, runId: "run_2" }, signals: [] },
+      }
+    );
+
+    expect(first.page).toEqual({ kind: "queue", name: "email" });
+    expect(second.page).toEqual({ kind: "run", runId: "run_2" });
+  });
 });
 
 // ---------------------------------------------------------------------------
