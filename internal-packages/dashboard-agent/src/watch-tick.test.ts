@@ -130,6 +130,17 @@ function fakeDeliver(options: { throwOnce?: boolean } = {}) {
   };
 }
 
+function fakeNotifyFired(options: { throws?: boolean } = {}) {
+  const notified: string[] = [];
+  return {
+    notified,
+    notifyFired: async (watchId: string) => {
+      notified.push(watchId);
+      if (options.throws) throw new Error("the fired callback returned 500");
+    },
+  };
+}
+
 function fakeReschedule() {
   const triggers: Array<{ payload: WatchTickPayload; options: Record<string, unknown> }> = [];
   return {
@@ -140,12 +151,13 @@ function fakeReschedule() {
   };
 }
 
-// Assemble the four seams into one deps object.
+// Assemble the seams into one deps object.
 function deps(parts: {
   store: WatchTickStore;
   fetch: typeof fetch;
   deliver: WatchTickDeps["deliver"];
   reschedule: WatchTickDeps["reschedule"];
+  notifyFired?: WatchTickDeps["notifyFired"];
   now?: Date;
 }): WatchTickDeps {
   return {
@@ -153,6 +165,7 @@ function deps(parts: {
     fetch: parts.fetch,
     deliver: parts.deliver,
     reschedule: parts.reschedule,
+    notifyFired: parts.notifyFired ?? (async () => {}),
     now: () => parts.now ?? NOW,
   };
 }
@@ -196,8 +209,12 @@ describe("runWatchTick", () => {
     }));
     const { appends, deliver } = fakeDeliver();
     const { triggers, reschedule } = fakeReschedule();
+    const { notified, notifyFired } = fakeNotifyFired();
 
-    const result = await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
+    const result = await runWatchTick(
+      PAYLOAD,
+      deps({ store, fetch, deliver, reschedule, notifyFired })
+    );
 
     expect(result).toEqual({ outcome: "fired" });
     expect(row.status).toBe("fired");
@@ -218,6 +235,51 @@ describe("runWatchTick", () => {
     });
     // Delivery is marked only after the append.
     expect(calls.delivered).toEqual([{ id: "watch_1" }]);
+    // And the webapp is told once, so the configured alerts go out.
+    expect(notified).toEqual(["watch_1"]);
+  });
+
+  it("a failing fired notification does not fail the tick", async () => {
+    const { store, row } = fakeStore(watchRow());
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied" } }));
+    const { appends, deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+    const { notified, notifyFired } = fakeNotifyFired({ throws: true });
+
+    const result = await runWatchTick(
+      PAYLOAD,
+      deps({ store, fetch, deliver, reschedule, notifyFired })
+    );
+
+    // The alert is best-effort; the wake is what the tick guarantees.
+    expect(result).toEqual({ outcome: "fired" });
+    expect(notified).toEqual(["watch_1"]);
+    expect(appends).toHaveLength(1);
+    expect(row.deliveryStatus).toBe("delivered");
+  });
+
+  it("an expiry does not notify: only a fired watch alerts", async () => {
+    const { store, row } = fakeStore(watchRow({ tickCount: 3 }));
+    const { fetch } = fakeFetch(() => ({ body: { result: "pending" } }));
+    const { deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+    const { notified, notifyFired } = fakeNotifyFired();
+
+    const result = await runWatchTick(
+      PAYLOAD,
+      deps({
+        store,
+        fetch,
+        deliver,
+        reschedule,
+        notifyFired,
+        now: new Date("2026-01-01T13:00:01.000Z"),
+      })
+    );
+
+    expect(result.outcome).toBe("expired");
+    expect(row.status).toBe("expired");
+    expect(notified).toEqual([]);
   });
 
   it("a run that started and finished between two ticks fires, it does not go terminal_unsatisfied", async () => {

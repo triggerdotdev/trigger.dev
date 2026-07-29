@@ -569,6 +569,8 @@ export function alertTypeTitle(alertType: ProjectAlertType): string {
       return "Deployment success";
     case "ERROR_GROUP":
       return "Error group";
+    case "DASHBOARD_AGENT_WATCH":
+      return "Dashboard agent watches";
     default: {
       throw new Error(`Unknown alertType: ${alertType}`);
     }

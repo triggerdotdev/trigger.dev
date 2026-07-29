@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveTriggerUri, type TriggerUriScope } from "~/services/resolveTriggerUri.server";
-import {
-  buildAgentExampleChats,
-  type AgentExamplesWorld,
-} from "../seed-agent-examples-chats.mjs";
+import { buildAgentExampleChats, type AgentExamplesWorld } from "../seed-agent-examples-chats.mjs";
 
 /**
  * The example transcripts are hand-written JSON that the production renderer has

@@ -50,9 +50,13 @@ import {
 const FormSchema = z
   .object({
     alertTypes: z
-      .array(z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"]))
+      .array(
+        z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS", "DASHBOARD_AGENT_WATCH"])
+      )
       .min(1)
-      .or(z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS"])),
+      .or(
+        z.enum(["TASK_RUN", "DEPLOYMENT_FAILURE", "DEPLOYMENT_SUCCESS", "DASHBOARD_AGENT_WATCH"])
+      ),
     environmentTypes: z
       .array(z.enum(["STAGING", "PRODUCTION", "PREVIEW"]))
       .min(1)
@@ -452,6 +456,18 @@ export default function Page() {
                 label="Deployments succeed"
                 defaultChecked
               />
+
+              <div className="flex items-center gap-1">
+                <CheckboxWithLabel
+                  name={alertTypes.name}
+                  id="DASHBOARD_AGENT_WATCH"
+                  value="DASHBOARD_AGENT_WATCH"
+                  variant="simple/small"
+                  label="Dashboard agent watches"
+                  className="pr-0"
+                />
+                <InfoIconTooltip content="You'll receive an alert when a watch you set up with the dashboard agent fires." />
+              </div>
 
               <FormError id={alertTypes.errorId}>{alertTypes.errors}</FormError>
             </InputGroup>

@@ -72,6 +72,12 @@ export type WatchTickDeps = {
   fetch: typeof fetch;
   /** Append the wake to the chat's `in` stream. Must throw if the append fails. */
   deliver: (args: { chatId: string; action: WatchWakeAction; watch: Watch }) => Promise<void>;
+  /**
+   * Tell the webapp a watch fired, so it can send the user's configured alerts
+   * (email/Slack/webhook). Best-effort: a failure here must never fail the tick —
+   * the wake in the chat is the delivery that matters.
+   */
+  notifyFired: (watchId: string) => Promise<void>;
   /** Trigger the next tick. */
   reschedule: (
     payload: WatchTickPayload,
@@ -149,6 +155,34 @@ async function postCheck(
   return { kind: "result", result: body.result, facts: body.facts };
 }
 
+/**
+ * Tell the webapp the watch fired. The webapp owns the alert fan-out; this call
+ * only says "it happened", and the row it reads is the authority on the rest.
+ *
+ * Same token as the check endpoint. No retry loop: the endpoint dedupes on the
+ * watch, so a later tick or invocation retry can repeat it harmlessly, and losing
+ * the alert is better than losing the wake.
+ */
+async function postFired(payload: WatchTickPayload): Promise<void> {
+  const origin = payload.apiOrigin.replace(/\/$/, "");
+  const response = await fetch(
+    `${origin}/api/v1/dashboard-agent/watches/${encodeURIComponent(payload.watchId)}/fired`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${payload.token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: "{}",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`the fired callback returned ${response.status}`);
+  }
+}
+
 /** Facts for a watch that resolved on a check. */
 function firedFacts(facts: Record<string, unknown> | undefined): Record<string, unknown> {
   return { verified: true, ...(facts ?? {}) };
@@ -202,6 +236,19 @@ async function deliverWake(deps: WatchTickDeps, watch: Watch): Promise<void> {
   const facts = (watch.lastResult ?? {}) as Record<string, unknown>;
   await deps.deliver({ chatId: watch.chatId, action: wakeAction(watch, facts), watch });
   await deps.store.markWatchDelivered({ id: watch.id });
+
+  // The alerts the user configured, after the wake and outside its failure path:
+  // the chat is the delivery this task guarantees, an alert is an extra.
+  if (watch.status === "fired") {
+    try {
+      await deps.notifyFired(watch.id);
+    } catch (error) {
+      logger.warn("dashboard-agent watch: the fired notification failed", {
+        watchId: watch.id,
+        error: (error as Error).message,
+      });
+    }
+  }
 }
 
 /**
@@ -421,6 +468,7 @@ export const watchTick = task({
       },
       fetch: (input, init) => fetch(input, init),
       deliver: appendWakeToSession,
+      notifyFired: () => postFired(payload),
       reschedule: (next, options) =>
         tasks.trigger<typeof watchTick>("dashboard-agent-watch", next, options),
     });

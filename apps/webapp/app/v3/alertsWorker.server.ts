@@ -5,6 +5,7 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
+import { DeliverDashboardAgentWatchAlertService } from "./services/alerts/deliverDashboardAgentWatchAlert.server";
 import { DeliverErrorGroupAlertService } from "./services/alerts/deliverErrorGroupAlert.server";
 import { ErrorAlertEvaluator } from "./services/alerts/errorAlertEvaluator.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
@@ -93,6 +94,25 @@ function initializeWorker() {
         },
         logErrors: true,
       },
+      "v3.deliverDashboardAgentWatchAlert": {
+        schema: z.object({
+          watchId: z.string(),
+          organizationId: z.string(),
+          projectId: z.string(),
+          environmentId: z.string(),
+          userId: z.string(),
+          identity: z.string(),
+          kind: z.string(),
+          note: z.string(),
+          firedAt: z.string(),
+          facts: z.record(z.unknown()),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 3,
+        },
+        logErrors: true,
+      },
     },
     concurrency: {
       workers: env.ALERTS_WORKER_CONCURRENCY_WORKERS,
@@ -124,6 +144,10 @@ function initializeWorker() {
       },
       "v3.deliverErrorGroupAlert": async ({ payload }) => {
         const service = new DeliverErrorGroupAlertService();
+        await service.call(payload);
+      },
+      "v3.deliverDashboardAgentWatchAlert": async ({ payload }) => {
+        const service = new DeliverDashboardAgentWatchAlertService();
         await service.call(payload);
       },
     },

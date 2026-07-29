@@ -35,6 +35,7 @@ import {
   isDashboardAgentConfigured as isDashboardAgentConfiguredDefault,
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
+import { enqueueWatchFiredAlert } from "~/services/dashboardAgentWatchAlerts.server";
 import { logger } from "~/services/logger.server";
 import {
   checkWatch,
@@ -358,6 +359,18 @@ async function resolveWatchInline(
   });
   if (!transitioned) return status;
   await markWatchDelivered(dashboardAgentDb, { id: watchId });
+
+  // The chat is being told inline; the configured alert channels still need the
+  // fan-out. Keyed on the watch, so the watcher task can't double-alert it.
+  try {
+    await enqueueWatchFiredAlert(transitioned, status);
+  } catch (error) {
+    logger.error("Dashboard agent watch: failed to enqueue the fired alert", {
+      id: watchId,
+      error,
+    });
+  }
+
   return transitioned.status;
 }
 
