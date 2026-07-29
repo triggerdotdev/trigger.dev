@@ -1444,8 +1444,29 @@ export const querySchemas: TableSchema[] = [
   queueMetricsByKeySchema,
 ];
 
-/** Schemas shown in user-facing listings (editor autocomplete, schema docs, schema API). */
-export const visibleQuerySchemas: TableSchema[] = querySchemas.filter((s) => !s.hidden);
+/** Tables whose listing is deferred until queue metrics are rolled out. */
+const QUEUE_METRICS_TABLE_NAMES = new Set([
+  queueMetricsSchema.name,
+  envMetricsSchema.name,
+  queueMetricsByKeySchema.name,
+]);
+
+/**
+ * Schemas shown in user-facing listings (editor autocomplete, schema docs, schema API, AI query
+ * context). Listing only: `querySchemas` stays the compile-time set, so a query naming an unlisted
+ * table still runs, with tenancy enforced as usual.
+ *
+ * Server callers pass `env.QUEUE_METRICS_QUERY_TABLES_VISIBLE === "1"`; client callers read
+ * `queueMetricsQueryTables` from `useFeatures()`. This module is imported by browser code, so it
+ * must not reach for `env.server` itself.
+ */
+export function listableQuerySchemas(options: { includeQueueMetrics: boolean }): TableSchema[] {
+  return querySchemas.filter((s) => {
+    if (s.hidden) return false;
+    if (!options.includeQueueMetrics && QUEUE_METRICS_TABLE_NAMES.has(s.name)) return false;
+    return true;
+  });
+}
 
 /**
  * Default query for the query editor

@@ -1,10 +1,11 @@
 import type { ColumnSchema } from "@internal/tsql";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "~/components/primitives/Badge";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
-import { visibleQuerySchemas } from "~/v3/querySchemas";
+import { listableQuerySchemas } from "~/v3/querySchemas";
+import { useFeatures } from "~/hooks/useFeatures";
 
 function ColumnHelpItem({ col }: { col: ColumnSchema }) {
   return (
@@ -43,11 +44,18 @@ function ColumnHelpItem({ col }: { col: ColumnSchema }) {
   );
 }
 
-const tableOptions = visibleQuerySchemas.map((s) => ({ label: s.name, value: s.name }));
-
 export function TableSchemaContent() {
-  const [selectedTable, setSelectedTable] = useState(visibleQuerySchemas[0].name);
-  const table = visibleQuerySchemas.find((s) => s.name === selectedTable) ?? visibleQuerySchemas[0];
+  const { queueMetricsQueryTables } = useFeatures();
+  const schemas = useMemo(
+    () => listableQuerySchemas({ includeQueueMetrics: queueMetricsQueryTables }),
+    [queueMetricsQueryTables]
+  );
+  const tableOptions = useMemo(
+    () => schemas.map((s) => ({ label: s.name, value: s.name })),
+    [schemas]
+  );
+  const [selectedTable, setSelectedTable] = useState(schemas[0].name);
+  const table = schemas.find((s) => s.name === selectedTable) ?? schemas[0];
 
   return (
     <div>

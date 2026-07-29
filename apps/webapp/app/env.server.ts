@@ -942,6 +942,12 @@ const EnvironmentSchema = z
     // Fraction (0..1) of ops that emit a gauge; counters are never sampled. Dial below 1
     // only if EngineCPU is too high in slow-path-heavy regions (hurts low-traffic queues).
     QUEUE_METRICS_GAUGE_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
+    /**
+     * Lists the queue-metrics tables in the Query page, its schema docs, the schema API and the
+     * AI query context. Off by default so the tables are not advertised before ingestion is
+     * enabled. Listing only: a query naming one of these tables still runs either way.
+     */
+    QUEUE_METRICS_QUERY_TABLES_VISIBLE: z.string().default("0"),
     RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
     RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS: z.coerce.number().int().default(30_000),
     RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),
