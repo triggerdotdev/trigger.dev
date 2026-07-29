@@ -142,7 +142,9 @@ export async function canUseDashboardAgentEmailAlerts(
   const base = await canUseDashboardAgentAlerts(params);
   if (!base.allowed) return base;
 
-  if (env.ALERT_FROM_EMAIL === undefined || env.ALERT_RESEND_API_KEY === undefined) {
+  // Mirrors what the alerts email client needs: a from-address and ANY
+  // configured transport (resend, smtp, aws-ses) — not resend specifically.
+  if (env.ALERT_FROM_EMAIL === undefined || env.ALERT_EMAIL_TRANSPORT === undefined) {
     return { allowed: false, reason: "email_alerts_not_configured" };
   }
 
