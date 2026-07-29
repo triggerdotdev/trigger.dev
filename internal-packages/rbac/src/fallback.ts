@@ -13,7 +13,11 @@ import type {
   RoleMutationResult,
   UserActorAuthResult,
 } from "@trigger.dev/plugins";
-import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/plugins";
+import {
+  FULL_ACCESS_PRESET_ID,
+  isUserActorToken,
+  verifyUserActorToken,
+} from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
@@ -372,6 +376,34 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     // No plugin installed → no seeded roles. Callers handle null by
     // hiding role-picker UI / skipping role assignment writes.
     return null;
+  }
+
+  async apiKeyPresets(_organizationId: string) {
+    return null;
+  }
+
+  async prepareApiKeyPolicy(params: {
+    organizationId: string;
+    presetId: string;
+    taskIdentifiers?: string[];
+  }) {
+    // Without a plugin there is no preset catalogue, so full access is the only
+    // policy on offer, but the caller still has to ask for it by name. Any
+    // other preset, or any task selection, is a restricted key and unavailable.
+    if (params.presetId !== FULL_ACCESS_PRESET_ID || (params.taskIdentifiers?.length ?? 0) > 0) {
+      return { ok: false as const, error: "API key access presets are not available" };
+    }
+
+    // `presetId: null` because this install has no catalogue to reference. The
+    // persisted scopes remain the source of truth for authorization.
+    return {
+      ok: true as const,
+      policy: { presetId: null, scopes: ["admin"] },
+    };
+  }
+
+  async describeApiKeyPolicy() {
+    return {};
   }
 
   async allPermissions(): Promise<Permission[]> {

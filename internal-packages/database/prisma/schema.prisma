@@ -69,6 +69,7 @@ model User {
   invitationCode       InvitationCode?       @relation(fields: [invitationCodeId], references: [id])
   invitationCodeId     String?
   personalAccessTokens PersonalAccessToken[]
+  createdApiKeys       ApiKey[]
   deployments          WorkerDeployment[]
   backupCodes          MfaBackupCode[]
   bulkActions          BulkActionGroup[]
@@ -392,6 +393,7 @@ model RuntimeEnvironment {
   playgroundConversations PlaygroundConversation[]
   errorGroupStates        ErrorGroupState[]
   taskIdentifiers         TaskIdentifier[]
+  apiKeys                 ApiKey[]
   revokedApiKeys          RevokedApiKey[]
 
   // A partial unique index also enforces one STAGING/PREVIEW root per project and type.
@@ -401,6 +403,31 @@ model RuntimeEnvironment {
   @@index([parentEnvironmentId])
   @@index([projectId])
   @@index([organizationId])
+}
+
+model ApiKey {
+  id       String @id @default(cuid())
+  name     String
+  keyHash  String @unique @map("key_hash")
+  lastFour String @map("last_four")
+
+  runtimeEnvironment   RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  runtimeEnvironmentId String             @map("runtime_environment_id")
+
+  createdBy       User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdByUserId String? @map("created_by_user_id")
+
+  presetId String?  @map("preset_id")
+  scopes   String[]
+
+  lastUsedAt DateTime? @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
+  expiresAt  DateTime? @map("expires_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([runtimeEnvironmentId, revokedAt, createdAt(sort: Desc)])
+  @@map("api_keys")
 }
 
 /// Records of previously-valid API keys that are still accepted for authentication
