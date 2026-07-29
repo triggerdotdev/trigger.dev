@@ -17,6 +17,7 @@
  */
 import {
   ArrowUpRightIcon,
+  BookOpenIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
   ExclamationTriangleIcon,
@@ -385,7 +386,9 @@ export function ReportFooterLine({ items }: { items: ReportFooterItem[] }) {
     <div className="space-y-2 border-t border-grid-bright pt-3">
       <h4 className="text-xs font-medium uppercase tracking-wide text-text-dimmed">Next steps</h4>
       {row.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2">
+        // text-xs so a text link in the row (a cited reference) sits at the
+        // same size as the buttons beside it.
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           {row.map((item, i) => (
             <Fragment key={i}>{item.node}</Fragment>
           ))}
@@ -484,6 +487,7 @@ export function ReportFooterActionLink({
       <LinkButton
         to={href}
         variant={docs ? "docs/small" : "primary/small"}
+        LeadingIcon={docs ? BookOpenIcon : undefined}
         TrailingIcon={!docs && external ? ArrowUpRightIcon : undefined}
       >
         {children}
