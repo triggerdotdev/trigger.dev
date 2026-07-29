@@ -1,7 +1,13 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { watchSpecSchema } from "@internal/dashboard-agent-contracts";
 import { z } from "zod";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import {
+  canUseDashboardAgentAlerts,
+  DASHBOARD_AGENT_WATCH_ALERT_TYPE,
+} from "~/services/dashboardAgentWatchAlerts.server";
 import {
   authorizeWatchEnvironmentById,
   createDashboardAgentWatch,
@@ -128,10 +134,58 @@ export async function action({ request }: ActionFunctionArgs) {
       identity: result.identity,
       status: result.status,
       expiresAt: result.expiresAt.toISOString(),
+      emailAlerts: await resolveEmailAlertsState({ userId, environment }),
       ...(result.immediate ? { immediate: result.immediate } : {}),
     });
   } catch (error) {
     logger.error("Failed to create a dashboard agent watch", { error });
     return json({ error: "Internal Server Error", code: "internal" }, { status: 500 });
+  }
+}
+
+/**
+ * Whether a fired watch in this environment would already reach the user outside
+ * the chat, so the agent knows whether to offer an email alert when it confirms a
+ * new watch:
+ *
+ *   - `subscribed`  — an enabled channel here already subscribes to watch fires
+ *                     (any channel type counts: email, Slack, webhook), so there
+ *                     is nothing to offer.
+ *   - `unavailable` — the plan or feature gate denies alerts. Say nothing: don't
+ *                     advertise what the user can't have.
+ *   - `none`        — alerts are possible and nothing is subscribed yet.
+ *
+ * Advisory only. This annotates a watch that is already created, so every failure
+ * is `none` — the quiet answer — and never turns into a failed creation.
+ */
+async function resolveEmailAlertsState(params: {
+  userId: string;
+  environment: AuthenticatedEnvironment;
+}): Promise<"subscribed" | "none" | "unavailable"> {
+  const { userId, environment } = params;
+  try {
+    // The same predicate the delivery job selects channels with, so "subscribed"
+    // means a fire would actually be delivered.
+    const channel = await $replica.projectAlertChannel.findFirst({
+      where: {
+        projectId: environment.project.id,
+        enabled: true,
+        alertTypes: { has: DASHBOARD_AGENT_WATCH_ALERT_TYPE },
+        environmentTypes: { has: environment.type },
+      },
+      select: { id: true },
+    });
+    if (channel) return "subscribed";
+
+    const gate = await canUseDashboardAgentAlerts({
+      userId,
+      organizationId: environment.organizationId,
+      organizationSlug: environment.organization.slug,
+      orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
+    });
+    return gate.allowed ? "none" : "unavailable";
+  } catch (error) {
+    logger.error("Failed to resolve dashboard agent watch alert state", { error });
+    return "none";
   }
 }

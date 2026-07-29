@@ -988,6 +988,7 @@ describe("buildDashboardAgentTools", () => {
         identity: "run_finished:run_a1",
         status: "active",
         expiresAt: "2026-01-01T14:00:00.000Z",
+        emailAlerts: "none",
       },
     });
 
@@ -1011,7 +1012,23 @@ describe("buildDashboardAgentTools", () => {
       expiresAt: "2026-01-01T14:00:00.000Z",
       checkEveryMinutes: 1,
       watching: true,
+      // What the model needs to decide whether to offer an email alert.
+      emailAlerts: "none",
     });
+  });
+
+  it("schedule_watch passes the alert state through, and defaults to none when the host omits it", async () => {
+    for (const state of ["subscribed", "unavailable"] as const) {
+      const { result } = await scheduleWatch({
+        body: { watchId: "watch_1", status: "active", emailAlerts: state },
+      });
+      expect(result.emailAlerts).toBe(state);
+    }
+
+    // An older host that doesn't send the field must not read as "already
+    // subscribed" — the offer is the safe default.
+    const legacy = await scheduleWatch({ body: { watchId: "watch_1", status: "active" } });
+    expect(legacy.result.emailAlerts).toBe("none");
   });
 
   it("schedule_watch surfaces the limit and the duplicate as friendly text, naming the existing watch", async () => {

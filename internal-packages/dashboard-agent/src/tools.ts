@@ -1291,6 +1291,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
               identity?: string;
               status?: string;
               expiresAt?: string;
+              /** Whether a fire would already reach the user outside the chat. */
+              emailAlerts?: "subscribed" | "none" | "unavailable";
               immediate?: { result?: string; facts?: unknown };
               existingId?: string;
               error?: string;
@@ -1344,6 +1346,9 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
           checkEveryMinutes: watch.checkEveryMinutes,
           note: watch.note,
           watching: true,
+          // Decides whether the confirmation may offer an email alert: only
+          // "none" leaves something to offer.
+          emailAlerts: data?.emailAlerts ?? "none",
         };
       },
     }),
