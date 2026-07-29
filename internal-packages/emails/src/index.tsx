@@ -135,7 +135,7 @@ export class EmailClient {
       }
       case "alert-dashboard-agent-watch": {
         return {
-          subject: `[${data.organization}] Your watch fired: ${data.identity}`,
+          subject: `[${data.organization}] Watch update: ${data.identity}`,
           component: <AlertDashboardAgentWatchEmail {...data} />,
         };
       }

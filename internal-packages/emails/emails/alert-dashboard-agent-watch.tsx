@@ -77,12 +77,10 @@ const GOOD_NEWS_KINDS = new Set([
   "run_finished",
 ]);
 
-function outcomeLine(kind: string): { text: string; color: string } {
-  if (GOOD_NEWS_KINDS.has(kind)) return { text: "Watch update — all clear", color: "#A8FF53" };
-  if (kind === "error_recurrence") {
-    return { text: "Watch update — needs your attention", color: "#F87171" };
-  }
-  return { text: "Watch update — condition met", color: "#D7D9DD" };
+function outcomeLine(kind: string): { accent: string; color: string } {
+  if (GOOD_NEWS_KINDS.has(kind)) return { accent: "all clear", color: "#A8FF53" };
+  if (kind === "error_recurrence") return { accent: "needs your attention", color: "#F87171" };
+  return { accent: "condition met", color: "#D7D9DD" };
 }
 
 export default function Email(props: AlertDashboardAgentWatchEmailProps) {
@@ -119,14 +117,10 @@ export default function Email(props: AlertDashboardAgentWatchEmailProps) {
               />
             </Section>
             <Section>
-              <Text
-                className="text-[13px] font-semibold uppercase tracking-wide mb-0 mt-[30px]"
-                style={{ color: outcome.color }}
-              >
-                {outcome.text}
-              </Text>
-              <Heading className="text-[#D7D9DD] text-[30px] font-normal leading-[35px] p-0 mt-[8px] mb-[30px] mx-0">
-                Your watch fired: <strong className="text-[#A8FF53]">{kind}</strong>
+              {/* The chat's wake banner IS the headline: the outcome first,
+                  toned — the details line below carries the watch identity. */}
+              <Heading className="text-[#D7D9DD] text-[30px] font-normal leading-[35px] p-0 my-[30px] mx-0">
+                Watch update — <strong style={{ color: outcome.color }}>{outcome.accent}</strong>
               </Heading>
               <Text className="text-[#D7D9DD] text-[16px] leading-[24px]">
                 I was keeping an eye on {project} ({environment}) for you, and this just fired at{" "}
