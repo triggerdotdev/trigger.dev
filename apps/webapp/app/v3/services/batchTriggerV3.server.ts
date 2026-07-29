@@ -409,10 +409,6 @@ export class BatchTriggerV3Service extends BaseService {
       {} as Record<string, typeof body.items>
     );
 
-    logger.debug("[BatchTriggerV2][call] Grouped items by task identifier", {
-      itemsByTask,
-    });
-
     const idempotencyKeyLookups = Object.entries(itemsByTask).flatMap(([taskIdentifier, items]) => {
       const idempotencyKeys = Array.from(
         new Set(
