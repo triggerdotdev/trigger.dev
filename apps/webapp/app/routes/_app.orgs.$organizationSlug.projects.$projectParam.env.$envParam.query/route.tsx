@@ -11,7 +11,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { executeQuery, getDefaultPeriod } from "~/services/queryService.server";
-import { requireUser } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema, queryPath } from "~/utils/pathBuilder";
 import { canAccessQuery } from "~/v3/canAccessQuery.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
@@ -63,7 +63,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   // Admins and impersonating users can use EXPLAIN
-  const isAdmin = user.admin || user.isImpersonating;
+  const isAdmin = hasAdminDisplayAccess(user);
 
   return typedjson({
     defaultQuery,
@@ -176,7 +176,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   const { query, scope, explain: explainParam, period, from, to } = parsed.data;
   // Only allow explain for admins/impersonating users
-  const isAdmin = user.admin || user.isImpersonating;
+  const isAdmin = hasAdminDisplayAccess(user);
   const explain = explainParam === "true" && isAdmin;
 
   try {

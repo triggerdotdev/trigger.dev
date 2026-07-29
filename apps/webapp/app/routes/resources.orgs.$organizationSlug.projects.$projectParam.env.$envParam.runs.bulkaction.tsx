@@ -56,7 +56,9 @@ import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPrese
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs._index/shouldRevalidateRunsList";
 import { logger } from "~/services/logger.server";
+import { getViewingAsUser } from "~/services/impersonation.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { hasAdminDisplayAccess } from "~/services/session.server";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema, v3BulkActionPath } from "~/utils/pathBuilder";
@@ -84,6 +86,13 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
+    // Display only: hidden regions stay listed for admins, unless they've asked
+    // to see the dashboard the way the impersonated user sees it.
+    const isAdmin = hasAdminDisplayAccess({
+      ...user,
+      isViewingAsUser: await getViewingAsUser(request),
+    });
+
     const presenter = new CreateBulkActionPresenter();
     const [data, regionsResult] = await Promise.all([
       presenter.call({
@@ -96,7 +105,7 @@ export const loader = dashboardLoader(
         new RegionsPresenter().call({
           userId: user.id,
           projectSlug: projectParam,
-          isAdmin: user.admin || user.isImpersonating,
+          isAdmin,
         })
       ),
     ]);

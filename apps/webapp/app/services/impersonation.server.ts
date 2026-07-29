@@ -18,6 +18,15 @@ export const impersonationSessionStorage = createCookieSessionStorage({
   },
 });
 
+const IMPERSONATED_USER_ID_KEY = "impersonatedUserId";
+
+/**
+ * Display-only "view as user" flag. It lives on the impersonation cookie so it
+ * is scoped to the impersonation session by construction: stop impersonating
+ * and the flag goes with it.
+ */
+const VIEWING_AS_USER_KEY = "viewingAsUser";
+
 export function getImpersonationSession(request: Request) {
   return impersonationSessionStorage.getSession(request.headers.get("Cookie"));
 }
@@ -29,13 +38,13 @@ export function commitImpersonationSession(session: Session) {
 export async function getImpersonationId(request: Request) {
   const session = await getImpersonationSession(request);
 
-  return session.get("impersonatedUserId") as string | undefined;
+  return session.get(IMPERSONATED_USER_ID_KEY) as string | undefined;
 }
 
 export async function setImpersonationId(userId: string, request: Request) {
   const session = await getImpersonationSession(request);
 
-  session.set("impersonatedUserId", userId);
+  session.set(IMPERSONATED_USER_ID_KEY, userId);
 
   return session;
 }
@@ -43,7 +52,35 @@ export async function setImpersonationId(userId: string, request: Request) {
 export async function clearImpersonationId(request: Request) {
   const session = await getImpersonationSession(request);
 
-  session.unset("impersonatedUserId");
+  session.unset(IMPERSONATED_USER_ID_KEY);
+  // The view-as-user flag only means anything inside an impersonation session,
+  // so it never outlives one.
+  session.unset(VIEWING_AS_USER_KEY);
+
+  return session;
+}
+
+/**
+ * Whether the admin has asked to see the dashboard the way the impersonated
+ * user sees it. Only ever true inside an impersonation session.
+ */
+export async function getViewingAsUser(request: Request) {
+  const session = await getImpersonationSession(request);
+
+  return (
+    typeof session.get(IMPERSONATED_USER_ID_KEY) === "string" &&
+    session.get(VIEWING_AS_USER_KEY) === true
+  );
+}
+
+export async function setViewingAsUser(value: boolean, request: Request) {
+  const session = await getImpersonationSession(request);
+
+  if (value) {
+    session.set(VIEWING_AS_USER_KEY, true);
+  } else {
+    session.unset(VIEWING_AS_USER_KEY);
+  }
 
   return session;
 }

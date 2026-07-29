@@ -19,6 +19,7 @@ import { TimezoneSetter } from "./components/TimezoneSetter";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
+import { getViewingAsUser } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";
@@ -70,6 +71,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 
   const user = await getUser(request);
+  // Display-only: while impersonating, an admin can ask to see the dashboard
+  // the way the impersonated user sees it. Exposed from root so every route can
+  // read it.
+  const isViewingAsUser = await getViewingAsUser(request);
 
   const headers = new Headers();
   headers.append("Set-Cookie", await commitSession(session));
@@ -77,6 +82,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return typedjson(
     {
       user,
+      isViewingAsUser,
       toastMessage,
       posthogProjectKey,
       posthogUiHost,

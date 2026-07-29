@@ -4,7 +4,14 @@ import {
   ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
-import { useFetcher, useNavigation, useRevalidator, useSubmit } from "@remix-run/react";
+import {
+  Form,
+  useFetcher,
+  useLocation,
+  useNavigation,
+  useRevalidator,
+  useSubmit,
+} from "@remix-run/react";
 import { LayoutGroup, motion } from "framer-motion";
 import {
   type CSSProperties,
@@ -33,6 +40,8 @@ import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
 import { DialIcon } from "~/assets/icons/DialIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { EyeClosedIcon } from "~/assets/icons/EyeClosedIcon";
+import { EyeOpenIcon } from "~/assets/icons/EyeOpenIcon";
 import { FolderClosedIcon } from "~/assets/icons/FolderClosedIcon";
 import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
 import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
@@ -69,7 +78,7 @@ import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
-import { useHasAdminAccess } from "~/hooks/useUser";
+import { useHasAdminAccess, useIsViewingAsUser } from "~/hooks/useUser";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
 import {
   useCurrentPlan,
@@ -785,7 +794,7 @@ export function SideMenu({
   // user's saved order/hidden preferences are applied at render below.
   const staticSections: SideMenuSectionConfig[] = [];
 
-  if (user.admin || user.isImpersonating || featureFlags.hasAiAccess) {
+  if (isAdmin || featureFlags.hasAiAccess) {
     staticSections.push({
       id: "ai",
       title: "AI",
@@ -813,12 +822,12 @@ export function SideMenu({
     });
   }
 
-  if (user.admin || user.isImpersonating || featureFlags.hasQueryAccess) {
+  if (isAdmin || featureFlags.hasQueryAccess) {
     staticSections.push({
       id: "metrics",
       title: "Observability",
       items: [
-        ...(user.admin || user.isImpersonating || featureFlags.hasLogsPageAccess
+        ...(isAdmin || featureFlags.hasLogsPageAccess
           ? [
               {
                 id: "logs",
@@ -1832,24 +1841,29 @@ function AccountMenuItems({
 
   return (
     <>
-      {isAdmin && (
+      {/* "Stop impersonating" and the view-as-user toggle key off raw impersonation, not `isAdmin`:
+          with "view as user" on, `isAdmin` is false and these are the only ways back out. */}
+      {(isImpersonating || isAdmin) && (
         <div className="flex flex-col gap-1 border-b border-grid-bright p-1">
           {isImpersonating ? (
-            <PopoverMenuItem
-              title={
-                <div className="flex w-full items-center justify-between">
-                  <span className={IMPERSONATION_ACCENT.text}>Stop impersonating</span>
-                  <ShortcutKey
-                    shortcut={{ modifiers: ["mod", "alt"], key: "a" }}
-                    variant="medium/bright"
-                  />
-                </div>
-              }
-              icon={UserCrossIcon}
-              onClick={stopImpersonating}
-              leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, IMPERSONATION_ACCENT.text)}
-              className={SIDE_MENU_POPOVER_ITEM_LABEL}
-            />
+            <>
+              <PopoverMenuItem
+                title={
+                  <div className="flex w-full items-center justify-between">
+                    <span className={IMPERSONATION_ACCENT.text}>Stop impersonating</span>
+                    <ShortcutKey
+                      shortcut={{ modifiers: ["mod", "alt"], key: "a" }}
+                      variant="medium/bright"
+                    />
+                  </div>
+                }
+                icon={UserCrossIcon}
+                onClick={stopImpersonating}
+                leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, IMPERSONATION_ACCENT.text)}
+                className={SIDE_MENU_POPOVER_ITEM_LABEL}
+              />
+              <ViewAsUserMenuItem />
+            </>
           ) : (
             <PopoverMenuItem
               to={adminPath()}
@@ -1903,6 +1917,30 @@ function AccountMenuItems({
         />
       </div>
     </>
+  );
+}
+
+/**
+ * Toggles the display-only "view as user" mode for the current impersonation session, so an admin
+ * can see the dashboard the way the impersonated user sees it. `reloadDocument` forces a full
+ * navigation, so every loader re-runs under the updated cookie instead of reusing cached data.
+ */
+function ViewAsUserMenuItem() {
+  const isViewingAsUser = useIsViewingAsUser();
+  const location = useLocation();
+
+  return (
+    <Form method="post" action="/resources/impersonation/view-as" reloadDocument>
+      <input type="hidden" name="viewAsUser" value={isViewingAsUser ? "false" : "true"} />
+      <input type="hidden" name="redirectTo" value={`${location.pathname}${location.search}`} />
+      <PopoverMenuItem
+        type="submit"
+        title={isViewingAsUser ? "Show admin UI" : "View as user"}
+        icon={isViewingAsUser ? EyeClosedIcon : EyeOpenIcon}
+        leadingIconClassName={cn(SIDE_MENU_POPOVER_ITEM_ICON, IMPERSONATION_ACCENT.text)}
+        className={SIDE_MENU_POPOVER_ITEM_LABEL}
+      />
+    </Form>
   );
 }
 

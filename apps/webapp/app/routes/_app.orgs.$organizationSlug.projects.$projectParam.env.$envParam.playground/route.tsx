@@ -22,7 +22,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
-import { requireUser } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
@@ -57,7 +57,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     new RegionsPresenter().call({
       userId: user.id,
       projectSlug: projectParam,
-      isAdmin: user.admin || user.isImpersonating,
+      isAdmin: hasAdminDisplayAccess(user),
     }),
   ]);
 

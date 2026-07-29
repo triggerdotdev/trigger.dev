@@ -3,7 +3,7 @@ import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { authenticator } from "./auth.server";
-import { getImpersonationId } from "./impersonation.server";
+import { getImpersonationId, getViewingAsUser } from "./impersonation.server";
 import { logger } from "./logger.server";
 import { revalidateSsoSession } from "./ssoSessionRevalidation.server";
 
@@ -136,6 +136,7 @@ export async function requireUser(request: Request) {
   }
 
   const impersonationId = await getImpersonationId(request);
+  const isImpersonating = !!impersonationId && impersonationId === user.id;
   return {
     id: user.id,
     email: user.email,
@@ -148,8 +149,24 @@ export async function requireUser(request: Request) {
     dashboardPreferences: user.dashboardPreferences,
     confirmedBasicDetails: user.confirmedBasicDetails,
     mfaEnabledAt: user.mfaEnabledAt,
-    isImpersonating: !!impersonationId && impersonationId === user.id,
+    isImpersonating,
+    isViewingAsUser: isImpersonating && (await getViewingAsUser(request)),
   };
+}
+
+/**
+ * Whether admin-only UI should be rendered for this user.
+ *
+ * Display only. The "view as user" toggle is cosmetic and must never widen or
+ * narrow a real security boundary — authorization stays on `user.admin`, the
+ * route builder's `authorization` block and the per-feature access checks.
+ */
+export function hasAdminDisplayAccess(user: {
+  admin: boolean;
+  isImpersonating: boolean;
+  isViewingAsUser: boolean;
+}): boolean {
+  return (user.admin || user.isImpersonating) && !user.isViewingAsUser;
 }
 
 export async function logout(request: Request) {

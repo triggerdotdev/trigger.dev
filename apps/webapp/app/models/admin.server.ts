@@ -1,5 +1,5 @@
 import { redirect } from "@remix-run/server-runtime";
-import { prisma } from "~/db.server";
+import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import type { SearchParams } from "~/routes/admin._index";
 import {
@@ -213,7 +213,8 @@ export async function redirectWithImpersonation(
   request: Request,
   userId: string,
   path: string,
-  currentUser?: { id: string; admin: boolean }
+  currentUser?: { id: string; admin: boolean },
+  prismaClient: PrismaClientOrTransaction = prisma
 ) {
   const user = currentUser ?? (await requireUser(request));
   if (!user.admin) {
@@ -224,7 +225,7 @@ export async function redirectWithImpersonation(
   const ipAddress = extractClientIp(xff);
 
   try {
-    await prisma.impersonationAuditLog.create({
+    await prismaClient.impersonationAuditLog.create({
       data: {
         action: "START",
         adminId: user.id,

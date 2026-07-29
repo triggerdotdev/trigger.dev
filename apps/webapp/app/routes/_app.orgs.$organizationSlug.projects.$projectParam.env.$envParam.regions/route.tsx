@@ -54,7 +54,8 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
-import { requireUser } from "~/services/session.server";
+import { getViewingAsUser } from "~/services/impersonation.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import {
   docsPath,
@@ -74,7 +75,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     presenter.call({
       userId: user.id,
       projectSlug: projectParam,
-      isAdmin: user.admin || user.isImpersonating,
+      isAdmin: hasAdminDisplayAccess(user),
     })
   );
 
@@ -135,7 +136,10 @@ export const action = dashboardAction(
       service.call({
         projectId: project.id,
         regionId: parsedFormData.data.regionId,
-        isAdmin: user.admin || user.isImpersonating,
+        isAdmin: hasAdminDisplayAccess({
+          ...user,
+          isViewingAsUser: await getViewingAsUser(request),
+        }),
       })
     );
 

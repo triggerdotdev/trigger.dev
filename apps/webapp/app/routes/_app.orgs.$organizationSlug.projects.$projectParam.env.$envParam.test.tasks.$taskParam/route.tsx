@@ -67,7 +67,7 @@ import {
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
-import { requireUser } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { docsPath, v3RunSpanPath, v3TaskParamsSchema, v3TestPath } from "~/utils/pathBuilder";
 import { DeleteTaskRunTemplateService } from "~/v3/services/deleteTaskRunTemplate.server";
@@ -120,7 +120,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       new RegionsPresenter().call({
         userId: user.id,
         projectSlug: projectParam,
-        isAdmin: user.admin || user.isImpersonating,
+        isAdmin: hasAdminDisplayAccess(user),
       }),
     ]);
 
