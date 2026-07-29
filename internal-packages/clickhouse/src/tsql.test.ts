@@ -1763,6 +1763,7 @@ describe("TSQL Error Log Levels", () => {
         organization_id: { op: "eq", value: "org_tenant1" },
       },
       tableSchema: [taskRunsSchema],
+      userAuthoredQuery: true,
       clickhouseSettings: { max_rows_to_read: "1" },
     });
 
@@ -1770,4 +1771,35 @@ describe("TSQL Error Log Levels", () => {
     expect(logged(warnSpy)).toContain("Query exceeded a ClickHouse limit");
     expect(logged(errorSpy)).not.toContain("Error querying clickhouse");
   });
+
+  clickhouseTest(
+    "keeps a limit breach on a query we generated at error level",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      await insertTaskRuns(client, { async_insert: 0 })([
+        createTaskRun({ run_id: "run_intlimit1" }),
+        createTaskRun({ run_id: "run_intlimit2" }),
+        createTaskRun({ run_id: "run_intlimit3" }),
+      ]);
+
+      const [error] = await executeTSQL(client, {
+        name: "test-internal-resource-limit",
+        query: "SELECT run_id FROM task_runs",
+        schema: z.object({ run_id: z.string() }),
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_tenant1" },
+        },
+        tableSchema: [taskRunsSchema],
+        clickhouseSettings: { max_rows_to_read: "1" },
+      });
+
+      expect(error).not.toBeNull();
+      expect(logged(errorSpy)).toContain("Error querying clickhouse");
+      expect(logged(warnSpy)).not.toContain("Query exceeded a ClickHouse limit");
+    }
+  );
 });

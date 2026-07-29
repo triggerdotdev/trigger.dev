@@ -179,16 +179,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             queryId,
           };
 
-          switch (classifyClickhouseError(clickhouseError, false)) {
-            case "quota":
-              this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
-              break;
-            case "invalid-sql":
-              this.logger.warn("ClickHouse rejected an invalid query", errorLogFields);
-              break;
-            default:
-              this.logger.error("Error querying clickhouse", errorLogFields);
-          }
+          this.logger.error("Error querying clickhouse", errorLogFields);
 
           recordClickhouseError(span, clickhouseError);
 
@@ -494,16 +485,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
             queryId,
           };
 
-          switch (classifyClickhouseError(clickhouseError, false)) {
-            case "quota":
-              this.logger.warn("Query exceeded a ClickHouse limit", errorLogFields);
-              break;
-            case "invalid-sql":
-              this.logger.warn("ClickHouse rejected an invalid query", errorLogFields);
-              break;
-            default:
-              this.logger.error("Error querying clickhouse", errorLogFields);
-          }
+          this.logger.error("Error querying clickhouse", errorLogFields);
 
           recordClickhouseError(span, clickhouseError);
 
@@ -651,11 +633,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           queryId,
         };
 
-        if (error instanceof Error && classifyClickhouseError(error, false) === "quota") {
-          self.logger.warn("Streamed query exceeded a ClickHouse limit", errorLogFields);
-        } else {
-          self.logger.error("Error streaming clickhouse", errorLogFields);
-        }
+        self.logger.error("Error streaming clickhouse", errorLogFields);
 
         if (error instanceof Error) {
           recordClickhouseError(span, error);
@@ -1053,8 +1031,8 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
 /**
  * ClickHouse error types raised by a query that is valid but asks for more than
- * the caller is allowed to spend. The caller gets a 4xx and there is nothing on
- * our side to fix, so these are logged at warn rather than error.
+ * it is allowed to spend. Only downgraded for SQL the caller wrote: a runaway
+ * query we generated is our bug and still has to alert.
  */
 const CLICKHOUSE_QUOTA_ERROR_TYPES = new Set([
   "MEMORY_LIMIT_EXCEEDED",
@@ -1098,13 +1076,13 @@ function classifyClickhouseError(
   error: Error,
   userAuthoredQuery: boolean | undefined
 ): ClickhouseErrorCategory {
-  if (!(error instanceof ClickHouseError) || error.type === undefined) {
+  if (!userAuthoredQuery || !(error instanceof ClickHouseError) || error.type === undefined) {
     return "fault";
   }
   if (CLICKHOUSE_QUOTA_ERROR_TYPES.has(error.type)) {
     return "quota";
   }
-  if (userAuthoredQuery && CLICKHOUSE_INVALID_SQL_ERROR_TYPES.has(error.type)) {
+  if (CLICKHOUSE_INVALID_SQL_ERROR_TYPES.has(error.type)) {
     return "invalid-sql";
   }
   return "fault";
