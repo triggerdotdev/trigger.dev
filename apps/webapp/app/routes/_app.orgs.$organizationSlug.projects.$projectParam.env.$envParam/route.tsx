@@ -5,7 +5,7 @@ import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
 import { prisma } from "~/db.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
 import { logger } from "~/services/logger.server";
-import { requireUser } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { tenantContext } from "~/services/tenantContext.server";
 import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
@@ -78,10 +78,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // the launcher button is hidden when it's not enabled. The org's featureFlags
   // came from the membership-checked project query above, so we pass them in to
   // avoid a second org lookup.
+  // Display-only, so it respects the "view as user" toggle: while that's on we
+  // hide the launcher an impersonated-into user wouldn't have.
+  const showAdminUi = hasAdminDisplayAccess(user);
   const hasDashboardAgentAccess = await canAccessDashboardAgent({
     userId: user.id,
-    isAdmin: user.admin,
-    isImpersonating: user.isImpersonating,
+    isAdmin: showAdminUi && user.admin,
+    isImpersonating: showAdminUi && user.isImpersonating,
     organizationSlug,
     orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
   });

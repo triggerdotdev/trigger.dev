@@ -49,7 +49,7 @@ import { getTaskIdentifiers } from "~/models/task.server";
 import { MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
 import { removeFavoritesByUrlSubstring } from "~/services/dashboardPreferences.server";
-import { requireUser } from "~/services/session.server";
+import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
   queryPath,
@@ -98,7 +98,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   ]);
 
   // Admins and impersonating users can use EXPLAIN
-  const isAdmin = user.admin || user.isImpersonating;
+  const isAdmin = hasAdminDisplayAccess(user);
 
   // Compute widget count from dashboard layout
   const widgetCount = Object.keys(dashboard.layout.widgets).length;
