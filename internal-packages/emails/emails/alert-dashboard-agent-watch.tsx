@@ -70,12 +70,7 @@ function formatFiredAt(firedAt: string) {
  * WakeBanner: a fired good-news kind is "all clear", a recurred error "needs
  * your attention", anything else states the fact.
  */
-const GOOD_NEWS_KINDS = new Set([
-  "health_recovery",
-  "backlog_drain",
-  "run_start",
-  "run_finished",
-]);
+const GOOD_NEWS_KINDS = new Set(["health_recovery", "backlog_drain", "run_start", "run_finished"]);
 
 function outcomeLine(kind: string): { accent: string; color: string } {
   if (GOOD_NEWS_KINDS.has(kind)) return { accent: "all clear", color: "#A8FF53" };
