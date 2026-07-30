@@ -3,7 +3,7 @@ import { getUserById } from "~/models/user.server";
 import { sanitizeRedirectPath } from "~/utils";
 import { extractClientIp } from "~/utils/extractClientIp.server";
 import { authenticator } from "./auth.server";
-import { getImpersonationId, getViewingAsUser } from "./impersonation.server";
+import { getImpersonationId, getImpersonationState } from "./impersonation.server";
 import { logger } from "./logger.server";
 import { revalidateSsoSession } from "./ssoSessionRevalidation.server";
 
@@ -135,8 +135,9 @@ export async function requireUser(request: Request) {
     throw redirect(`/login?${searchParams}`);
   }
 
-  const impersonationId = await getImpersonationId(request);
-  const isImpersonating = !!impersonationId && impersonationId === user.id;
+  // Shared with the root loader so the client never reads a different answer
+  // than the one computed here.
+  const { isImpersonating, isViewingAsUser } = await getImpersonationState(request, user.id);
   return {
     id: user.id,
     email: user.email,
@@ -150,7 +151,7 @@ export async function requireUser(request: Request) {
     confirmedBasicDetails: user.confirmedBasicDetails,
     mfaEnabledAt: user.mfaEnabledAt,
     isImpersonating,
-    isViewingAsUser: isImpersonating && (await getViewingAsUser(request)),
+    isViewingAsUser,
   };
 }
 

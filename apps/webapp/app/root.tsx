@@ -19,7 +19,7 @@ import { TimezoneSetter } from "./components/TimezoneSetter";
 import { env } from "./env.server";
 import { featuresForRequest } from "./features.server";
 import { usePostHog } from "./hooks/usePostHog";
-import { getViewingAsUser } from "./services/impersonation.server";
+import { getImpersonationState } from "./services/impersonation.server";
 import { getUser } from "./services/session.server";
 import { getTimezonePreference } from "./services/preferences/uiPreferences.server";
 import { appEnvTitleTag } from "./utils";
@@ -74,7 +74,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Display-only: while impersonating, an admin can ask to see the dashboard
   // the way the impersonated user sees it. Exposed from root so every route can
   // read it.
-  const isViewingAsUser = await getViewingAsUser(request);
+  //
+  // Resolved against the user this request authenticated as, which is the same
+  // condition `requireUser` applies — otherwise the flag the client reads and
+  // the `user.isViewingAsUser` the server computes could disagree, and the
+  // client-side admin UI would hide itself on a session that is not
+  // impersonating.
+  const { isViewingAsUser } = await getImpersonationState(request, user?.id);
 
   const headers = new Headers();
   headers.append("Set-Cookie", await commitSession(session));

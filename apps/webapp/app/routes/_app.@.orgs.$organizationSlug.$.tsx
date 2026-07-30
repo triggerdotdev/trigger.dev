@@ -107,6 +107,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const user = await requireUser(request);
 
+  // Same ordering as the loader, and it matters for the same reason: while an
+  // impersonation cookie is set `requireUser` resolves to the *impersonated*
+  // user, so `user.admin` is false even for a legitimate admin. An admin who
+  // started impersonating in another tab and then submitted this page would
+  // fail the check below and be bounced to `/` with no explanation. Clear the
+  // impersonation first and come back to this same URL under their own
+  // identity, where the normal flow re-authorizes them and they can confirm.
+  // Never run the impersonation mutation on a request whose resolved identity
+  // is the impersonated user.
+  if (user.isImpersonating) {
+    const url = new URL(request.url);
+    // Keep the search for the same reason the loader does: the follow-up GET
+    // rebuilds the destination and post-back paths from it.
+    return clearImpersonation(request, `${url.pathname}${url.search}`);
+  }
+
   if (!user.admin) {
     return redirect("/");
   }

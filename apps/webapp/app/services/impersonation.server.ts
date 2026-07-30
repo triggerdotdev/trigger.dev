@@ -5,6 +5,7 @@ import { singleton } from "~/utils/singleton";
 import { createRedisClient, type RedisClient } from "~/redis.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { resolveImpersonationState, type ImpersonationState } from "~/utils/impersonationState";
 
 export const impersonationSessionStorage = createCookieSessionStorage({
   cookie: {
@@ -61,16 +62,25 @@ export async function clearImpersonationId(request: Request) {
 }
 
 /**
- * Whether the admin has asked to see the dashboard the way the impersonated
- * user sees it. Only ever true inside an impersonation session.
+ * The impersonation state for a request, resolved against `resolvedUserId` — the
+ * id the request actually authenticated as (what `getUser`/`getUserId` return).
+ *
+ * This is the one place the impersonation flags come from, so the values the
+ * server computes for a route and the value the root loader publishes to the
+ * client cannot disagree. See `resolveImpersonationState` for why the
+ * impersonated id has to match the resolved user rather than merely be present.
  */
-export async function getViewingAsUser(request: Request) {
+export async function getImpersonationState(
+  request: Request,
+  resolvedUserId: string | undefined
+): Promise<ImpersonationState> {
   const session = await getImpersonationSession(request);
 
-  return (
-    typeof session.get(IMPERSONATED_USER_ID_KEY) === "string" &&
-    session.get(VIEWING_AS_USER_KEY) === true
-  );
+  return resolveImpersonationState({
+    impersonatedUserId: session.get(IMPERSONATED_USER_ID_KEY),
+    viewingAsUser: session.get(VIEWING_AS_USER_KEY),
+    resolvedUserId,
+  });
 }
 
 export async function setViewingAsUser(value: boolean, request: Request) {

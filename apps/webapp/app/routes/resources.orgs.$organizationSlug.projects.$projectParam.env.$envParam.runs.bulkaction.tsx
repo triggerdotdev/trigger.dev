@@ -56,7 +56,7 @@ import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPrese
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs._index/shouldRevalidateRunsList";
 import { logger } from "~/services/logger.server";
-import { getViewingAsUser } from "~/services/impersonation.server";
+import { getImpersonationState } from "~/services/impersonation.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { hasAdminDisplayAccess } from "~/services/session.server";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
@@ -87,11 +87,11 @@ export const loader = dashboardLoader(
     }
 
     // Display only: hidden regions stay listed for admins, unless they've asked
-    // to see the dashboard the way the impersonated user sees it.
-    const isAdmin = hasAdminDisplayAccess({
-      ...user,
-      isViewingAsUser: await getViewingAsUser(request),
-    });
+    // to see the dashboard the way the impersonated user sees it. The route
+    // builder's `user` doesn't carry the flag, so read it off the session with
+    // the same strict condition every other consumer uses.
+    const { isViewingAsUser } = await getImpersonationState(request, user.id);
+    const isAdmin = hasAdminDisplayAccess({ ...user, isViewingAsUser });
 
     const presenter = new CreateBulkActionPresenter();
     const [data, regionsResult] = await Promise.all([
