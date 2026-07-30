@@ -6,7 +6,17 @@ import type { QueueMetricsRawV1Input } from "./queueMetrics.js";
 const ORG = "org_qm";
 const PROJECT = "project_qm";
 const ENV = "env_qm";
-const EVENT_TIME = "2026-06-30 12:00:05"; // all rows land in the 10s bucket starting 12:00:00
+
+function clickhouseDateTime(timestamp: number) {
+  return new Date(timestamp).toISOString().slice(0, 19).replace("T", " ");
+}
+
+// Keep fixtures within the tables' TTLs while preserving deterministic bucket
+// relationships. Subtract a minute before rounding so no fixture lands in the future.
+const TEST_MINUTE = Math.floor((Date.now() - 60_000) / 60_000) * 60_000;
+const EVENT_TIME = clickhouseDateTime(TEST_MINUTE + 5_000);
+const NEXT_BUCKET_EVENT_TIME = clickhouseDateTime(TEST_MINUTE + 15_000);
+const RANKING_START_TIME = clickhouseDateTime(TEST_MINUTE - 10 * 60_000);
 
 function base(op: QueueMetricsRawV1Input["op"], queue: string): QueueMetricsRawV1Input {
   return {
@@ -246,7 +256,7 @@ describe("queue_metrics_v1", () => {
         { ...base("gauge", "roll-b"), running: 2, queued: 1, env_running: 45, env_limit: 50 },
         {
           ...base("gauge", "roll-a"),
-          event_time: "2026-06-30 12:00:15",
+          event_time: NEXT_BUCKET_EVENT_TIME,
           running: 1,
           queued: 2,
           env_running: 20,
@@ -352,7 +362,7 @@ describe("queue_metrics_v1", () => {
         organizationId: ORG,
         projectId: PROJECT,
         environmentId: ENV,
-        startTime: "2026-06-30 11:50:00",
+        startTime: RANKING_START_TIME,
         nameContains: "rank-",
         byQueuedOnly: 0,
       };
