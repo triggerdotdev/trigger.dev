@@ -13,7 +13,7 @@ import {
   type EnvelopedDiagnosisBlock,
   type ViewBlock,
 } from "@internal/dashboard-agent-contracts";
-import { demoId, DEMO_WORLD } from "../ids";
+import { demoId, demoRunsUri, DEMO_WORLD } from "../ids";
 
 const envelope = (id: string, revision = 0) => ({
   id: demoId(id),
@@ -105,6 +105,25 @@ export const demoChartBlock: EnvelopedChartBlock = {
   groupByColumn: "task_identifier",
   stacked: false,
   aggregation: "sum",
+  // The chart ranks the tasks; the buttons act on the one it put on top. The ask
+  // is phrased as the user's own follow-up, because that's what it becomes.
+  actions: [
+    {
+      label: `Investigate ${DEMO_WORLD.taskId}`,
+      intent: {
+        kind: "ask",
+        prompt: `Investigate the ${DEMO_WORLD.taskId} failures — why are they failing?`,
+      },
+    },
+    {
+      label: "See its failed runs",
+      intent: {
+        kind: "navigate",
+        target: demoRunsUri(),
+        filters: { tasks: [DEMO_WORLD.taskId], statuses: ["COMPLETED_WITH_ERROR"], period: "1d" },
+      },
+    },
+  ],
 };
 
 /**

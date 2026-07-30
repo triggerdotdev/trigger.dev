@@ -49,6 +49,10 @@ const scope = { projectRef: DEMO_PROJECT_REF, environmentId: DEMO_ENVIRONMENT_ID
 // fixture URI is grammar-valid by construction — the contracts package, not the
 // fixture author, decides what a legal URI looks like.
 
+export function demoRunsUri(): TriggerUri {
+  return formatTriggerUri({ kind: "runs", ...scope });
+}
+
 export function demoRunUri(runId: string): TriggerUri {
   return formatTriggerUri({ kind: "run", ...scope, runId });
 }

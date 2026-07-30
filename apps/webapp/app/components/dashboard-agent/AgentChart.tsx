@@ -1,13 +1,16 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import type { ChartBlock } from "@internal/dashboard-agent";
+import { isTriggerUri, type AgentIntent, type ChartAction } from "@internal/dashboard-agent-contracts";
 import { useEffect, useState } from "react";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import type { ChartConfiguration } from "~/components/metrics/QueryWidget";
+import { Button } from "~/components/primitives/Buttons";
 import { Spinner } from "~/components/primitives/Spinner";
 import { useOptionalEnvironment } from "~/hooks/useEnvironment";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useOptionalProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
+import { ChatActionsRow } from "./chat-layout";
 
 // Render an agent "chart" block by running its TRQL query through the dashboard's
 // own /resources/metric endpoint (session-authed, returns rows + real column
@@ -51,7 +54,53 @@ type ChartState =
       timeRange?: { from: string; to: string };
     };
 
-export function AgentChart({ block }: { block: ChartBlock }) {
+/**
+ * The buttons under a ranking chart: act on the item the chart put on top.
+ *
+ * A card never navigates or asks on its own — it hands the block's intent to the
+ * host, which submits an `ask` as the user's next message and resolves a
+ * `navigate` before moving. Without an `onIntent` there is nothing to hand it to,
+ * so the row isn't rendered rather than showing dead buttons.
+ */
+export function ChartActions({
+  actions,
+  onIntent,
+}: {
+  actions: ChartAction[];
+  onIntent?: (intent: AgentIntent) => void;
+}) {
+  // A chart action's navigate target is a plain string at the contract boundary
+  // (the model may hold no canonical URI) — only targets that really parse
+  // become buttons, so a hallucinated URI costs a button, never a dead click.
+  const renderable = actions.filter(
+    (action) => action.intent.kind !== "navigate" || isTriggerUri(action.intent.target)
+  );
+  if (!onIntent || renderable.length === 0) return null;
+  return (
+    <div className="border-t border-grid-bright px-2 pb-2 pt-2">
+      <ChatActionsRow>
+        {renderable.map((action, i) => (
+          <Button
+            key={i}
+            // The first action is the one to take; the rest are alternatives.
+            variant={i === 0 ? "primary/small" : "secondary/small"}
+            onClick={() => onIntent(action.intent as AgentIntent)}
+          >
+            {action.label}
+          </Button>
+        ))}
+      </ChatActionsRow>
+    </div>
+  );
+}
+
+export function AgentChart({
+  block,
+  onIntent,
+}: {
+  block: ChartBlock;
+  onIntent?: (intent: AgentIntent) => void;
+}) {
   const organization = useOptionalOrganization();
   const project = useOptionalProject();
   const environment = useOptionalEnvironment();
@@ -147,6 +196,7 @@ export function AgentChart({ block }: { block: ChartBlock }) {
           />
         )}
       </div>
+      <ChartActions actions={block.actions ?? []} onIntent={onIntent} />
     </div>
   );
 }

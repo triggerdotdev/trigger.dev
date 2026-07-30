@@ -6,10 +6,21 @@
  * the fixture rows directly. The frame (border, title strip, height) mirrors
  * `AgentChart` so the card reads identically in the panel.
  */
+import type { AgentIntent, ChartAction } from "@internal/dashboard-agent-contracts";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
+import { ChartActions } from "../../AgentChart";
 import { demoChart } from "../fixtures/chart";
 
-export function DemoChartCard({ title = demoChart.title }: { title?: string }) {
+export function DemoChartCard({
+  title = demoChart.title,
+  actions,
+  onIntent,
+}: {
+  title?: string;
+  /** The row under the chart, when this chart ranks something. */
+  actions?: ChartAction[];
+  onIntent?: (intent: AgentIntent) => void;
+}) {
   return (
     <div className="overflow-hidden rounded-lg border border-border-bright bg-background-dimmed">
       {title ? (
@@ -25,6 +36,7 @@ export function DemoChartCard({ title = demoChart.title }: { title?: string }) {
           timeRange={demoChart.timeRange}
         />
       </div>
+      <ChartActions actions={actions ?? []} onIntent={onIntent} />
     </div>
   );
 }

@@ -185,6 +185,61 @@ describe("model-facing input schema", () => {
   });
 });
 
+describe("chart actions", () => {
+  // A ranking chart answers "which task fails most" — the actions are what to do
+  // about the winner. Two kinds, both from the intent union.
+  const actions = [
+    {
+      label: "Investigate send-order-receipt",
+      intent: {
+        kind: "ask",
+        prompt: "Investigate the send-order-receipt failures — why are they failing?",
+      },
+    },
+    {
+      label: "See its failed runs",
+      intent: {
+        kind: "navigate",
+        target: "trigger://proj_abc/env_abc/runs",
+        filters: { tasks: ["send-order-receipt"], period: "1d" },
+      },
+    },
+  ];
+
+  it("parses a chart with actions", () => {
+    const parsed = viewBlockInputSchema.parse({ ...legacyChart, actions });
+    expect(parsed.type).toBe("chart");
+    expect(parsed.type === "chart" && parsed.actions).toHaveLength(2);
+    expect(viewBlockSchema.safeParse({ ...legacyChart, ...envelope, actions }).success).toBe(true);
+    expect(parseStoredViewBlock({ ...legacyChart, actions }).type).toBe("chart");
+  });
+
+  it("still parses a chart with no actions", () => {
+    expect(viewBlockInputSchema.safeParse(legacyChart).success).toBe(true);
+    expect(legacyViewBlockSchema.safeParse(legacyChart).success).toBe(true);
+  });
+
+  it("caps the row at three buttons", () => {
+    const fourth = { label: "One too many", intent: { kind: "ask", prompt: "And this?" } };
+    expect(
+      viewBlockInputSchema.safeParse({ ...legacyChart, actions: [...actions, fourth, fourth] })
+        .success
+    ).toBe(false);
+  });
+
+  it("accepts a non-canonical navigate target — the renderer drops it, the call survives", () => {
+    // The model can't always build a canonical URI, and a malformed target must
+    // cost one button rather than fail the whole render_view call. ChartActions
+    // filters non-parsing targets out at render time.
+    expect(
+      viewBlockInputSchema.safeParse({
+        ...legacyChart,
+        actions: [{ label: "Runs", intent: { kind: "navigate", target: "/runs?status=FAILED" } }],
+      }).success
+    ).toBe(true);
+  });
+});
+
 describe("report block", () => {
   it("round-trips a whole view model", () => {
     const parsed = reportBlockSchema.parse(reportBlock);

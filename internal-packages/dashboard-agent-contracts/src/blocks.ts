@@ -27,6 +27,7 @@
  * and is rendered in transcript order.
  */
 import { evidenceRefSchema, evidenceSchema } from "./evidence.js";
+import { runFiltersSchema } from "./run-filters.js";
 import { triggerUriSchema } from "./trigger-uri.js";
 import { z } from "zod";
 
@@ -150,6 +151,42 @@ export const diagnosisBlockBodySchema = z.object({
 // chart
 // ---------------------------------------------------------------------------
 
+/**
+ * A button under a chart. The chart answers "which task failed most"; the
+ * actions are what to do about the winner — investigate it, or go look at its
+ * runs. The card only *emits* the intent; the host decides whether to honour it,
+ * the same rule every other intent follows.
+ */
+/**
+ * A chart action's intent. Mirrors `agentIntentSchema`, but the navigate
+ * `target` is a plain string at this boundary — the model can't always build a
+ * canonical URI (the grammar embeds ids it doesn't hold), and a malformed
+ * target must cost one button, not the whole tool call. The `render_view`
+ * executor drops navigate actions whose target isn't a valid trigger:// URI.
+ */
+const chartActionIntentSchema = z.union([
+  z.object({
+    kind: z.literal("ask"),
+    prompt: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal("navigate"),
+    target: z.string().min(1),
+    filters: runFiltersSchema.optional(),
+  }),
+]);
+
+export const chartActionSchema = z.object({
+  label: z
+    .string()
+    .describe("The button text, naming the thing, e.g. 'Investigate send-order-receipt'."),
+  intent: chartActionIntentSchema.describe(
+    "What the button does. `ask` is the default and always works: phrase the user's own follow-up in their voice ('Investigate the send-order-receipt failures — why are they failing?'), and the click sends it as their next message. `navigate` takes them to the matching page — ONLY when you already hold a canonical `trigger://` URI for it (e.g. one a tool returned); an invalid target is silently dropped, so when in doubt use `ask`."
+  ),
+});
+
+export type ChartAction = z.infer<typeof chartActionSchema>;
+
 // The chart block carries the TRQL query (not the rows): the panel runs it
 // through the dashboard's own query execution + QueryResultsChart, so the chart
 // is live and matches the Query page exactly. The agent describes the chart with
@@ -197,6 +234,18 @@ export const chartBlockBodySchema = z.object({
     .enum(["sum", "avg", "count", "min", "max"])
     .optional()
     .describe("How to combine values that share an x point. Default sum."),
+  /**
+   * Optional and capped at three: a chart that ranks things gets a way to act on
+   * the winner. Older stored charts have no `actions` at all and must keep
+   * parsing, so this is additive and never required.
+   */
+  actions: z
+    .array(chartActionSchema)
+    .max(3)
+    .optional()
+    .describe(
+      "Optional buttons under the chart, at most 2-3. After a ranking or failures chart, give the top item an 'Investigate <name>' ask action, and a navigate action to the page that shows it (its filtered runs list, its error, its queue) when you have the target."
+    ),
 });
 
 // ---------------------------------------------------------------------------

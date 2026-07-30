@@ -197,6 +197,11 @@ export const MANIFEST: GallerySection[] = [
 
   // --- Chart card ----------------------------------------------------------
   { sectionId: "chart-with-data", title: "With canned rows", group: "chart" },
+  {
+    sectionId: "chart-with-actions",
+    title: "Ranking chart with actions on the top item",
+    group: "chart",
+  },
   { sectionId: "chart-empty", title: "Empty — no data to display", group: "chart" },
 
   // --- Watch chips ---------------------------------------------------------

@@ -647,6 +647,9 @@ const STATES: Record<string, React.ReactNode> = {
 
   // --- Chart card ---------------------------------------------------------
   "chart-with-data": <DemoChartCard />,
+  "chart-with-actions": (
+    <DemoChartCard actions={demoFixtures.demoChartBlock.actions ?? []} onIntent={noop} />
+  ),
   "chart-empty": <EmptyChartCard />,
 
   // --- Watch chips --------------------------------------------------------
