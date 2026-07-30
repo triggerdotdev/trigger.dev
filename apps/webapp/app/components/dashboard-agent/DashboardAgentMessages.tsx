@@ -96,6 +96,55 @@ function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
   return report ? [report] : null;
 }
 
+type InvestigationRef = { id: string; revision: number };
+
+function investigationRef(block: unknown): InvestigationRef | null {
+  const b = block as { type?: string; id?: string; revision?: number };
+  if (b?.type !== "investigation" || typeof b.id !== "string") return null;
+  return { id: b.id, revision: typeof b.revision === "number" ? b.revision : 0 };
+}
+
+/**
+ * Latest-wins across the WHOLE transcript, not just within one tool call: an
+ * investigation renders at least twice (in_progress, then the verdict), each
+ * from its own render_view part, so without this the user sees the working
+ * copy stacked above the finished card. Returns, per investigation id, the one
+ * occurrence (`messageId:partIndex`) allowed to render — the highest revision,
+ * last occurrence winning a tie.
+ */
+export function winningInvestigationOccurrences(messages: UIMessage[]): Map<string, string> {
+  const best = new Map<string, { revision: number; occurrence: string }>();
+  for (const message of messages) {
+    (message.parts ?? []).forEach((part, partIndex) => {
+      for (const block of blocksFor(part) ?? []) {
+        const ref = investigationRef(block);
+        if (!ref) continue;
+        const current = best.get(ref.id);
+        if (!current || ref.revision >= current.revision) {
+          best.set(ref.id, {
+            revision: ref.revision,
+            occurrence: `${message.id}:${partIndex}`,
+          });
+        }
+      }
+    });
+  }
+  return new Map([...best.entries()].map(([id, w]) => [id, w.occurrence]));
+}
+
+/** Drop investigation blocks whose id renders elsewhere (a later revision). */
+function withoutSupersededInvestigations(
+  blocks: unknown[],
+  occurrence: string,
+  winners: Map<string, string> | undefined
+): unknown[] {
+  if (!winners) return blocks;
+  return blocks.filter((block) => {
+    const ref = investigationRef(block);
+    return !ref || winners.get(ref.id) === occurrence;
+  });
+}
+
 // #region chat-layout transcript
 // Everything from here down composes via ./chat-layout only — see rule 1 there.
 // `chat-layout.test.ts` fails if a spacing utility class appears in this region.
@@ -198,11 +247,14 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   onIntent,
   resolveUri,
   watches,
+  investigationWinners,
 }: {
   message: UIMessage;
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   watches?: WakeWatch[];
+  /** See {@link winningInvestigationOccurrences}. */
+  investigationWinners?: Map<string, string>;
 }) {
   if (message.role === "user") {
     return (
@@ -219,13 +271,20 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
 
-    const blocks = blocksFor(part);
-    if (blocks) {
-      body.push(
-        <ChatCardSlot key={i}>
-          <ViewBlocks blocks={blocks as never} onIntent={onIntent} resolveUri={resolveUri} />
-        </ChatCardSlot>
+    const rawBlocks = blocksFor(part);
+    if (rawBlocks) {
+      const blocks = withoutSupersededInvestigations(
+        rawBlocks,
+        `${message.id}:${i}`,
+        investigationWinners
       );
+      if (blocks.length > 0) {
+        body.push(
+          <ChatCardSlot key={i}>
+            <ViewBlocks blocks={blocks as never} onIntent={onIntent} resolveUri={resolveUri} />
+          </ChatCardSlot>
+        );
+      }
       continue;
     }
 
@@ -289,15 +348,24 @@ export function DashboardAgentTurns({
   // One status line at a time: a tool's own progress beats the generic activity.
   const showActivity = activity !== null && !hasToolProgressLine(messages);
 
+  // Strip once, up front: the winners map keys occurrences by part index, so
+  // it must be computed on the exact parts the turns will render.
+  const stripped = messages.map(stripStepParts);
+
+  // Across the whole transcript, one card per investigation: the latest
+  // revision renders where it landed; earlier working copies disappear.
+  const investigationWinners = winningInvestigationOccurrences(stripped);
+
   return (
     <>
-      {messages.map((message) => (
+      {stripped.map((message) => (
         <DashboardAgentTurn
           key={message.id}
-          message={stripStepParts(message)}
+          message={message}
           onIntent={onIntent}
           resolveUri={resolveUri}
           watches={watches}
+          investigationWinners={investigationWinners}
         />
       ))}
       {showActivity && activity && (
