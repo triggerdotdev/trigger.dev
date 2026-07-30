@@ -70,6 +70,10 @@ export type SnapshotPatch =
   // PG-path MAX_TAGS_PER_RUN check so a buffered run can't accumulate more
   // tags than the trigger validator would have allowed at creation.
   | { type: "append_tags"; tags: string[]; maxTags?: number }
+  // Removes `tags` from the snapshot, per-run only. No cap applies — a removal can
+  // never push a run over MAX_TAGS_PER_RUN. Removing a tag the snapshot doesn't
+  // carry is an applied no-op, so the API stays idempotent.
+  | { type: "remove_tags"; tags: string[] }
   | { type: "set_metadata"; metadata: string; metadataType: string }
   | { type: "set_delay"; delayUntil: string }
   | { type: "mark_cancelled"; cancelledAt: string; cancelReason?: string };
@@ -1023,6 +1027,34 @@ export class MollifierBuffer {
             return 'limit_exceeded'
           end
           payload.tags = merged
+        elseif patch.type == 'remove_tags' then
+          -- Per-run removal only: a tag is just a string in this run's list, never a
+          -- shared entity, so dropping it here cannot affect any other run. Order and
+          -- any duplicates among the surviving tags are preserved. Removing a tag the
+          -- snapshot doesn't carry is an applied no-op, keeping the API idempotent.
+          local existing = payload.tags or {}
+          local doomed = {}
+          for _, t in ipairs(patch.tags or {}) do
+            doomed[t] = true
+          end
+          local kept = {}
+          for _, t in ipairs(existing) do
+            if not doomed[t] then
+              table.insert(kept, t)
+            end
+          end
+          if #kept == 0 then
+            -- cjson encodes an EMPTY Lua table as '{}' (a JSON *object*), not '[]', and
+            -- Redis's bundled cjson has no empty-array sentinel to force the array form.
+            -- Removing a run's last tag hits this case constantly, and a '{}' here would
+            -- put a JSON object where every reader expects an array. So drop the field
+            -- instead: an ABSENT 'tags' is already the shape a run triggered without tags
+            -- has, and every reader normalises it to an empty list via the same
+            -- Array.isArray guards that exist for the '{}' hazard.
+            payload.tags = nil
+          else
+            payload.tags = kept
+          end
         elseif patch.type == 'set_metadata' then
           payload.metadata = patch.metadata
           payload.metadataType = patch.metadataType

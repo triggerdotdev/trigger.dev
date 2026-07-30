@@ -427,14 +427,95 @@ paths:
         - lang: typescript
           label: SDK
           source: |-
-            import { runs } from "@trigger.dev/sdk";
+            import { tags } from "@trigger.dev/sdk";
 
-            await runs.addTags("run_1234", ["tag-1", "tag-2"]);
+            // Called from inside a run — applies to the current run
+            await tags.add(["tag-1", "tag-2"]);
         - lang: typescript
           label: Fetch
           source: |-
             await fetch("https://api.trigger.dev/api/v1/runs/run_1234/tags", {
               method: "POST",
+              headers: {
+                "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ tags: ["tag-1", "tag-2"] }),
+            });
+    delete:
+      operationId: remove_run_tags_v1
+      summary: Remove tags from a run
+      description: Removes one or more tags from a run. Only this run is affected — the tag is left on any other run that has it. Tags the run doesn't have are ignored, so the request is idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - tags
+              properties:
+                tags:
+                  $ref: "#/components/schemas/RunTags"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Successfully removed 2 tags."
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "401":
+          description: Unauthorized request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Invalid or Missing API Key
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    enum:
+                      - Run not found
+      tags:
+        - runs
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: typescript
+          label: SDK
+          source: |-
+            import { tags } from "@trigger.dev/sdk";
+
+            // Called from inside a run — applies to the current run
+            await tags.delete(["tag-1", "tag-2"]);
+        - lang: typescript
+          label: Fetch
+          source: |-
+            await fetch("https://api.trigger.dev/api/v1/runs/run_1234/tags", {
+              method: "DELETE",
               headers: {
                 "Authorization": `Bearer ${process.env.TRIGGER_SECRET_KEY}`,
                 "Content-Type": "application/json",
