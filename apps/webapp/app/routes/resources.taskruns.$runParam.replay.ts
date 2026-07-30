@@ -8,7 +8,7 @@ import { $replica, prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
-import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
@@ -166,10 +166,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const [payload, regionsResult] = await Promise.all([
     prettyPrintPacket(run.payload, run.payloadType),
+    // Raw impersonation, not `hasAdminDisplayAccess`: this list is the replay
+    // dialog's region picker, so it decides what the submitted form can select
+    // — and the run's own region is returned separately, so dropping entries
+    // can leave the current value off the list. "View as user" only changes
+    // what is shown.
     new RegionsPresenter().call({
       userId,
       projectSlug,
-      isAdmin: hasAdminDisplayAccess(user),
+      isAdmin: user.admin || user.isImpersonating,
     }),
   ]);
 

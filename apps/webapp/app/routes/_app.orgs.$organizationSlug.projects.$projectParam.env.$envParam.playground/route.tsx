@@ -22,7 +22,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
-import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
@@ -54,10 +54,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
+    // Raw impersonation, not `hasAdminDisplayAccess`: this list is the
+    // playground's region picker, so it decides which region a submitted run
+    // can be sent to. "View as user" only changes what is shown.
     new RegionsPresenter().call({
       userId: user.id,
       projectSlug: projectParam,
-      isAdmin: hasAdminDisplayAccess(user),
+      isAdmin: user.admin || user.isImpersonating,
     }),
   ]);
 

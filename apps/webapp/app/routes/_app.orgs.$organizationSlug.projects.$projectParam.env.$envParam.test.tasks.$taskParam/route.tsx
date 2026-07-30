@@ -67,7 +67,7 @@ import {
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
-import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { docsPath, v3RunSpanPath, v3TaskParamsSchema, v3TestPath } from "~/utils/pathBuilder";
 import { DeleteTaskRunTemplateService } from "~/v3/services/deleteTaskRunTemplate.server";
@@ -117,10 +117,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         taskIdentifier: taskParam,
         environment: environment,
       }),
+      // Raw impersonation, not `hasAdminDisplayAccess`: this list is the test
+      // form's region picker, so it decides which region a submitted test run
+      // can be sent to. "View as user" only changes what is shown.
       new RegionsPresenter().call({
         userId: user.id,
         projectSlug: projectParam,
-        isAdmin: hasAdminDisplayAccess(user),
+        isAdmin: user.admin || user.isImpersonating,
       }),
     ]);
 
