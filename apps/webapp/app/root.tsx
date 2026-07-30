@@ -81,7 +81,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Theme switching is feature-flagged; while off, everyone stays on the
   // classic theme even if a preference was saved earlier.
   const showThemeSwitcher = user
-    ? await flag({ key: "hasThemeSwitcher", defaultValue: true })
+    ? await flag({ key: "hasThemeSwitcher", defaultValue: false })
     : false;
   // Logged-out pages (login, invites) always render the branded Classic look.
   const themePreference: ThemePreference = showThemeSwitcher
