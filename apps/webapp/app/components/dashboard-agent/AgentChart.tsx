@@ -67,6 +67,7 @@ export function AgentChart({ block }: { block: ChartBlock }) {
         period: block.period ?? null,
         from: null,
         to: null,
+        userAuthoredQuery: true,
       }),
       signal: controller.signal,
     })
