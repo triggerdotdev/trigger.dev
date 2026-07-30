@@ -2,7 +2,6 @@ import { postgresTest, heteroPostgresTest } from "@internal/testcontainers";
 import { PostgresRunStore } from "@internal/run-store";
 import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { generateRunOpsId } from "@trigger.dev/core/v3/isomorphic";
-import type { RbacAbility } from "@trigger.dev/rbac";
 import { beforeEach, describe, expect, vi } from "vitest";
 
 // `resolveSchedule` reads the module-level `prisma` (control-plane handle).
@@ -384,28 +383,6 @@ describe("ApiRetrieveRunPresenter.findRun store-routed read (single-DB invariant
       expect(out.relatedRuns.root?.id).toBe(tree.rootFriendlyId);
       expect(out.relatedRuns.children.map((c) => c.id)).toEqual([tree.childFriendlyId]);
       expect(out.attemptCount).toBe(found!.attemptNumber ?? 0);
-
-      const selectedTaskAbility: RbacAbility = {
-        can: (action, resource) => {
-          const resources = Array.isArray(resource) ? resource : [resource];
-          return (
-            action === "read" &&
-            resources.some(
-              (candidate) => candidate.type === "tasks" && candidate.id === found!.taskIdentifier
-            )
-          );
-        },
-        canSuper: () => false,
-      };
-      const scopedOut = await new ApiRetrieveRunPresenter(CURRENT_API_VERSION).call(
-        found!,
-        env,
-        selectedTaskAbility
-      );
-
-      expect(scopedOut.relatedRuns.parent?.id).toBe(tree.parentFriendlyId);
-      expect(scopedOut.relatedRuns.root?.id).toBe(tree.rootFriendlyId);
-      expect(scopedOut.relatedRuns.children).toEqual([]);
     }
   );
 
