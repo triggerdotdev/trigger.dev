@@ -1,6 +1,10 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import type { ChartBlock } from "@internal/dashboard-agent";
-import { isTriggerUri, type AgentIntent, type ChartAction } from "@internal/dashboard-agent-contracts";
+import {
+  isTriggerUri,
+  type AgentIntent,
+  type ChartAction,
+} from "@internal/dashboard-agent-contracts";
 import { useEffect, useState } from "react";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
 import type { ChartConfiguration } from "~/components/metrics/QueryWidget";

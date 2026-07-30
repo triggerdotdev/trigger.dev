@@ -37,7 +37,7 @@ import {
   SeverityBadge,
   VerdictBadge,
 } from "./agent-badges";
-import { ChatProgress } from "./chat-layout";
+import { ChatPendingTool } from "./chat-layout";
 import type { ResolvedUri } from "./ReportView";
 
 const SEVERITY_LABELS: Record<InvestigationSeverity, string> = {
@@ -245,10 +245,10 @@ export function InvestigationCard({
         </div>
       </div>
       {/* Progress lives outside the card, on the left — the same line the chat
-        uses for "Working…" and in-flight tools. `ChatProgress` carries the
-        transcript's alignment itself, so it lines up with the card above it
-        instead of hugging the card's border. */}
-      {inProgress ? <ChatProgress>{investigation.progress ?? "Working…"}</ChatProgress> : null}
+        uses for in-flight tools — the same pill, so the transcript never
+        shows two spinner styles at once. It carries the transcript's
+        alignment itself, lining up with the card above it. */}
+      {inProgress ? <ChatPendingTool label={investigation.progress ?? "Working…"} /> : null}
     </div>
   );
 }

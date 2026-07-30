@@ -163,7 +163,11 @@ function withoutSupersededInvestigations(
  * Citations are handled a level up, where a run of them can be grouped into one
  * row.
  */
-function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
+function renderDashboardPart(
+  part: UIMessage["parts"][number],
+  i: number,
+  options?: { suppressPendingPill?: boolean }
+) {
   const p = part as {
     type: string;
     text?: string;
@@ -179,6 +183,9 @@ function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
 
   if (type.startsWith("tool-")) {
     if (IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) {
+      // One spinner at a time: an in_progress investigation card in this turn
+      // already shows its own progress pill.
+      if (options?.suppressPendingPill) return null;
       return <ChatPendingTool key={i} label={`${toolPendingLabel(type.slice(5))}…`} />;
     }
     if (p.state === "output-error") return renderPart(part, i);
@@ -267,6 +274,22 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   const parts = message.parts ?? [];
   if (parts.length === 0) return null;
 
+  // An in_progress investigation card carries its own live pill (its
+  // `progress` line), so a concurrent tool pill would put two spinners on
+  // screen — the card's, being the more specific, wins.
+  const hasLiveInvestigationCard = parts.some((part, i) =>
+    withoutSupersededInvestigations(
+      blocksFor(part) ?? [],
+      `${message.id}:${i}`,
+      investigationWinners
+    ).some(
+      (block) =>
+        (block as { type?: string; outcome?: unknown; investigation?: { outcome?: string } })
+          .type === "investigation" &&
+        (block as { investigation?: { outcome?: string } }).investigation?.outcome === "in_progress"
+    )
+  );
+
   const body: React.ReactNode[] = [];
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
@@ -306,7 +329,7 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
       continue;
     }
 
-    body.push(renderDashboardPart(part, i));
+    body.push(renderDashboardPart(part, i, { suppressPendingPill: hasLiveInvestigationCard }));
   }
 
   // A wake narration is identified by the message id the agent wrote it under,
