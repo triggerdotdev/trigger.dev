@@ -164,6 +164,7 @@ export class DelayedRunSystem {
         batchId: run.batchId ?? undefined,
         skipRunLock: true,
         includeTtl: true,
+        anchorEligibilityAtQueuePosition: true,
       });
 
       const queuedAt = new Date();

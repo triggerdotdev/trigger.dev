@@ -38,6 +38,9 @@ const variants = {
   "secondary/small": {
     button: cn(sizes.small.button, style.secondary.button),
   },
+  "secondary/medium": {
+    button: cn(sizes.medium.button, style.secondary.button),
+  },
   "tertiary/small": {
     button: cn(sizes.small.button, style.tertiary.button),
   },
@@ -693,11 +696,11 @@ export function ComboBox({
   ...props
 }: ComboBoxProps) {
   return (
-    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent px-3 text-xs text-text-dimmed outline-hidden">
+    <div className="flex h-9 w-full flex-none items-center border-b border-grid-dimmed bg-transparent pl-0 pr-3 text-xs text-text-dimmed outline-hidden">
       <Ariakit.Combobox
         autoSelect={autoSelect}
         render={<input placeholder={placeholder} />}
-        className="flex-1 bg-transparent text-xs text-text-dimmed outline-hidden"
+        className="flex-1 border-0 bg-transparent text-xs text-text-dimmed outline-hidden focus:border-0 focus:ring-0"
         {...props}
       />
       {shortcut && (

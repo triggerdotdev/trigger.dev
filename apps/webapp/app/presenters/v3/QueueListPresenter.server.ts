@@ -219,7 +219,7 @@ export class QueueListPresenter extends BasePresenter {
 
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       environment.organizationId,
-      "query"
+      "queueMetrics"
     );
 
     // The window start is aligned to the minute so repeated page loads produce identical

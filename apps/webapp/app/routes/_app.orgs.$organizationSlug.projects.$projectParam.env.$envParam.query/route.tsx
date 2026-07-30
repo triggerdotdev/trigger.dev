@@ -183,6 +183,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const queryResult = await executeQuery({
       name: "query-page",
       query,
+      userAuthoredQuery: true,
       scope,
       organizationId: project.organizationId,
       projectId: project.id,

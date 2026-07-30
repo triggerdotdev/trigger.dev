@@ -13,7 +13,7 @@ import {
 import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
 import os from "node:os";
 import { env } from "~/env.server";
-import { getDefaultClickhouseClient } from "~/services/clickhouse/clickhouseFactory.server";
+import { getQueueMetricsClickhouseClient } from "~/services/clickhouse/clickhouseFactory.server";
 import { logger } from "~/services/logger.server";
 import { signalsEmitter } from "~/services/signals.server";
 import { singleton } from "~/utils/singleton";
@@ -181,7 +181,7 @@ function makeInsert(): (
   rows: QueueMetricsRawV1Input[],
   opts: { dedupToken: string }
 ) => Promise<void> {
-  const ch: ClickHouse = getDefaultClickhouseClient();
+  const ch: ClickHouse = getQueueMetricsClickhouseClient();
   const insertRaw = ch.queueMetrics.insertRaw;
   return async (rows, { dedupToken }) => {
     const [error] = await insertRaw(rows, {

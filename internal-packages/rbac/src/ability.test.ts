@@ -5,6 +5,7 @@ import {
   denyAbility,
   buildFallbackAbility,
   buildJwtAbility,
+  scopesWithinAbility,
 } from "./ability.js";
 
 describe("permissiveAbility", () => {
@@ -120,6 +121,43 @@ describe("buildJwtAbility", () => {
   it("denies wrong action with general resource scope", () => {
     const ability = buildJwtAbility(["read:runs"]);
     expect(ability.can("write", { type: "runs" })).toBe(false);
+  });
+});
+
+describe("scopesWithinAbility", () => {
+  it("allows subsets and preserves ids containing colons", () => {
+    const result = scopesWithinAbility(
+      ["read:runs:run_abc", "read:tags:env:staging"],
+      buildJwtAbility(["read:runs", "read:tags:env:staging"])
+    );
+
+    expect(result).toEqual({ ok: true, deniedScopes: [] });
+  });
+
+  it("rejects scopes that broaden or exceed the ability", () => {
+    const result = scopesWithinAbility(
+      ["trigger:tasks:send-email", "trigger:tasks", "read:runs"],
+      buildJwtAbility(["trigger:tasks:send-email"])
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      deniedScopes: ["trigger:tasks", "read:runs"],
+    });
+  });
+
+  it("allows arbitrary valid scopes for a permissive ability", () => {
+    expect(scopesWithinAbility(["read:runs", "admin"], permissiveAbility)).toEqual({
+      ok: true,
+      deniedScopes: [],
+    });
+  });
+
+  it("rejects malformed scopes for restricted abilities", () => {
+    expect(scopesWithinAbility(["read"], buildJwtAbility(["read:all"]))).toEqual({
+      ok: false,
+      deniedScopes: ["read"],
+    });
   });
 });
 

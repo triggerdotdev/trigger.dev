@@ -436,6 +436,11 @@ export interface TableSchema {
    * callers; the engine still compiles queries against it.
    */
   hidden?: boolean;
+  /**
+   * Names the connection pool callers should read this table through, for a read family heavy
+   * enough to want its own capacity. Callers resolve the name; unset means the default pool.
+   */
+  queryClient?: string;
 }
 
 /**

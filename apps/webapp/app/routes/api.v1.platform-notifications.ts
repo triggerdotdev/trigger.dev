@@ -12,10 +12,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const url = new URL(request.url);
   const projectRef = url.searchParams.get("projectRef") ?? undefined;
+  const cliVersion = request.headers.get("x-trigger-cli-version")?.trim() || undefined;
 
   const notification = await getNextCliNotification({
     userId: authenticationResult.userId,
     projectRef,
+    cliVersion,
   });
 
   return json({ notification });

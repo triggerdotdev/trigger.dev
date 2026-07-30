@@ -13,6 +13,7 @@ import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
+import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
@@ -797,10 +798,8 @@ export function VercelOnboardingModal({
         <div className="mt-4">
           {showProjectSelection && (
             <div className="flex flex-col gap-4">
-              <Header3>Select Vercel Project</Header3>
-              <Paragraph className="text-sm">
-                Choose which Vercel project to connect with this Trigger.dev project. Your API keys
-                will be automatically synced to Vercel.
+              <Paragraph>
+                Choose the Vercel project to pair with this Trigger.dev project.
               </Paragraph>
 
               {availableProjects.length === 0 ? (
@@ -808,40 +807,41 @@ export function VercelOnboardingModal({
                   No Vercel projects found. Please create a project in Vercel first.
                 </Callout>
               ) : (
-                <Select
-                  disabled={availableProjects.length === 1}
-                  value={selectedVercelProject?.id || ""}
-                  setValue={(value) => {
-                    if (!Array.isArray(value)) {
-                      const project = availableProjects.find((p) => p.id === value);
-                      setSelectedVercelProject(project || null);
-                      setProjectSelectionError(null);
-                    }
-                  }}
-                  items={availableProjects}
-                  filter={availableProjects.length > 5 ? { keys: ["name"] } : undefined}
-                  variant="tertiary/medium"
-                  placeholder="Select a Vercel project"
-                  dropdownIcon
-                  text={selectedVercelProject?.name || "Select a project"}
-                >
-                  {availableProjects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
-                </Select>
+                <InputGroup fullWidth>
+                  <Select
+                    disabled={availableProjects.length === 1}
+                    value={selectedVercelProject?.id || ""}
+                    setValue={(value) => {
+                      if (!Array.isArray(value)) {
+                        const project = availableProjects.find((p) => p.id === value);
+                        setSelectedVercelProject(project || null);
+                        setProjectSelectionError(null);
+                      }
+                    }}
+                    items={availableProjects}
+                    filter={availableProjects.length > 5 ? { keys: ["name"] } : undefined}
+                    variant="secondary/medium"
+                    placeholder="Select a Vercel project"
+                    dropdownIcon
+                    text={selectedVercelProject?.name || "Select a project"}
+                  >
+                    {availableProjects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                  <Hint>
+                    Your{" "}
+                    <code className="rounded bg-background-raised px-1 py-0.5 text-xs text-text-bright">
+                      TRIGGER_SECRET_KEY
+                    </code>{" "}
+                    is synced to Vercel for each environment once connected.
+                  </Hint>
+                </InputGroup>
               )}
 
               {projectSelectionError && <FormError>{projectSelectionError}</FormError>}
-
-              <Hint>
-                Once connected, your{" "}
-                <code className="text-xs rounded bg-background-raised px-1 py-0.5 text-text-bright">
-                  TRIGGER_SECRET_KEY
-                </code>{" "}
-                will be automatically synced to Vercel for each environment.
-              </Hint>
 
               <FormButtons
                 confirmButton={
@@ -866,7 +866,7 @@ export function VercelOnboardingModal({
                   </div>
                 }
                 cancelButton={
-                  <Button variant="tertiary/medium" onClick={handleSkipOnboarding}>
+                  <Button variant="secondary/medium" onClick={handleSkipOnboarding}>
                     Cancel
                   </Button>
                 }

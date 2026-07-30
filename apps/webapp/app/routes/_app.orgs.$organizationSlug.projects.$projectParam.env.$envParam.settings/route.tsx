@@ -1,4 +1,4 @@
-import { Outlet, type MetaFunction } from "@remix-run/react";
+import { Outlet, useMatches, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
@@ -42,13 +42,25 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return null;
 };
 
+const DEFAULT_PAGE_TITLE = "Project settings";
+
+function usePageTitle() {
+  const matches = useMatches();
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const pageTitle = (matches[i].handle as { pageTitle?: string } | undefined)?.pageTitle;
+    if (pageTitle) return pageTitle;
+  }
+  return DEFAULT_PAGE_TITLE;
+}
+
 export default function SettingsLayout() {
   const project = useProject();
+  const pageTitle = usePageTitle();
 
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Project settings" />
+        <PageTitle title={pageTitle} />
 
         <PageAccessories>
           <AdminDebugTooltip>

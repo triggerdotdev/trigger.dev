@@ -979,3 +979,13 @@
   --color-border-brighter: color-mix(in srgb, #b9bdc7, #000 calc(var(--theme-contrast, 0) * 42%));
   --color-border-brightest: color-mix(in srgb, #9ba1ad, #000 calc(var(--theme-contrast, 0) * 46%));
 }
+
+form:has(.unlock-hint-staging-env:hover) [data-unlock-target="staging-env"],
+form:has(.unlock-hint-pull-prod:hover) [data-unlock-target="pull-prod"],
+form:has(.unlock-hint-pull-stg:hover) [data-unlock-target="pull-stg"],
+form:has(.unlock-hint-pull-preview:hover) [data-unlock-target="pull-preview"],
+form:has(.unlock-hint-pull-dev:hover) [data-unlock-target="pull-dev"] {
+  border-radius: 0.25rem;
+  outline: 2px dashed var(--color-warning);
+  outline-offset: 2px;
+}

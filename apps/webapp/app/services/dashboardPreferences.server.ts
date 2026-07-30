@@ -1,7 +1,20 @@
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
 import { logger } from "./logger.server";
 import { type UserFromSession } from "./session.server";
+
+const FavoritePage = z.object({
+  /** Stable id, generated client-side when the page is favorited. */
+  id: z.string(),
+  /** App-relative URL including any search params (filters, tabs). */
+  url: z.string(),
+  /** Display label shown in the side menu; user-renamable. */
+  label: z.string(),
+  /** Key into the favorite page icon registry. */
+  icon: z.string().optional(),
+});
+
+export type FavoritePage = z.infer<typeof FavoritePage>;
 
 const SideMenuPreferences = z.object({
   isCollapsed: z.boolean().default(false),
@@ -18,6 +31,14 @@ const SideMenuPreferences = z.object({
       })
     )
     .optional(),
+  /** Pages the user favorited, in display order. */
+  favorites: z.array(FavoritePage).optional(),
+  /** Custom top-to-bottom order of side menu sections (section ids). */
+  sectionOrder: z.array(z.string()).optional(),
+  /** Per-item visibility overrides (item id -> hidden). Items absent fall back to their default. */
+  hiddenItems: z.record(z.string(), z.boolean()).optional(),
+  /** Custom item order within a section (section id -> item ids). */
+  sectionItemOrder: z.record(z.string(), z.array(z.string())).optional(),
 });
 
 export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
@@ -65,6 +86,51 @@ export function getDashboardPreferences(data?: any | null): DashboardPreferences
   return result.data;
 }
 
+/**
+ * Every preference writer is a read-modify-write over one JSON column, and several fire
+ * concurrently (debounced collapse/width, favorite toggles, the customize modal, dashboard
+ * reorders). Each write re-reads the row under a FOR UPDATE lock so concurrent writers
+ * serialize instead of clobbering each other's fields with stale reads — without the lock, a
+ * debounced collapse write could resurrect customizations the modal's Reset just cleared.
+ *
+ * Return undefined from `mutate` to skip the write (no-op update).
+ */
+async function mutateDashboardPreferences(
+  userId: string,
+  mutate: (current: DashboardPreferences) => DashboardPreferences | undefined
+) {
+  return await $transaction(
+    prisma,
+    "mutateDashboardPreferences",
+    async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ dashboardPreferences: unknown }>>`
+      SELECT "dashboardPreferences" FROM "User" WHERE id = ${userId} FOR UPDATE
+    `;
+      if (rows.length === 0) {
+        return undefined;
+      }
+
+      const updated = mutate(getDashboardPreferences(rows[0].dashboardPreferences));
+      if (!updated) {
+        return undefined;
+      }
+
+      return await tx.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          dashboardPreferences: updated,
+        },
+      });
+    },
+    // Concurrent writers queue on the row lock, so under load (several debounced writes plus a
+    // revalidation burst) a transaction can time out acquiring a connection or the lock; those
+    // codes are retriable and preference writes are idempotent.
+    { maxRetries: 3 }
+  );
+}
+
 export async function updateCurrentProjectEnvironmentId({
   user,
   projectId,
@@ -78,7 +144,9 @@ export async function updateCurrentProjectEnvironmentId({
     return;
   }
 
-  //only update if the existing preferences are different
+  // Fast path: this runs on nearly every navigation (env layout loader), so skip the locked
+  // transaction when the session snapshot already matches. The in-transaction check below stays
+  // authoritative for the rare stale-snapshot case.
   if (
     user.dashboardPreferences.currentProjectId === projectId &&
     user.dashboardPreferences.projects[projectId]?.currentEnvironment?.id === environmentId
@@ -86,26 +154,26 @@ export async function updateCurrentProjectEnvironmentId({
     return;
   }
 
-  //ok we need to update the preferences
-  const updatedPreferences: DashboardPreferences = {
-    ...user.dashboardPreferences,
-    currentProjectId: projectId,
-    projects: {
-      ...user.dashboardPreferences.projects,
-      [projectId]: {
-        ...user.dashboardPreferences.projects[projectId],
-        currentEnvironment: { id: environmentId },
-      },
-    },
-  };
+  return mutateDashboardPreferences(user.id, (prefs) => {
+    //only update if the existing preferences are different
+    if (
+      prefs.currentProjectId === projectId &&
+      prefs.projects[projectId]?.currentEnvironment?.id === environmentId
+    ) {
+      return undefined;
+    }
 
-  return prisma.user.update({
-    where: {
-      id: user.id,
-    },
-    data: {
-      dashboardPreferences: updatedPreferences,
-    },
+    return {
+      ...prefs,
+      currentProjectId: projectId,
+      projects: {
+        ...prefs.projects,
+        [projectId]: {
+          ...prefs.projects[projectId],
+          currentEnvironment: { id: environmentId },
+        },
+      },
+    };
   });
 }
 
@@ -175,19 +243,10 @@ export async function clearCurrentProject({ user }: { user: UserFromSession }) {
     return;
   }
 
-  const updatedPreferences: DashboardPreferences = {
-    ...user.dashboardPreferences,
+  return mutateDashboardPreferences(user.id, (prefs) => ({
+    ...prefs,
     currentProjectId: undefined,
-  };
-
-  return prisma.user.update({
-    where: {
-      id: user.id,
-    },
-    data: {
-      dashboardPreferences: updatedPreferences,
-    },
-  });
+  }));
 }
 
 export async function updateSideMenuPreferences({
@@ -207,48 +266,234 @@ export async function updateSideMenuPreferences({
     return;
   }
 
-  // Parse with schema to apply defaults, then overlay any new values
-  const currentSideMenu = SideMenuPreferences.parse(user.dashboardPreferences.sideMenu ?? {});
+  return mutateDashboardPreferences(user.id, (prefs) => {
+    // Parse with schema to apply defaults, then overlay any new values
+    const currentSideMenu = SideMenuPreferences.parse(prefs.sideMenu ?? {});
 
-  // Build the updated collapsedSections map
-  let updatedCollapsedSections = { ...currentSideMenu.collapsedSections };
+    // Build the updated collapsedSections map
+    let updatedCollapsedSections = { ...currentSideMenu.collapsedSections };
 
-  if (sectionCollapsed) {
-    updatedCollapsedSections[sectionCollapsed.sectionId] = sectionCollapsed.collapsed;
-  }
+    if (sectionCollapsed) {
+      updatedCollapsedSections[sectionCollapsed.sectionId] = sectionCollapsed.collapsed;
+    }
 
-  const updatedSideMenu = SideMenuPreferences.parse({
-    ...currentSideMenu,
-    ...(isCollapsed !== undefined && { isCollapsed }),
-    ...(width !== undefined && { width }),
-    collapsedSections: updatedCollapsedSections,
+    const updatedSideMenu = SideMenuPreferences.parse({
+      ...currentSideMenu,
+      ...(isCollapsed !== undefined && { isCollapsed }),
+      ...(width !== undefined && { width }),
+      collapsedSections: updatedCollapsedSections,
+    });
+
+    // Only update if something changed
+    const hasCollapsedSectionsChanged =
+      JSON.stringify(updatedSideMenu.collapsedSections) !==
+      JSON.stringify(currentSideMenu.collapsedSections);
+
+    if (
+      updatedSideMenu.isCollapsed === currentSideMenu.isCollapsed &&
+      updatedSideMenu.width === currentSideMenu.width &&
+      !hasCollapsedSectionsChanged
+    ) {
+      return undefined;
+    }
+
+    return { ...prefs, sideMenu: updatedSideMenu };
   });
+}
 
-  // Only update if something changed
-  const hasCollapsedSectionsChanged =
-    JSON.stringify(updatedSideMenu.collapsedSections) !==
-    JSON.stringify(currentSideMenu.collapsedSections);
+/** The most favorites a user can save; a sanity cap, not a product limit. */
+const MAX_FAVORITES = 50;
 
-  if (
-    updatedSideMenu.isCollapsed === currentSideMenu.isCollapsed &&
-    updatedSideMenu.width === currentSideMenu.width &&
-    !hasCollapsedSectionsChanged
-  ) {
+export async function addFavorite({
+  user,
+  favorite,
+}: {
+  user: UserFromSession;
+  favorite: FavoritePage;
+}) {
+  if (user.isImpersonating) {
     return;
   }
 
-  const updatedPreferences: DashboardPreferences = {
-    ...user.dashboardPreferences,
-    sideMenu: updatedSideMenu,
-  };
+  return mutateDashboardPreferences(user.id, (prefs) => {
+    const currentSideMenu = SideMenuPreferences.parse(prefs.sideMenu ?? {});
+    const favorites = currentSideMenu.favorites ?? [];
 
-  return prisma.user.update({
-    where: {
-      id: user.id,
-    },
-    data: {
-      dashboardPreferences: updatedPreferences,
-    },
+    // The star is a toggle keyed on the exact URL, so an existing entry means we're already done
+    if (favorites.some((f) => f.url === favorite.url)) {
+      return undefined;
+    }
+
+    if (favorites.length >= MAX_FAVORITES) {
+      return undefined;
+    }
+
+    // Newest favorites go to the top of the section
+    return {
+      ...prefs,
+      sideMenu: { ...currentSideMenu, favorites: [favorite, ...favorites] },
+    };
+  });
+}
+
+export async function removeFavorite({ user, id }: { user: UserFromSession; id: string }) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  return mutateDashboardPreferences(user.id, (prefs) => {
+    const currentSideMenu = SideMenuPreferences.parse(prefs.sideMenu ?? {});
+    const favorites = currentSideMenu.favorites ?? [];
+    const remaining = favorites.filter((f) => f.id !== id);
+
+    if (remaining.length === favorites.length) {
+      return undefined;
+    }
+
+    return {
+      ...prefs,
+      sideMenu: {
+        ...currentSideMenu,
+        favorites: remaining.length > 0 ? remaining : undefined,
+      },
+    };
+  });
+}
+
+/**
+ * Remove any favorites whose URL contains the given substring. Used when the favorited entity
+ * itself is deleted (e.g. a custom dashboard's friendly id) so the side menu doesn't keep a
+ * dead link.
+ */
+export async function removeFavoritesByUrlSubstring({
+  user,
+  substring,
+}: {
+  user: UserFromSession;
+  substring: string;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  return mutateDashboardPreferences(user.id, (prefs) => {
+    const currentSideMenu = SideMenuPreferences.parse(prefs.sideMenu ?? {});
+    const favorites = currentSideMenu.favorites ?? [];
+    const remaining = favorites.filter((favorite) => !favorite.url.includes(substring));
+
+    if (remaining.length === favorites.length) {
+      return undefined;
+    }
+
+    return {
+      ...prefs,
+      sideMenu: {
+        ...currentSideMenu,
+        favorites: remaining.length > 0 ? remaining : undefined,
+      },
+    };
+  });
+}
+
+export async function renameFavorite({
+  user,
+  id,
+  label,
+}: {
+  user: UserFromSession;
+  id: string;
+  label: string;
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  return mutateDashboardPreferences(user.id, (prefs) => {
+    const currentSideMenu = SideMenuPreferences.parse(prefs.sideMenu ?? {});
+    const favorites = currentSideMenu.favorites ?? [];
+
+    const favorite = favorites.find((f) => f.id === id);
+    if (!favorite || favorite.label === label) {
+      return undefined;
+    }
+
+    return {
+      ...prefs,
+      sideMenu: {
+        ...currentSideMenu,
+        favorites: favorites.map((f) => (f.id === id ? { ...f, label } : f)),
+      },
+    };
+  });
+}
+
+export async function updateSideMenuCustomization({
+  user,
+  sectionOrder,
+  hiddenItems,
+  sectionItemOrder,
+  favorites,
+  removedFavoriteIds,
+}: {
+  user: UserFromSession;
+  /** undefined = leave unchanged, null = reset to default */
+  sectionOrder?: string[] | null;
+  /** undefined = leave unchanged, null = reset to default */
+  hiddenItems?: Record<string, boolean> | null;
+  /** undefined = leave unchanged, null = reset to default */
+  sectionItemOrder?: Record<string, string[]> | null;
+  /** Full favorites arrangement: new order + labels. undefined = leave unchanged. */
+  favorites?: Array<{ id: string; label: string }>;
+  /** Favorites deleted from the customize modal. */
+  removedFavoriteIds?: string[];
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  return mutateDashboardPreferences(user.id, (prefs) => {
+    const currentSideMenu = SideMenuPreferences.parse(prefs.sideMenu ?? {});
+    const next: SideMenuPreferences = { ...currentSideMenu };
+
+    if (sectionOrder !== undefined) {
+      next.sectionOrder = sectionOrder && sectionOrder.length > 0 ? sectionOrder : undefined;
+    }
+
+    if (hiddenItems !== undefined) {
+      next.hiddenItems =
+        hiddenItems && Object.keys(hiddenItems).length > 0 ? hiddenItems : undefined;
+    }
+
+    if (sectionItemOrder !== undefined) {
+      next.sectionItemOrder =
+        sectionItemOrder && Object.keys(sectionItemOrder).length > 0 ? sectionItemOrder : undefined;
+    }
+
+    if (favorites !== undefined || removedFavoriteIds !== undefined) {
+      const removed = new Set(removedFavoriteIds ?? []);
+      const current = (currentSideMenu.favorites ?? []).filter((f) => !removed.has(f.id));
+      const byId = new Map(current.map((f) => [f.id, f]));
+      const rearranged: FavoritePage[] = [];
+
+      for (const { id, label } of favorites ?? []) {
+        const existing = byId.get(id);
+        if (!existing) continue;
+        const trimmed = label.trim();
+        rearranged.push({ ...existing, label: trimmed.length > 0 ? trimmed : existing.label });
+        byId.delete(id);
+      }
+
+      // Favorites the payload didn't mention (e.g. added mid-edit) keep their place at the end
+      for (const favorite of current) {
+        if (byId.has(favorite.id)) {
+          rearranged.push(favorite);
+        }
+      }
+
+      next.favorites = rearranged.length > 0 ? rearranged : undefined;
+    }
+
+    return { ...prefs, sideMenu: SideMenuPreferences.parse(next) };
   });
 }
 
@@ -276,34 +521,24 @@ export async function updateItemOrder({
     return;
   }
 
-  const currentSideMenu = SideMenuPreferences.parse(user.dashboardPreferences.sideMenu ?? {});
-  const currentOrg = currentSideMenu.organizations?.[organizationId];
+  return mutateDashboardPreferences(user.id, (prefs) => {
+    const currentSideMenu = SideMenuPreferences.parse(prefs.sideMenu ?? {});
+    const currentOrg = currentSideMenu.organizations?.[organizationId];
 
-  const updatedSideMenu = SideMenuPreferences.parse({
-    ...currentSideMenu,
-    organizations: {
-      ...currentSideMenu.organizations,
-      [organizationId]: {
-        ...currentOrg,
-        orderedItems: {
-          ...currentOrg?.orderedItems,
-          [listId]: order,
+    const updatedSideMenu = SideMenuPreferences.parse({
+      ...currentSideMenu,
+      organizations: {
+        ...currentSideMenu.organizations,
+        [organizationId]: {
+          ...currentOrg,
+          orderedItems: {
+            ...currentOrg?.orderedItems,
+            [listId]: order,
+          },
         },
       },
-    },
-  });
+    });
 
-  const updatedPreferences: DashboardPreferences = {
-    ...user.dashboardPreferences,
-    sideMenu: updatedSideMenu,
-  };
-
-  return prisma.user.update({
-    where: {
-      id: user.id,
-    },
-    data: {
-      dashboardPreferences: updatedPreferences,
-    },
+    return { ...prefs, sideMenu: updatedSideMenu };
   });
 }

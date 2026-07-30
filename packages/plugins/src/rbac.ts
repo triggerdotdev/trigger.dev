@@ -19,6 +19,27 @@ export type SystemRole = {
   available: boolean;
 };
 
+export type ApiKeyPreset = {
+  id: string;
+  label: string;
+  description: string;
+  usesTaskSelection: boolean;
+  available: boolean;
+};
+
+export type ApiKeyPolicy = {
+  presetId: string | null;
+  scopes: string[];
+};
+
+export type PrepareApiKeyPolicyResult =
+  | { ok: true; policy: ApiKeyPolicy }
+  | { ok: false; error: string };
+
+export type ApiKeyPolicyDescription = {
+  taskIdentifiers?: string[];
+};
+
 export type Permission = {
   // `<action>:<subject>` — display name, derived from the ability rule.
   name: string;
@@ -47,6 +68,18 @@ export type RbacSubject =
   | { type: "user"; userId: string; organizationId: string; projectId?: string }
   | { type: "personalAccessToken"; tokenId: string; organizationId: string; projectId?: string }
   | { type: "publicJWT"; environmentId: string; organizationId: string; projectId?: string }
+  // A host-owned additional environment API key. The host builds its ability
+  // from the effective scopes stored with the credential. Route builders use
+  // `restricted` to fail closed when a scoped key reaches an endpoint without a
+  // declared authorization resource. `apiKeyId` identifies the key for
+  // attribution. Root/legacy environment keys keep the `user` subject.
+  | {
+      type: "apiKey";
+      apiKeyId: string;
+      restricted: boolean;
+      organizationId: string;
+      projectId?: string;
+    }
   // Delegated user-actor token (`tr_uat_…`): a short-lived, stateless
   // credential that authenticates as `userId`. `client` records what minted
   // it (e.g. a dashboard agent) for attribution.
@@ -110,29 +143,91 @@ export interface RbacAbility {
  * which auth path serves the request — two copies of this grammar would
  * drift, and the difference would silently change what a token grants.
  */
+function parseScope(scope: string): { action: string; type?: string; id?: string } | undefined {
+  // Only the first two colons are delimiters — everything after the
+  // second colon is the resource id (which may itself contain colons,
+  // e.g. user-provided tags like "env:staging"). Naive
+  // `split(":")` + 3-tuple destructuring truncates such ids.
+  const parts = scope.split(":");
+  const action = parts[0];
+  if (!action) return undefined;
+
+  return {
+    action,
+    type: parts[1] || undefined,
+    id: parts.length > 2 ? parts.slice(2).join(":") || undefined : undefined,
+  };
+}
+
+/** Only exact bare `admin` represents unrestricted access. */
+export function scopesGrantFullAccess(scopes: readonly string[]): boolean {
+  return scopes.includes("admin");
+}
+
+/**
+ * The one preset every install supports, including those with no preset
+ * catalogue at all. `prepareApiKeyPolicy` takes a required `presetId`, so
+ * callers that want a root-key-equivalent credential name this rather than
+ * relying on a default — see the note on that method.
+ */
+export const FULL_ACCESS_PRESET_ID = "FULL_ACCESS";
+
+// The closed vocabulary a public token / API-key scope can address. This is
+// the ONE place the `action:type[:id]` string grammar's terms are enumerated,
+// shared by the scope *generator* (a plugin's preset builder) and the host's
+// scope *checks* so the two cannot drift on a rename/typo. Every value here is
+// already public: it appears in the OSS webapp's route authorization
+// declarations and in `buildJwtAbility`'s grammar. A plugin that gates
+// resources beyond this set can widen the union locally — do not add
+// non-public terms here.
+export type RbacScopeAction = "read" | "write" | "trigger" | "batchTrigger";
+
+export type RbacScopeResourceType =
+  | "runs"
+  | "tasks"
+  | "batch"
+  | "queues"
+  | "deployments"
+  | "envvars"
+  | "apiKeys"
+  | "sessions"
+  | "waitpoints"
+  | "tags"
+  | "query";
+
+/**
+ * Builds a single `action:type[:id]` scope string from typed parts. Scope
+ * generators should construct every scope through this helper so the shared
+ * `RbacScopeAction` / `RbacScopeResourceType` unions catch a mistyped or
+ * renamed term at compile time — the drift the grammar comment above warns
+ * about. `id` may itself contain colons (e.g. a tag like `env:staging`); it is
+ * appended verbatim and decoded by `parseScope`'s slice-join.
+ */
+export function buildScope(
+  action: RbacScopeAction,
+  type: RbacScopeResourceType,
+  id?: string
+): string {
+  return id ? `${action}:${type}:${id}` : `${action}:${type}`;
+}
+
 export function buildJwtAbility(scopes: string[]): RbacAbility {
   const matches = (action: string, r: RbacResource): boolean =>
     scopes.some((scope) => {
-      // Only the first two colons are delimiters — everything after the
-      // second colon is the resource id (which may itself contain colons,
-      // e.g. user-provided tags like "env:staging"). Naive
-      // `split(":")` + 3-tuple destructuring truncated such ids to the
-      // first segment and silently failed to match.
-      const parts = scope.split(":");
-      const scopeAction = parts[0];
-      const scopeType = parts[1];
-      const scopeId = parts.length > 2 ? parts.slice(2).join(":") : undefined;
+      const parsed = parseScope(scope);
+      if (!parsed) return false;
+
       // Bare `admin` is the universal wildcard. `admin:<type>` is *not* —
       // it falls through to normal matching as action="admin" against
       // resources of that type. Treating `admin:<anything>` as universal
       // would silently broaden any such tokens beyond the narrow,
       // route-listed grant they had before scope-based abilities.
-      if (scopeAction === "admin" && !scopeType) return true;
-      if (scopeAction !== action && scopeAction !== "*") return false;
-      if (scopeType === "all") return true;
-      if (scopeType !== r.type) return false;
-      if (!scopeId) return true;
-      return scopeId === r.id;
+      if (parsed.action === "admin" && !parsed.type) return true;
+      if (parsed.action !== action && parsed.action !== "*") return false;
+      if (parsed.type === "all") return true;
+      if (parsed.type !== r.type) return false;
+      if (!parsed.id) return true;
+      return parsed.id === r.id;
     });
   return {
     can(action: string, resource: RbacResource | RbacResource[]): boolean {
@@ -146,6 +241,30 @@ export function buildJwtAbility(scopes: string[]): RbacAbility {
       return false;
     },
   };
+}
+
+/**
+ * Checks requested public-token scopes against an already-authenticated ability.
+ * Scope parsing intentionally lives beside buildJwtAbility so minting and
+ * validation use the same action:type[:id] grammar.
+ */
+export function scopesWithinAbility(
+  scopes: string[],
+  ability: RbacAbility
+): { ok: boolean; deniedScopes: string[] } {
+  const deniedScopes = scopes.filter((scope) => {
+    const parsed = parseScope(scope);
+    if (!parsed || (!parsed.type && parsed.action !== "admin")) {
+      return true;
+    }
+
+    return !ability.can(parsed.action, {
+      type: parsed.type ?? "all",
+      ...(parsed.id ? { id: parsed.id } : {}),
+    });
+  });
+
+  return { ok: deniedScopes.length === 0, deniedScopes };
 }
 
 // ── Delegated user-actor token grammar ───────────────────────────────────
@@ -347,6 +466,41 @@ export interface RoleBaseAccessController {
   // assigning that role; consumers can render unavailable entries with
   // an upgrade badge or hide them.
   systemRoles(organizationId: string): Promise<SystemRole[] | null>;
+
+  // Plugin-owned API-key policy catalogue and policy generation. A null
+  // catalogue means no plugin is installed. The host owns credentials and
+  // persists the effective policy returned by prepareApiKeyPolicy().
+  //
+  // These three are OPTIONAL, and are the first optional members of this
+  // interface — the distinction is deliberate. Methods the host cannot serve a
+  // request without (authenticateBearer, authenticatePat, authenticateSession)
+  // stay required. Capability extensions the host can degrade past are
+  // optional, so a plugin built against an older contract still satisfies this
+  // interface. That matters because the plugin is compiled against whichever
+  // OSS commit its base image carries: making an additive capability required
+  // turns every such addition into a lockstep two-repo merge, and turns a
+  // plugin rollback into an image build failure instead of a graceful
+  // degradation.
+  //
+  // Absence must fail CLOSED, and each default is chosen so it does:
+  //   - apiKeyPresets       -> null (identical to "no plugin installed")
+  //   - prepareApiKeyPolicy -> { ok: false } — NEVER a full-access default;
+  //                            key creation stops, while already-issued keys
+  //                            keep authorizing from their persisted scopes
+  //   - describeApiKeyPolicy -> {} (presentation only)
+  // LazyController applies these defaults, so host callers going through
+  // `rbac` see a total surface and cannot forget the guard.
+  apiKeyPresets?(organizationId: string): Promise<ApiKeyPreset[] | null>;
+  // `presetId` is deliberately required: an authorization function must not
+  // have an implicit default, least of all a full-access one. A caller that
+  // omits the field should fail to compile rather than silently mint an admin
+  // credential. Installs with no preset catalogue pass "FULL_ACCESS".
+  prepareApiKeyPolicy?(params: {
+    organizationId: string;
+    presetId: string;
+    taskIdentifiers?: string[];
+  }): Promise<PrepareApiKeyPolicyResult>;
+  describeApiKeyPolicy?(policy: ApiKeyPolicy): Promise<ApiKeyPolicyDescription>;
 
   // Role introspection. The fallback returns []; a plugin may return
   // its own role catalogue.

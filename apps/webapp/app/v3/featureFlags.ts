@@ -13,6 +13,7 @@ export const FEATURE_FLAG = {
   hasThemeSwitcher: "hasThemeSwitcher",
   mollifierEnabled: "mollifierEnabled",
   workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
+  internalApiOriginEnabled: "internalApiOriginEnabled",
   realtimeBackend: "realtimeBackend",
   computeMigrationEnabled: "computeMigrationEnabled",
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
@@ -42,6 +43,12 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasThemeSwitcher]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
+  // Routes deployed runs' TRIGGER_API_URL to INTERNAL_API_ORIGIN. Per-org, with
+  // INTERNAL_API_ORIGIN_ENABLED as the global default (org wins). No-op unless
+  // INTERNAL_API_ORIGIN is set.
+  // Strict z.boolean(): coercion turns the string "false" into true, which
+  // would silently enable the wrong orgs if written as a string.
+  [FEATURE_FLAG.internalApiOriginEnabled]: z.boolean(),
   // Which backend serves the realtime run feed. Controllable
   // globally and per-org (org wins). Defaults to "electric" when unset.
   // "shadow" serves Electric but diffs the native path in the background.
@@ -111,6 +118,35 @@ export function validatePartialFeatureFlags(values: Record<string, unknown>) {
 }
 
 // Utility types for catalog-driven UI rendering
+/**
+ * Resolve whether deployed runs should use the internal API origin, from the
+ * org's feature-flags JSON. Precedence: a per-org override wins in BOTH
+ * directions; the global default applies only when the org has not set the
+ * flag (or set it to something invalid).
+ */
+export function resolveInternalApiOriginEnabled({
+  orgFeatureFlags,
+  globalDefault,
+}: {
+  orgFeatureFlags: unknown;
+  globalDefault: boolean;
+}): boolean {
+  const override =
+    orgFeatureFlags && typeof orgFeatureFlags === "object" && !Array.isArray(orgFeatureFlags)
+      ? (orgFeatureFlags as Record<string, unknown>)[FEATURE_FLAG.internalApiOriginEnabled]
+      : undefined;
+
+  if (override !== undefined) {
+    const parsed = FeatureFlagCatalog[FEATURE_FLAG.internalApiOriginEnabled].safeParse(override);
+
+    if (parsed.success) {
+      return parsed.data;
+    }
+  }
+
+  return globalDefault;
+}
+
 export type FlagControlType =
   | { type: "boolean" }
   | { type: "enum"; options: string[] }

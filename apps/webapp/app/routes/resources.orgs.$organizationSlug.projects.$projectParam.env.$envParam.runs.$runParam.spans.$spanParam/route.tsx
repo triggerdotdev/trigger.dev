@@ -1283,10 +1283,15 @@ function WaitingInQueueBlock({
   const running = fresh ? toNumber(fresh.running) : waiting.running;
   const limit = waiting.concurrencyLimit ?? (fresh ? toNumber(fresh.q_limit) || null : null);
 
-  // The concurrency limit applies per key on keyed queues. PENDING renders as "Queued".
-  const atLimit = limit !== null && (key ? key.running >= limit : running >= limit);
+  // The concurrency limit applies per key on keyed queues, so the tile has to compare like with
+  // like: the key's own running count against the per-key limit. `running` above is queue-wide,
+  // which would render "8 / 2 · 100%" while this run's key sits at 1 of 2. PENDING renders as
+  // "Queued".
+  const runningAgainstLimit = key ? key.running : running;
+  const atLimit = limit !== null && runningAgainstLimit >= limit;
   const showAtLimit = status === "PENDING" && atLimit && !paused;
-  const pct = limit && limit > 0 ? Math.min(100, Math.round((running / limit) * 100)) : null;
+  const pct =
+    limit && limit > 0 ? Math.min(100, Math.round((runningAgainstLimit / limit) * 100)) : null;
   const waitedMs = Math.max(0, Date.now() - new Date(createdAt).getTime());
 
   // Why the run is held, surfaced as a warning icon on the Status tile (queue-page style) rather
@@ -1319,7 +1324,7 @@ function WaitingInQueueBlock({
         />
         <MiniStat
           title="Concurrency"
-          value={running.toLocaleString()}
+          value={runningAgainstLimit.toLocaleString()}
           valueClassName={cn(atLimit && "text-warning")}
           suffix={
             limit !== null

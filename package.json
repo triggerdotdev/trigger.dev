@@ -139,7 +139,9 @@
       "tmp@<0.2.7": "0.2.7",
       "brace-expansion@<1.1.13": "1.1.13",
       "brace-expansion@>=2 <2.0.3": "2.0.3",
-      "brace-expansion@>=5 <5.0.6": "5.0.6"
+      "brace-expansion@>=5 <5.0.6": "5.0.6",
+      "@jsonhero/json-infer-types>ip-address": "^10.2.0",
+      "@modelcontextprotocol/sdk@>=1.26.0>express-rate-limit": "^8.6.0"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",

@@ -3,4 +3,4 @@ area: webapp
 type: improvement
 ---
 
-The concurrency keys table on a queue's page is now paginated, so queues with thousands of keys can page through all of them instead of only showing the top 50.
+A queue's concurrency keys are now paged and searchable, so a queue with thousands of keys shows all of them instead of only the busiest 50.

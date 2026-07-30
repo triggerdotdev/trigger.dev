@@ -39,7 +39,7 @@ import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
-import { getCurrentPlan } from "~/services/platform.v3.server";
+import { getSsoEntitlement } from "~/services/platform.v3.server";
 import type { DirectorySyncEffect, DirectorySyncStatus, Role } from "@trigger.dev/plugins";
 import { applyDirectorySyncEffects } from "~/services/directorySyncEffects.server";
 import { flag } from "~/v3/featureFlags.server";
@@ -47,7 +47,6 @@ import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
 export const meta: MetaFunction = () => [{ title: "SSO & Directory Sync | Trigger.dev" }];
 
@@ -62,17 +61,10 @@ async function resolveOrg(slug: string) {
   });
 }
 
-function planAllowsSso(plan: unknown): boolean {
-  if (!plan || typeof plan !== "object") return false;
-  const subscription = (plan as { v3Subscription?: { plan?: { code?: string } } }).v3Subscription;
-  return subscription?.plan?.code === "enterprise";
-}
-
 // Client-side upsell is cosmetic; gate real IdP mutations server-side.
 async function requireSsoEntitlement(orgId: string): Promise<void> {
-  const plan = await getCurrentPlan(orgId);
-  if (!planAllowsSso(plan)) {
-    throw new Response("SSO requires an Enterprise plan", { status: 403 });
+  if ((await getSsoEntitlement(orgId)) !== "entitled") {
+    throw new Response("This organization is not entitled to SSO", { status: 403 });
   }
 }
 
@@ -142,16 +134,14 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    // Not Enterprise: render the upsell for every role, skip role check +
-    // queries, return empty data.
-    const plan = await getCurrentPlan(orgId);
-    if (!planAllowsSso(plan)) {
+    if ((await getSsoEntitlement(orgId)) !== "entitled") {
       return typedjson({
         status: EMPTY_SSO_STATUS,
         orgTitle: context.orgTitle,
         jitRoles: [] as Role[],
         directorySync: EMPTY_DIRECTORY_SYNC_STATUS,
         hasSso: false,
+        isEntitled: false,
       });
     }
 
@@ -182,6 +172,7 @@ export const loader = dashboardLoader(
       jitRoles,
       directorySync,
       hasSso,
+      isEntitled: true,
     });
   }
 );
@@ -374,11 +365,10 @@ function useOverrideDraft<T>(serverValue: T): {
 }
 
 export default function Page() {
-  const { status, orgTitle, jitRoles, directorySync, hasSso } = useTypedLoaderData<typeof loader>();
+  const { status, orgTitle, jitRoles, directorySync, hasSso, isEntitled } =
+    useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
-  const _plan = useCurrentPlan();
 
-  const isEntitled = planAllowsSso(_plan);
   const activeConnections = status.connections.filter((c) => c.state === "active");
   const hasActive = activeConnections.length > 0;
 

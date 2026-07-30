@@ -17,6 +17,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { clickhouseFactory } from "./clickhouse/clickhouseFactoryInstance.server";
+import type { ClientType } from "./clickhouse/clickhouseFactory.server";
 import {
   queryConcurrencyLimiter,
   DEFAULT_ORG_CONCURRENCY_LIMIT,
@@ -99,6 +100,13 @@ export type ExecuteQueryOptions<TOut extends z.ZodSchema> = Omit<
   };
   /** Custom per-org concurrency limit (overrides default) */
   customOrgConcurrencyLimit?: number;
+  /**
+   * Set when the caller wrote `query` themselves, as on the public query API and
+   * the query editor. ClickHouse rejecting their SQL is then their mistake, so it
+   * is logged as a warning instead of raising an alert. Leave unset for TRQL we
+   * generate, where the same rejection is a bug worth alerting on.
+   */
+  userAuthoredQuery?: boolean;
 };
 
 /**
@@ -115,6 +123,18 @@ export type ExecuteQueryResult<T> =
     }
   | { success: false; error: Error };
 
+/** Own-property flag tagged on the transient "query concurrency exceeded" rejection (retryable). */
+const QUERY_CONCURRENCY_REJECTION_FLAG = "__queryConcurrencyRejection";
+
+/** True for the transient concurrency-limit rejection — a stable signal callers can retry on. */
+export function isQueryConcurrencyRejection(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as Record<string, unknown>)[QUERY_CONCURRENCY_REJECTION_FLAG] === true
+  );
+}
+
 const INTERVAL_UNIT_SECONDS: Record<TimeBucketInterval["unit"], number> = {
   SECOND: 1,
   MINUTE: 60,
@@ -127,6 +147,19 @@ const INTERVAL_UNIT_SECONDS: Record<TimeBucketInterval["unit"], number> = {
 function floorToSeconds(date: Date, alignSeconds: number): Date {
   const ms = alignSeconds * 1000;
   return new Date(Math.floor(date.getTime() / ms) * ms);
+}
+
+/**
+ * ClickHouse client a table's reads run on. A table can name its own pool (`queryClient`) so a
+ * heavy read family lands on its own service; everything else shares the query pool.
+ */
+function resolveQueryClientType(schema: TableSchema | undefined): ClientType {
+  switch (schema?.queryClient) {
+    case "queueMetrics":
+      return "queueMetrics";
+    default:
+      return "query";
+  }
 }
 
 /**
@@ -204,7 +237,11 @@ export async function executeQuery<TOut extends z.ZodSchema>(
       acquireResult.reason === "key_limit"
         ? `You've exceeded your query concurrency of ${orgLimit} for this project. Please try again later.`
         : "We're experiencing a lot of queries at the moment. Please try again later.";
-    return { success: false, error: new QueryError(errorMessage, { query: options.query }) };
+    const error = new QueryError(errorMessage, { query: options.query });
+    // Stable marker so callers can retry on a transient concurrency rejection without
+    // matching the message text (which is free to change).
+    Object.assign(error, { [QUERY_CONCURRENCY_REJECTION_FLAG]: true });
+    return { success: false, error };
   }
 
   // Detect which table the query targets to determine the time column
@@ -333,7 +370,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
 
     const queryClickhouse = await clickhouseFactory.getClickhouseForOrganization(
       organizationId,
-      "query"
+      resolveQueryClientType(matchedSchema)
     );
     // Serve coarse-bucket queries from the table's rollup when one qualifies.
     const effectiveSchemas = matchedSchema?.rollups
