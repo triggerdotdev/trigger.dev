@@ -30,8 +30,10 @@ import {
 } from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
-import { rbac } from "./rbac.server";
-import { observeLegacyBearerAuthentication } from "~/services/authTelemetry.server";
+import {
+  authenticateAuthorizeBearerWithTelemetry,
+  observeLegacyBearerAuthentication,
+} from "~/services/authTelemetry.server";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -307,7 +309,7 @@ export async function authenticateApiKeyWithScope(
     return { ok: false, status: 401, error: "Invalid or Missing API key" };
   }
 
-  const result = await rbac.authenticateAuthorizeBearer(
+  const result = await authenticateAuthorizeBearerWithTelemetry(
     request,
     { action, resource },
     { allowJWT }

@@ -5,6 +5,7 @@ import type {
   BearerCredentialKind,
   BearerLookupPath,
   HostBearerAuthResult,
+  RbacResource,
 } from "@trigger.dev/rbac";
 import { authFeatureControls } from "~/services/authFeatureControls.server";
 import { rbac } from "~/services/rbac.server";
@@ -73,6 +74,25 @@ export async function authenticateBearerWithTelemetry(
       lookup_path: final.lookupPath,
     });
   }
+}
+
+export async function authenticateAuthorizeBearerWithTelemetry(
+  request: Request,
+  check: { action: string; resource: RbacResource },
+  options: { allowJWT: boolean }
+) {
+  // Keep authentication telemetry consistent with apiBuilder: a valid
+  // credential records a successful authentication even when the subsequent
+  // resource authorization fails. Authorization correctness is covered by the
+  // route tests rather than folded into the authentication-health metric.
+  const result = await authenticateBearerWithTelemetry(request, options);
+  if (!result.ok) return result;
+
+  if (!result.ability.can(check.action, check.resource)) {
+    return { ok: false as const, status: 403 as const, error: "Unauthorized" };
+  }
+
+  return result;
 }
 
 export async function observeLegacyBearerAuthentication<T extends { ok: boolean } | undefined>(

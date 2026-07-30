@@ -85,6 +85,29 @@ describe("project environment credential response", () => {
     });
   });
 
+  it("does not exchange a grace-window root key for the current root key", async () => {
+    mocks.authenticateEnvironmentScopedApiRequest.mockResolvedValue({
+      ok: true,
+      authentication: {
+        type: "apiKey",
+        result: {
+          ok: true,
+          apiKey: "tr_prod_rotated_grace_key",
+          type: "PRIVATE",
+          environment,
+        },
+      },
+    });
+
+    const response = await load();
+
+    expect(response.status).toBe(200);
+    await expect(responseJson(response)).resolves.toMatchObject({
+      apiKey: "tr_prod_rotated_grace_key",
+      projectId: "proj_123",
+    });
+  });
+
   it("returns the root key to an authorized user token", async () => {
     mocks.authenticateEnvironmentScopedApiRequest.mockResolvedValue({
       ok: true,
