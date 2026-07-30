@@ -3,7 +3,7 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import { setSchedulesAddOn } from "~/services/platform.v3.server";
 import assertNever from "assert-never";
 import { sendToPlain } from "~/utils/plain.server";
-import { uiComponent } from "@team-plain/typescript-sdk";
+import { uiComponent } from "@team-plain/ui-components";
 
 type Input = {
   userId: string;
@@ -74,6 +74,8 @@ export class SetSchedulesAddOnService extends BaseService {
             email: user.email,
             name: user.name ?? user.displayName ?? user.email,
             title: `Schedules quota request: ${amount}`,
+            organizationId,
+            organizationName: organization?.title,
             components: [
               uiComponent.text({
                 text: `Org: ${organization?.title} (${organizationId})`,
