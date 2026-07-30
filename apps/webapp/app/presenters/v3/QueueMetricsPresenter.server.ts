@@ -1,6 +1,7 @@
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
+import { computeSparklineGrid } from "~/v3/queueSparklineGrid";
 
 export type QueueListMetric = {
   p50WaitMs: number | null;
@@ -23,8 +24,6 @@ export type QueueListMetrics = {
   bucketIntervalMs: number;
   byQueue: Map<string, QueueListMetric>;
 };
-
-const SPARKLINE_POINTS = 48;
 
 function formatClickhouseDateTime(date: Date): string {
   return date.toISOString().slice(0, 19).replace("T", " ");
@@ -51,13 +50,9 @@ export class QueueMetricsPresenter {
     from: Date;
     to: Date;
   }): Promise<QueueListMetrics> {
-    const rangeSeconds = Math.max(60, Math.round((to.getTime() - from.getTime()) / 1000));
-    const bucketSeconds = Math.max(60, Math.round(rangeSeconds / SPARKLINE_POINTS));
-    const numBuckets = Math.max(1, Math.ceil(rangeSeconds / bucketSeconds));
-    const gridStartSeconds =
-      Math.floor(Math.floor(from.getTime() / 1000) / bucketSeconds) * bucketSeconds;
-    const bucketStartMs = gridStartSeconds * 1000;
-    const bucketIntervalMs = bucketSeconds * 1000;
+    const grid = computeSparklineGrid(from, to);
+    const { bucketSeconds, bucketIntervalMs, bucketStartMs } = grid;
+    const numBuckets = grid.bucketCount;
 
     const empty: QueueListMetrics = {
       bucketStartMs,
@@ -72,12 +67,10 @@ export class QueueMetricsPresenter {
     try {
       const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
         environment.organizationId,
-        "query"
+        "queueMetrics"
       );
 
-      // End bound snaps up to the bucket grid so repeated loads within a bucket produce
-      // identical params and share ClickHouse query-cache entries.
-      const endMs = Math.ceil(to.getTime() / bucketIntervalMs) * bucketIntervalMs;
+      const endMs = grid.endMs;
       const ids = {
         organizationId: environment.organizationId,
         projectId: environment.projectId,

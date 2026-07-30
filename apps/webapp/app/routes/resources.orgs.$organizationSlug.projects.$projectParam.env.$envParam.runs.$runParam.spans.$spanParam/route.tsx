@@ -27,12 +27,6 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
-import { InvestigateButton } from "~/components/dashboard-agent/InvestigateButton";
-import {
-  failedRunPrompt,
-  isFailedRunStatus,
-  waitingRunPrompt,
-} from "~/components/dashboard-agent/investigate-prompts";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
@@ -1142,20 +1136,11 @@ function RunBody({
                   waiting={queueMetrics.waiting}
                   status={run.status}
                   createdAt={run.createdAt}
-                  runFriendlyId={run.friendlyId}
                 />
               ) : null}
               <RunTimeline run={run} />
 
               {run.error && <RunError error={run.error} />}
-
-              {/* Hand the failure to the agent, prefilled with this run's id. Hidden when the
-                  agent isn't available. */}
-              {isFailedRunStatus(run.status) ? (
-                <div className="flex">
-                  <InvestigateButton prompt={failedRunPrompt(run.friendlyId)} />
-                </div>
-              ) : null}
 
               {run.payload !== undefined && (
                 <PacketDisplay data={run.payload} dataType={run.payloadType} title="Payload" />
@@ -1265,7 +1250,6 @@ function WaitingInQueueBlock({
   waiting,
   status,
   createdAt,
-  runFriendlyId,
 }: {
   queueName: string;
   queuePath: string | undefined;
@@ -1273,7 +1257,6 @@ function WaitingInQueueBlock({
   waiting: RunQueueWaiting;
   status: SpanRun["status"];
   createdAt: Date;
-  runFriendlyId: string;
 }) {
   // Latest gauges from ClickHouse (as on the queue page), polled so the blocks keep ticking. Trust
   // the newest bucket only while fresh; otherwise fall back to the loader's live values.
@@ -1298,10 +1281,15 @@ function WaitingInQueueBlock({
   const running = fresh ? toNumber(fresh.running) : waiting.running;
   const limit = waiting.concurrencyLimit ?? (fresh ? toNumber(fresh.q_limit) || null : null);
 
-  // The concurrency limit applies per key on keyed queues. PENDING renders as "Queued".
-  const atLimit = limit !== null && (key ? key.running >= limit : running >= limit);
+  // The concurrency limit applies per key on keyed queues, so the tile has to compare like with
+  // like: the key's own running count against the per-key limit. `running` above is queue-wide,
+  // which would render "8 / 2 · 100%" while this run's key sits at 1 of 2. PENDING renders as
+  // "Queued".
+  const runningAgainstLimit = key ? key.running : running;
+  const atLimit = limit !== null && runningAgainstLimit >= limit;
   const showAtLimit = status === "PENDING" && atLimit && !paused;
-  const pct = limit && limit > 0 ? Math.min(100, Math.round((running / limit) * 100)) : null;
+  const pct =
+    limit && limit > 0 ? Math.min(100, Math.round((runningAgainstLimit / limit) * 100)) : null;
   const waitedMs = Math.max(0, Date.now() - new Date(createdAt).getTime());
 
   // Why the run is held, surfaced as a warning icon on the Status tile (queue-page style) rather
@@ -1334,7 +1322,7 @@ function WaitingInQueueBlock({
         />
         <MiniStat
           title="Concurrency"
-          value={running.toLocaleString()}
+          value={runningAgainstLimit.toLocaleString()}
           valueClassName={cn(atLimit && "text-warning")}
           suffix={
             limit !== null
@@ -1345,14 +1333,6 @@ function WaitingInQueueBlock({
         <MiniStat
           title="Waiting for"
           value={formatDurationMilliseconds(waitedMs, { style: "short", maxDecimalPoints: 0 })}
-        />
-      </div>
-
-      {/* Ask the agent why this run hasn't started. Hidden when the agent isn't available. */}
-      <div className="flex">
-        <InvestigateButton
-          prompt={waitingRunPrompt(runFriendlyId, queueName)}
-          label="Why is this run waiting?"
         />
       </div>
 

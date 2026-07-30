@@ -93,6 +93,7 @@ import { MoveUpIcon } from "~/assets/icons/MoveUpIcon";
 import { NodejsLogoIcon } from "~/assets/icons/NodejsLogoIcon";
 import { OneTreeIcon } from "~/assets/icons/OneTreeIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
+import { PadlockRoundedIcon } from "~/assets/icons/PadlockRoundedIcon";
 import { PauseIcon } from "~/assets/icons/PauseIcon";
 import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
@@ -233,6 +234,7 @@ const icons: IconEntry[] = [
   { name: "OneTreeIcon", render: simple(OneTreeIcon) },
   { name: "OpenAIIcon", render: simple(OpenAIIcon) },
   { name: "PadlockIcon", render: simple(PadlockIcon) },
+  { name: "PadlockRoundedIcon", render: simple(PadlockRoundedIcon) },
   { name: "PauseIcon", render: simple(PauseIcon) },
   { name: "PerplexityIcon", render: simple(PerplexityIcon) },
   { name: "PlaygroundIcon", render: simple(PlaygroundIcon) },

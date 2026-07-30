@@ -3,13 +3,63 @@ import {
   type ButtonHTMLAttributes,
   forwardRef,
   type ReactNode,
+  useEffect,
+  useRef,
+  useState,
 } from "react";
 import { Link } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { usePathName } from "~/hooks/usePathName";
 import { cn } from "~/utils/cn";
 import { type RenderIcon, Icon } from "../primitives/Icon";
+import { labelOverflowFadeStyle } from "../primitives/labelOverflowFade";
 import { SimpleTooltip } from "../primitives/Tooltip";
+import { useActiveFavoriteId } from "./favoritePages";
+
+/**
+ * A menu label that fades out at its right edge when (and only when) the text overflows. Text
+ * that fits renders exactly as before, with no mask. Overflow is re-measured when the element
+ * resizes (e.g. while drag-resizing the menu) and when the label text changes.
+ */
+export function SideMenuLabel({
+  children,
+  className,
+  style,
+}: {
+  children: ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const checkRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setIsOverflowing(el.scrollWidth > el.clientWidth + 1);
+    checkRef.current = check;
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Re-measure when the text changes (a rename can flip overflow without resizing the element)
+  useEffect(() => {
+    checkRef.current();
+  }, [children]);
+
+  return (
+    <span
+      ref={ref}
+      className={cn("overflow-hidden whitespace-nowrap", className)}
+      style={{ ...style, ...labelOverflowFadeStyle(isOverflowing) }}
+    >
+      {children}
+    </span>
+  );
+}
 
 export function SideMenuItem({
   icon,
@@ -27,6 +77,8 @@ export function SideMenuItem({
   action,
   disableIconHover = false,
   indented = false,
+  isActive: isActiveOverride,
+  yieldActiveToFavorite = false,
   "data-action": dataAction,
 }: {
   icon?: RenderIcon;
@@ -45,10 +97,24 @@ export function SideMenuItem({
   disableIconHover?: boolean;
   /** Indented variant for grouped sub-items; only applied when the menu is expanded. */
   indented?: boolean;
+  /** Overrides the default pathname === to active check (e.g. favorites match on full URL). */
+  isActive?: boolean;
+  /**
+   * In menus that render the Favorites section (the main project menu), an active favorite owns
+   * the highlight, so the plain item yields its active state to it. Menus without a favorites
+   * list (org settings, account) must not set this: they have no favorite item to carry the
+   * highlight instead.
+   */
+  yieldActiveToFavorite?: boolean;
   "data-action"?: string;
 }) {
   const pathName = usePathName();
-  const isActive = pathName === to;
+  // Only the user's OWN favorites own a view (via the marker param); markers from shared links
+  // don't count (see useActiveFavoriteId).
+  const activeFavoriteId = useActiveFavoriteId();
+  const isActive =
+    isActiveOverride ??
+    (pathName === to && (!yieldActiveToFavorite || activeFavoriteId === undefined));
 
   const isIndented = indented && !isCollapsed;
 
@@ -92,14 +158,14 @@ export function SideMenuItem({
           className="flex w-full min-w-0 items-center justify-between"
           style={{ opacity: "var(--sm-label-opacity, 1)" }}
         >
-          <span
+          <SideMenuLabel
             className={cn(
-              "select-none overflow-hidden whitespace-nowrap text-[0.90625rem] font-medium tracking-[-0.01em]",
+              "min-w-0 flex-1 select-none text-left text-[0.90625rem] font-medium tracking-[-0.01em]",
               nameClassName
             )}
           >
             {name}
-          </span>
+          </SideMenuLabel>
           {badge && !isCollapsed && (
             <div className="ml-1 flex shrink-0 items-center gap-1">{badge}</div>
           )}
@@ -189,9 +255,9 @@ export const SideMenuItemButton = forwardRef<
         icon={icon}
         className="size-5 shrink-0 text-text-dimmed group-hover/menuitem:text-text-bright"
       />
-      <span className="min-w-0 flex-1 select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]">
+      <SideMenuLabel className="min-w-0 flex-1 select-none text-left text-[0.90625rem] font-medium tracking-[-0.01em]">
         {name}
-      </span>
+      </SideMenuLabel>
       {trailing && <span className="flex shrink-0 items-center gap-1">{trailing}</span>}
     </button>
   );

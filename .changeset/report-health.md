@@ -3,6 +3,10 @@
 "trigger.dev": patch
 ---
 
-Add the `get_report` MCP tool, a `trigger report` CLI command, and `GET /api/v1/reports/:key`, starting with the `health` report: a deterministic verdict on whether work is flowing, whether the runs that start are healthy, and whether telemetry is fresh — rendered as text with unicode sparklines (coloured in a terminal). Also adds a `report` MCP prompt, surfaced as a slash command in hosts that support prompts.
+Ask whether an environment is healthy and get an answer instead of a wall of charts. `trigger report health` returns a verdict on three questions: is work flowing, are the runs that start succeeding, and is the telemetry fresh enough to trust either answer. When something looks wrong it names the most likely cause and a next action.
 
-Also: `trigger mcp` now always starts the server — the install wizard is gated behind `trigger mcp --install`. A TTY previously launched the wizard, so MCP hosts spawning the server over a PTY timed out.
+```bash
+npx trigger.dev@latest report health --env prod --period 24h
+```
+
+The verdict is computed server side, so the CLI, the new `get_report` MCP tool, and `GET /api/v1/reports/health` all return the same text with the same sparklines. In MCP hosts that support prompts, `report` is also available as a slash command.

@@ -100,6 +100,17 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
+  const uniqueEmails = new Set(emails);
+
+  const existingMembers = await prisma.orgMember.findMany({
+    where: {
+      organizationId: org.id,
+      user: { email: { in: [...uniqueEmails] } },
+    },
+    select: { user: { select: { email: true } } },
+  });
+  const existingMemberEmails = new Set(existingMembers.map((member) => member.user.email));
+
   // Create one invite per unique email and return ONLY the invites actually
   // created by this call. A P2002 means the email is already invited to this org
   // (unique org+email) — skip it so one duplicate can't fail the batch, and
@@ -108,8 +119,15 @@ export async function inviteMembers({
   const created: Prisma.OrgMemberInviteGetPayload<{
     include: { organization: true; inviter: true };
   }>[] = [];
+  const alreadyMembers: string[] = [];
+  const alreadyInvited: string[] = [];
 
-  for (const email of new Set(emails)) {
+  for (const email of uniqueEmails) {
+    if (existingMemberEmails.has(email)) {
+      alreadyMembers.push(email);
+      continue;
+    }
+
     try {
       const invite = await prisma.orgMemberInvite.create({
         data: {
@@ -131,13 +149,14 @@ export async function inviteMembers({
         error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
         error.code === "P2002"
       ) {
+        alreadyInvited.push(email);
         continue;
       }
       throw error;
     }
   }
 
-  return created;
+  return { created, alreadyMembers, alreadyInvited };
 }
 
 export async function getInviteFromToken({ token }: { token: string }) {
@@ -264,24 +283,41 @@ async function assignInviteRbacRole({
   userId,
   organizationId,
   rbacRoleId,
+  onlyWhenUnassigned,
 }: {
   userId: string;
   organizationId: string;
   rbacRoleId: string;
+  onlyWhenUnassigned: boolean;
 }) {
   try {
+    if (onlyWhenUnassigned) {
+      const currentRole = await rbac.getUserRole({ userId, organizationId });
+      if (currentRole !== null) {
+        return;
+      }
+    }
+
     const roleResult = await rbac.setUserRole({
       userId,
       organizationId,
       roleId: rbacRoleId,
     });
     if (!roleResult.ok) {
-      logger.error("acceptInvite: skipped RBAC role assignment", {
-        organizationId,
-        userId,
-        rbacRoleId,
-        reason: roleResult.error,
-      });
+      if (roleResult.code === "last_owner") {
+        logger.info("acceptInvite: kept last Owner, skipped RBAC role assignment", {
+          organizationId,
+          userId,
+          rbacRoleId,
+        });
+      } else {
+        logger.warn("acceptInvite: skipped RBAC role assignment", {
+          organizationId,
+          userId,
+          rbacRoleId,
+          reason: roleResult.error,
+        });
+      }
     }
   } catch (error) {
     logger.error("acceptInvite: RBAC role assignment threw", {
@@ -415,6 +451,8 @@ export async function acceptInvite({
     },
   });
 
+  let membershipCreated = false;
+
   if (!member) {
     try {
       member = await prisma.orgMember.create({
@@ -424,6 +462,7 @@ export async function acceptInvite({
           role: invite.role,
         },
       });
+      membershipCreated = true;
     } catch (error) {
       if (
         error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
@@ -473,16 +512,12 @@ export async function acceptInvite({
 
   const remainingInvites = await getUsersInvites({ email: user.email });
 
-  // If the invite carried an explicit RBAC role, assign it. Best-effort: the
-  // invite is already consumed and membership created above, so a failure here
-  // — a returned {ok:false} or a thrown error from the plugin — must not block
-  // joining the org. Swallow and log either way; without the catch a plugin
-  // throw escapes and turns the whole invite-accept into a 400.
   if (invite.rbacRoleId) {
     await assignInviteRbacRole({
       userId: user.id,
       organizationId: invite.organization.id,
       rbacRoleId: invite.rbacRoleId,
+      onlyWhenUnassigned: !membershipCreated,
     });
   }
 

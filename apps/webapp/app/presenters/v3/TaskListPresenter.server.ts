@@ -6,10 +6,8 @@ import {
 import { $replica } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
-  type AverageDurations,
   ClickHouseEnvironmentMetricsRepository,
   type CurrentRunningStats,
-  type DailyTaskActivity,
 } from "~/services/environmentMetricsRepository.server";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
@@ -20,8 +18,6 @@ export type TaskListItem = {
   createdAt: Date;
   triggerSource: TaskTriggerSource;
 };
-
-export type TaskActivity = DailyTaskActivity[string];
 
 export class TaskListPresenter {
   constructor(private readonly _replica: PrismaClientOrTransaction) {}
@@ -55,9 +51,7 @@ export class TaskListPresenter {
     if (!currentWorker) {
       return {
         tasks: [],
-        activity: Promise.resolve({} as DailyTaskActivity),
         runningStats: Promise.resolve({} as CurrentRunningStats),
-        durations: Promise.resolve({} as AverageDurations),
       };
     }
 
@@ -89,16 +83,10 @@ export class TaskListPresenter {
       clickhouse,
     });
 
-    // IMPORTANT: Don't await these, we want to return the promises
-    // so we can defer the loading of the data
-    const activity = environmentMetricsRepository.getDailyTaskActivity({
-      organizationId,
-      projectId,
-      environmentId,
-      days: 6, // This actually means 7 days, because we want to show the current day too
-      tasks: slugs,
-    });
-
+    // IMPORTANT: Don't await this, we want to return the promise
+    // so we can defer the loading of the data. The caller is responsible for
+    // consuming it — an unconsumed promise here would become an unhandled
+    // rejection if the underlying query fails.
     const runningStats = environmentMetricsRepository.getCurrentRunningStats({
       organizationId,
       projectId,
@@ -107,15 +95,7 @@ export class TaskListPresenter {
       tasks: slugs,
     });
 
-    const durations = environmentMetricsRepository.getAverageDurations({
-      organizationId,
-      projectId,
-      environmentId,
-      days: 6,
-      tasks: slugs,
-    });
-
-    return { tasks, activity, runningStats, durations };
+    return { tasks, runningStats };
   }
 }
 
