@@ -30,7 +30,7 @@ const route = createActionApiRoute(
     }),
     authorization: {
       action: "write",
-      resource: (params) => ({ type: "queues", id: params.queueParam }),
+      resource: () => ({ type: "queues" }),
     },
   },
   async ({ params, body, authentication }) => {
