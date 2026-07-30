@@ -4,7 +4,10 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { ssoController } from "~/services/sso.server";
-import { applyDirectorySyncEffects } from "~/services/directorySyncEffects.server";
+import {
+  applyDirectorySyncEffects,
+  unqueuedProvisioningError,
+} from "~/services/directorySyncEffects.server";
 
 // Dedicated worker for inbound account-management webhooks. The webhook
 // proxy route verifies the signature via the plugin and enqueues the
@@ -76,7 +79,10 @@ function initializeWorker() {
         // Directory-sync events return membership effects to apply against
         // public.* tables (the plugin never writes those). A throw here
         // bubbles to the worker for retry; effects are idempotent.
-        await applyDirectorySyncEffects(result.value.effects);
+        const { unqueuedUserIds } = await applyDirectorySyncEffects(result.value.effects);
+        if (unqueuedUserIds.length > 0) {
+          throw unqueuedProvisioningError(unqueuedUserIds);
+        }
       },
     },
   });

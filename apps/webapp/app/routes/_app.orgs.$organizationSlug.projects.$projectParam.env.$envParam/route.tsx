@@ -7,6 +7,7 @@ import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferenc
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import { tenantContext } from "~/services/tenantContext.server";
+import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
@@ -52,28 +53,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const environments = project.environments.filter((env) => env.slug === envParam);
-  if (environments.length === 0) {
+  const environment = selectAccessibleEnvironment(environments, user.id);
+
+  if (!environment) {
     return redirect(v3ProjectPath({ slug: organizationSlug }, { slug: projectParam }));
   }
 
-  let environmentId: string | undefined = undefined;
-  let environmentType: "DEVELOPMENT" | "PREVIEW" | "STAGING" | "PRODUCTION" | undefined;
-
-  if (environments.length > 1) {
-    const bestEnvironment = environments.find((env) => env.orgMember?.userId === user.id);
-    if (!bestEnvironment) {
-      throw new Response("Environment not Found", {
-        status: 404,
-        statusText: "Environment not found",
-      });
-    }
-
-    environmentId = bestEnvironment.id;
-    environmentType = bestEnvironment.type;
-  } else {
-    environmentId = environments[0].id;
-    environmentType = environments[0].type;
-  }
+  const environmentId = environment.id;
+  const environmentType = environment.type;
 
   // userId is enriched higher up in `_app/route.tsx`; only stamp tenant fields here.
   tenantContext.enrich({
