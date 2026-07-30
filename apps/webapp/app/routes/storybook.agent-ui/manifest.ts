@@ -284,10 +284,9 @@ export const MANIFEST: GallerySection[] = [
     group: "messages",
   },
   {
-    sectionId: "messages-tool-expanded",
-    title: "Tool call expanded on its output",
+    sectionId: "messages-tool-completed",
+    title: "Completed tool call — no row, just the answer",
     group: "messages",
-    expandText: "output",
   },
   {
     sectionId: "messages-error-retry",

@@ -106,10 +106,11 @@ function blocksFor(part: UIMessage["parts"][number]): unknown[] | null {
  * Everything the panel styles itself is handled here; the rest falls through to
  * the shared `renderPart` so agent output still looks the same across the app.
  * The differences: text is always the rendered markdown (no raw toggle) at the
- * dashboard's default size, and an in-flight tool call is a pending pill rather
- * than a tool row streaming its input JSON — the input is the agent's business,
- * and watching it arrive character by character only to have it replaced by a
- * card is noise. Once the call lands, the part renders exactly as it always did.
+ * dashboard's default size, and tool calls never show their mechanics — while
+ * running they are a pending pill ("Reading the queue…"), and once they land
+ * they leave NO row at all: the answer is the prose and the cards, not the
+ * input/output plumbing. The one exception is a FAILED call, which keeps its
+ * error row — a silent failure would read as the agent ignoring the question.
  * Citations are handled a level up, where a run of them can be grouped into one
  * row.
  */
@@ -127,8 +128,12 @@ function renderDashboardPart(part: UIMessage["parts"][number], i: number) {
     return p.text ? <ChatText key={i} text={p.text} /> : null;
   }
 
-  if (type.startsWith("tool-") && IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) {
-    return <ChatPendingTool key={i} label={`${toolPendingLabel(type.slice(5))}…`} />;
+  if (type.startsWith("tool-")) {
+    if (IN_FLIGHT_TOOL_STATES.has(p.state ?? "")) {
+      return <ChatPendingTool key={i} label={`${toolPendingLabel(type.slice(5))}…`} />;
+    }
+    if (p.state === "output-error") return renderPart(part, i);
+    return null;
   }
 
   return renderPart(part, i);

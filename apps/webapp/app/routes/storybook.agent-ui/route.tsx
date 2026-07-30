@@ -736,7 +736,9 @@ const STATES: Record<string, React.ReactNode> = {
   "messages-reasoning": <MessageHarness chatId={demoId("investigate-streaming")} />,
   "messages-tool-in-flight": <MessageHarness chatId={demoId("base-tool-in-flight")} />,
   "messages-tool-pending-pills": <PendingPillsHarness />,
-  "messages-tool-expanded": <MessageHarness chatId={demoId("base-tool-in-flight")} />,
+  // The same chat whose pending pill is shown above, but with the call landed:
+  // the tool row is gone entirely — only the prose (and any cards) remain.
+  "messages-tool-completed": <MessageHarness chatId={demoId("docs-answer")} />,
   "messages-error-retry": <MessageHarness chatId={demoId("base-error-retry")} withError />,
   // Two turns only: the resumed chat's third turn is a live `chart` block, and
   // the real AgentChart has no environment to query outside a project route.
