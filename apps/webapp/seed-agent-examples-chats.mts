@@ -7,15 +7,21 @@
  * created. The panel renders them through the production renderer with no demo
  * code involved, so what a reviewer sees here is what a real chat looks like.
  *
- * Two translation rules, because the store is narrower than the mockup:
+ * Three translation rules, because the store is narrower than the mockup:
  *
  * 1. Only what the production renderer handles survives: `text`, `reasoning`,
- *    `tool-*` rows, `tool-render_view` (real cards), `tool-get_report` (the
- *    report card) and `source-url`. Investigation cards, watch chips, intent
- *    bubbles and prompt rows have no stored representation yet, so those beats
- *    become assistant text — and where a card carried the diagnosis, a real
- *    `diagnosis` view block carries it instead.
- * 2. Chats that exist only to show a transient UI state (streaming text, a tool
+ *    `tool-render_view` (real cards), `tool-get_report` (the report card) and
+ *    `source-url`. Investigation cards, watch chips, intent bubbles and prompt
+ *    rows have no stored representation yet, so those beats become assistant
+ *    text — and where a card carried the diagnosis, a real `diagnosis` view
+ *    block carries it instead.
+ * 2. A landed tool call renders NOTHING. Completed `tool-*` parts are still
+ *    stored — they are what the answer was grounded on, and cards read them —
+ *    but no prose may point at one, because there is no row on screen to point
+ *    at. Only a failed call keeps a row, so a failure can still be seen.
+ *    Likewise: a wake narration is an assistant message whose id is
+ *    `wake:watch:{watchId}:{fired|expired}` — the id is what draws the banner.
+ * 3. Chats that exist only to show a transient UI state (streaming text, a tool
  *    mid-call, an unsent draft) are not ported: a stored transcript can't be
  *    mid-flight, and storing one would render as a turn that never finishes.
  *    `SKIPPED_DEMO_CHATS` records them.
@@ -100,7 +106,7 @@ export const SKIPPED_DEMO_CHATS: ReadonlyArray<{ id: string; reason: string }> =
   },
   {
     id: "demo:base-tool-in-flight",
-    reason: "A tool row mid-call. Stored, it would render as 'Running…' forever.",
+    reason: "A tool mid-call. Stored, it would render as a pending pill that never resolves.",
   },
   {
     id: "demo:base-composer-draft",
@@ -130,6 +136,19 @@ function user(slug: string, text: string): SeedMessage {
 
 function assistant(slug: string, parts: unknown[]): SeedMessage {
   return { id: messageId(slug), role: "assistant", parts };
+}
+
+/**
+ * A wake narration: an assistant turn the watch started, not the user.
+ *
+ * The panel spots one by its message id — `wake:watch:{watchId}:{fired|expired}`,
+ * the same id the agent's `narrateWatchWake` writes — and draws the banner from
+ * that, so the parts are ordinary prose. The seeder creates no watch rows, so the
+ * banner takes its kind-agnostic wording ("Watch update — condition met") rather
+ * than colouring by watch kind.
+ */
+function wake(watchId: string, outcome: "fired" | "expired", parts: unknown[]): SeedMessage {
+  return { id: `wake:watch:${watchId}:${outcome}`, role: "assistant", parts };
 }
 
 function text(value: string) {
@@ -581,7 +600,7 @@ Deployment: \`${deploymentUri}\`.`
 
   chats.push({
     slug: "watch-created-and-wake",
-    title: "Tell me when the backlog drains",
+    title: "Tell me when the retry finishes",
     minutesAgo: 7,
     messages: [
       user("watch", "Tell me when the retry finishes."),
@@ -590,47 +609,49 @@ Deployment: \`${deploymentUri}\`.`
           `Watching \`${w.failedRunId}\` — I'll check every minute for up to 2 hours and tell you the moment it settles, whichever way it goes. I only speak once per watch, so it won't repeat itself.`
         ),
       ]),
-      assistant("watch", [
+      wake(`watch_seed_${w.failedRunId}_finished`, "fired", [
         text(
           `**The retry finished.** \`${w.failedRunId}\` completed successfully 4 minutes ago, on attempt 2 — the provider accepted the request once the delay pushed it out of the rate-limit window.
 
-I've stopped watching it. The other runs from the same burst are still queued behind the concurrency limit; ask me if you want them watched too.`
+That's this watch done. The rest of the ${w.firstFailureClock} burst is still queued behind \`${w.queue}\`'s concurrency limit, and the rate-limit error is worth watching for the next 12 hours in case the fix didn't take — say the word for either.`
         ),
         sourceUrl(runLink(w.failedRunId), `Run ${w.failedRunId}`),
-      ]),
-      assistant("watch", [
-        text(
-          `Two things you might want next: the remaining runs from the ${w.firstFailureClock} burst are still queued behind \`${w.queue}\`'s concurrency limit, and the rate-limit error itself is worth a watch for the next 12 hours in case the fix didn't take. Say the word for either.`
-        ),
       ]),
     ],
   });
 
   chats.push({
-    slug: "watch-expiry-and-cancel",
-    title: "Watch for that error recurring",
+    slug: "watch-fired-and-expired",
+    title: "Watch the error and the backlog",
     minutesAgo: 40,
     messages: [
+      user(
+        "watch-end",
+        `Watch two things for me: that 429 coming back, and \`${w.backlogQueue}\` draining.`
+      ),
       assistant("watch-end", [
         text(
-          `Four watches from this conversation have finished, and each one said so exactly once — below, in the order they spoke.`
+          `Both armed. The error watch covers fingerprint \`${w.errorFingerprint}\` on \`${w.taskId}\` for the next 12 hours; the backlog watch covers \`${w.backlogQueue}\` for 6. Each one speaks once — when its condition is met, or when its window runs out with nothing to report.`
         ),
       ]),
-      assistant("watch-end", [
+      wake(`watch_seed_${w.errorFingerprint}_recurrence`, "fired", [
         text(
-          `**I've stopped watching \`${w.backlogQueue}\`.** The 6-hour window is up and the backlog never fully drained — it's down from ${w.pending.toLocaleString("en-US")} to 610 pending, so it's clearing, just slower than the window I was given.
+          `**The 429 is back.** \`${w.taskId}\` failed with the same fingerprint 9 minutes ago, so the retry change hasn't taken — the attempts are still landing inside one rate-limit window.
+
+That's the error watch spent. Cap \`${w.queue}\` at 20 concurrency if you want the burst to stop before the next deploy.`
+        ),
+        sourceUrl(failedRunsLink, `Failed ${w.taskId} runs`),
+        sourceUrl(queueLink, `Queue ${w.queue}`),
+      ]),
+      wake("watch_seed_backlog_drain", "expired", [
+        text(
+          `**Six hours are up and \`${w.backlogQueue}\` never fully drained.** It's down from ${w.pending.toLocaleString(
+            "en-US"
+          )} to 610 pending, so it is clearing — just slower than the window I was given, which is why I have no answer rather than bad news.
 
 Ask again if you want another 6 hours.`
         ),
       ]),
-      assistant("watch-end", [
-        text(
-          `**I've stopped watching prod's health, but I couldn't verify the condition at expiry.** The health data was unavailable on my last few checks, so I can't tell you whether prod recovered — only that I never saw it recover.
-
-Re-run the health report to get a current answer.`
-        ),
-      ]),
-      assistant("watch-end", [text(`Stopped watching \`${w.waitingRunId}\`.`)]),
     ],
   });
 
@@ -650,7 +671,7 @@ Re-run the health report to get a current answer.`
       ]),
       assistant("rep-h", [
         text(
-          "Nothing needs you. Every reading is inside the band you've run at for the past week, and telemetry is seconds behind, so this is a current picture rather than a stale one."
+          "Every reading is inside the band you've run at for the past week, and telemetry is seconds behind, so this is a current picture rather than a stale one. The one thing worth knowing: this window is quiet because the arrival rate is quiet — it is not proof the concurrency limit is high enough for a busy hour."
         ),
       ]),
     ],
@@ -673,8 +694,9 @@ Re-run the health report to get a current answer.`
         text(
           `Your code is fine — ${w.failureRatePct}% of runs failed and p95 duration hasn't moved. You've been pinned at the environment's concurrency ceiling of ${w.envConcurrencyLimit} for ${w.pinnedMinutes} of the last 60 minutes, ${w.pending.toLocaleString("en-US")} runs are pending, and \`${w.queue}\` accounts for ${Math.round(
             w.worstQueueShare * 100
-          )}% of them. Raising the limit clears it now; doing nothing clears it in about ${w.drainMinutes} minutes, once the ${w.triggeredPerMin.toLocaleString("en-US")}-a-minute arrival spike drops back under the ${w.donePerMin.toLocaleString("en-US")} a minute you're completing.`
+          )}% of them — so this is one queue's spike, not the whole environment misbehaving. Arrivals are ${w.triggeredPerMin.toLocaleString("en-US")} a minute against the ${w.donePerMin.toLocaleString("en-US")} you're completing, and that gap is already narrowing. The oldest thing still waiting is \`${w.waitingRunId}\`, if you want to see what a queued run looks like from the inside.`
         ),
+        sourceUrl(runLink(w.waitingRunId), `Run ${w.waitingRunId}`),
         sourceUrl(queueLink, `Queue ${w.queue}`),
       ]),
     ],
@@ -693,7 +715,7 @@ Re-run the health report to get a current answer.`
 
 - \`maxAttempts\` counts the *first* attempt, so \`3\` means one try plus two retries.
 - The delay is \`minTimeoutInMs * factor^(attempt - 1)\`, capped at \`maxTimeoutInMs\`.
-- \`randomize: true\` adds jitter, which is what stops a whole batch retrying in lockstep — the thing that bit \`${w.taskId}\` above.`
+- \`randomize: true\` adds jitter, which is what stops a whole batch retrying in lockstep — the thing that bit \`${w.taskId}\` on \`${w.queue}\` this morning.`
         ),
         sourceUrl("https://trigger.dev/docs/errors-retrying", "Errors & retrying"),
         sourceUrl("https://trigger.dev/docs/tasks/overview", "Task options"),
@@ -705,13 +727,13 @@ Re-run the health report to get a current answer.`
 
   chats.push({
     slug: "base-resumed",
-    title: "Queue health over time",
+    title: "Did this happen earlier today too?",
     minutesAgo: 21,
     messages: [
       user("res", "Did this happen earlier today too?"),
       assistant("res", [
         text(
-          `Yes — same error, same task, earlier in the same burst. \`${w.taskId}\` hit the same rate limit at ${w.firstFailureClock} and it was diagnosed then too; the card below is that diagnosis, replayed from this conversation rather than re-run. The retry config hasn't changed since, which is why it came back.`
+          `Yes — same error, same task, earlier in the same burst. \`${w.taskId}\` hit the same rate limit at ${w.firstFailureClock} and I diagnosed it then; both diagnoses are here — this run's, and \`${w.priorRunId}\` from the start of the burst. The retry config hasn't changed since, which is why it came back.`
         ),
         // Revisions 0 and 1 of one diagnosis (the renderer collapses to the
         // highest revision) plus one envelope-less block from an older transcript.
@@ -720,7 +742,7 @@ Re-run the health report to get a current answer.`
       assistant("res", [
         renderView([failuresChart]),
         text(
-          "The chart block runs live against your current environment every time this transcript is opened."
+          `The chart is live, so it answers the same question for whatever has happened since: two clusters today, both on \`${w.taskId}\`, nothing on the other senders.`
         ),
       ]),
     ],
