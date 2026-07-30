@@ -175,9 +175,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const { query, scope, explain: explainParam, period, from, to } = parsed.data;
-  // Only allow explain for admins/impersonating users
-  const isAdmin = hasAdminDisplayAccess(user);
-  const explain = explainParam === "true" && isAdmin;
+  // Only allow explain for admins/impersonating users. Raw impersonation, not
+  // `hasAdminDisplayAccess`: this decides what the request may run, and "view as user" only changes
+  // what is shown — the loader is what hides the EXPLAIN control.
+  const explain = explainParam === "true" && (user.admin || user.isImpersonating);
 
   try {
     const queryResult = await executeQuery({

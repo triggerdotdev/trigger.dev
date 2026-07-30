@@ -54,7 +54,6 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
-import { getViewingAsUser } from "~/services/impersonation.server";
 import { hasAdminDisplayAccess, requireUser } from "~/services/session.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import {
@@ -136,10 +135,10 @@ export const action = dashboardAction(
       service.call({
         projectId: project.id,
         regionId: parsedFormData.data.regionId,
-        isAdmin: hasAdminDisplayAccess({
-          ...user,
-          isViewingAsUser: await getViewingAsUser(request),
-        }),
+        // Raw impersonation, not `hasAdminDisplayAccess`: this decides whether a restricted or
+        // hidden region may be set as the default, which is a capability. "View as user" only
+        // changes what is shown.
+        isAdmin: user.admin || user.isImpersonating,
       })
     );
 

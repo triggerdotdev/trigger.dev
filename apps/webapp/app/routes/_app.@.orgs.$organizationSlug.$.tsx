@@ -33,7 +33,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // shape.
   if (user.isImpersonating) {
     const url = new URL(request.url);
-    throw await clearImpersonation(request, url.pathname);
+    // Keep the search: `/@/runs/<id>` links redirect here carrying `?span=<spanId>`, and the
+    // follow-up GET builds the destination and post-back paths from it. Dropping it would land the
+    // admin on the run with no span selected.
+    throw await clearImpersonation(request, `${url.pathname}${url.search}`);
   }
 
   // Only admins can impersonate

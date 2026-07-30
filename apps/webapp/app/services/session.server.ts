@@ -160,6 +160,12 @@ export async function requireUser(request: Request) {
  * Display only. The "view as user" toggle is cosmetic and must never widen or
  * narrow a real security boundary — authorization stays on `user.admin`, the
  * route builder's `authorization` block and the per-feature access checks.
+ *
+ * The rule: the toggle changes what is *shown*, never what is *permitted*. So
+ * call this from loaders and rendering only. Anything deciding what a request
+ * may do — an action, a service call that enforces something — stays on raw
+ * `user.admin || user.isImpersonating`, or the admin's own form submissions
+ * start failing the moment they flip the toggle on.
  */
 export function hasAdminDisplayAccess(user: {
   admin: boolean;

@@ -398,6 +398,7 @@ export function SideMenu({
   const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
   const isAdmin = useHasAdminAccess();
+  const isViewingAsUser = useIsViewingAsUser();
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
   const incidentStatus = useIncidentStatus();
@@ -1057,7 +1058,13 @@ export function SideMenu({
       style={initialStyleRef.current}
       className={cn(
         "relative h-full border-r bg-background-bright",
-        user.isImpersonating ? IMPERSONATION_ACCENT.border : "border-grid-bright"
+        // The accent is the loudest "you are not this user" tell, so "view as user" drops it too —
+        // the point of the mode is a dashboard that looks exactly like the user's. The account
+        // menu's "Stop impersonating" and the toggle itself stay on raw impersonation, so there is
+        // still a way back out (as does the ⌘⌥A shortcut in <GlobalShortcuts>).
+        user.isImpersonating && !isViewingAsUser
+          ? IMPERSONATION_ACCENT.border
+          : "border-grid-bright"
       )}
     >
       <ResizeHandle
