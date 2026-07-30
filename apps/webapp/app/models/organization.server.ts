@@ -10,7 +10,12 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import { customAlphabet } from "nanoid";
 import { generate } from "random-words";
 import slug from "slug";
-import { $replica, prisma, type PrismaClientOrTransaction } from "~/db.server";
+import {
+  $replica,
+  Prisma as PrismaNamespace,
+  prisma,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
@@ -222,6 +227,83 @@ export async function createEnvironment({
   await applyBillingLimitPauseAfterEnvCreate(environment);
 
   return environment;
+}
+
+/**
+ * A member's root development environment for a project, never a branch under
+ * it. Not keyed on slug, so a legacy root with another slug still matches.
+ */
+export function memberDevelopmentEnvironmentWhere({
+  projectId,
+  orgMemberId,
+}: {
+  projectId?: string | { in: string[] };
+  orgMemberId: string;
+}): Prisma.RuntimeEnvironmentWhereInput {
+  return {
+    ...(projectId === undefined ? {} : { projectId }),
+    orgMemberId,
+    type: "DEVELOPMENT",
+    parentEnvironmentId: null,
+  };
+}
+
+/**
+ * Create a member's development environment, reporting `created: false` when a
+ * concurrent writer already made it. Any other conflict still throws.
+ *
+ * Not transaction-aware: a unique violation aborts an enclosing transaction, so
+ * the read that confirms the concurrent row has to run outside one.
+ */
+export async function createDevelopmentEnvironmentForMember({
+  organization,
+  project,
+  member,
+  maximumConcurrencyLimit,
+}: {
+  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
+  project: Pick<Project, "id">;
+  member: OrgMember;
+  maximumConcurrencyLimit?: number;
+}): Promise<{ created: boolean }> {
+  try {
+    await createEnvironment({
+      organization,
+      project,
+      type: "DEVELOPMENT",
+      isBranchableEnvironment: true,
+      member,
+      maximumConcurrencyLimit,
+    });
+    return { created: true };
+  } catch (error) {
+    if (
+      !(error instanceof PrismaNamespace.PrismaClientKnownRequestError) ||
+      error.code !== "P2002"
+    ) {
+      throw error;
+    }
+
+    const existing = await prisma.runtimeEnvironment.findFirst({
+      where: memberDevelopmentEnvironmentWhere({
+        projectId: project.id,
+        orgMemberId: member.id,
+      }),
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw error;
+    }
+
+    logger.debug("Development environment already created by a concurrent writer", {
+      organizationId: organization.id,
+      projectId: project.id,
+      orgMemberId: member.id,
+    });
+
+    return { created: false };
+  }
 }
 
 function createShortcode() {
