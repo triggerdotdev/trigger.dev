@@ -20,7 +20,7 @@ import {
 import type { WatchSpec } from "@internal/dashboard-agent-contracts";
 import { postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, vi } from "vitest";
 import type { WatchCheckDeps, WatchRunRow } from "~/services/dashboardAgentWatchChecks";
@@ -84,17 +84,18 @@ const { env } = await import("~/env.server");
 
 // --- Fixtures ---------------------------------------------------------------
 
-const AGENT_MIGRATIONS = [
-  "0000_magenta_lilandra",
-  "0001_slimy_living_tribunal",
-  "0002_luxuriant_king_cobra",
-];
-
-/** Apply the dashboard-agent schema by replaying its Drizzle migration SQL. */
+/**
+ * Apply the dashboard-agent schema by replaying its Drizzle migration SQL —
+ * every migration in the folder, in order, so a new migration can never leave
+ * this suite running against a stale schema (a fixed list once did).
+ */
 async function applyAgentSchema(prisma: PrismaClient) {
   const folder = path.resolve(__dirname, "../../../internal-packages/dashboard-agent-db/drizzle");
-  for (const name of AGENT_MIGRATIONS) {
-    const sql = readFileSync(path.join(folder, `${name}.sql`), "utf8");
+  const migrations = readdirSync(folder)
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
+  for (const name of migrations) {
+    const sql = readFileSync(path.join(folder, name), "utf8");
     for (const statement of sql.split("--> statement-breakpoint")) {
       const trimmed = statement.trim();
       if (trimmed.length > 0) await prisma.$executeRawUnsafe(trimmed);
@@ -560,7 +561,11 @@ describe("the chat cascade and the list view", () => {
       const c = await create({ seeded, chatId: "chat_2" });
       expect(a.ok && b.ok && c.ok).toBe(true);
 
-      const byChat = await listActiveWatchesForChats(["chat_1", "chat_2", "chat_missing"]);
+      const byChat = await listActiveWatchesForChats({
+        chatIds: ["chat_1", "chat_2", "chat_missing"],
+        organizationId: seeded.organization.id,
+        userId: seeded.user.id,
+      });
       expect(byChat.chat_1).toHaveLength(2);
       expect(byChat.chat_2).toHaveLength(1);
       expect(byChat.chat_missing).toBeUndefined();
@@ -573,13 +578,23 @@ describe("the chat cascade and the list view", () => {
 
       // Terminal watches drop off the chips.
       await cancelWatchesForDeletedChat("chat_1");
-      expect((await listActiveWatchesForChats(["chat_1"])).chat_1).toBeUndefined();
+      expect(
+        (
+          await listActiveWatchesForChats({
+            chatIds: ["chat_1"],
+            organizationId: seeded.organization.id,
+            userId: seeded.user.id,
+          })
+        ).chat_1
+      ).toBeUndefined();
     }
   );
 
   postgresTest("returns nothing for an empty chat list", async ({ prisma, postgresContainer }) => {
     await boot(prisma, postgresContainer.getConnectionUri());
-    expect(await listActiveWatchesForChats([])).toEqual({});
+    expect(
+      await listActiveWatchesForChats({ chatIds: [], organizationId: "org_x", userId: "user_x" })
+    ).toEqual({});
   });
 });
 
