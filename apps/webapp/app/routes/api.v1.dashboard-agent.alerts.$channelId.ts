@@ -33,6 +33,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Not allowed", code: "forbidden_client" }, { status: 403 });
   }
   const userId = authentication.userActor.userId;
+  // The turn's environment scope — the authority for the chat's project below.
+  const environmentId = authentication.userActor.environmentId;
+  if (!environmentId) {
+    return json(
+      { error: "This chat has no environment context.", code: "invalid_target" },
+      { status: 400 }
+    );
+  }
 
   const parsedParams = ParamsSchema.safeParse(params);
   if (!parsedParams.success) return json({ error: "Invalid params" }, { status: 400 });
@@ -48,9 +56,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
   }
 
-  const context = await resolveAgentAlertContext({ userId, ...body });
+  const context = await resolveAgentAlertContext({
+    userId,
+    environmentId,
+    chatId: body.chatId,
+    claimedEnvironmentId: body.environmentId,
+    claimedProjectRef: body.projectRef,
+  });
   if (!context.ok) {
-    return json({ error: context.error, code: context.code }, { status: 404 });
+    return json(
+      { error: context.error, code: context.code },
+      { status: context.code === "environment_mismatch" ? 400 : 404 }
+    );
   }
 
   const result = await unsubscribeChannelFromWatchAlerts(parsedParams.data.channelId, {

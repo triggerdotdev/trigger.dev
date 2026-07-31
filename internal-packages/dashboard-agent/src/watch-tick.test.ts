@@ -17,11 +17,18 @@ import type { WatchWakeAction } from "./dashboard-agent";
  * a wake gets lost or sent twice.
  */
 
-const PAYLOAD: WatchTickPayload = {
-  watchId: "watch_1",
-  token: "watch_token",
-  apiOrigin: "http://localhost:3030",
-};
+/** The payload for the generation an invocation owns. */
+function payloadFor(tick: number): WatchTickPayload {
+  return {
+    watchId: "watch_1",
+    token: "watch_token",
+    apiOrigin: "http://localhost:3030",
+    tick,
+  };
+}
+
+/** The first generation, which the webapp schedules when it creates the watch. */
+const PAYLOAD = payloadFor(1);
 
 const NOW = new Date("2026-01-01T12:00:00.000Z");
 
@@ -56,17 +63,27 @@ function watchRow(overrides: Partial<Watch> = {}): Watch {
   } as Watch;
 }
 
-// A store over one row, guarded exactly like the real queries: the condition
-// transition only applies to an `active` row, and the delivery mark only to a
-// `pending` delivery.
+// A store over one row, guarded exactly like the real queries: the generation
+// claim only lands on an `active` row still on the previous generation, the
+// condition transition only applies to an `active` row, and the delivery mark only
+// to a `pending` delivery.
 function fakeStore(row: Watch) {
   const calls = {
+    claims: [] as unknown[],
     transition: [] as unknown[],
     delivered: [] as unknown[],
-    ticks: [] as unknown[],
+    checks: [] as unknown[],
   };
   const store: WatchTickStore = {
     getWatch: async () => ({ ...row }),
+    claimWatchTick: async (params) => {
+      calls.claims.push(params);
+      if (row.status !== "active") return null;
+      if (row.tickCount !== params.generation - 1) return null;
+      row.tickCount = params.generation;
+      row.lastCheckedAt = NOW;
+      return { ...row };
+    },
     transitionWatchCondition: async (params) => {
       calls.transition.push(params);
       if (row.status !== "active") return null;
@@ -84,10 +101,9 @@ function fakeStore(row: Watch) {
       row.deliveredAt = NOW;
       return { ...row };
     },
-    recordWatchTick: async (params) => {
-      calls.ticks.push(params);
+    recordWatchCheck: async (params) => {
+      calls.checks.push(params);
       if (row.status !== "active") return null;
-      row.tickCount = params.tickCount ?? row.tickCount + 1;
       row.lastCheckedAt = NOW;
       if (params.lastResult !== undefined) row.lastResult = params.lastResult;
       return { tickCount: row.tickCount, lastCheckedAt: row.lastCheckedAt };
@@ -171,15 +187,18 @@ function deps(parts: {
 }
 
 describe("runWatchTick", () => {
-  it("pending: records the tick and reschedules on the spec's cadence, keyed on the tick number", async () => {
+  it("pending: claims its generation, records the check, and reschedules the next generation", async () => {
     const { store, calls, row } = fakeStore(watchRow({ tickCount: 3 }));
     const { fetch, calls: fetchCalls } = fakeFetch(() => ({ body: { result: "pending" } }));
     const { appends, deliver } = fakeDeliver();
     const { triggers, reschedule } = fakeReschedule();
 
-    const result = await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
+    const result = await runWatchTick(payloadFor(4), deps({ store, fetch, deliver, reschedule }));
 
     expect(result).toEqual({ outcome: "pending", tickCount: 4 });
+    // The counter moved exactly once, in the claim.
+    expect(calls.claims).toEqual([{ id: "watch_1", generation: 4 }]);
+    expect(row.tickCount).toBe(4);
     // The check went to the watch's own endpoint with the watch token, and was
     // NOT flagged final (the watch has an hour left).
     expect(fetchCalls[0]?.url).toBe(
@@ -190,11 +209,14 @@ describe("runWatchTick", () => {
     ).toBe("Bearer watch_token");
     expect(JSON.parse(String(fetchCalls[0]?.init?.body))).toEqual({});
 
-    // The counter is set explicitly to the value the key was built from, so a
-    // retried invocation can't fork the tick chain.
-    expect(calls.ticks).toEqual([{ id: "watch_1", tickCount: 4, lastResult: {} }]);
+    // The check result is recorded without touching the counter, and the successor
+    // carries the next generation in both the payload and the key.
+    expect(calls.checks).toEqual([{ id: "watch_1", lastResult: {} }]);
     expect(triggers).toEqual([
-      { payload: PAYLOAD, options: { delay: "1m", idempotencyKey: "watch:watch_1:tick:4" } },
+      {
+        payload: payloadFor(5),
+        options: { delay: "1m", idempotencyKey: "watch:watch_1:tick:5" },
+      },
     ]);
 
     // Nothing terminal, nothing delivered.
@@ -266,7 +288,7 @@ describe("runWatchTick", () => {
     const { notified, notifyFired } = fakeNotifyFired();
 
     const result = await runWatchTick(
-      PAYLOAD,
+      payloadFor(4),
       deps({
         store,
         fetch,
@@ -294,7 +316,7 @@ describe("runWatchTick", () => {
     const { appends, deliver } = fakeDeliver();
     const { reschedule } = fakeReschedule();
 
-    const result = await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
+    const result = await runWatchTick(payloadFor(2), deps({ store, fetch, deliver, reschedule }));
 
     expect(result.outcome).toBe("fired");
     expect(row.status).toBe("fired");
@@ -348,18 +370,20 @@ describe("runWatchTick", () => {
     const { appends, deliver } = fakeDeliver();
     const { triggers, reschedule } = fakeReschedule();
 
-    const result = await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
+    const result = await runWatchTick(payloadFor(3), deps({ store, fetch, deliver, reschedule }));
 
     expect(result).toEqual({ outcome: "unavailable", tickCount: 3 });
     expect(row.status).toBe("active");
     expect(calls.transition).toHaveLength(0);
     expect(appends).toHaveLength(0);
     // Still watching, and the last good observation is kept.
-    expect(triggers[0]?.options.idempotencyKey).toBe("watch:watch_1:tick:3");
+    expect(triggers[0]?.options.idempotencyKey).toBe("watch:watch_1:tick:4");
     expect(row.lastResult).toMatchObject({ checkFailed: true, previous: { pending: 12 } });
   });
 
-  it("access_revoked: exits quietly, writing nothing", async () => {
+  it("access_revoked: exits without resolving, delivering, or rescheduling", async () => {
+    // The endpoint cancelled the row itself before answering, so there is nothing
+    // left for the tick to transition — and a cancellation is never narrated.
     const { store, calls, row } = fakeStore(watchRow());
     const { fetch } = fakeFetch(() => ({
       status: 403,
@@ -371,12 +395,54 @@ describe("runWatchTick", () => {
     const result = await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));
 
     expect(result).toEqual({ outcome: "revoked" });
-    expect(row.status).toBe("active");
-    expect(row.tickCount).toBe(0);
     expect(calls.transition).toHaveLength(0);
-    expect(calls.ticks).toHaveLength(0);
+    expect(calls.checks).toHaveLength(0);
     expect(appends).toHaveLength(0);
     expect(triggers).toHaveLength(0);
+    // The chain stops here: the generation was claimed, and nothing follows it.
+    expect(row.tickCount).toBe(1);
+  });
+
+  it("an unrecognized 403 is a failed check, not a silent exit: it reschedules", async () => {
+    // Anything but access_revoked/cancelled/not_found leaves the row active, so it
+    // must keep ticking (and hit its own deadline) rather than be abandoned.
+    const { store, calls, row } = fakeStore(watchRow({ tickCount: 1 }));
+    const { fetch } = fakeFetch(() => ({ status: 403, body: { error: "nope" } }));
+    const { appends, deliver } = fakeDeliver();
+    const { triggers, reschedule } = fakeReschedule();
+
+    const result = await runWatchTick(payloadFor(2), deps({ store, fetch, deliver, reschedule }));
+
+    expect(result).toEqual({ outcome: "unavailable", tickCount: 2 });
+    expect(row.status).toBe("active");
+    expect(calls.transition).toHaveLength(0);
+    expect(appends).toHaveLength(0);
+    expect(triggers[0]?.options.idempotencyKey).toBe("watch:watch_1:tick:3");
+    expect(row.lastResult).toMatchObject({ checkFailed: true });
+  });
+
+  it("a stale invocation claims nothing: the accepted generation is the only chain", async () => {
+    const { store, calls, row } = fakeStore(watchRow({ tickCount: 3 }));
+    const { fetch, calls: fetchCalls } = fakeFetch(() => ({ body: { result: "pending" } }));
+    const { appends, deliver } = fakeDeliver();
+    const { triggers, reschedule } = fakeReschedule();
+    const d = deps({ store, fetch, deliver, reschedule });
+
+    // Generation 4 is accepted and schedules 5.
+    expect(await runWatchTick(payloadFor(4), d)).toEqual({ outcome: "pending", tickCount: 4 });
+
+    // The same invocation is retried (it crashed after triggering its successor).
+    const retry = await runWatchTick(payloadFor(4), d);
+
+    expect(retry).toEqual({ outcome: "stale" });
+    // No second check, no second record, no second successor.
+    expect(fetchCalls).toHaveLength(1);
+    expect(calls.checks).toHaveLength(1);
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0]?.options.idempotencyKey).toBe("watch:watch_1:tick:5");
+    expect(calls.transition).toHaveLength(0);
+    expect(appends).toHaveLength(0);
+    expect(row.tickCount).toBe(4);
   });
 
   it("expiry with an unavailable final check: the watch still expires, and the facts say it couldn't be verified", async () => {
@@ -396,7 +462,7 @@ describe("runWatchTick", () => {
 
     // Past expiresAt (13:00) — the row is the authority, so this is the final check.
     const result = await runWatchTick(
-      PAYLOAD,
+      payloadFor(31),
       deps({ store, fetch, deliver, reschedule, now: new Date("2026-01-01T13:00:01.000Z") })
     );
 
@@ -423,7 +489,7 @@ describe("runWatchTick", () => {
     const { triggers, reschedule } = fakeReschedule();
 
     const result = await runWatchTick(
-      PAYLOAD,
+      payloadFor(13),
       deps({ store, fetch, deliver, reschedule, now: new Date("2026-01-01T13:30:00.000Z") })
     );
 
@@ -462,9 +528,10 @@ describe("runWatchTick", () => {
     const { reschedule } = fakeReschedule();
     const store: WatchTickStore = {
       getWatch: async () => null,
+      claimWatchTick: async () => null,
       transitionWatchCondition: async () => null,
       markWatchDelivered: async () => null,
-      recordWatchTick: async () => null,
+      recordWatchCheck: async () => null,
     };
 
     const result = await runWatchTick(PAYLOAD, deps({ store, fetch, deliver, reschedule }));

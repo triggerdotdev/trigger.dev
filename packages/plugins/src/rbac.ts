@@ -283,6 +283,12 @@ export type UserActorClaims = {
   userId: string;
   client?: string;
   sessionId?: string;
+  // Optional environment scope — the canonical `RuntimeEnvironment.id` the token
+  // was minted for. Present when the minter knows which environment the caller
+  // is acting in, so a route that binds something to one environment can take it
+  // from the token instead of trusting the request body. Optional: the other UAT
+  // flows are environment-agnostic.
+  environmentId?: string;
   // Optional scope cap (e.g. `["read:runs"]`) — ceilings the token below the
   // user's role. Absent today; the auth path is already cap-ready.
   cap?: string[];
@@ -298,6 +304,7 @@ export async function signUserActorToken(
     userId: string;
     client: string;
     sessionId?: string;
+    environmentId?: string;
     cap?: string[];
     expirationTime?: string | number | Date;
   }
@@ -307,7 +314,13 @@ export async function signUserActorToken(
     payload: {
       kind: USER_ACTOR_KIND,
       sub: opts.userId,
-      act: { client: opts.client, ...(opts.sessionId ? { sessionId: opts.sessionId } : {}) },
+      // One claim for everything about the acting client, so the wire format
+      // stays stable as scopes are added.
+      act: {
+        client: opts.client,
+        ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
+        ...(opts.environmentId ? { environmentId: opts.environmentId } : {}),
+      },
       ...(opts.cap ? { cap: opts.cap } : {}),
     },
     expirationTime: opts.expirationTime ?? "1h",
@@ -328,11 +341,14 @@ export async function verifyUserActorToken(
   const payload = result.payload;
   if (payload.kind !== USER_ACTOR_KIND || typeof payload.sub !== "string") return;
 
-  const act = payload.act as { client?: string; sessionId?: string } | undefined;
+  const act = payload.act as
+    | { client?: string; sessionId?: string; environmentId?: string }
+    | undefined;
   return {
     userId: payload.sub,
     client: act?.client,
     sessionId: act?.sessionId,
+    environmentId: act?.environmentId,
     cap: Array.isArray(payload.cap) ? (payload.cap as string[]) : undefined,
   };
 }

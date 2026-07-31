@@ -1,11 +1,14 @@
 /**
- * The context resolution the agent's alert endpoints share: from a chat id to an
- * authorized environment.
+ * The context resolution the agent's alert endpoints share: from the turn's
+ * environment scope + a chat id to an authorized environment.
  *
- * Identical order of authority to `api.v1.dashboard-agent.watches.ts` — the token
- * names a user, the chat must be a live chat owned by that user, and the
- * environment (from the caller or the chat's stored context) is re-authorized
- * through the same path a background check uses. Nothing here trusts an id.
+ * Identical order of authority to `api.v1.dashboard-agent.watches.ts` — the
+ * environment comes from the token the dashboard minted for the current turn, the
+ * chat must be a live chat owned by that user in that environment's org, and the
+ * environment is re-authorized through the same path a background check uses. A
+ * client-supplied `environmentId`/`projectRef` is only ever checked against the
+ * token's scope, never used in its place, and the chat's stored context — a
+ * snapshot from whenever the chat started — is not consulted at all.
  *
  * Separate module rather than a helper on `dashboardAgentWatchAlerts.server.ts` so
  * the alert service and the watches service don't import each other.
@@ -17,7 +20,7 @@ import {
   resolveChatWatchContext,
 } from "~/services/dashboardAgentWatches.server";
 
-export type AgentAlertContextError = "chat_not_found" | "invalid_target";
+export type AgentAlertContextError = "chat_not_found" | "invalid_target" | "environment_mismatch";
 
 export type AgentAlertContext =
   | { ok: true; environment: AuthenticatedEnvironment }
@@ -26,34 +29,39 @@ export type AgentAlertContext =
 export async function resolveAgentAlertContext(params: {
   userId: string;
   chatId: string;
-  environmentId?: string;
-  projectRef?: string;
+  /** The turn's environment scope, off the user-actor token. The authority here. */
+  environmentId: string;
+  /** Optional echoes from the request body. Checked, never trusted. */
+  claimedEnvironmentId?: string;
+  claimedProjectRef?: string;
 }): Promise<AgentAlertContext> {
+  if (params.claimedEnvironmentId && params.claimedEnvironmentId !== params.environmentId) {
+    return {
+      ok: false,
+      code: "environment_mismatch",
+      error: "That environment isn't the one this chat is open in.",
+    };
+  }
+
   const chat = await resolveChatWatchContext({ chatId: params.chatId, userId: params.userId });
   if (!chat) {
     return { ok: false, code: "chat_not_found", error: "Chat not found" };
   }
 
-  const environmentId = params.environmentId ?? chat.environmentId;
-  if (!environmentId) {
-    return {
-      ok: false,
-      code: "invalid_target",
-      error: "This chat has no environment context.",
-    };
-  }
-
   const environment = await authorizeWatchEnvironmentById({
     userId: params.userId,
-    environmentId,
+    environmentId: params.environmentId,
   });
   if (!environment || environment.organizationId !== chat.organizationId) {
     return { ok: false, code: "invalid_target", error: "Environment not found" };
   }
 
-  const projectRef = params.projectRef ?? chat.projectRef;
-  if (projectRef && environment.project.externalRef !== projectRef) {
-    return { ok: false, code: "invalid_target", error: "Environment not found" };
+  if (params.claimedProjectRef && environment.project.externalRef !== params.claimedProjectRef) {
+    return {
+      ok: false,
+      code: "environment_mismatch",
+      error: "That project isn't the one this chat is open in.",
+    };
   }
 
   return { ok: true, environment };

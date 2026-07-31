@@ -1,5 +1,5 @@
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
-import { cancelWatch, getWatch, recordWatchTick } from "@internal/dashboard-agent-db";
+import { cancelWatch, getWatch, recordWatchCheck } from "@internal/dashboard-agent-db";
 import { z } from "zod";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
@@ -26,10 +26,12 @@ import {
  *  3. the USER is re-authorized against that snapshot on EVERY call, and a revoked
  *     user gets the watch cancelled here, before any environment data is read.
  *
- * The route does NOT transition the watch to fired/expired. It records the tick
- * (which is also how the row keeps `lastResult` for the notification) and returns
- * the verdict; the watcher task owns the fire/expire transition and delivery, so
- * exactly one component decides when the user gets told.
+ * The route does NOT transition the watch to fired/expired, and does NOT advance
+ * the tick counter. It records what the check observed (`lastCheckedAt` plus the
+ * `lastResult` the notification reads) and returns the verdict; the watcher task
+ * owns the fire/expire transition and the delivery, so exactly one component
+ * decides when the user gets told. The tick counter likewise has exactly one
+ * writer — the task's generation claim — so nothing here can fork the tick chain.
  */
 
 const ParamsSchema = z.object({ watchId: z.string().min(1) });
@@ -142,10 +144,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
     (error) => logger.error("Dashboard agent watch check failed", { watchId, error })
   );
 
-  // Record the tick even on the final evaluation: it stamps `lastCheckedAt` and
+  // Record the check even on the final evaluation: it stamps `lastCheckedAt` and
   // parks `lastResult` on the row, which is the payload the notification reads.
   // Guarded on `active`, so a concurrent fire/expire simply wins and this no-ops.
-  await recordWatchTick(dashboardAgentDb, {
+  // Never touches `tickCount` — see the note above.
+  await recordWatchCheck(dashboardAgentDb, {
     id: watchId,
     lastResult: { result: outcome.result, facts: outcome.facts, final: body.final === true },
   });

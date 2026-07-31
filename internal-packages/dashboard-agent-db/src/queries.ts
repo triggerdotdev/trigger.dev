@@ -25,6 +25,14 @@ import {
 /** Placeholder title for a chat with no generated or user-set title yet. */
 export const DEFAULT_CHAT_TITLE = "New chat";
 
+/**
+ * The db handle or an already-open transaction, for the queries that are also
+ * called as one step of a larger atomic write.
+ */
+type DashboardAgentDbOrTx =
+  | DashboardAgentDb
+  | Parameters<Parameters<DashboardAgentDb["transaction"]>[0]>[0];
+
 export interface ChatListItem {
   id: string;
   title: string;
@@ -250,15 +258,34 @@ export async function markChatRead(
     .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)));
 }
 
-/** #5 Soft-delete. */
+/**
+ * #5 Soft-delete a chat AND end its watches, in one transaction.
+ *
+ * The two halves must not be separable: a deleted chat has nowhere to deliver a
+ * watch outcome, so a crash between them would leave live watches ticking against
+ * a conversation the user can no longer see. Owner-scoped, so a chatId the caller
+ * doesn't own deletes nothing and cancels nothing.
+ */
 export async function softDeleteChat(
   db: DashboardAgentDb,
   params: { chatId: string; userId: string }
-): Promise<void> {
-  await db
-    .update(chats)
-    .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
-    .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)));
+): Promise<{ deleted: boolean; cancelledWatches: Watch[] }> {
+  return db.transaction(async (tx) => {
+    const deleted = await tx
+      .update(chats)
+      .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)))
+      .returning({ id: chats.id });
+
+    if (deleted.length === 0) return { deleted: false, cancelledWatches: [] };
+
+    const cancelledWatches = await cancelActiveWatchesForChat(tx, {
+      chatId: params.chatId,
+      reason: "chat_deleted",
+    });
+
+    return { deleted: true, cancelledWatches };
+  });
 }
 
 /**
@@ -491,6 +518,12 @@ export type CreateWatchResult =
 /** Postgres `unique_violation`. */
 const PG_UNIQUE_VIOLATION = "23505";
 
+/**
+ * Advisory-lock namespace for per-chat watch creation — ASCII `watc`, so the
+ * (namespace, hashtext(chatId)) pair can't collide with another lock's key space.
+ */
+const WATCH_CREATE_LOCK_NAMESPACE = 0x77617463;
+
 function isUniqueViolation(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -512,10 +545,10 @@ function isUniqueViolation(error: unknown): boolean {
  *   watch's id in the common case; a concurrent double-submit slips past it (both
  *   transactions can read no duplicate under READ COMMITTED) and is caught as a
  *   unique violation on insert.
- * - **The ≤`MAX_ACTIVE_WATCHES_PER_CHAT` limit** is best-effort: it's a
- *   read-then-insert, so two simultaneous creates can briefly land a 4th watch.
- *   That's acceptable — watches expire and the next create is rejected, so it
- *   self-corrects. Don't rely on this count being a hard cap.
+ * - **The ≤`MAX_ACTIVE_WATCHES_PER_CHAT` limit** is a hard cap: the count and the
+ *   insert are one transaction, serialized per chat by a transaction-scoped
+ *   advisory lock, so concurrent creates queue behind each other and the one that
+ *   would be the 4th is rejected instead of landing.
  */
 export async function createWatch(
   db: DashboardAgentDb,
@@ -533,6 +566,13 @@ export async function createWatch(
 ): Promise<CreateWatchResult> {
   try {
     return await db.transaction(async (tx) => {
+      // Serialize creates for this chat, so count-then-insert is atomic against a
+      // concurrent create. Held to the end of the transaction; the namespace keeps
+      // it clear of any other advisory lock in the same database.
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(${WATCH_CREATE_LOCK_NAMESPACE}, hashtext(${params.chatId}))`
+      );
+
       const active = await tx
         .select({
           id: watches.id,
@@ -642,6 +682,9 @@ export interface ActiveWatchSummary {
   note: string;
   checkEveryMinutes: number;
   expiresAt: Date;
+  /** The last check's reason — lets an expired banner tell "can no longer
+   *  happen" (terminal_unsatisfied) apart from a plain timeout. */
+  endedReason: string | null;
 }
 
 /**
@@ -670,6 +713,7 @@ export async function listActiveWatchesForChats(
       status: watches.status,
       spec: watches.spec,
       expiresAt: watches.expiresAt,
+      lastResult: watches.lastResult,
     })
     .from(watches)
     .innerJoin(chats, eq(chats.id, watches.chatId))
@@ -695,6 +739,7 @@ export async function listActiveWatchesForChats(
       note: row.spec.note,
       checkEveryMinutes: row.spec.checkEveryMinutes,
       expiresAt: row.expiresAt,
+      endedReason: typeof row.lastResult?.reason === "string" ? row.lastResult.reason : null,
     });
   }
   return byChat;
@@ -724,6 +769,10 @@ export async function countUnreadWatchWakes(
     .where(
       and(
         inArray(watches.status, ["fired", "expired"]),
+        // Only a DELIVERED wake is a wake the user can open: between the terminal
+        // transition and the append to the chat there is no message to read yet,
+        // so signalling it would point at an empty conversation.
+        eq(watches.deliveryStatus, "delivered"),
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
         isNull(chats.deletedAt),
@@ -774,6 +823,10 @@ export async function listUnreadWatchWakes(
     .where(
       and(
         inArray(watches.status, ["fired", "expired"]),
+        // Only a DELIVERED wake is a wake the user can open: between the terminal
+        // transition and the append to the chat there is no message to read yet,
+        // so signalling it would point at an empty conversation.
+        eq(watches.deliveryStatus, "delivered"),
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
         isNull(chats.deletedAt),
@@ -813,6 +866,10 @@ export async function listChatIdsWithUnreadWakes(
     .where(
       and(
         inArray(watches.status, ["fired", "expired"]),
+        // Only a DELIVERED wake is a wake the user can open: between the terminal
+        // transition and the append to the chat there is no message to read yet,
+        // so signalling it would point at an empty conversation.
+        eq(watches.deliveryStatus, "delivered"),
         eq(chats.organizationId, params.organizationId),
         eq(chats.userId, params.userId),
         isNull(chats.deletedAt),
@@ -822,32 +879,27 @@ export async function listChatIdsWithUnreadWakes(
   return new Set(rows.map((row) => row.chatId));
 }
 
-/** A chat's org plus the project/environment context stored on it. */
+/** The tenancy a chat belongs to. */
 export interface ChatWatchContext {
   organizationId: string;
-  projectRef?: string;
-  environmentId?: string;
 }
 
 /**
- * #13 Ownership check AND context read in one query: a live chat with this id
- * owned by this user, plus the project/environment its turns ran in.
+ * #13 Ownership check for a chat, returning the org it belongs to: a live chat
+ * with this id owned by this user.
  *
- * The agent's `schedule_watch` tool posts only `{ spec, chatId }` — its delegated
- * token carries a userId and nothing else — so the environment comes from the
- * chat's own stored context rather than from the request. It is still only a
- * CLAIM: the caller re-authorizes the resolved environment for this user before
- * anything is created, so the worst a stale or wrong context can do is fail.
- *
- * `metadata.context` is the clientData snapshot the panel stored when the chat was
- * created.
+ * Deliberately does NOT return a project/environment. The chat's stored
+ * `metadata.context` is a snapshot from chat creation, and a watch must be bound
+ * to the environment of the turn that asked for it — which comes from the
+ * authenticated request context, not from the row. The org is returned because it
+ * is immutable for a chat and is the tenancy floor its watches can't leave.
  */
 export async function getChatWatchContext(
   db: DashboardAgentDb,
   params: { chatId: string; userId: string }
 ): Promise<ChatWatchContext | null> {
   const rows = await db
-    .select({ organizationId: chats.organizationId, metadata: chats.metadata })
+    .select({ organizationId: chats.organizationId })
     .from(chats)
     .where(
       and(eq(chats.id, params.chatId), eq(chats.userId, params.userId), isNull(chats.deletedAt))
@@ -857,12 +909,7 @@ export async function getChatWatchContext(
   const chat = rows[0];
   if (!chat) return null;
 
-  const context = (chat.metadata as { context?: Record<string, unknown> } | null)?.context;
-  const projectRef = typeof context?.projectRef === "string" ? context.projectRef : undefined;
-  const environmentId =
-    typeof context?.environmentId === "string" ? context.environmentId : undefined;
-
-  return { organizationId: chat.organizationId, projectRef, environmentId };
+  return { organizationId: chat.organizationId };
 }
 
 /**
@@ -920,7 +967,7 @@ export async function cancelWatch(
  * access to the project the watches were created against.
  */
 export async function cancelActiveWatchesForChat(
-  db: DashboardAgentDb,
+  db: DashboardAgentDbOrTx,
   params: { chatId: string; reason: WatchCancelReason }
 ): Promise<Watch[]> {
   return db
@@ -952,18 +999,49 @@ export async function markWatchDelivered(
 }
 
 /**
- * #13 A check ran and the condition didn't resolve. Increments `tickCount` in the
- * same statement and returns it, so the caller can build the next check's
- * idempotency key (`watch:{id}:tick:{n}`) from a value no concurrent tick shares.
- * Guarded on `active` — a terminal watch is never ticked again.
+ * #13 Claim a tick GENERATION for a watch — the one and only writer of
+ * `tickCount`.
+ *
+ * A tick invocation carries its generation in its payload and claims it here:
+ * the update only lands when the row is still on the previous generation, so the
+ * chain advances by exactly one per generation. A retried invocation whose
+ * generation was already claimed (it crashed after scheduling the next one) gets
+ * `null` and knows it is stale — which is what keeps a retry from forking the
+ * chain into two parallel ones.
+ *
+ * Guarded on `active` too: a terminal watch is never ticked again.
  */
-export async function recordWatchTick(
+export async function claimWatchTick(
+  db: DashboardAgentDb,
+  params: { id: string; generation: number }
+): Promise<Watch | null> {
+  const rows = await db
+    .update(watches)
+    .set({ tickCount: params.generation, lastCheckedAt: sql`now()` })
+    .where(
+      and(
+        eq(watches.id, params.id),
+        eq(watches.status, "active"),
+        eq(watches.tickCount, params.generation - 1)
+      )
+    )
+    .returning();
+  return rows[0] ?? null;
+}
+
+/**
+ * #13 Record what a check observed: `lastCheckedAt` plus the `lastResult` the
+ * notification reads. Deliberately does NOT touch `tickCount` — the generation is
+ * claimed by {@link claimWatchTick} alone, so the counter has a single writer and
+ * this can be called by both the check endpoint and the tick without either of
+ * them advancing the chain. Guarded on `active`, so a concurrent fire/expire wins
+ * and this no-ops.
+ */
+export async function recordWatchCheck(
   db: DashboardAgentDb,
   params: {
     id: string;
     lastResult?: Record<string, unknown> | null;
-    /** Set the counter explicitly; by default it's incremented by one. */
-    tickCount?: number;
     /** Override the check timestamp; defaults to `now()`. */
     lastCheckedAt?: Date;
   }
@@ -972,7 +1050,6 @@ export async function recordWatchTick(
     .update(watches)
     .set({
       lastCheckedAt: params.lastCheckedAt ?? sql`now()`,
-      tickCount: params.tickCount ?? sql`${watches.tickCount} + 1`,
       ...(params.lastResult !== undefined ? { lastResult: params.lastResult } : {}),
     })
     .where(and(eq(watches.id, params.id), eq(watches.status, "active")))

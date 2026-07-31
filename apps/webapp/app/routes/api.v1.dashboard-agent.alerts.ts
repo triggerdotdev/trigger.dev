@@ -5,7 +5,10 @@ import {
   ProjectAlertEmailProperties,
   ProjectAlertSlackProperties,
 } from "~/models/projectAlert.server";
-import { resolveAgentAlertContext } from "~/services/dashboardAgentAlertContext.server";
+import {
+  resolveAgentAlertContext,
+  type AgentAlertContextError,
+} from "~/services/dashboardAgentAlertContext.server";
 import {
   canUseDashboardAgentEmailAlerts,
   DASHBOARD_AGENT_WATCH_ALERT_TYPE,
@@ -21,7 +24,8 @@ import { CreateAlertChannelService } from "~/v3/services/alerts/createAlertChann
  *
  * Accepts ONLY the dashboard agent's delegated user-actor token, like the watches
  * endpoint: POST creates something that later mails a person, so the only caller
- * it trusts is the agent acting for the signed-in user in a live chat.
+ * it trusts is the agent acting for the signed-in user in a live chat. The
+ * environment is the token's, not the body's (see `resolveAgentAlertContext`).
  *
  * The plan/flag gate is enforced here AND at delivery, and its denial carries a
  * machine-readable `reason` so the agent can say why instead of guessing.
@@ -42,18 +46,38 @@ const CreateBodySchema = z.object({
   projectRef: z.string().min(1).optional(),
 });
 
-async function authenticate(request: Request) {
+/**
+ * The preamble both handlers share: a dashboard-agent token, plus the environment
+ * scope the dashboard minted it with — which is the authority for everything here,
+ * so a token without one can't be used at all.
+ */
+async function authenticate(
+  request: Request
+): Promise<{ userId: string; environmentId: string } | { error: Response }> {
   const authentication = await authenticateUatOrApiRequest(request);
-  if (!authentication?.userActor) return undefined;
-  if (authentication.userActor.client !== "dashboard-agent") return undefined;
-  return authentication.userActor.userId;
+  const actor = authentication?.userActor;
+  if (!actor || actor.client !== "dashboard-agent") {
+    return { error: json({ error: "Invalid or missing access token" }, { status: 401 }) };
+  }
+  if (!actor.environmentId) {
+    return {
+      error: json(
+        { error: "This chat has no environment context.", code: "invalid_target" },
+        { status: 400 }
+      ),
+    };
+  }
+  return { userId: actor.userId, environmentId: actor.environmentId };
+}
+
+/** Context failures: a mismatched claim is the caller's error, the rest are 404s. */
+function contextStatus(code: AgentAlertContextError) {
+  return code === "environment_mismatch" ? 400 : 404;
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const userId = await authenticate(request);
-  if (!userId) {
-    return json({ error: "Invalid or missing access token" }, { status: 401 });
-  }
+  const auth = await authenticate(request);
+  if ("error" in auth) return auth.error;
 
   const query = ListQuerySchema.safeParse(
     Object.fromEntries(new URL(request.url).searchParams.entries())
@@ -62,9 +86,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return json({ error: "Invalid request", code: "invalid_request" }, { status: 400 });
   }
 
-  const context = await resolveAgentAlertContext({ userId, ...query.data });
+  const context = await resolveAgentAlertContext({
+    userId: auth.userId,
+    environmentId: auth.environmentId,
+    chatId: query.data.chatId,
+    claimedEnvironmentId: query.data.environmentId,
+    claimedProjectRef: query.data.projectRef,
+  });
   if (!context.ok) {
-    return json({ error: context.error, code: context.code }, { status: 404 });
+    return json(
+      { error: context.error, code: context.code },
+      { status: contextStatus(context.code) }
+    );
   }
 
   const channels = await $replica.projectAlertChannel.findMany({
@@ -92,10 +125,9 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const userId = await authenticate(request);
-  if (!userId) {
-    return json({ error: "Invalid or missing access token" }, { status: 401 });
-  }
+  const auth = await authenticate(request);
+  if ("error" in auth) return auth.error;
+  const { userId } = auth;
 
   let body: z.infer<typeof CreateBodySchema>;
   try {
@@ -110,12 +142,16 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const context = await resolveAgentAlertContext({
     userId,
+    environmentId: auth.environmentId,
     chatId: body.chatId,
-    environmentId: body.environmentId,
-    projectRef: body.projectRef,
+    claimedEnvironmentId: body.environmentId,
+    claimedProjectRef: body.projectRef,
   });
   if (!context.ok) {
-    return json({ error: context.error, code: context.code }, { status: 404 });
+    return json(
+      { error: context.error, code: context.code },
+      { status: contextStatus(context.code) }
+    );
   }
   const { environment } = context;
 

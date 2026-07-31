@@ -26,7 +26,20 @@ export type WakeWatch = {
   kind: string;
   note: string;
   identity: string;
+  /**
+   * Why the watch ended, from its last result — `terminal_unsatisfied` when the
+   * condition became impossible (a cancelled run, a deleted queue). Absent when
+   * the host doesn't carry it, and the banner falls back to the plain expiry.
+   */
+  endedReason?: string | null;
 };
+
+/**
+ * A watch that expired because its condition can never happen now. That IS an
+ * answer, so it gets its own headline instead of "no answer" — the watcher writes
+ * this reason when a check comes back `terminal_unsatisfied`.
+ */
+const TERMINAL_UNSATISFIED = "terminal_unsatisfied";
 
 export type WakeRef = { watchId: string; outcome: WakeOutcome };
 
@@ -62,8 +75,17 @@ function toneFor(outcome: WakeOutcome, kind: string | undefined): AgentTone {
   return "neutral";
 }
 
-function headlineFor(tone: AgentTone, outcome: WakeOutcome): string {
-  if (outcome === "expired") return "Watch expired — no answer";
+/** The banner's headline. Exported for the tests; the component owns the tone. */
+export function wakeHeadline(
+  outcome: WakeOutcome,
+  watch: Pick<WakeWatch, "endedReason"> | undefined,
+  tone: AgentTone
+): string {
+  if (outcome === "expired") {
+    return watch?.endedReason === TERMINAL_UNSATISFIED
+      ? "Watch ended — the condition can no longer happen"
+      : "Watch expired — no answer";
+  }
   switch (tone) {
     case "success":
       return "Watch update — all clear";
@@ -113,7 +135,7 @@ export function WakeBanner({
     >
       <Icon className={cn("mt-0.5 size-4 shrink-0", TONE_ICON_COLOR[tone])} />
       <div className="min-w-0">
-        <p className="text-sm font-medium text-text-bright">{headlineFor(tone, outcome)}</p>
+        <p className="text-sm font-medium text-text-bright">{wakeHeadline(outcome, watch, tone)}</p>
         <p className="truncate text-xs text-text-dimmed">{subline(watch)}</p>
       </div>
     </div>

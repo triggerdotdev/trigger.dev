@@ -7,7 +7,6 @@ import {
 import { type ProjectAlertChannel } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { subtle } from "crypto";
-import { nanoid } from "nanoid";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import {
@@ -29,6 +28,7 @@ import { sendAlertEmail } from "~/services/email.server";
 import { logger } from "~/services/logger.server";
 import { decryptSecret } from "~/services/secrets/secretStore.server";
 import { v3RunsPath } from "~/utils/pathBuilder";
+import { alertsWorker } from "~/v3/alertsWorker.server";
 import { safeWebhookFetch } from "./safeWebhookFetch.server";
 
 /**
@@ -37,11 +37,13 @@ import { safeWebhookFetch } from "./safeWebhookFetch.server";
  * Payload-carried, like the error-group alert: no `ProjectAlert` row. A watch is
  * already a durable row in the dashboard-agent database with its own delivery
  * state, so a second row tracking the same event would only be a thing to keep in
- * sync. The job id (`watch-alert:{watchId}`) is the dedupe.
+ * sync. The job ids are the dedupe.
  *
- * One job fans out over every matching channel, so a partial failure retries the
- * whole watch — acceptable because the alert is factual and idempotent to receive
- * twice, and a per-channel job would need a second dedupe key anyway.
+ * Two steps, as with the error-group path: a fan-out (`watch-alert:{watchId}`,
+ * this payload) resolves the environment, the gate and the matching channels, then
+ * enqueues one delivery job per channel (`watch-alert:{watchId}:channel:{channelId}`).
+ * A delivery job sends exactly one channel, so a webhook failing can only ever
+ * re-send that webhook — never the email and Slack that already went out.
  */
 export type DashboardAgentWatchAlertPayload = {
   watchId: string;
@@ -54,6 +56,11 @@ export type DashboardAgentWatchAlertPayload = {
   note: string;
   firedAt: string;
   facts: Record<string, unknown>;
+};
+
+/** One channel's delivery: the fan-out payload plus the channel it targets. */
+export type DashboardAgentWatchChannelAlertPayload = DashboardAgentWatchAlertPayload & {
+  channelId: string;
 };
 
 /** Bumped when the webhook body's shape changes. */
@@ -72,24 +79,48 @@ type ResolvedContext = {
   dashboardLink: string;
 };
 
-export class DeliverDashboardAgentWatchAlertService {
-  async call(payload: DashboardAgentWatchAlertPayload): Promise<void> {
-    const environment = await $replica.runtimeEnvironment.findFirst({
-      where: { id: payload.environmentId, projectId: payload.projectId },
-      select: {
-        type: true,
-        slug: true,
-        branchName: true,
-        project: {
-          select: {
-            name: true,
-            slug: true,
-            externalRef: true,
-            organization: { select: { slug: true, title: true } },
-          },
+type ResolvedEnvironment = NonNullable<Awaited<ReturnType<typeof findEnvironment>>>;
+
+function findEnvironment(payload: DashboardAgentWatchAlertPayload) {
+  return $replica.runtimeEnvironment.findFirst({
+    where: { id: payload.environmentId, projectId: payload.projectId },
+    select: {
+      type: true,
+      slug: true,
+      branchName: true,
+      project: {
+        select: {
+          name: true,
+          slug: true,
+          externalRef: true,
+          organization: { select: { slug: true, title: true } },
         },
       },
-    });
+    },
+  });
+}
+
+function buildContext(environment: ResolvedEnvironment): ResolvedContext {
+  return {
+    environmentName: environment.branchName ?? environment.slug,
+    environmentSlug: environment.slug,
+    organizationSlug: environment.project.organization.slug,
+    organizationTitle: environment.project.organization.title,
+    projectName: environment.project.name,
+    projectSlug: environment.project.slug,
+    projectRef: environment.project.externalRef,
+    dashboardLink: `${env.APP_ORIGIN}${v3RunsPath(
+      { slug: environment.project.organization.slug },
+      { slug: environment.project.slug },
+      { slug: environment.slug }
+    )}`,
+  };
+}
+
+/** The fan-out: gate the watch, then enqueue one delivery job per channel. */
+export class DeliverDashboardAgentWatchAlertService {
+  async call(payload: DashboardAgentWatchAlertPayload): Promise<void> {
+    const environment = await findEnvironment(payload);
 
     if (!environment) {
       logger.warn("[DeliverDashboardAgentWatchAlert] Environment not found", {
@@ -121,57 +152,84 @@ export class DeliverDashboardAgentWatchAlertService {
         alertTypes: { has: DASHBOARD_AGENT_WATCH_ALERT_TYPE },
         environmentTypes: { has: environment.type },
       },
+      select: { id: true },
     });
 
-    if (channels.length === 0) return;
-
-    const context: ResolvedContext = {
-      environmentName: environment.branchName ?? environment.slug,
-      environmentSlug: environment.slug,
-      organizationSlug: environment.project.organization.slug,
-      organizationTitle: environment.project.organization.title,
-      projectName: environment.project.name,
-      projectSlug: environment.project.slug,
-      projectRef: environment.project.externalRef,
-      dashboardLink: `${env.APP_ORIGIN}${v3RunsPath(
-        { slug: environment.project.organization.slug },
-        { slug: environment.project.slug },
-        { slug: environment.slug }
-      )}`,
-    };
-
     for (const channel of channels) {
-      try {
-        switch (channel.type) {
-          case "EMAIL":
-            await this.#sendEmail(channel, payload, context);
-            break;
-          case "SLACK":
-            await this.#sendSlack(channel, payload, context);
-            break;
-          case "WEBHOOK":
-            await this.#sendWebhook(channel, payload, context);
-            break;
-          default:
-            assertNever(channel.type);
-        }
-      } catch (error) {
-        if (error instanceof SkipRetryError) {
-          logger.warn("[DeliverDashboardAgentWatchAlert] Skipping retry", {
-            watchId: payload.watchId,
-            channelId: channel.id,
-            reason: error.message,
-          });
-          continue;
-        }
-        throw error;
+      await alertsWorker.enqueue({
+        // Stable per channel, so a fan-out retry re-enqueues the same job ids
+        // rather than a second alert per channel.
+        id: `watch-alert:${payload.watchId}:channel:${channel.id}`,
+        job: "v3.deliverDashboardAgentWatchAlertChannel",
+        payload: { ...payload, channelId: channel.id },
+      });
+    }
+  }
+}
+
+/** One channel's delivery. A retry here can only re-send this channel. */
+export class DeliverDashboardAgentWatchChannelAlertService {
+  async call(payload: DashboardAgentWatchChannelAlertPayload): Promise<void> {
+    // Re-read the channel rather than trusting the fan-out's snapshot: an
+    // unsubscribe between fan-out and delivery should stop the alert.
+    const channel = await $replica.projectAlertChannel.findFirst({
+      where: {
+        id: payload.channelId,
+        projectId: payload.projectId,
+        enabled: true,
+        alertTypes: { has: DASHBOARD_AGENT_WATCH_ALERT_TYPE },
+      },
+    });
+
+    if (!channel) {
+      logger.info("[DeliverDashboardAgentWatchAlert] Channel gone or unsubscribed", {
+        watchId: payload.watchId,
+        channelId: payload.channelId,
+      });
+      return;
+    }
+
+    const environment = await findEnvironment(payload);
+
+    if (!environment) {
+      logger.warn("[DeliverDashboardAgentWatchAlert] Environment not found", {
+        watchId: payload.watchId,
+      });
+      return;
+    }
+
+    const context = buildContext(environment);
+
+    try {
+      switch (channel.type) {
+        case "EMAIL":
+          await this.#sendEmail(channel, payload, context);
+          break;
+        case "SLACK":
+          await this.#sendSlack(channel, payload, context);
+          break;
+        case "WEBHOOK":
+          await this.#sendWebhook(channel, payload, context);
+          break;
+        default:
+          assertNever(channel.type);
       }
+    } catch (error) {
+      if (error instanceof SkipRetryError) {
+        logger.warn("[DeliverDashboardAgentWatchAlert] Skipping retry", {
+          watchId: payload.watchId,
+          channelId: channel.id,
+          reason: error.message,
+        });
+        return;
+      }
+      throw error;
     }
   }
 
   async #sendEmail(
     channel: ProjectAlertChannel,
-    payload: DashboardAgentWatchAlertPayload,
+    payload: DashboardAgentWatchChannelAlertPayload,
     context: ResolvedContext
   ): Promise<void> {
     const emailProperties = ProjectAlertEmailProperties.safeParse(channel.properties);
@@ -205,7 +263,7 @@ export class DeliverDashboardAgentWatchAlertService {
 
   async #sendSlack(
     channel: ProjectAlertChannel,
-    payload: DashboardAgentWatchAlertPayload,
+    payload: DashboardAgentWatchChannelAlertPayload,
     context: ResolvedContext
   ): Promise<void> {
     const slackProperties = ProjectAlertSlackProperties.safeParse(channel.properties);
@@ -243,7 +301,7 @@ export class DeliverDashboardAgentWatchAlertService {
 
   async #sendWebhook(
     channel: ProjectAlertChannel,
-    payload: DashboardAgentWatchAlertPayload,
+    payload: DashboardAgentWatchChannelAlertPayload,
     context: ResolvedContext
   ): Promise<void> {
     const webhookProperties = ProjectAlertWebhookProperties.safeParse(channel.properties);
@@ -255,8 +313,11 @@ export class DeliverDashboardAgentWatchAlertService {
     }
 
     const rawPayload = JSON.stringify({
-      id: nanoid(),
-      created: new Date(),
+      // Stable across attempts, so a receiver can dedupe a redelivery. This
+      // deliberately differs from the error-group webhook, which still mints a
+      // nanoid per attempt.
+      id: `watch:${payload.watchId}:channel:${payload.channelId}`,
+      created: new Date(payload.firedAt),
       webhookVersion: WEBHOOK_VERSION,
       type: "alert.dashboard_agent_watch",
       object: {
@@ -346,7 +407,7 @@ export class DeliverDashboardAgentWatchAlertService {
   }
 
   #buildSlackMessage(
-    payload: DashboardAgentWatchAlertPayload,
+    payload: DashboardAgentWatchChannelAlertPayload,
     context: ResolvedContext
   ): { text: string; blocks: object[] } {
     const facts = factList(payload.facts);

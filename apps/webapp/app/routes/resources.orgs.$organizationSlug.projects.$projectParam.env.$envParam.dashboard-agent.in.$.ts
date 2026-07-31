@@ -17,7 +17,10 @@ import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 // agent. We use that hop to mint a fresh read-only delegated token for the
 // signed-in user and inject it into the turn's metadata server-side. The token
 // reaches the agent without ever touching the browser, and minting stays tied
-// to the user's own session (no shared-secret backdoor).
+// to the user's own session (no shared-secret backdoor). The token is scoped to
+// the environment in this URL, which is what the agent's write-ish endpoints
+// (watches, watch alerts) bind to — so a turn can only ever act in the
+// environment the user is actually looking at.
 //
 // The append body is `{ kind, payload: { metadata, ... } }`; we add the token
 // (plus the API origin and the server-vouched project ref + env) to
@@ -93,7 +96,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     if (parsed.kind === "message" && parsed.payload) {
       parsed.payload.metadata = {
         ...(parsed.payload.metadata ?? {}),
-        userActorToken: await mintDashboardAgentUserActorToken(user.id),
+        userActorToken: await mintDashboardAgentUserActorToken(user.id, {
+          environmentId: runtimeEnv?.id,
+        }),
         apiOrigin,
         projectRef: project.externalRef,
         // The canonical environment identity. `(projectId, slug)` isn't unique

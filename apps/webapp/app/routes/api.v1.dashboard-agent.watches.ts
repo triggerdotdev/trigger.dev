@@ -23,25 +23,29 @@ import { authenticateUatOrApiRequest } from "~/services/uatRoutePreamble.server"
  * later runs in the background on a user's behalf, so the only caller it trusts is
  * the agent acting for the signed-in user in a live chat.
  *
- * The token carries a userId and nothing else, so everything else is a claim to be
- * proven:
+ * Order of authority:
  *
- *   - the CHAT must be a live chat owned by that user, or a watch could be bound
- *     to (and later wake) someone else's conversation. That same scoped read also
- *     yields the chat's org and its project/environment context.
- *   - the ENVIRONMENT — from the body when the caller sends one, otherwise the
- *     chat's stored context — is re-authorized through the same path a background
- *     check uses, so the agent can't name an environment its user can't reach, and
- *     must belong to the chat's org.
+ *   - the ENVIRONMENT comes from the TOKEN, which the dashboard minted for the
+ *     environment the current turn is being taken in. Nothing in the request body
+ *     can widen or move it: an `environmentId`/`projectRef` that disagrees is a
+ *     400, and a token with no environment scope can't create a watch at all. A
+ *     chat's stored context is never consulted — it's a snapshot from whenever the
+ *     chat started, and would silently bind a watch to a stale environment.
+ *   - the CHAT must still be a live chat owned by that user, or a watch could be
+ *     bound to (and later wake) someone else's conversation. That scoped read also
+ *     yields the chat's org, which the token's environment must match.
+ *   - the environment is then re-authorized through the same path a background
+ *     check uses, so a watch is only created for an environment its user can reach
+ *     right now.
  */
 
 const BodySchema = z.object({
   spec: watchSpecSchema,
   chatId: z.string().min(1),
   /**
-   * Optional overrides for the chat's stored context. `environmentId` is
-   * `RuntimeEnvironment.id` — the canonical environment identity (VERDICTS §3).
-   * Both are re-authorized, never trusted.
+   * Echoes of the turn's environment, if the caller sends them. Not overrides:
+   * they're only ever checked against the token's environment scope, which is the
+   * canonical `RuntimeEnvironment.id` (VERDICTS §3).
    */
   projectRef: z.string().min(1).optional(),
   environmentId: z.string().min(1).optional(),
@@ -60,6 +64,15 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Not allowed", code: "forbidden_client" }, { status: 403 });
   }
   const userId = authentication.userActor.userId;
+  // The environment this turn is scoped to. Absent means the turn was minted
+  // without one, and there is nothing to fall back to that we'd trust.
+  const environmentId = authentication.userActor.environmentId;
+  if (!environmentId) {
+    return json(
+      { error: "This chat has no environment context to watch in.", code: "invalid_target" },
+      { status: 400 }
+    );
+  }
 
   let parsed: z.infer<typeof BodySchema>;
   try {
@@ -72,20 +85,24 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Invalid watch request", code: "invalid_request" }, { status: 400 });
   }
 
+  // A body that names a different environment than the turn is a bug or an
+  // attempt to move the watch — either way, refuse rather than silently pick one.
+  if (parsed.environmentId && parsed.environmentId !== environmentId) {
+    return json(
+      {
+        error: "That environment isn't the one this chat is open in.",
+        code: "environment_mismatch",
+      },
+      { status: 400 }
+    );
+  }
+
   try {
-    // Ownership first — a chat this user doesn't own doesn't exist as far as this
+    // Ownership — a chat this user doesn't own doesn't exist as far as this
     // endpoint is concerned, and nothing is written.
     const chat = await resolveChatWatchContext({ chatId: parsed.chatId, userId });
     if (!chat) {
       return json({ error: "Chat not found", code: "chat_not_found" }, { status: 404 });
-    }
-
-    const environmentId = parsed.environmentId ?? chat.environmentId;
-    if (!environmentId) {
-      return json(
-        { error: "This chat has no environment context to watch in.", code: "invalid_target" },
-        { status: 400 }
-      );
     }
 
     // The same authorization a background check applies, so a watch is only ever
@@ -98,9 +115,15 @@ export async function action({ request }: ActionFunctionArgs) {
     if (environment.organizationId !== chat.organizationId) {
       return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
     }
-    const projectRef = parsed.projectRef ?? chat.projectRef;
-    if (projectRef && environment.project.externalRef !== projectRef) {
-      return json({ error: "Environment not found", code: "invalid_target" }, { status: 404 });
+    // Same check as `environmentId`, for callers that send the project instead.
+    if (parsed.projectRef && environment.project.externalRef !== parsed.projectRef) {
+      return json(
+        {
+          error: "That project isn't the one this chat is open in.",
+          code: "environment_mismatch",
+        },
+        { status: 400 }
+      );
     }
 
     const result = await createDashboardAgentWatch({

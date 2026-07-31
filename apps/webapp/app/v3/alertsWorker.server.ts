@@ -5,11 +5,28 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
-import { DeliverDashboardAgentWatchAlertService } from "./services/alerts/deliverDashboardAgentWatchAlert.server";
+import {
+  DeliverDashboardAgentWatchAlertService,
+  DeliverDashboardAgentWatchChannelAlertService,
+} from "./services/alerts/deliverDashboardAgentWatchAlert.server";
 import { DeliverErrorGroupAlertService } from "./services/alerts/deliverErrorGroupAlert.server";
 import { ErrorAlertEvaluator } from "./services/alerts/errorAlertEvaluator.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
+
+/** The fired watch, as the fan-out and each per-channel delivery carry it. */
+const DashboardAgentWatchAlertPayload = z.object({
+  watchId: z.string(),
+  organizationId: z.string(),
+  projectId: z.string(),
+  environmentId: z.string(),
+  userId: z.string(),
+  identity: z.string(),
+  kind: z.string(),
+  note: z.string(),
+  firedAt: z.string(),
+  facts: z.record(z.unknown()),
+});
 
 function initializeWorker() {
   const redisOptions = {
@@ -94,19 +111,18 @@ function initializeWorker() {
         },
         logErrors: true,
       },
+      // The fan-out: resolves the channels and enqueues one delivery job each.
       "v3.deliverDashboardAgentWatchAlert": {
-        schema: z.object({
-          watchId: z.string(),
-          organizationId: z.string(),
-          projectId: z.string(),
-          environmentId: z.string(),
-          userId: z.string(),
-          identity: z.string(),
-          kind: z.string(),
-          note: z.string(),
-          firedAt: z.string(),
-          facts: z.record(z.unknown()),
-        }),
+        schema: DashboardAgentWatchAlertPayload,
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 3,
+        },
+        logErrors: true,
+      },
+      // One channel's delivery, so a retry only re-sends the channel that failed.
+      "v3.deliverDashboardAgentWatchAlertChannel": {
+        schema: DashboardAgentWatchAlertPayload.extend({ channelId: z.string() }),
         visibilityTimeoutMs: 60_000,
         retry: {
           maxAttempts: 3,
@@ -148,6 +164,10 @@ function initializeWorker() {
       },
       "v3.deliverDashboardAgentWatchAlert": async ({ payload }) => {
         const service = new DeliverDashboardAgentWatchAlertService();
+        await service.call(payload);
+      },
+      "v3.deliverDashboardAgentWatchAlertChannel": async ({ payload }) => {
+        const service = new DeliverDashboardAgentWatchChannelAlertService();
         await service.call(payload);
       },
     },

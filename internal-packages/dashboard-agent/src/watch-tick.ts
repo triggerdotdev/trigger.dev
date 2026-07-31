@@ -1,9 +1,10 @@
 import {
+  claimWatchTick,
   createDashboardAgentDb,
   getWatch,
   isTerminalWatchStatus,
   markWatchDelivered,
-  recordWatchTick,
+  recordWatchCheck,
   transitionWatchCondition,
   type DashboardAgentDbClient,
   type PersistedWatchSpec,
@@ -35,11 +36,16 @@ import type { WatchWakeAction } from "./dashboard-agent";
  * - The row is the authority on expiry, not the clock the check ran on.
  * - `unavailable` is never read as true and never as false: the check itself
  *   couldn't run, so the watch keeps its state and tries again.
+ * - Every invocation owns ONE generation, carried in the payload and claimed
+ *   atomically before anything else happens. A retry of an invocation that
+ *   already scheduled its successor claims nothing and exits `stale`, so the
+ *   chain can't fork into two.
  * - The terminal transition is atomic and one-way (`active` → fired/expired,
  *   delivery `pending`), and `markWatchDelivered` happens ONLY after the session
  *   append is acknowledged. Anything failing before that ack throws, so the
  *   platform retries the invocation; the retry finds terminal + pending and
- *   performs the delivery alone.
+ *   performs the delivery alone — which is why the terminal branch runs BEFORE
+ *   the claim.
  */
 
 /** What the webapp triggers on creation, and what a tick re-triggers on itself. */
@@ -48,28 +54,37 @@ export type WatchTickPayload = {
   /** The watch's own token, minted by the webapp. Authorizes the check endpoint. */
   token: string;
   apiOrigin: string;
+  /**
+   * The tick generation this invocation owns, starting at 1. Produced only by the
+   * webapp's `scheduleWatchTick` (watch creation) and by this task's own
+   * reschedule, and claimed once via `claimWatchTick`.
+   */
+  tick: number;
 };
 
 /** The watch rows this task reads and writes, behind an interface so tests can fake it. */
 export type WatchTickStore = {
   getWatch(params: { id: string }): Promise<Watch | null>;
+  claimWatchTick(params: { id: string; generation: number }): Promise<Watch | null>;
   transitionWatchCondition(params: {
     id: string;
     status: "fired" | "expired";
     lastResult?: Record<string, unknown> | null;
   }): Promise<Watch | null>;
   markWatchDelivered(params: { id: string }): Promise<Watch | null>;
-  recordWatchTick(params: {
+  recordWatchCheck(params: {
     id: string;
     lastResult?: Record<string, unknown> | null;
-    tickCount?: number;
   }): Promise<{ tickCount: number; lastCheckedAt: Date | null } | null>;
 };
 
-export type WatchTickDeps = {
-  store: WatchTickStore;
-  /** Injected so tests can assert the request the check endpoint receives. */
-  fetch: typeof fetch;
+/**
+ * Resolving a watch and waking the chat — the half of the deps the expiry sweeper
+ * shares with the tick, so both go through the same transition + append + mark
+ * sequence instead of each having its own.
+ */
+export type WatchDeliveryDeps = {
+  store: Pick<WatchTickStore, "getWatch" | "transitionWatchCondition" | "markWatchDelivered">;
   /** Append the wake to the chat's `in` stream. Must throw if the append fails. */
   deliver: (args: { chatId: string; action: WatchWakeAction; watch: Watch }) => Promise<void>;
   /**
@@ -78,6 +93,12 @@ export type WatchTickDeps = {
    * the wake in the chat is the delivery that matters.
    */
   notifyFired: (watchId: string) => Promise<void>;
+};
+
+export type WatchTickDeps = WatchDeliveryDeps & {
+  store: WatchTickStore;
+  /** Injected so tests can assert the request the check endpoint receives. */
+  fetch: typeof fetch;
   /** Trigger the next tick. */
   reschedule: (
     payload: WatchTickPayload,
@@ -91,6 +112,9 @@ export type WatchTickOutcome =
   | "missing"
   | "already_terminal"
   | "delivered_only"
+  // The generation this invocation carries was already claimed: a duplicate or a
+  // retry that had gotten as far as scheduling its successor.
+  | "stale"
   | "revoked"
   | "unavailable"
   | "pending"
@@ -102,14 +126,27 @@ export type WatchTickResult = { outcome: WatchTickOutcome; tickCount?: number };
 /** The check endpoint's answer, normalized. */
 type CheckOutcome =
   | { kind: "result"; result: WatchCheckResult; facts?: Record<string, unknown> }
-  // The webapp already cancelled the watch (access revoked, or it's gone): the
-  // tick exits without transitioning or delivering.
+  // The row is already over and the webapp knows it: the tick exits without
+  // transitioning or delivering.
   | { kind: "revoked"; code?: string }
   // The check itself couldn't run. Never true, never false.
   | { kind: "unavailable"; detail?: string };
 
-// Error codes that mean "this watch is over and the webapp knows it". Anything
-// else non-2xx is a failed check, i.e. `unavailable`.
+/**
+ * Codes that mean the ROW is no longer active, so there is nothing left for the
+ * tick to transition or deliver:
+ *
+ * - `access_revoked` — the endpoint re-authorized the user, failed, and cancelled
+ *   the watch itself before returning (a cancellation is never narrated).
+ * - `cancelled` — the row was already cancelled (chat deleted, user asked).
+ * - `not_found` — the row is gone.
+ *
+ * Anything else non-2xx is a failed check, i.e. `unavailable`: the tick records
+ * the failure and keeps watching, and the row's own deadline (or the expiry
+ * sweeper) ends the watch. That includes an unrecognized 401/403 — a bad token or
+ * an unexpected refusal must not leave the row active forever, holding one of the
+ * chat's watch slots.
+ */
 const REVOKED_CODES = new Set(["access_revoked", "cancelled", "not_found"]);
 
 async function postCheck(
@@ -142,12 +179,10 @@ async function postCheck(
 
   if (!response.ok) {
     if (body?.code && REVOKED_CODES.has(body.code)) return { kind: "revoked", code: body.code };
-    // 401/403 without a code still means this token can't check any more —
-    // treat it as over rather than retrying against a door that won't open.
-    if (response.status === 401 || response.status === 403) {
-      return { kind: "revoked", code: body?.code };
-    }
-    return { kind: "unavailable", detail: body?.error ?? `status ${response.status}` };
+    return {
+      kind: "unavailable",
+      detail: body?.error ?? `status ${response.status}${body?.code ? ` (${body.code})` : ""}`,
+    };
   }
 
   if (!body?.result) return { kind: "unavailable", detail: "the check returned no result" };
@@ -193,11 +228,21 @@ function firedFacts(facts: Record<string, unknown> | undefined): Record<string, 
  * still expires — but the narration must not claim the thing didn't happen, so
  * the facts say the condition couldn't be verified at expiry and carry the last
  * observation we do have (`lastResult` from the last successful check).
+ *
+ * `observed` overrides where that observation is read from: claiming a generation
+ * stamps `lastCheckedAt`, so a tick must pass the row as it was BEFORE its claim or
+ * the narration would date the last observation to this failed check.
  */
-function expiredFacts(
+export function expiredFacts(
   watch: Watch,
-  args: { verified: boolean; reason: string; facts?: Record<string, unknown> }
+  args: {
+    verified: boolean;
+    reason: string;
+    facts?: Record<string, unknown>;
+    observed?: Watch;
+  }
 ): Record<string, unknown> {
+  const observed = args.observed ?? watch;
   return {
     verified: args.verified,
     reason: args.reason,
@@ -205,7 +250,10 @@ function expiredFacts(
     checks: watch.tickCount,
     ...(args.verified
       ? (args.facts ?? {})
-      : { lastObservedAt: watch.lastCheckedAt?.toISOString(), lastObservation: watch.lastResult }),
+      : {
+          lastObservedAt: observed.lastCheckedAt?.toISOString(),
+          lastObservation: observed.lastResult,
+        }),
   };
 }
 
@@ -232,7 +280,7 @@ function wakeAction(watch: Watch, facts: Record<string, unknown>): WatchWakeActi
  * platform retries it, and the retry lands on terminal + pending and delivers
  * only.
  */
-async function deliverWake(deps: WatchTickDeps, watch: Watch): Promise<void> {
+async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promise<void> {
   const facts = (watch.lastResult ?? {}) as Record<string, unknown>;
   await deps.deliver({ chatId: watch.chatId, action: wakeAction(watch, facts), watch });
   await deps.store.markWatchDelivered({ id: watch.id });
@@ -256,9 +304,12 @@ async function deliverWake(deps: WatchTickDeps, watch: Watch): Promise<void> {
  * `active` row transitions, so a check that fires at the same moment the sweeper
  * expires the watch yields exactly one winner. The loser re-reads the row and
  * delivers whatever the winner decided, if that's still owed.
+ *
+ * Exported for the expiry sweeper, which resolves overdue watches through exactly
+ * this path.
  */
-async function resolveAndDeliver(
-  deps: WatchTickDeps,
+export async function resolveAndDeliver(
+  deps: WatchDeliveryDeps,
   watch: Watch,
   status: "fired" | "expired",
   facts: Record<string, unknown>
@@ -307,14 +358,36 @@ export async function runWatchTick(
     return { outcome: "already_terminal" };
   }
 
+  // Claim this invocation's generation. The claim is the concurrency gate: it only
+  // lands when the row is still on the previous generation, so a duplicate (or a
+  // retry that crashed after scheduling its successor) gets nothing and stops here
+  // instead of checking, transitioning, and starting a second chain.
+  const claimed = await deps.store.claimWatchTick({
+    id: watch.id,
+    generation: payload.tick,
+  });
+
+  if (!claimed) {
+    logger.info("dashboard-agent watch tick is stale; exiting", {
+      watchId: watch.id,
+      tick: payload.tick,
+      tickCount: watch.tickCount,
+    });
+    return { outcome: "stale" };
+  }
+
+  // The claimed row is the authority from here on — it is the state this
+  // invocation owns, re-read inside the same statement that claimed it.
+
   // The ROW is the authority on expiry, not the check. Past the deadline this is
   // the last check the watch gets, and the endpoint is told so.
-  const final = watch.expiresAt.getTime() <= now.getTime();
+  const final = claimed.expiresAt.getTime() <= now.getTime();
   const check = await postCheck(deps, payload, final);
 
   if (check.kind === "revoked") {
+    // The row is cancelled or gone, so there is nothing to transition or deliver.
     logger.info("dashboard-agent watch check refused; exiting", {
-      watchId: watch.id,
+      watchId: claimed.id,
       code: check.code,
     });
     return { outcome: "revoked" };
@@ -322,37 +395,35 @@ export async function runWatchTick(
 
   if (check.kind === "unavailable") {
     if (!final) {
-      // A failed tick: the counter moves, the result doesn't. Keep watching.
-      const nextTick = watch.tickCount + 1;
-      await deps.store.recordWatchTick({
-        id: watch.id,
-        tickCount: nextTick,
-        lastResult: { checkFailed: true, detail: check.detail, previous: watch.lastResult },
+      // A failed tick: the generation is spent, the result isn't trusted. Keep watching.
+      await deps.store.recordWatchCheck({
+        id: claimed.id,
+        lastResult: { checkFailed: true, detail: check.detail, previous: claimed.lastResult },
       });
-      await scheduleNextTick(deps, payload, watch, nextTick);
-      return { outcome: "unavailable", tickCount: nextTick };
+      await scheduleNextTick(deps, payload, claimed);
+      return { outcome: "unavailable", tickCount: payload.tick };
     }
     // The final check couldn't run, but the deadline still passed: the watch
     // expires, and the narration says the condition couldn't be verified.
     return resolveAndDeliver(
       deps,
-      watch,
+      claimed,
       "expired",
-      expiredFacts(watch, { verified: false, reason: "unverified_at_expiry" })
+      expiredFacts(claimed, { verified: false, reason: "unverified_at_expiry", observed: watch })
     );
   }
 
   if (check.result === "satisfied") {
-    return resolveAndDeliver(deps, watch, "fired", firedFacts(check.facts));
+    return resolveAndDeliver(deps, claimed, "fired", firedFacts(check.facts));
   }
 
   if (check.result === "terminal_unsatisfied") {
     // Not a failure: it can never happen now. Stop checking and say so.
     return resolveAndDeliver(
       deps,
-      watch,
+      claimed,
       "expired",
-      expiredFacts(watch, {
+      expiredFacts(claimed, {
         verified: true,
         reason: "terminal_unsatisfied",
         facts: check.facts,
@@ -365,49 +436,47 @@ export async function runWatchTick(
   if (final) {
     return resolveAndDeliver(
       deps,
-      watch,
+      claimed,
       "expired",
-      expiredFacts(watch, { verified: true, reason: "not_met_by_expiry", facts: check.facts })
+      expiredFacts(claimed, { verified: true, reason: "not_met_by_expiry", facts: check.facts })
     );
   }
 
-  const nextTick = watch.tickCount + 1;
-  await deps.store.recordWatchTick({
-    id: watch.id,
-    tickCount: nextTick,
-    lastResult: check.facts ?? {},
-  });
-  await scheduleNextTick(deps, payload, watch, nextTick);
-  return { outcome: "pending", tickCount: nextTick };
+  await deps.store.recordWatchCheck({ id: claimed.id, lastResult: check.facts ?? {} });
+  await scheduleNextTick(deps, payload, claimed);
+  return { outcome: "pending", tickCount: payload.tick };
 }
 
 /**
  * Trigger the next tick, `checkEveryMinutes` out.
  *
- * The idempotency key is `watch:{id}:tick:{n}` where `n` comes from the row we
- * just read (`tickCount + 1`) — NOT from an incremented counter. That pairing
- * with the explicit `recordWatchTick({ tickCount: n })` above is what makes a
- * retried invocation converge instead of forking the chain: the retry either
- * computes the same `n` (and the key collapses the duplicate trigger) or reads
- * the already-advanced row and schedules the single next one.
+ * The successor's generation is `payload.tick + 1` — derived from the generation
+ * THIS invocation claimed, never from the row's counter, and carried both in the
+ * payload and in the idempotency key `watch:{id}:tick:{n}`. So a retry that got
+ * this far already advanced the row: it fails its claim, exits `stale`, and the
+ * single successor it triggered (deduped by the key) is the whole chain.
  */
 async function scheduleNextTick(
   deps: WatchTickDeps,
   payload: WatchTickPayload,
-  watch: Watch,
-  tickCount: number
+  watch: Watch
 ): Promise<void> {
   const spec = watch.spec as PersistedWatchSpec;
-  await deps.reschedule(payload, {
-    delay: `${spec.checkEveryMinutes}m`,
-    idempotencyKey: `watch:${watch.id}:tick:${tickCount}`,
-  });
+  const next = payload.tick + 1;
+  await deps.reschedule(
+    { ...payload, tick: next },
+    {
+      delay: `${spec.checkEveryMinutes}m`,
+      idempotencyKey: `watch:${watch.id}:tick:${next}`,
+    }
+  );
 }
 
 // One connection pool per worker process for the watcher (separate from the
-// agent's; ticks are their own runs).
+// agent's; ticks are their own runs). Shared with the expiry sweeper, so the two
+// watch tasks on a worker don't open a pool each.
 let dbClient: DashboardAgentDbClient | undefined;
-function getWatchDb(): DashboardAgentDbClient {
+export function getWatchDb(): DashboardAgentDbClient {
   if (!dbClient) {
     const connectionString = process.env.DASHBOARD_AGENT_DATABASE_URL ?? process.env.DATABASE_URL;
     if (!connectionString) {
@@ -430,7 +499,7 @@ function getWatchDb(): DashboardAgentDbClient {
  * snapshot. It deliberately carries NO delegated token: a wake narrates what the
  * check already established, it doesn't go reading.
  */
-async function appendWakeToSession(args: {
+export async function appendWakeToSession(args: {
   chatId: string;
   action: WatchWakeAction;
   watch: Watch;
@@ -462,9 +531,10 @@ export const watchTick = task({
     const result = await runWatchTick(payload, {
       store: {
         getWatch: (params) => getWatch(db, params),
+        claimWatchTick: (params) => claimWatchTick(db, params),
         transitionWatchCondition: (params) => transitionWatchCondition(db, params),
         markWatchDelivered: (params) => markWatchDelivered(db, params),
-        recordWatchTick: (params) => recordWatchTick(db, params),
+        recordWatchCheck: (params) => recordWatchCheck(db, params),
       },
       fetch: (input, init) => fetch(input, init),
       deliver: appendWakeToSession,
@@ -475,6 +545,7 @@ export const watchTick = task({
 
     logger.info("dashboard-agent watch ticked", {
       watchId: payload.watchId,
+      tick: payload.tick,
       outcome: result.outcome,
       tickCount: result.tickCount,
     });

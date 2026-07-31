@@ -10,10 +10,17 @@
 // readers (through the service's `checkDeps` seam) and the tick trigger
 // (`scheduleTick`).
 import {
+  cancelWatch,
+  chatExists,
+  countUnreadWatchWakes,
   createChat,
   createDashboardAgentDb,
   getWatch,
   listActiveWatchesForChat,
+  listChatIdsWithUnreadWakes,
+  listUnreadWatchWakes,
+  markWatchDelivered,
+  transitionWatchCondition,
   type DashboardAgentDb,
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
@@ -30,8 +37,12 @@ const ctx = vi.hoisted(() => ({
   prisma: undefined as unknown as PrismaClient,
   agentDb: undefined as unknown as DashboardAgentDb,
   canAccess: true,
-  /** The delegated user-actor the create endpoint sees, if any. */
-  actor: undefined as undefined | { userId: string; client?: string },
+  /**
+   * The delegated user-actor the create endpoint sees, if any. `environmentId` is
+   * the environment scope the dashboard minted the turn's token with — the
+   * authority the endpoint binds a watch to.
+   */
+  actor: undefined as undefined | { userId: string; client?: string; environmentId?: string },
 }));
 
 // The shared UAT preamble. The create endpoint accepts ONLY a dashboard-agent
@@ -72,8 +83,8 @@ vi.mock("~/v3/canAccessDashboardAgent.server", () => ({
 
 const {
   authorizeWatchEnvironment,
-  cancelWatchesForDeletedChat,
   createDashboardAgentWatch,
+  deleteChatWithWatches,
   listActiveWatchesForChats,
 } = await import("~/services/dashboardAgentWatches.server");
 const { action: checkAction } =
@@ -109,7 +120,9 @@ let agentDbClient: DashboardAgentDbClient | undefined;
 async function boot(prisma: PrismaClient, connectionUri: string) {
   ctx.prisma = prisma;
   await applyAgentSchema(prisma);
-  agentDbClient = createDashboardAgentDb(connectionUri, { max: 2 });
+  // A pool, not a single connection: the limit test fires concurrent creates and
+  // the advisory lock they serialize on only means anything across connections.
+  agentDbClient = createDashboardAgentDb(connectionUri, { max: 8 });
   ctx.agentDb = agentDbClient.db;
 }
 
@@ -263,11 +276,11 @@ describe("createDashboardAgentWatch", () => {
       expect(result.identity).toBe("run_start:run_1");
       expect(result.immediate).toBeUndefined();
 
-      // The first tick's key is indexed by the row's CURRENT tickCount (0) — the
-      // pairing that keeps it from colliding with the task's first reschedule.
+      // The first tick carries the GENERATION it will claim — `tickCount + 1` —
+      // so it can't be confused with a reschedule of the same generation.
       expect(scheduled).toHaveLength(1);
       expect(scheduled[0]!.watchId).toBe(result.watchId);
-      expect(scheduled[0]!.tick).toBe(0);
+      expect(scheduled[0]!.tick).toBe(1);
       // The token travels in the payload; it is never stored on the row.
       expect(scheduled[0]!.token.startsWith("tr_daw_")).toBe(true);
 
@@ -409,6 +422,30 @@ describe("createDashboardAgentWatch", () => {
       expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(3);
     }
   );
+
+  postgresTest(
+    "holds the ≤3 limit against four concurrent creates",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "race");
+      await seedChat(seeded);
+
+      // Four DIFFERENT conditions, so dedup can't be what rejects any of them —
+      // only the count-then-insert guardrail can, and it has to hold even when all
+      // four read the count at the same time (each on its own pool connection).
+      const results = await Promise.all(
+        ["run_1", "run_2", "run_3", "run_4"].map((runId) =>
+          create({ seeded, spec: { ...RUN_START, runId } })
+        )
+      );
+
+      expect(results.filter((result) => result.ok)).toHaveLength(3);
+      expect(
+        results.filter((result) => !result.ok && result.code === "limit_reached")
+      ).toHaveLength(1);
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(3);
+    }
+  );
 });
 
 // The agent-facing adapter. Only the refusals are driven through the route here:
@@ -438,7 +475,7 @@ describe("the createWatch endpoint's authorization", () => {
   postgresTest("403s for any other client's token", async ({ prisma, postgresContainer }) => {
     await boot(prisma, postgresContainer.getConnectionUri());
     const seeded = await seed(prisma, "adapter");
-    ctx.actor = { userId: seeded.user.id, client: "cli" };
+    ctx.actor = { userId: seeded.user.id, client: "cli", environmentId: seeded.environment.id };
 
     const response = await post(validBody("chat_1"));
     expect(response.status).toBe(403);
@@ -455,15 +492,13 @@ describe("the createWatch endpoint's authorization", () => {
         id: "chat_victim",
         organizationId: owner.organization.id,
         userId: owner.user.id,
-        metadata: {
-          context: {
-            environmentId: owner.environment.id,
-            projectRef: owner.project.externalRef,
-          },
-        },
       });
 
-      ctx.actor = { userId: stranger.user.id, client: "dashboard-agent" };
+      ctx.actor = {
+        userId: stranger.user.id,
+        client: "dashboard-agent",
+        environmentId: stranger.environment.id,
+      };
 
       const response = await post(validBody("chat_victim"));
       expect(response.status).toBe(404);
@@ -475,16 +510,100 @@ describe("the createWatch endpoint's authorization", () => {
   );
 
   postgresTest(
-    "refuses a chat with no environment context",
+    "refuses a token with no environment scope",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
-      const seeded = await seed(prisma, "nocontext");
+      const seeded = await seed(prisma, "noscope");
       await seedChat(seeded, "chat_1");
+      // A turn minted without an environment. There is nothing to fall back to
+      // that this endpoint would trust, so the watch is refused outright.
       ctx.actor = { userId: seeded.user.id, client: "dashboard-agent" };
 
       const response = await post(validBody("chat_1"));
       expect(response.status).toBe(400);
       expect(await response.json()).toMatchObject({ code: "invalid_target" });
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
+    "refuses a body naming a different environment than the token's",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "mismatch");
+      const other = await seed(prisma, "othermismatch");
+      await seedChat(seeded, "chat_1");
+      ctx.actor = {
+        userId: seeded.user.id,
+        client: "dashboard-agent",
+        environmentId: seeded.environment.id,
+      };
+
+      const response = await post({
+        ...validBody("chat_1"),
+        environmentId: other.environment.id,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ code: "environment_mismatch" });
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
+    }
+  );
+
+  postgresTest(
+    "binds to the token's environment, not the chat's stored context",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "binding");
+      // A second project + environment in the SAME org, so the org cross-check
+      // can't be what refuses anything below.
+      const otherProject = await prisma.project.create({
+        data: {
+          name: `${seeded.project.slug}_b`,
+          slug: `${seeded.project.slug}_b`,
+          organizationId: seeded.organization.id,
+          externalRef: `proj_${seeded.project.slug}_b`,
+        },
+      });
+      const otherEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "prod",
+          type: "PRODUCTION",
+          projectId: otherProject.id,
+          organizationId: seeded.organization.id,
+          apiKey: `tr_prod_${otherProject.slug}`,
+          pkApiKey: `pk_prod_${otherProject.slug}`,
+          shortcode: `b${otherProject.slug.slice(0, 6)}`,
+        },
+      });
+
+      // The chat's stored snapshot names project/env A…
+      await createChat(ctx.agentDb, {
+        id: "chat_1",
+        organizationId: seeded.organization.id,
+        userId: seeded.user.id,
+        metadata: {
+          context: {
+            environmentId: seeded.environment.id,
+            projectRef: seeded.project.externalRef,
+          },
+        },
+      });
+      // …and the current turn is in project/env B.
+      ctx.actor = {
+        userId: seeded.user.id,
+        client: "dashboard-agent",
+        environmentId: otherEnvironment.id,
+      };
+
+      // The snapshot's project is a mismatch against the token's environment. If
+      // the snapshot were the authority this request would have been accepted.
+      const response = await post({
+        ...validBody("chat_1"),
+        projectRef: seeded.project.externalRef,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ code: "environment_mismatch" });
+      expect(await listActiveWatchesForChat(ctx.agentDb, { chatId: "chat_1" })).toHaveLength(0);
     }
   );
 
@@ -503,14 +622,14 @@ describe("the createWatch endpoint's authorization", () => {
           role: "ADMIN",
         },
       });
-      await createChat(ctx.agentDb, {
-        id: "chat_1",
-        organizationId: seeded.organization.id,
-        userId: seeded.user.id,
-        metadata: { context: { environmentId: other.environment.id } },
-      });
+      await seedChat(seeded, "chat_1");
 
-      ctx.actor = { userId: seeded.user.id, client: "dashboard-agent" };
+      // A token minted in the other org's environment for a chat in this one.
+      ctx.actor = {
+        userId: seeded.user.id,
+        client: "dashboard-agent",
+        environmentId: other.environment.id,
+      };
 
       const response = await post(validBody("chat_1"));
       expect(response.status).toBe(404);
@@ -522,7 +641,7 @@ describe("the createWatch endpoint's authorization", () => {
 
 describe("the chat cascade and the list view", () => {
   postgresTest(
-    "deleting a chat cancels its active watches with reason chat_deleted",
+    "deleting a chat soft-deletes it and cancels its active watches in one call",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seed(prisma, "cascade");
@@ -534,8 +653,19 @@ describe("the chat cascade and the list view", () => {
       expect(mine.ok && theirs.ok).toBe(true);
       if (!mine.ok || !theirs.ok) return;
 
-      expect(await cancelWatchesForDeletedChat("chat_1")).toBe(1);
+      expect(await deleteChatWithWatches({ chatId: "chat_1", userId: seeded.user.id })).toEqual({
+        deleted: true,
+        cancelledWatches: 1,
+      });
 
+      // The chat is gone and its watch went with it — neither half can land alone.
+      expect(
+        await chatExists(ctx.agentDb, {
+          chatId: "chat_1",
+          userId: seeded.user.id,
+          organizationId: seeded.organization.id,
+        })
+      ).toBe(false);
       expect(await getWatch(ctx.agentDb, { id: mine.watchId })).toMatchObject({
         status: "cancelled",
         cancelReason: "chat_deleted",
@@ -577,7 +707,8 @@ describe("the chat cascade and the list view", () => {
       });
 
       // Terminal watches drop off the chips.
-      await cancelWatchesForDeletedChat("chat_1");
+      if (a.ok) await cancelWatch(ctx.agentDb, { id: a.watchId, reason: "user" });
+      if (b.ok) await cancelWatch(ctx.agentDb, { id: b.watchId, reason: "user" });
       expect(
         (
           await listActiveWatchesForChats({
@@ -596,6 +727,37 @@ describe("the chat cascade and the list view", () => {
       await listActiveWatchesForChats({ chatIds: [], organizationId: "org_x", userId: "user_x" })
     ).toEqual({});
   });
+});
+
+describe("unread watch wakes", () => {
+  postgresTest(
+    "only signals a wake once its delivery landed",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "unread");
+      await seedChat(seeded, "chat_1");
+
+      const created = await create({ seeded, chatId: "chat_1" });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const scope = { organizationId: seeded.organization.id, userId: seeded.user.id };
+
+      // Terminal but undelivered: the chat has no message to open yet, so the
+      // launcher's dot and the toast must stay quiet.
+      await transitionWatchCondition(ctx.agentDb, { id: created.watchId, status: "fired" });
+      expect(await countUnreadWatchWakes(ctx.agentDb, scope)).toBe(0);
+      expect(await listUnreadWatchWakes(ctx.agentDb, scope)).toEqual([]);
+      expect(await listChatIdsWithUnreadWakes(ctx.agentDb, scope)).toEqual(new Set());
+
+      await markWatchDelivered(ctx.agentDb, { id: created.watchId });
+      expect(await countUnreadWatchWakes(ctx.agentDb, scope)).toBe(1);
+      expect(await listUnreadWatchWakes(ctx.agentDb, scope)).toMatchObject([
+        { watchId: created.watchId, chatId: "chat_1", outcome: "fired" },
+      ]);
+      expect(await listChatIdsWithUnreadWakes(ctx.agentDb, scope)).toEqual(new Set(["chat_1"]));
+    }
+  );
 });
 
 describe("authorizeWatchEnvironment", () => {
@@ -706,7 +868,7 @@ describe("the check endpoint", () => {
     expect(await response.json()).toMatchObject({ code: "watch_mismatch" });
   });
 
-  postgresTest("answers a check and records the tick", async ({ prisma, postgresContainer }) => {
+  postgresTest("answers a check and records what it saw", async ({ prisma, postgresContainer }) => {
     await boot(prisma, postgresContainer.getConnectionUri());
     const seeded = await seed(prisma, "check");
     await seedChat(seeded);
@@ -726,8 +888,10 @@ describe("the check endpoint", () => {
     expect(body.result).toBe("terminal_unsatisfied");
 
     const row = await getWatch(ctx.agentDb, { id: watch.watchId });
-    expect(row?.tickCount).toBe(1);
     expect(row?.lastCheckedAt).not.toBeNull();
+    // The generation claim is the task's, not this endpoint's, so the counter is
+    // untouched here.
+    expect(row?.tickCount).toBe(0);
     // Still active: the fire/expire transition belongs to the watcher task.
     expect(row?.status).toBe("active");
   });

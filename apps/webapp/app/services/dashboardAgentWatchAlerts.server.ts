@@ -47,9 +47,10 @@ export type WatchFiredAlertSource = Pick<
  * train people to ignore watch alerts. Kept in the signature so the callers read
  * the same either way.
  *
- * The job id is the whole idempotency story: one job per watch, so the callback
- * being retried, a tick redelivering, and the creation path racing the watcher all
- * collapse into a single alert.
+ * The job id is the whole idempotency story: one fan-out job per watch, so the
+ * callback being retried, a tick redelivering, and the creation path racing the
+ * watcher all collapse into a single alert. The fan-out then enqueues one job per
+ * channel, itself keyed per channel.
  */
 export async function enqueueWatchFiredAlert(
   watch: WatchFiredAlertSource,

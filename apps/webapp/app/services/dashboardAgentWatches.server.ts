@@ -12,12 +12,12 @@
 
 import {
   MAX_ACTIVE_WATCHES_PER_CHAT,
-  cancelActiveWatchesForChat,
   chatExists,
   createWatch,
   getChatWatchContext,
   listActiveWatchesForChats as listActiveWatchesForChatsQuery,
   markWatchDelivered,
+  softDeleteChat,
   transitionWatchCondition,
   type ChatWatchContext,
   type PersistedWatchSpec,
@@ -313,11 +313,10 @@ export async function createDashboardAgentWatch(params: {
       watchId: watch.id,
       token,
       delayMinutes: spec.checkEveryMinutes,
-      // The key is indexed by the row's CURRENT tickCount (0 here), which is the
-      // same scheme the watcher task reschedules with (`tickCount + 1` of the row
-      // it read). Off-by-one here would collide with the task's first reschedule
-      // and silently break the chain.
-      tick: watch.tickCount,
+      // The GENERATION the first tick will claim: the row is on `tickCount`
+      // (0 here) and each invocation claims its own generation atomically, so the
+      // first one is `tickCount + 1`.
+      tick: watch.tickCount + 1,
     });
   } catch (error) {
     logger.error("Dashboard agent watch: failed to schedule the first tick", {
@@ -387,6 +386,7 @@ export async function scheduleWatchTick(params: {
   watchId: string;
   token: string;
   delayMinutes: number;
+  /** The tick generation the scheduled invocation claims. */
   tick: number;
 }): Promise<void> {
   const accessToken = env.DASHBOARD_AGENT_SECRET_KEY;
@@ -397,13 +397,13 @@ export async function scheduleWatchTick(params: {
 
   await client.tasks.trigger(
     WATCH_TASK_ID,
-    // The watcher task's payload contract: the watch, its token, and the origin
-    // to call the check endpoint on.
-    { watchId: params.watchId, token: params.token, apiOrigin },
+    // The watcher task's payload contract: the watch, its token, the origin to
+    // call the check endpoint on, and the tick generation this invocation owns.
+    { watchId: params.watchId, token: params.token, apiOrigin, tick: params.tick },
     {
       delay: `${params.delayMinutes}m`,
-      // Same key shape the query layer documents, so a retried schedule can't
-      // double-tick.
+      // Keyed on the same generation the payload carries, so a retried schedule
+      // can't double-tick.
       idempotencyKey: `watch:${params.watchId}:tick:${params.tick}`,
       // Pin to the same deployed agent version the chat runs on, when set.
       ...(env.DASHBOARD_AGENT_VERSION ? { version: env.DASHBOARD_AGENT_VERSION } : {}),
@@ -416,16 +416,17 @@ export async function scheduleWatchTick(params: {
 // ---------------------------------------------------------------------------
 
 /**
- * Deleting a chat ends its watches: the conversation they'd wake is gone, so
- * there's nowhere to deliver an outcome. Ownership must be verified by the caller
- * (this is keyed on chatId alone, like the query layer's cascade).
+ * Delete a chat and end its watches in ONE transaction: the conversation they'd
+ * wake is gone, so there's nowhere to deliver an outcome, and a half-applied
+ * delete would leave live watches on a chat the user can't see. Owner-scoped, so
+ * a chatId the caller doesn't own deletes nothing.
  */
-export async function cancelWatchesForDeletedChat(chatId: string): Promise<number> {
-  const cancelled = await cancelActiveWatchesForChat(dashboardAgentDb, {
-    chatId,
-    reason: "chat_deleted",
-  });
-  return cancelled.length;
+export async function deleteChatWithWatches(params: {
+  chatId: string;
+  userId: string;
+}): Promise<{ deleted: boolean; cancelledWatches: number }> {
+  const result = await softDeleteChat(dashboardAgentDb, params);
+  return { deleted: result.deleted, cancelledWatches: result.cancelledWatches.length };
 }
 
 /**
@@ -440,6 +441,7 @@ export type ChatWatchChip = {
   note: string;
   checkEveryMinutes: number;
   expiresAt: string;
+  endedReason: string | null;
 };
 
 /**
@@ -465,6 +467,7 @@ export async function listActiveWatchesForChats(params: {
         note: watch.note,
         checkEveryMinutes: watch.checkEveryMinutes,
         expiresAt: watch.expiresAt.toISOString(),
+        endedReason: watch.endedReason,
       })),
     ])
   );
@@ -482,9 +485,10 @@ export function chatBelongsToUser(params: {
 export type { ChatWatchContext };
 
 /**
- * Ownership check AND context read in one query — a live chat owned by this user,
- * plus the project/environment its turns ran in. See `getChatWatchContext` for why
- * the context is a claim and not an authorization.
+ * Ownership check for a chat — a live chat owned by this user — plus the org it
+ * belongs to, which is the tenancy floor its watches can't leave. Deliberately no
+ * project/environment: those come from the authorized request context, never from
+ * the chat row (see `getChatWatchContext`).
  */
 export function resolveChatWatchContext(params: {
   chatId: string;

@@ -25,6 +25,8 @@ export type WatchChip = {
   note: string;
   checkEveryMinutes: number;
   expiresAt: string;
+  /** Last check's reason — the wake banner distinguishes terminal_unsatisfied. */
+  endedReason?: string | null;
 };
 
 const STATUS_TONE: Record<WatchStatus, AgentTone> = {

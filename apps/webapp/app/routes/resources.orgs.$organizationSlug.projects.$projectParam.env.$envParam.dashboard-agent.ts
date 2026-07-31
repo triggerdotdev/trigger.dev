@@ -15,9 +15,7 @@ import {
   markChatRead,
   renameChat,
   setChatPinned,
-  softDeleteChat,
 } from "@internal/dashboard-agent-db";
-import { watchSpecSchema, type WatchSpec } from "@internal/dashboard-agent-contracts";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import type { UIMessage } from "ai";
 import { z } from "zod";
@@ -26,8 +24,7 @@ import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
-  cancelWatchesForDeletedChat,
-  createDashboardAgentWatch,
+  deleteChatWithWatches,
   listActiveWatchesForChats,
 } from "~/services/dashboardAgentWatches.server";
 import {
@@ -64,7 +61,6 @@ const ActionBody = z.object({
     "delete",
     "read",
     "resolve",
-    "watch",
     "watch-cancel",
   ]),
   // Omitted for `create` (the server generates it); required for the rest.
@@ -76,8 +72,6 @@ const ActionBody = z.object({
   pinned: z.enum(["true", "false"]).optional(),
   // A `trigger://` URI, for `resolve`.
   uri: z.string().optional(),
-  // A JSON WatchSpec, for `watch`.
-  spec: z.string().optional(),
   // The watch to cancel, for `watch-cancel`.
   watchId: z.string().min(1).optional(),
 });
@@ -271,7 +265,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             // (userId, organizationId, …), so the per-turn clientData has to be
             // present alongside the injected auth/context fields.
             ...(clientData ?? {}),
-            userActorToken: await mintDashboardAgentUserActorToken(userId),
+            userActorToken: await mintDashboardAgentUserActorToken(userId, {
+              environmentId: runtimeEnv?.id,
+            }),
             apiOrigin: dashboardAgentApiOrigin(),
             projectRef: project.externalRef,
             // Same canonical environment identity the `in` proxy injects, so turn
@@ -309,10 +305,30 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const environment = await findEnvironmentBySlug(project.id, envParam, userId);
     if (!environment) return json({ error: "Environment not found" }, { status: 404 });
 
-    const resolved = resolveTriggerUri(environment, uri);
+    // A source URI resolves to a GitHub blob link, which needs the project's
+    // connected repository. Only fetched for source URIs — the other kinds
+    // resolve to dashboard paths without it.
+    const repository = uri.includes("/source/")
+      ? await $replica.connectedGithubRepository.findFirst({
+          where: {
+            projectId: project.id,
+            repository: { installation: { deletedAt: null, suspendedAt: null } },
+          },
+          select: { repository: { select: { fullName: true } } },
+        })
+      : null;
+
+    const resolved = resolveTriggerUri(
+      { ...environment, repository: repository?.repository ?? null },
+      uri
+    );
     if (!resolved) return json({ error: "Nothing to open for that link" }, { status: 404 });
 
-    return json({ path: resolved.url, label: resolved.label });
+    return json({
+      path: resolved.url,
+      label: resolved.label,
+      external: resolved.external ?? false,
+    });
   }
 
   const { intent, chatId } = parsed.data;
@@ -397,8 +413,8 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     }
 
     case "delete": {
-      // Ownership first: the watch cascade is keyed on chatId alone, so a chatId
-      // the caller doesn't own must not reach it.
+      // The org scope lives here: `deleteChatWithWatches` is owner-scoped but
+      // takes no org, so a chat from another org in the URL must 404 before it.
       if (
         !(await chatExists(dashboardAgentDb, {
           chatId,
@@ -408,68 +424,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       ) {
         return json({ error: "Chat not found" }, { status: 404 });
       }
-      await softDeleteChat(dashboardAgentDb, { chatId, userId });
-      // A deleted chat has nowhere to deliver a watch outcome, so its watches end
-      // with it.
-      const cancelledWatches = await cancelWatchesForDeletedChat(chatId);
+      // A deleted chat has nowhere to deliver a watch outcome, so the delete and
+      // the watch cancellations land in one transaction.
+      const { cancelledWatches } = await deleteChatWithWatches({ chatId, userId });
       return json({ ok: true, cancelledWatches });
-    }
-
-    // Schedule a watch from the panel, under the user's own session. Same service
-    // the agent's UAT endpoint calls; project/env come from the URL and are
-    // authorized through the dashboard's own environment lookup.
-    case "watch": {
-      if (!parsed.data.spec) return json({ error: "spec is required" }, { status: 400 });
-
-      let spec: WatchSpec;
-      try {
-        const result = watchSpecSchema.safeParse(JSON.parse(parsed.data.spec));
-        if (!result.success) return json({ error: "Invalid watch spec" }, { status: 400 });
-        spec = result.data;
-      } catch {
-        return json({ error: "Invalid watch spec" }, { status: 400 });
-      }
-
-      if (
-        !(await chatExists(dashboardAgentDb, {
-          chatId,
-          userId,
-          organizationId: project.organizationId,
-        }))
-      ) {
-        return json({ error: "Chat not found" }, { status: 404 });
-      }
-
-      const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-      if (!environment) return json({ error: "Environment not found" }, { status: 404 });
-
-      const result = await createDashboardAgentWatch({ environment, userId, chatId, spec });
-      if (!result.ok) {
-        return json(
-          {
-            error: result.error,
-            code: result.code,
-            ...(result.existingId ? { existingId: result.existingId } : {}),
-          },
-          {
-            // Same codes the agent's endpoint uses, so the UI can share the copy.
-            status:
-              result.code === "limit_reached" || result.code === "duplicate"
-                ? 409
-                : result.code === "not_configured"
-                  ? 501
-                  : 400,
-          }
-        );
-      }
-
-      return json({
-        watchId: result.watchId,
-        identity: result.identity,
-        status: result.status,
-        expiresAt: result.expiresAt.toISOString(),
-        ...(result.immediate ? { immediate: result.immediate } : {}),
-      });
     }
 
     // Stop watching, from the chip's ×. Ownership goes through the chat: the watch
