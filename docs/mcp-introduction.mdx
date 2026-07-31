@@ -310,7 +310,6 @@ The `install-mcp` command supports these options:
 - `-p, --project-ref <project ref>` — Scope the MCP server to a specific project
 - `-t, --tag <package tag>` — CLI package version to use (default: latest)
 - `--dev-only` — Restrict to the dev environment only
-- `--readonly` — Read-only mode. Hides write tools (`deploy`, `trigger_task`, `cancel_run`) so the AI cannot make changes to your account
 - `--yolo` — Install into all supported clients automatically
 - `--scope <scope>` — `user`, `project`, or `local`
 - `--client <clients...>` — Install into specific client(s)
@@ -341,19 +340,33 @@ Restrict to dev environment for a specific project:
 npx trigger.dev@latest install-mcp --dev-only --project-ref proj_abc123
 ```
 
-Read-only mode (prevents AI from deploying or triggering tasks):
+**Runtime-only flags**
 
-```bash
-npx trigger.dev@latest install-mcp --readonly
-```
+Some flags apply only to the running MCP server, not to `install-mcp`. Add these to the `args` array of the generated MCP config after installation:
 
-To add these options to a manual config, append them to the `args` array:
+- `--readonly` — Read-only mode. Hides write tools (`deploy`, `trigger_task`, `cancel_run`) so the AI cannot make changes to your account.
+
+For example, to enable read-only mode in Claude Code together with `--dev-only` and a project ref, edit `~/.claude.json` (user) or `.mcp.json` (project):
 
 ```json
 {
-  "args": ["trigger.dev@latest", "mcp", "--dev-only", "--project-ref", "proj_abc123"]
+  "mcpServers": {
+    "trigger": {
+      "command": "npx",
+      "args": [
+        "trigger.dev@latest",
+        "mcp",
+        "--readonly",
+        "--dev-only",
+        "--project-ref",
+        "proj_abc123"
+      ]
+    }
+  }
 }
 ```
+
+For other clients, use the config shape shown in the corresponding tab in [Client Configuration](#client-configuration) and append the same flags to that entry's `args` array (or to the `command` array, for opencode).
 
 </Accordion>
 
