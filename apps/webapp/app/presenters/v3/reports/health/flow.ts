@@ -17,14 +17,23 @@ import {
   type Severity,
 } from "../report-view-model";
 import {
+  bucketCoverage,
   HEALTH_THRESHOLDS,
   isPendingIncreasing,
+  isPendingUnknown,
   mean,
   metricById,
   type HealthInput,
 } from "./health-core";
 
 export const FLOW_METRIC_IDS = ["start_latency_p95", "pending", "throughput"];
+
+/**
+ * Flow reason for "we could not measure the backlog". Not a severity and not a cause — the
+ * verdict is simply unassessable, so nothing actionable may hang off it. Kept distinct from
+ * "unknown" (the stale-telemetry guard) so the two failure modes stay legible.
+ */
+export const FLOW_UNMEASURED = "flow_unmeasured";
 
 /** One row of the declarative cause table — everything a cause defines about itself. */
 type CauseSpec = {
@@ -44,6 +53,13 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
   const flowMetrics = FLOW_METRIC_IDS.map((id) => metricById(metrics, id));
   const severity = maxSeverity(...flowMetrics.map((m) => m.severity));
 
+  // The backlog couldn't be measured: `pending.now` is a placeholder, so neither "healthy" nor a
+  // cause may be claimed off it. Severity still reflects the metrics we DID measure (start
+  // latency), but the finding carries no cause, no attribution and no recommendation.
+  if (isPendingUnknown(input)) {
+    return { type: "flow", severity, reason: FLOW_UNMEASURED, metricIds: FLOW_METRIC_IDS };
+  }
+
   if (isOk(severity)) {
     return { type: "flow", severity, reason: "healthy", metricIds: FLOW_METRIC_IDS };
   }
@@ -52,12 +68,18 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
   const pendingIncreasing = isPendingIncreasing(input.pending.series);
   const latencyElevated = !isOk(metricById(metrics, "start_latency_p95").severity);
   // Concurrency causes need real running-capacity evidence — without it runningShare is a
-  // meaningless 0 and would falsely select dequeue_stall on the snapshot path (#1).
-  const hasConcurrencyEvidence = ev.envLimit > 0 && ev.runningSeries.length > 0;
+  // meaningless 0 and would falsely select dequeue_stall on the snapshot path (#1). They also
+  // need enough of the window to have ARRIVED: the series isn't gap-filled, so a couple of fresh
+  // buckets would otherwise read as "pinned the whole window".
+  const coverage = bucketCoverage(input);
+  const hasConcurrencyEvidence =
+    ev.envLimit > 0 && ev.runningSeries.length > 0 && coverage.sufficient;
   const runningShare = hasConcurrencyEvidence ? mean(ev.runningSeries) / ev.envLimit : 1;
+  // Pinned share is measured against EXPECTED buckets, not received rows — "2 of 60 expected",
+  // never "2 of 2 received".
   const pinnedShare = hasConcurrencyEvidence
     ? ev.runningSeries.filter((r) => r >= t.pinnedLevel * ev.envLimit).length /
-      ev.runningSeries.length
+      coverage.expectedBuckets
     : 0;
   const pinned = pinnedShare >= t.pinnedShare;
   const hasTriggerBaseline = input.throughput.normalTriggeredPerMin > 0;
@@ -67,8 +89,9 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
   // No baseline: a multiplier can't be computed, so an absolute rate selects "new volume".
   const triggerSurge = !hasTriggerBaseline && input.throughput.triggeredPerMin >= t.surgePerMin;
 
-  const donePerMin = input.throughput.donePerMin;
-  const net = donePerMin - input.throughput.triggeredPerMin;
+  // Work leaving the queue = FINISHED (all terminal) runs, not completions only.
+  const finishedPerMin = input.throughput.finishedPerMin;
+  const net = finishedPerMin - input.throughput.triggeredPerMin;
   // Exclusions must be PROVEN, not assumed. "not your code" needs healthy execution; "limits
   // aren't the bottleneck" needs no env-pin AND no queue throttling; the workers/spike ones
   // state a measured fact (rate) rather than a global "everything's fine" claim.
@@ -112,10 +135,10 @@ export function interpretFlow(metrics: Metric[], input: HealthInput): Finding {
       drivingMetricId: "concurrency",
       annotationCode: "pinned_minutes",
       exclusions: [],
-      // States a measured fact (runs ARE completing at {rate}/min) — evidence the workers aren't
+      // States a measured fact (runs ARE finishing at {rate}/min) — evidence the workers aren't
       // dead. An observation, not an exclusion: it doesn't claim it's the limit, nor "keeps pace".
       observations:
-        donePerMin > 0 ? [{ code: "not_workers_platform", evidence: { donePerMin } }] : [],
+        finishedPerMin > 0 ? [{ code: "not_workers_platform", evidence: { finishedPerMin } }] : [],
       recommendation: { code: "raise_env_limit", link: "concurrency" },
       usesAttribution: true,
     };
@@ -177,16 +200,22 @@ function assembleFlowCause(
 
   // Anomaly window from the driving series. env_limit_saturation breaches ABOVE
   // (concurrency pinned at the limit); dequeue_stall breaches BELOW (capacity idle).
-  // NOTE: runningSeries is at native env_metrics resolution (not resampled), so the "(last N
-  // min)" figure assumes those buckets are uniform and cover the resolved window. env_metrics
-  // are emitted on a fixed cadence, so that holds; a gappy/partial window could skew the minutes.
+  // runningSeries is at native env_metrics resolution (not resampled) and is NOT gap-filled, so
+  // the duration is counted per REAL bucket cadence with gaps breaking the contiguous run —
+  // otherwise two fresh buckets would read as "the last 60 min". When the source can't report its
+  // cadence we fall back to the (documented) even-spread assumption.
   let aw: Finding["anomalyWindow"];
   if (spec.reason === "env_limit_saturation" || spec.reason === "dequeue_stall") {
     const below = spec.reason === "dequeue_stall";
     const threshold = below
       ? t.flowCause.stallRunningShare * input.flowEvidence.envLimit
       : t.flowCause.pinnedLevel * input.flowEvidence.envLimit;
-    aw = anomalyWindow(input.flowEvidence.runningSeries, threshold, input.windowMinutes, { below });
+    const coverage = bucketCoverage(input);
+    aw = anomalyWindow(input.flowEvidence.runningSeries, threshold, input.windowMinutes, {
+      below,
+      bucketMinutes: coverage.known ? coverage.bucketMinutes : undefined,
+      timestampsMs: input.flowEvidence.runningBucketsMs,
+    });
   }
 
   // Annotation on the driving metric (a fact, not an invented number).
@@ -295,6 +324,7 @@ const CAUSE_READS: Record<string, string> = {
 
 export function buildFlowRead(flow: Finding, executionOk: boolean, livenessFresh: boolean): string {
   if (flow.reason === "unknown") return "data_stale"; // stale-guarded — no causal read
+  if (flow.reason === FLOW_UNMEASURED) return "flow_unmeasured"; // no depth signal — no read
   if (isOk(flow.severity)) return "starting_normally";
   if (CAUSE_READS[flow.reason]) return CAUSE_READS[flow.reason];
   // fallback symptoms (v1 logic)

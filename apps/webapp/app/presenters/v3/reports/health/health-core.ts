@@ -19,10 +19,30 @@ export type HealthInput = {
    * now = live env-level depth; normal = 7d baseline (omitted on the snapshot path, which has
    * no real 7d pending baseline — so we never mislabel a live-window average as "7d normal");
    * series measured (v2) or estimated (v1).
+   *
+   * `availability: "unknown"` = the depth could NOT be measured at all (Redis down with no
+   * measured fallback, or the measured source failed for an unrecognized reason). `now` is then
+   * a placeholder, NEVER a confident 0 — flow is reported unassessable instead of healthy.
    */
-  pending: { now: number; normal?: number; series: number[]; estimated: boolean };
+  pending: {
+    now: number;
+    normal?: number;
+    series: number[];
+    estimated: boolean;
+    availability?: "measured" | "unknown";
+  };
   startLatency: { p95Ms: number; normalP95Ms: number; series: number[] };
-  throughput: { donePerMin: number; triggeredPerMin: number; normalTriggeredPerMin: number };
+  /**
+   * finishedPerMin = ALL terminal runs per minute — the rate work actually LEAVES the queue, so
+   * it's what net/drain math uses. completedPerMin (successes only) is an execution-side metric
+   * and would understate the drain rate whenever runs fail/expire/cancel.
+   */
+  throughput: {
+    finishedPerMin: number;
+    completedPerMin: number;
+    triggeredPerMin: number;
+    normalTriggeredPerMin: number;
+  };
   failures: { rate: number; normalRate: number; series: number[] };
   duration: { p95Ms: number; normalP95Ms: number };
   /** Age of the freshest telemetry (ms). null = no signal to assess -> freshness unknown. */
@@ -33,6 +53,18 @@ export type HealthInput = {
    */
   flowEvidence: {
     runningSeries: number[];
+    /**
+     * Epoch ms of each `runningSeries` bucket, aligned by index. Empty/absent when the source
+     * can't say (snapshot path) — then contiguity falls back to index adjacency.
+     */
+    runningBucketsMs?: number[];
+    /**
+     * Bucket cadence of `runningSeries` and how many buckets the window SHOULD contain. The rows
+     * are NOT gap-filled, so this is the only way to tell "pinned for 60 of 60 minutes" from
+     * "two fresh samples arrived in a 60-minute window". Absent = cadence unknown; the legacy
+     * gap-free assumption then applies (received buckets spread evenly over the window).
+     */
+    sampling?: { bucketMinutes: number; expectedBuckets: number } | null;
     envLimit: number;
     throttledShare: number;
     worstQueue: { name: string; share: number } | null;
@@ -67,6 +99,12 @@ export const HEALTH_THRESHOLDS = {
     // trigger_surge: with NO usable baseline (normal 0), a multiplier is meaningless, so an
     // absolute floor picks the "new volume" cause instead of dropping to the v1 fallback.
     surgePerMin: 100,
+    // Minimum share of the window's EXPECTED buckets that must have arrived before a
+    // concurrency-shaped cause (pin / stall) may be named. Below it the series is too gappy to
+    // support a cause or a duration, so flow drops to a symptom-level verdict. Metric buckets are
+    // produced by queue activity rather than a heartbeat, so a sparse window is normal for a quiet
+    // env — and a saturation/stall claim isn't supportable there anyway.
+    minCoverage: 0.5,
   },
   attribution: { minShare: 0.5 }, // name a queue/task/region only when it owns >= half the problem
 };
@@ -97,6 +135,55 @@ function multiplierSeverity(
     return floor ? classifySeverity(value, floor) : "ok";
   }
   return classifySeverity(value / normal, { warn: warnMult, crit: critMult });
+}
+
+/** True when the backlog depth could not be measured — `pending.now` is a placeholder. */
+export function isPendingUnknown(input: HealthInput): boolean {
+  return input.pending.availability === "unknown";
+}
+
+export type BucketCoverage = {
+  /** buckets the window should contain at the source's cadence. */
+  expectedBuckets: number;
+  /** buckets that actually arrived. */
+  receivedBuckets: number;
+  /** minutes per bucket. */
+  bucketMinutes: number;
+  /** received / expected. 1 when the cadence is unknown (legacy gap-free assumption). */
+  coverage: number;
+  /** enough of the window arrived to support a cause + a duration. */
+  sufficient: boolean;
+  /** true when the source told us its cadence (so gaps are detectable at all). */
+  known: boolean;
+};
+
+/**
+ * Coverage of the running series: how much of the window actually arrived. Without the source's
+ * cadence we can only assume the received buckets span the window evenly (the pre-existing
+ * assumption); with it, a gappy feed is visible and shares are expressed against EXPECTED buckets.
+ */
+export function bucketCoverage(input: HealthInput): BucketCoverage {
+  const received = input.flowEvidence.runningSeries.length;
+  const sampling = input.flowEvidence.sampling;
+  if (!sampling || sampling.expectedBuckets <= 0) {
+    return {
+      expectedBuckets: received,
+      receivedBuckets: received,
+      bucketMinutes: received > 0 ? input.windowMinutes / received : 0,
+      coverage: 1,
+      sufficient: true,
+      known: false,
+    };
+  }
+  const coverage = received / sampling.expectedBuckets;
+  return {
+    expectedBuckets: sampling.expectedBuckets,
+    receivedBuckets: received,
+    bucketMinutes: sampling.bucketMinutes,
+    coverage,
+    sufficient: coverage >= HEALTH_THRESHOLDS.flowCause.minCoverage,
+    known: true,
+  };
 }
 
 /** Look up a metric by id; throws if absent (buildMetrics guarantees the standard set exists). */
@@ -133,32 +220,44 @@ export function buildMetrics(input: HealthInput): Metric[] {
     ),
   };
 
+  // Unmeasurable depth: `now` is a placeholder, so it must not be CLASSIFIED (a placeholder 0
+  // would read as a confident "no backlog" green). `availability: "unknown"` says so, and the
+  // flow analyzer turns it into an unassessable verdict.
+  const pendingUnknown = isPendingUnknown(input);
   const pending: Metric = {
     id: "pending",
     value: input.pending.now,
     unit: "count",
+    availability: pendingUnknown ? "unknown" : "measured",
     normal: input.pending.normal,
-    delta: delta(input.pending.now, input.pending.normal),
+    delta: pendingUnknown ? undefined : delta(input.pending.now, input.pending.normal),
     series: {
       points: input.pending.series,
       kind: input.pending.estimated ? "estimated" : "measured",
     },
-    severity: multiplierSeverity(
-      input.pending.now,
-      input.pending.normal,
-      t.pending.warnMult,
-      t.pending.critMult,
-      t.pending.floor
-    ),
+    severity: pendingUnknown
+      ? "ok"
+      : multiplierSeverity(
+          input.pending.now,
+          input.pending.normal,
+          t.pending.warnMult,
+          t.pending.critMult,
+          t.pending.floor
+        ),
   };
 
-  const net = input.throughput.donePerMin - input.throughput.triggeredPerMin;
+  // Net drain uses FINISHED (all terminal) runs — every terminal run leaves the queue, so
+  // completions alone would show a permanent deficit on any env with failures.
+  const net = input.throughput.finishedPerMin - input.throughput.triggeredPerMin;
   const throughput: Metric = {
     id: "throughput",
     value: net,
     unit: "perMin",
     aggregation: "rate",
-    breakdown: { done: input.throughput.donePerMin, triggered: input.throughput.triggeredPerMin },
+    breakdown: {
+      done: input.throughput.finishedPerMin,
+      triggered: input.throughput.triggeredPerMin,
+    },
     severity: net < 0 && isPendingIncreasing(input.pending.series) ? "warn" : "ok",
   };
 
@@ -262,10 +361,15 @@ export function buildMetrics(input: HealthInput): Metric[] {
 // ---------------------------------------------------------------------------
 
 export function computeDrain(input: HealthInput): { drainMinutes: number; isDrainable: boolean } {
-  const donePerMin = input.throughput.donePerMin;
-  const drainMinutes = donePerMin === 0 ? Number.POSITIVE_INFINITY : input.pending.now / donePerMin;
+  // Drain rate = runs LEAVING the queue (all terminal), not just successful completions.
+  const finishedPerMin = input.throughput.finishedPerMin;
+  const drainMinutes =
+    finishedPerMin === 0 ? Number.POSITIVE_INFINITY : input.pending.now / finishedPerMin;
   return {
     drainMinutes,
-    isDrainable: drainMinutes < HEALTH_THRESHOLDS.flowPolicy.drainCritMinutes,
+    // An unmeasurable depth can't produce an ETA — never offer "do nothing, it drains" off a
+    // placeholder.
+    isDrainable:
+      !isPendingUnknown(input) && drainMinutes < HEALTH_THRESHOLDS.flowPolicy.drainCritMinutes,
   };
 }

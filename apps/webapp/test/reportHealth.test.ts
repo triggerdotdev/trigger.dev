@@ -20,7 +20,12 @@ const INPUT_A: HealthInput = {
     normalP95Ms: 7000,
     series: [7000, 12000, 20000, 30000, 38000, 42000],
   },
-  throughput: { donePerMin: 820, triggeredPerMin: 1150, normalTriggeredPerMin: 1100 },
+  throughput: {
+    finishedPerMin: 820,
+    completedPerMin: 820,
+    triggeredPerMin: 1150,
+    normalTriggeredPerMin: 1100,
+  },
   failures: { rate: 0.013, normalRate: 0.011, series: [0.011, 0.011, 0.012, 0.013] },
   duration: { p95Ms: 1200, normalP95Ms: 1180 },
   liveness: { telemetryAgeMs: 4000 },
@@ -43,7 +48,12 @@ const INPUT_B: HealthInput = {
   flowSource: "queue_metrics_v1",
   pending: { now: 84, normal: 120, series: [110, 96, 88, 90, 84], estimated: false },
   startLatency: { p95Ms: 6000, normalP95Ms: 7000, series: [6500, 6200, 6000, 5900, 6000] },
-  throughput: { donePerMin: 1000, triggeredPerMin: 1000, normalTriggeredPerMin: 1000 },
+  throughput: {
+    finishedPerMin: 1000,
+    completedPerMin: 1000,
+    triggeredPerMin: 1000,
+    normalTriggeredPerMin: 1000,
+  },
   failures: { rate: 0.009, normalRate: 0.011, series: [0.01, 0.009, 0.009] },
   duration: { p95Ms: 1100, normalP95Ms: 1180 },
   liveness: { telemetryAgeMs: 2000 },
@@ -73,7 +83,7 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
     expect(flow.exclusions).toEqual([]); // env-limit saturation rules nothing out...
     expect(flow.observations).toEqual([
       // ...it states supporting facts instead.
-      { code: "not_workers_platform", evidence: { donePerMin: 820 } },
+      { code: "not_workers_platform", evidence: { finishedPerMin: 820 } },
       { code: "nothing_dead_lettered", evidence: { dlq: 0 } },
     ]);
     expect(flow.read).toBe("saturation_chain");
@@ -105,7 +115,7 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
         worst queue     email-sends — 82% of pending
 
         read: limit saturated → incoming work exceeds capacity → backlog grows
-              runs are completing at ~820/min
+              runs are finishing at ~820/min
               nothing dead-lettered
 
       EXECUTION   🟢 the runs that DO start are fine
@@ -195,6 +205,23 @@ describe("liveness trust guard (telemetry freshness)", () => {
     expect(liveness.reason).toBe("freshness_unknown");
     expect(liveness.severity).toBe("ok"); // no signal is NEUTRAL, not a warning
     expect(execution.reason).not.toBe("unknown");
+  });
+
+  it("no freshness signal is never TRUSTWORTHY, even though the human verdict stays neutral", () => {
+    // The human summary may stay green for an idle env (below), but the machine field must not
+    // claim trust it doesn't have: a "health recovered" watch would otherwise fire off silence.
+    const vm = interpret({ ...INPUT_B, liveness: { telemetryAgeMs: null } });
+    expect(vm.summary.severity).toBe("ok"); // human side unchanged
+    expect(vm.facts).toMatchObject({
+      trustworthy: false,
+      telemetry: "none",
+      untrustworthyReason: "telemetry_absent",
+    });
+    // ...and a lagging-but-present signal IS still trustworthy (lagging is a real, readable state).
+    expect(interpret({ ...INPUT_B, liveness: { telemetryAgeMs: 120_000 } }).facts).toMatchObject({
+      trustworthy: true,
+      telemetry: "lagging",
+    });
   });
 
   it("a healthy but idle env (no telemetry signal) reads overall green, not yellow", () => {
@@ -288,7 +315,12 @@ describe("flow cause tree — cause selection per discriminator", () => {
     const input: HealthInput = {
       ...INPUT_A,
       pending: { now: 400, normal: 1000, series: [500, 450, 400], estimated: false },
-      throughput: { donePerMin: 3300, triggeredPerMin: 3300, normalTriggeredPerMin: 1100 },
+      throughput: {
+        finishedPerMin: 3300,
+        completedPerMin: 3300,
+        triggeredPerMin: 3300,
+        normalTriggeredPerMin: 1100,
+      },
       flowEvidence: {
         ...INPUT_A.flowEvidence,
         runningSeries: Array(9).fill(50),
@@ -304,7 +336,12 @@ describe("flow cause tree — cause selection per discriminator", () => {
     const input: HealthInput = {
       ...INPUT_A,
       pending: { now: 400, normal: 1000, series: [500, 450, 400], estimated: false },
-      throughput: { donePerMin: 6000, triggeredPerMin: 5000, normalTriggeredPerMin: 0 },
+      throughput: {
+        finishedPerMin: 6000,
+        completedPerMin: 6000,
+        triggeredPerMin: 5000,
+        normalTriggeredPerMin: 0,
+      },
       flowEvidence: {
         ...INPUT_A.flowEvidence,
         runningSeries: Array(9).fill(50),
@@ -345,7 +382,12 @@ describe("env_limit_saturation read does not claim a start lag that isn't there"
 describe("trigger spike does not exonerate user code", () => {
   const spike = interpret({
     ...INPUT_A,
-    throughput: { donePerMin: 820, triggeredPerMin: 3300, normalTriggeredPerMin: 1100 },
+    throughput: {
+      finishedPerMin: 820,
+      completedPerMin: 820,
+      triggeredPerMin: 3300,
+      normalTriggeredPerMin: 1100,
+    },
     flowEvidence: { ...INPUT_A.flowEvidence, runningSeries: Array(9).fill(50), throttledShare: 0 },
   });
 
@@ -406,7 +448,14 @@ describe("exclusions are proven, not assumed", () => {
     // BE the cause of the spike, so it must not be ruled out.
     const healthyInput = withFlow(
       { runningSeries: Array(9).fill(50), throttledShare: 0 },
-      { throughput: { donePerMin: 820, triggeredPerMin: 3300, normalTriggeredPerMin: 1100 } }
+      {
+        throughput: {
+          finishedPerMin: 820,
+          completedPerMin: 820,
+          triggeredPerMin: 3300,
+          normalTriggeredPerMin: 1100,
+        },
+      }
     );
     expect(observationCodes(healthyInput)).toContain("execution_healthy");
     expect(exclusionCodes(healthyInput)).not.toContain("not_your_code");
@@ -415,7 +464,12 @@ describe("exclusions are proven, not assumed", () => {
     const degradedInput = withFlow(
       { runningSeries: Array(9).fill(50), throttledShare: 0 },
       {
-        throughput: { donePerMin: 820, triggeredPerMin: 3300, normalTriggeredPerMin: 1100 },
+        throughput: {
+          finishedPerMin: 820,
+          completedPerMin: 820,
+          triggeredPerMin: 3300,
+          normalTriggeredPerMin: 1100,
+        },
         failures: { rate: 0.2, normalRate: 0.01, series: [0.2] },
       }
     );
@@ -464,9 +518,13 @@ describe("stale-telemetry trust guard covers flow (not just execution)", () => {
   });
 
   it("flags the structured facts informational-only so an agent won't act on stale numbers", () => {
-    expect(stale.facts).toMatchObject({ trustworthy: false, staleReason: "telemetry_stale" });
+    expect(stale.facts).toMatchObject({
+      trustworthy: false,
+      telemetry: "stale",
+      untrustworthyReason: "telemetry_stale",
+    });
     // fresh input is trustworthy.
-    expect(interpret(INPUT_A).facts).toMatchObject({ trustworthy: true });
+    expect(interpret(INPUT_A).facts).toMatchObject({ trustworthy: true, telemetry: "fresh" });
   });
 });
 
@@ -507,5 +565,110 @@ describe("zero baseline is not a false green (absolute floors)", () => {
   it("failures spiking from a 0% baseline is not healthy", () => {
     const vm = interpret({ ...INPUT_B, failures: { rate: 0.1, normalRate: 0, series: [0.1] } });
     expect(vm.findings.find((f) => f.type === "execution")!.severity).not.toBe("ok");
+  });
+});
+
+describe("an unmeasurable backlog is not a healthy backlog", () => {
+  // The depth couldn't be measured at all, so `now` is a placeholder — the verdict must be
+  // "can't say", never a confident green (and never actionable).
+  const unmeasured: HealthInput = {
+    ...INPUT_B,
+    pending: { now: 0, series: [], estimated: true, availability: "unknown" },
+  };
+
+  it("reports flow unassessable instead of healthy, with no action off the placeholder", () => {
+    const vm = interpret(unmeasured);
+    const flow = vm.findings.find((f) => f.type === "flow")!;
+    expect(flow.reason).toBe("flow_unmeasured");
+    expect(flow.recommendation).toBeUndefined();
+    expect(flow.attribution).toBeUndefined();
+    expect(vm.footer).toEqual([{ code: "nothing_to_do" }]);
+    expect(vm.facts).toMatchObject({ trustworthy: false, untrustworthyReason: "flow_unmeasured" });
+  });
+
+  it("does not classify the placeholder depth or offer a drain ETA", () => {
+    const vm = interpret({
+      ...unmeasured,
+      // A placeholder that WOULD cross the crit floor if it were classified.
+      pending: { now: 9000, series: [], estimated: true, availability: "unknown" },
+    });
+    const pending = vm.metrics.find((m) => m.id === "pending")!;
+    expect(pending.availability).toBe("unknown");
+    expect(pending.severity).toBe("ok"); // not classified — it isn't a measurement
+    expect(vm.footer.map((f) => f.code)).not.toContain("do_nothing_drains");
+  });
+
+  it("renders the flow section with the neutral marker and no facts off the placeholder", () => {
+    const md = renderReportMarkdown(interpret(unmeasured));
+    expect(md).toContain("Flow unknown — queue depth unavailable");
+    expect(md).not.toContain("pending 0");
+    expect(md).not.toContain("🟢 Flow healthy");
+  });
+});
+
+describe("gappy telemetry cannot read as a full window", () => {
+  // 60-minute window at a 1-minute cadence = 60 expected buckets, but only 2 arrived (both
+  // fresh, both pinned at the limit). Counting RECEIVED rows made this "pinned 60 of last 60 min".
+  const gappy: HealthInput = {
+    ...INPUT_A,
+    flowEvidence: {
+      ...INPUT_A.flowEvidence,
+      runningSeries: [100, 100],
+      runningBucketsMs: [Date.parse("2026-07-20T11:58:00Z"), Date.parse("2026-07-20T11:59:00Z")],
+      sampling: { bucketMinutes: 1, expectedBuckets: 60 },
+    },
+  };
+
+  it("does not attribute a concurrency cause off 2 of 60 expected buckets", () => {
+    const vm = interpret(gappy);
+    const flow = vm.findings.find((f) => f.type === "flow")!;
+    expect(flow.reason).not.toBe("env_limit_saturation");
+    expect(flow.reason).not.toBe("dequeue_stall");
+    expect(flow.anomalyWindow).toBeUndefined(); // no confident duration
+    const concurrency = vm.metrics.find((m) => m.id === "concurrency")!;
+    expect(concurrency.annotation).toBeUndefined(); // never "pinned 60 of last 60 min"
+    expect(renderReportMarkdown(vm)).not.toContain("pinned 60");
+  });
+
+  it("counts a duration at the real cadence, and a gap breaks the run", () => {
+    // Full coverage at a 1-minute cadence, but one bucket is missing in the middle: the trailing
+    // pinned run is 3 buckets = 3 min, not "the whole window".
+    const cadence = 60_000;
+    const start = Date.parse("2026-07-20T11:00:00Z");
+    // 34 of 60 buckets pinned (over the pinned-share threshold), the rest busy but not pinned.
+    const running = Array.from({ length: 60 }, (_, i) => (i >= 26 ? 100 : 60));
+    const timestamps = Array.from({ length: 60 }, (_, i) => start + i * cadence);
+    // Drop bucket 57's continuity by pushing it a full 10 minutes later (a gap, not a neighbour).
+    for (let i = 57; i < 60; i++) timestamps[i] += 10 * cadence;
+    const vm = interpret({
+      ...INPUT_A,
+      flowEvidence: {
+        ...INPUT_A.flowEvidence,
+        runningSeries: running,
+        runningBucketsMs: timestamps,
+        sampling: { bucketMinutes: 1, expectedBuckets: 60 },
+      },
+    });
+    const flow = vm.findings.find((f) => f.type === "flow")!;
+    expect(flow.reason).toBe("env_limit_saturation");
+    expect(flow.anomalyWindow).toEqual({ minutes: 3, touchesEnd: true }); // gap broke the 4th
+  });
+});
+
+describe("drain math counts every terminal run, not only completions", () => {
+  it("80 completed + 20 failed against 100 triggered/min reads as stable, not a deficit", () => {
+    const vm = interpret({
+      ...INPUT_B,
+      throughput: {
+        finishedPerMin: 100, // 80 completed + 20 failed all left the queue
+        completedPerMin: 80,
+        triggeredPerMin: 100,
+        normalTriggeredPerMin: 100,
+      },
+    });
+    const throughput = vm.metrics.find((m) => m.id === "throughput")!;
+    expect(throughput.value).toBe(0); // net, not −20/min
+    expect(throughput.severity).toBe("ok");
+    expect(vm.findings.find((f) => f.type === "flow")!.severity).toBe("ok");
   });
 });

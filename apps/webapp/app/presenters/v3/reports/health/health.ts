@@ -20,9 +20,15 @@ import {
   type Severity,
   type SummaryStatement,
 } from "../report-view-model";
-import { buildMetrics, computeDrain, HEALTH_THRESHOLDS, type HealthInput } from "./health-core";
+import {
+  buildMetrics,
+  computeDrain,
+  HEALTH_THRESHOLDS,
+  isPendingUnknown,
+  type HealthInput,
+} from "./health-core";
 import { buildExecutionRead, interpretExecution } from "./execution";
-import { applyFlowPolicy, buildFlowRead, interpretFlow } from "./flow";
+import { applyFlowPolicy, buildFlowRead, FLOW_UNMEASURED, interpretFlow } from "./flow";
 import { interpretLiveness } from "./liveness";
 // Registers the "health" message catalog (side effect) so the renderer resolves this report's
 // codes. Kept here — the health report's entry module — so loading it always registers its prose.
@@ -76,7 +82,9 @@ function aggregateSummary(
     {
       findingType: "flow",
       severity: flow.severity,
-      reason: flow.reason === "unknown" ? "unknown" : undefined,
+      // Both exceptions are "we can't say", so the statement must not render a severity claim.
+      reason:
+        flow.reason === "unknown" || flow.reason === FLOW_UNMEASURED ? flow.reason : undefined,
     },
     {
       findingType: "execution",
@@ -187,8 +195,24 @@ export function assessHealth(input: HealthInput): HealthAssessment {
 
   // Telemetry freshness as an explicit state so "unknown" (no signal) is never conflated with
   // "lagging" (a real severity). Only GENUINE staleness trust-guards the CH-derived verdicts.
+  //
+  // HUMAN severity and MACHINE trust are deliberately split here:
+  //  - a signal-less env stays NEUTRAL for the reader (liveness ok / "freshness unknown"): an
+  //    idle-but-fine env must not be painted yellow, and no verdict is trust-guarded;
+  //  - but `facts.trustworthy` must NOT claim trust with no signal to back it. `telemetry: "none"`
+  //    names the state, and trustworthy is false — so an automated watch (e.g. "health recovered")
+  //    can never fire off an env that simply produced no telemetry.
   const ageMs = input.liveness.telemetryAgeMs;
-  const telemetryStale = ageMs !== null && ageMs > HEALTH_THRESHOLDS.liveness.staleMs;
+  const telemetry: "none" | "fresh" | "lagging" | "stale" =
+    ageMs === null
+      ? "none"
+      : ageMs > HEALTH_THRESHOLDS.liveness.staleMs
+        ? "stale"
+        : ageMs > HEALTH_THRESHOLDS.liveness.freshMs
+          ? "lagging"
+          : "fresh";
+  const telemetryStale = telemetry === "stale";
+  const flowUnmeasured = isPendingUnknown(input);
 
   flow = applyFlowPolicy(flow, executionRaw, drain.isDrainable, telemetryStale);
 
@@ -225,11 +249,18 @@ export function assessHealth(input: HealthInput): HealthAssessment {
     executionTreatedCrit: guarded.treatedCrit,
     facts: {
       // Trust marker for structured consumers. The metrics/evidence stay (useful for pipeline
-      // diagnostics), but when telemetry is stale they're informational-only: an agent must not
-      // act on them (e.g. raise concurrency off a stale backlog). The human renderer is already
-      // guarded via the "unknown" finding; this is the same guarantee for JSON.
-      trustworthy: !telemetryStale,
-      staleReason: telemetryStale ? "telemetry_stale" : undefined,
+      // diagnostics), but they're informational-only unless this is true: an agent must not act
+      // on them (e.g. raise concurrency off a stale backlog, or declare recovery off silence).
+      // Trust needs a POSITIVE signal — stale, absent, and unmeasurable all read false.
+      trustworthy: !telemetryStale && telemetry !== "none" && !flowUnmeasured,
+      telemetry,
+      untrustworthyReason: telemetryStale
+        ? "telemetry_stale"
+        : telemetry === "none"
+          ? "telemetry_absent"
+          : flowUnmeasured
+            ? "flow_unmeasured"
+            : undefined,
       flowSource: input.flowSource,
       pendingEstimated: input.pending.estimated,
       throughput: input.throughput,
