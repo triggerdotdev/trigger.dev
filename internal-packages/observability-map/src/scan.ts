@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { EntryPoint } from "./types.js";
+import type { EntryPoint, LogCall } from "./types.js";
 
 /** Thrown by `scanFile` when the source does not parse cleanly. */
 export class ParseFailureError extends Error {
@@ -66,6 +66,65 @@ function calleeName(expr: ts.Expression): string | null {
   if (ts.isIdentifier(target)) return target.text;
   if (ts.isPropertyAccessExpression(target)) return target.name.text;
   return null;
+}
+
+/**
+ * Callee as recorded in `calleeTexts`: the whole path, `prisma.organization.findFirst` rather than
+ * `findFirst`. Null when the path runs through something with no name of its own, e.g.
+ * `new PromptService().createOverride`, where the caller falls back to the bare name.
+ */
+function calleeText(expr: ts.Expression): string | null {
+  const target = unwrap(expr);
+  if (ts.isIdentifier(target)) return target.text;
+  if (target.kind === ts.SyntaxKind.ThisKeyword) return "this";
+  if (ts.isPropertyAccessExpression(target)) {
+    const base = calleeText(target.expression);
+    return base === null ? null : `${base}.${target.name.text}`;
+  }
+  if (ts.isCallExpression(target)) {
+    const base = calleeText(target.expression);
+    return base === null ? null : `${base}()`;
+  }
+  return null;
+}
+
+/** `logger.error`, `log.info`, `this.logger.debug`. */
+const LOGGER_CALLEE = /(^|\.)(logger|log)\.[A-Za-z_$][\w$]*$/;
+
+/** Property names on the first object-literal argument, e.g. `{ environmentId, error }`. */
+function objectArgumentFields(call: ts.CallExpression): { found: boolean; fields: string[] } {
+  for (const arg of call.arguments) {
+    const target = unwrap(arg);
+    if (!ts.isObjectLiteralExpression(target)) continue;
+    const fields: string[] = [];
+    for (const property of target.properties) {
+      const name = propertyName(property);
+      if (name) fields.push(name);
+    }
+    return { found: true, fields };
+  }
+  return { found: false, fields: [] };
+}
+
+/** What a catch clause does with the error, beyond the fact that it caught one. */
+function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branches: boolean } {
+  let rethrows = false;
+  let branches = false;
+
+  const visit = (node: ts.Node) => {
+    if (ts.isThrowStatement(node)) rethrows = true;
+    if (ts.isIfStatement(node) || ts.isSwitchStatement(node)) branches = true;
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword
+    ) {
+      branches = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(clause.block);
+
+  return { rethrows, branches };
 }
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
@@ -396,7 +455,11 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
 
   let statementCount = 0;
   let hasTryCatch = false;
+  let catchRethrows = false;
+  let catchBranches = false;
   const calleeNames: string[] = [];
+  const calleeTexts: string[] = [];
+  const logCalls: LogCall[] = [];
 
   const localFunctions = collectLocalFunctions(sf);
   // A body that delegates to a same-file helper does the work in that helper, so the helper's
@@ -409,11 +472,34 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     statementCount += countFunctionStatements(fn);
 
     if (!fn.body) return;
-    const visit = (node: ts.Node) => {
+    const visit = (node: ts.Node, inCatch: boolean) => {
       if (ts.isTryStatement(node)) hasTryCatch = true;
+
+      if (ts.isCatchClause(node)) {
+        const evidence = catchClauseEvidence(node);
+        catchRethrows ||= evidence.rethrows;
+        catchBranches ||= evidence.branches;
+        ts.forEachChild(node, (child) => visit(child, true));
+        return;
+      }
+
       if (ts.isCallExpression(node)) {
         const cn = calleeName(node.expression);
-        if (cn) calleeNames.push(cn);
+        if (cn) {
+          const text = calleeText(node.expression) ?? cn;
+          calleeNames.push(cn);
+          calleeTexts.push(text);
+
+          if (LOGGER_CALLEE.test(text)) {
+            const argument = objectArgumentFields(node);
+            logCalls.push({
+              callee: text,
+              hasObjectArgument: argument.found,
+              fields: argument.fields,
+              inCatch,
+            });
+          }
+        }
 
         if (followHelpers) {
           const callee = unwrap(node.expression);
@@ -426,9 +512,9 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
           }
         }
       }
-      ts.forEachChild(node, visit);
+      ts.forEachChild(node, (child) => visit(child, inCatch));
     };
-    visit(fn.body);
+    visit(fn.body, false);
   };
 
   for (const fn of target.functions) walkBody(fn, true);
@@ -443,7 +529,11 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     actionInitializerCallee: target.actionInitializerCallee,
     importedNames,
     calleeNames,
+    calleeTexts,
     hasTryCatch,
+    catchRethrows,
+    catchBranches,
+    logCalls,
     statementCount,
   };
 }

@@ -569,3 +569,286 @@ describe("scanDirectory", () => {
     expect(entryPoints.map((ep) => ep.fileName)).toEqual(["projects.v3.$projectRef.test.ts"]);
   });
 });
+
+describe("scanFile: catch clause evidence", () => {
+  it("sets catchRethrows when a catch rethrows", () => {
+    const ep = scanFile(
+      "rethrow.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (e) {
+          logger.error(e);
+          throw e;
+        }
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.catchRethrows).toBe(true);
+    expect(ep!.catchBranches).toBe(false);
+  });
+
+  it("leaves both flags false when the catch only returns", () => {
+    const ep = scanFile(
+      "swallow.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (e) {
+          return null;
+        }
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.catchRethrows).toBe(false);
+    expect(ep!.catchBranches).toBe(false);
+  });
+
+  it("sets catchBranches for an `if` on the error", () => {
+    const ep = scanFile(
+      "branch-if.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await request.json());
+        } catch (e) {
+          if (e instanceof SyntaxError) {
+            return json({ error: "bad json" }, { status: 400 });
+          }
+          return json({ error: "failed" }, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catchBranches).toBe(true);
+    expect(ep!.catchRethrows).toBe(false);
+  });
+
+  it("sets catchBranches for a bare instanceof with no `if`", () => {
+    const ep = scanFile(
+      "branch-instanceof.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (e) {
+          return e instanceof Response ? e : json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catchBranches).toBe(true);
+  });
+
+  it("sets catchBranches for a switch in the catch", () => {
+    const ep = scanFile(
+      "branch-switch.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (e) {
+          switch (e.code) {
+            case "P2025":
+              return json({}, { status: 404 });
+            default:
+              return json({}, { status: 500 });
+          }
+        }
+      }
+      `
+    );
+    expect(ep!.catchBranches).toBe(true);
+  });
+
+  it("ignores a catch that lives in the React component", () => {
+    const ep = scanFile(
+      "route.tsx",
+      `
+      export async function loader() {
+        return json({});
+      }
+      export default function Page() {
+        try {
+          render();
+        } catch (e) {
+          if (e instanceof RenderError) throw e;
+          return null;
+        }
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(false);
+    expect(ep!.catchRethrows).toBe(false);
+    expect(ep!.catchBranches).toBe(false);
+  });
+
+  it("reads a catch inside a same-file helper the body delegates to", () => {
+    const ep = scanFile(
+      "ph.$.ts",
+      `
+      async function proxy(request) {
+        try {
+          return await fetch(request.url);
+        } catch (e) {
+          if (e.name === "AbortError") throw e;
+          return new Response(null, { status: 502 });
+        }
+      }
+      export async function loader({ request }) {
+        return proxy(request);
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.catchRethrows).toBe(true);
+    expect(ep!.catchBranches).toBe(true);
+  });
+
+  it("leaves both flags false for a try with no catch", () => {
+    const ep = scanFile(
+      "finally-only.ts",
+      `
+      export async function loader() {
+        try {
+          return json(await load());
+        } finally {
+          release();
+        }
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.catchRethrows).toBe(false);
+    expect(ep!.catchBranches).toBe(false);
+  });
+});
+
+describe("scanFile: callee texts", () => {
+  it("keeps the full callee expression alongside the bare name", () => {
+    const ep = scanFile(
+      "api.v1.things.ts",
+      `
+      export async function loader({ request }) {
+        const org = await prisma.organization.findFirst({ where: { id: 1 } });
+        logger.error("nope", { organizationId: org.id });
+        return json(org);
+      }
+      `
+    );
+    expect(ep!.calleeNames).toContain("findFirst");
+    expect(ep!.calleeTexts).toContain("prisma.organization.findFirst");
+    expect(ep!.calleeTexts).toContain("logger.error");
+    expect(ep!.calleeTexts).toContain("json");
+    // Index-aligned with calleeNames, so a consumer can read either.
+    expect(ep!.calleeTexts).toHaveLength(ep!.calleeNames.length);
+  });
+
+  it("does not leak calls made in the React component", () => {
+    const ep = scanFile(
+      "route.tsx",
+      `
+      export async function loader() {
+        return json(await prisma.run.findMany());
+      }
+      export default function Page() {
+        useFancyHook();
+        analytics.track("viewed");
+        return null;
+      }
+      `
+    );
+    expect(ep!.calleeTexts).toContain("prisma.run.findMany");
+    expect(ep!.calleeTexts).not.toContain("analytics.track");
+    expect(ep!.calleeTexts).not.toContain("useFancyHook");
+  });
+
+  it("records callee texts from a same-file helper the body delegates to", () => {
+    const ep = scanFile(
+      "delegating.ts",
+      `
+      async function load(id) {
+        return prisma.project.findUnique({ where: { id } });
+      }
+      export async function loader({ params }) {
+        return json(await load(params.id));
+      }
+      `
+    );
+    expect(ep!.calleeTexts).toContain("prisma.project.findUnique");
+  });
+
+  it("falls back to the bare name for a callee it cannot render as a path", () => {
+    const ep = scanFile(
+      "new-expression.ts",
+      `
+      export async function action({ request }) {
+        return json(await new PromptService().createOverride(request));
+      }
+      `
+    );
+    expect(ep!.calleeNames).toContain("createOverride");
+    expect(ep!.calleeTexts).toContain("createOverride");
+    expect(ep!.calleeTexts).toHaveLength(ep!.calleeNames.length);
+  });
+});
+
+describe("scanFile: log calls", () => {
+  it("records the fields of a log call's object argument", () => {
+    const ep = scanFile(
+      "logging.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (e) {
+          logger.error("load failed", { environmentId: env.id, error: e });
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.logCalls).toHaveLength(1);
+    expect(ep!.logCalls[0]).toEqual({
+      callee: "logger.error",
+      hasObjectArgument: true,
+      fields: ["environmentId", "error"],
+      inCatch: true,
+    });
+  });
+
+  it("records a log call with no object argument, outside a catch", () => {
+    const ep = scanFile(
+      "logging-plain.ts",
+      `
+      export async function loader() {
+        log.info("starting");
+        return json({});
+      }
+      `
+    );
+    expect(ep!.logCalls).toEqual([
+      { callee: "log.info", hasObjectArgument: false, fields: [], inCatch: false },
+    ]);
+  });
+
+  it("ignores a non-logger call and a log call in the React component", () => {
+    const ep = scanFile(
+      "route.tsx",
+      `
+      export async function loader() {
+        return json(await load());
+      }
+      export default function Page() {
+        logger.debug("rendered", { runId: 1 });
+        return null;
+      }
+      `
+    );
+    expect(ep!.logCalls).toEqual([]);
+  });
+});
