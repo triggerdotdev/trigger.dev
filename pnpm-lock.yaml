@@ -1154,6 +1154,9 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.22.4
+      vitest:
+        specifier: 4.1.7
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.7)(vite@6.4.2(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.22.4)(yaml@2.9.0))
 
   internal-packages/otlp-importer:
     dependencies:

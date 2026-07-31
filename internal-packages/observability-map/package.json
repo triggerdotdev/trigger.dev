@@ -10,7 +10,8 @@
   "devDependencies": {
     "@types/node": "^24.13.3",
     "rimraf": "6.0.1",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "vitest": "4.1.7"
   },
   "scripts": {
     "clean": "rimraf dist",
