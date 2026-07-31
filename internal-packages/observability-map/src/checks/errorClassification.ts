@@ -32,16 +32,17 @@ export function usesBuilder(ep: EntryPoint): boolean {
 }
 
 /**
- * Who decides what a failure means. Three answers count as covered: the builder does it, the route
- * declines to interfere and the error reaches the global handler, or the route is trivial.
+ * Who decides what a failure means, and on what evidence.
  *
- * The fourth answer is the finding: a route outside the builders that catches its own errors. What
- * that catch then does is the question the check would like to answer and cannot. `EntryPoint`
- * carries `hasTryCatch`, a body-scoped boolean, and nothing about the catch clause itself, so a
- * rethrow and a swallow look identical from here. Reading the shape of the catch out of `ep.source`
- * would mean matching the whole file, React component included, which is how a component's
- * try/catch ends up deciding a loader's verdict. Coarse and honest beats precise and wrong: the
- * check reports the hand-rolled catch and says it has not been read.
+ * The swallow is read before the builder is credited, which looks like the wrong order until you
+ * read `api.v2.runs.$runParam.cancel.ts`: a `createActionApiRoute` handler wrapping its service
+ * call in `try { ... } catch { return 500 }`. The builder classifies what reaches it, and that
+ * error never does. Crediting the wrapper would hide the one case in this family worth finding.
+ *
+ * `catchRethrows` and `catchBranches` are OR-ed across every catch clause in the bodies, so both
+ * false means every catch in the entry point takes the same way out whatever was thrown. The
+ * asymmetry that buys: one good catch alongside one swallow reads as a pass. This check misses
+ * those rather than inventing them.
  */
 export const errorClassification = {
   id: ID,
@@ -49,17 +50,19 @@ export const errorClassification = {
     if (isTrivial(ep)) {
       return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
+    if (ep.hasTryCatch && !ep.catchRethrows && !ep.catchBranches) {
+      return {
+        id: ID,
+        status: "fail",
+        detail: "catches its errors and takes one way out regardless of what was thrown",
+      };
+    }
+    if (ep.catchRethrows || ep.catchBranches) {
+      return { id: ID, status: "pass", detail: "the catch distinguishes what it caught" };
+    }
     if (usesBuilder(ep)) {
       return { id: ID, status: "pass", detail: "classified by the builder" };
     }
-    if (!ep.hasTryCatch) {
-      return { id: ID, status: "pass", detail: "errors propagate to the global handler" };
-    }
-    return {
-      id: ID,
-      status: "fail",
-      detail:
-        "handles its own errors outside a route builder, and the catch has not been read: check it distinguishes expected from unexpected",
-    };
+    return { id: ID, status: "pass", detail: "errors propagate to the global handler" };
   },
 };

@@ -62,10 +62,8 @@ describe("error-classification", () => {
     expect(r.status).toBe("fail");
   });
 
-  // The brief expected a pass here. `EntryPoint` carries `hasTryCatch` and nothing about what the
-  // catch does with the error, so the check cannot see the rethrow, and reading it out of
-  // `ep.source` would read the whole file. Known false positive, see the task 5 report.
-  it("also fails a raw route whose catch branches on the error", () => {
+  // Restored from the brief: `catchBranches` sees the `instanceof` and the `if`.
+  it("passes a raw route whose catch branches on the error", () => {
     const r = run(
       "error-classification",
       "api.v1.z.ts",
@@ -74,6 +72,39 @@ describe("error-classification", () => {
          try { return await prisma.thing.findMany(); }
          catch (e) { if (e instanceof NotFound) return null; throw e; }
        }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  it("passes a raw route whose catch rethrows without branching", () => {
+    const r = run(
+      "error-classification",
+      "api.v1.v.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return await prisma.thing.findMany(); }
+         catch (e) { logger.error("thing lookup failed", { error: e }); throw e; }
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  // The builder only classifies what reaches it. A swallow inside the handler never does, so the
+  // swallow is read before the builder is credited.
+  it("fails a builder-wrapped route whose handler swallows", () => {
+    const r = run(
+      "error-classification",
+      "api.v2.runs.$runParam.cancel.ts",
+      `import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+       import { CancelTaskRunService } from "~/services/cancelTaskRun.server";
+       const { action } = createActionApiRoute({}, async ({ params }) => {
+         const service = new CancelTaskRunService();
+         try { await service.call(params.runParam); }
+         catch { return json({ error: "Internal Server Error" }, { status: 500 }); }
+         return json({ ok: true });
+       });
+       export { action };`
     );
     expect(r.status).toBe("fail");
   });
@@ -204,46 +235,55 @@ describe("auth-boundary", () => {
 });
 
 describe("request-context", () => {
-  it("passes a builder-wrapped route", () => {
+  it("passes a route whose failure log names an identifier", () => {
     const r = run(
       "request-context",
-      "api.v1.q.ts",
-      `import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+      "engine.v1.dev.config.ts",
+      `import { logger } from "~/services/logger.server";
        import { prisma } from "~/db.server";
-       export const loader = createLoaderApiRoute({}, async () => json(await prisma.thing.findMany()));`
-    );
-    expect(r.status).toBe("pass");
-  });
-
-  it("passes a raw route that resolves the request identity", () => {
-    const r = run(
-      "request-context",
-      "api.v1.q.ts",
-      `import { authenticateApiRequest } from "~/services/apiAuth.server";
-       import { prisma } from "~/db.server";
-       export async function loader({ request }) {
-         const auth = await authenticateApiRequest(request);
-         return json(await prisma.thing.findMany({ where: { environmentId: auth.environment.id } }));
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.error("dev config failed", { environmentId: params.envId, error });
+           throw error;
+         }
        }`
     );
     expect(r.status).toBe("pass");
   });
 
-  it("passes a raw route that resolves a tenant without authenticating", () => {
+  it("passes on a route param, which names the tenant just as well", () => {
     const r = run(
       "request-context",
       "resources.things.ts",
-      `import { loadProjectEnvironmentFromRequest } from "~/services/environment.server";
+      `import { logger } from "~/services/logger.server";
        import { prisma } from "~/db.server";
-       export async function loader({ request, params }) {
-         const environment = await loadProjectEnvironmentFromRequest(request, params);
-         return json(await prisma.thing.findMany({ where: { environmentId: environment.id } }));
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) {
+           logger.error("lookup failed", { organizationSlug: params.organizationSlug, error });
+           throw error;
+         }
        }`
     );
     expect(r.status).toBe("pass");
   });
 
-  it("fails a raw route that resolves nothing about the request", () => {
+  it("fails a failure log that carries only the error", () => {
+    const r = run(
+      "request-context",
+      "api.v1.r.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return await prisma.thing.findMany(); }
+         catch (error) { logger.error("failed", { error }); throw error; }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("fails a bare failure log with no object argument at all", () => {
     const r = run(
       "request-context",
       "api.v1.r.ts",
@@ -256,51 +296,79 @@ describe("request-context", () => {
     expect(r.status).toBe("fail");
   });
 
-  // The brief expected a pass here, on the strength of the identifier in the log call. `EntryPoint`
-  // records callee names, not their arguments, so that identifier is not body-scoped evidence and
-  // the check cannot see it. Known false positive, see the task 5 report.
-  it("also fails a raw route that only names an identifier in a log call", () => {
+  // The builder logs `{ error, url }` at its boundary and nothing that names a tenant, so being
+  // wrapped in one earns no pass here. This is what stops the check echoing `auth-boundary`.
+  it("fails a builder-wrapped route whose own failure log names nobody", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+       import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export const loader = createLoaderApiRoute({}, async () => {
+         try { return json(await prisma.thing.findMany()); }
+         catch (error) { logger.error("failed", { error }); throw error; }
+       });`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("is not applicable to a route that logs nothing on its failure path", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { authenticateApiRequest } from "~/services/apiAuth.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ request }) {
+         const auth = await authenticateApiRequest(request);
+         return json(await prisma.thing.findMany({ where: { environmentId: auth.environment.id } }));
+       }`
+    );
+    expect(r.status).toBe("not-applicable");
+  });
+
+  it("is not applicable when the only log sits outside the catch", () => {
     const r = run(
       "request-context",
       "api.v1.q.ts",
       `import { logger } from "~/services/logger.server";
        import { prisma } from "~/db.server";
-       export async function loader({ params }) {
-         try { return await prisma.thing.findMany(); }
-         catch (e) { logger.error("failed", { environmentId: params.envId }); throw e; }
+       export async function loader() {
+         logger.info("starting", { environmentId: "env_1" });
+         try { return await prisma.thing.findMany(); } catch (e) { throw e; }
        }`
     );
-    expect(r.status).toBe("fail");
+    expect(r.status).toBe("not-applicable");
   });
 
-  // False positive fixture: identifiers all over the component, none in the loader. The check must
-  // read the loader, so the verdict has to come from the loader's own call to requireUserId.
-  it("does not flag a route whose identifiers are in the React component", () => {
-    const r = run(
+  // False positive fixture: the component logs every identifier there is, inside its own catch.
+  // Only the loader's own failure log may decide this.
+  it("does not read the React component's log calls", () => {
+    const bare = run(
       "request-context",
       "_app.orgs.$organizationSlug.things/route.tsx",
-      `import { requireUserId } from "~/services/session.server";
+      `import { logger } from "~/services/logger.server";
        import { prisma } from "~/db.server";
-       export async function loader({ request }) {
-         const userId = await requireUserId(request);
-         return typedjson(await prisma.thing.findMany({ where: { userId } }));
+       export async function loader() {
+         try { return typedjson(await prisma.thing.findMany()); }
+         catch (error) { logger.error("failed", { error }); throw error; }
        }
        ${COMPONENT}`
     );
-    expect(r.status).toBe("pass");
-  });
+    expect(bare.status).toBe("fail");
 
-  it("fails a route whose identifiers are only in the React component", () => {
-    const r = run(
+    const attributed = run(
       "request-context",
       "_app.orgs.$organizationSlug.things/route.tsx",
-      `import { prisma } from "~/db.server";
-       export async function loader() {
-         return typedjson(await prisma.thing.findMany());
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return typedjson(await prisma.thing.findMany()); }
+         catch (error) { logger.error("failed", { projectParam: params.projectParam, error }); throw error; }
        }
        ${COMPONENT}`
     );
-    expect(r.status).toBe("fail");
+    expect(attributed.status).toBe("pass");
   });
 
   it("is not applicable to a trivial redirect", () => {
