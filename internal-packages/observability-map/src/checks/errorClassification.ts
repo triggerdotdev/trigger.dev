@@ -54,10 +54,10 @@ function isParseGuard(clause: CatchEvidence, ep: EntryPoint): boolean {
  * `request-context` still reads that log and asks whether it names a tenant, so the reporting is
  * unrewarded here rather than unmeasured.
  *
- * `narrow` is not a way to qualify either. A one-statement try around `await service.call(run)` is
- * narrow and is still a swallow: reading all eleven entry points that limb would clear said six
- * were real, including a silent run cancellation and two credential paths that report a database
- * failure to the browser as a 400 with an internal message in it.
+ * A narrow guard is not a way to qualify either. A one-statement try around `await
+ * service.call(run)` is narrow and is still a swallow: reading all eleven entry points that limb
+ * would clear said six were real, including a silent run cancellation and two credential paths
+ * that report a database failure to the browser as a 400 with an internal message in it.
  */
 function decides(clause: CatchEvidence, ep: EntryPoint): boolean {
   return clause.branches || isParseGuard(clause, ep);

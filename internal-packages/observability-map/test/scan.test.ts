@@ -460,6 +460,31 @@ describe("scanFile: callee resolution", () => {
     expect(ep!.hasLoader).toBe(true);
     expect(ep!.loaderInitializerCallee).toBeNull();
   });
+
+  it("resolves a multi-level call and falls back to the bare name past an unnameable one", () => {
+    const ep = scanFile(
+      "api.v1.things.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          const org = await prisma.organization.findFirst({ where: { id: 1 } });
+          return json(await new PromptService().createOverride(org));
+        } catch (e) {
+          logger.error("nope", { error: e });
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    // A three-level property chain still lands on its bare method name.
+    expect(ep!.calleeNames).toContain("findFirst");
+    // A chain through a `new` expression has no name of its own, so this also falls back to the
+    // bare name rather than losing the call.
+    expect(ep!.calleeNames).toContain("createOverride");
+    // The full path still builds where nothing unnameable sits in it, which is what `LogCall.callee`
+    // depends on.
+    expect(ep!.logCalls[0]!.callee).toBe("logger.error");
+  });
 });
 
 describe("scanFile: parse failures", () => {
@@ -724,6 +749,34 @@ describe("scanFile: catch clause evidence", () => {
     expect(ep!.hasTryCatch).toBe(true);
     expect(ep!.catches).toEqual([]);
   });
+
+  it("flags a try that guards a single request.json()", () => {
+    const ep = scanFile(
+      "admin.api.v1.platform-notifications.ts",
+      `
+      export async function action({ request }) {
+        const user = await requireUser(request);
+        let body;
+        try {
+          body = await request.json();
+        } catch {
+          return json({ error: "Invalid JSON body" }, { status: 400 });
+        }
+        const result = await createPlatformNotification(body);
+        return json(result);
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.catches[0]!.rethrows).toBe(false);
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("is empty when there is no try at all", () => {
+    const ep = scanFile("plain.ts", `export async function loader() { return json({}); }`);
+    expect(ep!.hasTryCatch).toBe(false);
+    expect(ep!.catches).toEqual([]);
+  });
 });
 
 describe("scanFile: log calls", () => {
@@ -779,182 +832,8 @@ describe("scanFile: log calls", () => {
   });
 });
 
-describe("scanFile: narrow catches", () => {
-  it("flags a try that guards a single request.json()", () => {
-    const ep = scanFile(
-      "admin.api.v1.platform-notifications.ts",
-      `
-      export async function action({ request }) {
-        const user = await requireUser(request);
-        let body;
-        try {
-          body = await request.json();
-        } catch {
-          return json({ error: "Invalid JSON body" }, { status: 400 });
-        }
-        const result = await createPlatformNotification(body);
-        return json(result);
-      }
-      `
-    );
-    expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catches[0]!.rethrows).toBe(false);
-    expect(ep!.catches[0]!.branches).toBe(false);
-    expect(ep!.catches[0]!.narrow).toBe(true);
-  });
-
-  it("does not flag a catch wrapping the whole handler", () => {
-    const ep = scanFile(
-      "otel.v1.logs.ts",
-      `
-      export async function action({ request }) {
-        try {
-          const exporter = await otlpExporter;
-          const contentType = request.headers.get("content-type") ?? "";
-          const body = await request.json();
-          await exporter.export(body);
-          return json({ ok: true });
-        } catch (e) {
-          logger.error(e);
-          return json({}, { status: 500 });
-        }
-      }
-      `
-    );
-    expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catches[0]!.narrow).toBe(false);
-  });
-
-  it("keeps a narrow catch and a broad one distinct", () => {
-    const ep = scanFile(
-      "mixed.ts",
-      `
-      export async function action({ request }) {
-        let body;
-        try {
-          body = await request.json();
-        } catch {
-          return json({}, { status: 400 });
-        }
-        try {
-          const run = await find(body.id);
-          const updated = await update(run);
-          await notify(updated);
-          return json(updated);
-        } catch (e) {
-          return json({}, { status: 500 });
-        }
-      }
-      `
-    );
-    expect(ep!.catches[0]!.narrow).toBe(true);
-    expect(ep!.catches[1]!.narrow).toBe(false);
-  });
-
-  it("allows a guarded operation with its own local binding", () => {
-    const ep = scanFile(
-      "regex.ts",
-      `
-      export async function action({ request }) {
-        const pattern = await patternFrom(request);
-        try {
-          const stripped = pattern.startsWith("(?i)") ? pattern.slice(4) : pattern;
-          new RegExp(stripped);
-        } catch {
-          return json({ error: "Invalid regex" }, { status: 400 });
-        }
-        return json({ ok: true });
-      }
-      `
-    );
-    expect(ep!.catches[0]!.narrow).toBe(true);
-  });
-
-  it("does not flag a try of three statements", () => {
-    const ep = scanFile(
-      "three.ts",
-      `
-      export async function loader({ request }) {
-        try {
-          const raw = await request.json();
-          const parsed = Schema.parse(raw);
-          return json(parsed);
-        } catch {
-          return json({}, { status: 400 });
-        }
-      }
-      `
-    );
-    expect(ep!.catches[0]!.narrow).toBe(false);
-  });
-
-  it("is empty when there is no try at all", () => {
-    const ep = scanFile("plain.ts", `export async function loader() { return json({}); }`);
-    expect(ep!.hasTryCatch).toBe(false);
-    expect(ep!.catches).toEqual([]);
-  });
-
-  it("is empty for a try with a finally and no catch", () => {
-    const ep = scanFile(
-      "finally-only.ts",
-      `
-      export async function loader() {
-        try {
-          return json(await load());
-        } finally {
-          release();
-        }
-      }
-      `
-    );
-    expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catches).toEqual([]);
-  });
-
-  it("reads a narrow catch inside a same-file helper the body delegates to", () => {
-    const ep = scanFile(
-      "helper-narrow.ts",
-      `
-      function parseTags(payload) {
-        try {
-          return JSON.parse(payload);
-        } catch {
-          return null;
-        }
-      }
-      export async function loader({ params }) {
-        return json(parseTags(params.payload));
-      }
-      `
-    );
-    expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catches[0]!.narrow).toBe(true);
-  });
-
-  it("ignores a narrow catch that lives in the React component", () => {
-    const ep = scanFile(
-      "route.tsx",
-      `
-      export async function loader() {
-        return json({});
-      }
-      export default function Page() {
-        try {
-          JSON.parse(raw);
-        } catch {
-          return null;
-        }
-        return null;
-      }
-      `
-    );
-    expect(ep!.hasTryCatch).toBe(false);
-    expect(ep!.catches).toEqual([]);
-  });
-});
-
 describe("scanFile: per-catch evidence", () => {
-  it("records one entry per catch clause, keeping a narrow guard distinct from a broad catch", () => {
+  it("records one entry per catch clause, keeping a parse guard distinct from a broad catch", () => {
     const ep = scanFile(
       "two-catches.ts",
       `
@@ -978,14 +857,12 @@ describe("scanFile: per-catch evidence", () => {
     );
     expect(ep!.catches).toHaveLength(2);
     expect(ep!.catches[0]).toEqual({
-      narrow: true,
       rethrows: false,
       branches: false,
       guardsParse: true,
       tryStatementCount: 1,
     });
     expect(ep!.catches[1]).toMatchObject({
-      narrow: false,
       guardsParse: false,
       tryStatementCount: 4,
     });
@@ -1035,10 +912,9 @@ describe("scanFile: per-catch evidence", () => {
     );
     expect(ep!.catches).toHaveLength(1);
     expect(ep!.catches[0]!.guardsParse).toBe(true);
-    expect(ep!.catches[0]!.narrow).toBe(true);
   });
 
-  it("sees a parse in a try that grew past the narrowness threshold", () => {
+  it("sees a parse in a try that outgrows a single statement", () => {
     const ep = scanFile(
       "admin.api.v1.orgs.$organizationId.stream-basin.ts",
       `
@@ -1060,7 +936,6 @@ describe("scanFile: per-catch evidence", () => {
       `
     );
     expect(ep!.catches).toHaveLength(1);
-    expect(ep!.catches[0]!.narrow).toBe(false);
     expect(ep!.catches[0]!.guardsParse).toBe(true);
     expect(ep!.catches[0]!.tryStatementCount).toBe(6);
   });
@@ -1083,7 +958,6 @@ describe("scanFile: per-catch evidence", () => {
     );
     expect(ep!.catches).toHaveLength(1);
     expect(ep!.catches[0]).toEqual({
-      narrow: false,
       rethrows: false,
       branches: false,
       guardsParse: false,

@@ -12,8 +12,6 @@ export type CheckResult = {
  * legible instead of collapsing into one boolean.
  */
 export type CatchEvidence = {
-  /** The guarded try block holds at most two statements: one operation, not the handler. */
-  narrow: boolean;
   /** The clause contains a `throw`. */
   rethrows: boolean;
   /**

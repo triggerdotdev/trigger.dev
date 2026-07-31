@@ -108,13 +108,6 @@ function objectArgumentFields(call: ts.CallExpression): string[] {
 }
 
 /**
- * How much a try block may guard and still count as narrow. Two, so that the guarded operation can
- * bind its result (`const stripped = ...; new RegExp(stripped);`) but a third statement means the
- * try has started to cover the handler rather than one operation.
- */
-const NARROW_TRY_STATEMENTS = 2;
-
-/**
  * Calls that turn input into a value and throw when it is malformed. `parse`/`safeParse` cover
  * `JSON.parse` and the zod schemas. `.json` has to be a member call, because a bare `json(...)` is
  * the remix response helper, which every route calls and which parses nothing.
@@ -563,7 +556,6 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
           const tryStatementCount = countStatements(node.tryBlock.statements);
           const clause = catchClauseEvidence(node.catchClause);
           catches.push({
-            narrow: tryStatementCount <= NARROW_TRY_STATEMENTS,
             rethrows: clause.rethrows,
             branches: clause.branches,
             guardsParse: guardsParse(node.tryBlock),
