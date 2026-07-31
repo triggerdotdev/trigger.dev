@@ -278,4 +278,3 @@ export async function collectSessionOut(
 
   return { parts, durationMs: performance.now() - started, subscription };
 }
-

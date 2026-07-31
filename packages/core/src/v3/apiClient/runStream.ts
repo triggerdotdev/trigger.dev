@@ -204,6 +204,7 @@ export class SSEStreamSubscription implements StreamSubscription {
   private retryNowController: AbortController | null = null;
   private internalAbort: AbortController | null = null;
   private cancelledByConsumer = false;
+  private completeNotified = false;
 
   constructor(
     private url: string,
@@ -285,6 +286,13 @@ export class SSEStreamSubscription implements StreamSubscription {
     this.retryNowController?.abort();
   }
 
+  /** Fire `onComplete` at most once, even if both the drain and cancel paths reach it. */
+  private notifyComplete(): void {
+    if (this.completeNotified) return;
+    this.completeNotified = true;
+    this.options.onComplete?.();
+  }
+
   /**
    * The transport pumps decoded records into an internal stream; the returned
    * stream drains it on demand.
@@ -316,15 +324,17 @@ export class SSEStreamSubscription implements StreamSubscription {
             return;
           }
           if (result.done) {
-            self.options.onComplete?.();
-            controller.close();
+            self.notifyComplete();
+            try {
+              controller.close();
+            } catch {}
             return;
           }
           controller.enqueue(result.value.part);
         },
         cancel(reason) {
           self.cancelledByConsumer = true;
-          self.options.onComplete?.();
+          self.notifyComplete();
           internalReader.cancel(reason).catch(() => {});
         },
       },
@@ -491,7 +501,6 @@ export class SSEStreamSubscription implements StreamSubscription {
                       },
                     });
                   }
-
                 }
               }
             },
