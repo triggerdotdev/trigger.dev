@@ -661,45 +661,129 @@ describe("CK virtual-time (SFQ) dequeue", () => {
     }
   );
 
-  redisTest("future-scheduled variants are skipped without advance", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer);
-    try {
-      const t0 = Date.now() - 100_000;
+  redisTest(
+    "future-scheduled variants are skipped, not advanced, and de-registered",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
 
-      // a normal ready variant so the :ck:* wildcard is selected from the master queue
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: makeMessage({ runId: "r-now", concurrencyKey: "now", timestamp: t0 }),
-        workerQueue: authenticatedEnvDev.id,
-        skipDequeueProcessing: true,
-      });
-      // a future-scheduled variant
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: makeMessage({
-          runId: "r-future",
-          concurrencyKey: "future",
-          timestamp: Date.now() + 60_000,
-        }),
-        workerQueue: authenticatedEnvDev.id,
-        skipDequeueProcessing: true,
-      });
+        // a normal ready variant so the :ck:* wildcard is selected from the master queue
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r-now", concurrencyKey: "now", timestamp: t0 }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+        // a future-scheduled variant
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r-future",
+            concurrencyKey: "future",
+            timestamp: Date.now() + 60_000,
+          }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
 
-      const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName("now"));
-      const futureVariant = variantName("future");
-      await queue.redis.zadd(ckVtimeKey, 0, variantName("now"), 5, futureVariant);
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName("now"));
+        const futureVariant = variantName("future");
+        await queue.redis.zadd(ckVtimeKey, 0, variantName("now"), 5, futureVariant);
 
-      const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
-      const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
 
-      expect(messages.some((m) => m.message.concurrencyKey === "future")).toBe(false);
+        expect(messages.some((m) => m.message.concurrencyKey === "future")).toBe(false);
 
-      const futureTag = Number(await queue.redis.zscore(ckVtimeKey, futureVariant));
-      expect(futureTag).toBe(5);
-    } finally {
-      await queue.quit();
+        // Not served, so never charged a quantum: its tag is not advanced past the 5 it
+        // was seeded with. It is de-registered instead, because a variant with no ready
+        // work is not competing and must not hold the floor down (a pinned floor is what
+        // let a later arrival register underneath the established keys and take every
+        // pass-1 slot). It rejoins at the floor of the day once it has ready work.
+        const futureTag = await queue.redis.zscore(ckVtimeKey, futureVariant);
+        expect(futureTag).toBeNull();
+      } finally {
+        await queue.quit();
+      }
     }
-  });
+  );
+
+  redisTest(
+    "an unservable variant does not pin the floor for later arrivals",
+    async ({ redisContainer }) => {
+      // Regression: a variant with work but nothing ready (a nack backoff is the common
+      // case) used to sit in ckVtime holding the lowest tag. The floor is the minimum
+      // stored tag, so it froze at that value while served keys advanced, and because new
+      // keys register at the floor, a key arriving later started far below the established
+      // ones and won every pass-1 slot until it caught up. That is the starvation this
+      // feature exists to prevent, inverted.
+      const queue = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
+
+        // Stalled: registered on enqueue, but its head never becomes ready during the test.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({
+            runId: "r-stalled",
+            concurrencyKey: "stalled",
+            timestamp: Date.now() + 60 * 60 * 1000,
+          }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        for (let i = 0; i < 12; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r-busy-${i}`,
+              concurrencyKey: "busy",
+              timestamp: t0 + i,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        for (let call = 0; call < 6; call++) {
+          const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 1);
+          for (const m of messages) {
+            await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+              skipDequeueProcessing: true,
+            });
+          }
+        }
+
+        const busyVariant = variantName("busy");
+        const floorKey = testOptions.keys.ckVtimeFloorKeyFromQueue(busyVariant);
+        const floor = Number((await queue.redis.get(floorKey)) ?? "0");
+
+        // The floor tracked the key that was actually being served.
+        expect(floor).toBeGreaterThan(0);
+
+        // A key arriving now joins level with the established keys rather than underneath
+        // them, so it gets its turn instead of monopolising the fair pass.
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: makeMessage({ runId: "r-newcomer", concurrencyKey: "newcomer", timestamp: t0 }),
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(busyVariant);
+        const newcomerTag = Number(await queue.redis.zscore(ckVtimeKey, variantName("newcomer")));
+        const busyTag = Number(await queue.redis.zscore(ckVtimeKey, busyVariant));
+
+        expect(newcomerTag).toBe(floor);
+        expect(busyTag - newcomerTag).toBeLessThanOrEqual(1);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
 
   redisTest(
     "enqueue registers the variant at the current floor with NX",
