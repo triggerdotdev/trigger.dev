@@ -17,6 +17,11 @@ vi.mock("~/db.server", () => ({
 
 vi.mock("~/services/session.server", () => ({
   requireUser: async () => mocks.user,
+  hasAdminDisplayAccess: (user: {
+    admin: boolean;
+    isImpersonating: boolean;
+    isViewingAsUser?: boolean;
+  }) => (user.admin || user.isImpersonating) && !user.isViewingAsUser,
 }));
 
 vi.mock("~/services/dashboardPreferences.server", () => ({
