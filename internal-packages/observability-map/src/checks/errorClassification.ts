@@ -4,9 +4,10 @@ import { isTrivial } from "../triviality.js";
 const ID = "error-classification";
 
 /**
- * The route builders that own the failure path: they authenticate, they catch, they pass a thrown
- * `Response` through untouched and report anything else through `logBoundaryError` before
- * answering 500. A route wrapped in one of these has its errors classified for it.
+ * The route builders that authenticate the request, which is what `auth-boundary` reads them for.
+ * They also catch and classify, passing a thrown `Response` through untouched and reporting
+ * anything else through `logBoundaryError`, but `error-classification` no longer credits that: a
+ * route with no catch of its own is judged on nothing, wrapper or not.
  *
  * `createSSELoader` is deliberately absent. It turns a non-Response error into a 500 but does not
  * authenticate, so counting it here would hand two routes a free pass on `auth-boundary`.
@@ -64,15 +65,17 @@ export function usesBuilder(ep: EntryPoint): boolean {
 /**
  * Who decides what a failure means, and on what evidence.
  *
- * The swallow is read before the builder is credited, which looks like the wrong order until you
- * read `api.v2.runs.$runParam.cancel.ts`: a `createActionApiRoute` handler wrapping its service
- * call in `try { ... } catch { return 500 }`. The builder classifies what reaches it, and that
- * error never does. Crediting the wrapper would hide the one case in this family worth finding.
+ * Judged per catch clause, so an entry point is only as good as its worst one. That is the point of
+ * the per-clause evidence: 39 routes have more than one catch and 17 mix a narrow guard with a
+ * broad handler, and under the old aggregate booleans a single well-behaved catch spoke for the
+ * swallow next to it.
  *
- * Judged per catch clause, so an entry point is only as good as its worst one. That is the whole
- * point of the per-clause evidence: 39 routes have more than one catch and 17 mix a narrow guard
- * with a broad handler, and under the old aggregate booleans a single well-behaved catch spoke for
- * the swallow next to it.
+ * A route with no catch is not-applicable, not a pass. It makes no classification decision, so
+ * there is nothing here to judge and nothing to credit. Crediting it was worse than merely
+ * generous: with `request-context` also passing the same routes, emptying every catch clause in the
+ * tree scored it 100, so the metric paid you for deleting error handling. Out of the denominator
+ * is the honest place for it, and it takes the builder credit with it: a builder-wrapped route with
+ * no catch of its own now sits out too, rather than collecting a point for the wrapper.
  *
  * "Does this route catch anything" is `catches.length`, never `hasTryCatch`. A try/finally with no
  * catch leaves `hasTryCatch` true and `catches` empty: nothing is swallowed there, the error
@@ -85,6 +88,13 @@ export const errorClassification = {
     if (isTrivial(ep)) {
       return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
+    if (ep.catches.length === 0) {
+      return {
+        id: ID,
+        status: "not-applicable",
+        detail: "catches nothing, so it classifies nothing",
+      };
+    }
     const unaccounted = ep.catches.filter((c) => !accountedFor(c, ep));
     if (unaccounted.length > 0) {
       const which =
@@ -95,12 +105,6 @@ export const errorClassification = {
         detail: `catches its errors and takes one way out regardless of what was thrown${which}`,
       };
     }
-    if (ep.catches.length > 0) {
-      return { id: ID, status: "pass", detail: "every catch decides what it caught" };
-    }
-    if (usesBuilder(ep)) {
-      return { id: ID, status: "pass", detail: "classified by the builder" };
-    }
-    return { id: ID, status: "pass", detail: "errors propagate to the global handler" };
+    return { id: ID, status: "pass", detail: "every catch decides what it caught" };
   },
 };

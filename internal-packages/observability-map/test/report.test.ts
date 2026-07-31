@@ -57,12 +57,18 @@ describe("renderTerminal", () => {
        }`
     )!;
 
-    // Sensitive, score 67: only auth-boundary fails (no guard called), the other two pass because
-    // there is no try/catch to fumble.
+    // Sensitive, score 67: guarded and classifies what it catches, but its failure log names
+    // nobody, so only request-context fails.
     const sensitiveSixtySeven = scanFile(
       "api.v1.auth.tokens.ts",
-      `import { prisma } from "~/db.server";
-       export async function action() { return prisma.token.create({ data: {} }); }`
+      `import { requireUserId } from "~/services/session.server";
+       import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const userId = await requireUserId(request);
+         try { return await prisma.token.create({ data: { userId } }); }
+         catch (error) { logger.error("failed", { error }); throw error; }
+       }`
     )!;
 
     // Not sensitive, score 0: worse score than sensitiveSixtySeven, but must still sort after both
@@ -80,10 +86,12 @@ describe("renderTerminal", () => {
     const sensitiveAuditOnly = scanFile(
       "api.v1.billing.ts",
       `import { prisma } from "~/db.server";
+       import { logger } from "~/services/logger.server";
        import { requireUserId } from "~/services/session.server";
-       export async function action({ request }: { request: Request }) {
-         const userId = requireUserId(request);
-         return prisma.billing.update({ where: { userId }, data: {} });
+       export async function action({ request }) {
+         const userId = await requireUserId(request);
+         try { return await prisma.billing.update({ where: { userId }, data: {} }); }
+         catch (error) { logger.error("billing update failed", { userId, error }); throw error; }
        }`
     )!;
 

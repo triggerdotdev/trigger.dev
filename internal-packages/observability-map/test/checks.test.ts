@@ -40,14 +40,16 @@ describe("registry", () => {
 });
 
 describe("error-classification", () => {
-  it("passes a builder-wrapped route with no local try/catch", () => {
+  // C1. A route with no catch makes no classification decision, so there is nothing here to judge
+  // and nothing to credit. Crediting it made deleting error handling raise the score.
+  it("is not applicable to a builder-wrapped route with no local try/catch", () => {
     const r = run(
       "error-classification",
       "api.v1.x.ts",
       `import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
        export const loader = createLoaderApiRoute({}, async () => new Response("ok"));`
     );
-    expect(r.status).toBe("pass");
+    expect(r.status).toBe("not-applicable");
   });
 
   it("fails a raw route whose catch swallows every error identically", () => {
@@ -109,7 +111,7 @@ describe("error-classification", () => {
     expect(r.status).toBe("fail");
   });
 
-  it("passes a raw route that lets its errors propagate", () => {
+  it("is not applicable to a raw route that lets its errors propagate", () => {
     const r = run(
       "error-classification",
       "api.v1.w.ts",
@@ -119,7 +121,7 @@ describe("error-classification", () => {
          return json({ rows });
        }`
     );
-    expect(r.status).toBe("pass");
+    expect(r.status).toBe("not-applicable");
   });
 
   it("is not applicable to a trivial redirect", () => {
@@ -176,7 +178,7 @@ describe("error-classification", () => {
   // try/finally with no catch clause. `hasTryCatch` is true here and `catches` is empty, and it is
   // `catches` that answers "does this route catch anything". Nothing is swallowed: the error
   // propagates once the connection is closed.
-  it("passes a try/finally that catches nothing", () => {
+  it("is not applicable to a try/finally that catches nothing", () => {
     const r = run(
       "error-classification",
       "admin.api.v1.runs-replication.status.ts",
@@ -192,7 +194,7 @@ describe("error-classification", () => {
          }
        }`
     );
-    expect(r.status).toBe("pass");
+    expect(r.status).toBe("not-applicable");
   });
 
   // Multi-catch, the case the aggregate booleans could not describe. Judged per clause: the parse
@@ -247,7 +249,7 @@ describe("error-classification", () => {
   });
 
   // False positive fixture: the only try/catch in the file belongs to the component.
-  it("does not flag a route whose try/catch is in the React component", () => {
+  it("does not judge a route whose try/catch is in the React component", () => {
     const r = run(
       "error-classification",
       "_app.orgs.$organizationSlug.things/route.tsx",
@@ -258,7 +260,7 @@ describe("error-classification", () => {
        }
        ${COMPONENT}`
     );
-    expect(r.status).toBe("pass");
+    expect(r.status).toBe("not-applicable");
   });
 });
 
@@ -494,7 +496,9 @@ describe("request-context", () => {
     expect(r.status).toBe("fail");
   });
 
-  it("passes a route that hands its failures to the central handler", () => {
+  // C1. The global handler carries requestId, path, host and method, and no tenant. A route that
+  // never catches cannot name one, so it fails rather than being credited or excused.
+  it("fails a route that leaves everything to the central handler", () => {
     const r = run(
       "request-context",
       "api.v1.q.ts",
@@ -505,7 +509,7 @@ describe("request-context", () => {
          return json(await prisma.thing.findMany({ where: { environmentId: auth.environment.id } }));
        }`
     );
-    expect(r.status).toBe("pass");
+    expect(r.status).toBe("fail");
   });
 
   it("fails a route that catches but only names an identifier outside the catch", () => {
@@ -539,7 +543,7 @@ describe("request-context", () => {
 
   // A guard around a parse is not the route taking over its failure path: whatever its real work
   // throws still reaches the central handler. Same reading error-classification gives the field.
-  it("passes a route whose only catch guards a parse", () => {
+  it("fails a route whose only catch guards a parse", () => {
     const r = run(
       "request-context",
       "api.v1.q.ts",
@@ -551,13 +555,13 @@ describe("request-context", () => {
          return json(await prisma.thing.findMany({ where: body }));
        }`
     );
-    expect(r.status).toBe("pass");
+    expect(r.status).toBe("fail");
   });
 
   // Was a known false positive: `new URL()` is a constructor, so the parse was invisible while the
   // evidence came from `calleeTexts`. `CatchEvidence.guardsParse` covers constructors, so the guard
   // is legible now and the route is no longer judged as though it kept its failures.
-  it("passes a route whose only catch guards a constructor parse", () => {
+  it("fails a route whose only catch guards a constructor parse", () => {
     const r = run(
       "request-context",
       "_app.@.orgs.$organizationSlug.$.tsx",
@@ -572,10 +576,10 @@ describe("request-context", () => {
          return typedjson({ origin, things: await prisma.thing.findMany() });
        }`
     );
-    expect(r.status).toBe("pass");
+    expect(r.status).toBe("fail");
   });
 
-  it("passes a try/finally that catches nothing", () => {
+  it("fails a try/finally that catches nothing", () => {
     const r = run(
       "request-context",
       "admin.api.v1.runs-replication.status.ts",
@@ -590,7 +594,7 @@ describe("request-context", () => {
          }
        }`
     );
-    expect(r.status).toBe("pass");
+    expect(r.status).toBe("fail");
   });
 
   it("still judges a route with a handler-wide catch beside a narrow guard", () => {

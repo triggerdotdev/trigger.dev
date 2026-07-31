@@ -17,14 +17,39 @@ export async function loader() {
   try { return await prisma.thing.findMany(); } catch (e) { return null; }
 }`;
 
+/** Guarded, classifies what it catches, and names the tenant on the failure path. */
+const CLEAN = `import { requireUserId } from "~/services/session.server";
+import { logger } from "~/services/logger.server";
+import { prisma } from "~/db.server";
+export async function action({ request, params }) {
+  const userId = await requireUserId(request);
+  try {
+    return await prisma.token.create({ data: { userId } });
+  } catch (error) {
+    logger.error("token create failed", { userId, environmentId: params.envId, error });
+    throw error;
+  }
+}`;
+
 describe("scoreEntry", () => {
-  it("scores a builder route 100", () => {
-    expect(scoreEntry(scanFile("api.v1.a.ts", BUILDER)!).score).toBe(100);
+  it("scores an entry that passes every applicable check 100", () => {
+    expect(scoreEntry(scanFile("api.v1.auth.tokens.ts", CLEAN)!).score).toBe(100);
+  });
+
+  // A builder wrapper classifies errors for the route, but the route itself catches nothing and
+  // names nobody on its failure path, so there is one applicable check and it fails.
+  it("does not credit a builder route for the error handling it does not do", () => {
+    const scored = scoreEntry(scanFile("api.v1.a.ts", BUILDER)!);
+    expect(scored.checks.find((c) => c.id === "error-classification")!.status).toBe(
+      "not-applicable"
+    );
+    expect(scored.checks.find((c) => c.id === "request-context")!.status).toBe("fail");
+    expect(scored.score).toBe(0);
   });
 
   it("excludes audit-trail from the per-entry score", () => {
-    const scored = scoreEntry(scanFile("api.v1.auth.jwt.ts", BUILDER)!);
-    expect(scored.checks.some((c) => c.id === "audit-trail")).toBe(true);
+    const scored = scoreEntry(scanFile("api.v1.auth.jwt.ts", CLEAN)!);
+    expect(scored.checks.find((c) => c.id === "audit-trail")!.status).toBe("fail");
     expect(scored.score).toBe(100);
   });
 
@@ -63,18 +88,12 @@ ${BUSY_AND_FAILING}`;
 
 describe("buildReport", () => {
   it("reports the audit gap separately from the score", () => {
-    const eps = [
-      scanFile("api.v1.a.ts", BUILDER)!,
-      scanFile(
-        "api.v1.auth.tokens.ts",
-        `import { prisma } from "~/db.server";
-         export async function action() { return prisma.token.create({ data: {} }); }`
-      )!,
-    ];
-    const report = buildReport(eps, []);
+    // A sensitive mutation with no audit record, but nothing else wrong: the audit gap is reported
+    // as its own figure and must not pull the score down with it.
+    const report = buildReport([scanFile("api.v1.auth.tokens.ts", CLEAN)!], []);
     expect(report.auditGap.sensitiveMutations).toBe(1);
     expect(report.auditGap.withAudit).toBe(0);
-    expect(report.global).toBeGreaterThan(0);
+    expect(report.global).toBe(100);
   });
 
   it("records parse failures", () => {
