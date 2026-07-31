@@ -1,6 +1,7 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { QUEUE_METRICS_DEFAULT_PERIOD } from "~/components/queues/queueMetricsPeriod";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { findEnvironmentById, hasAccessToEnvironment } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
@@ -13,8 +14,7 @@ import { engine } from "~/v3/runEngine.server";
 // Redis (O(page), independent of total key cardinality). This replaces the old top-50 cap.
 export const CONCURRENCY_KEYS_PER_PAGE = 25;
 
-// Matches QUEUE_METRICS_DEFAULT_PERIOD (the detail page's TimeFilter default).
-const DEFAULT_PERIOD = "1d";
+const DEFAULT_PERIOD = QUEUE_METRICS_DEFAULT_PERIOD;
 
 const Body = z.object({
   organizationId: z.string(),

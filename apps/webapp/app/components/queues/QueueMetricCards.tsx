@@ -15,6 +15,7 @@ import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { QUEUE_METRICS_DEFAULT_PERIOD } from "~/components/queues/queueMetricsPeriod";
 import { cn } from "~/utils/cn";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 
@@ -33,8 +34,6 @@ export const QUEUE_METRIC_COLORS = {
   ckKeys: "#34D399",
   ckWait: "#F59E0B",
 };
-
-export const QUEUE_METRICS_DEFAULT_PERIOD = "1d";
 
 export type QueueMetricIds = {
   organizationId: string;

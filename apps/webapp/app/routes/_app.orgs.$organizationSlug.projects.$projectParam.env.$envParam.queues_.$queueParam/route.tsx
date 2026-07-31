@@ -22,7 +22,6 @@ import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncConte
 import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import {
   QUEUE_METRIC_COLORS as COLORS,
-  QUEUE_METRICS_DEFAULT_PERIOD,
   QueueMetricChartCard as QueueDetailChartCard,
   type QueueMetricIds as Ids,
   type QueueMetricTimeRange as TimeRangeParams,
@@ -67,6 +66,11 @@ import {
   QueueOverrideConcurrencyButton,
   QueuePauseResumeButton,
 } from "~/components/queues/QueueControls";
+import {
+  queueMetricsPeriodFromRequest,
+  resolveQueueMetricsPeriod,
+  useRememberQueueMetricsPeriod,
+} from "~/components/queues/queueMetricsPeriod";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -134,6 +138,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     oldestQueuedAt: oldestQueuedAt ?? null,
     loadedAt: Date.now(),
     backPath: url.pathname.replace(/\/[^/]+$/, ""),
+    defaultPeriod: queueMetricsPeriodFromRequest(request),
     ids: {
       organizationId: environment.organizationId,
       projectId: environment.projectId,
@@ -210,6 +215,7 @@ export default function Page() {
     loadedAt,
     backPath,
     ids,
+    defaultPeriod,
   } = useTypedLoaderData<typeof loader>();
   const plan = useCurrentPlan();
   // Queue metrics are retained for 30 days in ClickHouse, so cap the picker there even for
@@ -219,10 +225,16 @@ export default function Page() {
 
   const { value, replace } = useSearchParams();
   const timeRange: TimeRangeParams = {
-    period: value("period") ?? null,
+    period: resolveQueueMetricsPeriod({
+      period: value("period"),
+      from: value("from"),
+      to: value("to"),
+      defaultPeriod,
+    }),
     from: value("from") ?? null,
     to: value("to") ?? null,
   };
+  useRememberQueueMetricsPeriod(value("period"));
 
   // The Concurrency keys tab exists only for queues with key activity: live keys in the
   // ckIndex, or nonzero CK history in the selected range (one cached scalar query decides).
@@ -283,7 +295,7 @@ export default function Page() {
               />
             ) : null}
             <TimeFilter
-              defaultPeriod={QUEUE_METRICS_DEFAULT_PERIOD}
+              defaultPeriod={defaultPeriod}
               labelName="Period"
               maxPeriodDays={maxPeriodDays}
               shortcut={{ key: "d" }}
