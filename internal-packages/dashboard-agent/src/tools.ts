@@ -465,6 +465,23 @@ async function searchTriggerDocs(
 
 const NO_AUTH = { error: "No delegated access is available for this turn." } as const;
 
+/**
+ * What clicking "Show code" asks for: a potential fix, as a fenced diff anchored
+ * to the exact code that was read.
+ *
+ * Module-level so the eval can send the real prompt instead of a paraphrase of
+ * it — the behavior being scored is this text's, not a copy's.
+ */
+export function showCodeAskPrompt(args: { path: string; line: number; sha: string }): string {
+  const shortSha = args.sha.slice(0, 7);
+  return (
+    `Propose a fix. Reply with one fenced \`\`\`diff block holding the minimal change, ` +
+    `anchored to ${args.path}:${args.line}@${shortSha} — re-read that file at that commit if you need it. ` +
+    `If ${shortSha} isn't the branch head, or that version was built from a dirty tree, say so in one line. ` +
+    `Don't restate the investigation.`
+  );
+}
+
 // Always returns the same tool set so it stays stable across turns (the SDK
 // replays it over prior history). When a turn carried no delegated token, each
 // tool reports that rather than silently disappearing.
@@ -606,10 +623,11 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
    * Which files this turn actually read, and at which commit: `path` -> the shas
    * it was read at.
    *
-   * This is the honest half of the "Show code" decision. The model can claim a
-   * source citation for any path; only a recorded read at the pinned snapshot
-   * proves the file was opened, so a card offers to show code only when the
-   * citation and a read agree on path AND commit.
+   * This is what makes a source citation evidence. The model can claim a
+   * citation for any path; only a recorded read proves the file was opened, so
+   * the ledger gates both steps — a source ref canonicalizes only when a read at
+   * that exact path and commit is in here, and the "Show code" button appears
+   * only when the citation and a read agree on path AND commit.
    */
   const filesReadBySha = new Map<string, Set<string>>();
 
@@ -701,6 +719,11 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
    * as a tool error naming it, because a silently missing source citation is
    * exactly the code-grounding this card is supposed to prove.
    *
+   * A source ref carries one extra requirement: this turn's read ledger must
+   * hold a read of that path at that commit. Read proof lives in the turn, so a
+   * later turn re-rendering the same card re-reads the file — cheap, and the only
+   * honest option, since a citation nobody opened is model-authored.
+   *
    * A ref that already carries a full `trigger://` URI is not taken on trust: it
    * is parsed, its kind must match the ref's kind, and its project + environment
    * must be this turn's — a URI from another scope can't be smuggled in.
@@ -731,13 +754,24 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
       if (item.kind === "source") {
         const path = item.path.trim().replace(/^\/+/, "");
-        // The commit is what makes a source citation code-grounding rather than a
-        // file name: the model's own sha, else the snapshot the file was read
-        // from this turn, else the turn's default snapshot.
-        const sha = item.sha?.trim() || shaForReadPath(path) || ctx.repoSnapshot?.sha;
+        // A source citation is only code-grounding if the code was opened, so the
+        // commit comes from this turn's read ledger and nowhere else. The turn's
+        // snapshot sha is not proof of reading — a path the model never opened
+        // fails the render by name rather than borrowing it.
+        const claimed = item.sha?.trim();
+        if (claimed && !wasReadThisTurn(path, claimed)) {
+          errors.push(
+            `source "${path}" wasn't read at commit ${claimed.slice(
+              0,
+              7
+            )} — read_file it at that commit, or cite the commit you did read it at`
+          );
+          continue;
+        }
+        const sha = claimed || shaForReadPath(path);
         if (!sha) {
           errors.push(
-            `source "${path}" has no commit to pin it to — read the file with read_file first, or pass the sha`
+            `source "${path}" wasn't read this turn — read it with read_file first, then cite it`
           );
           continue;
         }
@@ -847,6 +881,11 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
    * the canonical source URI, so a click can't ask about a target the model
    * improvised.
    *
+   * What it asks for is a potential fix, not another explanation: a fenced diff
+   * of the minimal change, anchored `path:line@sha`, with the dirty-snapshot
+   * caveat when the commit isn't provably what shipped. The reply renders through
+   * the transcript's markdown path, which highlights fenced blocks.
+   *
    * The follow-ups are cheap by comparison: they only need a terminal outcome,
    * and one of them needs an error group to point at.
    */
@@ -867,13 +906,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         actions.push({
           kind: "show_code",
           label: "Show code",
-          intent: {
-            kind: "ask",
-            prompt: `Show me ${path} around line ${line} at the deployed commit ${sha.slice(
-              0,
-              7
-            )} and walk me through how that code causes this.`,
-          },
+          intent: { kind: "ask", prompt: showCodeAskPrompt({ path, line, sha }) },
         });
         break;
       }

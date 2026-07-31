@@ -776,7 +776,8 @@ describe("buildDashboardAgentTools", () => {
       evidence: [
         // Already canonical — passes through untouched.
         ...investigationState.evidence,
-        // A span carries its two parts, so the executor can build the URI.
+        // A span carries its two parts, so the executor can build the URI. Nothing
+        // was read this turn: the read gate is the source kind's alone.
         { kind: "span", runId: "run_abc123", spanId: "span_123", label: "the failing span" },
       ],
     });
@@ -797,17 +798,14 @@ describe("buildDashboardAgentTools", () => {
   });
 
   it("render_view pins a source citation to the commit the file was read at", async () => {
+    await seedWorkspace();
     const { capability } = fakeInvestigations();
     const tools = buildDashboardAgentTools({
       ...SCOPE,
       investigations: capability,
-      repoSnapshot: {
-        tarballUrl: "https://codeload.example/tarball",
-        owner: "acme",
-        repo: "orders",
-        sha: "a".repeat(40),
-      },
+      repoSnapshot: codeSnapshot,
     });
+    await readFileTool(tools).execute({ path: "src/tasks/send-order-receipt.ts" }, {});
 
     const output = await renderInvestigation(tools, {
       ...investigationState,
@@ -818,22 +816,31 @@ describe("buildDashboardAgentTools", () => {
           line: 42,
           label: "the retry config",
         },
-        // An explicit commit wins over the turn's snapshot.
-        { kind: "source", path: "src/queue.ts", sha: "b".repeat(40), label: "the queue setup" },
+        // The same commit, named explicitly: the read proves it, so it's accepted.
+        {
+          kind: "source",
+          path: "src/tasks/send-order-receipt.ts",
+          sha: codeSnapshot.sha,
+          label: "the whole file",
+        },
       ],
     });
 
     expect(output.error).toBeUndefined();
     expect(output.blocks[0].investigation.evidence.map((e: { uri: string }) => e.uri)).toEqual([
-      `trigger://proj_abc/env_abc/source/${"a".repeat(40)}/src/tasks/send-order-receipt.ts?line=42`,
-      `trigger://proj_abc/env_abc/source/${"b".repeat(40)}/src/queue.ts`,
+      `trigger://proj_abc/env_abc/source/${codeSnapshot.sha}/src/tasks/send-order-receipt.ts?line=42`,
+      `trigger://proj_abc/env_abc/source/${codeSnapshot.sha}/src/tasks/send-order-receipt.ts`,
     ]);
   });
 
-  it("render_view fails by name when a source citation can't be pinned, instead of dropping it", async () => {
+  it("render_view fails by name when a cited file was never read, rather than borrowing the snapshot's commit", async () => {
     const { capability, upserts } = fakeInvestigations();
-    // No repoSnapshot: nothing to pin a source citation to.
-    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+    // A snapshot IS in scope — it just isn't proof that anything was opened.
+    const tools = buildDashboardAgentTools({
+      ...SCOPE,
+      investigations: capability,
+      repoSnapshot: codeSnapshot,
+    });
 
     const output = await renderInvestigation(tools, {
       ...investigationState,
@@ -842,6 +849,38 @@ describe("buildDashboardAgentTools", () => {
 
     expect(output.blocks).toBeUndefined();
     expect(output.error).toContain("src/a.ts");
+    expect(output.error).toContain("read");
+    expect(output.error).not.toContain(codeSnapshot.sha);
+    expect(upserts).toHaveLength(0);
+  });
+
+  it("render_view rejects a model-supplied commit no read backs", async () => {
+    await seedWorkspace();
+    const { capability, upserts } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({
+      ...SCOPE,
+      investigations: capability,
+      repoSnapshot: codeSnapshot,
+    });
+    // Read at the snapshot's commit, then cite a different one.
+    await readFileTool(tools).execute({ path: "src/tasks/send-order-receipt.ts" }, {});
+
+    const output = await renderInvestigation(tools, {
+      ...investigationState,
+      evidence: [
+        {
+          kind: "source",
+          path: "src/tasks/send-order-receipt.ts",
+          line: 1,
+          sha: "b".repeat(40),
+          label: "the retry config",
+        },
+      ],
+    });
+
+    expect(output.blocks).toBeUndefined();
+    expect(output.error).toContain("src/tasks/send-order-receipt.ts");
+    expect(output.error).toContain("b".repeat(7));
     expect(upserts).toHaveLength(0);
   });
 
@@ -867,6 +906,9 @@ describe("buildDashboardAgentTools", () => {
     );
     await writeFile(join(dir, ".ready"), codeSnapshot.sha);
   };
+
+  const readFileTool = (tools: ReturnType<typeof buildDashboardAgentTools>) =>
+    tools.read_file as { execute: (input: unknown, opts: unknown) => Promise<any> };
 
   const concludedWithSource = {
     ...concludedState,
@@ -894,20 +936,16 @@ describe("buildDashboardAgentTools", () => {
       repoSnapshot: codeSnapshot,
     });
 
-    // Cited but never read: the citation is canonical, the button is not offered.
+    // Cited but never read: the render fails on the citation, so there is no
+    // card to hang a button on.
     const unread = await renderInvestigation(tools, concludedWithSource);
-    expect(unread.blocks[0].capabilities.actions.map((a: { kind: string }) => a.kind)).toEqual([
-      "watch_recurrence",
-      "view_similar",
-    ]);
+    expect(unread.blocks).toBeUndefined();
+    expect(unread.error).toContain("src/tasks/send-order-receipt.ts");
 
     // Now read it, and the same state earns the button — grounded in the
     // canonical source URI, as a canned ask the model didn't write.
-    const readFile = tools.read_file as {
-      execute: (input: unknown, opts: unknown) => Promise<any>;
-    };
     expect(
-      (await readFile.execute({ path: "src/tasks/send-order-receipt.ts" }, {})).content
+      (await readFileTool(tools).execute({ path: "src/tasks/send-order-receipt.ts" }, {})).content
     ).toContain("maxAttempts");
 
     const grounded = await renderInvestigation(tools, concludedWithSource);
@@ -918,8 +956,14 @@ describe("buildDashboardAgentTools", () => {
       "view_similar",
     ]);
     expect(actions[0].intent.kind).toBe("ask");
-    expect(actions[0].intent.prompt).toContain("src/tasks/send-order-receipt.ts");
-    expect(actions[0].intent.prompt).toContain(codeSnapshot.sha.slice(0, 7));
+    // The ask is a propose-a-change request, not another explanation: a fenced
+    // diff, the minimal change, anchored path:line@sha, with the dirty caveat.
+    const prompt: string = actions[0].intent.prompt;
+    expect(prompt).toContain("```diff");
+    expect(prompt).toContain(`src/tasks/send-order-receipt.ts:1@${codeSnapshot.sha.slice(0, 7)}`);
+    expect(prompt).toMatch(/minimal change/i);
+    expect(prompt).toMatch(/dirty tree|branch head/i);
+    expect(prompt).toMatch(/don't restate the investigation/i);
     // The follow-up that navigates points at the canonical error URI.
     expect(actions[2].intent).toEqual({
       kind: "navigate",
@@ -942,10 +986,7 @@ describe("buildDashboardAgentTools", () => {
       investigations: capability,
       repoSnapshot: codeSnapshot,
     });
-    const readFile = tools.read_file as {
-      execute: (input: unknown, opts: unknown) => Promise<any>;
-    };
-    await readFile.execute({ path: "src/tasks/send-order-receipt.ts" }, {});
+    await readFileTool(tools).execute({ path: "src/tasks/send-order-receipt.ts" }, {});
 
     const output = await renderInvestigation(tools, {
       ...concludedWithSource,

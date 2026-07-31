@@ -31,6 +31,7 @@ import {
   type DashboardAgentStore,
 } from "./dashboard-agent";
 import { dashboardAgentCodeToolSchemas, dashboardAgentToolSchemas } from "./tool-schemas";
+import { showCodeAskPrompt } from "./tools";
 
 const HAS_KEY = Boolean(process.env.ANTHROPIC_API_KEY);
 // The agent's real model; a capable judge (a stronger/different judge would
@@ -984,6 +985,39 @@ describe.skipIf(!HAS_KEY)("dashboardAgent investigation evals (real model)", () 
           card: renders[renders.length - 1]?.state,
           claim:
             "The conclusion is grounded in the source that was actually read: it names the file (src/trigger/receipt.ts) and the field access that broke, rather than speculating about code it never read.",
+        });
+        process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
+        expect(verdict.holds).toBe(true);
+      }),
+    // Two attempts of a real-model turn plus a judge call each.
+    840_000
+  );
+
+  it(
+    "show code: answers the button's ask with a fenced diff pinned to the file it read",
+    () =>
+      goldenCase(async () => {
+        // The real canned ask the "Show code" button sends, on the file the drift
+        // fixtures serve. It is a propose-a-change request, not an explanation.
+        const question = showCodeAskPrompt({
+          path: "src/trigger/receipt.ts",
+          line: 42,
+          sha: REPO_SNAPSHOT.sha,
+        });
+        const { calls, answer } = await runCase(question, { code: true, fixtures: DRIFT_FIXTURES });
+        report("show code", calls, answer);
+
+        // A fenced diff, citing the file at the pinned commit.
+        expect(answer).toMatch(/```diff/);
+        expect(answer).toContain("src/trigger/receipt.ts");
+        expect(answer).toContain(REPO_SNAPSHOT.sha.slice(0, 7));
+
+        const verdict = await judgeClaim({
+          question,
+          toolData: toolTranscript(calls),
+          answer,
+          claim:
+            "The answer proposes a concrete minimal change as a fenced diff for src/trigger/receipt.ts, anchored to the line and commit the question named. It does not merely explain the code or restate the investigation.",
         });
         process.stdout.write(`\njudge: ${JSON.stringify(verdict)}\n`);
         expect(verdict.holds).toBe(true);
