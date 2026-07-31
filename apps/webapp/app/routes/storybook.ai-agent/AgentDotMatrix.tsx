@@ -503,8 +503,13 @@ export function AgentDotMatrix({
       history.unshift(route[headPos]);
       if (history.length > SNAKE_TAIL.length) history.length = SNAKE_TAIL.length;
 
+      // Every change of seek mode restarts the step budget, so each search gets
+      // a full lap to find a shared dot before its fallback fires.
       if (!activeRef.current) {
-        seeking = "rest";
+        if (seeking !== "rest") {
+          seeking = "rest";
+          seekSteps = 0;
+        }
       } else {
         if (seeking === "rest") {
           // Re-activated mid-settle: cancel the pending return to rest so a
@@ -514,6 +519,7 @@ export function AgentDotMatrix({
         }
         if (seeking !== "next" && stepsInShape >= cyclesPerShape * route.length) {
           seeking = "next";
+          seekSteps = 0;
         }
       }
       if (!seeking) return;
