@@ -153,7 +153,12 @@ function logoCloud(count: number): Pt[] {
   const cached = logoCloudCache.get(count);
   if (cached) return cached;
 
-  const ctx = document.createElement("canvas").getContext("2d");
+  // Size the scratch canvas to the logo box: isPointInPath is specified against
+  // the path region, not the bitmap, but this removes any engine-specific doubt.
+  const scratch = document.createElement("canvas");
+  scratch.width = LOGO_W;
+  scratch.height = LOGO_H;
+  const ctx = scratch.getContext("2d");
   if (!ctx) return [];
   const path = new Path2D(LOGO_PATH);
   const scale = 0.9 / Math.max(LOGO_W, LOGO_H); // fit to ~0.9 box, preserve aspect

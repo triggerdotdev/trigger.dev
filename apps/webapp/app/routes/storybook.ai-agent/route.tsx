@@ -212,7 +212,13 @@ function AskOttoButton({ variant, matrixSize }: { variant: ButtonVariant; matrix
           variant === "ask-ai/small" ? "gap-x-1.5" : "gap-x-2"
         )}
       >
-        <AgentDotMatrix size={matrixSize} active={active} palette="mono" restColor="#ffffff" />
+        <AgentDotMatrix
+          size={matrixSize}
+          active={active}
+          palette="mono"
+          restColor="#ffffff"
+          decorative
+        />
         Ask Otto
       </span>
     </Button>
@@ -240,6 +246,7 @@ function FaceButton({ name }: { name: DotShapeName }) {
           restShape={name}
           palette="mono"
           restColor="#ffffff"
+          decorative
         />
         {name}
       </span>

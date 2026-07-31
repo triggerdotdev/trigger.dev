@@ -406,19 +406,19 @@ export default function Story() {
           <Header3 className="mb-1 uppercase">Sizes</Header3>
           <Button variant="ask-ai/small">
             <span className="flex items-center gap-x-1.5 text-text-bright">
-              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" />
+              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" decorative />
               Ask AI
             </span>
           </Button>
           <Button variant="ask-ai/medium">
             <span className="flex items-center gap-x-2 text-text-bright">
-              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" />
+              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" decorative />
               Ask AI
             </span>
           </Button>
           <Button variant="ask-ai/large">
             <span className="flex items-center gap-x-2 text-text-bright">
-              <AgentDotMatrix size={20} palette="mono" restColor="#ffffff" />
+              <AgentDotMatrix size={20} palette="mono" restColor="#ffffff" decorative />
               Ask AI
             </span>
           </Button>
@@ -427,7 +427,7 @@ export default function Story() {
           <Header3 className="mb-1 uppercase">Disabled</Header3>
           <Button variant="ask-ai/small" disabled>
             <span className="flex items-center gap-x-1.5 text-text-bright">
-              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" />
+              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" decorative />
               Ask AI
             </span>
           </Button>

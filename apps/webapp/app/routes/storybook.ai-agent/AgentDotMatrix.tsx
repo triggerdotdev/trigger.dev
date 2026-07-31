@@ -245,6 +245,11 @@ export type AgentDotMatrixProps = {
   gridAtRest?: boolean;
   /** Animation speed multiplier. */
   speed?: number;
+  /**
+   * Render as a decorative glyph (aria-hidden, no role) — use when the logo
+   * sits beside a text label that already names the control.
+   */
+  decorative?: boolean;
   className?: string;
   style?: CSSProperties;
   "aria-label"?: string;
@@ -267,6 +272,7 @@ export function AgentDotMatrix({
   gridOpacity = 0.18,
   gridAtRest = false,
   speed = 1,
+  decorative = false,
   className,
   style,
   "aria-label": ariaLabel,
@@ -311,8 +317,11 @@ export function AgentDotMatrix({
 
     const pitch = size / MATRIX;
     const dotR = Math.max(0.75, pitch * 0.3);
-    const stepMs = STEP_MS / speed;
-    const blendMs = BLEND_MS / speed;
+    // Clamp: a zero or negative speed would make stepMs non-positive and spin
+    // the step loop forever.
+    const safeSpeed = Math.max(0.01, speed);
+    const stepMs = STEP_MS / safeSpeed;
+    const blendMs = BLEND_MS / safeSpeed;
     // White ink at low opacity reads as subtle grey on any dark background;
     // light mode flips to black ink.
     const gridRgb: Rgb = mode === "light" ? [0, 0, 0] : [255, 255, 255];
@@ -496,8 +505,16 @@ export function AgentDotMatrix({
 
       if (!activeRef.current) {
         seeking = "rest";
-      } else if (seeking !== "next" && stepsInShape >= cyclesPerShape * route.length) {
-        seeking = "next";
+      } else {
+        if (seeking === "rest") {
+          // Re-activated mid-settle: cancel the pending return to rest so a
+          // quick off/on toggle carries on instead of restarting.
+          seeking = null;
+          seekSteps = 0;
+        }
+        if (seeking !== "next" && stepsInShape >= cyclesPerShape * route.length) {
+          seeking = "next";
+        }
       }
       if (!seeking) return;
 
@@ -600,8 +617,9 @@ export function AgentDotMatrix({
   return (
     <canvas
       ref={canvasRef}
-      role="img"
-      aria-label={ariaLabel ?? (active ? "Agent thinking" : "Agent")}
+      {...(decorative
+        ? { "aria-hidden": true }
+        : { role: "img", "aria-label": ariaLabel ?? (active ? "Agent thinking" : "Agent") })}
       className={className}
       style={{ width: size, height: size, display: "block", ...style }}
     />
