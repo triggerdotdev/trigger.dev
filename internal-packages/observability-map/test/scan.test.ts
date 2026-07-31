@@ -852,3 +852,176 @@ describe("scanFile: log calls", () => {
     expect(ep!.logCalls).toEqual([]);
   });
 });
+
+describe("scanFile: narrow catches", () => {
+  it("flags a try that guards a single request.json()", () => {
+    const ep = scanFile(
+      "admin.api.v1.platform-notifications.ts",
+      `
+      export async function action({ request }) {
+        const user = await requireUser(request);
+        let body;
+        try {
+          body = await request.json();
+        } catch {
+          return json({ error: "Invalid JSON body" }, { status: 400 });
+        }
+        const result = await createPlatformNotification(body);
+        return json(result);
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.catchRethrows).toBe(false);
+    expect(ep!.catchBranches).toBe(false);
+    expect(ep!.catchesNarrowly).toBe(true);
+  });
+
+  it("does not flag a catch wrapping the whole handler", () => {
+    const ep = scanFile(
+      "otel.v1.logs.ts",
+      `
+      export async function action({ request }) {
+        try {
+          const exporter = await otlpExporter;
+          const contentType = request.headers.get("content-type") ?? "";
+          const body = await request.json();
+          await exporter.export(body);
+          return json({ ok: true });
+        } catch (e) {
+          logger.error(e);
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.catchesNarrowly).toBe(false);
+  });
+
+  it("does not flag a body that has both a narrow catch and a broad one", () => {
+    const ep = scanFile(
+      "mixed.ts",
+      `
+      export async function action({ request }) {
+        let body;
+        try {
+          body = await request.json();
+        } catch {
+          return json({}, { status: 400 });
+        }
+        try {
+          const run = await find(body.id);
+          const updated = await update(run);
+          await notify(updated);
+          return json(updated);
+        } catch (e) {
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catchesNarrowly).toBe(false);
+  });
+
+  it("allows a guarded operation with its own local binding", () => {
+    const ep = scanFile(
+      "regex.ts",
+      `
+      export async function action({ request }) {
+        const pattern = await patternFrom(request);
+        try {
+          const stripped = pattern.startsWith("(?i)") ? pattern.slice(4) : pattern;
+          new RegExp(stripped);
+        } catch {
+          return json({ error: "Invalid regex" }, { status: 400 });
+        }
+        return json({ ok: true });
+      }
+      `
+    );
+    expect(ep!.catchesNarrowly).toBe(true);
+  });
+
+  it("does not flag a try of three statements", () => {
+    const ep = scanFile(
+      "three.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          const raw = await request.json();
+          const parsed = Schema.parse(raw);
+          return json(parsed);
+        } catch {
+          return json({}, { status: 400 });
+        }
+      }
+      `
+    );
+    expect(ep!.catchesNarrowly).toBe(false);
+  });
+
+  it("is false when there is no try at all", () => {
+    const ep = scanFile("plain.ts", `export async function loader() { return json({}); }`);
+    expect(ep!.hasTryCatch).toBe(false);
+    expect(ep!.catchesNarrowly).toBe(false);
+  });
+
+  it("is false for a try with a finally and no catch", () => {
+    const ep = scanFile(
+      "finally-only.ts",
+      `
+      export async function loader() {
+        try {
+          return json(await load());
+        } finally {
+          release();
+        }
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.catchesNarrowly).toBe(false);
+  });
+
+  it("reads a narrow catch inside a same-file helper the body delegates to", () => {
+    const ep = scanFile(
+      "helper-narrow.ts",
+      `
+      function parseTags(payload) {
+        try {
+          return JSON.parse(payload);
+        } catch {
+          return null;
+        }
+      }
+      export async function loader({ params }) {
+        return json(parseTags(params.payload));
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.catchesNarrowly).toBe(true);
+  });
+
+  it("ignores a narrow catch that lives in the React component", () => {
+    const ep = scanFile(
+      "route.tsx",
+      `
+      export async function loader() {
+        return json({});
+      }
+      export default function Page() {
+        try {
+          JSON.parse(raw);
+        } catch {
+          return null;
+        }
+        return null;
+      }
+      `
+    );
+    expect(ep!.hasTryCatch).toBe(false);
+    expect(ep!.catchesNarrowly).toBe(false);
+  });
+});

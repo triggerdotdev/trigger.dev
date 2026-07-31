@@ -49,6 +49,14 @@ export type EntryPoint = {
    * entry point takes one path out regardless of what was thrown.
    */
   catchBranches: boolean;
+  /**
+   * Whether every catch in those bodies guards a specific operation rather than the handler: the
+   * entry point has at least one catch clause, and no try block with a catch holds more than two
+   * statements. The `try { body = await request.json() } catch { 400 }` idiom, which takes one path
+   * out and is still deliberate. False when any catch wraps the bulk of a body, and false when
+   * there is no catch clause at all.
+   */
+  catchesNarrowly: boolean;
   /** Calls to a `logger.*` or `log.*` callee in those bodies, in source order. */
   logCalls: LogCall[];
   /**

@@ -106,6 +106,13 @@ function objectArgumentFields(call: ts.CallExpression): { found: boolean; fields
   return { found: false, fields: [] };
 }
 
+/**
+ * How much a try block may guard and still count as narrow. Two, so that the guarded operation can
+ * bind its result (`const stripped = ...; new RegExp(stripped);`) but a third statement means the
+ * try has started to cover the handler rather than one operation.
+ */
+const NARROW_TRY_STATEMENTS = 2;
+
 /** What a catch clause does with the error, beyond the fact that it caught one. */
 function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branches: boolean } {
   let rethrows = false;
@@ -457,6 +464,8 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
   let hasTryCatch = false;
   let catchRethrows = false;
   let catchBranches = false;
+  let catchClauseCount = 0;
+  let broadCatch = false;
   const calleeNames: string[] = [];
   const calleeTexts: string[] = [];
   const logCalls: LogCall[] = [];
@@ -473,7 +482,13 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
 
     if (!fn.body) return;
     const visit = (node: ts.Node, inCatch: boolean) => {
-      if (ts.isTryStatement(node)) hasTryCatch = true;
+      if (ts.isTryStatement(node)) {
+        hasTryCatch = true;
+        if (node.catchClause) {
+          catchClauseCount += 1;
+          if (countStatements(node.tryBlock.statements) > NARROW_TRY_STATEMENTS) broadCatch = true;
+        }
+      }
 
       if (ts.isCatchClause(node)) {
         const evidence = catchClauseEvidence(node);
@@ -533,6 +548,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     hasTryCatch,
     catchRethrows,
     catchBranches,
+    catchesNarrowly: catchClauseCount > 0 && !broadCatch,
     logCalls,
     statementCount,
   };
