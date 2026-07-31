@@ -35,6 +35,12 @@ export type MapReport = {
   byFamily: Record<string, { n: number; measured: number; mean: number | null }>;
   sensitiveCohort: { n: number; measured: number; mean: number | null };
   auditGap: { sensitiveMutations: number; withAudit: number };
+  /**
+   * `request-context` fails 391 of the 412 entry points it applies to, so it is reported as a
+   * figure rather than as hundreds of identical list entries, the same treatment `audit-trail`
+   * gets. It stays fully in the score: the gap is real and the score is meant to show it.
+   */
+  contextGap: { applicable: number; naming: number };
   entries: ScoredEntry[];
   parseFailures: string[];
 };
@@ -119,6 +125,10 @@ export function buildReport(eps: EntryPoint[], parseFailures: string[]): MapRepo
   // reported here as its own architectural figure instead: how many sensitive mutations have an
   // audit record, out of how many. Folding it into the score would tank every sensitive route on a
   // gap that is the same everywhere, and bury the routes that have their own, fixable problems.
+  const contextChecks = entries
+    .map((e) => e.checks.find((c) => c.id === "request-context"))
+    .filter((c) => c !== undefined && c.status !== "not-applicable");
+
   const auditApplicable = entries.filter((e) =>
     e.checks.some((c) => c.id === "audit-trail" && c.status !== "not-applicable")
   );
@@ -140,6 +150,10 @@ export function buildReport(eps: EntryPoint[], parseFailures: string[]): MapRepo
       withAudit: auditApplicable.filter((e) =>
         e.checks.some((c) => c.id === "audit-trail" && c.status === "pass")
       ).length,
+    },
+    contextGap: {
+      applicable: contextChecks.length,
+      naming: contextChecks.filter((c) => c.status === "pass").length,
     },
     entries,
     parseFailures,

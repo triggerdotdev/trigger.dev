@@ -20,6 +20,18 @@ const gauge = (score: number | null) => {
 const scoredFailures = (e: ScoredEntry) =>
   e.checks.filter((c) => SCORED_CHECK_IDS.includes(c.id) && c.status === "fail");
 
+/**
+ * An entry whose only finding is `request-context`. 391 of 412 entry points fail that check, so
+ * listing each one turns the fix list into a single house-style finding repeated, which is the
+ * reason `audit-trail` is kept out of the list too. Collapsed into the `CONTEXT` figure instead.
+ * An entry that fails something else as well stays in the list with all of its findings, so a
+ * route like `/account/tokens` still shows the request-context gap alongside the rest.
+ */
+const contextOnly = (e: ScoredEntry) => {
+  const failures = scoredFailures(e);
+  return failures.length === 1 && failures[0]!.id === "request-context";
+};
+
 export function renderTerminal(report: MapReport): string {
   const lines: string[] = [];
 
@@ -54,6 +66,18 @@ export function renderTerminal(report: MapReport): string {
     );
   }
 
+  const { applicable, naming } = report.contextGap;
+  if (applicable > 0) {
+    const collapsed = report.entries.filter(contextOnly).length;
+    lines.push("");
+    lines.push(
+      `CONTEXT   ${naming} of ${applicable} entry points name a tenant on a failure path.` +
+        (collapsed > 0
+          ? ` ${collapsed} appear${collapsed === 1 ? "s" : ""} only here, not in the list below.`
+          : "")
+    );
+  }
+
   if (report.suppressions.checks > 0) {
     const { entries, checks } = report.suppressions;
     lines.push(
@@ -65,7 +89,7 @@ export function renderTerminal(report: MapReport): string {
   }
 
   const worst = report.entries
-    .filter((e) => scoredFailures(e).length > 0)
+    .filter((e) => scoredFailures(e).length > 0 && !contextOnly(e))
     .sort(
       (a, b) =>
         Number(b.sensitive) - Number(a.sensitive) ||

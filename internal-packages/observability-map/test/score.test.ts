@@ -138,6 +138,30 @@ ${BUSY_AND_FAILING}`
 });
 
 describe("buildReport", () => {
+  it("reports the request-context gap as a figure, like the audit gap", () => {
+    const naming = scanFile(
+      "api.v1.named.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) { logger.error("failed", { environmentId: params.envId, error }); throw error; }
+       }`
+    )!;
+    const silent = scanFile(
+      "api.v1.silent.ts",
+      `import { prisma } from "~/db.server";
+       export async function loader() { return prisma.thing.findMany(); }`
+    )!;
+    const trivial = scanFile(
+      "resources.health.ts",
+      `export const loader = () => new Response("ok");`
+    )!;
+
+    const report = buildReport([naming, silent, trivial], []);
+    expect(report.contextGap).toEqual({ applicable: 2, naming: 1 });
+  });
+
   it("counts suppressions so laundering is visible in the report", () => {
     const report = buildReport(
       [

@@ -75,21 +75,19 @@ describe("renderTerminal", () => {
        }`
     )!;
 
-    // Sensitive, score 67: guarded and classifies what it catches, but its failure log names
-    // nobody, so only request-context fails.
-    const sensitiveSixtySeven = scanFile(
+    // Sensitive, score 33: classifies what it catches, but has no guard and names nobody. Fails
+    // more than request-context, so it stays in the list rather than collapsing into the figure.
+    const sensitiveThirtyThree = scanFile(
       "api.v1.auth.tokens.ts",
-      `import { requireUserId } from "~/services/session.server";
-       import { logger } from "~/services/logger.server";
+      `import { logger } from "~/services/logger.server";
        import { prisma } from "~/db.server";
-       export async function action({ request }) {
-         const userId = await requireUserId(request);
-         try { return await prisma.token.create({ data: { userId } }); }
+       export async function action() {
+         try { return await prisma.token.create({ data: {} }); }
          catch (error) { logger.error("failed", { error }); throw error; }
        }`
     )!;
 
-    // Not sensitive, score 0: worse score than sensitiveSixtySeven, but must still sort after both
+    // Not sensitive, score 0: worse score than sensitiveThirtyThree, but must still sort after both
     // sensitive entries because sensitivity outranks raw score.
     const notSensitiveZero = scanFile(
       "resources.busy.ts",
@@ -114,17 +112,17 @@ describe("renderTerminal", () => {
     )!;
 
     const out = renderTerminal(
-      buildReport([sensitiveSixtySeven, sensitiveZero, notSensitiveZero, sensitiveAuditOnly], [])
+      buildReport([sensitiveThirtyThree, sensitiveZero, notSensitiveZero, sensitiveAuditOnly], [])
     );
 
     const fixFirst = out.slice(out.indexOf("FIX FIRST"), out.indexOf("already solid"));
     const idxZero = fixFirst.indexOf("api.v1.envvars.ts");
-    const idxSixtySeven = fixFirst.indexOf("api.v1.auth.tokens.ts");
+    const idxThirtyThree = fixFirst.indexOf("api.v1.auth.tokens.ts");
     const idxNotSensitive = fixFirst.indexOf("resources.busy.ts");
 
     expect(idxZero).toBeGreaterThan(-1);
-    expect(idxSixtySeven).toBeGreaterThan(idxZero);
-    expect(idxNotSensitive).toBeGreaterThan(idxSixtySeven);
+    expect(idxThirtyThree).toBeGreaterThan(idxZero);
+    expect(idxNotSensitive).toBeGreaterThan(idxThirtyThree);
     expect(fixFirst).not.toContain("api.v1.billing.ts");
   });
 });
@@ -204,5 +202,49 @@ describe("rendering honestly when there is nothing to say", () => {
     expect(out).not.toMatch(/already solid/i);
     expect(out).toMatch(/1 passed every applicable check/i);
     expect(out).toMatch(/1 had none to apply/i);
+  });
+});
+
+describe("collapsing the house-style finding", () => {
+  const namesNobody = () =>
+    scanFile(
+      "api.v1.silent.ts",
+      `import { prisma } from "~/db.server";
+       export async function loader() { return prisma.thing.findMany(); }`
+    )!;
+
+  const namesNobodyAndSwallows = () =>
+    scanFile(
+      "api.v1.auth.tokens.ts",
+      `import { prisma } from "~/db.server";
+       export async function action() {
+         try { return await prisma.token.create({ data: {} }); } catch (e) { return null; }
+       }`
+    )!;
+
+  // request-context fails 391 of 412 entry points, so listing each one turns the fix list into a
+  // single finding repeated. Same reasoning that keeps audit-trail out of the list.
+  it("keeps an entry whose only finding is request-context out of the fix list", () => {
+    const out = renderTerminal(buildReport([namesNobody()], []));
+    const fixFirst = out.slice(out.indexOf("FIX FIRST"));
+    expect(fixFirst).not.toContain("api.v1.silent.ts");
+  });
+
+  it("reports the gap as a headline figure instead", () => {
+    const out = renderTerminal(buildReport([namesNobody()], []));
+    expect(out).toMatch(/CONTEXT\s+0 of 1 entry points name a tenant on a failure path/);
+  });
+
+  it("says how many entries the collapse took out of the list", () => {
+    const out = renderTerminal(buildReport([namesNobody(), namesNobodyAndSwallows()], []));
+    expect(out).toMatch(/1 appears? only here/i);
+  });
+
+  it("still lists request-context when the entry fails something else too", () => {
+    const out = renderTerminal(buildReport([namesNobodyAndSwallows()], []));
+    const fixFirst = out.slice(out.indexOf("FIX FIRST"));
+    expect(fixFirst).toContain("api.v1.auth.tokens.ts");
+    expect(fixFirst).toContain("request-context");
+    expect(fixFirst).toContain("error-classification");
   });
 });
