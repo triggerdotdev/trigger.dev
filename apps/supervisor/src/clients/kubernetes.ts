@@ -53,16 +53,18 @@ function getKubeConfig() {
 export { k8s };
 
 /**
- * createPodCountFetcher counts pod objects in a namespace with a single `limit=1`
- * list: one pod transferred, no informer, no watch cache. Population is
- * `remainingItemCount + items.length`.
+ * createPodCountFetcher sizes a namespace's pod collection with a single `limit=1`
+ * list: one pod transferred, no informer, no watch cache.
+ *
+ * This is an ESTIMATE, not an exact count. Kubernetes documents `remainingItemCount`
+ * as intended for estimating collection size and reserves the right not to set it or
+ * make it exact. Counting exactly would mean paginating the whole collection, which is
+ * what this deliberately avoids. Treat the value as a tight estimate from a quorum read
+ * at request time, and set thresholds with that in mind.
  *
  * Two request-shape constraints, both load-bearing. A label or field selector makes
  * the apiserver omit `remainingItemCount` entirely, and setting `resourceVersion`
  * serves a cached count instead of a quorum read - so neither is passed.
- *
- * `remainingItemCount` is only set when the list is truncated, so `_continue` is the
- * truncation signal: absent means the returned page is the whole collection.
  */
 export function createPodCountFetcher(
   api: K8sApi,
@@ -94,12 +96,14 @@ export function createPodCountFetcher(
 }
 
 /**
- * podCountFromList turns a `limit=1` pod list into a population.
+ * podCountFromList turns a `limit=1` pod list into a population estimate.
  *
  * `remainingItemCount` is only set when the list is truncated, so `_continue` is the
  * truncation signal: absent means the returned page is the whole collection and its
- * length is already the answer. Truncated without a usable estimate is unknowable, so
- * it throws rather than guessing a low number the brake would act on.
+ * length is exact. When truncated the total leans on `remainingItemCount`, which is
+ * documented as an estimate - so the result is an estimate too. Truncated without a
+ * usable count is unknowable, so it throws rather than returning a low number the
+ * caller would act on.
  */
 export function podCountFromList(list: {
   items: unknown[];
