@@ -8,8 +8,10 @@ import {
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
-import { DashboardAgentProvider } from "./dashboardAgentLauncher";
+import { DashboardAgentProvider, TOGGLE_PANEL_SHORTCUT } from "./dashboardAgentLauncher";
+import { useDashboardAgentOpenRequests } from "./dashboardAgentOpenRequest";
 import {
   showWatchWakesSummaryToast,
   showWatchWakeToast,
@@ -153,6 +155,21 @@ export function DashboardAgent({
     },
     [actionPath]
   );
+
+  // ⌘J toggles the panel. Opening mounts the composer, which focuses itself, so
+  // the shortcut lands you in the text field. Enabled inside inputs too, so the
+  // same keystroke closes the panel while you're typing in it.
+  useShortcutKeys({
+    shortcut: TOGGLE_PANEL_SHORTCUT,
+    action: () => setPanelOpen(!open),
+    disabled: !hasAccess,
+    enabledOnInputElements: true,
+  });
+
+  // Entry points that sit ABOVE this provider — the side menu's "Ask {agent}"
+  // item — and the CLI's `?ask=` deep link, both handled in one place. See
+  // `dashboardAgentOpenRequest.ts`.
+  useDashboardAgentOpenRequests({ enabled: hasAccess, openWith, setOpen: setPanelOpen });
 
   const context = useMemo(
     () => ({ open, setOpen: setPanelOpen, openWith, unreadWakes }),

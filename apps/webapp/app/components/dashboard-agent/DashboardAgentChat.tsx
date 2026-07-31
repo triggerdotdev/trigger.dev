@@ -6,6 +6,7 @@ import { useNavigate } from "@remix-run/react";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "~/components/primitives/Toast";
+import { AgentQuotaNotice, AgentUpgradeBlock } from "./AgentUpgradeGate";
 import { DashboardAgentComposer } from "./DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "./DashboardAgentContextBanner";
 import { DashboardAgentMessages, type TurnActivity } from "./DashboardAgentMessages";
@@ -13,6 +14,7 @@ import { DashboardAgentSuggestedPrompts } from "./DashboardAgentSuggestedPrompts
 import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { appendRunFilters, pendingNavigateIntents } from "./navigate-target";
 import type { AgentPageContext } from "./page-context-types";
+import { useAgentMessageQuota } from "./useAgentMessageQuota";
 import { WatchChips, type WatchChip } from "./WatchChips";
 
 /**
@@ -211,6 +213,12 @@ export function DashboardAgentChat({
   const orderRef = useRef(createTranscriptOrder(initialMessages));
   const messages = orderTranscript(rawMessages, orderRef.current);
 
+  // The Free plan's message cap. Read here rather than in the panel so it counts
+  // this chat's live transcript — including the turn just sent. `unlimited` on
+  // any paid plan, and on any plan we can't identify.
+  const quota = useAgentMessageQuota({ actionPath, chatId, messages });
+  const atMessageCap = quota.kind === "reached";
+
   const isStreaming = status === "streaming";
   // A turn is in flight from submit until it settles. Deriving the indicator
   // from status (rather than from what the last part happens to be) keeps it up
@@ -230,11 +238,14 @@ export function DashboardAgentChat({
   const submit = useCallback(
     (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isStreaming) return;
+      // The composer is gone at the cap, but a suggested prompt or a card's
+      // action can still call this — so the cap is enforced here, not just in
+      // what's rendered.
+      if (!trimmed || isStreaming || atMessageCap) return;
       setInput("");
       void sendMessage({ text: trimmed });
     },
-    [isStreaming, sendMessage]
+    [isStreaming, atMessageCap, sendMessage]
   );
 
   // Re-send the last thing the user asked. The failed turn produced nothing, so
@@ -342,12 +353,7 @@ export function DashboardAgentChat({
 
   return (
     <>
-      <DashboardAgentContextBanner
-        projectSlug={projectSlug}
-        environmentSlug={environmentSlug}
-        currentPage={currentPage}
-      />
-      {/* What this chat is watching, right under the banner: a watch outcome
+      {/* What this chat is watching, at the top of the panel: a watch outcome
           arrives in the transcript unprompted, so the chips are what explain
           where those messages will come from. */}
       {/* Chips are an offer to cancel, so only live watches get one; the full
@@ -377,14 +383,44 @@ export function DashboardAgentChat({
           watches={watches}
         />
       )}
-      <DashboardAgentComposer
-        value={input}
-        onChange={setInput}
-        onSubmit={() => submit(input)}
-        onStop={stop}
-        isStreaming={isStreaming}
-        focusKey={prefill?.seq}
-      />
+      {/* The Free plan's message cap occupies the composer slot: at the cap the
+          composer is replaced by the upgrade block (a composer you can't send
+          from is worse than none), and under it the composer is followed by the
+          remaining count. The transcript above is untouched either way — the
+          conversation you already had stays readable. */}
+      {quota.kind === "reached" ? (
+        <AgentUpgradeBlock
+          limit={quota.limit}
+          context={
+            <DashboardAgentContextBanner
+              projectSlug={projectSlug}
+              environmentSlug={environmentSlug}
+              currentPage={currentPage}
+            />
+          }
+        />
+      ) : (
+        <>
+          <DashboardAgentComposer
+            value={input}
+            onChange={setInput}
+            onSubmit={() => submit(input)}
+            onStop={stop}
+            isStreaming={isStreaming}
+            focusKey={prefill?.seq}
+            context={
+              <DashboardAgentContextBanner
+                projectSlug={projectSlug}
+                environmentSlug={environmentSlug}
+                currentPage={currentPage}
+              />
+            }
+          />
+          {quota.kind === "within" && (
+            <AgentQuotaNotice remaining={quota.remaining} limit={quota.limit} />
+          )}
+        </>
+      )}
     </>
   );
 }

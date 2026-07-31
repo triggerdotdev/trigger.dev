@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql, isNull } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
 import { generateInvestigationId, generateWatchId } from "./ids.js";
 import {
@@ -82,6 +82,42 @@ export async function getChatMessages(
     )
     .limit(1);
   return rows[0]?.messages ?? null;
+}
+
+/**
+ * How many messages this user has SENT across their chats in an org.
+ *
+ * Counted from the stored transcripts rather than a counter column, so it can't
+ * drift from what the user can see in their own history: a deleted chat stops
+ * counting, exactly as it stops being readable. Aggregated in Postgres —
+ * `messages` blobs are large and the caller only ever wants the number.
+ *
+ * `excludeChatId` leaves one chat out, for a caller that already has that chat's
+ * live message list in hand (the panel counts the open chat client-side, so the
+ * turn in flight is included without waiting for it to be persisted).
+ */
+export async function countUserMessages(
+  db: DashboardAgentDb,
+  params: { organizationId: string; userId: string; excludeChatId?: string }
+): Promise<number> {
+  const rows = await db
+    .select({
+      count: sql<number>`coalesce(sum((
+        select count(*)
+        from jsonb_array_elements(${chats.messages}) as message
+        where message->>'role' = 'user'
+      )), 0)::int`,
+    })
+    .from(chats)
+    .where(
+      and(
+        eq(chats.organizationId, params.organizationId),
+        eq(chats.userId, params.userId),
+        isNull(chats.deletedAt),
+        params.excludeChatId ? ne(chats.id, params.excludeChatId) : undefined
+      )
+    );
+  return rows[0]?.count ?? 0;
 }
 
 /**

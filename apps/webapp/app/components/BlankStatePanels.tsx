@@ -33,7 +33,7 @@ import {
   v3NewProjectAlertPath,
   v3NewSchedulePath,
 } from "~/utils/pathBuilder";
-import { AskAI } from "./AskAI";
+import { AskAgentButton } from "./dashboard-agent/AskAgentButton";
 import { CodeBlock } from "./code/CodeBlock";
 import { InlineCode } from "./code/InlineCode";
 import { environmentFullTitle, EnvironmentIcon } from "./environments/EnvironmentLabel";
@@ -60,6 +60,44 @@ import {
 } from "./SetupCommands";
 import { StepContentContainer } from "./StepContentContainer";
 import { V4Badge } from "./V4Badge";
+
+/**
+ * What the agent is asked when it's opened from a deployment setup panel. The
+ * panel is the docs answer; the agent is for the part the docs can't answer —
+ * this project, this environment.
+ */
+const ASK_AGENT_DEPLOY_PROMPT =
+  "I'm trying to deploy my tasks to this environment. Walk me through it and tell me if anything about this project or environment is going to get in the way.";
+
+/** The docs links the deployment panels offered before the agent did. */
+function DeployDocsLinks() {
+  return (
+    <>
+      <SimpleTooltip
+        button={
+          <LinkButton
+            variant="small-menu-item"
+            LeadingIcon={BookOpenIcon}
+            leadingIconClassName="text-blue-500"
+            to={docsPath("deployment/overview")}
+          />
+        }
+        content="Deploy docs"
+      />
+      <SimpleTooltip
+        button={
+          <LinkButton
+            variant="small-menu-item"
+            LeadingIcon={QuestionMarkCircleIcon}
+            leadingIconClassName="text-blue-500"
+            to={docsPath("troubleshooting#deployment")}
+          />
+        }
+        content="Troubleshooting docs"
+      />
+    </>
+  );
+}
 
 export function HasNoTasksDev() {
   return (
@@ -269,29 +307,11 @@ export function DeploymentsNoneDev() {
           <Header1>Deploy your tasks</Header1>
         </div>
         <div className="flex items-center">
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={BookOpenIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("deployment/overview")}
-              />
-            }
-            content="Deploy docs"
-          />
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={QuestionMarkCircleIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("troubleshooting#deployment")}
-              />
-            }
-            content="Troubleshooting docs"
-          />
-          <AskAI />
+          {/* One entry point instead of three: the docs and troubleshooting links
+              were a guess at which page you needed, and the agent can look at this
+              project and answer for it. Someone with no agent still gets the
+              links. */}
+          <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
         </div>
       </div>
       <StepNumber stepNumber="→" title="Switch to a deployed environment" />
@@ -657,29 +677,11 @@ function DeploymentOnboardingSteps() {
           </Header1>
         </div>
         <div className="flex items-center">
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={BookOpenIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("deployment/overview")}
-              />
-            }
-            content="Deploy docs"
-          />
-          <SimpleTooltip
-            button={
-              <LinkButton
-                variant="small-menu-item"
-                LeadingIcon={QuestionMarkCircleIcon}
-                leadingIconClassName="text-blue-500"
-                to={docsPath("troubleshooting#deployment")}
-              />
-            }
-            content="Troubleshooting docs"
-          />
-          <AskAI />
+          {/* One entry point instead of three: the docs and troubleshooting links
+              were a guess at which page you needed, and the agent can look at this
+              project and answer for it. Someone with no agent still gets the
+              links. */}
+          <AskAgentButton prompt={ASK_AGENT_DEPLOY_PROMPT} fallback={<DeployDocsLinks />} />
         </div>
       </div>
       <ClientTabs defaultValue="github">

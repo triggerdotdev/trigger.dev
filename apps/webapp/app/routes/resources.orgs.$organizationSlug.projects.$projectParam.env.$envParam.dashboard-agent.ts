@@ -3,6 +3,7 @@ import {
   cancelWatch,
   chatExists,
   countUnreadWatchWakes,
+  countUserMessages,
   createChat,
   getChatMessages,
   getSession,
@@ -84,7 +85,8 @@ const ActionBody = z.object({
 // History list, or — with ?chatId= — the stored transcript + session for resume,
 // or — with ?unread=1 — just the unread wake count plus the capped list of those
 // wakes (the launcher's dot and the wake toast poll it while the panel is closed,
-// so it must stay cheap).
+// so it must stay cheap), or — with ?quota=1 — how many messages the user has
+// sent, for the Free-plan cap.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const userId = user.id;
@@ -119,6 +121,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       }),
     ]);
     return json({ unreadWakes, wakes });
+  }
+
+  // How many messages the user has sent, for the Free-plan cap. `chatId` is the
+  // chat the panel has open: its messages are excluded here and counted from the
+  // live transcript instead, so a turn that hasn't been persisted yet still
+  // counts. Cheap (one aggregate) and re-read as the user sends.
+  if (searchParams.get("quota") === "1") {
+    const used = await countUserMessages(dashboardAgentDb, {
+      organizationId: project.organizationId,
+      userId,
+      excludeChatId: searchParams.get("chatId") ?? undefined,
+    });
+    return json({ used });
   }
 
   const chatId = searchParams.get("chatId");

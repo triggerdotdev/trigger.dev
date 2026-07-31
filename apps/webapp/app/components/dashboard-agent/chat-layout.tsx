@@ -47,13 +47,13 @@
  *    how the card sits in the transcript — full width, inset, distance to its
  *    neighbours — is `ChatCardSlot`'s, and a card must not set it.
  * 4. **Role drives alignment and nothing else.** `role="user"` is right-aligned
- *    in the accent bubble; `role="assistant"` is left-aligned and full width.
+ *    in a grey bubble; `role="assistant"` is left-aligned, full width and
+ *    unboxed — plain prose, so the cards are the only things that read as cards.
  */
 import type { Ref } from "react";
 import { createContext, Suspense, useContext } from "react";
 import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { Spinner } from "~/components/primitives/Spinner";
-import { ChatBubble } from "~/components/runs/v3/ai/AIChatMessages";
 import { cn } from "~/utils/cn";
 
 /** The transcript's horizontal inset. Owned by `ChatTurn`. */
@@ -73,6 +73,13 @@ const UNIT_GAP = "space-y-1.5";
 
 const SCROLLER =
   "flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control";
+
+/**
+ * The soft edge at the bottom of the scroller. There is no rule above the
+ * composer — the transcript runs behind it — so this is what says the content
+ * continues. Same idiom as the collapsed-content fade on the deployment page.
+ */
+const SCROLL_FADE = "h-6 bg-linear-to-t from-background-bright to-transparent";
 
 export type ChatRole = "user" | "assistant";
 
@@ -110,10 +117,16 @@ export function ChatTranscript({
   contentRef?: Ref<HTMLDivElement>;
 }) {
   return (
-    <div className={SCROLLER}>
-      <div ref={contentRef} className={cn(TRANSCRIPT_INSET_Y, TURN_GAP)}>
-        {children}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className={SCROLLER}>
+        <div ref={contentRef} className={cn(TRANSCRIPT_INSET_Y, TURN_GAP)}>
+          {children}
+        </div>
       </div>
+      <div
+        aria-hidden
+        className={cn("pointer-events-none absolute inset-x-0 bottom-0", SCROLL_FADE)}
+      />
     </div>
   );
 }
@@ -152,26 +165,31 @@ export function ChatTurn({
 /**
  * A text body.
  *
- * The assistant variant is the panel's markdown path: the shared `ChatBubble`
- * around a rendered-markdown container, with a plain-text fallback while the
- * renderer loads. The user variant is the accent bubble.
+ * The assistant variant is the panel's markdown path, rendered as plain prose:
+ * NOT a card. The agent answers in text most of the time, and a box around every
+ * one of those answers made the transcript read as a stack of cards — so the box
+ * is reserved for the things that really are cards (report, investigation,
+ * diagnosis, chart), which mount through `ChatCardSlot`. A plain-text fallback
+ * shows while the markdown renderer loads.
+ *
+ * The user variant is the one bubble left: grey, right-aligned, so a turn is
+ * legible at a glance without competing with the accent the agent's own surfaces
+ * use.
  */
 export function ChatText({ role = "assistant", text }: { role?: ChatRole; text: string }) {
   if (role === "user") {
     return (
-      <div className="max-w-[80%] rounded-lg bg-indigo-600 px-4 py-2.5 text-sm text-white">
+      <div className="max-w-[80%] rounded-lg bg-background-raised px-4 py-2.5 text-sm text-text-bright">
         <div className="whitespace-pre-wrap wrap-anywhere">{text}</div>
       </div>
     );
   }
   return (
-    <ChatBubble>
-      <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed wrap-anywhere">
-        <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
-          <StreamdownRenderer>{text}</StreamdownRenderer>
-        </Suspense>
-      </div>
-    </ChatBubble>
+    <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed wrap-anywhere">
+      <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
+        <StreamdownRenderer>{text}</StreamdownRenderer>
+      </Suspense>
+    </div>
   );
 }
 

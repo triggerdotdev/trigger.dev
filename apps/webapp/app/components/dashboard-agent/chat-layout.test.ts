@@ -97,6 +97,18 @@ describe("chat-layout enforcement", () => {
       }
     });
 
+    it("renders assistant text as prose, not as a card", () => {
+      // A box around every text answer made the whole transcript read as cards.
+      // Only ChatCardSlot content is boxed now, so nothing here may reintroduce
+      // the shared bubble.
+      expect(source).not.toContain("ChatBubble");
+    });
+
+    it("gives the user bubble a grey surface, not the accent", () => {
+      expect(source).toContain("bg-background-raised");
+      expect(source).not.toMatch(/bg-indigo-\d/);
+    });
+
     it("documents the composition rules", () => {
       expect(source).toContain("## Composition rules");
       expect(source).toContain("ChatTranscript\n *       ChatTurn*");

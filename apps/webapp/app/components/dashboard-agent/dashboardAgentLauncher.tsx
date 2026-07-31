@@ -1,6 +1,21 @@
-import { ChatBubbleLeftRightIcon, ChevronDoubleRightIcon } from "@heroicons/react/20/solid";
+import { ChatBubbleLeftRightIcon } from "@heroicons/react/20/solid";
 import { createContext, useContext } from "react";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import type { Shortcut } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
+
+/**
+ * Opens and closes the panel. Registered once, by `DashboardAgent`; the launcher
+ * only shows it, so the tooltip and the binding can't drift apart.
+ */
+export const TOGGLE_PANEL_SHORTCUT: Shortcut = {
+  modifiers: ["mod"],
+  key: "j",
+  // The composer holds focus while the panel is open, so the same keystroke has
+  // to close it from inside the text field.
+  enabledOnInputElements: true,
+};
 
 type DashboardAgentContextValue = {
   open: boolean;
@@ -39,29 +54,39 @@ export function DashboardAgentLauncher() {
   const hasUnread = !open && unreadWakes > 0;
 
   return (
-    <button
-      type="button"
-      aria-label={open ? "Collapse chat" : hasUnread ? "Open chat, unread updates" : "Open chat"}
-      onClick={() => setOpen(!open)}
-      className={cn(
-        "relative flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-text-bright transition",
-        open
-          ? "border-border-brighter bg-background-hover"
-          : "border-border-bright bg-background-bright hover:border-border-brighter"
-      )}
-    >
-      {open ? (
-        <ChevronDoubleRightIcon className="size-3.5 text-text-dimmed" />
-      ) : (
-        <ChatBubbleLeftRightIcon className="size-3.5 text-indigo-500" />
-      )}
-      {open ? "Collapse" : "Chat"}
-      {hasUnread && (
-        <span
-          // Ringed so the dot reads on the header background as well as the button.
-          className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-indigo-500 ring-2 ring-background-dimmed"
-        />
-      )}
-    </button>
+    <SimpleTooltip
+      asChild
+      tabbable
+      disableHoverableContent
+      content={
+        <span className="flex items-center">
+          {open ? "Close chat" : "Open chat"}
+          <ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />
+        </span>
+      }
+      button={
+        <button
+          type="button"
+          aria-label={hasUnread ? "Open chat, unread updates" : open ? "Close chat" : "Open chat"}
+          aria-pressed={open}
+          onClick={() => setOpen(!open)}
+          className={cn(
+            "relative flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-text-bright transition",
+            open
+              ? "border-border-brighter bg-background-hover"
+              : "border-border-bright bg-background-bright hover:border-border-brighter"
+          )}
+        >
+          <ChatBubbleLeftRightIcon className="size-3.5 text-indigo-500" />
+          Chat
+          {hasUnread && (
+            <span
+              // Ringed so the dot reads on the header background as well as the button.
+              className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-indigo-500 ring-2 ring-background-dimmed"
+            />
+          )}
+        </button>
+      }
+    />
   );
 }

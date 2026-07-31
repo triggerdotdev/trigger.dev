@@ -8,7 +8,7 @@
  */
 import type { AgentIntent, ChartAction } from "@internal/dashboard-agent-contracts";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
-import { ChartActions } from "../../AgentChart";
+import { AGENT_CHART_PLOT_CLASS, ChartActions } from "../../AgentChart";
 import { demoChart } from "../fixtures/chart";
 
 export function DemoChartCard({
@@ -28,7 +28,7 @@ export function DemoChartCard({
           {title}
         </div>
       ) : null}
-      <div className="h-64 w-full p-2">
+      <div className={AGENT_CHART_PLOT_CLASS}>
         <QueryResultsChart
           rows={demoChart.rows}
           columns={demoChart.columns}

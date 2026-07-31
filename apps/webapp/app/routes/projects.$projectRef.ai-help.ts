@@ -45,7 +45,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     v3EnvironmentPath({ slug: project.organization.slug }, { slug: project.slug }, { slug: "dev" }),
     env.LOGIN_ORIGIN
   );
-  newUrl.searchParams.set("aiHelp", query);
+  // The CLI prints a link here when a task errors ("get a fix for this error"),
+  // so the destination is whatever the dashboard's assistant is at the time. It
+  // is now the dashboard agent, which picks `ask` up in the environment layout
+  // (`useDashboardAgentOpenRequests`) and opens its panel with the question.
+  newUrl.searchParams.set("ask", query);
 
   return redirect(newUrl.toString());
 }

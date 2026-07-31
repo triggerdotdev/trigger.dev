@@ -55,7 +55,6 @@ export default defineConfig({
       "react-use",
       "cron-parser",
       "@fingerprintjs/fingerprintjs-pro-react",
-      "@kapaai/react-sdk",
       "@fingerprintjs/fingerprintjs-pro",
       "@fingerprintjs/fingerprintjs-pro-spa",
     ],

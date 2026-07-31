@@ -1662,9 +1662,6 @@ const EnvironmentSchema = z
     SLACK_BOT_TOKEN: z.string().optional(),
     SLACK_SIGNUP_REASON_CHANNEL_ID: z.string().optional(),
 
-    // kapa.ai
-    KAPA_AI_WEBSITE_ID: z.string().optional(),
-
     // BetterStack
     BETTERSTACK_API_KEY: z.string().optional(),
     BETTERSTACK_STATUS_PAGE_ID: z.string().optional(),

@@ -18,10 +18,7 @@ import {
 import { DashboardAgentDraft } from "./DashboardAgentDraft";
 import type { TurnActivity } from "./DashboardAgentMessages";
 import { DashboardAgentHeader } from "./DashboardAgentHeader";
-import {
-  DashboardAgentHistory,
-  type DashboardAgentChat as DashboardAgentChatListItem,
-} from "./DashboardAgentHistory";
+import type { DashboardAgentChat as DashboardAgentChatListItem } from "./DashboardAgentHistory";
 import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
@@ -112,7 +109,6 @@ export function DashboardAgentPanel({
   const actionPath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/dashboard-agent`;
   const storageKey = lastChatStorageKey(organization.id);
 
-  const [view, setView] = useState<"chat" | "history">("chat");
   const [chats, setChats] = useState<DashboardAgentChatListItem[]>([]);
   const [active, setActive] = useState<ActiveChat | null>(null);
   // Starts true when there's a chat to restore ON THIS PAGE, so the first
@@ -205,7 +201,6 @@ export function DashboardAgentPanel({
   // sent) drops back to the draft state.
   const openChat = useCallback(
     async (id: string) => {
-      setView("chat");
       const seq = ++openChatRequestSeq.current;
       setLoading(true);
       try {
@@ -254,7 +249,6 @@ export function DashboardAgentPanel({
   // the transport (cold start).
   const createChat = useCallback(
     async (text: string) => {
-      setView("chat");
       const seq = ++openChatRequestSeq.current;
       setLoading(true);
       try {
@@ -329,7 +323,6 @@ export function DashboardAgentPanel({
   useEffect(() => {
     if (!openChatRequest || handledOpenChatSeq.current === openChatRequest.seq) return;
     handledOpenChatSeq.current = openChatRequest.seq;
-    setView("chat");
     // Already the visible transcript — nothing to load, and reloading it would
     // drop a turn in flight.
     if (openChatRequest.chatId === active?.chatId) return;
@@ -353,14 +346,14 @@ export function DashboardAgentPanel({
   }, [active?.chatId, storageKey, location.pathname]);
 
   // A chat becoming the visible transcript is the user reading it — mark it read
-  // so the launcher's dot clears. Fires on open, on every chat switch, and when
-  // the History view is left for the chat again; a draft has nothing to read.
+  // so the launcher's dot clears. Fires on open and on every chat switch; a draft
+  // has nothing to read.
   useEffect(() => {
-    if (view !== "chat" || !active?.chatId) return;
+    if (!active?.chatId) return;
     const chatId = active.chatId;
     onChatRead?.(chatId);
     // Clear the row's highlight now rather than waiting for the next history
-    // reload, so going back to History after reading doesn't show it as unread.
+    // reload, so reopening the dropdown after reading doesn't show it as unread.
     justRead.current.add(chatId);
     setChats((previous) =>
       previous.map((chat) => (chat.id === chatId ? { ...chat, hasUnreadWake: false } : chat))
@@ -371,7 +364,7 @@ export function DashboardAgentPanel({
       onChatRead?.(chatId);
       justRead.current.add(chatId);
     };
-  }, [view, active?.chatId, onChatRead]);
+  }, [active?.chatId, onChatRead]);
 
   // Text handed in by `openWith`. With no chat open we start one and send it
   // straight away (the launcher's caller already knows what to ask); with a chat
@@ -389,7 +382,6 @@ export function DashboardAgentPanel({
     if (!requestedMessage || loading) return;
     if (handledRequestSeq.current === requestedMessage.seq) return;
     handledRequestSeq.current = requestedMessage.seq;
-    setView("chat");
     if (active) {
       setPrefill({ ...requestedMessage, chatId: active.chatId });
     } else {
@@ -401,7 +393,6 @@ export function DashboardAgentPanel({
     // Invalidate any in-flight open/create so its result can't replace the draft.
     openChatRequestSeq.current += 1;
     setLoading(false);
-    setView("chat");
     setActive(null);
   }, []);
 
@@ -462,19 +453,11 @@ export function DashboardAgentPanel({
     [actionPath, active?.chatId, loadHistory, toast]
   );
 
-  const toggleHistory = useCallback(() => {
-    setView((v) => {
-      if (v === "chat") void loadHistory();
-      return v === "chat" ? "history" : "chat";
-    });
-  }, [loadHistory]);
-
   // The header names what you're looking at. Titles come from the history list
   // (the agent writes one when the first turn settles), so a brand-new chat has
   // none yet and falls back to "Chat".
   const activeChat = active ? chats.find((chat) => chat.id === active.chatId) : undefined;
-  const headerTitle =
-    view === "history" ? "Chat history" : active ? (activeChat?.title ?? "Chat") : "New chat";
+  const headerTitle = active ? (activeChat?.title ?? "Chat") : "New chat";
 
   // The watches ride along on the history list (one query for every chat), so
   // they refresh whenever it does: on open, when a turn settles, and after a
@@ -484,24 +467,31 @@ export function DashboardAgentPanel({
   const chatWatches = activeChat?.watches ?? [];
 
   return (
-    <div className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150">
+    <div
+      className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150"
+      // Esc closes the panel, but only while focus is inside it — a keyed
+      // React handler rather than a global hotkey, so Esc still belongs to
+      // whatever the user is doing elsewhere on the page. Dialogs and popovers
+      // portal out of this subtree, so their own Esc handling is untouched.
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || event.defaultPrevented) return;
+        event.preventDefault();
+        onClose();
+      }}
+    >
       <DashboardAgentHeader
-        view={view}
         title={headerTitle}
+        chats={chats}
+        currentChatId={active?.chatId ?? ""}
+        thinkingChatId={thinkingChatId}
         onNewChat={newChat}
-        onToggleHistory={toggleHistory}
+        onOpenHistory={loadHistory}
+        onSelectChat={switchChat}
+        onDeleteChat={deleteChat}
         onClose={onClose}
       />
 
-      {view === "history" ? (
-        <DashboardAgentHistory
-          chats={chats}
-          currentChatId={active?.chatId ?? ""}
-          thinkingChatId={thinkingChatId}
-          onSelect={switchChat}
-          onDelete={deleteChat}
-        />
-      ) : loading ? (
+      {loading ? (
         <div className="flex flex-1 items-center justify-center">
           <Spinner className="size-5" />
         </div>

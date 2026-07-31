@@ -1,7 +1,7 @@
 import { MagnifyingGlassIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
-import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -72,7 +72,30 @@ function unreadFirst(chats: DashboardAgentChat[]): DashboardAgentChat[] {
   );
 }
 
-export function DashboardAgentHistory({
+/** Units the row's age can be shown in. Months and years would read as "1.8mo" for
+ *  eight weeks, which is worse than "8w" — weeks are the coarsest useful unit. */
+const AGE_UNITS = ["w", "d", "h", "m"] as const;
+
+/** "2m", "3d", "8w" — the project's short duration style, one unit only. */
+export function chatAge(lastMessageAt: string, now: number = Date.now()): string | undefined {
+  const at = Date.parse(lastMessageAt);
+  if (Number.isNaN(at)) return undefined;
+  const elapsed = Math.max(0, now - at);
+  if (elapsed < 60_000) return "now";
+  return formatDurationMilliseconds(elapsed, {
+    style: "short",
+    maxUnits: 1,
+    maxDecimalPoints: 0,
+    units: [...AGE_UNITS],
+  });
+}
+
+/**
+ * The chat list, as the body of the header's title dropdown. Rows keep the
+ * panel's list language (unread dot, process icon, hover delete) — only the
+ * container changed from a full panel view to a popover menu.
+ */
+export function DashboardAgentHistoryMenu({
   chats,
   currentChatId,
   thinkingChatId,
@@ -92,19 +115,20 @@ export function DashboardAgentHistory({
   // Deleting a chat is irreversible, so it goes through a confirm step. Holding
   // the whole chat lets the dialog name what's being deleted.
   const [pendingDelete, setPendingDelete] = useState<DashboardAgentChat | null>(null);
+  const now = Date.now();
 
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
-      <div className="p-2">
-        {/* New chat lives as the header icon button only — no duplicate row here. */}
+    <>
+      <div className="max-h-80 overflow-y-auto p-1.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
         {chats.length === 0 ? (
-          <Paragraph variant="small" className="p-2 text-text-dimmed">
+          <Paragraph variant="small" className="p-1.5 text-text-dimmed">
             No previous chats yet.
           </Paragraph>
         ) : (
           <AgentList>
             {unreadFirst(chats).map((chat) => {
               const process = chatProcess(chat, chat.id === thinkingChatId);
+              const age = chat.lastMessageAt ? chatAge(chat.lastMessageAt, now) : undefined;
               return (
                 <AgentListRow
                   key={chat.id}
@@ -113,11 +137,7 @@ export function DashboardAgentHistory({
                   // null keeps the leading slot so every title starts at the
                   // same x whether or not this chat has a status.
                   status={process ? <ProcessIcon process={process} /> : null}
-                  meta={
-                    chat.lastMessageAt ? (
-                      <DateTime date={chat.lastMessageAt} showTooltip={false} />
-                    ) : undefined
-                  }
+                  meta={age}
                   variant={chat.id === currentChatId ? "selected" : "default"}
                   onSelect={() => onSelect(chat.id)}
                   action={
@@ -169,6 +189,6 @@ export function DashboardAgentHistory({
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

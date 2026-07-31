@@ -65,10 +65,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const features = featuresForRequest(request);
   const timezone = await getTimezonePreference(request);
 
-  const kapa = {
-    websiteId: env.KAPA_AI_WEBSITE_ID,
-  };
-
   const user = await getUser(request);
 
   const headers = new Headers();
@@ -85,7 +81,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       appOrigin: env.APP_ORIGIN,
       apiOrigin: env.API_ORIGIN ?? env.APP_ORIGIN,
       triggerCliTag: env.TRIGGER_CLI_TAG,
-      kapa,
       timezone,
     },
     { headers }
@@ -129,7 +124,7 @@ export function ErrorBoundary() {
 }
 
 export default function App() {
-  const { posthogProjectKey, posthogUiHost, kapa: _kapa } = useTypedLoaderData<typeof loader>();
+  const { posthogProjectKey, posthogUiHost } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey, posthogUiHost);
 
   return (

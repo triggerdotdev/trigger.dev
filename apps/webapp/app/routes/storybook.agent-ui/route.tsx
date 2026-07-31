@@ -9,6 +9,7 @@ import {
   type SuggestedPrompt,
 } from "@internal/dashboard-agent-contracts";
 import { QueryResultsChart } from "~/components/code/QueryResultsChart";
+import { AGENT_CHART_PLOT_CLASS } from "~/components/dashboard-agent/AgentChart";
 import {
   demoChatById,
   demoFixtures,
@@ -55,6 +56,23 @@ const noop = () => undefined;
 
 /** Panel width, matching `DashboardAgent`'s default panel size. */
 const PANEL = "w-[380px]";
+
+/**
+ * The canvas is the chat panel's own background (`DashboardAgentPanel` uses
+ * `bg-background-bright`), so each state is judged on the surface it ships on
+ * rather than against a darker page. Anything that shares that colour — a card's
+ * header strip, a pending pill, a chip — reads by its border here, exactly as it
+ * does in the panel.
+ */
+const CANVAS = "bg-background-bright";
+
+/**
+ * The frame a harness draws around transcript content to stand in for the panel.
+ * Its fill is the canvas colour, so the border is the only thing separating the
+ * two — hence `border-border-bright` rather than the subtler `border-grid-bright`
+ * these frames used when the page had a darker background.
+ */
+const PANEL_FRAME = "rounded-lg border border-border-bright bg-background-bright";
 
 // ---------------------------------------------------------------------------
 // Diagnosis fixtures written for this page. The demo fixtures cover the cases
@@ -253,7 +271,7 @@ function MessageHarness({
     return <Missing what={`demo chat ${chatId}`} />;
   }
   return (
-    <div className="rounded-lg border border-grid-bright bg-background-bright">
+    <div className={PANEL_FRAME}>
       <DashboardAgentMessages
         messages={chatMessages(chatId, take)}
         activity={chat.activity ?? null}
@@ -290,7 +308,7 @@ function PendingPillsHarness() {
     ])
   );
   return (
-    <div className="rounded-lg border border-grid-bright bg-background-bright">
+    <div className={PANEL_FRAME}>
       <DashboardAgentMessages messages={messages} activity={null} />
     </div>
   );
@@ -303,7 +321,7 @@ function EmptyChartCard() {
       <div className="border-b border-grid-bright bg-background-bright px-3 py-2 text-xs font-medium text-text-dimmed">
         {demoFixtures.demoChart.title}
       </div>
-      <div className="h-64 w-full p-2">
+      <div className={AGENT_CHART_PLOT_CLASS}>
         <QueryResultsChart
           rows={[]}
           columns={demoFixtures.demoChart.columns}
@@ -339,7 +357,7 @@ function PromptsHarness({
       <p className="text-[10px] uppercase tracking-wide text-text-faint">
         {context.page.kind} — {signals}
       </p>
-      <div className="rounded-lg border border-grid-bright bg-background-bright py-4">
+      <div className={cn(PANEL_FRAME, "py-4")}>
         <DashboardAgentSuggestedPrompts
           onSelect={noop}
           pageContext={context}
@@ -509,7 +527,7 @@ const wakeWatches: WakeWatch[] = [
 /** One wake through the production renderer, with the watches the panel would have. */
 function WakeHarness({ message, watches }: { message: UIMessage; watches?: WakeWatch[] }) {
   return (
-    <div className="rounded-lg border border-grid-bright bg-background-bright">
+    <div className={PANEL_FRAME}>
       <DashboardAgentMessages messages={[message]} activity={null} watches={watches} />
     </div>
   );
@@ -849,7 +867,7 @@ function Nav() {
 
 export default function Story() {
   return (
-    <div className="grid grid-cols-[15rem_1fr] gap-4 px-6">
+    <div className={cn("grid min-h-full grid-cols-[15rem_1fr] gap-4 px-6", CANVAS)}>
       <Nav />
 
       <div className="flex flex-col gap-10 py-6">

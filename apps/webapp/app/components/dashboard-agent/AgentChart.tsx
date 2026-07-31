@@ -41,7 +41,16 @@ type MetricResponse =
 const CHART_SCOPE = "environment"; // the panel is always open in one environment
 const CHART_FROM = null; // `period` is the only window the agent can ask for
 const CHART_TO = null;
-const CHART_HEIGHT_CLASS = "h-64"; // fits the panel at its default width
+// Fits the panel at its default width. `min-h-*` alongside the fixed height on
+// purpose: the chart measures its own container and draws nothing at zero
+// height, so a flex parent that squeezes the row (a card in a short turn, a
+// narrow panel) must not be able to collapse it below this.
+const CHART_HEIGHT_CLASS = "h-64 min-h-64";
+// Top padding inside the plot area. The chart's own top gridline/label sits
+// right on the container edge, so without this it touches the card header.
+const CHART_PADDING_CLASS = "px-2 pb-2 pt-4";
+/** The plot area's geometry, exported so the demo card can't drift from it. */
+export const AGENT_CHART_PLOT_CLASS = `w-full ${CHART_PADDING_CLASS} ${CHART_HEIGHT_CLASS}`;
 
 // Query errors come from ClickHouse via the metric endpoint and can carry SQL
 // and schema detail, so the panel shows a fixed message and the real one goes to
@@ -181,7 +190,7 @@ export function AgentChart({
           {block.title}
         </div>
       ) : null}
-      <div className={cn("w-full p-2", CHART_HEIGHT_CLASS)}>
+      <div className={cn(AGENT_CHART_PLOT_CLASS)}>
         {state.status === "loading" ? (
           <div className="flex h-full items-center justify-center gap-2 text-xs text-text-dimmed">
             <Spinner className="size-3" />

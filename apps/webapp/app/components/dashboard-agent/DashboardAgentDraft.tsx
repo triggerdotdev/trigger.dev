@@ -43,11 +43,6 @@ export function DashboardAgentDraft({
 
   return (
     <>
-      <DashboardAgentContextBanner
-        projectSlug={projectSlug}
-        environmentSlug={environmentSlug}
-        currentPage={currentPage}
-      />
       <DashboardAgentSuggestedPrompts
         onSelect={submit}
         pageContext={pageContext}
@@ -59,6 +54,13 @@ export function DashboardAgentDraft({
         onSubmit={() => submit(input)}
         onStop={() => {}}
         isStreaming={false}
+        context={
+          <DashboardAgentContextBanner
+            projectSlug={projectSlug}
+            environmentSlug={environmentSlug}
+            currentPage={currentPage}
+          />
+        }
       />
     </>
   );
