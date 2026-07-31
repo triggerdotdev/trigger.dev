@@ -69,6 +69,7 @@ import type {
 import {
   insertWithBadRowSkip,
   type JsonParseRecoveryOutcome,
+  landedNothing,
 } from "./sanitizeRowsOnParseError.server";
 
 export type ClickhouseEventRepositoryConfig = {
@@ -330,6 +331,10 @@ export class ClickhouseEventRepository implements IEventRepository {
       });
       this.#recordRecoveryOutcome(outcome, contextLabel, events.length);
 
+      if (landedNothing(outcome, events.length)) {
+        return;
+      }
+
       logger.debug("ClickhouseEventRepository.flushBatch Inserted batch into clickhouse", {
         events: events.length,
         outcome: outcome.kind,
@@ -366,6 +371,10 @@ export class ClickhouseEventRepository implements IEventRepository {
         }),
     });
     this.#recordRecoveryOutcome(outcome, "llm_metrics_v1", rows.length);
+
+    if (landedNothing(outcome, rows.length)) {
+      return;
+    }
 
     logger.debug("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
       rows: rows.length,

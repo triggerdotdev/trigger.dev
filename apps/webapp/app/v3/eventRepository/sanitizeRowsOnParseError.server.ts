@@ -233,6 +233,20 @@ export type JsonParseRecoveryOutcome =
     };
 
 /**
+ * True when a recovery landed no rows at all, so nothing reached ClickHouse.
+ *
+ * Callers must not treat such a flush as a successful insert: there is no new
+ * data for subscribers to read, so notifying them only causes refetches that
+ * find nothing. Requires an exact dropped count, so a batch whose partial-drop
+ * count is only a floor is never mistaken for a total loss.
+ */
+export function landedNothing(outcome: JsonParseRecoveryOutcome, batchSize: number): boolean {
+  return (
+    outcome.kind === "recovered" && outcome.rowsDroppedExact && outcome.rowsDropped >= batchSize
+  );
+}
+
+/**
  * Default number of poison rows to isolate-and-strip precisely before bailing
  * to a single `allow_errors` skip insert. One covers the common case (a single
  * un-ingestable run in a flush) exactly, keeping that run's status. The bound

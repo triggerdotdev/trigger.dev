@@ -4,6 +4,7 @@ import {
   insertWithBadRowSkip,
   insertWithLimitedStrip,
   isClickHouseJsonParseError,
+  landedNothing,
   parseRowNumberFromError,
   parseStrippableRowNumber,
   sanitizeRows,
@@ -104,6 +105,55 @@ describe("parseRowNumberFromError", () => {
 
   it("returns the first match when multiple `at row N` substrings exist", () => {
     expect(parseRowNumberFromError("at row 1, oops also at row 2")).toBe(1);
+  });
+});
+
+describe("landedNothing", () => {
+  it("is true only when an exact dropped count covers the whole batch", () => {
+    expect(
+      landedNothing(
+        {
+          kind: "recovered",
+          rowsStripped: 0,
+          rowsDropped: 3,
+          rowsDroppedExact: true,
+          capped: true,
+        },
+        3
+      )
+    ).toBe(true);
+    expect(
+      landedNothing(
+        {
+          kind: "recovered",
+          rowsStripped: 0,
+          rowsDropped: 2,
+          rowsDroppedExact: true,
+          capped: false,
+        },
+        3
+      )
+    ).toBe(false);
+  });
+
+  it("is false when the dropped count is only a floor, so a partial drop is never read as total loss", () => {
+    expect(
+      landedNothing(
+        {
+          kind: "recovered",
+          rowsStripped: 0,
+          rowsDropped: 1,
+          rowsDroppedExact: false,
+          capped: false,
+        },
+        1
+      )
+    ).toBe(false);
+  });
+
+  it("is false for a healthy or sanitized insert", () => {
+    expect(landedNothing({ kind: "inserted", insertResult: {} }, 5)).toBe(false);
+    expect(landedNothing({ kind: "sanitized", insertResult: {} }, 5)).toBe(false);
   });
 });
 
