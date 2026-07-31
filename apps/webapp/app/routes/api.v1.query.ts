@@ -54,6 +54,7 @@ const { action, loader } = createActionApiRoute(
     const queryResult = await executeQuery({
       name: "api-query",
       query,
+      userAuthoredQuery: true,
       scope: scope as QueryScope,
       organizationId: env.organization.id,
       projectId: env.project.id,

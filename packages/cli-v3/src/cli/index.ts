@@ -14,6 +14,7 @@ import { configureUpdateCommand } from "../commands/update.js";
 import { configureWhoamiCommand } from "../commands/whoami.js";
 import { configureMintTokenCommand } from "../commands/mint-token.js";
 import { configureMcpCommand } from "../commands/mcp.js";
+import { configureReportCommand } from "../commands/report.js";
 import { COMMAND_NAME } from "../consts.js";
 import { VERSION } from "../version.js";
 import { installExitHandler } from "./common.js";
@@ -42,6 +43,7 @@ configureUpdateCommand(program);
 configurePreviewCommand(program);
 configureAnalyzeCommand(program);
 configureMcpCommand(program);
+configureReportCommand(program);
 configureInstallMcpCommand(program);
 configureSkillsCommand(program);
 

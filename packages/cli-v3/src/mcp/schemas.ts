@@ -100,6 +100,12 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
         .number()
         .describe("The maximum duration in seconds of the task run")
         .optional(),
+      region: z
+        .string()
+        .describe(
+          "The region to run the task in, overriding the default region set for the project. Available regions are listed on the Regions page in the dashboard, and this has no effect in the dev environment"
+        )
+        .optional(),
       tags: z
         .array(z.string())
         .describe(
@@ -270,6 +276,50 @@ export const ListDashboardsInput = CommonProjectsInput.pick({
 });
 
 export type ListDashboardsInput = z.output<typeof ListDashboardsInput>;
+
+/**
+ * Shared period validation for the report surfaces (MCP tool + `trigger report` CLI), so they
+ * reject garbage/absurd ranges consistently client-side instead of only at the HTTP API. The
+ * webapp route (`api.v1.reports.$key.ts`) mirrors this regex + bound as the authoritative
+ * security boundary — it can't import from the CLI, so the two are kept intentionally in sync.
+ */
+const PERIOD_UNIT_MS: Record<string, number> = { s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
+const MAX_PERIOD_MS = 90 * 864e5; // 90d
+export const ReportPeriodSchema = z
+  .string()
+  .regex(/^[1-9]\d*[smhdw]$/, "period must be a shorthand like '1h', '30m', or '7d'")
+  .refine(
+    // The regex guarantees the last char is a known unit; `?? 0` just satisfies the type checker.
+    (p) => Number(p.slice(0, -1)) * (PERIOD_UNIT_MS[p.slice(-1)] ?? 0) <= MAX_PERIOD_MS,
+    "period is too large (max 90d)"
+  );
+
+// `environment` inherits CommonProjectsInput's `.default("dev")` — intentional: the MCP server
+// is dev-centric (often `--dev-only`), so an unspecified env reports on dev. The `trigger report`
+// CLI defaults to prod instead (a manual prod check). Agents should pass `environment` explicitly.
+export const GetReportInput = CommonProjectsInput.pick({
+  projectRef: true,
+  configPath: true,
+  environment: true,
+  branch: true,
+}).extend({
+  key: z
+    .enum(["health"])
+    .describe(
+      "The report to render. 'health' answers 'is work flowing, and is a problem my code or the platform?' with an interpreted verdict (flow / execution / liveness)."
+    ),
+  period: ReportPeriodSchema.optional().describe(
+    "Time period shorthand for the live window, e.g. '1h' (default), '7d'."
+  ),
+  color: z
+    .boolean()
+    .optional()
+    .describe(
+      "Return the report as ANSI-coloured text instead of markdown. Only renders in hosts that display ANSI in tool output."
+    ),
+});
+
+export type GetReportInput = z.output<typeof GetReportInput>;
 
 export const RunDashboardQueryInput = CommonProjectsInput.extend({
   dashboardKey: z

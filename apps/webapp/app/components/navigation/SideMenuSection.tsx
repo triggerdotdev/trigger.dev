@@ -12,6 +12,11 @@ type Props = {
   itemSpacingClassName?: string;
   /** Optional action element (e.g., + button) to render on the right side of the header */
   headerAction?: React.ReactNode;
+  /**
+   * Optional menu (e.g. an ellipsis popover) overlaid on the right of the header. Only visible
+   * while hovering the header row, or while its popover is open.
+   */
+  headerMenu?: React.ReactNode;
 };
 
 /** A collapsible section for the side menu. Collapsed state is controlled via props + a toggle callback. */
@@ -23,6 +28,7 @@ export function SideMenuSection({
   isSideMenuCollapsed = false,
   itemSpacingClassName = "space-y-px",
   headerAction,
+  headerMenu,
 }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -45,7 +51,7 @@ export function SideMenuSection({
   return (
     <div className="w-full overflow-hidden">
       {/* Header container - stays in DOM to preserve height */}
-      <div className="relative w-full">
+      <div className="group/sectionheader relative w-full">
         {/*
           Header fades out as the menu narrows via --sm-label-opacity (falls back to 1 unset). Hover
           background and text color snap (no transition), matching the nav items.
@@ -53,8 +59,9 @@ export function SideMenuSection({
         <button
           type="button"
           // A real button for native keyboard toggle + focus ring. Out of the tab order when the
-          // menu is collapsed (the header is hidden and can't be toggled).
-          className="group/section flex w-full cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 hover:bg-background-hover focus-custom"
+          // menu is collapsed (the header is hidden and can't be toggled). Hover styles key off
+          // the wrapper group so the header stays highlighted while hovering the overlaid menu.
+          className="group/section flex w-full cursor-pointer items-center justify-between overflow-hidden rounded-sm py-1 pl-1.5 pr-1 group-hover/sectionheader:bg-background-hover focus-custom"
           onClick={isSideMenuCollapsed ? undefined : handleToggle}
           tabIndex={isSideMenuCollapsed ? -1 : undefined}
           aria-expanded={!isCollapsed}
@@ -63,7 +70,7 @@ export function SideMenuSection({
             cursor: isSideMenuCollapsed ? "default" : "pointer",
           }}
         >
-          <div className="flex items-center gap-1 text-text-dimmed group-hover/section:text-text-bright">
+          <div className="flex items-center gap-1 text-text-dimmed group-hover/sectionheader:text-text-bright">
             <h2 className="whitespace-nowrap text-xs">{title}</h2>
             <motion.div
               initial={isCollapsed}
@@ -75,6 +82,20 @@ export function SideMenuSection({
           </div>
           {headerAction && <div className="flex items-center">{headerAction}</div>}
         </button>
+        {headerMenu !== undefined &&
+          !isSideMenuCollapsed && (
+            // Outer div fades with the labels (inline style would defeat the hover opacity classes
+            // on the inner div, so they're split).
+            <div
+              className="absolute right-1 top-1/2 -translate-y-1/2"
+              style={{ opacity: "var(--sm-label-opacity, 1)" }}
+            >
+              {/* focus-within keeps the trigger visible for keyboard users tabbing onto it */}
+              <div className="opacity-0 focus-within:opacity-100 has-[[data-state=open]]:opacity-100 group-hover/sectionheader:opacity-100">
+                {headerMenu}
+              </div>
+            </div>
+          )}
         {/*
           Divider fades in via --sm-collapse (0 → 1) as the header fades out. Only while expanded.
         */}

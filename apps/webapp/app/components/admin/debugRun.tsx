@@ -1,4 +1,3 @@
-import { useIsImpersonating } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
@@ -12,10 +11,11 @@ import * as Property from "~/components/primitives/PropertyTable";
 import { ClipboardField } from "../primitives/ClipboardField";
 
 export function AdminDebugRun({ friendlyId }: { friendlyId: string }) {
+  // `useHasAdminAccess` already folds in impersonation and the "view as user"
+  // toggle, so this one check is enough.
   const hasAdminAccess = useHasAdminAccess();
-  const isImpersonating = useIsImpersonating();
 
-  if (!hasAdminAccess && !isImpersonating) {
+  if (!hasAdminAccess) {
     return null;
   }
 

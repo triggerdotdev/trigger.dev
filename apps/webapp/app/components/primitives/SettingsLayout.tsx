@@ -1,3 +1,4 @@
+import { ExclamationCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { type ReactNode } from "react";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
 import { cn } from "~/utils/cn";
@@ -100,7 +101,10 @@ export function SettingsRowTitle({
   htmlFor?: string;
   className?: string;
 }) {
-  const classes = cn("font-sans text-sm font-semibold leading-tight text-text-bright", className);
+  const classes = cn(
+    "block font-sans text-sm font-semibold leading-tight text-text-bright",
+    className
+  );
   return htmlFor ? (
     <label htmlFor={htmlFor} className={classes}>
       {children}
@@ -152,14 +156,14 @@ export function SettingsRow({
   className?: string;
   titleClassName?: string;
   size?: RowSize;
-  align?: "center" | "start";
+  align?: "center" | "start" | "end";
   bordered?: boolean;
 }) {
   return (
     <div
       className={cn(
         "flex w-full justify-between gap-8",
-        align === "center" ? "items-center" : "items-start",
+        align === "center" ? "items-center" : align === "end" ? "items-end" : "items-start",
         rowSize[size],
         bordered && "border-b border-grid-dimmed",
         className
@@ -201,6 +205,38 @@ export function SettingsBlock({
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * A warning or error as a settings row: hazard icon and title on the left in the
+ * severity colour, the explanation beneath in the usual dimmed body text, and
+ * the recovery action on the right.
+ */
+export function SettingsAlertRow({
+  variant,
+  title,
+  description,
+  action,
+}: {
+  variant: "warning" | "error";
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+}) {
+  const Icon = variant === "error" ? ExclamationCircleIcon : ExclamationTriangleIcon;
+  const color = variant === "error" ? "text-error" : "text-warning";
+
+  return (
+    <SettingsRow action={action}>
+      <div className="flex-1 space-y-1">
+        <div className="flex items-center gap-1.5">
+          <Icon className={cn("size-4 shrink-0", color)} />
+          <SettingsRowTitle className={color}>{title}</SettingsRowTitle>
+        </div>
+        {description ? <SettingsRowDescription>{description}</SettingsRowDescription> : null}
+      </div>
+    </SettingsRow>
   );
 }
 

@@ -22,6 +22,15 @@ const sizes = {
     shortcutVariant: "small" as const,
     shortcut: "-ml-0.5 -mr-1.5 justify-self-center",
   },
+  // Icon-only small button: fixed width so a row of icon buttons (with different icon
+  // aspect ratios) lines up, e.g. the queue block accessories.
+  "small-icon": {
+    button: "h-6 min-w-[34px] px-2 text-xs",
+    icon: "h-3.5 -mx-1",
+    iconSpacing: "gap-x-2.5",
+    shortcutVariant: "small" as const,
+    shortcut: "-ml-0.5 -mr-1.5 justify-self-center",
+  },
   medium: {
     button: "h-8 px-3 text-sm",
     icon: "h-4 -mx-1",
@@ -89,6 +98,13 @@ const theme = {
     shortcut: "border-text-bright text-text-bright group-hover/button:border-text-bright/60",
     icon: "text-text-bright",
   },
+  warning: {
+    textColor: "text-warning transition group-disabled/button:text-warning/60",
+    button:
+      "bg-warning/10 border border-warning/20 group-hover/button:bg-warning/20 group-hover/button:border-warning/40 group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+    shortcut: "border-warning/40 text-warning group-hover/button:border-warning/60",
+    icon: "text-warning",
+  },
   docs: {
     textColor: "text-blue-200/70 transition group-disabled/button:text-text-dimmed/80",
     button:
@@ -136,6 +152,7 @@ const variant = {
   "primary/large": createVariant("large", "primary"),
   "primary/extra-large": createVariant("extra-large", "primary"),
   "secondary/small": createVariant("small", "secondary"),
+  "secondary/small-icon": createVariant("small-icon", "secondary"),
   "secondary/medium": createVariant("medium", "secondary"),
   "secondary/large": createVariant("large", "secondary"),
   "secondary/extra-large": createVariant("extra-large", "secondary"),
@@ -151,6 +168,10 @@ const variant = {
   "danger/medium": createVariant("medium", "danger"),
   "danger/large": createVariant("large", "danger"),
   "danger/extra-large": createVariant("extra-large", "danger"),
+  "warning/small": createVariant("small", "warning"),
+  "warning/medium": createVariant("medium", "warning"),
+  "warning/large": createVariant("large", "warning"),
+  "warning/extra-large": createVariant("extra-large", "warning"),
   "docs/small": createVariant("small", "docs"),
   "docs/medium": createVariant("medium", "docs"),
   "docs/large": createVariant("large", "docs"),

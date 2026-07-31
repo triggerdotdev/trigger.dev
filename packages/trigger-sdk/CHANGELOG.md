@@ -1,5 +1,22 @@
 # @trigger.dev/sdk
 
+## 4.5.9
+
+### Patch Changes
+
+- Correct the `expirationTime` docs on `auth.createPublicToken` and the trigger-token helpers: a number is a Unix timestamp in seconds, not milliseconds. ([#4388](https://github.com/triggerdotdev/trigger.dev/pull/4388))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.9`
+
+## 4.5.8
+
+### Patch Changes
+
+- Preserve the partial assistant message when a chat turn's model stream fails mid-response. `chat.agent` now passes the recovered partial to `onTurnComplete`, and `chat.createSession`'s `turn.complete()` keeps it before rethrowing, instead of dropping the streamed-so-far output. ([#4348](https://github.com/triggerdotdev/trigger.dev/pull/4348))
+- Allow additional environment API keys to create scoped public access tokens through the Trigger.dev API. Use server-issued public access tokens for batch operations so environment-scoped API keys can read batch results. ([#4387](https://github.com/triggerdotdev/trigger.dev/pull/4387))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.8`
+
 ## 4.5.7
 
 ### Patch Changes

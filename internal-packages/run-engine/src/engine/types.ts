@@ -16,6 +16,7 @@ import {
 } from "@trigger.dev/redis-worker";
 import type { ControlPlaneResolver } from "./controlPlaneResolver.js";
 import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
+import type { RunQueueMetricsEmitter } from "../run-queue/index.js";
 import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import type { LockRetryConfig } from "./locking.js";
 import type { workerCatalog } from "./workerCatalog.js";
@@ -90,6 +91,8 @@ export type RunEngineOptions = {
     defaultEnvConcurrency?: number;
     defaultEnvConcurrencyBurstFactor?: number;
     logLevel?: LogLevel;
+    /** Optional queue-metrics emitter; enables gauge + counter emission from the RunQueue. */
+    queueMetrics?: RunQueueMetricsEmitter;
     queueSelectionStrategyOptions?: Pick<
       FairQueueSelectionStrategyOptions,
       "parentQueueLimit" | "tracer" | "biases" | "reuseSnapshotCount" | "maximumEnvCount"

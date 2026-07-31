@@ -94,7 +94,7 @@ export function EnvironmentSelector({
                 fades in place and scales its width to 0 so it never holds width mid-drag. The
                 selector is also reused outside the side menu (BlankStatePanels, limits) where the var
                 is unset — the 0.2 max-width fallback pins a ~200px cap (0.2 * 1000px) so long names
-                ellipsis-truncate there instead of widening the control, while opacity stays 1.
+                fade out there instead of widening the control, while opacity stays 1.
               */}
               <span
                 className="flex min-w-0 items-center overflow-hidden"
@@ -105,7 +105,7 @@ export function EnvironmentSelector({
               >
                 <EnvironmentLabel
                   environment={environment}
-                  className="text-ellipsis text-[0.90625rem] font-medium tracking-[-0.01em]"
+                  className="text-[0.90625rem] font-medium tracking-[-0.01em]"
                   disableTooltip
                   truncate={false}
                 />

@@ -50,6 +50,9 @@ const MetricWidgetQuery = z.object({
   operations: z.array(z.string()).optional(),
   providers: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
+  // Opt into server-side gap fill (carry-forward for gauges, zero-fill for counters).
+  fillGaps: z.boolean().optional(),
+  userAuthoredQuery: z.boolean().optional(),
 });
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -85,6 +88,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     operations,
     providers,
     tags: _tags,
+    fillGaps,
+    userAuthoredQuery,
   } = submission.data;
 
   // Check they should be able to access it
@@ -122,6 +127,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     promptVersions,
     operations,
     providers,
+    fillGaps,
+    userAuthoredQuery,
     // Set higher concurrency if many widgets are on screen at once
     customOrgConcurrencyLimit: env.METRIC_WIDGET_DEFAULT_ORG_CONCURRENCY_LIMIT,
   });

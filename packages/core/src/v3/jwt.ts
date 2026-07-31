@@ -14,6 +14,40 @@ export const JWT_ALGORITHM = "HS256";
 export const JWT_ISSUER = "https://id.trigger.dev";
 export const JWT_AUDIENCE = "https://api.trigger.dev";
 
+function decodeJWTPayload(token: string): unknown {
+  const parts = token.split(".");
+  const encodedPayload = parts[1];
+  if (parts.length !== 3 || !encodedPayload) return;
+
+  try {
+    const base64 = encodedPayload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(encodedPayload.length / 4) * 4, "=");
+    const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return;
+  }
+}
+
+export function isPublicJWT(token: string): boolean {
+  const payload = decodeJWTPayload(token);
+  return (
+    payload !== null && typeof payload === "object" && "pub" in payload && payload.pub === true
+  );
+}
+
+export function extractJWTSub(token: string): string | undefined {
+  const payload = decodeJWTPayload(token);
+  return payload !== null &&
+    typeof payload === "object" &&
+    "sub" in payload &&
+    typeof payload.sub === "string"
+    ? payload.sub
+    : undefined;
+}
+
 export async function generateJWT(options: GenerateJWTOptions): Promise<string> {
   const { SignJWT } = await import("jose");
 

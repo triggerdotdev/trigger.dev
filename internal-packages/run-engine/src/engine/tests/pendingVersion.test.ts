@@ -314,7 +314,7 @@ describe("RunEngine pending version", () => {
   );
 
   containerTest(
-    "PENDING_VERSION re-enqueue arms TTL on the queued message",
+    "PENDING_VERSION re-enqueue arms TTL but anchors the scheduling-delay clock at the promotion",
     async ({ prisma, redisOptions }) => {
       // When a run enters PENDING_VERSION (background worker doesn't yet have
       // the task), the first enqueue happens but the message is dequeued and
@@ -407,6 +407,7 @@ describe("RunEngine pending version", () => {
 
         // Now a worker arrives WITH the task — pendingVersionSystem
         // re-enqueues the run.
+        const beforePromotion = Date.now();
         await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
         await setTimeout(1000);
@@ -424,6 +425,21 @@ describe("RunEngine pending version", () => {
         assertNonNullable(message);
         expect(message.ttlExpiresAt).toBeDefined();
         expect(typeof message.ttlExpiresAt).toBe("number");
+
+        const queuePositionMs = (run.queueTimestamp ?? run.createdAt).getTime();
+
+        expect(
+          message.eligibleAtMs,
+          "scheduling-delay clock must start at the promotion, since the run was not runnable while it waited for a worker version"
+        ).toBeGreaterThanOrEqual(beforePromotion);
+        expect(
+          message.eligibleAtMs,
+          "anchoring at the original queue position would bill the whole wait-for-deploy period as queue scheduling delay"
+        ).toBeGreaterThan(queuePositionMs);
+        expect(
+          message.timestamp,
+          "ordering keeps the original queue position, so waiting for a deployment must not cost the run its place in line"
+        ).toBe(queuePositionMs - run.priorityMs);
       } finally {
         await engine.quit();
       }

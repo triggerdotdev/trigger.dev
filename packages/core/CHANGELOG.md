@@ -1,5 +1,23 @@
 # internal-platform
 
+## 4.5.9
+
+### Patch Changes
+
+- Ask whether an environment is healthy and get an answer instead of a wall of charts. `trigger report health` returns a verdict on three questions: is work flowing, are the runs that start succeeding, and is the telemetry fresh enough to trust either answer. When something looks wrong it names the most likely cause and a next action. ([#4131](https://github.com/triggerdotdev/trigger.dev/pull/4131))
+
+  ```bash
+  npx trigger.dev@latest report health --env prod --period 24h
+  ```
+
+  The verdict is computed server side, so the CLI, the new `get_report` MCP tool, and `GET /api/v1/reports/health` all return the same text with the same sparklines. In MCP hosts that support prompts, `report` is also available as a slash command.
+
+## 4.5.8
+
+### Patch Changes
+
+- Allow additional environment API keys to create scoped public access tokens through the Trigger.dev API. Use server-issued public access tokens for batch operations so environment-scoped API keys can read batch results. ([#4387](https://github.com/triggerdotdev/trigger.dev/pull/4387))
+
 ## 4.5.7
 
 ### Patch Changes

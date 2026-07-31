@@ -176,7 +176,10 @@ const ChartTooltipContent = React.forwardRef<
             {payload.map((item, index) => {
               const key = `${nameKey || item.name || item.dataKey || "value"}`;
               const itemConfig = getPayloadConfigFromPayload(config, item, key);
-              const indicatorColor = color || item.payload.fill || item.color;
+              // Prefer the series' configured colour over item.color: a threshold/gradient line's
+              // recharts colour is a `url(#…)` gradient ref, which is invalid as a CSS background and
+              // renders no swatch. The config colour is the intended solid series colour.
+              const indicatorColor = color || itemConfig?.color || item.payload.fill || item.color;
 
               return (
                 <div
@@ -216,7 +219,7 @@ const ChartTooltipContent = React.forwardRef<
                       )}
                       <div
                         className={cn(
-                          "flex flex-1 justify-between leading-none",
+                          "flex flex-1 justify-between gap-3 leading-none",
                           nestLabel ? "items-end" : "items-center"
                         )}
                       >

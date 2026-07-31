@@ -231,6 +231,26 @@ describe("injectFallbackConditions", () => {
       expect(modified.where.expression_type).toBe("and");
     }
   });
+
+  it("should inject into a FROM subquery, where the fallback column's table lives", () => {
+    const ast = parseTSQLSelect(
+      "SELECT t, sum(total) AS total FROM (SELECT time AS t, status, count(*) AS total FROM task_runs GROUP BY t, status) GROUP BY t"
+    );
+    const fallbacks: Record<string, WhereClauseCondition> = {
+      time: { op: "gte", value: "2024-01-01" },
+    };
+
+    const modified = injectFallbackConditions(ast, fallbacks);
+    expect(modified.expression_type).toBe("select_query");
+    if (modified.expression_type === "select_query") {
+      expect(modified.where).toBeUndefined();
+      const inner = modified.select_from?.table;
+      expect(inner?.expression_type).toBe("select_query");
+      if (inner?.expression_type === "select_query") {
+        expect(isColumnReferencedInExpression(inner.where, "time")).toBe(true);
+      }
+    }
+  });
 });
 
 describe("compileTSQL with whereClauseFallback", () => {

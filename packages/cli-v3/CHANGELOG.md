@@ -1,5 +1,34 @@
 # trigger.dev
 
+## 4.5.9
+
+### Patch Changes
+
+- `trigger mcp` now always starts the MCP server, and the interactive install wizard has moved behind `trigger mcp --install`. Previously the wizard opened whenever stdout was a terminal, so any MCP host that spawns the command over a pseudo-terminal waited on a server that never started and eventually timed out. ([#4131](https://github.com/triggerdotdev/trigger.dev/pull/4131))
+- Ask whether an environment is healthy and get an answer instead of a wall of charts. `trigger report health` returns a verdict on three questions: is work flowing, are the runs that start succeeding, and is the telemetry fresh enough to trust either answer. When something looks wrong it names the most likely cause and a next action. ([#4131](https://github.com/triggerdotdev/trigger.dev/pull/4131))
+
+  ```bash
+  npx trigger.dev@latest report health --env prod --period 24h
+  ```
+
+  The verdict is computed server side, so the CLI, the new `get_report` MCP tool, and `GET /api/v1/reports/health` all return the same text with the same sparklines. In MCP hosts that support prompts, `report` is also available as a slash command.
+
+- Prevent build debug logs from including environment variable values. ([#4420](https://github.com/triggerdotdev/trigger.dev/pull/4420))
+- Send the running CLI version when checking for platform notifications so notices can be limited to compatible CLI releases. ([#4407](https://github.com/triggerdotdev/trigger.dev/pull/4407))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.9`
+  - `@trigger.dev/build@4.5.9`
+  - `@trigger.dev/schema-to-json@4.5.9`
+
+## 4.5.8
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.8`
+  - `@trigger.dev/build@4.5.8`
+  - `@trigger.dev/schema-to-json@4.5.8`
+
 ## 4.5.7
 
 ### Patch Changes

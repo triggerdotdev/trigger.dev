@@ -6,6 +6,7 @@ import {
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { type UserFromSession } from "~/services/session.server";
+import { selectAccessibleEnvironment } from "~/utils/environmentAccess";
 
 export type MinimumEnvironment = Pick<RuntimeEnvironment, "id" | "type" | "slug" | "paused"> & {
   orgMember: null | {
@@ -154,7 +155,10 @@ export class SelectBestEnvironmentPresenter {
     const currentEnvironmentId: string | undefined =
       user.dashboardPreferences.projects[projectId]?.currentEnvironment.id;
 
-    const currentEnvironment = environments.find((env) => env.id === currentEnvironmentId);
+    const currentEnvironment = selectAccessibleEnvironment(
+      environments.filter((env) => env.id === currentEnvironmentId),
+      user.id
+    );
     if (currentEnvironment) {
       return currentEnvironment;
     }

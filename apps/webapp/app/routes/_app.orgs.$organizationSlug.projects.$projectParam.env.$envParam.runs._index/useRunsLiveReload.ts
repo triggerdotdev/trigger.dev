@@ -48,11 +48,21 @@ function isNewRunsCheckTick(tick: number) {
 
 function appendNewRunsSearchParams(
   searchParams: URLSearchParams,
-  { locationSearch, since }: { locationSearch: string; since: number }
+  { locationSearch, since, taskSlug }: { locationSearch: string; since: number; taskSlug?: string }
 ) {
   const filterParams = filterParamsWithoutPagination(locationSearch);
   for (const [key, value] of filterParams) {
     searchParams.append(key, value);
+  }
+  // On the task landing pages the task lives in the route path, not the query
+  // string, so scope the new-runs count to this task explicitly. The task pages
+  // list every run of the task (their loaders apply no rootOnly filter), so
+  // force rootOnly off for the count too: a rootOnly preference persisted from
+  // the main Runs page would otherwise make the count skip child runs the list
+  // is showing, so the "N new runs" button could under-count or never appear.
+  if (taskSlug) {
+    searchParams.append("tasks", taskSlug);
+    searchParams.set("rootOnly", "false");
   }
   searchParams.set("includeNewRuns", "true");
   searchParams.set("since", String(since));
@@ -138,6 +148,7 @@ export function useRunsLiveReload({
   organizationSlug,
   projectSlug,
   environmentSlug,
+  taskSlug,
 }: {
   runs: ListedRun[];
   hasAnyRuns: boolean;
@@ -145,6 +156,11 @@ export function useRunsLiveReload({
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
+  /**
+   * When set, scopes new-run detection to this task. Used by the task landing
+   * pages, where the task is a route path param rather than a `tasks` filter.
+   */
+  taskSlug?: string;
 }) {
   const location = useLocation();
   const runsPollFetcher = useTypedFetcher<typeof liveRunsLoader>();
@@ -230,6 +246,7 @@ export function useRunsLiveReload({
         appendNewRunsSearchParams(searchParams, {
           locationSearch: location.search,
           since: knownNewestRunMs,
+          taskSlug,
         });
       }
 
@@ -242,6 +259,7 @@ export function useRunsLiveReload({
       knownNewestRunMs,
       runsPollFetcher,
       runsResourcesBasePath,
+      taskSlug,
     ]
   );
 

@@ -233,6 +233,11 @@ const EnvironmentSchema = z
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     API_ORIGIN: z.string().optional(),
+    // Alternative API origin for deployed runs whose org has the
+    // internalApiOriginEnabled feature flag on. Unset = flag is a no-op.
+    INTERNAL_API_ORIGIN: z.string().optional(),
+    // Global default for internalApiOriginEnabled when an org hasn't set it.
+    INTERNAL_API_ORIGIN_ENABLED: z.string().default("0"),
     STREAM_ORIGIN: z.string().optional(),
     ELECTRIC_ORIGIN: z.string().default("http://localhost:3060"),
     // A comma separated list of electric origins to shard into different electric instances by environmentId
@@ -462,6 +467,7 @@ const EnvironmentSchema = z
     // TTL/size of the per-org realtimeBackend flag cache used to pick the serving backend.
     REALTIME_BACKEND_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     REALTIME_BACKEND_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(50_000),
+    REALTIME_BACKEND_NATIVE_RUN_READS_FROM_PRIMARY: z.string().default("0"),
     // "1" enables the read-your-writes gate: wake hydrates wait out the measured replica lag
     // (anchored to the change record's updatedAtMs) and stale reads are retried.
     REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED: z.string().default("1"),
@@ -878,6 +884,20 @@ const EnvironmentSchema = z
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),
     BATCH_CONCURRENCY_LIMIT_DEFAULT: z.coerce.number().int().default(5),
+    /**
+     * How long a created batch may remain unsealed before the seal-timeout reaper
+     * aborts it and resumes any blocked parent with an error. Must exceed the SDK's
+     * worst-case stream-retry budget (maxAttempts x server request timeout).
+     * Doubles as the TTL of the phase 2 streaming grant, so the grant and the reaper
+     * always agree on how long a batch is allowed to be sealing.
+     */
+    BATCH_SEAL_TIMEOUT_MS: z.coerce.number().int().positive().default(1_800_000),
+    /**
+     * Number of phase 2 (`POST /api/v3/batches/:id/items`) requests a created batch is
+     * granted, exempt from the general API rate limit. Sized above the SDK's stream
+     * maxAttempts so a batch admitted by the batch limiter can always finish streaming.
+     */
+    BATCH_STREAM_GRANT_ATTEMPTS: z.coerce.number().int().positive().default(10),
 
     REALTIME_STREAM_VERSION: z.enum(["v1", "v2"]).default("v1"),
     REALTIME_STREAM_MAX_LENGTH: z.coerce.number().int().default(1000),
@@ -911,6 +931,37 @@ const EnvironmentSchema = z
     RUN_ENGINE_REUSE_SNAPSHOT_COUNT: z.coerce.number().int().default(0),
     RUN_ENGINE_MAXIMUM_ENV_COUNT: z.coerce.number().int().optional(),
     RUN_ENGINE_RUN_QUEUE_SHARD_COUNT: z.coerce.number().int().default(4),
+    // Queue metrics ingestion (Redis Stream -> ClickHouse). The runtime on/off is the
+    // `queue_metrics:enabled` Redis key; these gate emitter construction + consumer boot.
+    QUEUE_METRICS_EMIT_ENABLED: z.string().default("0"),
+    QUEUE_METRICS_CONSUMER_ENABLED: z.string().default("0"),
+    QUEUE_METRICS_STREAM_SHARD_COUNT: z.coerce.number().int().default(4),
+    QUEUE_METRICS_CONSUMER_BATCH_SIZE: z.coerce.number().int().default(1000),
+    // Counter stream (exact counts, loss-intolerant). Unset host => the run-queue Redis;
+    // set it to a dedicated instance so counter backlog never competes with the run queue.
+    QUEUE_METRICS_REDIS_HOST: z.string().optional(),
+    QUEUE_METRICS_REDIS_PORT: z.coerce.number().optional(),
+    QUEUE_METRICS_REDIS_USERNAME: z.string().optional(),
+    QUEUE_METRICS_REDIS_PASSWORD: z.string().optional(),
+    QUEUE_METRICS_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    // Default depends on where the stream lives: see metricsDefinition() in
+    // queueMetrics.server.ts (2M on the shared run-queue Redis, 8M on a dedicated one).
+    QUEUE_METRICS_COUNTER_STREAM_MAXLEN: z.coerce.number().int().optional(),
+    // TTL (seconds) on the per-(queue,op) cumulative odometer key, refreshed on every write.
+    // Idle-past-TTL queues purge and self-heal (restart from 1) on return; default 7 days.
+    QUEUE_METRICS_COUNTER_ODOMETER_TTL_SECONDS: z.coerce.number().int().default(604_800),
+    // Per-env distinct queue_name cap (0 = unlimited); overflow maps to "__overflow__".
+    QUEUE_METRICS_MAX_QUEUE_NAMES_PER_ENV: z.coerce.number().int().default(1000),
+    QUEUE_METRICS_MAX_CONCURRENCY_KEYS_PER_QUEUE: z.coerce.number().int().default(10_000),
+    // Fraction (0..1) of ops that emit a gauge; counters are never sampled. Dial below 1
+    // only if EngineCPU is too high in slow-path-heavy regions (hurts low-traffic queues).
+    QUEUE_METRICS_GAUGE_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1),
+    /**
+     * Lists the queue-metrics tables in the Query page, its schema docs, the schema API and the
+     * AI query context. Off by default so the tables are not advertised before ingestion is
+     * enabled. Listing only: a query naming one of these tables still runs either way.
+     */
+    QUEUE_METRICS_QUERY_TABLES_VISIBLE: z.string().default("0"),
     RUN_ENGINE_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
     RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS: z.coerce.number().int().default(30_000),
     RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),
@@ -1921,6 +1972,22 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    /**
+     * Dedicated ClickHouse service for queue metrics: the ingestion consumer's inserts and every
+     * queue-metrics read (dashboards, queue pages, run inspector, health report) go through it, so
+     * metrics traffic never competes with runs-list or trace reads. Unset keeps the previous
+     * wiring: inserts on CLICKHOUSE_URL, reads on the query pool.
+     */
+    QUEUE_METRICS_CLICKHOUSE_URL: z.string().optional(),
+    /** Reader split so the consumer's inserts can never land on a read endpoint. Defaults to QUEUE_METRICS_CLICKHOUSE_URL. */
+    QUEUE_METRICS_CLICKHOUSE_READER_URL: z.string().optional(),
+    QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    QUEUE_METRICS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    QUEUE_METRICS_CLICKHOUSE_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    QUEUE_METRICS_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
     EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     METRICS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(10000),

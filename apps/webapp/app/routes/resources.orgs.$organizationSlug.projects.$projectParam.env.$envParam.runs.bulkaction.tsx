@@ -84,6 +84,12 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
+    // Raw impersonation, not `hasAdminDisplayAccess`: this list is the bulk
+    // action's "override region" picker, so it decides which region a submitted
+    // bulk replay can re-route runs to. "View as user" only changes what is
+    // shown.
+    const isAdmin = user.admin || user.isImpersonating;
+
     const presenter = new CreateBulkActionPresenter();
     const [data, regionsResult] = await Promise.all([
       presenter.call({
@@ -96,7 +102,7 @@ export const loader = dashboardLoader(
         new RegionsPresenter().call({
           userId: user.id,
           projectSlug: projectParam,
-          isAdmin: user.admin || user.isImpersonating,
+          isAdmin,
         })
       ),
     ]);

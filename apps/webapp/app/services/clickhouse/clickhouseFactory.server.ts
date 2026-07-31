@@ -281,6 +281,60 @@ function initializeRunsListClickhouseClient(): ClickHouse {
   });
 }
 
+/**
+ * Queue metrics (`QUEUE_METRICS_CLICKHOUSE_URL`), a mixed read+write client: the ingestion
+ * consumer inserts through it and every queue-metrics read goes through it. When the URL is
+ * unset it reproduces the previous split exactly, writing to `CLICKHOUSE_URL` and reading from
+ * the query pool, so the dedicated service is opt-in per deployment.
+ */
+const defaultQueueMetricsClickhouseClient = singleton(
+  "queueMetricsClickhouseClient",
+  initializeQueueMetricsClickhouseClient
+);
+
+function initializeQueueMetricsClickhouseClient(): ClickHouse {
+  const dedicated = env.QUEUE_METRICS_CLICKHOUSE_URL;
+
+  const writerUrl = new URL(dedicated ?? env.CLICKHOUSE_URL);
+  writerUrl.searchParams.delete("secure");
+
+  const readerUrl = new URL(
+    env.QUEUE_METRICS_CLICKHOUSE_READER_URL ??
+      dedicated ??
+      env.QUERY_CLICKHOUSE_URL ??
+      env.CLICKHOUSE_URL
+  );
+  readerUrl.searchParams.delete("secure");
+
+  const commonConfig = {
+    keepAlive: {
+      enabled: env.QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.QUEUE_METRICS_CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: env.QUEUE_METRICS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+    },
+    maxOpenConnections: env.QUEUE_METRICS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  };
+
+  if (readerUrl.toString() !== writerUrl.toString()) {
+    return new ClickHouse({
+      ...commonConfig,
+      writerName: "queue-metrics-writer",
+      writerUrl: writerUrl.toString(),
+      readerName: "queue-metrics-reader",
+      readerUrl: readerUrl.toString(),
+    });
+  }
+
+  return new ClickHouse({
+    ...commonConfig,
+    name: "queue-metrics-clickhouse",
+    url: writerUrl.toString(),
+  });
+}
+
 /** Task events (`EVENTS_CLICKHOUSE_URL`); not exported — accessed via factory. */
 const defaultEventsClickhouseClient = singleton(
   "eventsClickhouseClient",
@@ -349,7 +403,8 @@ export type ClientType =
   | "admin"
   | "engine"
   | "realtime"
-  | "runsList";
+  | "runsList"
+  | "queueMetrics";
 
 function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
   const parsed = new URL(url);
@@ -421,6 +476,20 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
           request: env.RUN_ENGINE_CLICKHOUSE_COMPRESSION_REQUEST === "1",
         },
         maxOpenConnections: env.RUN_ENGINE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+      });
+    case "queueMetrics":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.QUEUE_METRICS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.QUEUE_METRICS_CLICKHOUSE_LOG_LEVEL,
+        compression: {
+          request: env.QUEUE_METRICS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+        },
+        maxOpenConnections: env.QUEUE_METRICS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
       });
     case "realtime":
       return new ClickHouse({
@@ -509,6 +578,8 @@ export class ClickhouseFactory {
           return defaultRealtimeClickhouseClient;
         case "runsList":
           return defaultRunsListClickhouseClient;
+        case "queueMetrics":
+          return defaultQueueMetricsClickhouseClient;
       }
     }
 
@@ -580,6 +651,11 @@ export function getDefaultClickhouseClient(): ClickHouse {
 
 export function getDefaultLogsClickhouseClient(): ClickHouse {
   return defaultLogsClickhouseClient;
+}
+
+/** Queue-metrics client for callers with no organization in scope (the ingestion consumer). */
+export function getQueueMetricsClickhouseClient(): ClickHouse {
+  return defaultQueueMetricsClickhouseClient;
 }
 
 // ---------------------------------------------------------------------------

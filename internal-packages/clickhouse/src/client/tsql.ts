@@ -8,6 +8,7 @@
 import type { ClickHouseSettings } from "@clickhouse/client";
 import {
   compileTSQL,
+  ExposedTSQLError,
   type OutputColumnMetadata,
   sanitizeErrorMessage,
   transformResults,
@@ -108,6 +109,16 @@ export interface ExecuteTSQLOptions<TOut extends z.ZodSchema> {
    * based on the span of the time range.
    */
   timeRange?: TimeRange;
+  /**
+   * Opt-in: emit rows for empty time buckets in a top-level time-bucketed query
+   * (counters zero-fill, gauges carry forward). Off by default.
+   */
+  fillGaps?: boolean;
+  /**
+   * Set when `query` was written by whoever made the request rather than by us.
+   * A rejection of their SQL is then their mistake, not a bug on our side.
+   */
+  userAuthoredQuery?: boolean;
 }
 
 /**
@@ -192,6 +203,7 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       fieldMappings: options.fieldMappings,
       whereClauseFallback: options.whereClauseFallback,
       timeRange: options.timeRange,
+      fillGaps: options.fillGaps,
     });
 
     generatedSql = sql;
@@ -207,6 +219,8 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
       // EXPLAIN returns rows with an 'explain' column
       schema: isExplain ? z.object({ explain: z.string() }) : options.schema,
       settings: options.clickhouseSettings,
+      logFields: { tsql: options.query },
+      userAuthoredQuery: options.userAuthoredQuery,
     });
 
     const [error, result] = await queryFn(params);
@@ -240,6 +254,8 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
             params: z.record(z.any()),
             schema: z.object({ explain: z.string() }),
             settings: options.clickhouseSettings,
+            logFields: { tsql: options.query },
+            userAuthoredQuery: options.userAuthoredQuery,
           });
 
           const [additionalError, additionalResult] = await additionalQueryFn(params);
@@ -297,14 +313,21 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
-    // Log TSQL compilation or unexpected errors (with original message for debugging)
-    logger.error("[TSQL] Query error", {
+    const logFields = {
       name: options.name,
       error: errorMessage,
       tsql: options.query,
       generatedSql: generatedSql ?? "(compilation failed)",
       generatedParams: generatedParams ?? {},
-    });
+    };
+
+    const callerWroteABadQuery = options.userAuthoredQuery && error instanceof ExposedTSQLError;
+
+    if (callerWroteABadQuery) {
+      logger.warn("[TSQL] Invalid query", logFields);
+    } else {
+      logger.error("[TSQL] Query error", logFields);
+    }
 
     // Sanitize error message to show TSQL names instead of ClickHouse internals
     const sanitizedMessage = sanitizeErrorMessage(errorMessage, options.tableSchema);
