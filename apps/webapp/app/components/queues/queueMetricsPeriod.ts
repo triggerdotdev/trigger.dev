@@ -25,7 +25,9 @@ const PERIOD_PATTERN = /^\d+[mhd]$/;
 /** Queue metrics are retained for 30 days, so a longer window can only ever render empty. */
 export const QUEUE_METRICS_RETENTION_DAYS = 30;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 const MAX_PERIOD_MS = QUEUE_METRICS_RETENTION_DAYS * DAY_MS;
 
 function isPeriod(value: string | undefined | null): value is string {
@@ -90,13 +92,23 @@ export function resolveQueueMetricsPeriod({
 }
 
 /**
- * Hold a period inside a day budget (the org's plan query period). A remembered period longer than
- * the plan allows becomes the plan's maximum, so the picker shows the window the data covers.
+ * Hold a period inside a day budget (the org's plan query period). A period longer than the plan
+ * allows becomes the plan's maximum, so the picker shows the window the data covers.
+ *
+ * The budget is whatever the plan says, not necessarily a whole number of days, so the replacement
+ * is expressed in the largest unit that divides it: rounding down keeps the period inside the
+ * budget rather than a hair over it.
  */
 export function clampQueueMetricsPeriod(period: string, maxPeriodDays: number): string {
+  const maxMs = maxPeriodDays * DAY_MS;
   const ms = parse(period);
-  if (typeof ms === "number" && ms > 0 && ms <= maxPeriodDays * DAY_MS) return period;
-  return `${maxPeriodDays}d`;
+  if (typeof ms === "number" && ms > 0 && ms <= maxMs) return period;
+
+  const days = Math.floor(maxMs / DAY_MS);
+  if (days >= 1) return `${days}d`;
+  const hours = Math.floor(maxMs / HOUR_MS);
+  if (hours >= 1) return `${hours}h`;
+  return `${Math.max(1, Math.floor(maxMs / MINUTE_MS))}m`;
 }
 
 /**
