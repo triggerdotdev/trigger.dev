@@ -1025,3 +1025,224 @@ describe("scanFile: narrow catches", () => {
     expect(ep!.catchesNarrowly).toBe(false);
   });
 });
+
+describe("scanFile: per-catch evidence", () => {
+  it("records one entry per catch clause, keeping a narrow guard distinct from a broad catch", () => {
+    const ep = scanFile(
+      "two-catches.ts",
+      `
+      export async function action({ request }) {
+        let body;
+        try {
+          body = await request.json();
+        } catch {
+          return json({}, { status: 400 });
+        }
+        try {
+          const run = await find(body.id);
+          const updated = await update(run);
+          await notify(updated);
+          return json(updated);
+        } catch (e) {
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches).toHaveLength(2);
+    expect(ep!.catches[0]).toEqual({
+      narrow: true,
+      rethrows: false,
+      branches: false,
+      guardsParse: true,
+      tryStatementCount: 1,
+    });
+    expect(ep!.catches[1]).toMatchObject({
+      narrow: false,
+      guardsParse: false,
+      tryStatementCount: 4,
+    });
+    // The aggregate still collapses, which is why the per-catch list exists.
+    expect(ep!.catchesNarrowly).toBe(false);
+  });
+
+  it("leaves catches empty for a try/finally with no catch clause", () => {
+    const ep = scanFile(
+      "runs-replication.status.ts",
+      `
+      export async function loader() {
+        const redis = createRedis();
+        try {
+          for (const source of sources) {
+            const exists = await redis.exists(source.slotName);
+            leaders.set(source.id, exists === 1);
+          }
+        } finally {
+          await redis.quit();
+        }
+        return json({});
+      }
+      `
+    );
+    expect(ep!.catches).toEqual([]);
+    // hasTryCatch keeps its meaning: a `try` appears. Nothing is caught here.
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.catchRethrows).toBe(false);
+    expect(ep!.catchBranches).toBe(false);
+    expect(ep!.catchesNarrowly).toBe(false);
+  });
+
+  it("sees a constructor as a guarded parse", () => {
+    const ep = scanFile(
+      "_app.@.orgs.$organizationSlug.$.tsx",
+      `
+      function refererOrigin(request) {
+        const referer = request.headers.get("referer");
+        if (!referer) return undefined;
+        try {
+          return new URL(referer).origin;
+        } catch {
+          return undefined;
+        }
+      }
+      export async function action({ request }) {
+        const origin = refererOrigin(request);
+        return json({ origin });
+      }
+      `
+    );
+    expect(ep!.catches).toHaveLength(1);
+    expect(ep!.catches[0]!.guardsParse).toBe(true);
+    expect(ep!.catches[0]!.narrow).toBe(true);
+  });
+
+  it("sees a parse in a try that grew past the narrowness threshold", () => {
+    const ep = scanFile(
+      "admin.api.v1.orgs.$organizationId.stream-basin.ts",
+      `
+      export async function action({ request }) {
+        let parsed;
+        try {
+          const text = await request.text();
+          const raw = text.length > 0 ? JSON.parse(text) : {};
+          const result = BodySchema.safeParse(raw);
+          if (!result.success) {
+            return json({ ok: false }, { status: 400 });
+          }
+          parsed = result.data;
+        } catch {
+          return json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
+        }
+        return json(parsed);
+      }
+      `
+    );
+    expect(ep!.catches).toHaveLength(1);
+    expect(ep!.catches[0]!.narrow).toBe(false);
+    expect(ep!.catches[0]!.guardsParse).toBe(true);
+    expect(ep!.catches[0]!.tryStatementCount).toBe(6);
+  });
+
+  it("does not call a broad catch over database work a parse guard", () => {
+    const ep = scanFile(
+      "broad.ts",
+      `
+      export async function loader({ params }) {
+        try {
+          const run = await prisma.run.findFirst({ where: { id: params.id } });
+          const events = await prisma.event.findMany({ where: { runId: run.id } });
+          await touch(run);
+          return json({ run, events });
+        } catch (e) {
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches).toHaveLength(1);
+    expect(ep!.catches[0]).toEqual({
+      narrow: false,
+      rethrows: false,
+      branches: false,
+      guardsParse: false,
+      tryStatementCount: 4,
+    });
+  });
+
+  it("keeps rethrow and branch evidence per clause", () => {
+    const ep = scanFile(
+      "mixed-clauses.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (e) {
+          if (e instanceof Response) throw e;
+          return json({}, { status: 500 });
+        }
+      }
+      export async function action({ request }) {
+        try {
+          return json(await save(request));
+        } catch (e) {
+          return null;
+        }
+      }
+      `
+    );
+    expect(ep!.catches).toHaveLength(2);
+    expect(ep!.catches.filter((c) => c.rethrows && c.branches)).toHaveLength(1);
+    expect(ep!.catches.filter((c) => !c.rethrows && !c.branches)).toHaveLength(1);
+    // Aggregates stay as they are: any clause sets them.
+    expect(ep!.catchRethrows).toBe(true);
+    expect(ep!.catchBranches).toBe(true);
+  });
+
+  it("includes a catch from a same-file helper and excludes one from the React component", () => {
+    const ep = scanFile(
+      "route.tsx",
+      `
+      function parseTags(payload) {
+        try {
+          return JSON.parse(payload);
+        } catch {
+          return null;
+        }
+      }
+      export async function loader({ params }) {
+        return json(parseTags(params.payload));
+      }
+      export default function Page() {
+        try {
+          render();
+        } catch (e) {
+          throw e;
+        }
+        return null;
+      }
+      `
+    );
+    expect(ep!.catches).toHaveLength(1);
+    expect(ep!.catches[0]!.guardsParse).toBe(true);
+    expect(ep!.catchRethrows).toBe(false);
+  });
+
+  it("keeps the aggregates derivable from the per-catch list", () => {
+    const ep = scanFile(
+      "aggregate.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await request.json());
+        } catch (e) {
+          if (e instanceof SyntaxError) return json({}, { status: 400 });
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catchRethrows).toBe(ep!.catches.some((c) => c.rethrows));
+    expect(ep!.catchBranches).toBe(ep!.catches.some((c) => c.branches));
+    expect(ep!.catchesNarrowly).toBe(ep!.catches.length > 0 && ep!.catches.every((c) => c.narrow));
+  });
+});

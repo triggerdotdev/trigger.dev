@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { EntryPoint, LogCall } from "./types.js";
+import type { CatchEvidence, EntryPoint, LogCall } from "./types.js";
 
 /** Thrown by `scanFile` when the source does not parse cleanly. */
 export class ParseFailureError extends Error {
@@ -112,6 +112,32 @@ function objectArgumentFields(call: ts.CallExpression): { found: boolean; fields
  * try has started to cover the handler rather than one operation.
  */
 const NARROW_TRY_STATEMENTS = 2;
+
+/**
+ * Calls that turn input into a value and throw when it is malformed. `parse`/`safeParse` cover
+ * `JSON.parse` and the zod schemas. `.json` has to be a member call, because a bare `json(...)` is
+ * the remix response helper, which every route calls and which parses nothing.
+ */
+const PARSE_CALLEE = /(^|\.)(parse|safeParse|parseAsync|safeParseAsync|decode)$|\.json$/;
+
+/**
+ * Whether the guarded region parses or constructs something. A constructor counts: `new URL(x)` is
+ * the commonest parse guard in the tree, and constructors are absent from `calleeTexts`.
+ */
+function guardsParse(tryBlock: ts.Block): boolean {
+  let found = false;
+  const visit = (node: ts.Node) => {
+    if (found) return;
+    if (ts.isNewExpression(node)) found = true;
+    if (ts.isCallExpression(node)) {
+      const text = calleeText(node.expression) ?? calleeName(node.expression);
+      if (text !== null && PARSE_CALLEE.test(text)) found = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tryBlock);
+  return found;
+}
 
 /** What a catch clause does with the error, beyond the fact that it caught one. */
 function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branches: boolean } {
@@ -462,10 +488,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
 
   let statementCount = 0;
   let hasTryCatch = false;
-  let catchRethrows = false;
-  let catchBranches = false;
-  let catchClauseCount = 0;
-  let broadCatch = false;
+  const catches: CatchEvidence[] = [];
   const calleeNames: string[] = [];
   const calleeTexts: string[] = [];
   const logCalls: LogCall[] = [];
@@ -485,15 +508,19 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
       if (ts.isTryStatement(node)) {
         hasTryCatch = true;
         if (node.catchClause) {
-          catchClauseCount += 1;
-          if (countStatements(node.tryBlock.statements) > NARROW_TRY_STATEMENTS) broadCatch = true;
+          const tryStatementCount = countStatements(node.tryBlock.statements);
+          const clause = catchClauseEvidence(node.catchClause);
+          catches.push({
+            narrow: tryStatementCount <= NARROW_TRY_STATEMENTS,
+            rethrows: clause.rethrows,
+            branches: clause.branches,
+            guardsParse: guardsParse(node.tryBlock),
+            tryStatementCount,
+          });
         }
       }
 
       if (ts.isCatchClause(node)) {
-        const evidence = catchClauseEvidence(node);
-        catchRethrows ||= evidence.rethrows;
-        catchBranches ||= evidence.branches;
         ts.forEachChild(node, (child) => visit(child, true));
         return;
       }
@@ -546,9 +573,11 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     calleeNames,
     calleeTexts,
     hasTryCatch,
-    catchRethrows,
-    catchBranches,
-    catchesNarrowly: catchClauseCount > 0 && !broadCatch,
+    catches,
+    // Kept as aggregates of `catches` so the checks can migrate one at a time.
+    catchRethrows: catches.some((c) => c.rethrows),
+    catchBranches: catches.some((c) => c.branches),
+    catchesNarrowly: catches.length > 0 && catches.every((c) => c.narrow),
     logCalls,
     statementCount,
   };

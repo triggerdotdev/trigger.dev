@@ -6,6 +6,28 @@ export type CheckResult = {
   detail?: string;
 };
 
+/**
+ * One catch clause in a loader/action body, or in a same-file helper the body calls. Per clause
+ * rather than per entry point, so a narrow parse guard sitting beside a broad handler catch stays
+ * legible instead of collapsing into one boolean.
+ */
+export type CatchEvidence = {
+  /** The guarded try block holds at most two statements: one operation, not the handler. */
+  narrow: boolean;
+  /** The clause contains a `throw`. */
+  rethrows: boolean;
+  /** The clause branches on the error: an `if`, a `switch`, or an `instanceof`. */
+  branches: boolean;
+  /**
+   * The guarded region parses or constructs something: `JSON.parse`, `request.json()`, a zod
+   * `parse`/`safeParse`, or any `new X(...)`. Constructors are counted here because `new URL(x)` is
+   * the commonest parse guard in the tree and constructors never appear in `calleeTexts`.
+   */
+  guardsParse: boolean;
+  /** Statements in the guarded try block, counted as `statementCount` counts them. */
+  tryStatementCount: number;
+};
+
 /** A logging call made from a loader/action body, or from a same-file helper the body calls. */
 export type LogCall = {
   /** Full callee path, e.g. `logger.error`. */
@@ -36,11 +58,18 @@ export type EntryPoint = {
    * something unnameable (`new PromptService().createOverride`) falls back to the bare name.
    */
   calleeTexts: string[];
-  /** Whether a `try` appears in the loader/action bodies, or in a same-file helper they call. */
+  /**
+   * Whether a `try` appears in the loader/action bodies, or in a same-file helper they call. Note
+   * that this says a `try`, not a catch: a `try`/`finally` sets it while `catches` stays empty and
+   * every catch-shaped field stays false. Read `catches.length` to ask whether anything is caught.
+   */
   hasTryCatch: boolean;
+  /** One entry per catch clause in those bodies, in source order. */
+  catches: CatchEvidence[];
   /**
    * Whether any catch clause in those bodies contains a `throw`. A catch that rethrows has decided
-   * the error is not its to answer, which is a different act from swallowing it.
+   * the error is not its to answer, which is a different act from swallowing it. Aggregate of
+   * `catches`, kept so existing consumers keep working.
    */
   catchRethrows: boolean;
   /**
