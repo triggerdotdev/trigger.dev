@@ -197,9 +197,15 @@ export function rawErrorMessage(err: unknown): string {
   return errorMessage(err);
 }
 
+/**
+ * `error` is part of the contract because losing a whole batch is a genuine
+ * failure an operator has to act on, and alerting watches error level. Partial
+ * recoveries, where the rest of the batch lands, stay at warn.
+ */
 export type JsonParseRecoveryLogger = {
   info: (message: string, meta?: Record<string, unknown>) => void;
   warn: (message: string, meta?: Record<string, unknown>) => void;
+  error: (message: string, meta?: Record<string, unknown>) => void;
 };
 
 /**
@@ -440,7 +446,8 @@ async function tryInsertAllowingBadRows<T extends object>(
 }
 
 /**
- * Reports a batch that could not land even with `allow_errors`, without throwing.
+ * Reports a batch that could not land even with `allow_errors`, at error level and
+ * without throwing.
  *
  * Handing a deterministic parse failure back to the caller's retry layer only
  * burns the whole recovery again on bytes that cannot change, and in the event
@@ -461,7 +468,7 @@ function wholeBatchDropped<T extends object>(params: {
 }): JsonParseRecoveryOutcome {
   const { rows, contextLabel, logger, logContext, rowsStripped, capped, bailReason } = params;
 
-  logger.warn("Dropped the whole batch: ClickHouse rejected it even with allow_errors", {
+  logger.error("Dropped the whole batch: ClickHouse rejected it even with allow_errors", {
     ...logContext,
     contextLabel,
     bailReason,

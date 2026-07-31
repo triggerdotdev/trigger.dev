@@ -22,7 +22,7 @@ type FakeRow = {
   msg?: string;
 };
 
-const silentLogger = { info: () => {}, warn: () => {} };
+const silentLogger = { info: () => {}, warn: () => {}, error: () => {} };
 
 function parseErrorAtRow(oneBasedRow: number) {
   return new Error(
@@ -933,5 +933,42 @@ describe("insertWithBadRowSkip", () => {
         insertAllowingBadRows,
       })
     ).rejects.toThrow("Connection refused");
+  });
+
+  it("logs a whole-batch drop at error so alerting fires, and a partial skip only at warn", async () => {
+    const levels: string[] = [];
+    const capturingLogger = {
+      info: () => levels.push("info"),
+      warn: () => levels.push("warn"),
+      error: () => levels.push("error"),
+    };
+
+    await insertWithBadRowSkip({
+      rows: [{ id: 0, poison: true }],
+      contextLabel: "test",
+      logger: capturingLogger,
+      insert: async () => {
+        throw parseErrorAtRow(1);
+      },
+      insertAllowingBadRows: async () => {
+        throw new Error("Cannot parse JSON object here: {...}: (at row 1)");
+      },
+    });
+
+    expect(levels).toEqual(["error"]);
+
+    levels.length = 0;
+    const skip = makeSkipHarness();
+
+    await insertWithBadRowSkip({
+      rows: [clean(0), { id: 1, poison: true }],
+      contextLabel: "test",
+      logger: capturingLogger,
+      insert: skip.insert,
+      insertAllowingBadRows: skip.insertAllowingBadRows,
+      hasMaterializedViews: false,
+    });
+
+    expect(levels).toEqual(["warn"]);
   });
 });
