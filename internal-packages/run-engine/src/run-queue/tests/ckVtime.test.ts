@@ -661,48 +661,110 @@ describe("CK virtual-time (SFQ) dequeue", () => {
     }
   );
 
+  redisTest("future-scheduled variants are skipped without advance", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const t0 = Date.now() - 100_000;
+
+      // a normal ready variant so the :ck:* wildcard is selected from the master queue
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({ runId: "r-now", concurrencyKey: "now", timestamp: t0 }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+      // a future-scheduled variant
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: makeMessage({
+          runId: "r-future",
+          concurrencyKey: "future",
+          timestamp: Date.now() + 60_000,
+        }),
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+
+      const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName("now"));
+      const futureVariant = variantName("future");
+      await queue.redis.zadd(ckVtimeKey, 0, variantName("now"), 5, futureVariant);
+
+      const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+      const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
+
+      expect(messages.some((m) => m.message.concurrencyKey === "future")).toBe(false);
+
+      // Not served, so not charged a quantum. It stays registered: pass 1 is the only
+      // path that can reach it, so de-registering it would strand it while pass 1 is
+      // busy. It no longer holds the floor down, which the floor tests cover.
+      const futureTag = Number(await queue.redis.zscore(ckVtimeKey, futureVariant));
+      expect(futureTag).toBe(5);
+    } finally {
+      await queue.quit();
+    }
+  });
+
   redisTest(
-    "future-scheduled variants are skipped, not advanced, and de-registered",
+    "a variant whose backoff elapses is served even while pass 1 stays full",
+    { timeout: 120_000 },
     async ({ redisContainer }) => {
+      // Pass 1 is the only path that reads ckVtime, and pass 2 is skipped whenever pass 1
+      // fills the batch. Dropping a not-ready variant from ckVtime therefore stranded it
+      // for as long as any other key kept the batch full: measured at over 2000 calls.
       const queue = createQueue(redisContainer);
       try {
         const t0 = Date.now() - 100_000;
 
-        // a normal ready variant so the :ck:* wildcard is selected from the master queue
-        await queue.enqueueMessage({
-          env: authenticatedEnvDev,
-          message: makeMessage({ runId: "r-now", concurrencyKey: "now", timestamp: t0 }),
-          workerQueue: authenticatedEnvDev.id,
-          skipDequeueProcessing: true,
-        });
-        // a future-scheduled variant
+        for (let k = 0; k < 3; k++) {
+          for (let i = 0; i < 40; i++) {
+            await queue.enqueueMessage({
+              env: authenticatedEnvDev,
+              message: makeMessage({
+                runId: `b${k}-${i}`,
+                concurrencyKey: `b${k}`,
+                timestamp: t0 + i,
+              }),
+              workerQueue: authenticatedEnvDev.id,
+              skipDequeueProcessing: true,
+            });
+          }
+        }
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: makeMessage({
-            runId: "r-future",
-            concurrencyKey: "future",
-            timestamp: Date.now() + 60_000,
+            runId: "stalled-1",
+            concurrencyKey: "stalled",
+            timestamp: Date.now() + 400,
           }),
           workerQueue: authenticatedEnvDev.id,
           skipDequeueProcessing: true,
         });
 
-        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(variantName("now"));
-        const futureVariant = variantName("future");
-        await queue.redis.zadd(ckVtimeKey, 0, variantName("now"), 5, futureVariant);
-
         const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
-        const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 10);
+        const drain = async (calls: number) => {
+          let servedStalled = false;
+          for (let call = 0; call < calls; call++) {
+            const messages = await queue.testDequeueFromMasterQueue(
+              shard,
+              authenticatedEnvDev.id,
+              1
+            );
+            for (const m of messages) {
+              if (m.message.concurrencyKey === "stalled") servedStalled = true;
+              await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+                skipDequeueProcessing: true,
+              });
+            }
+          }
+          return servedStalled;
+        };
 
-        expect(messages.some((m) => m.message.concurrencyKey === "future")).toBe(false);
+        // Let the incumbents advance so the stalled variant holds the lowest tag, which is
+        // what pulls it into the pass-1 window and onto the skip path.
+        await drain(6);
+        await new Promise((resolve) => setTimeout(resolve, 700));
 
-        // Not served, so never charged a quantum: its tag is not advanced past the 5 it
-        // was seeded with. It is de-registered instead, because a variant with no ready
-        // work is not competing and must not hold the floor down (a pinned floor is what
-        // let a later arrival register underneath the established keys and take every
-        // pass-1 slot). It rejoins at the floor of the day once it has ready work.
-        const futureTag = await queue.redis.zscore(ckVtimeKey, futureVariant);
-        expect(futureTag).toBeNull();
+        expect(await drain(60)).toBe(true);
       } finally {
         await queue.quit();
       }
