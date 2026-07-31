@@ -216,3 +216,71 @@ ${BUSY_AND_FAILING}`
     expect(family.mean).toBe(scoreEntry(busy).score);
   });
 });
+
+/**
+ * The invariant, both ways round. The README states one direction, removing error handling must
+ * lower the score, and that alone could not see the free-points path: adding a catch that only
+ * rethrows changes nothing about how the route behaves, and used to move it from not-applicable to
+ * pass, worth 50 points a route and 27 points across the tree.
+ */
+describe("no-op error handling must not pay", () => {
+  const BODY = `const rows = await prisma.thing.findMany();
+    return json({ rows });`;
+
+  const plain = `import { prisma } from "~/db.server";
+export async function loader() {
+  ${BODY}
+}`;
+
+  const wrappedInARethrow = `import { prisma } from "~/db.server";
+export async function loader() {
+  try {
+    ${BODY}
+  } catch (e) {
+    throw e;
+  }
+}`;
+
+  const handled = `import { logger } from "~/services/logger.server";
+import { prisma } from "~/db.server";
+export async function loader({ params }) {
+  try {
+    ${BODY}
+  } catch (error) {
+    if (error instanceof NotFoundError) return json({ error: "not found" }, { status: 404 });
+    logger.error("thing lookup failed", { environmentId: params.envId, error });
+    throw error;
+  }
+}`;
+
+  it("does not pay for wrapping a body in a catch that only rethrows", () => {
+    const before = scoreEntry(scanFile("api.v1.x.ts", plain)!);
+    const after = scoreEntry(scanFile("api.v1.x.ts", wrappedInARethrow)!);
+    expect(after.score).toBeLessThanOrEqual(before.score);
+  });
+
+  it("does not pay for wrapping a whole tree in catches that only rethrow", () => {
+    const before = buildReport(
+      [scanFile("api.v1.x.ts", plain)!, scanFile("api.v1.y.ts", plain)!],
+      []
+    );
+    const after = buildReport(
+      [scanFile("api.v1.x.ts", wrappedInARethrow)!, scanFile("api.v1.y.ts", wrappedInARethrow)!],
+      []
+    );
+    expect(after.global!).toBeLessThanOrEqual(before.global!);
+  });
+
+  it("does not pay for deleting error handling either", () => {
+    const before = scoreEntry(scanFile("api.v1.x.ts", handled)!);
+    const after = scoreEntry(scanFile("api.v1.x.ts", plain)!);
+    expect(after.score).toBeLessThanOrEqual(before.score);
+    // And the handled version is genuinely better, so the invariant is not holding by both being 0.
+    expect(before.score).toBeGreaterThan(after.score);
+  });
+
+  it("still credits a catch that decides something on its way through", () => {
+    const scored = scoreEntry(scanFile("api.v1.x.ts", handled)!);
+    expect(scored.checks.find((c) => c.id === "error-classification")!.status).toBe("pass");
+  });
+});

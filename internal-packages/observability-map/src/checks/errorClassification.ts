@@ -38,21 +38,39 @@ function isParseGuard(clause: CatchEvidence, ep: EntryPoint): boolean {
 }
 
 /**
- * Whether a clause has decided what the error means. Rethrowing is a decision, branching is a
- * decision, and guarding a parse answers for the one thing the guard covers.
+ * Whether a clause decides anything about the error it caught. Two ways to qualify: it branches, on
+ * an `if`, a `switch` or an `instanceof`, or it guards a parse it can answer for.
  *
- * `narrow` is deliberately not a fourth way to qualify, which is where this differs from the rule
- * the scanner work proposed. A one-statement try around `await service.call(run)` is narrow and is
- * still a swallow. Taking the narrow limb clears eleven more entry points, and reading all eleven
- * says six are real: the silent cancel in `api.v2.runs.$runParam.cancel.ts`, the PAT revoke in
- * `account.tokens/route.tsx` and the invite revoke, both of which report a database failure to the
- * browser as a 400 with an internal message in it, a `.map` that drops a broken dashboard on the
- * floor, and two more. The four it would rightly clear are all the same deliberate shape, best
- * effort side work that logs and carries on, and all four are non-sensitive so they sort to the
- * bottom of the fix list. See the task 5 report; switching is one limb in this function.
+ * Rethrowing is not a third way, which is the correction from the last wave. A clause whose only
+ * effect is `throw e` leaves the error propagating exactly as it would with no catch at all, so
+ * treating that as a pass while no catch is not-applicable paid 50 points a route for wrapping a
+ * body in `try { ... } catch (e) { throw e }`, and 27 across the tree. The two are observationally
+ * identical and are now scored identically.
+ *
+ * The cost is real and worth stating: `catch (e) { logger.error(...); throw e }` also reads as
+ * inert, because `CatchEvidence` cannot say whether a clause does anything besides rethrow. That
+ * withholds credit from a route that reports before propagating, which is the safe direction to be
+ * wrong in, since crediting it would reopen the hole a bare `logger.error` line wide.
+ * `request-context` still reads that log and asks whether it names a tenant, so the reporting is
+ * unrewarded here rather than unmeasured.
+ *
+ * `narrow` is not a way to qualify either. A one-statement try around `await service.call(run)` is
+ * narrow and is still a swallow: reading all eleven entry points that limb would clear said six
+ * were real, including a silent run cancellation and two credential paths that report a database
+ * failure to the browser as a 400 with an internal message in it.
  */
-function accountedFor(clause: CatchEvidence, ep: EntryPoint): boolean {
-  return clause.rethrows || clause.branches || isParseGuard(clause, ep);
+function decides(clause: CatchEvidence, ep: EntryPoint): boolean {
+  return clause.branches || isParseGuard(clause, ep);
+}
+
+/** Passes the error through unchanged, which is the same outcome as not catching it. */
+function inert(clause: CatchEvidence, ep: EntryPoint): boolean {
+  return clause.rethrows && !decides(clause, ep);
+}
+
+/** The error stops here and nothing chose what it meant. */
+function swallows(clause: CatchEvidence, ep: EntryPoint): boolean {
+  return !decides(clause, ep) && !inert(clause, ep);
 }
 
 export function usesBuilder(ep: EntryPoint): boolean {
@@ -88,21 +106,24 @@ export const errorClassification = {
     if (isTrivial(ep)) {
       return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
-    if (ep.catches.length === 0) {
-      return {
-        id: ID,
-        status: "not-applicable",
-        detail: "catches nothing, so it classifies nothing",
-      };
-    }
-    const unaccounted = ep.catches.filter((c) => !accountedFor(c, ep));
-    if (unaccounted.length > 0) {
+    const swallowed = ep.catches.filter((c) => swallows(c, ep));
+    if (swallowed.length > 0) {
       const which =
-        ep.catches.length > 1 ? ` (${unaccounted.length} of ${ep.catches.length} catches)` : "";
+        ep.catches.length > 1 ? ` (${swallowed.length} of ${ep.catches.length} catches)` : "";
       return {
         id: ID,
         status: "fail",
         detail: `catches its errors and takes one way out regardless of what was thrown${which}`,
+      };
+    }
+    if (!ep.catches.some((c) => decides(c, ep))) {
+      return {
+        id: ID,
+        status: "not-applicable",
+        detail:
+          ep.catches.length === 0
+            ? "catches nothing, so it classifies nothing"
+            : "every catch rethrows and nothing else, so it classifies nothing",
       };
     }
     return { id: ID, status: "pass", detail: "every catch decides what it caught" };

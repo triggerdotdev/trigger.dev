@@ -78,7 +78,10 @@ describe("error-classification", () => {
     expect(r.status).toBe("pass");
   });
 
-  it("passes a raw route whose catch rethrows without branching", () => {
+  // A clause that only rethrows makes no classification decision: the error propagates exactly as
+  // it would with no catch at all, so it is read as no catch at all. Scoring the two differently
+  // paid 50 points a route for wrapping a body in `try { ... } catch (e) { throw e }`.
+  it("is not applicable to a raw route whose catch only rethrows", () => {
     const r = run(
       "error-classification",
       "api.v1.v.ts",
@@ -89,7 +92,7 @@ describe("error-classification", () => {
          catch (e) { logger.error("thing lookup failed", { error: e }); throw e; }
        }`
     );
-    expect(r.status).toBe("pass");
+    expect(r.status).toBe("not-applicable");
   });
 
   // The builder only classifies what reaches it. A swallow inside the handler never does, so the

@@ -75,15 +75,18 @@ describe("renderTerminal", () => {
        }`
     )!;
 
-    // Sensitive, score 33: classifies what it catches, but has no guard and names nobody. Fails
-    // more than request-context, so it stays in the list rather than collapsing into the figure.
+    // Sensitive, score 33: its catch decides something, telling a bad request apart from the rest,
+    // but it has no guard and names nobody. Fails more than request-context, so it stays in the
+    // list rather than collapsing into the figure.
     const sensitiveThirtyThree = scanFile(
       "api.v1.auth.tokens.ts",
-      `import { logger } from "~/services/logger.server";
-       import { prisma } from "~/db.server";
+      `import { prisma } from "~/db.server";
        export async function action() {
          try { return await prisma.token.create({ data: {} }); }
-         catch (error) { logger.error("failed", { error }); throw error; }
+         catch (error) {
+           if (error instanceof BadRequest) return json({ error: "bad" }, { status: 400 });
+           throw error;
+         }
        }`
     )!;
 
