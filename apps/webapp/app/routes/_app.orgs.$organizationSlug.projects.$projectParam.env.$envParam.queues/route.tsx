@@ -201,7 +201,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           q.type === "task" ? `task/${q.name}` : q.name
         );
         const timeRange = timeFilterFromTo({
-          period,
+          period: resolveQueueMetricsPeriod({ period, from, to, defaultPeriod }) ?? undefined,
           from: parseFiniteInt(from),
           to: parseFiniteInt(to),
           defaultPeriod,
