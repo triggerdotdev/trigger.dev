@@ -99,3 +99,76 @@ describe("classifySensitivity: calleeNames is body-scoped, importedNames is file
     expect(classifySensitivity(e).sensitive).toBe(false);
   });
 });
+
+describe("what sensitivity must not mean", () => {
+  const ep = (fileName: string, source: string) => scanFile(fileName, source)!;
+
+  // C4. Calling the admin guard cannot be what makes a route risky: it is the mitigation, not the
+  // hazard. Counting it made 34 of 67 sensitive entries sensitive only because they were guarded,
+  // and `auth-boundary` then passed every one of them on the same call. Circular, and it was the
+  // fix list's primary sort key.
+  it("does not treat calling the admin guard as what makes a route sensitive", () => {
+    const s = classifySensitivity(
+      ep(
+        "admin.api.v1.queue-metrics.ts",
+        `import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+         import { prisma } from "~/db.server";
+         export async function loader({ request }) {
+           await requireAdminApiRequest(request);
+           return json(await prisma.queueMetric.findMany());
+         }`
+      )
+    );
+    expect(s.sensitive).toBe(false);
+  });
+
+  it("still flags an admin route that does something sensitive on its own account", () => {
+    const s = classifySensitivity(
+      ep(
+        "admin.api.v1.impersonate.ts",
+        `import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
+         import { setImpersonation } from "~/models/admin.server";
+         export async function action({ request }) {
+           await requireAdminApiRequest(request);
+           return setImpersonation(request, "user_1");
+         }`
+      )
+    );
+    expect(s.sensitive).toBe(true);
+    expect(s.reasons).toContain("calls setImpersonation");
+  });
+
+  // A waitpoint token is a run coordination handle, not a credential. Seven of the eight routes
+  // matching the `tokens` segment were waitpoint routes.
+  it("does not treat a waitpoint token route as a credential route", () => {
+    const s = classifySensitivity(
+      ep(
+        "api.v1.waitpoints.tokens.$waitpointFriendlyId.complete.ts",
+        `import { prisma } from "~/db.server";
+         export async function action() { return prisma.waitpoint.update({ where: {}, data: {} }); }`
+      )
+    );
+    expect(s.sensitive).toBe(false);
+  });
+
+  it("still flags the personal access token routes", () => {
+    expect(
+      classifySensitivity(
+        ep(
+          "account.tokens/route.tsx",
+          `import { prisma } from "~/db.server";
+           export async function loader() { return prisma.personalAccessToken.findMany(); }`
+        )
+      ).reasons
+    ).toContain('path segment "tokens"');
+    expect(
+      classifySensitivity(
+        ep(
+          "api.v1.token.ts",
+          `import { prisma } from "~/db.server";
+           export async function action() { return prisma.token.create({ data: {} }); }`
+        )
+      ).reasons
+    ).toContain('path segment "token"');
+  });
+});

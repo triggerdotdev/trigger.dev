@@ -1,10 +1,15 @@
 import type { EntryPoint } from "./types.js";
 import { routePathOf } from "./adapters/remix.js";
 
+/**
+ * Symbols whose presence says the route does something risky. Calling a guard is not one of them:
+ * `requireAdminApiRequest` was on this list and made 34 of the 67 sensitive entry points sensitive
+ * purely because they were guarded, which `auth-boundary` then passed them for. A mitigation
+ * cannot be the hazard, and this list feeds the fix list's primary sort key.
+ */
 const SENSITIVE_SYMBOLS = [
   "clearImpersonation",
   "setImpersonation",
-  "requireAdminApiRequest",
   "createPersonalAccessToken",
   "regenerateApiKey",
   "createJWT",
@@ -47,8 +52,13 @@ export function classifySensitivity(ep: EntryPoint): Sensitivity {
   const segments = routePathOf(ep.fileName)
     .split("/")
     .filter((s) => s.length > 0);
-  for (const seg of segments) {
-    if (SENSITIVE_SEGMENTS.includes(seg)) reasons.push(`path segment "${seg}"`);
+  for (const [i, seg] of segments.entries()) {
+    if (!SENSITIVE_SEGMENTS.includes(seg)) continue;
+    // A waitpoint token is a handle for resuming a run, not a credential. Seven of the eight
+    // `tokens` matches in the tree were waitpoint routes, so the segment on its own was mostly
+    // finding the wrong thing.
+    if ((seg === "token" || seg === "tokens") && segments[i - 1] === "waitpoints") continue;
+    reasons.push(`path segment "${seg}"`);
   }
 
   return { sensitive: reasons.length > 0, reasons };

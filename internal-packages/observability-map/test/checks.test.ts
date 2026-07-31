@@ -266,14 +266,16 @@ describe("error-classification", () => {
 
 describe("auth-boundary", () => {
   it("passes a sensitive route guarded by a require helper", () => {
+    // Sensitive on the impersonation call, not on the guard: calling a guard is not what makes a
+    // route sensitive, see sensitivity.test.ts.
     const r = run(
       "auth-boundary",
-      "admin.api.v1.gc.ts",
+      "admin.api.v1.impersonate.ts",
       `import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
-       import { prisma } from "~/db.server";
-       export async function loader({ request }) {
+       import { setImpersonation } from "~/models/admin.server";
+       export async function action({ request }) {
          await requireAdminApiRequest(request);
-         return prisma.thing.findMany();
+         return setImpersonation(request, "user_1");
        }`
     );
     expect(r.status).toBe("pass");
@@ -370,12 +372,12 @@ describe("auth-boundary", () => {
   it("passes a sensitive callback guarded by a signature check", () => {
     const r = run(
       "auth-boundary",
-      "api.v1.waitpoints.tokens.$waitpointFriendlyId.callback.$hash.ts",
-      `import { verifyHttpCallbackHash } from "~/services/httpCallback.server";
+      "webhooks.v1.billing.$hash.ts",
+      `import { verifyWebhookSignature } from "~/services/webhooks.server";
        import { prisma } from "~/db.server";
        export async function action({ request, params }) {
-         const waitpoint = await prisma.waitpoint.findFirst({ where: { id: params.id } });
-         if (!verifyHttpCallbackHash(params.hash, waitpoint)) {
+         const invoice = await prisma.invoice.findFirst({ where: { id: params.id } });
+         if (!verifyWebhookSignature(params.hash, invoice)) {
            return json({ error: "Invalid" }, { status: 401 });
          }
          return json({ ok: true });
