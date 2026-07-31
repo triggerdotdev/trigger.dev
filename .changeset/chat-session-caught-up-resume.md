@@ -3,4 +3,4 @@
 "@trigger.dev/sdk": patch
 ---
 
-Chat sessions now close a resumed stream as soon as it has caught up to the latest output, instead of holding the connection open for the full long-poll window. Reloading or reconnecting to an idle chat settles faster. This applies to the server-to-server `AgentChat` client's `reconnect()` too, not just the browser transport.
+`AgentChat.reconnect()` now settles promptly when reconnecting to an idle chat instead of holding the connection open for the full long-poll window. Also upgrades the S2 streamstore client to 0.25 and moves realtime streams to S2's current hosts.

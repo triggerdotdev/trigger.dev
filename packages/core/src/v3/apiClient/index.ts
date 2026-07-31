@@ -1453,13 +1453,6 @@ export class ApiClient {
        * enqueued into the consumer stream — handle the event here.
        */
       onControl?: (event: ControlEvent) => void;
-      /**
-       * Fires once when the session reaches the live tail (backlog drained),
-       * with the observed tail position. No-op when the backend omits the
-       * tail-carrying heartbeat. Mirrors the browser transport's caught-up
-       * signal on the worker / apiClient read path.
-       */
-      onCaughtUp?: (tail: { seqNum: number; timestamp: Date }) => void;
     }
   ): Promise<AsyncIterableStream<T>> {
     const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`;
@@ -1474,12 +1467,6 @@ export class ApiClient {
     });
 
     const stream = await subscription.subscribe();
-    if (options?.onCaughtUp) {
-      subscription
-        .caughtUp()
-        .then(options.onCaughtUp)
-        .catch(() => {});
-    }
     const onPart = options?.onPart;
     const onControl = options?.onControl;
 

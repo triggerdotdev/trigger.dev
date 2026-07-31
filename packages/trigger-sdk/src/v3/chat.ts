@@ -1746,22 +1746,6 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           currentSubscription = subscription;
           const sseStream = await subscription.subscribe();
           const reader = sseStream.getReader();
-          /**
-           * Register the caught-up close before the priming read below. A
-           * quiescent reconnect delivers only a tail-bearing ping, which
-           * yields no visible record, so waiting for the first visible read
-           * here would mean caught-up is never observed.
-           */
-          if (options?.peekSettled) {
-            subscription
-              .caughtUp()
-              .then(() => {
-                if (!sawFirstChunk && !combinedSignal.aborted) {
-                  internalAbort.abort();
-                }
-              })
-              .catch(() => {});
-          }
           try {
             const first = await reader.read();
             if (first.done) {

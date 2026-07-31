@@ -18,7 +18,6 @@ import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
 import {
   appendInput,
   collectSessionOut,
-  collectUntilCaughtUp,
   isTurnComplete,
   mintSessionToken,
   openChannelRaw,
@@ -163,7 +162,7 @@ describe("session stream e2e", () => {
     expect(allData).toEqual([0, 1, 2, 3, 4]);
   });
 
-  it("E7 trim-at-tail: trim command record is filtered; caught-up still fires", async () => {
+  it("E7 trim-at-tail: trim command record is filtered from the stream", async () => {
     const { addressingKey, token, producer, baseUrl } = await setupSession();
 
     await producer.appendData({ n: 0 }, "p0");
@@ -171,62 +170,17 @@ describe("session stream e2e", () => {
     await producer.appendTurnComplete();
     await producer.trim(keep);
 
-    const { parts, caughtUp } = await collectUntilCaughtUp({
+    const { parts } = await collectSessionOut({
       baseUrl,
       addressingKey,
       token,
+      until: (p) => p.some(isTurnComplete),
       maxMs: 15_000,
     });
 
-    expect(caughtUp).toBe(true);
     const commandRecords = parts.filter((p) => (p.headers ?? []).some(([k]) => k === ""));
     expect(commandRecords).toHaveLength(0);
     expect(parts.filter((p) => p.chunk != null).length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("E3 quiescent reconnect (GREEN): client caught-up close settles at the tail", async () => {
-    const { addressingKey, token, producer, baseUrl } = await setupSession();
-
-    await producer.appendData({ n: 0 }, "p0");
-    await producer.appendData({ n: 1 }, "p1");
-    const tc = await producer.appendTurnComplete();
-
-    const { parts, caughtUp, settleMs } = await collectUntilCaughtUp({
-      baseUrl,
-      addressingKey,
-      token,
-      lastEventId: String(tc),
-      timeoutInSeconds: 30,
-      maxMs: 15_000,
-    });
-
-    expect(caughtUp).toBe(true);
-    expect(settleMs).toBeLessThan(5_000);
-    expect(parts.filter((p) => p.chunk != null)).toHaveLength(0);
-  });
-
-  it("E4 backlog reaches tail (GREEN): every record is delivered before caught-up", async () => {
-    const { addressingKey, token, producer, baseUrl } = await setupSession();
-
-    await producer.appendData({ n: 0 }, "p0");
-    await producer.appendData({ n: 1 }, "p1");
-    await producer.appendData({ n: 2 }, "p2");
-    const tc = await producer.appendTurnComplete();
-
-    const { parts, caughtUp, tailSeqNum } = await collectUntilCaughtUp({
-      baseUrl,
-      addressingKey,
-      token,
-      maxMs: 15_000,
-    });
-
-    expect(caughtUp).toBe(true);
-    expect(tailSeqNum).toBe(tc + 1);
-    const dataChunks = parts
-      .filter((p) => !isTurnComplete(p) && p.chunk != null)
-      .map((p) => (p.chunk as { n: number }).n);
-    expect(dataChunks).toEqual([0, 1, 2]);
-    expect(parts.some(isTurnComplete)).toBe(true);
   });
 
   it("E8 in/append 413 for an oversized body still carries CORS headers", async () => {

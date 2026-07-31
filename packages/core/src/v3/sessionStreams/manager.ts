@@ -466,11 +466,6 @@ export class StandardSessionStreamManager implements SessionStreamManager {
             console.error(`[SessionStreamManager] Tail error for "${key}":`, error);
           }
         },
-        onCaughtUp: (tail) => {
-          if (this.debug) {
-            console.log(`[SessionStreamManager] Caught up on "${key}" at seq ${tail.seqNum}`);
-          }
-        },
       });
 
       // Drain to keep the pipeThrough flowing. Records were already

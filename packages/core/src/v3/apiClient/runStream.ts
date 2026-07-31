@@ -14,8 +14,6 @@ import { conditionallyImportAndParsePacket, parsePacket } from "../utils/ioSeria
 import { ApiError, isTriggerRealtimeAuthError } from "./errors.js";
 import type { ApiClient } from "./index.js";
 import { zodShapeStream } from "./stream.js";
-import type { CaughtUpBoundary } from "@s2-dev/streamstore";
-import { CaughtUpTracker } from "@s2-dev/streamstore";
 
 export type RunShape<TRunTypes extends AnyRunTypes> = TRunTypes extends AnyRunTypes
   ? {
@@ -188,13 +186,9 @@ export type SSEStreamPart<TChunk = unknown> = {
 
 /**
  * Internal item flowing from the decode transform to the consumer-facing
- * stream. A `boundary` entry is emitted after the visible records of the batch
- * (or ping) it belongs to, so the wrapper marks it delivered only once the
- * consumer has drained past those records.
+ * stream.
  */
-type PumpItem =
-  | { type: "part"; part: SSEStreamPart }
-  | { type: "boundary"; boundary: CaughtUpBoundary };
+type PumpItem = { type: "part"; part: SSEStreamPart };
 
 // Real implementation for production
 export class SSEStreamSubscription implements StreamSubscription {
@@ -210,7 +204,6 @@ export class SSEStreamSubscription implements StreamSubscription {
   private retryNowController: AbortController | null = null;
   private internalAbort: AbortController | null = null;
   private cancelledByConsumer = false;
-  private caughtUpTracker = new CaughtUpTracker();
 
   constructor(
     private url: string,
@@ -293,33 +286,8 @@ export class SSEStreamSubscription implements StreamSubscription {
   }
 
   /**
-   * True once this session has consumed everything up to the tail the server
-   * last reported (via a batch `tail` or a heartbeat `ping`). Resets to false
-   * on reconnect and while records remain before the reported tail. Backed by
-   * S2's `CaughtUpTracker`, fed from the v2 batch/ping wire signals.
-   */
-  isCaughtUp(): boolean {
-    return this.caughtUpTracker.isCaughtUp();
-  }
-
-  /**
-   * Resolves when this session reaches the live tail (backlog drained),
-   * carrying the last observed tail position. Resolves immediately if already
-   * caught up; call again after falling behind. Rejects if the stream ends
-   * before catching up. Stays pending across internal reconnects.
-   */
-  caughtUp(): ReturnType<CaughtUpTracker["caughtUp"]> {
-    return this.caughtUpTracker.caughtUp();
-  }
-
-  /**
-   * The transport pumps decoded items (records and caught-up boundaries) into
-   * an internal stream; the returned stream drains it on demand. It uses
-   * `highWaterMark: 0` so each consumer read pulls exactly one item, which lets
-   * a caught-up boundary be marked delivered only once every visible record
-   * preceding it has actually been consumed. The terminal `end()` fires here,
-   * after that drain, so a caught-up `caughtUp()` resolves rather than being
-   * rejected by an early end from the transport.
+   * The transport pumps decoded records into an internal stream; the returned
+   * stream drains it on demand.
    */
   async subscribe(): Promise<ReadableStream<SSEStreamPart>> {
     // eslint-disable-next-line no-this-alias
@@ -340,33 +308,22 @@ export class SSEStreamSubscription implements StreamSubscription {
     return new ReadableStream<SSEStreamPart>(
       {
         async pull(controller) {
-          while (true) {
-            let result: ReadableStreamReadResult<PumpItem>;
-            try {
-              result = await internalReader.read();
-            } catch (err) {
-              self.caughtUpTracker.end();
-              controller.error(err);
-              return;
-            }
-            if (result.done) {
-              self.caughtUpTracker.end();
-              self.options.onComplete?.();
-              controller.close();
-              return;
-            }
-            const item = result.value;
-            if (item.type === "boundary") {
-              item.boundary.markDelivered();
-              continue;
-            }
-            controller.enqueue(item.part);
+          let result: ReadableStreamReadResult<PumpItem>;
+          try {
+            result = await internalReader.read();
+          } catch (err) {
+            controller.error(err);
             return;
           }
+          if (result.done) {
+            self.options.onComplete?.();
+            controller.close();
+            return;
+          }
+          controller.enqueue(result.value.part);
         },
         cancel(reason) {
           self.cancelledByConsumer = true;
-          self.caughtUpTracker.end();
           self.options.onComplete?.();
           internalReader.cancel(reason).catch(() => {});
         },
@@ -497,14 +454,6 @@ export class SSEStreamSubscription implements StreamSubscription {
                   };
                   if (!data || !Array.isArray(data.records)) return;
 
-                  const boundary = this.caughtUpTracker.observeBatch({
-                    recordCount: data.records.length,
-                    lastSeqNum: data.records.at(-1)?.seq_num,
-                    tail: data.tail
-                      ? { seqNum: data.tail.seq_num, timestamp: new Date(data.tail.timestamp) }
-                      : undefined,
-                  });
-
                   for (const record of data.records) {
                     // Always advance the resume cursor — even for records we
                     // skip — so a future Last-Event-ID reconnect lands past
@@ -543,25 +492,6 @@ export class SSEStreamSubscription implements StreamSubscription {
                     });
                   }
 
-                  if (boundary) {
-                    chunkController.enqueue({ type: "boundary", boundary });
-                  }
-                } else if (chunk.event === "ping") {
-                  const ping = safeParseJSON(chunk.data) as
-                    | { tail?: { seq_num: number; timestamp: number } }
-                    | undefined;
-                  if (ping?.tail) {
-                    const pingBoundary = this.caughtUpTracker.observeBatch({
-                      recordCount: 0,
-                      tail: {
-                        seqNum: ping.tail.seq_num,
-                        timestamp: new Date(ping.tail.timestamp),
-                      },
-                    });
-                    if (pingBoundary) {
-                      chunkController.enqueue({ type: "boundary", boundary: pingBoundary });
-                    }
-                  }
                 }
               }
             },
@@ -667,7 +597,6 @@ export class SSEStreamSubscription implements StreamSubscription {
     }
 
     // Reconnect
-    this.caughtUpTracker.reconnect();
     await this.connectStream(controller);
   }
 }
