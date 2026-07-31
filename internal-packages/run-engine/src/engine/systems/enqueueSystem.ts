@@ -7,6 +7,7 @@ import type {
 import type { RunStore } from "@internal/run-store";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "../consts.js";
 import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 
@@ -95,8 +96,8 @@ export class EnqueueSystem {
         {
           run: run,
           snapshot: {
-            executionStatus: snapshot?.status ?? "QUEUED",
-            description: snapshot?.description ?? "Run was QUEUED",
+            executionStatus: snapshot?.status ?? QUEUED_SNAPSHOT_STATUS,
+            description: snapshot?.description ?? QUEUED_SNAPSHOT_DESCRIPTION,
             metadata: snapshot?.metadata ?? undefined,
           },
           previousSnapshotId,

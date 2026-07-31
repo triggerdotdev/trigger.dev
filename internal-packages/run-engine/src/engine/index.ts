@@ -54,6 +54,7 @@ import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import type { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
+import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "./consts.js";
 import {
   ExecutionSnapshotNotFoundError,
   NotImplementedError,
@@ -1039,8 +1040,8 @@ export class RunEngine {
               snapshot: {
                 id: initialSnapshotId,
                 engine: "V2",
-                executionStatus: delayUntil ? "DELAYED" : "QUEUED",
-                description: delayUntil ? "Run is delayed" : "Run was QUEUED",
+                executionStatus: delayUntil ? "DELAYED" : QUEUED_SNAPSHOT_STATUS,
+                description: delayUntil ? "Run is delayed" : QUEUED_SNAPSHOT_DESCRIPTION,
                 runStatus: status,
                 environmentId: environment.id,
                 environmentType: environment.type,
@@ -1174,8 +1175,8 @@ export class RunEngine {
               },
               snapshot: {
                 id: initialSnapshotId,
-                executionStatus: "QUEUED",
-                description: "Run was QUEUED",
+                executionStatus: QUEUED_SNAPSHOT_STATUS,
+                description: QUEUED_SNAPSHOT_DESCRIPTION,
                 runStatus: taskRun.status,
                 attemptNumber: taskRun.attemptNumber ?? null,
                 checkpointId: null,
