@@ -23,6 +23,7 @@ import {
 } from "@trigger.dev/core/v3";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import {
+  generateInternalId,
   parseNaturalLanguageDurationInMs,
   RunId,
   WaitpointId,
@@ -53,6 +54,7 @@ import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import type { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
+import { QUEUED_SNAPSHOT_DESCRIPTION, QUEUED_SNAPSHOT_STATUS } from "./consts.js";
 import {
   ExecutionSnapshotNotFoundError,
   NotImplementedError,
@@ -950,6 +952,7 @@ export class RunEngine {
 
         let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
         const taskRunId = RunId.fromFriendlyId(friendlyId);
+        const initialSnapshotId = generateInternalId();
 
         // App-level replacement for the dropped TaskRun env/project Cascade FKs.
         await this.controlPlaneResolver.assertEnvExists(environment.id);
@@ -1035,9 +1038,10 @@ export class RunEngine {
                 annotations,
               },
               snapshot: {
+                id: initialSnapshotId,
                 engine: "V2",
-                executionStatus: delayUntil ? "DELAYED" : "RUN_CREATED",
-                description: delayUntil ? "Run is delayed" : "Run was created",
+                executionStatus: delayUntil ? "DELAYED" : QUEUED_SNAPSHOT_STATUS,
+                description: delayUntil ? "Run is delayed" : QUEUED_SNAPSHOT_DESCRIPTION,
                 runStatus: status,
                 environmentId: environment.id,
                 environmentType: environment.type,
@@ -1164,13 +1168,29 @@ export class RunEngine {
               await this.ttlSystem.scheduleExpireRun({ runId: taskRun.id, ttl: taskRun.ttl });
             }
 
-            await this.enqueueSystem.enqueueRun({
+            this.eventBus.emit("executionSnapshotCreated", {
+              time: new Date(),
+              run: {
+                id: taskRun.id,
+              },
+              snapshot: {
+                id: initialSnapshotId,
+                executionStatus: QUEUED_SNAPSHOT_STATUS,
+                description: QUEUED_SNAPSHOT_DESCRIPTION,
+                runStatus: taskRun.status,
+                attemptNumber: taskRun.attemptNumber ?? null,
+                checkpointId: null,
+                workerId: workerId ?? null,
+                runnerId: runnerId ?? null,
+                isValid: true,
+                error: null,
+                completedWaitpointIds: [],
+              },
+            });
+
+            await this.enqueueSystem.publishRun({
               run: taskRun,
               env: environment,
-              workerId,
-              runnerId,
-              tx: prisma,
-              skipRunLock: true,
               includeTtl: true,
               anchorEligibilityAtQueuePosition: true,
               enableFastPath,

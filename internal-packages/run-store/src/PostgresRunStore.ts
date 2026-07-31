@@ -680,6 +680,7 @@ export class PostgresRunStore implements RunStore {
     const client = tx ?? this.prisma;
 
     const snapshotCreate = {
+      id: params.snapshot.id,
       engine: params.snapshot.engine,
       executionStatus: params.snapshot.executionStatus,
       description: params.snapshot.description,
