@@ -27,6 +27,7 @@
  * and is rendered in transcript order.
  */
 import { evidenceRefSchema, evidenceSchema } from "./evidence.js";
+import { agentIntentSchema } from "./intent.js";
 import { runFiltersSchema } from "./run-filters.js";
 import { triggerUriSchema } from "./trigger-uri.js";
 import { z } from "zod";
@@ -583,11 +584,55 @@ export const investigationStateInputSchema = investigationStateSchemaWith(
   evidenceRefSchema
 );
 
+/**
+ * The card's typed next actions — and the one thing on an investigation block the
+ * model does NOT write.
+ *
+ * The whole promise of "Show code" is that the code exists, was read, and is
+ * pinned: only the executor knows whether a file was actually read this
+ * investigation at the deployed snapshot, so it decides which actions a card
+ * offers and grounds each one in an already-canonical `trigger://` URI. The model
+ * can't ask for a button, and the button can't carry a target it invented — that
+ * is why this uses the strict `agentIntentSchema` and not the chart block's
+ * lenient `chartActionIntentSchema`.
+ *
+ * `version` is the action *vocabulary* version, separate from the block's payload
+ * version: a host that doesn't know a `kind` skips that action, and a card from
+ * before capabilities existed simply has none (the field is optional, forever).
+ */
+export const INVESTIGATION_CAPABILITIES_VERSION = 1;
+
+export const investigationActionKindSchema = z.enum([
+  /** Open the cited source location in the conversation. Concluded cards only. */
+  "show_code",
+  /** Watch for the same failure happening again. */
+  "watch_recurrence",
+  /** Go look at the other runs that hit this. */
+  "view_similar",
+  /** Keep asking about this investigation. */
+  "ask_follow_up",
+]);
+
+export const investigationActionSchema = z.object({
+  kind: investigationActionKindSchema,
+  label: z.string().min(1),
+  intent: agentIntentSchema,
+});
+
+export const investigationCapabilitiesSchema = z.object({
+  version: z.number().int().positive(),
+  actions: z.array(investigationActionSchema).max(4).default([]),
+});
+
 const investigationBlockBodySchema = z.object({
   type: z.literal("investigation"),
   investigation: investigationStateSchema,
+  /** Executor-populated; absent on every card that predates it. */
+  capabilities: investigationCapabilitiesSchema.optional(),
 });
 
+// No `capabilities` here on purpose: a field the model can't write is a field the
+// model can't fake. Anything it sends is stripped at this boundary.
 const investigationBlockBodyInputSchema = z.object({
   type: z.literal("investigation"),
   investigation: investigationStateInputSchema,
@@ -620,6 +665,9 @@ export type InvestigationOutcome = z.infer<typeof investigationOutcomeSchema>;
 export type InvestigationSeverity = z.infer<typeof investigationSeveritySchema>;
 export type HypothesisVerdict = z.infer<typeof hypothesisVerdictSchema>;
 export type InvestigationCaveat = z.infer<typeof investigationCaveatSchema>;
+export type InvestigationAction = z.infer<typeof investigationActionSchema>;
+export type InvestigationActionKind = z.infer<typeof investigationActionKindSchema>;
+export type InvestigationCapabilities = z.infer<typeof investigationCapabilitiesSchema>;
 export type ViewBlockInput = z.infer<typeof viewBlockInputSchema>;
 
 // ---------------------------------------------------------------------------

@@ -462,6 +462,103 @@ describe("investigation block", () => {
   });
 });
 
+describe("investigation evidence refs (the model-facing boundary)", () => {
+  const withEvidence = (evidence: unknown) =>
+    viewBlockInputSchema.safeParse({
+      type: "investigation",
+      investigation: { ...concludedInvestigation, evidence: [evidence] },
+    });
+
+  it("takes a source location as named fields, never as one string", () => {
+    expect(
+      withEvidence({
+        kind: "source",
+        path: "src/tasks/send-order-receipt.ts",
+        line: 42,
+        label: "the retry config",
+      }).success
+    ).toBe(true);
+    // The commit is optional — the executor pins it to the turn's snapshot.
+    expect(withEvidence({ kind: "source", path: "src/a.ts", label: "a file" }).success).toBe(true);
+    // A path:line string in the old `uri` field no longer passes as evidence:
+    // that shape is exactly what couldn't be canonicalized.
+    expect(withEvidence({ kind: "source", uri: "src/a.ts:42", label: "a file" }).success).toBe(
+      false
+    );
+    expect(withEvidence({ kind: "source", path: "", label: "a file" }).success).toBe(false);
+    expect(withEvidence({ kind: "source", path: "src/a.ts", line: 0, label: "x" }).success).toBe(
+      false
+    );
+  });
+
+  it("takes a span as its run and span ids", () => {
+    expect(
+      withEvidence({ kind: "span", runId: "run_abc123", spanId: "span_0f1", label: "the span" })
+        .success
+    ).toBe(true);
+    expect(withEvidence({ kind: "span", uri: "span_0f1", label: "the span" }).success).toBe(false);
+  });
+
+  it("still takes one bare id for the simple kinds", () => {
+    expect(withEvidence({ kind: "error", uri: "error_c4b4a797", label: "the group" }).success).toBe(
+      true
+    );
+    expect(withEvidence({ kind: "run", uri: "", label: "a run" }).success).toBe(false);
+  });
+});
+
+describe("investigation capabilities", () => {
+  const capabilities = {
+    version: 1,
+    actions: [
+      {
+        kind: "show_code",
+        label: "Show code",
+        intent: { kind: "ask", prompt: "Show me src/a.ts around line 42." },
+      },
+      {
+        kind: "view_similar",
+        label: "View similar failures",
+        intent: { kind: "navigate", target: "trigger://proj_abc/env_abc/error/error_abc" },
+      },
+    ],
+  };
+
+  it("rides on the block, and old cards without it still parse", () => {
+    const parsed = investigationBlockSchema.parse({ ...investigationBlock, capabilities });
+    expect(parsed.capabilities?.actions).toHaveLength(2);
+    expect(investigationBlockSchema.parse(investigationBlock).capabilities).toBeUndefined();
+    expect(parseStoredViewBlock(investigationBody)).not.toHaveProperty("capabilities");
+  });
+
+  it("is executor-only: the model can't supply it", () => {
+    expect(viewBlockInputSchema.parse({ ...investigationBody, capabilities })).not.toHaveProperty(
+      "capabilities"
+    );
+  });
+
+  it("takes only strict intents and a known action kind", () => {
+    const withAction = (action: unknown) =>
+      investigationBlockSchema.safeParse({
+        ...investigationBlock,
+        capabilities: { version: 1, actions: [action] },
+      });
+    // A navigate target must already be a canonical URI — unlike a chart action,
+    // nothing here comes from the model, so there's no lenient string to allow.
+    expect(
+      withAction({
+        kind: "view_similar",
+        label: "View similar failures",
+        intent: { kind: "navigate", target: "error_abc" },
+      }).success
+    ).toBe(false);
+    expect(
+      withAction({ kind: "explain_yourself", label: "?", intent: { kind: "ask", prompt: "hi" } })
+        .success
+    ).toBe(false);
+  });
+});
+
 describe("isRevisableBlock", () => {
   it("is false without an id", () => {
     expect(isRevisableBlock(parseStoredViewBlock(legacyDiagnosis))).toBe(false);

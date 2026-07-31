@@ -80,12 +80,6 @@ describe("resolveTriggerUri", () => {
     expect(
       resolveTriggerUri(
         scope,
-        formatTriggerUri({ kind: "source", ...uriScope, sha: "abc123", path: "src/a.ts", line: 4 })
-      )
-    ).toBeNull();
-    expect(
-      resolveTriggerUri(
-        scope,
         formatTriggerUri({ kind: "investigation", ...uriScope, investigationId: "inv_1" })
       )
     ).toBeNull();
@@ -119,5 +113,92 @@ describe("resolveTriggerUri", () => {
     expect(resolveTriggerUri(scope, "https://cloud.trigger.dev/runs/run_abc")).toBeNull();
     expect(resolveTriggerUri(scope, "trigger://proj_a/env_1234/teapot/x")).toBeNull();
     expect(resolveTriggerUri(scope, "trigger://proj_abcdefghijklmnop/env_1234/run")).toBeNull();
+  });
+});
+
+// A source URI is the investigation card's code grounding, so it has to open the
+// code: the URI pins the commit and the repo-relative path, and the scope's
+// repository (the project's GitHub connection, or a deployment's git remote) says
+// where that lives.
+describe("resolveTriggerUri: source URIs", () => {
+  const sha = "a".repeat(40);
+  const sourceUri = (path: string, line?: number) =>
+    formatTriggerUri({
+      kind: "source",
+      ...uriScope,
+      sha,
+      path,
+      ...(line === undefined ? {} : { line }),
+    });
+  const withRepo = (repository: TriggerUriScope["repository"]): TriggerUriScope => ({
+    ...scope,
+    repository,
+  });
+
+  it("opens the GitHub blob at the pinned commit, with the line", () => {
+    expect(
+      resolveTriggerUri(
+        withRepo({ fullName: "acme/orders" }),
+        sourceUri("src/tasks/send-order-receipt.ts", 42)
+      )
+    ).toEqual({
+      label: "src/tasks/send-order-receipt.ts:42",
+      url: `https://github.com/acme/orders/blob/${sha}/src/tasks/send-order-receipt.ts#L42`,
+      external: true,
+    });
+  });
+
+  it("omits the line fragment when there is no line, and encodes each path segment", () => {
+    expect(
+      resolveTriggerUri(withRepo({ fullName: "acme/orders" }), sourceUri("src/some dir/a file.ts"))
+        ?.url
+    ).toBe(`https://github.com/acme/orders/blob/${sha}/src/some%20dir/a%20file.ts`);
+  });
+
+  it("accepts a deployment's git remote however it was written", () => {
+    const expected = `https://github.com/acme/orders/blob/${sha}/src/a.ts`;
+    for (const remoteUrl of [
+      "https://github.com/acme/orders.git",
+      "git@github.com:acme/orders.git",
+      "ssh://git@github.com/acme/orders",
+      "https://x-access-token:secret@github.com/acme/orders.git",
+    ]) {
+      expect(resolveTriggerUri(withRepo({ remoteUrl }), sourceUri("src/a.ts"))?.url).toBe(expected);
+    }
+  });
+
+  it("returns null rather than guessing when there's no repository to open", () => {
+    // No connection at all: the card keeps the label, with no link.
+    expect(resolveTriggerUri(scope, sourceUri("src/a.ts"))).toBeNull();
+    expect(resolveTriggerUri(withRepo(null), sourceUri("src/a.ts"))).toBeNull();
+    expect(resolveTriggerUri(withRepo({ fullName: "" }), sourceUri("src/a.ts"))).toBeNull();
+    // Not GitHub, not a repository path, not a repo name.
+    expect(
+      resolveTriggerUri(
+        withRepo({ remoteUrl: "https://gitlab.com/acme/orders" }),
+        sourceUri("src/a.ts")
+      )
+    ).toBeNull();
+    expect(
+      resolveTriggerUri(withRepo({ remoteUrl: "https://github.com/acme" }), sourceUri("src/a.ts"))
+    ).toBeNull();
+    expect(
+      resolveTriggerUri(withRepo({ fullName: "acme/orders/extra" }), sourceUri("src/a.ts"))
+    ).toBeNull();
+  });
+
+  it("still refuses a source URI from another project or environment", () => {
+    expect(
+      resolveTriggerUri(
+        withRepo({ fullName: "acme/orders" }),
+        formatTriggerUri({
+          kind: "source",
+          projectRef: "proj_somethingelse",
+          environmentId: scope.id,
+          sha,
+          path: "src/a.ts",
+        })
+      )
+    ).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ import { createTranscriptOrder, orderTranscript } from "./message-order";
 import { appendRunFilters, pendingNavigateIntents } from "./navigate-target";
 import type { AgentPageContext } from "./page-context-types";
 import { useAgentMessageQuota } from "./useAgentMessageQuota";
+import { useTriggerUriResolver } from "./useTriggerUriResolver";
 import { WatchChips, type WatchChip } from "./WatchChips";
 
 /**
@@ -267,6 +268,10 @@ export function DashboardAgentChat({
   // owns the environment scope the resolver needs); the intent's runs-list
   // filters are applied on top. Same-origin, so this is a client-side navigation
   // — the panel lives in the env layout and survives it.
+  // Sync facade over the same `resolve` action — evidence and card links render
+  // as raw URIs on first paint and become links once the server answers.
+  const resolveUri = useTriggerUriResolver(actionPath);
+
   const goTo = useCallback(
     async (intent: Extract<AgentIntent, { kind: "navigate" }>) => {
       const body = new FormData();
@@ -381,6 +386,7 @@ export function DashboardAgentChat({
           onIntent={handleIntent}
           pagePaths={pagePaths}
           watches={watches}
+          resolveUri={resolveUri}
         />
       )}
       {/* The Free plan's message cap occupies the composer slot: at the cap the

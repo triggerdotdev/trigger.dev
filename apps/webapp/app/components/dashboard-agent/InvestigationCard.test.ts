@@ -31,4 +31,19 @@ describe("InvestigationCard purity", () => {
     expect(source).toMatch(/resolveUri/);
     expect(source).not.toMatch(/\/orgs\//);
   });
+
+  it("hands its actions to the host as intents, and never composes its own", () => {
+    // The actions row is exactly the chart's seam: the button emits the block's
+    // intent and the host decides. So the card reads `capabilities.actions` and
+    // calls `onIntent` — it never builds a prompt or a target itself.
+    expect(source).toMatch(/capabilities\?\.actions/);
+    expect(source).toMatch(/onIntent\(action\.intent\)/);
+    expect(source).not.toMatch(/kind:\s*"(ask|navigate)"/);
+    // The same row component the rest of the chat uses, so there's one button row.
+    expect(source).toMatch(/ChatActionsRow/);
+  });
+
+  it("renders nothing action-shaped without a host to hand intents to", () => {
+    expect(source).toMatch(/if \(!onIntent \|\| actions\.length === 0\) return null;/);
+  });
 });

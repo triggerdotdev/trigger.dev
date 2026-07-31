@@ -388,10 +388,20 @@ function withCacheBreakpointOnLast(messages: ModelMessage[]): ModelMessage[] {
   ];
 }
 
+function wakeOutcome(action: WatchWakeAction): string {
+  if (action.type === "watch.fired") return "the condition happened";
+  // An expiry can be a real answer: the condition became impossible (e.g. the
+  // watched run was cancelled), which is not the same as running out of time.
+  if ((action.facts as { reason?: string } | undefined)?.reason === "terminal_unsatisfied") {
+    return "the condition can no longer happen — that is the answer, not a timeout";
+  }
+  return "the watch ended without firing";
+}
+
 function wakePrompt(action: WatchWakeAction): string {
   return [
     WAKE_INSTRUCTION,
-    `Outcome: ${action.type === "watch.fired" ? "the condition happened" : "the watch ended without firing"}.`,
+    `Outcome: ${wakeOutcome(action)}.`,
     `Watching: ${action.spec.kind}${action.identity ? ` (${action.identity})` : ""}.`,
     action.note ? `Why the user asked for it: ${action.note}` : undefined,
     `Facts from the check:\n${JSON.stringify(action.facts, null, 2)}`,

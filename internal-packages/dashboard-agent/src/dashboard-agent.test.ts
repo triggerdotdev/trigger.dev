@@ -10,8 +10,11 @@ import type {
 } from "@ai-sdk/provider";
 import { simulateReadableStream, type UIMessage, type UIMessageChunk } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { disposeRepoWorkspaces, workdirFor, type RepoSnapshot } from "./repo-tools";
 import {
   clientDataSchema,
   dashboardAgent,
@@ -753,7 +756,7 @@ describe("buildDashboardAgentTools", () => {
     expect(output.blocks[0].investigation.title).toBe(investigationState.title);
   });
 
-  it("render_view canonicalizes bare evidence ids into trigger:// URIs and drops unresolvable ones", async () => {
+  it("render_view canonicalizes bare evidence ids into trigger:// URIs", async () => {
     const { capability, upserts } = fakeInvestigations();
     const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
 
@@ -773,8 +776,8 @@ describe("buildDashboardAgentTools", () => {
       evidence: [
         // Already canonical — passes through untouched.
         ...investigationState.evidence,
-        // A span can't be built from one bare id — dropped, not failed.
-        { kind: "span", uri: "span_123", label: "the failing span" },
+        // A span carries its two parts, so the executor can build the URI.
+        { kind: "span", runId: "run_abc123", spanId: "span_123", label: "the failing span" },
       ],
     });
 
@@ -785,10 +788,199 @@ describe("buildDashboardAgentTools", () => {
       "trigger://proj_abc/env_abc/deployment/20260726.4",
       "trigger://proj_abc/env_abc/error/error_c4b4a797397a9c43",
     ]);
-    expect(investigation.evidence).toHaveLength(1);
-    expect(investigation.evidence[0].uri).toBe("trigger://proj_abc/env_abc/run/run_abc123");
+    expect(investigation.evidence.map((e: { uri: string }) => e.uri)).toEqual([
+      "trigger://proj_abc/env_abc/run/run_abc123",
+      "trigger://proj_abc/env_abc/run/run_abc123/span/span_123",
+    ]);
     // The store received the canonical form, not the bare ids.
     expect(JSON.stringify(upserts[0])).not.toContain('"uri":"error_c4b4a797397a9c43"');
+  });
+
+  it("render_view pins a source citation to the commit the file was read at", async () => {
+    const { capability } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({
+      ...SCOPE,
+      investigations: capability,
+      repoSnapshot: {
+        tarballUrl: "https://codeload.example/tarball",
+        owner: "acme",
+        repo: "orders",
+        sha: "a".repeat(40),
+      },
+    });
+
+    const output = await renderInvestigation(tools, {
+      ...investigationState,
+      evidence: [
+        {
+          kind: "source",
+          path: "src/tasks/send-order-receipt.ts",
+          line: 42,
+          label: "the retry config",
+        },
+        // An explicit commit wins over the turn's snapshot.
+        { kind: "source", path: "src/queue.ts", sha: "b".repeat(40), label: "the queue setup" },
+      ],
+    });
+
+    expect(output.error).toBeUndefined();
+    expect(output.blocks[0].investigation.evidence.map((e: { uri: string }) => e.uri)).toEqual([
+      `trigger://proj_abc/env_abc/source/${"a".repeat(40)}/src/tasks/send-order-receipt.ts?line=42`,
+      `trigger://proj_abc/env_abc/source/${"b".repeat(40)}/src/queue.ts`,
+    ]);
+  });
+
+  it("render_view fails by name when a source citation can't be pinned, instead of dropping it", async () => {
+    const { capability, upserts } = fakeInvestigations();
+    // No repoSnapshot: nothing to pin a source citation to.
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    const output = await renderInvestigation(tools, {
+      ...investigationState,
+      evidence: [{ kind: "source", path: "src/a.ts", line: 3, label: "the line that throws" }],
+    });
+
+    expect(output.blocks).toBeUndefined();
+    expect(output.error).toContain("src/a.ts");
+    expect(upserts).toHaveLength(0);
+  });
+
+  // -------------------------------------------------------------------------
+  // The card's typed actions, decided by the executor
+  // -------------------------------------------------------------------------
+
+  const codeSnapshot: RepoSnapshot = {
+    tarballUrl: "http://unused.invalid/never-fetched",
+    owner: "acme",
+    repo: "orders",
+    sha: "c".repeat(40),
+  };
+
+  // Pre-seed the deterministic workspace with a `.ready` marker so read_file
+  // serves it offline — the same trick repo-tools.test.ts uses.
+  const seedWorkspace = async () => {
+    const dir = workdirFor(codeSnapshot);
+    await mkdir(join(dir, "src/tasks"), { recursive: true });
+    await writeFile(
+      join(dir, "src/tasks/send-order-receipt.ts"),
+      "export const retry = { maxAttempts: 3, minTimeoutInMs: 1000 };\n"
+    );
+    await writeFile(join(dir, ".ready"), codeSnapshot.sha);
+  };
+
+  const concludedWithSource = {
+    ...concludedState,
+    evidence: [
+      { kind: "error", uri: "error_c4b4a797397a9c43", label: "the error group" },
+      {
+        kind: "source",
+        path: "src/tasks/send-order-receipt.ts",
+        line: 1,
+        label: "the retry config",
+      },
+    ],
+  };
+
+  afterEach(async () => {
+    await disposeRepoWorkspaces();
+  });
+
+  it("offers Show code only once the cited file was really read at the pinned commit", async () => {
+    await seedWorkspace();
+    const { capability } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({
+      ...SCOPE,
+      investigations: capability,
+      repoSnapshot: codeSnapshot,
+    });
+
+    // Cited but never read: the citation is canonical, the button is not offered.
+    const unread = await renderInvestigation(tools, concludedWithSource);
+    expect(unread.blocks[0].capabilities.actions.map((a: { kind: string }) => a.kind)).toEqual([
+      "watch_recurrence",
+      "view_similar",
+    ]);
+
+    // Now read it, and the same state earns the button — grounded in the
+    // canonical source URI, as a canned ask the model didn't write.
+    const readFile = tools.read_file as {
+      execute: (input: unknown, opts: unknown) => Promise<any>;
+    };
+    expect(
+      (await readFile.execute({ path: "src/tasks/send-order-receipt.ts" }, {})).content
+    ).toContain("maxAttempts");
+
+    const grounded = await renderInvestigation(tools, concludedWithSource);
+    const actions = grounded.blocks[0].capabilities.actions;
+    expect(actions.map((a: { kind: string }) => a.kind)).toEqual([
+      "show_code",
+      "watch_recurrence",
+      "view_similar",
+    ]);
+    expect(actions[0].intent.kind).toBe("ask");
+    expect(actions[0].intent.prompt).toContain("src/tasks/send-order-receipt.ts");
+    expect(actions[0].intent.prompt).toContain(codeSnapshot.sha.slice(0, 7));
+    // The follow-up that navigates points at the canonical error URI.
+    expect(actions[2].intent).toEqual({
+      kind: "navigate",
+      target: "trigger://proj_abc/env_abc/error/error_c4b4a797397a9c43",
+    });
+  });
+
+  it("offers no actions while an investigation is still in progress", async () => {
+    const { capability } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+    const output = await renderInvestigation(tools);
+    expect(output.blocks[0].capabilities).toBeUndefined();
+  });
+
+  it("offers a keep-digging follow-up, and never Show code, on an inconclusive card", async () => {
+    await seedWorkspace();
+    const { capability } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({
+      ...SCOPE,
+      investigations: capability,
+      repoSnapshot: codeSnapshot,
+    });
+    const readFile = tools.read_file as {
+      execute: (input: unknown, opts: unknown) => Promise<any>;
+    };
+    await readFile.execute({ path: "src/tasks/send-order-receipt.ts" }, {});
+
+    const output = await renderInvestigation(tools, {
+      ...concludedWithSource,
+      outcome: "inconclusive",
+      remediation: undefined,
+      checkNext: ["Add a span around the provider call."],
+    });
+    expect(output.blocks[0].capabilities.actions.map((a: { kind: string }) => a.kind)).toEqual([
+      "ask_follow_up",
+      "watch_recurrence",
+      "view_similar",
+    ]);
+  });
+
+  it("render_view validates an already-full URI instead of trusting it", async () => {
+    const { capability } = fakeInvestigations();
+    const tools = buildDashboardAgentTools({ ...SCOPE, investigations: capability });
+
+    // Right shape, wrong kind.
+    const wrongKind = await renderInvestigation(tools, {
+      ...investigationState,
+      evidence: [
+        { kind: "error", uri: "trigger://proj_abc/env_abc/run/run_abc123", label: "mislabelled" },
+      ],
+    });
+    expect(wrongKind.error).toContain("cites a run URI");
+
+    // Right shape, another tenant.
+    const wrongScope = await renderInvestigation(tools, {
+      ...investigationState,
+      evidence: [
+        { kind: "run", uri: "trigger://proj_other/env_other/run/run_abc123", label: "borrowed" },
+      ],
+    });
+    expect(wrongScope.error).toContain("different project or environment");
   });
 
   it("render_view revises the same investigation on the next render", async () => {

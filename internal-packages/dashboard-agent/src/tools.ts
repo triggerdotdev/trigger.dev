@@ -1,13 +1,16 @@
 import {
   agentIntentSchema,
   formatTriggerUri,
+  INVESTIGATION_CAPABILITIES_VERSION,
   investigationBlockSchema,
-  isTriggerUri,
+  safeParseTriggerUri,
   VIEW_BLOCK_VERSION,
   type AgentPageContext,
   type Evidence,
   type EvidenceRef,
+  type InvestigationAction,
   type InvestigationBlockBodyInput,
+  type InvestigationCapabilities,
   type InvestigationState,
   type InvestigationStateInput,
   type ParsedTriggerUri,
@@ -567,7 +570,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   // Run-SHA pinning: ask the webapp for a snapshot pinned to a specific run's
   // deployed commit (it mints the scoped token + signed URL server-side). null
   // means the file tools fall back to the default tracked-branch snapshot.
-  const resolveRunSnapshot = async (runId: string): Promise<RepoSnapshot | null> => {
+  const fetchRunSnapshot = async (runId: string): Promise<RepoSnapshot | null> => {
     if (!hasAuth || !projectRef || !environmentName) return null;
     const result = await apiGet(
       origin,
@@ -585,6 +588,80 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       defaultBranch: d.defaultBranch,
     };
   };
+
+  // Memoized per turn: the file tools resolve a run's snapshot on every call, and
+  // the read tracker below needs the same answer to pin the read to a commit —
+  // one exchange, not two per call.
+  const runSnapshots = new Map<string, Promise<RepoSnapshot | null>>();
+  const resolveRunSnapshot = (runId: string): Promise<RepoSnapshot | null> => {
+    let pending = runSnapshots.get(runId);
+    if (!pending) {
+      pending = fetchRunSnapshot(runId);
+      runSnapshots.set(runId, pending);
+    }
+    return pending;
+  };
+
+  /**
+   * Which files this turn actually read, and at which commit: `path` -> the shas
+   * it was read at.
+   *
+   * This is the honest half of the "Show code" decision. The model can claim a
+   * source citation for any path; only a recorded read at the pinned snapshot
+   * proves the file was opened, so a card offers to show code only when the
+   * citation and a read agree on path AND commit.
+   */
+  const filesReadBySha = new Map<string, Set<string>>();
+
+  function recordFileRead(path: string, sha: string) {
+    const key = path.replace(/^\/+/, "");
+    const shas = filesReadBySha.get(key) ?? new Set<string>();
+    shas.add(sha);
+    filesReadBySha.set(key, shas);
+  }
+
+  function wasReadThisTurn(path: string, sha: string): boolean {
+    return filesReadBySha.get(path.replace(/^\/+/, ""))?.has(sha) ?? false;
+  }
+
+  /** The commit a read was served from: the run-pinned snapshot, else the default. */
+  function shaForReadPath(path: string): string | undefined {
+    const shas = filesReadBySha.get(path.replace(/^\/+/, ""));
+    if (!shas || shas.size === 0) return undefined;
+    // A turn that read the same path at two commits gets the default snapshot's,
+    // which is the one the rest of the turn is grounded in.
+    const preferred = ctx.repoSnapshot?.sha;
+    if (preferred && shas.has(preferred)) return preferred;
+    return [...shas][shas.size - 1];
+  }
+
+  /**
+   * Wrap `read_file` so a successful read is recorded against the commit it came
+   * from. The repo tools stay unaware of investigations; this is the tool lane
+   * noticing what the turn looked at.
+   */
+  function withReadTracking(repoTools: ToolSet): ToolSet {
+    const readFile = repoTools.read_file;
+    if (!readFile?.execute) return repoTools;
+    const execute = readFile.execute.bind(readFile);
+    return {
+      ...repoTools,
+      read_file: {
+        ...readFile,
+        execute: async (input: any, options: any) => {
+          const result = await execute(input, options);
+          const path = (result as { path?: string } | undefined)?.path;
+          if (path && !(result as { error?: unknown }).error) {
+            const sha = input?.runId
+              ? (await resolveRunSnapshot(input.runId))?.sha
+              : ctx.repoSnapshot?.sha;
+            if (sha) recordFileRead(path, sha);
+          }
+          return result;
+        },
+      } as (typeof repoTools)[string],
+    };
+  }
 
   // The investigation this tool set is working on. Assigned by the store on the
   // first investigation block and reused after that, so a second render revises
@@ -614,24 +691,95 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
   /**
    * Build the canonical `trigger://` URI for one model-cited evidence ref.
    *
-   * The model cites resources by the bare ids the read tools returned (it can't
-   * construct URIs — the grammar embeds the environment id, which it never
-   * sees). A ref that is already a full trigger:// URI passes through. A ref
-   * that can't be resolved (a kind whose URI needs parts the model doesn't
-   * have, like a span or a source location) returns null and the item is
-   * dropped — a card with one citation fewer beats no card at all.
+   * The model cites resources by what the read tools gave it (it can't construct
+   * URIs — the grammar embeds the environment id, which it never sees), so every
+   * kind arrives in the shape whose parts the executor can turn into a URI: one
+   * bare id for the simple kinds, `{runId, spanId}` for a span, `{path, line?,
+   * sha?}` for a source location.
+   *
+   * Nothing is ever dropped. A ref that can't be canonicalized is reported back
+   * as a tool error naming it, because a silently missing source citation is
+   * exactly the code-grounding this card is supposed to prove.
+   *
+   * A ref that already carries a full `trigger://` URI is not taken on trust: it
+   * is parsed, its kind must match the ref's kind, and its project + environment
+   * must be this turn's — a URI from another scope can't be smuggled in.
    */
   function canonicalizeEvidence(
     items: EvidenceRef[],
     scope: { projectRef: string; environmentId: string }
-  ): Evidence[] {
-    const out: Evidence[] = [];
+  ): { evidence: Evidence[]; errors: string[] } {
+    const evidence: Evidence[] = [];
+    const errors: string[] = [];
+    const base = { projectRef: scope.projectRef, environmentId: scope.environmentId };
+
     for (const item of items) {
-      let ref = item.uri.trim();
-      if (isTriggerUri(ref)) {
-        out.push({ ...item, uri: ref });
+      if (item.kind === "span") {
+        evidence.push({
+          kind: "span",
+          label: item.label,
+          ...(item.excerpt === undefined ? {} : { excerpt: item.excerpt }),
+          uri: formatTriggerUri({
+            ...base,
+            kind: "span",
+            runId: item.runId.trim(),
+            spanId: item.spanId.trim(),
+          }),
+        });
         continue;
       }
+
+      if (item.kind === "source") {
+        const path = item.path.trim().replace(/^\/+/, "");
+        // The commit is what makes a source citation code-grounding rather than a
+        // file name: the model's own sha, else the snapshot the file was read
+        // from this turn, else the turn's default snapshot.
+        const sha = item.sha?.trim() || shaForReadPath(path) || ctx.repoSnapshot?.sha;
+        if (!sha) {
+          errors.push(
+            `source "${path}" has no commit to pin it to — read the file with read_file first, or pass the sha`
+          );
+          continue;
+        }
+        evidence.push({
+          kind: "source",
+          label: item.label,
+          ...(item.excerpt === undefined ? {} : { excerpt: item.excerpt }),
+          uri: formatTriggerUri({
+            ...base,
+            kind: "source",
+            sha,
+            path,
+            ...(item.line === undefined ? {} : { line: item.line }),
+          }),
+        });
+        continue;
+      }
+
+      let ref = item.uri.trim();
+
+      // Already a full URI: validate rather than trust. Kind and scope both have
+      // to match, so a stale or borrowed URI can't ride into this card.
+      const asUri = safeParseTriggerUri(ref);
+      if (asUri.success) {
+        const parsedUri = asUri.data;
+        if (parsedUri.kind !== item.kind) {
+          errors.push(`${item.kind} evidence cites a ${parsedUri.kind} URI (${ref})`);
+          continue;
+        }
+        if (
+          parsedUri.projectRef !== scope.projectRef ||
+          parsedUri.environmentId !== scope.environmentId
+        ) {
+          errors.push(`${ref} belongs to a different project or environment`);
+          continue;
+        }
+        // Re-formatted from the parse, so a hand-typed URI lands in exactly the
+        // encoding everything else stores.
+        evidence.push({ ...item, uri: formatTriggerUri(parsedUri) });
+        continue;
+      }
+
       // An improvised almost-URI ("trigger://errors/error_abc", a dashboard
       // URL): the bare id is its last path segment — salvage that rather than
       // encoding the whole string into a nonsense URI.
@@ -639,16 +787,13 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         const segments = ref.split("?")[0]!.split("/").filter(Boolean);
         const last = segments[segments.length - 1];
         if (!last || last.includes(":")) {
-          console.warn("dropping investigation evidence with unresolvable uri", {
-            kind: item.kind,
-            uri: ref,
-          });
+          errors.push(`${item.kind} evidence "${ref}" isn't a resource id`);
           continue;
         }
         ref = last;
       }
-      const base = { projectRef: scope.projectRef, environmentId: scope.environmentId };
-      let parsed: ParsedTriggerUri | undefined;
+
+      let parsed: ParsedTriggerUri;
       switch (item.kind) {
         case "run":
           parsed = { ...base, kind: "run", runId: ref };
@@ -671,36 +816,100 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         case "runs":
           parsed = { ...base, kind: "runs" };
           break;
-        // span needs a runId + spanId pair and source needs a commit sha —
-        // neither is expressible as one bare id, so only a full URI works.
-        case "span":
-        case "source":
-          break;
       }
-      if (!parsed) {
-        console.warn("dropping investigation evidence with unresolvable uri", {
-          kind: item.kind,
-          uri: ref,
-        });
-        continue;
-      }
-      out.push({ ...item, uri: formatTriggerUri(parsed) });
+      evidence.push({ ...item, uri: formatTriggerUri(parsed) });
     }
-    return out;
+
+    return { evidence, errors };
   }
 
   function canonicalizeInvestigationState(
     state: InvestigationStateInput,
     scope: { projectRef: string; environmentId: string }
-  ): InvestigationState {
-    return {
-      ...state,
-      evidence: canonicalizeEvidence(state.evidence, scope),
-      hypotheses: state.hypotheses.map((hypothesis) => ({
-        ...hypothesis,
-        evidence: canonicalizeEvidence(hypothesis.evidence, scope),
-      })),
-    };
+  ): { state: InvestigationState; errors: string[] } {
+    const own = canonicalizeEvidence(state.evidence, scope);
+    const errors = [...own.errors];
+    const hypotheses = state.hypotheses.map((hypothesis) => {
+      const cited = canonicalizeEvidence(hypothesis.evidence, scope);
+      errors.push(...cited.errors);
+      return { ...hypothesis, evidence: cited.evidence };
+    });
+    return { state: { ...state, evidence: own.evidence, hypotheses }, errors };
+  }
+
+  /**
+   * The card's typed next actions, decided here and never by the model.
+   *
+   * "Show code" is the strict one: it appears only when the investigation
+   * concluded, a source citation survived canonicalization with a concrete line,
+   * and THAT file was actually read this turn at THAT commit — the three things
+   * that make the button's promise true. Its intent is a canned `ask` grounded in
+   * the canonical source URI, so a click can't ask about a target the model
+   * improvised.
+   *
+   * The follow-ups are cheap by comparison: they only need a terminal outcome,
+   * and one of them needs an error group to point at.
+   */
+  function investigationCapabilities(state: InvestigationState): InvestigationCapabilities | null {
+    if (state.outcome === "in_progress") return null;
+
+    const cited = [...state.evidence, ...state.hypotheses.flatMap((h) => h.evidence)];
+    const actions: InvestigationAction[] = [];
+
+    if (state.outcome === "concluded") {
+      for (const evidence of cited) {
+        if (evidence.kind !== "source") continue;
+        const parsed = safeParseTriggerUri(evidence.uri);
+        if (!parsed.success || parsed.data.kind !== "source") continue;
+        const { path, line, sha } = parsed.data;
+        if (line === undefined) continue;
+        if (!wasReadThisTurn(path, sha)) continue;
+        actions.push({
+          kind: "show_code",
+          label: "Show code",
+          intent: {
+            kind: "ask",
+            prompt: `Show me ${path} around line ${line} at the deployed commit ${sha.slice(
+              0,
+              7
+            )} and walk me through how that code causes this.`,
+          },
+        });
+        break;
+      }
+    }
+
+    if (state.outcome === "inconclusive") {
+      actions.push({
+        kind: "ask_follow_up",
+        label: "Keep digging",
+        intent: {
+          kind: "ask",
+          prompt: "Keep digging into this — what else can you check?",
+        },
+      });
+    }
+
+    actions.push({
+      kind: "watch_recurrence",
+      label: "Watch for a repeat",
+      intent: {
+        kind: "ask",
+        prompt: "Watch for this happening again and tell me if it recurs.",
+      },
+    });
+
+    const errorUri = cited.find((evidence) => evidence.kind === "error")?.uri;
+    if (errorUri) {
+      actions.push({
+        kind: "view_similar",
+        label: "View similar failures",
+        intent: { kind: "navigate", target: errorUri },
+      });
+    }
+
+    if (actions.length === 0) return null;
+    return { version: INVESTIGATION_CAPABILITIES_VERSION, actions };
   }
 
   async function renderInvestigations(blocks: ViewBlockInput[], continueId?: string) {
@@ -725,12 +934,22 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         continue;
       }
 
-      // The model cites evidence by bare ids; the canonical trigger:// URIs are
-      // built here, before anything is stored or emitted.
-      const state = canonicalizeInvestigationState(
+      // The model cites evidence by ids and file locations; the canonical
+      // trigger:// URIs are built here, before anything is stored or emitted. A
+      // citation that can't be canonicalized fails the call by name — losing it
+      // quietly would leave a card claiming grounding it doesn't have.
+      const canonicalized = canonicalizeInvestigationState(
         (block as InvestigationBlockBodyInput).investigation,
         { projectRef, environmentId: ctx.environmentId }
       );
+      if (canonicalized.errors.length > 0) {
+        return {
+          error: `Couldn't cite some of that evidence: ${canonicalized.errors.join(
+            "; "
+          )}. Fix or remove those citations and render again.`,
+        };
+      }
+      const state = canonicalized.state;
 
       // Tools return {error}, never throw — and a storage failure's message can
       // carry the full SQL text, which must never reach the transcript.
@@ -765,9 +984,14 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       currentInvestigationId = result.id;
       investigationId = result.id;
 
+      // The card's next actions are decided from the canonical state and what
+      // this turn actually read — see `investigationCapabilities`.
+      const capabilities = investigationCapabilities(state);
+
       const parsed = investigationBlockSchema.safeParse({
         ...block,
         investigation: state,
+        ...(capabilities ? { capabilities } : {}),
         id: result.id,
         revision: result.revision,
         version: VIEW_BLOCK_VERSION,
@@ -1405,5 +1629,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
   // Code mode: when the project has a connected repo, add the source tools.
   if (!ctx.repoSnapshot) return apiTools;
-  return { ...apiTools, ...buildRepoTools(ctx.repoSnapshot, resolveRunSnapshot) };
+  return {
+    ...apiTools,
+    ...withReadTracking(buildRepoTools(ctx.repoSnapshot, resolveRunSnapshot)),
+  };
 }

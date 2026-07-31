@@ -20,8 +20,10 @@
  */
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import type {
+  AgentIntent,
   Evidence,
   HypothesisVerdict,
+  InvestigationAction,
   InvestigationBlock,
   InvestigationHypothesis,
   InvestigationSeverity,
@@ -37,7 +39,7 @@ import {
   SeverityBadge,
   VerdictBadge,
 } from "./agent-badges";
-import { ChatPendingTool } from "./chat-layout";
+import { ChatActionsRow, ChatPendingTool } from "./chat-layout";
 import type { ResolvedUri } from "./ReportView";
 
 const SEVERITY_LABELS: Record<InvestigationSeverity, string> = {
@@ -135,15 +137,57 @@ function HypothesisRow({
   );
 }
 
+/**
+ * The card's footer actions — "Show code" and the follow-ups.
+ *
+ * Every one of them is server-decided: the executor only attaches an action when
+ * the thing it offers really is available (a source location it saw read at the
+ * pinned commit, an error group that exists). So there is nothing to validate — the
+ * card hands the intent to the host, exactly like the chart's action row, and
+ * renders nothing when there is no host to hand it to.
+ */
+function InvestigationActions({
+  actions,
+  onIntent,
+}: {
+  actions: InvestigationAction[];
+  onIntent?: (intent: AgentIntent) => void;
+}) {
+  if (!onIntent || actions.length === 0) return null;
+  return (
+    <div className="border-t border-grid-bright pt-4">
+      <ChatActionsRow>
+        {actions.map((action, i) => (
+          <Button
+            key={action.kind}
+            // The first action is the one to take; the rest are alternatives.
+            variant={i === 0 ? "primary/small" : "secondary/small"}
+            onClick={() => onIntent(action.intent)}
+          >
+            {action.label}
+          </Button>
+        ))}
+      </ChatActionsRow>
+    </div>
+  );
+}
+
 export function InvestigationCard({
   block,
   /** Start expanded — used by the gallery states that review the detail view. */
   defaultExpanded = false,
   resolveUri,
+  /**
+   * Where the footer actions go. The card never navigates or asks on its own —
+   * it emits an intent and the host honours it (or doesn't), the same seam the
+   * chart's actions use. Without it the row isn't rendered.
+   */
+  onIntent,
 }: {
   block: InvestigationBlock;
   defaultExpanded?: boolean;
   resolveUri?: ResolveUri;
+  onIntent?: (intent: AgentIntent) => void;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const investigation = block.investigation;
@@ -242,6 +286,8 @@ export function InvestigationCard({
               </div>
             ) : null}
           </div>
+
+          <InvestigationActions actions={block.capabilities?.actions ?? []} onIntent={onIntent} />
         </div>
       </div>
       {/* Progress lives outside the card, on the left — the same line the chat

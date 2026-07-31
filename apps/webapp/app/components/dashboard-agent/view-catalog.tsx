@@ -59,7 +59,14 @@ export function ViewBlocks({
           // The one progressive block: revisions share the investigationId, so
           // latest-wins above keeps a single live card.
           case "investigation":
-            return <InvestigationCard key={key} block={block} resolveUri={resolveUri} />;
+            return (
+              <InvestigationCard
+                key={key}
+                block={block}
+                resolveUri={resolveUri}
+                onIntent={onIntent}
+              />
+            );
           case "report":
             return (
               <ReportView

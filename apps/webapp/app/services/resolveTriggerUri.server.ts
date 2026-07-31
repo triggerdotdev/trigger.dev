@@ -43,13 +43,29 @@ export type TriggerUriScope = {
   slug: string;
   project: { slug: string; externalRef: string };
   organization: { slug: string };
+  /**
+   * The project's connected repository, when the caller resolved one. Only a
+   * `source` URI needs it: the URI carries the commit and the repo-relative path,
+   * but "which repo" lives on the project's GitHub connection
+   * (`ConnectedGithubRepository.repository.fullName`) or on the deployment's git
+   * metadata (`WorkerDeployment.git.remoteUrl`) — either is enough here. Omit it
+   * and a source URI resolves to nothing, which is the honest answer for a
+   * project with no repo connected.
+   */
+  repository?: { fullName?: string | null; remoteUrl?: string | null } | null;
 };
 
 export type ResolvedTriggerUri = {
   /** Short human label for the resource, e.g. a run id or a queue name. */
   label: string;
-  /** Dashboard path, relative to the app origin. */
+  /** Dashboard path, relative to the app origin — unless `external` is set. */
   url: string;
+  /**
+   * True when `url` is an absolute link off the dashboard (today: a GitHub blob
+   * for a `source` URI). A host must open it as a link, never hand it to the
+   * router.
+   */
+  external?: boolean;
 };
 
 /**
@@ -69,6 +85,44 @@ export function resolveTriggerUri(
   if (!parsed.success) return null;
   if (!isInScope(scope, parsed.data)) return null;
   return resolveInScope(scope, parsed.data);
+}
+
+const GITHUB_ORIGIN = "https://github.com";
+/** `owner/repo` — GitHub's own character set, and nothing that could add a path. */
+const FULL_NAME = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+
+/**
+ * The repository's canonical `https://github.com/{owner}/{repo}` base, or null.
+ *
+ * `fullName` is the reliable input (it comes off the GitHub connection);
+ * `remoteUrl` is the deployment's own git metadata, so it can be an SSH remote or
+ * carry credentials and is normalized the same way the deployments UI does it
+ * (see `BranchesPresenter`). Anything that isn't github.com is rejected rather
+ * than guessed at — a wrong link is worse than no link.
+ */
+function githubRepoBaseUrl(repository: TriggerUriScope["repository"]): string | null {
+  const fullName = repository?.fullName?.trim();
+  if (fullName && FULL_NAME.test(fullName)) return `${GITHUB_ORIGIN}/${fullName}`;
+
+  const remoteUrl = repository?.remoteUrl?.trim();
+  if (!remoteUrl) return null;
+
+  const normalized = remoteUrl
+    .replace(/^git@github\.com:/, `${GITHUB_ORIGIN}/`)
+    .replace(/^ssh:\/\/git@github\.com\//, `${GITHUB_ORIGIN}/`)
+    .replace(/\.git$/, "");
+
+  let url: URL;
+  try {
+    url = new URL(normalized);
+  } catch {
+    return null;
+  }
+  if (url.hostname !== "github.com") return null;
+
+  const path = url.pathname.replace(/^\/+|\/+$/g, "");
+  if (!FULL_NAME.test(path)) return null;
+  return `${GITHUB_ORIGIN}/${path}`;
 }
 
 /** True when the URI names this exact project and environment. */
@@ -128,11 +182,26 @@ function resolveInScope(
         label: parsed.version,
         url: v3DeploymentVersionPath(organization, project, environment, parsed.version),
       };
+    case "source": {
+      // A source citation is the investigation card's code grounding, so it has
+      // to be clickable: the URI already pins the commit and the repo-relative
+      // path, and the connected repo says where that lives. Without a repo
+      // connection there is nothing to open — the label still renders.
+      const base = githubRepoBaseUrl(scope.repository);
+      const label = parsed.line === undefined ? parsed.path : `${parsed.path}:${parsed.line}`;
+      if (!base) return null;
+      const path = parsed.path.split("/").map(encodeURIComponent).join("/");
+      const fragment = parsed.line === undefined ? "" : `#L${parsed.line}`;
+      return {
+        label,
+        url: `${base}/blob/${encodeURIComponent(parsed.sha)}/${path}${fragment}`,
+        external: true,
+      };
+    }
     // No dashboard page exists for these yet. Returning null keeps the caller
     // honest (it renders a label with no link) instead of inventing a URL that
     // 404s. Add a case here the day the page ships.
     case "report":
-    case "source":
     case "investigation":
       return null;
     default: {
