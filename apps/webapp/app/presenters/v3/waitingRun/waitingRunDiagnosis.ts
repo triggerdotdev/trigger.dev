@@ -228,7 +228,7 @@ function describeRun(run: WaitingRunRow, now: Date): WaitingRunDiagnosis["run"] 
   let waitingLabel: string;
   let waitingBasis: WaitingBasis;
 
-  if (run.queuedAt) {
+  if (run.queuedAt && queueWaitReliable) {
     // Canonical queue wait = startedAt - queuedAt; for a run that hasn't started, now - queuedAt.
     const end = run.startedAt ?? now;
     const ms = Math.max(0, end.getTime() - run.queuedAt.getTime());
