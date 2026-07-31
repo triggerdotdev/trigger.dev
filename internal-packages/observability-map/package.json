@@ -9,13 +9,15 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
-    "rimraf": "6.0.1"
+    "rimraf": "6.0.1",
+    "tsx": "^4.19.2"
   },
   "scripts": {
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit",
     "build": "pnpm run clean && tsc -p tsconfig.build.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "map": "tsx src/cli.ts"
   }
 }
