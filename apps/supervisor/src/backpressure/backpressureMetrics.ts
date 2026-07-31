@@ -8,7 +8,7 @@ export class BackpressureMetrics {
   readonly dryRun: Gauge<string>;
   /** Dequeue attempts the gate skipped - or would have, in dry-run (labelled). */
   readonly skipsTotal: Counter<string>;
-  /** Verdict reads that failed; the previous verdict is held until it ages out. */
+  /** Verdict source reads that failed (threw). */
   readonly readFailuresTotal: Counter<string>;
 
   constructor(opts: { register: Registry; prefix?: string }) {
@@ -35,7 +35,7 @@ export class BackpressureMetrics {
 
     this.readFailuresTotal = new Counter({
       name: `${prefix}_read_failures_total`,
-      help: "Verdict source reads that failed; the previous verdict is held until it ages out",
+      help: "Verdict source reads that threw",
       registers: [opts.register],
     });
   }

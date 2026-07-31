@@ -12,9 +12,10 @@ export type BackpressureVerdict = {
 };
 
 /**
- * Source of the current backpressure verdict. `read()` returns `null` when the
- * verdict is unknown (missing/unreadable) - the monitor treats unknown as
- * "not engaged" (fail-open).
+ * Source of the current backpressure verdict. `read()` returns `null` when the source
+ * answered but there is no verdict - the monitor treats that as "not engaged"
+ * (fail-open). A thrown error is different: the read itself failed, so the monitor
+ * keeps the previous verdict until it ages past `maxVerdictAgeMs`.
  */
 export interface BackpressureSignalSource {
   read(): Promise<BackpressureVerdict | null>;
@@ -163,18 +164,20 @@ export class BackpressureMonitor {
       readError = error;
     }
 
-    if (next) {
-      this.verdict = next;
+    if (readError === undefined) {
+      this.verdict = next; // an explicit null means "no pressure", so honour it
       this.readFailing = false;
     } else {
-      if (this.opts.maxVerdictAgeMs === undefined) {
+      const held = this.opts.maxVerdictAgeMs !== undefined;
+      if (!held) {
         this.verdict = null; // unbounded hold could pin the brake forever
       }
       this.opts.metrics?.readFailuresTotal.inc();
       if (!this.readFailing) {
         this.readFailing = true; // log once per outage, not once per tick
-        this.opts.logger?.error("backpressure read failed, holding last verdict", {
-          reason: readError ? String(readError) : "no verdict",
+        this.opts.logger?.error("backpressure read failed", {
+          reason: String(readError),
+          heldPreviousVerdict: held,
           engaged: this.computeEngaged(),
         });
       }
