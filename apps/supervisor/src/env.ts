@@ -79,7 +79,7 @@ export const Env = z
       .number()
       .int()
       .positive()
-      .default(15_000), // Stale verdict → fail-open (treat as not engaged)
+      .default(120_000), // Grace window: held verdict older than this → fail-open
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST: z.string().optional(),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PORT: z.coerce.number().int().optional(),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME: z.string().optional(),

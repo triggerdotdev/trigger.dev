@@ -2,6 +2,7 @@ import type { BackpressureMetrics } from "./backpressureMetrics.js";
 
 export interface BackpressureLogger {
   info(message: string, meta?: Record<string, unknown>): void;
+  error(message: string, meta?: Record<string, unknown>): void;
 }
 
 export type BackpressureVerdict = {
@@ -24,8 +25,9 @@ export type BackpressureMonitorOptions = {
   source: BackpressureSignalSource;
   refreshIntervalMs?: number;
   /**
-   * If set, a cached verdict older than this is treated as unknown (fail-open).
-   * Guards against the source silently going stale (e.g. hanging reads).
+   * If set, an engaged verdict older than this is released (fail-open), bounding how
+   * long a dead source can hold the brake. Reads that fail keep the last verdict, so
+   * this doubles as the grace window for riding out a transient source outage.
    */
   maxVerdictAgeMs?: number;
   /**
@@ -54,6 +56,7 @@ export class BackpressureMonitor {
   private refreshInFlight = false;
   private wasEngaged = false;
   private releasedAt?: number;
+  private readFailing = false;
 
   constructor(private readonly opts: BackpressureMonitorOptions) {
     this.opts.metrics?.dryRun.set(this.opts.dryRun ? 1 : 0);
@@ -152,12 +155,29 @@ export class BackpressureMonitor {
   }
 
   private async refresh(): Promise<void> {
+    let next: BackpressureVerdict | null = null;
+    let readError: unknown;
     try {
-      this.verdict = await this.opts.source.read();
-    } catch {
-      // Fail-open: a dead/unreachable source must never pin the brake. Treat as
-      // unknown (no verdict) so dequeue resumes as if backpressure were off.
-      this.verdict = null;
+      next = await this.opts.source.read();
+    } catch (error) {
+      readError = error;
+    }
+
+    if (next) {
+      this.verdict = next;
+      this.readFailing = false;
+    } else {
+      if (this.opts.maxVerdictAgeMs === undefined) {
+        this.verdict = null; // unbounded hold could pin the brake forever
+      }
+      this.opts.metrics?.readFailuresTotal.inc();
+      if (!this.readFailing) {
+        this.readFailing = true; // log once per outage, not once per tick
+        this.opts.logger?.error("backpressure read failed, holding last verdict", {
+          reason: readError ? String(readError) : "no verdict",
+          engaged: this.computeEngaged(),
+        });
+      }
     }
 
     // Track the engaged→released transition to anchor the resume ramp. Use the
