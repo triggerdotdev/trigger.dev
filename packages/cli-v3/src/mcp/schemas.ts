@@ -1,6 +1,7 @@
 import {
   ApiDeploymentListParams,
   MachinePresetName,
+  ReportPeriodSchema,
   RunStatus,
 } from "@trigger.dev/core/v3/schemas";
 import { z } from "zod";
@@ -272,21 +273,12 @@ export const ListDashboardsInput = CommonProjectsInput.pick({
 export type ListDashboardsInput = z.output<typeof ListDashboardsInput>;
 
 /**
- * Shared period validation for the report surfaces (MCP tool + `trigger report` CLI), so they
- * reject garbage/absurd ranges consistently client-side instead of only at the HTTP API. The
- * webapp route (`api.v1.reports.$key.ts`) mirrors this regex + bound as the authoritative
- * security boundary — it can't import from the CLI, so the two are kept intentionally in sync.
+ * Period validation for the report surfaces (MCP tool + `trigger report` CLI), re-exported from
+ * `@trigger.dev/core` so the CLI, the API clients and the webapp route all share ONE definition
+ * of the grammar. The route remains the authoritative security boundary; validating here just
+ * means garbage and absurd ranges are rejected before a request is made.
  */
-const PERIOD_UNIT_MS: Record<string, number> = { s: 1e3, m: 6e4, h: 36e5, d: 864e5, w: 6048e5 };
-const MAX_PERIOD_MS = 90 * 864e5; // 90d
-export const ReportPeriodSchema = z
-  .string()
-  .regex(/^[1-9]\d*[smhdw]$/, "period must be a shorthand like '1h', '30m', or '7d'")
-  .refine(
-    // The regex guarantees the last char is a known unit; `?? 0` just satisfies the type checker.
-    (p) => Number(p.slice(0, -1)) * (PERIOD_UNIT_MS[p.slice(-1)] ?? 0) <= MAX_PERIOD_MS,
-    "period is too large (max 90d)"
-  );
+export { ReportPeriodSchema };
 
 // `environment` inherits CommonProjectsInput's `.default("dev")` — intentional: the MCP server
 // is dev-centric (often `--dev-only`), so an unspecified env reports on dev. The `trigger report`
@@ -303,7 +295,7 @@ export const GetReportInput = CommonProjectsInput.pick({
       "The report to render. 'health' answers 'is work flowing, and is a problem my code or the platform?' with an interpreted verdict (flow / execution / liveness)."
     ),
   period: ReportPeriodSchema.optional().describe(
-    "Time period shorthand for the live window, e.g. '1h' (default), '7d'."
+    "Time period shorthand for the live window, e.g. '1h' (default), '24h', '7d'. Minutes (m) to weeks (w), max 90d. Seconds are not supported — reports bucket by whole minutes."
   ),
   color: z
     .boolean()

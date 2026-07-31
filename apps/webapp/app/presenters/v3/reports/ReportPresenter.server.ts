@@ -8,7 +8,7 @@
  */
 
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { REPORT_REGISTRY } from "./report-registry";
+import { REPORT_REGISTRY, type ReportLoader } from "./report-registry";
 import { type ReportViewModel } from "./report-view-model";
 
 const DEFAULT_PERIOD = "1h";
@@ -22,6 +22,8 @@ const DEFAULT_PERIOD = "1h";
 const inFlight = new Map<string, Promise<ReportViewModel | undefined>>();
 
 export class ReportPresenter {
+  constructor(private readonly registry: Record<string, ReportLoader<unknown>> = REPORT_REGISTRY) {}
+
   async call({
     environment,
     key,
@@ -31,8 +33,8 @@ export class ReportPresenter {
     key: string;
     period?: string;
   }): Promise<ReportViewModel | undefined> {
-    const loader = REPORT_REGISTRY[key];
-    if (!loader) return undefined;
+    if (!Object.hasOwn(this.registry, key)) return undefined;
+    const loader = this.registry[key];
 
     const flightKey = `${key} ${environment.id} ${period}`;
     const existing = inFlight.get(flightKey);

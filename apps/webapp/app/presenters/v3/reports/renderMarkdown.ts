@@ -46,9 +46,23 @@ function toMarkdownEmoji(text: string): string {
   return text.replace(/[✓⚠✕○]/g, (g) => MARKDOWN_STATUS_EMOJI[g] ?? g);
 }
 
-/** Glyph for a finding/statement: neutral for a genuinely-unknown freshness, else severity-driven. */
+/**
+ * Reasons that mean "we can't say" rather than a verdict: the section renders headline-only (no
+ * ✓, no facts, no read) because every number behind it is untrustworthy or a placeholder.
+ */
+const UNASSESSABLE_REASONS = new Set(["unknown", "flow_unmeasured"]);
+
+/**
+ * Reasons whose state is genuinely unknown but NOT bad — they get the neutral marker rather than a
+ * severity colour. (A stale feed is different: the guard forces crit, so it keeps ✕.)
+ */
+const NEUTRAL_REASONS = new Set(["freshness_unknown", "flow_unmeasured"]);
+
+/** Glyph for a finding/statement: neutral for a genuinely-unknown state, else severity-driven. */
 function statusGlyph(severity: Severity, reason?: string): string {
-  return reason === "freshness_unknown" ? NEUTRAL_GLYPH : SEVERITY_GLYPH[severity];
+  return reason !== undefined && NEUTRAL_REASONS.has(reason)
+    ? NEUTRAL_GLYPH
+    : SEVERITY_GLYPH[severity];
 }
 
 /** Evidence lines (metric rows + attribution) shown for a degraded section. */
@@ -344,12 +358,12 @@ function renderDegradedSection(finding: Finding, vm: ReportViewModel): string[] 
     // Exclusions ("not your code") first, then supporting observations ("runs completing at ~X/min").
     for (const excl of finding.exclusions ?? []) {
       lines.push(
-        `        ${fill(msg.exclusionMessage(excl.code), { rate: fmtCount(excl.evidence?.donePerMin ?? 0) })}`
+        `        ${fill(msg.exclusionMessage(excl.code), { rate: fmtCount(excl.evidence?.finishedPerMin ?? 0) })}`
       );
     }
     for (const obs of finding.observations ?? []) {
       lines.push(
-        `        ${fill(msg.observationMessage(obs.code), { rate: fmtCount(obs.evidence?.donePerMin ?? 0) })}`
+        `        ${fill(msg.observationMessage(obs.code), { rate: fmtCount(obs.evidence?.finishedPerMin ?? 0) })}`
       );
     }
   }
@@ -423,11 +437,11 @@ function renderReportPlain(vm: ReportViewModel): string {
   for (const finding of vm.findings) {
     if (finding.type === "liveness") {
       lines.push(renderLivenessLine(finding, vm.metrics, msg), "");
-    } else if (finding.reason === "unknown") {
-      // stale-data guard: no ✓ or facts computed from a silent feed. The guard forces crit,
-      // so the glyph reads from severity (consistent with the summary + JSON).
+    } else if (UNASSESSABLE_REASONS.has(finding.reason)) {
+      // No ✓ or facts computed from a silent feed / an unmeasurable depth. Stale forces crit (✕);
+      // an unmeasurable signal is neutral (○) — both consistent with the summary + JSON.
       lines.push(
-        `${sectionLabel(finding.type)}${SEVERITY_GLYPH[finding.severity]} ${msg.findingReason(finding.type, finding.reason)}`,
+        `${sectionLabel(finding.type)}${statusGlyph(finding.severity, finding.reason)} ${msg.findingReason(finding.type, finding.reason)}`,
         ""
       );
     } else if (finding.severity !== "ok") {

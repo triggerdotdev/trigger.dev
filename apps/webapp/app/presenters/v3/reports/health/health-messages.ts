@@ -49,6 +49,7 @@ const FINDING_REASONS: Record<string, string> = {
   "execution/degraded": "execution is degraded",
   "execution/unknown": "execution can't be assessed — the telemetry is stale",
   "flow/unknown": "flow can't be assessed — the telemetry is stale",
+  "flow/flow_unmeasured": "flow can't be assessed — the queue depth couldn't be measured",
   "execution/healthy": "completing normally", // collapsed
   "execution/healthy@expanded": "the runs that DO start are fine",
   // liveness = telemetry freshness ({age} filled by the renderer)
@@ -75,6 +76,7 @@ const READS: Record<string, string> = {
   runs_are_fine: "runs are completing normally",
   failures_elevated: "failures are elevated — check the code path",
   data_stale: "data is stale — the verdict cannot be trusted",
+  flow_unmeasured: "the queue depth is unavailable — the backlog cannot be assessed",
 };
 
 /** Exclusion (ruled-out cause) — rendered under `read:`. {tokens} filled from evidence. */
@@ -86,7 +88,8 @@ const EXCLUSIONS: Record<string, string> = {
 
 /** Observation (supporting fact, not a ruled-out cause) — rendered under `read:` after exclusions. */
 const OBSERVATIONS: Record<string, string> = {
-  not_workers_platform: "runs are completing at ~{rate}/min",
+  // "finishing", not "completing": the rate counts every terminal run (what leaves the queue).
+  not_workers_platform: "runs are finishing at ~{rate}/min",
   execution_healthy: "runs that start are completing normally",
   nothing_dead_lettered: "nothing dead-lettered",
 };
@@ -150,6 +153,10 @@ function statementMessage(findingType: string, severity: Severity, reason?: Reas
   if (reason === "unknown") {
     const label = findingType.charAt(0).toUpperCase() + findingType.slice(1);
     return `${label} unknown — data stale`;
+  }
+  // Same for a missing depth signal: unknown, but the cause is a failed measurement, not staleness.
+  if (reason === "flow_unmeasured") {
+    return "Flow unknown — queue depth unavailable";
   }
   // No freshness signal is NOT "data lagging" (a real severity) — it's genuinely unknown.
   if (findingType === "liveness" && reason === "freshness_unknown") {

@@ -69,6 +69,9 @@ import {
   QueueItem,
   ReadSessionStreamRecordsResponseBody,
   ReplayRunResponse,
+  type ReportFormat,
+  type ReportViewModel,
+  ReportViewModelSchema,
   ResetIdempotencyKeyResponse,
   ResolvePromptResponseBody,
   RetrieveBatchV2Response,
@@ -1998,13 +2001,25 @@ export class ApiClient {
   }
 
   /**
-   * Fetch a server-rendered report (text + sparkline). Thin pass-through — the string
-   * is ready to display. `format`: "markdown" (default, agents/chat) or "ansi" (terminal).
+   * Fetch a report. `format: "json"` returns the structured `ReportViewModel` (numbers plus what
+   * they mean — for programmatic use); "markdown" (default) and "ansi" return a rendered string
+   * that is ready to display as-is.
+   *
+   * `period` is a shorthand like "1h", "24h" or "7d" — minutes to weeks, capped at 90d. Seconds
+   * are not accepted (reports bucket by whole minutes).
    */
   async getReport(
     key: string,
+    options: { period?: string; format: "json" }
+  ): Promise<ReportViewModel>;
+  async getReport(
+    key: string,
     options?: { period?: string; format?: "markdown" | "ansi" }
-  ): Promise<string> {
+  ): Promise<string>;
+  async getReport(
+    key: string,
+    options?: { period?: string; format?: ReportFormat }
+  ): Promise<string | ReportViewModel> {
     const searchParams = new URLSearchParams({ format: options?.format ?? "markdown" });
     if (options?.period) {
       searchParams.set("period", options.period);
@@ -2025,6 +2040,10 @@ export class ApiClient {
           bodySnippet ? ` — ${bodySnippet}` : ""
         }`
       );
+    }
+
+    if (options?.format === "json") {
+      return ReportViewModelSchema.parse(await response.json());
     }
 
     return response.text();
