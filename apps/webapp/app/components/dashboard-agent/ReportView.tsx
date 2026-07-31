@@ -189,15 +189,25 @@ function footerEntryNode({
   label,
   target,
   onIntent,
+  pagePath,
 }: {
   code: string;
   label: string;
   target: LinkTarget;
   onIntent?: (intent: AgentIntent) => void;
+  /** A host-resolved dashboard path for this action (settings pages). */
+  pagePath?: string;
 }): ReactNode {
   const style = reportFooterStyle(code);
 
   if (style === "note") return <ReportFooterNote>{label}</ReportFooterNote>;
+
+  // A settings-page action the host resolved for us wins over everything: the
+  // user can self-serve it right there (e.g. raising the env concurrency limit
+  // on the Concurrency page).
+  if (style === "action" && pagePath) {
+    return <ReportFooterActionLink href={pagePath}>{label}</ReportFooterActionLink>;
+  }
 
   // A docs entry is ALWAYS the docs button, whatever shape its link arrived in —
   // external URL, resolved resource, or nothing (then its canonical docs page).
@@ -429,11 +439,19 @@ export function ReportView({
   onIntent,
   /** Host-supplied `trigger://` resolver. Without one, resource links stay intents. */
   resolveUri,
+  /**
+   * Host-supplied dashboard paths for footer actions that live on a settings
+   * page rather than behind a URI (keyed by footer code, e.g. raise_env_limit
+   * → the environment's Concurrency page). The component stays pure — only the
+   * host knows the org/project/env slugs.
+   */
+  pagePaths,
 }: {
   vm: ReportViewModelPayload;
   reportUri?: string;
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
+  pagePaths?: Record<string, string>;
 }) {
   const messages = messagesFor(vm.title);
   const tokens = findingTokens(vm);
@@ -500,6 +518,7 @@ export function ReportView({
       }),
       target: classifyLink(linkByKey(entry.link), resolveUri),
       onIntent,
+      pagePath: pagePaths?.[entry.code],
     }),
   }));
 

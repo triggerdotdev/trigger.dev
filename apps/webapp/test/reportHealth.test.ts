@@ -81,11 +81,11 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
     expect(concurrency.annotation).toEqual({ code: "pinned_minutes", value: 40 });
   });
 
-  it("footer = contact us + docs + do-nothing (drains)", () => {
-    // Raising the env limit is a plan quota, not self-serve — the footer offers
-    // the contact action with the docs alongside.
+  it("footer = raise the limit (self-serve) + docs + do-nothing (drains)", () => {
+    // Raising the env limit is self-serve now — the action button leads to the
+    // environment's Concurrency page, with the docs alongside.
     expect(vm.footer).toEqual([
-      { code: "contact_us_raise_limit", link: "contact" },
+      { code: "raise_env_limit", link: "concurrency" },
       { code: "concurrency_docs", link: "concurrency" },
       { code: "do_nothing_drains", value: 2.3 },
     ]);
@@ -118,7 +118,7 @@ describe("health cause tree (Golden A — env limit saturation)", () => {
 
       LIVENESS    🟢 fresh — telemetry current, updated 4s ago
 
-      → Contact us to raise the limit
+      → Raise the env concurrency limit
         Read concurrency docs
         or do nothing — backlog drains in ~2.3 min once triggers ease"
     `);

@@ -80,6 +80,7 @@ export function DashboardAgentChat({
   prefill,
   promotedPrompt,
   watches,
+  pagePaths,
   onCancelWatch,
   onTurnSettled,
   onActivityChange,
@@ -110,6 +111,8 @@ export function DashboardAgentChat({
   promotedPrompt?: SuggestedPrompt;
   // This chat's active watches, from the panel's history load.
   watches: WatchChip[];
+  /** Host-resolved dashboard paths for settings-page footer actions. */
+  pagePaths?: Record<string, string>;
   onCancelWatch: (watchId: string) => void;
   /** A watch was created — tell the panel to re-read the chips. */
   onTurnSettled: () => void;
@@ -370,6 +373,7 @@ export function DashboardAgentChat({
           onRetry={retry}
           onDismissError={clearError}
           onIntent={handleIntent}
+          pagePaths={pagePaths}
           watches={watches}
         />
       )}

@@ -25,6 +25,7 @@ import {
 import type { SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import type { AgentPageContext } from "./page-context-types";
 import { agentPageLabel } from "./page-label";
+import { concurrencyPath } from "~/utils/pathBuilder";
 
 // Restore the last open chat across panel re-opens and page reloads — but only
 // on the page it was last used on. A closed panel reopened on a DIFFERENT page
@@ -125,6 +126,13 @@ export function DashboardAgentPanel({
   // (below) — this is display text only, derived from the same page context the
   // agent receives so the two can't disagree about where the user is.
   const currentPage = agentPageLabel(pageContext, location.pathname);
+
+  // Dashboard paths for report footer actions that live on a settings page —
+  // built here because only the host knows the slugs (the card stays pure).
+  const pagePaths = useMemo<Record<string, string>>(
+    () => ({ raise_env_limit: concurrencyPath(organization, project, environment) }),
+    [organization, project, environment]
+  );
 
   // The page context is a fresh object every render, so key the clientData memo
   // off its serialized form — otherwise every render would look like new
@@ -514,6 +522,7 @@ export function DashboardAgentPanel({
           currentPage={currentPage}
           promotedPrompt={promotedPrompt}
           watches={chatWatches}
+          pagePaths={pagePaths}
           onCancelWatch={cancelWatch}
           onTurnSettled={loadHistory}
           onActivityChange={handleActivityChange}

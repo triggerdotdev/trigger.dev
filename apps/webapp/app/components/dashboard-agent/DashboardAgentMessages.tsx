@@ -48,6 +48,8 @@ export type DashboardAgentMessagesProps = {
   onIntent?: (intent: AgentIntent) => void;
   /** Host resolver for `trigger://` URIs a card cites. */
   resolveUri?: (uri: string) => ResolvedUri | null;
+  /** Host-resolved dashboard paths for settings-page footer actions. */
+  pagePaths?: Record<string, string>;
   /**
    * The chat's watches, when the host has them. A wake message names the watch
    * it came from, so this is what lets its banner say *what* was being watched
@@ -253,12 +255,14 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
   message,
   onIntent,
   resolveUri,
+  pagePaths,
   watches,
   investigationWinners,
 }: {
   message: UIMessage;
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
+  pagePaths?: Record<string, string>;
   watches?: WakeWatch[];
   /** See {@link winningInvestigationOccurrences}. */
   investigationWinners?: Map<string, string>;
@@ -304,7 +308,12 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
       if (blocks.length > 0) {
         body.push(
           <ChatCardSlot key={i}>
-            <ViewBlocks blocks={blocks as never} onIntent={onIntent} resolveUri={resolveUri} />
+            <ViewBlocks
+              blocks={blocks as never}
+              onIntent={onIntent}
+              resolveUri={resolveUri}
+              pagePaths={pagePaths}
+            />
           </ChatCardSlot>
         );
       }
@@ -366,6 +375,7 @@ export function DashboardAgentTurns({
   onDismissError,
   onIntent,
   resolveUri,
+  pagePaths,
   watches,
 }: DashboardAgentMessagesProps) {
   // One status line at a time: a tool's own progress beats the generic activity.
@@ -387,6 +397,7 @@ export function DashboardAgentTurns({
           message={message}
           onIntent={onIntent}
           resolveUri={resolveUri}
+          pagePaths={pagePaths}
           watches={watches}
           investigationWinners={investigationWinners}
         />

@@ -36,10 +36,13 @@ export function ViewBlocks({
    * for the server-side mapping.
    */
   resolveUri,
+  /** Host-resolved dashboard paths for settings-page footer actions. */
+  pagePaths,
 }: {
   blocks: ViewBlock[];
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
+  pagePaths?: Record<string, string>;
 }) {
   if (!Array.isArray(blocks)) return null;
   return (
@@ -65,6 +68,7 @@ export function ViewBlocks({
                 reportUri={block.reportUri}
                 onIntent={onIntent}
                 resolveUri={resolveUri}
+                pagePaths={pagePaths}
               />
             );
           default:
