@@ -336,9 +336,13 @@ export function update(
       throw new Error("params is required");
     }
 
+    if (typeof nameOrRequestOptions !== "string") {
+      throw new Error("name is required");
+    }
+
     $projectRef = projectRefOrName;
     $slug = slugOrParams;
-    $name = name!;
+    $name = nameOrRequestOptions;
     $params = params;
   }
 
