@@ -230,6 +230,7 @@ export default function Page() {
       from: value("from"),
       to: value("to"),
       defaultPeriod,
+      maxPeriodDays,
     }),
     from: value("from") ?? null,
     to: value("to") ?? null,

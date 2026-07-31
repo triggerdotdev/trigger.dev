@@ -15,8 +15,12 @@ export const QUEUE_METRICS_DEFAULT_PERIOD = "1h";
 const COOKIE_NAME = "queueMetricsPeriod";
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
-/** The shape TimeFilter writes: a count plus a minute/hour/day unit (presets and custom durations). */
-const PERIOD_PATTERN = /^\d{1,4}[mhd]$/;
+/**
+ * The shape TimeFilter writes: a count plus a minute/hour/day unit. The count is unbounded here
+ * because the picker accepts any positive integer for a custom duration (`10000m` is a little under
+ * 7 days); the retention bound below is what rules a window out.
+ */
+const PERIOD_PATTERN = /^\d+[mhd]$/;
 
 /** Queue metrics are retained for 30 days, so a longer window can only ever render empty. */
 export const QUEUE_METRICS_RETENTION_DAYS = 30;
@@ -61,7 +65,8 @@ export function useRememberQueueMetricsPeriod(period: string | undefined) {
 /**
  * The window the page should show: a usable period in the URL wins, an absolute range means "no
  * period", and everything else (including a period the picker could never produce, e.g. a
- * hand-edited `?period=garbage`) falls back to the remembered default the loader resolved.
+ * hand-edited `?period=garbage`) falls back to the remembered default the loader resolved. The
+ * result is held inside the org's plan query period, since that is the window the data will cover.
  *
  * Both the loaders and the client-side chart queries resolve through here, so they can't disagree
  * about the window.
@@ -71,15 +76,17 @@ export function resolveQueueMetricsPeriod({
   from,
   to,
   defaultPeriod,
+  maxPeriodDays,
 }: {
   period: string | undefined;
   from: string | undefined;
   to: string | undefined;
   defaultPeriod: string;
+  maxPeriodDays: number;
 }): string | null {
-  if (isPeriod(period)) return period;
+  if (isPeriod(period)) return clampQueueMetricsPeriod(period, maxPeriodDays);
   if (from || to) return null;
-  return defaultPeriod;
+  return clampQueueMetricsPeriod(defaultPeriod, maxPeriodDays);
 }
 
 /**

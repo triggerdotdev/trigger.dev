@@ -104,6 +104,7 @@ import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { QueueAllocationPresenter } from "~/presenters/v3/QueueAllocationPresenter.server";
 import {
   QUEUE_METRICS_DEFAULT_PERIOD,
+  QUEUE_METRICS_RETENTION_DAYS,
   clampQueueMetricsPeriod,
   clipQueueMetricsWindow,
   queueMetricsPeriodFromRequest,
@@ -170,7 +171,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // no metrics query fires.
   const queueMetricsUiEnabled = await canAccessQueueMetricsUi({ userId, organizationSlug });
 
-  const maxPeriodDays = await queueMetricsMaxPeriodDays(environment.organizationId);
+  const maxPeriodDays = queueMetricsUiEnabled
+    ? await queueMetricsMaxPeriodDays(environment.organizationId)
+    : QUEUE_METRICS_RETENTION_DAYS;
   const defaultPeriod = clampQueueMetricsPeriod(
     queueMetricsPeriodFromRequest(request),
     maxPeriodDays
@@ -209,7 +212,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         );
         const timeRange = clipQueueMetricsWindow(
           timeFilterFromTo({
-            period: resolveQueueMetricsPeriod({ period, from, to, defaultPeriod }) ?? undefined,
+            period:
+              resolveQueueMetricsPeriod({ period, from, to, defaultPeriod, maxPeriodDays }) ??
+              undefined,
             from: parseFiniteInt(from),
             to: parseFiniteInt(to),
             defaultPeriod,
@@ -406,6 +411,7 @@ function QueuesWithMetricsView() {
       from: value("from"),
       to: value("to"),
       defaultPeriod,
+      maxPeriodDays,
     }),
     from: value("from") ?? null,
     to: value("to") ?? null,
