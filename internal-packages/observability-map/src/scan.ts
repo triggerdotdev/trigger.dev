@@ -69,9 +69,10 @@ function calleeName(expr: ts.Expression): string | null {
 }
 
 /**
- * Callee as recorded in `calleeTexts`: the whole path, `prisma.organization.findFirst` rather than
- * `findFirst`. Null when the path runs through something with no name of its own, e.g.
- * `new PromptService().createOverride`, where the caller falls back to the bare name.
+ * The whole callee path of a call, `prisma.organization.findFirst` rather than `findFirst`. Used to
+ * match a call against `LOGGER_CALLEE` and `PARSE_CALLEE`. Null when the path runs through something
+ * with no name of its own, e.g. `new PromptService().createOverride`, where the caller falls back to
+ * the bare name.
  */
 function calleeText(expr: ts.Expression): string | null {
   const target = unwrap(expr);
@@ -92,7 +93,7 @@ function calleeText(expr: ts.Expression): string | null {
 const LOGGER_CALLEE = /(^|\.)(logger|log)\.[A-Za-z_$][\w$]*$/;
 
 /** Property names on the first object-literal argument, e.g. `{ environmentId, error }`. */
-function objectArgumentFields(call: ts.CallExpression): { found: boolean; fields: string[] } {
+function objectArgumentFields(call: ts.CallExpression): string[] {
   for (const arg of call.arguments) {
     const target = unwrap(arg);
     if (!ts.isObjectLiteralExpression(target)) continue;
@@ -101,9 +102,9 @@ function objectArgumentFields(call: ts.CallExpression): { found: boolean; fields
       const name = propertyName(property);
       if (name) fields.push(name);
     }
-    return { found: true, fields };
+    return fields;
   }
-  return { found: false, fields: [] };
+  return [];
 }
 
 /**
@@ -128,8 +129,8 @@ const PARSE_CALLEE = /(^|\.)(parse|safeParse|parseAsync|safeParseAsync|decode)$|
 const PARSE_CONSTRUCTORS = new Set(["URL", "URLSearchParams", "RegExp"]);
 
 /**
- * Whether the guarded region parses something. A `new URL(x)` counts, and has to be read here
- * because constructors are absent from `calleeTexts`.
+ * Whether the guarded region parses something. A `new URL(x)` counts, and has to be read here as a
+ * `ts.isNewExpression`, because the call-callee scan that builds `calleeNames` never sees it.
  */
 function guardsParse(tryBlock: ts.Block): boolean {
   let found = false;
@@ -518,7 +519,6 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
   let hasTryCatch = false;
   const catches: CatchEvidence[] = [];
   const calleeNames: string[] = [];
-  const calleeTexts: string[] = [];
   const logCalls: LogCall[] = [];
 
   const localFunctions = collectLocalFunctions(sf);
@@ -558,14 +558,11 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
         if (cn) {
           const text = calleeText(node.expression) ?? cn;
           calleeNames.push(cn);
-          calleeTexts.push(text);
 
           if (LOGGER_CALLEE.test(text)) {
-            const argument = objectArgumentFields(node);
             logCalls.push({
               callee: text,
-              hasObjectArgument: argument.found,
-              fields: argument.fields,
+              fields: objectArgumentFields(node),
               inCatch,
             });
           }
@@ -599,13 +596,8 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     actionInitializerCallee: target.actionInitializerCallee,
     importedNames,
     calleeNames,
-    calleeTexts,
     hasTryCatch,
     catches,
-    // Kept as aggregates of `catches` so the checks can migrate one at a time.
-    catchRethrows: catches.some((c) => c.rethrows),
-    catchBranches: catches.some((c) => c.branches),
-    catchesNarrowly: catches.length > 0 && catches.every((c) => c.narrow),
     logCalls,
     statementCount,
   };

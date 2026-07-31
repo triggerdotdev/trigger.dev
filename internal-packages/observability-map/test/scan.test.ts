@@ -571,7 +571,7 @@ describe("scanDirectory", () => {
 });
 
 describe("scanFile: catch clause evidence", () => {
-  it("sets catchRethrows when a catch rethrows", () => {
+  it("sets rethrows on the clause when a catch rethrows", () => {
     const ep = scanFile(
       "rethrow.ts",
       `
@@ -586,8 +586,8 @@ describe("scanFile: catch clause evidence", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catchRethrows).toBe(true);
-    expect(ep!.catchBranches).toBe(false);
+    expect(ep!.catches[0]!.rethrows).toBe(true);
+    expect(ep!.catches[0]!.branches).toBe(false);
   });
 
   it("leaves both flags false when the catch only returns", () => {
@@ -604,11 +604,11 @@ describe("scanFile: catch clause evidence", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catchRethrows).toBe(false);
-    expect(ep!.catchBranches).toBe(false);
+    expect(ep!.catches[0]!.rethrows).toBe(false);
+    expect(ep!.catches[0]!.branches).toBe(false);
   });
 
-  it("sets catchBranches for an `if` on the error", () => {
+  it("sets branches for an `if` on the error", () => {
     const ep = scanFile(
       "branch-if.ts",
       `
@@ -624,11 +624,11 @@ describe("scanFile: catch clause evidence", () => {
       }
       `
     );
-    expect(ep!.catchBranches).toBe(true);
-    expect(ep!.catchRethrows).toBe(false);
+    expect(ep!.catches[0]!.branches).toBe(true);
+    expect(ep!.catches[0]!.rethrows).toBe(false);
   });
 
-  it("sets catchBranches for an instanceof conditional that is the whole returned expression", () => {
+  it("sets branches for an instanceof conditional that is the whole returned expression", () => {
     const ep = scanFile(
       "branch-instanceof.ts",
       `
@@ -641,10 +641,10 @@ describe("scanFile: catch clause evidence", () => {
       }
       `
     );
-    expect(ep!.catchBranches).toBe(true);
+    expect(ep!.catches[0]!.branches).toBe(true);
   });
 
-  it("sets catchBranches for a switch in the catch", () => {
+  it("sets branches for a switch on the error", () => {
     const ep = scanFile(
       "branch-switch.ts",
       `
@@ -662,7 +662,7 @@ describe("scanFile: catch clause evidence", () => {
       }
       `
     );
-    expect(ep!.catchBranches).toBe(true);
+    expect(ep!.catches[0]!.branches).toBe(true);
   });
 
   it("ignores a catch that lives in the React component", () => {
@@ -683,8 +683,7 @@ describe("scanFile: catch clause evidence", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(false);
-    expect(ep!.catchRethrows).toBe(false);
-    expect(ep!.catchBranches).toBe(false);
+    expect(ep!.catches).toEqual([]);
   });
 
   it("reads a catch inside a same-file helper the body delegates to", () => {
@@ -705,11 +704,11 @@ describe("scanFile: catch clause evidence", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catchRethrows).toBe(true);
-    expect(ep!.catchBranches).toBe(true);
+    expect(ep!.catches[0]!.rethrows).toBe(true);
+    expect(ep!.catches[0]!.branches).toBe(true);
   });
 
-  it("leaves both flags false for a try with no catch", () => {
+  it("leaves catches empty for a try with no catch", () => {
     const ep = scanFile(
       "finally-only.ts",
       `
@@ -723,77 +722,7 @@ describe("scanFile: catch clause evidence", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catchRethrows).toBe(false);
-    expect(ep!.catchBranches).toBe(false);
-  });
-});
-
-describe("scanFile: callee texts", () => {
-  it("keeps the full callee expression alongside the bare name", () => {
-    const ep = scanFile(
-      "api.v1.things.ts",
-      `
-      export async function loader({ request }) {
-        const org = await prisma.organization.findFirst({ where: { id: 1 } });
-        logger.error("nope", { organizationId: org.id });
-        return json(org);
-      }
-      `
-    );
-    expect(ep!.calleeNames).toContain("findFirst");
-    expect(ep!.calleeTexts).toContain("prisma.organization.findFirst");
-    expect(ep!.calleeTexts).toContain("logger.error");
-    expect(ep!.calleeTexts).toContain("json");
-    // Index-aligned with calleeNames, so a consumer can read either.
-    expect(ep!.calleeTexts).toHaveLength(ep!.calleeNames.length);
-  });
-
-  it("does not leak calls made in the React component", () => {
-    const ep = scanFile(
-      "route.tsx",
-      `
-      export async function loader() {
-        return json(await prisma.run.findMany());
-      }
-      export default function Page() {
-        useFancyHook();
-        analytics.track("viewed");
-        return null;
-      }
-      `
-    );
-    expect(ep!.calleeTexts).toContain("prisma.run.findMany");
-    expect(ep!.calleeTexts).not.toContain("analytics.track");
-    expect(ep!.calleeTexts).not.toContain("useFancyHook");
-  });
-
-  it("records callee texts from a same-file helper the body delegates to", () => {
-    const ep = scanFile(
-      "delegating.ts",
-      `
-      async function load(id) {
-        return prisma.project.findUnique({ where: { id } });
-      }
-      export async function loader({ params }) {
-        return json(await load(params.id));
-      }
-      `
-    );
-    expect(ep!.calleeTexts).toContain("prisma.project.findUnique");
-  });
-
-  it("falls back to the bare name for a callee it cannot render as a path", () => {
-    const ep = scanFile(
-      "new-expression.ts",
-      `
-      export async function action({ request }) {
-        return json(await new PromptService().createOverride(request));
-      }
-      `
-    );
-    expect(ep!.calleeNames).toContain("createOverride");
-    expect(ep!.calleeTexts).toContain("createOverride");
-    expect(ep!.calleeTexts).toHaveLength(ep!.calleeNames.length);
+    expect(ep!.catches).toEqual([]);
   });
 });
 
@@ -815,7 +744,6 @@ describe("scanFile: log calls", () => {
     expect(ep!.logCalls).toHaveLength(1);
     expect(ep!.logCalls[0]).toEqual({
       callee: "logger.error",
-      hasObjectArgument: true,
       fields: ["environmentId", "error"],
       inCatch: true,
     });
@@ -831,9 +759,7 @@ describe("scanFile: log calls", () => {
       }
       `
     );
-    expect(ep!.logCalls).toEqual([
-      { callee: "log.info", hasObjectArgument: false, fields: [], inCatch: false },
-    ]);
+    expect(ep!.logCalls).toEqual([{ callee: "log.info", fields: [], inCatch: false }]);
   });
 
   it("ignores a non-logger call and a log call in the React component", () => {
@@ -872,9 +798,9 @@ describe("scanFile: narrow catches", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catchRethrows).toBe(false);
-    expect(ep!.catchBranches).toBe(false);
-    expect(ep!.catchesNarrowly).toBe(true);
+    expect(ep!.catches[0]!.rethrows).toBe(false);
+    expect(ep!.catches[0]!.branches).toBe(false);
+    expect(ep!.catches[0]!.narrow).toBe(true);
   });
 
   it("does not flag a catch wrapping the whole handler", () => {
@@ -896,10 +822,10 @@ describe("scanFile: narrow catches", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catchesNarrowly).toBe(false);
+    expect(ep!.catches[0]!.narrow).toBe(false);
   });
 
-  it("does not flag a body that has both a narrow catch and a broad one", () => {
+  it("keeps a narrow catch and a broad one distinct", () => {
     const ep = scanFile(
       "mixed.ts",
       `
@@ -921,7 +847,8 @@ describe("scanFile: narrow catches", () => {
       }
       `
     );
-    expect(ep!.catchesNarrowly).toBe(false);
+    expect(ep!.catches[0]!.narrow).toBe(true);
+    expect(ep!.catches[1]!.narrow).toBe(false);
   });
 
   it("allows a guarded operation with its own local binding", () => {
@@ -940,7 +867,7 @@ describe("scanFile: narrow catches", () => {
       }
       `
     );
-    expect(ep!.catchesNarrowly).toBe(true);
+    expect(ep!.catches[0]!.narrow).toBe(true);
   });
 
   it("does not flag a try of three statements", () => {
@@ -958,16 +885,16 @@ describe("scanFile: narrow catches", () => {
       }
       `
     );
-    expect(ep!.catchesNarrowly).toBe(false);
+    expect(ep!.catches[0]!.narrow).toBe(false);
   });
 
-  it("is false when there is no try at all", () => {
+  it("is empty when there is no try at all", () => {
     const ep = scanFile("plain.ts", `export async function loader() { return json({}); }`);
     expect(ep!.hasTryCatch).toBe(false);
-    expect(ep!.catchesNarrowly).toBe(false);
+    expect(ep!.catches).toEqual([]);
   });
 
-  it("is false for a try with a finally and no catch", () => {
+  it("is empty for a try with a finally and no catch", () => {
     const ep = scanFile(
       "finally-only.ts",
       `
@@ -981,7 +908,7 @@ describe("scanFile: narrow catches", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catchesNarrowly).toBe(false);
+    expect(ep!.catches).toEqual([]);
   });
 
   it("reads a narrow catch inside a same-file helper the body delegates to", () => {
@@ -1001,7 +928,7 @@ describe("scanFile: narrow catches", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catchesNarrowly).toBe(true);
+    expect(ep!.catches[0]!.narrow).toBe(true);
   });
 
   it("ignores a narrow catch that lives in the React component", () => {
@@ -1022,7 +949,7 @@ describe("scanFile: narrow catches", () => {
       `
     );
     expect(ep!.hasTryCatch).toBe(false);
-    expect(ep!.catchesNarrowly).toBe(false);
+    expect(ep!.catches).toEqual([]);
   });
 });
 
@@ -1062,8 +989,6 @@ describe("scanFile: per-catch evidence", () => {
       guardsParse: false,
       tryStatementCount: 4,
     });
-    // The aggregate still collapses, which is why the per-catch list exists.
-    expect(ep!.catchesNarrowly).toBe(false);
   });
 
   it("leaves catches empty for a try/finally with no catch clause", () => {
@@ -1087,9 +1012,6 @@ describe("scanFile: per-catch evidence", () => {
     expect(ep!.catches).toEqual([]);
     // hasTryCatch keeps its meaning: a `try` appears. Nothing is caught here.
     expect(ep!.hasTryCatch).toBe(true);
-    expect(ep!.catchRethrows).toBe(false);
-    expect(ep!.catchBranches).toBe(false);
-    expect(ep!.catchesNarrowly).toBe(false);
   });
 
   it("sees a URL constructor as a guarded parse", () => {
@@ -1193,9 +1115,6 @@ describe("scanFile: per-catch evidence", () => {
     expect(ep!.catches).toHaveLength(2);
     expect(ep!.catches.filter((c) => c.rethrows && c.branches)).toHaveLength(1);
     expect(ep!.catches.filter((c) => !c.rethrows && !c.branches)).toHaveLength(1);
-    // Aggregates stay as they are: any clause sets them.
-    expect(ep!.catchRethrows).toBe(true);
-    expect(ep!.catchBranches).toBe(true);
   });
 
   it("includes a catch from a same-file helper and excludes one from the React component", () => {
@@ -1224,26 +1143,6 @@ describe("scanFile: per-catch evidence", () => {
     );
     expect(ep!.catches).toHaveLength(1);
     expect(ep!.catches[0]!.guardsParse).toBe(true);
-    expect(ep!.catchRethrows).toBe(false);
-  });
-
-  it("keeps the aggregates derivable from the per-catch list", () => {
-    const ep = scanFile(
-      "aggregate.ts",
-      `
-      export async function loader({ request }) {
-        try {
-          return json(await request.json());
-        } catch (e) {
-          if (e instanceof SyntaxError) return json({}, { status: 400 });
-          return json({}, { status: 500 });
-        }
-      }
-      `
-    );
-    expect(ep!.catchRethrows).toBe(ep!.catches.some((c) => c.rethrows));
-    expect(ep!.catchBranches).toBe(ep!.catches.some((c) => c.branches));
-    expect(ep!.catchesNarrowly).toBe(ep!.catches.length > 0 && ep!.catches.every((c) => c.narrow));
   });
 });
 
@@ -1353,7 +1252,6 @@ describe("scanFile: branches ignores the error-stringifying ternary", () => {
     );
     expect(ep!.catches).toHaveLength(1);
     expect(ep!.catches[0]!.branches).toBe(false);
-    expect(ep!.catchBranches).toBe(false);
   });
 
   it("does not count an instanceof used to build a logged message", () => {

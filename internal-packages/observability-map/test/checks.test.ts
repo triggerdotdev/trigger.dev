@@ -565,9 +565,10 @@ describe("request-context", () => {
     expect(r.status).toBe("fail");
   });
 
-  // Was a known false positive: `new URL()` is a constructor, so the parse was invisible while the
-  // evidence came from `calleeTexts`. `CatchEvidence.guardsParse` covers constructors, so the guard
-  // is legible now and the route is no longer judged as though it kept its failures.
+  // Was a known false positive: `new URL()` is a constructor, so the parse was invisible to the
+  // call-callee scan the evidence used to come from. `CatchEvidence.guardsParse` covers
+  // constructors, so the guard is legible now and the route is no longer judged as though it kept
+  // its failures.
   it("fails a route whose only catch guards a constructor parse", () => {
     const r = run(
       "request-context",
