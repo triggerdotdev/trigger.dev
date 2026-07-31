@@ -21,7 +21,6 @@ import {
 import { Button } from "~/components/primitives/Buttons";
 import { Header1, Header3 } from "~/components/primitives/Headers";
 import { Spinner } from "~/components/primitives/Spinner";
-import { AgentDotMatrix } from "../storybook.ai-agent/AgentDotMatrix";
 
 export default function Story() {
   const isSelected = true;
@@ -404,36 +403,20 @@ export default function Story() {
       <div className="grid grid-cols-4 gap-8 border-b border-grid-bright pb-8">
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Sizes</Header3>
-          <Button variant="ask-ai/small">
-            <span className="flex items-center gap-x-1.5 text-text-bright">
-              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" decorative />
-              Ask AI
-            </span>
-          </Button>
-          <Button variant="ask-ai/medium">
-            <span className="flex items-center gap-x-2 text-text-bright">
-              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" decorative />
-              Ask AI
-            </span>
-          </Button>
-          <Button variant="ask-ai/large">
-            <span className="flex items-center gap-x-2 text-text-bright">
-              <AgentDotMatrix size={20} palette="mono" restColor="#ffffff" decorative />
-              Ask AI
-            </span>
-          </Button>
+          <Button variant="ask-ai/small">Ask AI</Button>
+          <Button variant="ask-ai/medium">Ask AI</Button>
+          <Button variant="ask-ai/large">Ask AI</Button>
         </div>
         <div className="flex flex-col items-start gap-2">
           <Header3 className="mb-1 uppercase">Disabled</Header3>
           <Button variant="ask-ai/small" disabled>
-            <span className="flex items-center gap-x-1.5 text-text-bright">
-              <AgentDotMatrix size={16} palette="mono" restColor="#ffffff" decorative />
-              Ask AI
-            </span>
+            Ask AI
           </Button>
         </div>
         <div className="col-span-2 self-end text-sm text-text-dimmed">
-          Reserved for the AI agent. See the "AI agent" story for the live pairing.
+          Reserved for the AI agent. The variant supplies the agent logo automatically, so no
+          LeadingIcon is needed. Pass one to animate it. See the "AI agent" story for the live
+          pairing.
         </div>
       </div>
     </div>

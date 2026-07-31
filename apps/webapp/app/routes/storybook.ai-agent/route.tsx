@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, type ButtonVariant } from "~/components/primitives/Buttons";
-import { cn } from "~/utils/cn";
 import {
   ClientTabs,
   ClientTabsContent,
@@ -17,7 +16,7 @@ import {
   FACE_SHAPES,
   type DotMatrixPaletteName,
   type DotShapeName,
-} from "./AgentDotMatrix";
+} from "~/components/primitives/AgentDotMatrix";
 import { AgentLogoMorph, AgentOrb, type AgentOrbProps } from "./AgentOrb";
 
 // Experiments for the trigger.dev AI dashboard-agent identity: a resting logo
@@ -204,14 +203,13 @@ function AskOttoButton({ variant, matrixSize }: { variant: ButtonVariant; matrix
     timeout.current = setTimeout(() => setActive(false), 5000);
   };
 
+  // Overrides the variant's built-in static logo so it can animate.
   return (
-    <Button variant={variant} onClick={trigger} className="cursor-pointer">
-      <span
-        className={cn(
-          "flex items-center text-text-bright",
-          variant === "ask-ai/small" ? "gap-x-1.5" : "gap-x-2"
-        )}
-      >
+    <Button
+      variant={variant}
+      onClick={trigger}
+      className="cursor-pointer"
+      LeadingIcon={
         <AgentDotMatrix
           size={matrixSize}
           active={active}
@@ -219,8 +217,9 @@ function AskOttoButton({ variant, matrixSize }: { variant: ButtonVariant; matrix
           restColor="#ffffff"
           decorative
         />
-        Ask Otto
-      </span>
+      }
+    >
+      Ask Otto
     </Button>
   );
 }
@@ -238,8 +237,11 @@ function FaceButton({ name }: { name: DotShapeName }) {
   };
 
   return (
-    <Button variant="ask-ai/small" onClick={trigger} className="cursor-pointer">
-      <span className="flex items-center gap-x-1.5 text-text-bright">
+    <Button
+      variant="ask-ai/small"
+      onClick={trigger}
+      className="cursor-pointer"
+      LeadingIcon={
         <AgentDotMatrix
           size={16}
           active={active}
@@ -248,8 +250,9 @@ function FaceButton({ name }: { name: DotShapeName }) {
           restColor="#ffffff"
           decorative
         />
-        {name}
-      </span>
+      }
+    >
+      {name}
     </Button>
   );
 }
