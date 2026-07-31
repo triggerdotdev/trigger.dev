@@ -100,6 +100,12 @@ export const TriggerTaskInput = CommonProjectsInput.extend({
         .number()
         .describe("The maximum duration in seconds of the task run")
         .optional(),
+      region: z
+        .string()
+        .describe(
+          "The region to run the task in, overriding the default region set for the project. Available regions are listed on the Regions page in the dashboard, and this has no effect in the dev environment"
+        )
+        .optional(),
       tags: z
         .array(z.string())
         .describe(
