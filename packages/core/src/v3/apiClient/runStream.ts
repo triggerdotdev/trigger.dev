@@ -515,6 +515,7 @@ export class SSEStreamSubscription implements StreamSubscription {
 
           if (done) {
             reader.releaseLock();
+            this.notifyComplete();
             controller.close();
             return;
           }
@@ -522,6 +523,7 @@ export class SSEStreamSubscription implements StreamSubscription {
           if (this.options.signal?.aborted) {
             reader.cancel();
             reader.releaseLock();
+            this.notifyComplete();
             controller.close();
             return;
           }
@@ -536,6 +538,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     } catch (error) {
       if (this.options.signal?.aborted || this.cancelledByConsumer) {
         // User cancel — exit cleanly, don't retry.
+        this.notifyComplete();
         controller.close();
         return;
       }
@@ -560,6 +563,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     error?: Error
   ): Promise<void> {
     if (this.options.signal?.aborted || this.cancelledByConsumer) {
+      this.notifyComplete();
       controller.close();
       return;
     }
