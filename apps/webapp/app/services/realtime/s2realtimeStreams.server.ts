@@ -44,6 +44,10 @@ export type S2RealtimeStreamsOptions = {
 
   // Custom endpoint for s2-lite (self-hosted)
   endpoint?: string; // e.g., "http://localhost:4566/v1"
+  /** Account-level API base for account/basin ops. Defaults to S2 cloud. */
+  accountUrl?: string;
+  /** Per-basin API base, with a `{basin}` placeholder. Defaults to S2 cloud. */
+  basinUrl?: string;
 
   // Skip access token issuance (s2-lite doesn't support /access-tokens)
   skipAccessTokens?: boolean;
@@ -116,8 +120,10 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
   constructor(opts: S2RealtimeStreamsOptions) {
     this.basin = opts.basin;
-    this.baseUrl = opts.endpoint ?? `https://${this.basin}.b.s2.dev/v1`;
-    this.accountUrl = opts.endpoint ?? `https://a.s2.dev/v1`;
+    this.baseUrl =
+      opts.endpoint ??
+      (opts.basinUrl ?? `https://{basin}.b.s2.dev/v1`).replace("{basin}", this.basin);
+    this.accountUrl = opts.endpoint ?? opts.accountUrl ?? `https://a.s2.dev/v1`;
     this.endpoint = opts.endpoint;
     this.token = opts.accessToken;
     this.streamPrefix = opts.streamPrefix ?? "";
