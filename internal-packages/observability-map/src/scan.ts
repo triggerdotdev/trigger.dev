@@ -121,14 +121,27 @@ const NARROW_TRY_STATEMENTS = 2;
 const PARSE_CALLEE = /(^|\.)(parse|safeParse|parseAsync|safeParseAsync|decode)$|\.json$/;
 
 /**
- * Whether the guarded region parses or constructs something. A constructor counts: `new URL(x)` is
- * the commonest parse guard in the tree, and constructors are absent from `calleeTexts`.
+ * Constructors that parse untrusted input and throw when it is malformed. Deliberately short: any
+ * constructor at all would mean `new BranchesPresenter()` or `new Set(...)` excuses a catch that
+ * guards ordinary work, which was true of 77 try blocks in the route tree.
+ */
+const PARSE_CONSTRUCTORS = new Set(["URL", "URLSearchParams", "RegExp"]);
+
+/**
+ * Whether the guarded region parses something. A `new URL(x)` counts, and has to be read here
+ * because constructors are absent from `calleeTexts`.
  */
 function guardsParse(tryBlock: ts.Block): boolean {
   let found = false;
   const visit = (node: ts.Node) => {
     if (found) return;
-    if (ts.isNewExpression(node)) found = true;
+    if (
+      ts.isNewExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      PARSE_CONSTRUCTORS.has(node.expression.text)
+    ) {
+      found = true;
+    }
     if (ts.isCallExpression(node)) {
       const text = calleeText(node.expression) ?? calleeName(node.expression);
       if (text !== null && PARSE_CALLEE.test(text)) found = true;
@@ -139,6 +152,26 @@ function guardsParse(tryBlock: ts.Block): boolean {
   return found;
 }
 
+function containsInstanceOf(node: ts.Node): boolean {
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword) {
+    return true;
+  }
+  return ts.forEachChild(node, containsInstanceOf) === true;
+}
+
+/**
+ * Whether a conditional expression tests the error to pick what the clause does, rather than to
+ * word what it says. It counts only when the whole `return`/`throw` is the conditional, so
+ * `return e instanceof Response ? e : json({}, { status: 500 })` counts and
+ * `return json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })` does not.
+ * The second is message formatting: every error leaves by the same path.
+ */
+function selectsAnErrorPath(node: ts.ConditionalExpression): boolean {
+  if (!containsInstanceOf(node.condition)) return false;
+  const parent = node.parent;
+  return parent !== undefined && (ts.isReturnStatement(parent) || ts.isThrowStatement(parent));
+}
+
 /** What a catch clause does with the error, beyond the fact that it caught one. */
 function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branches: boolean } {
   let rethrows = false;
@@ -147,12 +180,7 @@ function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branc
   const visit = (node: ts.Node) => {
     if (ts.isThrowStatement(node)) rethrows = true;
     if (ts.isIfStatement(node) || ts.isSwitchStatement(node)) branches = true;
-    if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword
-    ) {
-      branches = true;
-    }
+    if (ts.isConditionalExpression(node) && selectsAnErrorPath(node)) branches = true;
     ts.forEachChild(node, visit);
   };
   visit(clause.block);

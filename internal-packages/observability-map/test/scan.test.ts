@@ -628,7 +628,7 @@ describe("scanFile: catch clause evidence", () => {
     expect(ep!.catchRethrows).toBe(false);
   });
 
-  it("sets catchBranches for a bare instanceof with no `if`", () => {
+  it("sets catchBranches for an instanceof conditional that is the whole returned expression", () => {
     const ep = scanFile(
       "branch-instanceof.ts",
       `
@@ -1092,7 +1092,7 @@ describe("scanFile: per-catch evidence", () => {
     expect(ep!.catchesNarrowly).toBe(false);
   });
 
-  it("sees a constructor as a guarded parse", () => {
+  it("sees a URL constructor as a guarded parse", () => {
     const ep = scanFile(
       "_app.@.orgs.$organizationSlug.$.tsx",
       `
@@ -1244,5 +1244,150 @@ describe("scanFile: per-catch evidence", () => {
     expect(ep!.catchRethrows).toBe(ep!.catches.some((c) => c.rethrows));
     expect(ep!.catchBranches).toBe(ep!.catches.some((c) => c.branches));
     expect(ep!.catchesNarrowly).toBe(ep!.catches.length > 0 && ep!.catches.every((c) => c.narrow));
+  });
+});
+
+describe("scanFile: guardsParse is limited to parsing constructors", () => {
+  it("does not treat a presenter construction as a parse guard", () => {
+    const ep = scanFile(
+      "_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route.tsx",
+      `
+      export async function loader({ request, params }) {
+        try {
+          const presenter = new BranchesPresenter();
+          const result = await presenter.call({ userId: 1, projectSlug: params.projectParam });
+          return typedjson(result);
+        } catch (error) {
+          logger.error("Error loading preview branches page", { error });
+          throw new Response(undefined, { status: 400 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches).toHaveLength(1);
+    expect(ep!.catches[0]!.guardsParse).toBe(false);
+  });
+
+  it("does not treat a collection construction as a parse guard", () => {
+    const ep = scanFile(
+      "account.tokens/route.tsx",
+      `
+      export async function action({ request }) {
+        try {
+          const roles = await loadRoles(request);
+          const names = new Set(roles.map((r) => r.name));
+          return json({ names: [...names] });
+        } catch (error) {
+          return json({ error: "failed" }, { status: 400 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.guardsParse).toBe(false);
+  });
+
+  it("treats RegExp and URLSearchParams construction as a parse guard", () => {
+    const regexp = scanFile(
+      "regexp.ts",
+      `
+      export async function action({ request }) {
+        const pattern = await patternFrom(request);
+        try {
+          new RegExp(pattern);
+        } catch {
+          return json({ error: "Invalid regex" }, { status: 400 });
+        }
+        return json({ ok: true });
+      }
+      `
+    );
+    expect(regexp!.catches[0]!.guardsParse).toBe(true);
+
+    const search = scanFile(
+      "search-params.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(Object.fromEntries(new URLSearchParams(request.url)));
+        } catch {
+          return json({}, { status: 400 });
+        }
+      }
+      `
+    );
+    expect(search!.catches[0]!.guardsParse).toBe(true);
+  });
+
+  it("still sees a parse call in a try that also constructs something ordinary", () => {
+    const ep = scanFile(
+      "parse-and-construct.ts",
+      `
+      export async function action({ request }) {
+        try {
+          const body = JSON.parse(await request.text());
+          const service = new PromptService();
+          return json(await service.create(body));
+        } catch {
+          return json({}, { status: 400 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.guardsParse).toBe(true);
+  });
+});
+
+describe("scanFile: branches ignores the error-stringifying ternary", () => {
+  it("does not count an instanceof nested inside a returned call argument", () => {
+    const ep = scanFile(
+      "admin.api.v1.runs-replication.start.ts",
+      `
+      export async function action({ request }) {
+        try {
+          return json(await start(request));
+        } catch (error) {
+          return json({ error: error instanceof Error ? error.message : error }, { status: 400 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches).toHaveLength(1);
+    expect(ep!.catches[0]!.branches).toBe(false);
+    expect(ep!.catchBranches).toBe(false);
+  });
+
+  it("does not count an instanceof used to build a logged message", () => {
+    const ep = scanFile(
+      "admin.api.v1.feature-flags.ts",
+      `
+      export async function action({ request }) {
+        try {
+          return json(await setFlag(request));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error("flag update failed", { message });
+          return json({ error: message }, { status: 400 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("still counts an instanceof in an `if`", () => {
+    const ep = scanFile(
+      "branch-if-instanceof.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (e) {
+          if (e instanceof Response) return e;
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(true);
   });
 });

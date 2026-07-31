@@ -16,12 +16,18 @@ export type CatchEvidence = {
   narrow: boolean;
   /** The clause contains a `throw`. */
   rethrows: boolean;
-  /** The clause branches on the error: an `if`, a `switch`, or an `instanceof`. */
+  /**
+   * The clause picks what to do from what it caught: an `if`, a `switch`, or a conditional that is
+   * the whole `return`/`throw`. An `instanceof` used only to word a message,
+   * `json({ error: e instanceof Error ? e.message : String(e) })`, does not count: every error
+   * still leaves by the same path.
+   */
   branches: boolean;
   /**
-   * The guarded region parses or constructs something: `JSON.parse`, `request.json()`, a zod
-   * `parse`/`safeParse`, or any `new X(...)`. Constructors are counted here because `new URL(x)` is
-   * the commonest parse guard in the tree and constructors never appear in `calleeTexts`.
+   * The guarded region parses something: `JSON.parse`, `request.json()`, a zod `parse`/`safeParse`,
+   * a `decode`, or a `new URL`/`URLSearchParams`/`RegExp`. Those three constructors are read here
+   * because constructors never appear in `calleeTexts`; other constructors do not count, or every
+   * `new SomePresenter()` in a try would excuse its catch.
    */
   guardsParse: boolean;
   /** Statements in the guarded try block, counted as `statementCount` counts them. */
