@@ -259,6 +259,23 @@ export async function markChatRead(
 }
 
 /**
+ * Advisory-lock namespace for the per-chat watch lock — ASCII `watc`, so the
+ * (namespace, hashtext(chatId)) pair can't collide with another lock's key space.
+ */
+const WATCH_CHAT_LOCK_NAMESPACE = 0x77617463;
+
+/**
+ * Serialize everything that decides "may this chat have this watch?" — creating a
+ * watch and deleting the chat under it. Transaction-scoped, so it is held to
+ * commit and released by Postgres whatever happens.
+ */
+function lockChatForWatches(tx: DashboardAgentDbOrTx, chatId: string) {
+  return tx.execute(
+    sql`select pg_advisory_xact_lock(${WATCH_CHAT_LOCK_NAMESPACE}, hashtext(${chatId}))`
+  );
+}
+
+/**
  * #5 Soft-delete a chat AND end its watches, in one transaction.
  *
  * The two halves must not be separable: a deleted chat has nowhere to deliver a
@@ -271,6 +288,11 @@ export async function softDeleteChat(
   params: { chatId: string; userId: string }
 ): Promise<{ deleted: boolean; cancelledWatches: Watch[] }> {
   return db.transaction(async (tx) => {
+    // The SAME lock `createWatch` takes. Without it a create that resolved a live
+    // chat can commit its insert after this transaction cancelled the chat's
+    // watches, leaving an active watch on a deleted chat.
+    await lockChatForWatches(tx, params.chatId);
+
     const deleted = await tx
       .update(chats)
       .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
@@ -513,16 +535,12 @@ export function isTerminalWatchStatus(status: string): boolean {
 export type CreateWatchResult =
   | { ok: true; watch: Watch }
   | { ok: false; error: "limit_reached"; activeCount: number }
-  | { ok: false; error: "duplicate"; existingId: string | null };
+  | { ok: false; error: "duplicate"; existingId: string | null }
+  /** The chat is gone (or was deleted while this create was in flight). */
+  | { ok: false; error: "chat_not_found" };
 
 /** Postgres `unique_violation`. */
 const PG_UNIQUE_VIOLATION = "23505";
-
-/**
- * Advisory-lock namespace for per-chat watch creation — ASCII `watc`, so the
- * (namespace, hashtext(chatId)) pair can't collide with another lock's key space.
- */
-const WATCH_CREATE_LOCK_NAMESPACE = 0x77617463;
 
 function isUniqueViolation(error: unknown): boolean {
   return (
@@ -549,6 +567,10 @@ function isUniqueViolation(error: unknown): boolean {
  *   insert are one transaction, serialized per chat by a transaction-scoped
  *   advisory lock, so concurrent creates queue behind each other and the one that
  *   would be the 4th is rejected instead of landing.
+ *
+ * The same lock also serializes against `softDeleteChat`, and the chat is re-read
+ * inside it, so a create can never land an active watch on a chat that was deleted
+ * while the create was in flight.
  */
 export async function createWatch(
   db: DashboardAgentDb,
@@ -566,12 +588,19 @@ export async function createWatch(
 ): Promise<CreateWatchResult> {
   try {
     return await db.transaction(async (tx) => {
-      // Serialize creates for this chat, so count-then-insert is atomic against a
-      // concurrent create. Held to the end of the transaction; the namespace keeps
-      // it clear of any other advisory lock in the same database.
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(${WATCH_CREATE_LOCK_NAMESPACE}, hashtext(${params.chatId}))`
-      );
+      // Serialize this chat's watch decisions, so count-then-insert is atomic
+      // against a concurrent create AND against the chat being deleted underneath.
+      await lockChatForWatches(tx, params.chatId);
+
+      // Re-read the chat under the lock. A delete that committed while this call
+      // was validating its target would otherwise be overtaken by the insert
+      // below, leaving an active watch on a conversation the user has deleted.
+      const chat = await tx
+        .select({ id: chats.id })
+        .from(chats)
+        .where(and(eq(chats.id, params.chatId), isNull(chats.deletedAt)))
+        .limit(1);
+      if (chat.length === 0) return { ok: false, error: "chat_not_found" } as const;
 
       const active = await tx
         .select({
@@ -1002,12 +1031,20 @@ export async function markWatchDelivered(
  * #13 Claim a tick GENERATION for a watch — the one and only writer of
  * `tickCount`.
  *
- * A tick invocation carries its generation in its payload and claims it here:
- * the update only lands when the row is still on the previous generation, so the
- * chain advances by exactly one per generation. A retried invocation whose
- * generation was already claimed (it crashed after scheduling the next one) gets
- * `null` and knows it is stale — which is what keeps a retry from forking the
- * chain into two parallel ones.
+ * A tick invocation carries its generation in its payload and claims it here. The
+ * claim is resumable: it lands when the row is still on the previous generation (a
+ * fresh tick) OR already on this one (a retry of the invocation that owns this
+ * generation, which crashed somewhere mid-tick). It does NOT land when the row is
+ * further ahead — the successor generation already ran, so this invocation is a
+ * late duplicate with nothing left to do, and gets `null`.
+ *
+ * Resuming is what keeps a crash from killing the chain. The generation lives in
+ * the payload and the successor's idempotency key (`watch:{id}:tick:{n+1}`) is a
+ * pure function of it, so re-running a whole generation is safe: the successor
+ * trigger dedups on that key, the check record is an overwrite, the terminal
+ * transition is guarded on `active`, and the wake dedups on its action id. A claim
+ * that refused to resume would leave the chain with nobody to schedule the next
+ * generation, and the watch would sit active and unchecked until its deadline.
  *
  * Guarded on `active` too: a terminal watch is never ticked again.
  */
@@ -1022,7 +1059,7 @@ export async function claimWatchTick(
       and(
         eq(watches.id, params.id),
         eq(watches.status, "active"),
-        eq(watches.tickCount, params.generation - 1)
+        inArray(watches.tickCount, [params.generation - 1, params.generation])
       )
     )
     .returning();
@@ -1057,6 +1094,59 @@ export async function recordWatchCheck(
   return rows[0] ?? null;
 }
 
+/** A terminal watch whose wake never reached its chat, with the chat's watermark. */
+export interface WatchAwaitingDelivery {
+  watch: Watch;
+  /**
+   * The chat's last persisted message time. The inline-resolution path (a watch
+   * that was already true when it was created) is narrated by the turn that
+   * created it, so a message persisted AFTER the watch resolved is the proof that
+   * narration happened — see the sweep in the webapp.
+   */
+  chatLastMessageAt: Date | null;
+}
+
+/**
+ * #13 Sweep: terminal watches whose delivery is still owed.
+ *
+ * The other half of the backstop, and the one `listExpiredActiveWatches` cannot
+ * see: a row that has already been resolved (so it is no longer `active`) but
+ * whose wake never landed — the session append failed, the run that owned it died
+ * between the transition and the append, or the outcome was resolved inline and
+ * the turn that was going to narrate it never finished. Without this the row sits
+ * `pending` forever, and the wake is simply lost.
+ *
+ * `olderThan` is a grace window on the resolution time (`fired_at` for a fire,
+ * `last_checked_at` for an expiry): the normal delivery happens within seconds, so
+ * only rows that have been owed for a while are recovered, and the recovery can't
+ * race the path that is still mid-delivery.
+ *
+ * Deleted chats are excluded — there is nowhere to deliver a wake in a
+ * conversation the user can no longer open (deleting a chat cancels its active
+ * watches, so this only ever skips one that resolved just before the delete).
+ */
+export async function listWatchesAwaitingDelivery(
+  db: DashboardAgentDb,
+  params: { olderThan: Date; limit?: number }
+): Promise<WatchAwaitingDelivery[]> {
+  const rows = await db
+    .select({ watch: watches, chatLastMessageAt: chats.lastMessageAt })
+    .from(watches)
+    .innerJoin(chats, eq(chats.id, watches.chatId))
+    .where(
+      and(
+        inArray(watches.status, ["fired", "expired"]),
+        eq(watches.deliveryStatus, "pending"),
+        isNull(chats.deletedAt),
+        sql`coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) <= ${params.olderThan.toISOString()}::timestamptz`
+      )
+    )
+    .orderBy(sql`coalesce(${watches.firedAt}, ${watches.lastCheckedAt})`)
+    .limit(params.limit ?? 100);
+
+  return rows.map((row) => ({ watch: row.watch, chatLastMessageAt: row.chatLastMessageAt }));
+}
+
 /**
  * #13 Sweep: active watches whose deadline has passed, oldest first. Callers
  * expire these via `transitionWatchCondition(id, { status: "expired" })`.
@@ -1072,7 +1162,11 @@ export async function listExpiredActiveWatches(
     .where(
       and(
         eq(watches.status, "active"),
-        params.now ? sql`${watches.expiresAt} <= ${params.now}` : sql`${watches.expiresAt} <= now()`
+        // The bind has to be a string: postgres-js won't serialize a Date into a
+        // raw `sql` fragment (it silently worked only while nobody passed `now`).
+        params.now
+          ? sql`${watches.expiresAt} <= ${params.now.toISOString()}::timestamptz`
+          : sql`${watches.expiresAt} <= now()`
       )
     )
     .orderBy(watches.expiresAt)

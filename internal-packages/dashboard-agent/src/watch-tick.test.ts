@@ -79,7 +79,11 @@ function fakeStore(row: Watch) {
     claimWatchTick: async (params) => {
       calls.claims.push(params);
       if (row.status !== "active") return null;
-      if (row.tickCount !== params.generation - 1) return null;
+      // Resumable, exactly like the real query: the previous generation (fresh) or
+      // this one (a retry resuming its own generation), never one further ahead.
+      if (row.tickCount !== params.generation - 1 && row.tickCount !== params.generation) {
+        return null;
+      }
       row.tickCount = params.generation;
       row.lastCheckedAt = NOW;
       return { ...row };
@@ -421,28 +425,145 @@ describe("runWatchTick", () => {
     expect(row.lastResult).toMatchObject({ checkFailed: true });
   });
 
-  it("a stale invocation claims nothing: the accepted generation is the only chain", async () => {
+  it("a late duplicate of an old generation claims nothing: the chain can't fork", async () => {
     const { store, calls, row } = fakeStore(watchRow({ tickCount: 3 }));
     const { fetch, calls: fetchCalls } = fakeFetch(() => ({ body: { result: "pending" } }));
     const { appends, deliver } = fakeDeliver();
     const { triggers, reschedule } = fakeReschedule();
     const d = deps({ store, fetch, deliver, reschedule });
 
-    // Generation 4 is accepted and schedules 5.
+    // Generation 4 is accepted and schedules 5, which then claims its own.
     expect(await runWatchTick(payloadFor(4), d)).toEqual({ outcome: "pending", tickCount: 4 });
+    expect(await runWatchTick(payloadFor(5), d)).toEqual({ outcome: "pending", tickCount: 5 });
 
-    // The same invocation is retried (it crashed after triggering its successor).
-    const retry = await runWatchTick(payloadFor(4), d);
+    // A duplicate of generation 4 arrives late — its successor has already run, so
+    // it must not check, record, or start a second chain.
+    const late = await runWatchTick(payloadFor(4), d);
 
-    expect(retry).toEqual({ outcome: "stale" });
-    // No second check, no second record, no second successor.
-    expect(fetchCalls).toHaveLength(1);
-    expect(calls.checks).toHaveLength(1);
-    expect(triggers).toHaveLength(1);
-    expect(triggers[0]?.options.idempotencyKey).toBe("watch:watch_1:tick:5");
+    expect(late).toEqual({ outcome: "stale" });
+    expect(fetchCalls).toHaveLength(2);
+    expect(calls.checks).toHaveLength(2);
+    expect(triggers.map((trigger) => trigger.options.idempotencyKey)).toEqual([
+      "watch:watch_1:tick:5",
+      "watch:watch_1:tick:6",
+    ]);
     expect(calls.transition).toHaveLength(0);
     expect(appends).toHaveLength(0);
+    expect(row.tickCount).toBe(5);
+  });
+
+  it("a retry of a generation that crashed before its successor was accepted resumes it", async () => {
+    const { store, calls, row } = fakeStore(watchRow({ tickCount: 3 }));
+    const { fetch, calls: fetchCalls } = fakeFetch(() => ({ body: { result: "pending" } }));
+    const { appends, deliver } = fakeDeliver();
+    const { triggers, reschedule } = fakeReschedule();
+
+    // The first attempt claims generation 4, checks — and dies scheduling its
+    // successor, so nobody has generation 5.
+    let failNextTrigger = true;
+    const d = deps({
+      store,
+      fetch,
+      deliver,
+      reschedule: async (next, options) => {
+        if (failNextTrigger) {
+          failNextTrigger = false;
+          throw new Error("the trigger failed");
+        }
+        return reschedule(next, options);
+      },
+    });
+
+    await expect(runWatchTick(payloadFor(4), d)).rejects.toThrow("the trigger failed");
     expect(row.tickCount).toBe(4);
+    expect(triggers).toHaveLength(0);
+
+    // The platform retries the SAME generation. It has to be able to resume: the
+    // row is already on 4, and refusing the claim would leave the chain with no
+    // successor at all.
+    const retry = await runWatchTick(payloadFor(4), d);
+
+    expect(retry).toEqual({ outcome: "pending", tickCount: 4 });
+    expect(calls.claims).toEqual([
+      { id: "watch_1", generation: 4 },
+      { id: "watch_1", generation: 4 },
+    ]);
+    expect(fetchCalls).toHaveLength(2);
+    // One successor, and its key is a pure function of the generation — so the two
+    // attempts can only ever produce the same one.
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0]?.payload).toEqual(payloadFor(5));
+    expect(triggers[0]?.options.idempotencyKey).toBe("watch:watch_1:tick:5");
+    expect(row.status).toBe("active");
+    expect(row.tickCount).toBe(4);
+    expect(appends).toHaveLength(0);
+  });
+
+  it("a resumed generation past the deadline still resolves exactly once", async () => {
+    // The resume re-runs the whole tick, including the terminal transition. The
+    // guard on `active` is what makes that safe.
+    const { store, calls, row } = fakeStore(watchRow({ tickCount: 12 }));
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied", facts: { runs: 1 } } }));
+    const { appends, deliver } = fakeDeliver({ throwOnce: true });
+    const { reschedule } = fakeReschedule();
+    const d = deps({ store, fetch, deliver, reschedule });
+
+    await expect(runWatchTick(payloadFor(13), d)).rejects.toThrow("session append failed");
+    const retry = await runWatchTick(payloadFor(13), d);
+
+    expect(retry).toEqual({ outcome: "delivered_only" });
+    expect(calls.transition).toHaveLength(1);
+    expect(appends).toHaveLength(1);
+    expect(row.status).toBe("fired");
+    expect(row.deliveryStatus).toBe("delivered");
+  });
+
+  it("deliverOnly: wakes a resolved watch without claiming, checking, or rescheduling", async () => {
+    const { store, calls, row } = fakeStore(
+      watchRow({
+        status: "fired",
+        deliveryStatus: "pending",
+        firedAt: NOW,
+        lastResult: { runs: 2 },
+      })
+    );
+    const { fetch, calls: fetchCalls } = fakeFetch(() => ({ body: { result: "satisfied" } }));
+    const { appends, deliver } = fakeDeliver();
+    const { triggers, reschedule } = fakeReschedule();
+
+    const result = await runWatchTick(
+      { ...payloadFor(0), deliverOnly: true },
+      deps({ store, fetch, deliver, reschedule })
+    );
+
+    expect(result).toEqual({ outcome: "delivered_only" });
+    expect(calls.claims).toHaveLength(0);
+    expect(fetchCalls).toHaveLength(0);
+    expect(triggers).toHaveLength(0);
+    expect(appends).toHaveLength(1);
+    expect(appends[0]?.action).toMatchObject({ type: "watch.fired", id: "watch:watch_1:fired" });
+    expect(row.deliveryStatus).toBe("delivered");
+  });
+
+  it("deliverOnly on a watch that is still active decides nothing", async () => {
+    const { store, calls, row } = fakeStore(watchRow());
+    const { fetch, calls: fetchCalls } = fakeFetch(() => ({ body: { result: "satisfied" } }));
+    const { appends, deliver } = fakeDeliver();
+    const { triggers, reschedule } = fakeReschedule();
+
+    const result = await runWatchTick(
+      { ...payloadFor(0), deliverOnly: true },
+      deps({ store, fetch, deliver, reschedule })
+    );
+
+    expect(result).toEqual({ outcome: "nothing_to_deliver" });
+    expect(calls.claims).toHaveLength(0);
+    expect(calls.transition).toHaveLength(0);
+    expect(fetchCalls).toHaveLength(0);
+    expect(triggers).toHaveLength(0);
+    expect(appends).toHaveLength(0);
+    expect(row.status).toBe("active");
+    expect(row.tickCount).toBe(0);
   });
 
   it("expiry with an unavailable final check: the watch still expires, and the facts say it couldn't be verified", async () => {

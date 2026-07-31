@@ -139,9 +139,12 @@ export async function action({ request }: ActionFunctionArgs) {
           ? 409
           : result.code === "invalid_target"
             ? 404
-            : result.code === "not_configured"
-              ? 501
-              : 500;
+            : // The chat was deleted while the create was in flight.
+              result.code === "chat_not_found"
+              ? 404
+              : result.code === "not_configured"
+                ? 501
+                : 500;
       return json(
         {
           error: result.error,

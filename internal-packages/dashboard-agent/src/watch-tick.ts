@@ -37,9 +37,12 @@ import type { WatchWakeAction } from "./dashboard-agent";
  * - `unavailable` is never read as true and never as false: the check itself
  *   couldn't run, so the watch keeps its state and tries again.
  * - Every invocation owns ONE generation, carried in the payload and claimed
- *   atomically before anything else happens. A retry of an invocation that
- *   already scheduled its successor claims nothing and exits `stale`, so the
- *   chain can't fork into two.
+ *   atomically before anything else happens. The claim is resumable: a retry of
+ *   the invocation that owns a generation re-runs it (the successor's idempotency
+ *   key is derived from the generation, so the chain still can't fork), while a
+ *   late duplicate of an older generation claims nothing and exits `stale`. A
+ *   claim that refused to resume would leave a crashed generation with no
+ *   successor and the watch unchecked until its deadline.
  * - The terminal transition is atomic and one-way (`active` → fired/expired,
  *   delivery `pending`), and `markWatchDelivered` happens ONLY after the session
  *   append is acknowledged. Anything failing before that ack throws, so the
@@ -60,6 +63,17 @@ export type WatchTickPayload = {
    * reschedule, and claimed once via `claimWatchTick`.
    */
   tick: number;
+  /**
+   * Delivery only: the row has ALREADY been resolved by the webapp, and all this
+   * invocation does is wake the chat and mark the delivery. No claim, no check, no
+   * reschedule — `tick` is ignored.
+   *
+   * This is the seam the webapp's watch sweep uses. The webapp owns the outcome
+   * (it re-authorizes the user and runs the final check); appending to a chat's
+   * `in` stream is the agent project's capability, so the delivery is handed back
+   * here instead of being duplicated there.
+   */
+  deliverOnly?: boolean;
 };
 
 /** The watch rows this task reads and writes, behind an interface so tests can fake it. */
@@ -79,9 +93,9 @@ export type WatchTickStore = {
 };
 
 /**
- * Resolving a watch and waking the chat — the half of the deps the expiry sweeper
- * shares with the tick, so both go through the same transition + append + mark
- * sequence instead of each having its own.
+ * Resolving a watch and waking the chat — kept as its own deps shape because both
+ * the full tick and a delivery-only invocation go through the same transition +
+ * append + mark sequence.
  */
 export type WatchDeliveryDeps = {
   store: Pick<WatchTickStore, "getWatch" | "transitionWatchCondition" | "markWatchDelivered">;
@@ -112,9 +126,12 @@ export type WatchTickOutcome =
   | "missing"
   | "already_terminal"
   | "delivered_only"
-  // The generation this invocation carries was already claimed: a duplicate or a
-  // retry that had gotten as far as scheduling its successor.
+  // The row has moved past the generation this invocation carries: a late
+  // duplicate whose successor already ran.
   | "stale"
+  // A `deliverOnly` invocation on a row that isn't terminal yet: nothing to wake
+  // the chat about, and this invocation must not decide an outcome.
+  | "nothing_to_deliver"
   | "revoked"
   | "unavailable"
   | "pending"
@@ -305,8 +322,6 @@ async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promise<void>
  * expires the watch yields exactly one winner. The loser re-reads the row and
  * delivers whatever the winner decided, if that's still owed.
  *
- * Exported for the expiry sweeper, which resolves overdue watches through exactly
- * this path.
  */
 export async function resolveAndDeliver(
   deps: WatchDeliveryDeps,
@@ -358,10 +373,22 @@ export async function runWatchTick(
     return { outcome: "already_terminal" };
   }
 
-  // Claim this invocation's generation. The claim is the concurrency gate: it only
-  // lands when the row is still on the previous generation, so a duplicate (or a
-  // retry that crashed after scheduling its successor) gets nothing and stops here
-  // instead of checking, transitioning, and starting a second chain.
+  // Delivery-only invocations never decide anything: if the row isn't terminal,
+  // there is nothing owed and this exits without claiming a generation.
+  if (payload.deliverOnly) {
+    logger.info("dashboard-agent watch delivery has nothing to deliver", {
+      watchId: watch.id,
+      status: watch.status,
+    });
+    return { outcome: "nothing_to_deliver" };
+  }
+
+  // Claim this invocation's generation. The claim is resumable: it lands on the
+  // previous generation (a fresh tick) or on this one (a retry of the invocation
+  // that owns it, resuming after a crash), and refuses only when the row has moved
+  // past this generation — i.e. this is a late duplicate whose successor already
+  // ran. A resumed tick re-runs the whole generation, which is safe because every
+  // write it makes is guarded or keyed (see `claimWatchTick`).
   const claimed = await deps.store.claimWatchTick({
     id: watch.id,
     generation: payload.tick,
@@ -452,9 +479,10 @@ export async function runWatchTick(
  *
  * The successor's generation is `payload.tick + 1` — derived from the generation
  * THIS invocation claimed, never from the row's counter, and carried both in the
- * payload and in the idempotency key `watch:{id}:tick:{n}`. So a retry that got
- * this far already advanced the row: it fails its claim, exits `stale`, and the
- * single successor it triggered (deduped by the key) is the whole chain.
+ * payload and in the idempotency key `watch:{id}:tick:{n}`. So a retry that
+ * re-runs this generation triggers the same successor, the key dedups it, and the
+ * chain stays single-file; only once that successor has itself claimed does an old
+ * generation become stale.
  */
 async function scheduleNextTick(
   deps: WatchTickDeps,
@@ -473,8 +501,7 @@ async function scheduleNextTick(
 }
 
 // One connection pool per worker process for the watcher (separate from the
-// agent's; ticks are their own runs). Shared with the expiry sweeper, so the two
-// watch tasks on a worker don't open a pool each.
+// agent's; ticks are their own runs).
 let dbClient: DashboardAgentDbClient | undefined;
 export function getWatchDb(): DashboardAgentDbClient {
   if (!dbClient) {

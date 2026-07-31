@@ -263,6 +263,11 @@ export const watches = dashboardAgentSchema.table(
       .where(sql`${t.status} = 'active'`),
     // Sweep: active watches due to be checked / past their expiry.
     index("watches_status_expires_idx").on(t.status, t.expiresAt),
+    // The other half of the sweep: resolved watches whose wake is still owed.
+    // Partial, because "owed" is a handful of rows at any moment.
+    index("watches_pending_delivery_idx")
+      .on(t.firedAt, t.lastCheckedAt)
+      .where(sql`${t.deliveryStatus} = 'pending'`),
   ]
 );
 

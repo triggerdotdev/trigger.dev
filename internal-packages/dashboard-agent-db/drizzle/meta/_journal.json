@@ -29,6 +29,13 @@
       "when": 1785320232281,
       "tag": "0003_famous_champions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785511915186,
+      "tag": "0004_moaning_omega_sentinel",
+      "breakpoints": true
     }
   ]
 }

@@ -271,19 +271,29 @@ export async function createDashboardAgentWatch(params: {
   });
 
   if (!created.ok) {
-    if (created.error === "limit_reached") {
-      return {
-        ok: false,
-        code: "limit_reached",
-        error: `This chat already has ${MAX_ACTIVE_WATCHES_PER_CHAT} active watches. Cancel one first.`,
-      };
+    switch (created.error) {
+      case "limit_reached":
+        return {
+          ok: false,
+          code: "limit_reached",
+          error: `This chat already has ${MAX_ACTIVE_WATCHES_PER_CHAT} active watches. Cancel one first.`,
+        };
+      // The chat was deleted while this create was in flight — the query layer
+      // re-reads it under the per-chat lock, so nothing was written.
+      case "chat_not_found":
+        return {
+          ok: false,
+          code: "chat_not_found",
+          error: "That chat no longer exists, so nothing is being watched.",
+        };
+      default:
+        return {
+          ok: false,
+          code: "duplicate",
+          error: "This chat is already watching that.",
+          existingId: created.existingId,
+        };
     }
-    return {
-      ok: false,
-      code: "duplicate",
-      error: "This chat is already watching that.",
-      existingId: created.existingId,
-    };
   }
 
   const watch = created.watch;
@@ -327,10 +337,12 @@ export async function createDashboardAgentWatch(params: {
     // silently blocking a re-ask: end the row and report a plain failure. NOT an
     // `immediate` outcome — that means "the condition already resolved", and
     // saying so here would have the agent narrate a verdict nobody measured.
-    await resolveWatchInline(watch.id, "expired", {
-      result: "unavailable",
-      facts: { kind: spec.kind, reason: "scheduling_failed" },
-    });
+    await resolveWatchInline(
+      watch.id,
+      "expired",
+      { result: "unavailable", facts: { kind: spec.kind, reason: "scheduling_failed" } },
+      { narrate: false }
+    );
     return {
       ok: false,
       code: "internal",
@@ -343,21 +355,36 @@ export async function createDashboardAgentWatch(params: {
 
 /**
  * Resolve a watch whose outcome is being reported in the SAME response that
- * created it. Marked delivered because the caller is the notification — the
- * watcher task must never narrate it a second time.
+ * created it — the condition was already true when the user asked.
+ *
+ * The delivery is left `pending` and marked `narratedInline`, NOT marked delivered
+ * here. The caller is the notification, but only if the turn survives: a completed
+ * tool call renders nothing, so the outcome the user actually sees is the
+ * assistant's message about it, and a turn that dies after the tool result and
+ * before that message leaves the user with nothing. The watch sweep closes the row
+ * out either way — it marks the delivery once the turn's persistence proves the
+ * narration exists, and wakes the chat with the outcome when it doesn't (see
+ * `dashboardAgentWatchSweep.server.ts`).
+ *
+ * `narrate: false` is for the one outcome there is nothing to narrate later (the
+ * first tick couldn't be scheduled): the row is closed out immediately, so no wake
+ * is ever sent for an internal failure the caller already reported inline.
  */
 async function resolveWatchInline(
   watchId: string,
   status: "fired" | "expired",
-  outcome: WatchCheckOutcome
+  outcome: WatchCheckOutcome,
+  options: { narrate?: boolean } = {}
 ): Promise<WatchStatus> {
+  const narrate = options.narrate ?? true;
   const transitioned = await transitionWatchCondition(dashboardAgentDb, {
     id: watchId,
     status,
-    lastResult: { result: outcome.result, facts: outcome.facts },
+    lastResult: { result: outcome.result, facts: outcome.facts, narratedInline: narrate },
   });
   if (!transitioned) return status;
-  await markWatchDelivered(dashboardAgentDb, { id: watchId });
+
+  if (!narrate) await markWatchDelivered(dashboardAgentDb, { id: watchId });
 
   // The chat is being told inline; the configured alert channels still need the
   // fan-out. Keyed on the watch, so the watcher task can't double-alert it.
@@ -406,6 +433,45 @@ export async function scheduleWatchTick(params: {
       // can't double-tick.
       idempotencyKey: `watch:${params.watchId}:tick:${params.tick}`,
       // Pin to the same deployed agent version the chat runs on, when set.
+      ...(env.DASHBOARD_AGENT_VERSION ? { version: env.DASHBOARD_AGENT_VERSION } : {}),
+    }
+  );
+}
+
+/**
+ * Hand a RESOLVED watch's wake to the watcher task.
+ *
+ * The webapp decides outcomes (it owns the authorization and the check), the agent
+ * project owns appending to a chat's `in` stream — so a wake the webapp resolved is
+ * delivered by a delivery-only invocation of the same task a tick uses. It takes
+ * the same durable path: append, then mark the delivery, with the stable action id
+ * doing the dedup if it runs twice.
+ *
+ * Keyed per watch (`watch:{id}:deliver`) with a short TTL, so repeated sweeps
+ * inside one window collapse into one invocation while a later sweep can still try
+ * again after a run failed for good.
+ *
+ * The token is the row's own deterministic one. Past the watch's grace window it is
+ * expired, which costs nothing here: a delivery-only invocation never calls the
+ * check endpoint, and the alert fan-out is enqueued by the caller.
+ */
+export async function scheduleWatchDelivery(watch: { id: string; expiresAt: Date }): Promise<void> {
+  const accessToken = env.DASHBOARD_AGENT_SECRET_KEY;
+  if (!accessToken) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
+
+  const apiOrigin = dashboardAgentApiOrigin();
+  const client = new TriggerClient({ baseURL: apiOrigin, accessToken });
+  const token = await mintDashboardAgentWatchToken({
+    watchId: watch.id,
+    expiresAt: watch.expiresAt,
+  });
+
+  await client.tasks.trigger(
+    WATCH_TASK_ID,
+    { watchId: watch.id, token, apiOrigin, tick: 0, deliverOnly: true },
+    {
+      idempotencyKey: `watch:${watch.id}:deliver`,
+      idempotencyKeyTTL: "10m",
       ...(env.DASHBOARD_AGENT_VERSION ? { version: env.DASHBOARD_AGENT_VERSION } : {}),
     }
   );
