@@ -4,7 +4,7 @@ Scores every webapp entry point on whether it could explain itself during an inc
 the ones worth fixing. An entry point is a Remix `loader` or `action` under
 `apps/webapp/app/routes`, 427 of them at the time of writing.
 
-The number it prints today is 18 out of 100. That is not a bug, and the rest of this file is mostly
+The number it prints today is 17 out of 100. That is not a bug, and the rest of this file is mostly
 about why you should believe it.
 
 ## Running it
@@ -20,7 +20,7 @@ suppresses. The single-route mode takes either the route path the report prints 
 the file name (`api.v1.token.ts`). An exact match wins over the routes it is a prefix of, and an
 ambiguous prefix warns and names the alternatives rather than silently picking one.
 
-## What 18 means
+## What 17 means
 
 It is the mean score of the 412 entry points that had at least one applicable check, where an
 entry's score is the share of its applicable checks that passed. It is low because the webapp does
@@ -34,12 +34,12 @@ error handling.
 
 Two invariants hold now, and both are asserted in `test/score.test.ts` rather than measured once:
 
-- **Removing error handling must not raise the score.** Deleting every catch clause takes 18 to 8,
-  and deleting the logs as well takes it to 2.
+- **Removing error handling must not raise the score.** Deleting every catch clause drops it to 8,
+  and deleting the logs as well drops it to 2.
 - **Adding error handling that does nothing must not raise the score.** Wrapping every body in
-  `try { ... } catch (e) { throw e }` leaves it at 18, with no entry moving in either direction.
-  That mutation used to be worth 27 points across the tree, because a rethrow-only clause counted
-  as a pass while no catch at all was not-applicable, and the two are observationally identical.
+  `try { ... } catch (e) { throw e }` leaves the score unchanged. That mutation used to be worth 27
+  points across the tree, because a rethrow-only clause counted as a pass while no catch at all was
+  not-applicable, and the two are observationally identical.
 
 If you change this package, check both directions still hold.
 
@@ -89,6 +89,16 @@ unmeasured entries into the mean at 100, would let the tool look better the less
 header prints both counts (`412 measured, 15 unmeasured`) so the denominator is never hidden, and a
 family with nothing measured renders as `not measured` rather than as a full green bar.
 
+15 of those 427 routes are unmeasured because `isTrivial` (`src/triviality.ts`) rules them out before
+any check runs. Trivial means a body of three statements or fewer, three or fewer calls, no
+try/catch, no builder wrapping it, and nothing in the calls or the source naming a datastore or a
+service (`prisma`, `logger`, `fetch`, `redis`, and the like). Parse the params, build a path,
+redirect: nothing there for a check to find evidence in either way. Exclusion is a denominator exit,
+not a credit: a trivial route's `score` is the same placeholder 100 that an unmeasured entry always
+carries, and it is left out of every mean for the same reason. Scoring it a pass instead would say a
+route earned a clean result by never doing anything a check could look at, which is the same vacuous
+100 the header already refuses to average in.
+
 ## When a check declines to judge
 
 The rule every applicability decision follows: **would this evidence necessarily be visible in the
@@ -126,6 +136,21 @@ and the result is capped by what the entry would have scored unsuppressed, so su
 check holds the number still rather than improving it. What you buy is removal from the worklist
 with a reason on the record. The report prints how many suppressions are in force so the practice
 stays visible.
+
+## The gaming boundary
+
+`request-context` checks that a failure-path log names a tenant field. It does not check that the
+value is real. A codemod that added `environmentId` to every in-catch `logger.error` call, wiring it
+up to the wrong variable or a constant, would move the score exactly as far as one that wired it up
+correctly. Measured on the real tree: adding a synthetic `environmentId` field to every in-catch log
+call, with no other change, takes the global score from 17 to 27.
+
+That is the tool verifying presence, not meaning, and it is not a bug to fix. Every check here reads
+syntax: a field name, a call, a binding reference. None of them can tell a genuine tenant id from a
+hardcoded string with the right key. What a reviewer owns is whether the value behind the field is
+real, the same way a Lighthouse accessibility score checks that an `alt` attribute exists and not
+that its text describes the image. The number tells you where to look. It does not tell you what
+you will find there.
 
 ## Known limits
 
