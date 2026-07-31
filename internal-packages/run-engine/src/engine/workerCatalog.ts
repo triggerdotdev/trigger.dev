@@ -58,6 +58,12 @@ export const workerCatalog = {
     }),
     visibilityTimeoutMs: 30_000,
   },
+  expireBatch: {
+    schema: z.object({
+      batchId: z.string(),
+    }),
+    visibilityTimeoutMs: 30_000,
+  },
   continueRunIfUnblocked: {
     schema: z.object({
       runId: z.string(),
