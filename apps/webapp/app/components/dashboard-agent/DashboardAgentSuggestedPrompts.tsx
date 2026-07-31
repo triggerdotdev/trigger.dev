@@ -1,4 +1,4 @@
-import { SparklesIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { CodeBracketIcon, SparklesIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useCallback, useMemo, useState } from "react";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -77,6 +77,11 @@ export function DashboardAgentSuggestedPrompts({
           <AgentListRow
             key={prompt.id}
             label={prompt.label}
+            // A prompt is an invitation, so it reads as a chip: fully rounded,
+            // with the icon and the chevron the public chat page uses.
+            shape="pill"
+            icon={CodeBracketIcon}
+            chevron
             variant={prompt.source === "promoted" ? "promoted" : "default"}
             onSelect={() => onSelect(prompt.prompt)}
             action={

@@ -28,7 +28,8 @@ export type GalleryGroup =
   | "prompts"
   | "intents"
   | "messages"
-  | "banner";
+  | "banner"
+  | "chrome";
 
 export type GallerySection = {
   /** DOM id, deep-link anchor and screenshot filename. Stable. */
@@ -57,6 +58,7 @@ export const GALLERY_GROUPS: { group: GalleryGroup; label: string }[] = [
   { group: "intents", label: "Intent bubbles" },
   { group: "messages", label: "Message-level states" },
   { group: "banner", label: "Context banner" },
+  { group: "chrome", label: "Panel chrome" },
 ];
 
 export const MANIFEST: GallerySection[] = [
@@ -294,6 +296,11 @@ export const MANIFEST: GallerySection[] = [
     group: "messages",
   },
   {
+    sectionId: "messages-tool-failed",
+    title: "Failed tool call — the error pill",
+    group: "messages",
+  },
+  {
     sectionId: "messages-error-retry",
     title: "Failed turn — error row and retry",
     group: "messages",
@@ -308,6 +315,11 @@ export const MANIFEST: GallerySection[] = [
   { sectionId: "banner-dev", title: "Dev environment", group: "banner" },
   { sectionId: "banner-preview-long", title: "Preview branch with a long name", group: "banner" },
   { sectionId: "banner-run-detail", title: "Run detail page", group: "banner" },
+
+  // --- Panel chrome: the surfaces around the transcript --------------------
+  { sectionId: "history-list", title: "Chat history rows", group: "chrome" },
+  { sectionId: "composer-idle", title: "Composer — idle and typed", group: "chrome" },
+  { sectionId: "composer-streaming", title: "Composer — answering", group: "chrome" },
 ];
 
 /** Sections in a group, in manifest order. */

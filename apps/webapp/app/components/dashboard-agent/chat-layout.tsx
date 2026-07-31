@@ -46,10 +46,14 @@
  *    rhythm — is the card's business and must stay in the card. Anything about
  *    how the card sits in the transcript — full width, inset, distance to its
  *    neighbours — is `ChatCardSlot`'s, and a card must not set it.
- * 4. **Role drives alignment and nothing else.** `role="user"` is right-aligned
- *    in a grey bubble; `role="assistant"` is left-aligned, full width and
- *    unboxed — plain prose, so the cards are the only things that read as cards.
+ * 4. **Role drives alignment and surface.** `role="user"` is right-aligned in an
+ *    indigo bubble; `role="assistant"` is left-aligned and near-full width in a
+ *    soft dark card. Rich cards are still distinct — they carry headers, badges
+ *    and actions inside the same border language.
+ * 5. **Machine text is mono.** Anything the system names — a tool call, a step
+ *    count, a duration — is set in mono; sentences the agent writes stay sans.
  */
+import { ChevronRightIcon } from "@heroicons/react/20/solid";
 import type { Ref } from "react";
 import { createContext, Suspense, useContext } from "react";
 import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
@@ -73,6 +77,22 @@ const UNIT_GAP = "space-y-1.5";
 
 const SCROLLER =
   "flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control";
+
+/**
+ * The surface a turn's own content sits on: a soft dark card, one step above the
+ * panel. Used by the assistant's text and by the pills, so a transcript reads as
+ * one material.
+ */
+const SOFT_SURFACE = "border border-border-bright bg-background-hover";
+
+/** Machine text — a tool name, a step count, a duration. See rule 5. */
+const MONO_TEXT = "font-mono text-xs tracking-wide";
+
+/**
+ * A pill: a tool call, in flight or landed. Fully rounded and dashed, so it reads
+ * as a trace of what happened rather than as a control to press.
+ */
+const PILL = "inline-flex min-w-0 max-w-full items-center rounded-full border-dashed px-3 py-1";
 
 /**
  * The soft edge at the bottom of the scroller. There is no rule above the
@@ -165,27 +185,28 @@ export function ChatTurn({
 /**
  * A text body.
  *
- * The assistant variant is the panel's markdown path, rendered as plain prose:
- * NOT a card. The agent answers in text most of the time, and a box around every
- * one of those answers made the transcript read as a stack of cards — so the box
- * is reserved for the things that really are cards (report, investigation,
- * diagnosis, chart), which mount through `ChatCardSlot`. A plain-text fallback
- * shows while the markdown renderer loads.
+ * The assistant variant is the panel's markdown path, in a soft card: near-full
+ * width, left-aligned, so an answer has an edge without shouting. A plain-text
+ * fallback shows while the markdown renderer loads.
  *
- * The user variant is the one bubble left: grey, right-aligned, so a turn is
- * legible at a glance without competing with the accent the agent's own surfaces
- * use.
+ * The user variant is the accent bubble: indigo, right-aligned, tighter than full
+ * width, so who said what is legible at a glance.
  */
 export function ChatText({ role = "assistant", text }: { role?: ChatRole; text: string }) {
   if (role === "user") {
     return (
-      <div className="max-w-[80%] rounded-lg bg-background-raised px-4 py-2.5 text-sm text-text-bright">
+      <div className="max-w-[85%] rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm text-white">
         <div className="whitespace-pre-wrap wrap-anywhere">{text}</div>
       </div>
     );
   }
   return (
-    <div className="streamdown-container min-w-0 font-sans text-sm font-normal text-text-dimmed wrap-anywhere">
+    <div
+      className={cn(
+        SOFT_SURFACE,
+        "streamdown-container min-w-0 rounded-xl px-4 py-3 font-sans text-sm font-normal text-text-bright wrap-anywhere"
+      )}
+    >
       <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
         <StreamdownRenderer>{text}</StreamdownRenderer>
       </Suspense>
@@ -203,7 +224,8 @@ export function ChatCardSlot({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * The progress line: a spinner and one line of dimmed text, left-aligned.
+ * The progress line: a spinner and one line of dimmed mono text, left-aligned —
+ * the same register as the step summary a finished turn leaves behind.
  *
  * It always carries the transcript's inset — either from the turn it sits in, or
  * by applying it itself when it is mounted loose (under a card, say). There is no
@@ -216,9 +238,9 @@ export function ChatCardSlot({ children }: { children: React.ReactNode }) {
 export function ChatProgress({ children }: { children: React.ReactNode }) {
   const insetClass = useInsetClass();
   return (
-    <div className={cn(insetClass, "flex items-start text-sm text-text-dimmed", ROW_GAP)}>
-      {/* text-sm line box is 20px, the spinner 12px: 4px centres it on line one. */}
-      <Spinner className="mt-1 size-3 shrink-0" />
+    <div className={cn(insetClass, MONO_TEXT, "flex items-start text-text-dimmed", ROW_GAP)}>
+      {/* text-xs line box is 16px, the spinner 12px: 2px centres it on line one. */}
+      <Spinner className="mt-0.5 size-3 shrink-0" />
       {children}
     </div>
   );
@@ -238,12 +260,7 @@ export function ChatPendingTool({ label }: { label: string }) {
   const insetClass = useInsetClass();
   return (
     <div className={cn(insetClass, "flex min-w-0")}>
-      <span
-        className={cn(
-          "inline-flex h-6 min-w-0 items-center rounded-full border border-border-bright bg-background-bright px-2.5 text-xs text-text-dimmed",
-          CHIP_GAP
-        )}
-      >
+      <span className={cn(PILL, SOFT_SURFACE, MONO_TEXT, "text-text-dimmed", CHIP_GAP)}>
         <Spinner className="size-3 shrink-0" />
         <span className="truncate">{label}</span>
       </span>
@@ -251,13 +268,52 @@ export function ChatPendingTool({ label }: { label: string }) {
   );
 }
 
+/** How a landed tool call ended. Carried by the pill's dot, not by its text. */
+export type ChatToolTone = "done" | "error";
+
+const TOOL_DOT: Record<ChatToolTone, string> = {
+  done: "bg-primary",
+  error: "bg-error",
+};
+
 /**
- * A tool-call row, and optionally a `ChatProgress` under it while the call is in
- * flight. Nothing but the row's placement lives here — the row itself is the
- * shared `ToolUseRow`.
+ * A landed tool call, as a pill: a dot for how it ended, what it did in bright
+ * mono, and what it did it to in dimmed mono. The chevron marks a pill whose
+ * detail is longer than the room it has.
+ *
+ * `children` is anything that belongs under the row — a `ChatProgress` while the
+ * turn continues, say.
  */
-export function ChatToolRow({ children }: { children: React.ReactNode }) {
-  return <div className={cn("min-w-0", TURN_BODY_GAP)}>{children}</div>;
+export function ChatToolRow({
+  label,
+  detail,
+  tone = "done",
+  children,
+}: {
+  label?: React.ReactNode;
+  /** What the call was about: a query, an error message, a run id. Truncated. */
+  detail?: React.ReactNode;
+  tone?: ChatToolTone;
+  children?: React.ReactNode;
+}) {
+  const insetClass = useInsetClass();
+  return (
+    <div className={cn(insetClass, "min-w-0", TURN_BODY_GAP)}>
+      {label ? (
+        <div className="flex min-w-0">
+          <span className={cn(PILL, SOFT_SURFACE, MONO_TEXT, CHIP_GAP)}>
+            <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", TOOL_DOT[tone])} />
+            <span className="shrink-0 text-text-bright">{label}</span>
+            {detail ? <span className="truncate text-text-dimmed">{detail}</span> : null}
+            {detail ? (
+              <ChevronRightIcon aria-hidden className="size-3 shrink-0 text-text-faint" />
+            ) : null}
+          </span>
+        </div>
+      ) : null}
+      {children}
+    </div>
+  );
 }
 
 /**
