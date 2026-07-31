@@ -173,6 +173,79 @@ describe("error-classification", () => {
     expect(r.status).toBe("fail");
   });
 
+  // try/finally with no catch clause. `hasTryCatch` is true here and `catches` is empty, and it is
+  // `catches` that answers "does this route catch anything". Nothing is swallowed: the error
+  // propagates once the connection is closed.
+  it("passes a try/finally that catches nothing", () => {
+    const r = run(
+      "error-classification",
+      "admin.api.v1.runs-replication.status.ts",
+      `import Redis from "ioredis";
+       export async function loader() {
+         const redis = new Redis({ host: "localhost" });
+         try {
+           const exists = await redis.exists("some-key");
+           const other = await redis.exists("other-key");
+           return json({ exists, other });
+         } finally {
+           await redis.quit();
+         }
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  // Multi-catch, the case the aggregate booleans could not describe. Judged per clause: the parse
+  // guard is a guard, the handler catch rethrows, so both are accounted for.
+  it("passes a parse guard sitting beside a handler catch that rethrows", () => {
+    const r = run(
+      "error-classification",
+      "api.v1.thing.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         let data;
+         try { data = await request.json(); }
+         catch { return json({ error: "Invalid JSON" }, { status: 400 }); }
+         try {
+           const thing = await prisma.thing.create({ data });
+           const audit = await prisma.audit.create({ data: { thing: thing.id } });
+           const count = await prisma.thing.count();
+           return json({ thing, audit, count });
+         } catch (error) {
+           logger.error("create failed", { error });
+           throw error;
+         }
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  // A parse guard that has grown to cover the handler is not a guard any more. `otel.v1.logs.ts`
+  // catches 15 of its 18 statements around a `request.json()` and answers 500 for all of them.
+  it("fails a parse guard that covers most of the body", () => {
+    const r = run(
+      "error-classification",
+      "otel.v1.logs.ts",
+      `import { otlpExporter } from "~/v3/otlpExporter.server";
+       export async function action({ request }) {
+         try {
+           const exporter = await otlpExporter;
+           const contentType = request.headers.get("content-type");
+           const body = await request.json();
+           const result = await exporter.exportLogs(body);
+           const encoded = encodeResponse(result);
+           const headers = buildHeaders(contentType);
+           return new Response(encoded, { status: 200, headers });
+         } catch (error) {
+           console.error(error);
+           return new Response("Internal Server Error", { status: 500 });
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
   // False positive fixture: the only try/catch in the file belongs to the component.
   it("does not flag a route whose try/catch is in the React component", () => {
     const r = run(
@@ -481,10 +554,10 @@ describe("request-context", () => {
     expect(r.status).toBe("pass");
   });
 
-  // Known false positive, named in the task 5 report. The only catch here guards `new URL()`, a
-  // constructor, which never reaches `calleeTexts`, so the parse cannot be seen and the route is
-  // judged as though it kept its failures. Fixing it needs the scanner, not the check.
-  it("fails a route whose only catch guards a constructor parse", () => {
+  // Was a known false positive: `new URL()` is a constructor, so the parse was invisible while the
+  // evidence came from `calleeTexts`. `CatchEvidence.guardsParse` covers constructors, so the guard
+  // is legible now and the route is no longer judged as though it kept its failures.
+  it("passes a route whose only catch guards a constructor parse", () => {
     const r = run(
       "request-context",
       "_app.@.orgs.$organizationSlug.$.tsx",
@@ -499,7 +572,25 @@ describe("request-context", () => {
          return typedjson({ origin, things: await prisma.thing.findMany() });
        }`
     );
-    expect(r.status).toBe("fail");
+    expect(r.status).toBe("pass");
+  });
+
+  it("passes a try/finally that catches nothing", () => {
+    const r = run(
+      "request-context",
+      "admin.api.v1.runs-replication.status.ts",
+      `import Redis from "ioredis";
+       export async function loader() {
+         const redis = new Redis({ host: "localhost" });
+         try {
+           const exists = await redis.exists("some-key");
+           return json({ exists });
+         } finally {
+           await redis.quit();
+         }
+       }`
+    );
+    expect(r.status).toBe("pass");
   });
 
   it("still judges a route with a handler-wide catch beside a narrow guard", () => {

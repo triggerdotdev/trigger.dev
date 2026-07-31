@@ -1,6 +1,6 @@
 import type { CheckResult, EntryPoint, LogCall } from "../types.js";
 import { isTrivial } from "../triviality.js";
-import { guardsOnlyAParse } from "./errorClassification.js";
+import { isParseGuard } from "./errorClassification.js";
 
 const ID = "request-context";
 
@@ -32,7 +32,7 @@ function failurePathLogs(ep: EntryPoint): LogCall[] {
  * thing the check exists to find and meant deleting a log line took a route out of the report.
  * Every non-trivial entry point is now judged:
  *
- * - no catch at all, or nothing but a parse guard: pass. The route's own work still throws past it
+ * - no catch at all, or nothing but parse guards: pass. The route's own work still throws past it
  *   to the central handler, which is the intended path in this codebase, and the tenant that
  *   handler does not name is a platform-level gap reported once rather than against each route. A
  *   `try { body = await request.json() } catch { 400 }` is not a route taking over its failure
@@ -51,9 +51,10 @@ export const requestContext = {
     if (isTrivial(ep)) {
       return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
-    // A route whose only catch guards a parse still throws its own work past it to the central
-    // handler. Same reading error-classification gives the field.
-    if (!ep.hasTryCatch || guardsOnlyAParse(ep)) {
+    // `catches`, not `hasTryCatch`: a try/finally catches nothing, so its errors reach the central
+    // handler like any other. A route whose every clause guards a parse is in the same position,
+    // its own work still throws past those guards. Same reading error-classification gives them.
+    if (ep.catches.every((c) => isParseGuard(c, ep))) {
       return { id: ID, status: "pass", detail: "hands its failures to the central handler" };
     }
     const logs = failurePathLogs(ep);

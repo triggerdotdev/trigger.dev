@@ -1,4 +1,4 @@
-import type { CheckResult, EntryPoint } from "../types.js";
+import type { CatchEvidence, CheckResult, EntryPoint } from "../types.js";
 import { isTrivial } from "../triviality.js";
 
 const ID = "error-classification";
@@ -25,19 +25,33 @@ export const BUILDERS = new Set([
 ]);
 
 /**
- * A parse: `await request.json()`, `JSON.parse(raw)`. The dot matters, it keeps Remix's `json({})`
- * response helper out. Matched against `calleeTexts`, which carries the whole callee path.
+ * Whether a catch clause is a guard rather than the route's error handling: it wraps a parse and
+ * covers less than half the entry point's statements. Both halves matter. `guardsParse` alone lets
+ * `otel.v1.logs.ts` off, whose catch covers 15 of its 18 statements and merely happens to contain a
+ * `request.json()`, and that is a real swallow. The coverage test is relative to the body rather
+ * than a second absolute threshold, so it holds for a three-statement route and a fifty-statement
+ * one alike.
  */
-const PARSE_CALL = /(^|\.)JSON\.parse$|\.json$/;
+export function isParseGuard(clause: CatchEvidence, ep: EntryPoint): boolean {
+  return clause.guardsParse && clause.tryStatementCount * 2 < ep.statementCount;
+}
 
 /**
- * Whether every catch in the entry point guards a parse and nothing wider. Both checks read the
- * field the same way: a guard around one parse is not the route taking charge of its failures,
- * so `error-classification` does not call it a swallow and `request-context` does not ask it to
- * name a tenant.
+ * Whether a clause has decided what the error means. Rethrowing is a decision, branching is a
+ * decision, and guarding a parse answers for the one thing the guard covers.
+ *
+ * `narrow` is deliberately not a fourth way to qualify, which is where this differs from the rule
+ * the scanner work proposed. A one-statement try around `await service.call(run)` is narrow and is
+ * still a swallow. Taking the narrow limb clears eleven more entry points, and reading all eleven
+ * says six are real: the silent cancel in `api.v2.runs.$runParam.cancel.ts`, the PAT revoke in
+ * `account.tokens/route.tsx` and the invite revoke, both of which report a database failure to the
+ * browser as a 400 with an internal message in it, a `.map` that drops a broken dashboard on the
+ * floor, and two more. The four it would rightly clear are all the same deliberate shape, best
+ * effort side work that logs and carries on, and all four are non-sensitive so they sort to the
+ * bottom of the fix list. See the task 5 report; switching is one limb in this function.
  */
-export function guardsOnlyAParse(ep: EntryPoint): boolean {
-  return ep.catchesNarrowly && ep.calleeTexts.some((t) => PARSE_CALL.test(t));
+export function accountedFor(clause: CatchEvidence, ep: EntryPoint): boolean {
+  return clause.rethrows || clause.branches || isParseGuard(clause, ep);
 }
 
 export function usesBuilder(ep: EntryPoint): boolean {
@@ -55,20 +69,15 @@ export function usesBuilder(ep: EntryPoint): boolean {
  * call in `try { ... } catch { return 500 }`. The builder classifies what reaches it, and that
  * error never does. Crediting the wrapper would hide the one case in this family worth finding.
  *
- * `catchRethrows` and `catchBranches` are OR-ed across every catch clause in the bodies, so both
- * false means every catch in the entry point takes the same way out whatever was thrown. The
- * asymmetry that buys: one good catch alongside one swallow reads as a pass. This check misses
- * those rather than inventing them.
+ * Judged per catch clause, so an entry point is only as good as its worst one. That is the whole
+ * point of the per-clause evidence: 39 routes have more than one catch and 17 mix a narrow guard
+ * with a broad handler, and under the old aggregate booleans a single well-behaved catch spoke for
+ * the swallow next to it.
  *
- * `catchesNarrowly` excuses the guard that wraps one operation and answers for that operation:
- * `try { body = await request.json() } catch { 400 }` neither branches nor rethrows and does not
- * need to. On its own it excuses too much, because a one-statement try around an awaited service
- * call is exactly as narrow as one around a parse: applied unencumbered it passes
- * `try { await service.call(run) } catch { 500 }`, and it passes the design's own swallow fixture,
- * `try { return await prisma.thing.findMany() } catch { return null }`. So the exemption also asks
- * that the body parse something, which is the idiom the exemption was justified by. Over the real
- * tree that combination clears the nine verbatim `request.json()` guards and holds back the four
- * hand-read findings, see the task 5 report.
+ * "Does this route catch anything" is `catches.length`, never `hasTryCatch`. A try/finally with no
+ * catch leaves `hasTryCatch` true and `catches` empty: nothing is swallowed there, the error
+ * propagates once the cleanup has run, and reading the old flag as a catch put
+ * `admin.api.v1.runs-replication.status.ts` at the top of the first rendered fix list.
  */
 export const errorClassification = {
   id: ID,
@@ -76,19 +85,18 @@ export const errorClassification = {
     if (isTrivial(ep)) {
       return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
-    const guardsAParse = guardsOnlyAParse(ep);
-    if (ep.hasTryCatch && !ep.catchRethrows && !ep.catchBranches && !guardsAParse) {
+    const unaccounted = ep.catches.filter((c) => !accountedFor(c, ep));
+    if (unaccounted.length > 0) {
+      const which =
+        ep.catches.length > 1 ? ` (${unaccounted.length} of ${ep.catches.length} catches)` : "";
       return {
         id: ID,
         status: "fail",
-        detail: "catches its errors and takes one way out regardless of what was thrown",
+        detail: `catches its errors and takes one way out regardless of what was thrown${which}`,
       };
     }
-    if (guardsAParse) {
-      return { id: ID, status: "pass", detail: "guards a parse, not the handler" };
-    }
-    if (ep.catchRethrows || ep.catchBranches) {
-      return { id: ID, status: "pass", detail: "the catch distinguishes what it caught" };
+    if (ep.catches.length > 0) {
+      return { id: ID, status: "pass", detail: "every catch decides what it caught" };
     }
     if (usesBuilder(ep)) {
       return { id: ID, status: "pass", detail: "classified by the builder" };
