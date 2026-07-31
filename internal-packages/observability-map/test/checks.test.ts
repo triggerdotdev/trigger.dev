@@ -242,6 +242,73 @@ describe("auth-boundary", () => {
     expect(r.status).toBe("not-applicable");
   });
 
+  // False positive fixture for the delegated guard. `clearImpersonation` authenticates and writes
+  // an audit row, in `app/models/admin.server.ts`, which the scanner cannot open. The body shows no
+  // privileged work either, so there is nothing here to accuse: absence of evidence, not evidence
+  // of absence.
+  it("does not flag a sensitive route that hands its work to an imported helper", () => {
+    const r = run(
+      "auth-boundary",
+      "resources.impersonation.ts",
+      `import { clearImpersonation } from "~/models/admin.server";
+       export async function action({ request }) {
+         return clearImpersonation(request, "/admin");
+       }`
+    );
+    expect(r.status).toBe("not-applicable");
+    expect(r.detail).toMatch(/verif/i);
+  });
+
+  it("does not flag a sensitive redirect stub", () => {
+    const r = run(
+      "auth-boundary",
+      "orgs.$organizationSlug.billing.ts",
+      `import { redirect } from "@remix-run/server-runtime";
+       import { OrganizationParamsSchema, v3BillingPath } from "~/utils/pathBuilder";
+       export const loader = async ({ params }) => {
+         const { organizationSlug } = OrganizationParamsSchema.parse(params);
+         return redirect(v3BillingPath({ slug: organizationSlug }));
+       };`
+    );
+    expect(r.status).toBe("not-applicable");
+  });
+
+  // The gate must not swallow the real thing: a body doing its own privileged work, unguarded.
+  it("still fails a sensitive route whose visible body does the work unguarded", () => {
+    const r = run(
+      "auth-boundary",
+      "api.v1.token.ts",
+      `import { prisma } from "~/db.server";
+       import { createPersonalAccessToken } from "~/services/personalAccessToken.server";
+       export async function action({ request }) {
+         const body = await request.json();
+         const code = await prisma.authorizationCode.findFirst({ where: { code: body.code } });
+         if (!code) return json({ error: "Not found" }, { status: 404 });
+         const token = await createPersonalAccessToken(code.userId);
+         return json({ token });
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  // Possession of a valid signature is the auth boundary for a callback URL.
+  it("passes a sensitive callback guarded by a signature check", () => {
+    const r = run(
+      "auth-boundary",
+      "api.v1.waitpoints.tokens.$waitpointFriendlyId.callback.$hash.ts",
+      `import { verifyHttpCallbackHash } from "~/services/httpCallback.server";
+       import { prisma } from "~/db.server";
+       export async function action({ request, params }) {
+         const waitpoint = await prisma.waitpoint.findFirst({ where: { id: params.id } });
+         if (!verifyHttpCallbackHash(params.hash, waitpoint)) {
+           return json({ error: "Invalid" }, { status: 401 });
+         }
+         return json({ ok: true });
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
   // False positive fixture: the guard sits one hop away, in a same-file helper.
   it("does not flag a sensitive route whose guard is in a same-file helper", () => {
     const r = run(
@@ -392,6 +459,67 @@ describe("request-context", () => {
        export async function loader() {
          try { return await prisma.thing.findMany(); }
          catch (error) { return json({ error: "Internal Server Error" }, { status: 500 }); }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  // A guard around a parse is not the route taking over its failure path: whatever its real work
+  // throws still reaches the central handler. Same reading error-classification gives the field.
+  it("passes a route whose only catch guards a parse", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { prisma } from "~/db.server";
+       export async function loader({ request }) {
+         let body;
+         try { body = await request.json(); }
+         catch { return json({ error: "Invalid JSON" }, { status: 400 }); }
+         return json(await prisma.thing.findMany({ where: body }));
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  // Known false positive, named in the task 5 report. The only catch here guards `new URL()`, a
+  // constructor, which never reaches `calleeTexts`, so the parse cannot be seen and the route is
+  // judged as though it kept its failures. Fixing it needs the scanner, not the check.
+  it("fails a route whose only catch guards a constructor parse", () => {
+    const r = run(
+      "request-context",
+      "_app.@.orgs.$organizationSlug.$.tsx",
+      `import { prisma } from "~/db.server";
+       function refererOrigin(request) {
+         const referer = request.headers.get("referer");
+         try { return new URL(referer).origin; }
+         catch { return undefined; }
+       }
+       export async function loader({ request }) {
+         const origin = refererOrigin(request);
+         return typedjson({ origin, things: await prisma.thing.findMany() });
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("still judges a route with a handler-wide catch beside a narrow guard", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ request }) {
+         let body;
+         try { body = await request.json(); }
+         catch { return json({ error: "Invalid JSON" }, { status: 400 }); }
+         try {
+           const rows = await prisma.thing.findMany({ where: body });
+           const count = await prisma.thing.count();
+           return json({ rows, count });
+         } catch (error) {
+           logger.error("failed", { error });
+           return json({ error: "Internal Server Error" }, { status: 500 });
+         }
        }`
     );
     expect(r.status).toBe("fail");

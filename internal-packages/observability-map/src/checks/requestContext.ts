@@ -1,5 +1,6 @@
 import type { CheckResult, EntryPoint, LogCall } from "../types.js";
 import { isTrivial } from "../triviality.js";
+import { guardsOnlyAParse } from "./errorClassification.js";
 
 const ID = "request-context";
 
@@ -31,10 +32,13 @@ function failurePathLogs(ep: EntryPoint): LogCall[] {
  * thing the check exists to find and meant deleting a log line took a route out of the report.
  * Every non-trivial entry point is now judged:
  *
- * - no catch at all: pass. The error reaches the central handler, which is the intended path in
- *   this codebase, and the tenant it does not name there is a platform-level gap reported once
- *   rather than against each of 222 routes.
- * - a catch: the route decided the outcome itself, so it has to say whose failure it was.
+ * - no catch at all, or nothing but a parse guard: pass. The route's own work still throws past it
+ *   to the central handler, which is the intended path in this codebase, and the tenant that
+ *   handler does not name is a platform-level gap reported once rather than against each route. A
+ *   `try { body = await request.json() } catch { 400 }` is not a route taking over its failure
+ *   path, and reading it as one put false positives at the top of the first rendered report.
+ * - a catch that covers the route's work: it decided the outcome itself, so it has to say whose
+ *   failure it was.
  *
  * Deleting a log call can then only make a verdict worse or leave it alone, and adding a catch
  * without a report is a regression the check reports, which is the direction the incentive should
@@ -47,7 +51,9 @@ export const requestContext = {
     if (isTrivial(ep)) {
       return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
-    if (!ep.hasTryCatch) {
+    // A route whose only catch guards a parse still throws its own work past it to the central
+    // handler. Same reading error-classification gives the field.
+    if (!ep.hasTryCatch || guardsOnlyAParse(ep)) {
       return { id: ID, status: "pass", detail: "hands its failures to the central handler" };
     }
     const logs = failurePathLogs(ep);

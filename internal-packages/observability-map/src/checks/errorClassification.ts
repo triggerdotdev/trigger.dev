@@ -30,6 +30,16 @@ export const BUILDERS = new Set([
  */
 const PARSE_CALL = /(^|\.)JSON\.parse$|\.json$/;
 
+/**
+ * Whether every catch in the entry point guards a parse and nothing wider. Both checks read the
+ * field the same way: a guard around one parse is not the route taking charge of its failures,
+ * so `error-classification` does not call it a swallow and `request-context` does not ask it to
+ * name a tenant.
+ */
+export function guardsOnlyAParse(ep: EntryPoint): boolean {
+  return ep.catchesNarrowly && ep.calleeTexts.some((t) => PARSE_CALL.test(t));
+}
+
 export function usesBuilder(ep: EntryPoint): boolean {
   return (
     (ep.loaderInitializerCallee !== null && BUILDERS.has(ep.loaderInitializerCallee)) ||
@@ -66,7 +76,7 @@ export const errorClassification = {
     if (isTrivial(ep)) {
       return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
-    const guardsAParse = ep.catchesNarrowly && ep.calleeTexts.some((t) => PARSE_CALL.test(t));
+    const guardsAParse = guardsOnlyAParse(ep);
     if (ep.hasTryCatch && !ep.catchRethrows && !ep.catchBranches && !guardsAParse) {
       return {
         id: ID,
