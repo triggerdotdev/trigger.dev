@@ -710,6 +710,75 @@ describe("CK virtual-time (SFQ) dequeue", () => {
   );
 
   redisTest(
+    "a variant at its concurrency ceiling does not pin the floor",
+    async ({ redisContainer }) => {
+      // A saturated variant stops advancing but keeps its tag, which used to hold the
+      // floor down for everyone arriving later.
+      const queue = createQueue(redisContainer);
+      try {
+        const t0 = Date.now() - 100_000;
+
+        // Per-key ceiling of 1, well under the env limit, so hog gates on its own account
+        // rather than by exhausting env capacity.
+        await queue.updateQueueConcurrencyLimits(authenticatedEnvDev, QUEUE, 1);
+
+        for (let i = 0; i < 12; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({ runId: `r-hog-${i}`, concurrencyKey: "hog", timestamp: t0 + i }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+        for (let i = 0; i < 12; i++) {
+          await queue.enqueueMessage({
+            env: authenticatedEnvDev,
+            message: makeMessage({
+              runId: `r-busy-${i}`,
+              concurrencyKey: "busy",
+              timestamp: t0 + 500 + i,
+            }),
+            workerQueue: authenticatedEnvDev.id,
+            skipDequeueProcessing: true,
+          });
+        }
+
+        const shard = testOptions.keys.masterQueueShardForEnvironment(authenticatedEnvDev.id, 2);
+        const hogVariant = variantName("hog");
+        const busyVariant = variantName("busy");
+        const ckVtimeKey = testOptions.keys.ckVtimeKeyFromQueue(busyVariant);
+        const floorKey = testOptions.keys.ckVtimeFloorKeyFromQueue(busyVariant);
+
+        // Ack only busy, so hog accumulates in-flight messages until it is gated.
+        for (let call = 0; call < 10; call++) {
+          const messages = await queue.testDequeueFromMasterQueue(shard, authenticatedEnvDev.id, 2);
+          for (const m of messages) {
+            if (m.message.concurrencyKey === "busy") {
+              await queue.acknowledgeMessage(authenticatedEnvDev.organization.id, m.messageId, {
+                skipDequeueProcessing: true,
+              });
+            }
+          }
+        }
+
+        const hogTag = Number(await queue.redis.zscore(ckVtimeKey, hogVariant));
+        const busyTag = Number(await queue.redis.zscore(ckVtimeKey, busyVariant));
+        const floor = Number((await queue.redis.get(floorKey)) ?? "0");
+
+        // hog is still registered (it has ready work and will be served when a slot
+        // frees), it has simply stopped advancing while saturated.
+        expect(hogTag).not.toBeNaN();
+        expect(busyTag).toBeGreaterThan(hogTag);
+
+        // The floor followed the key that was actually being served, not the stalled one.
+        expect(floor).toBeGreaterThan(hogTag);
+      } finally {
+        await queue.quit();
+      }
+    }
+  );
+
+  redisTest(
     "an unservable variant does not pin the floor for later arrivals",
     async ({ redisContainer }) => {
       // Regression: a variant with work but nothing ready (a nack backoff is the common
