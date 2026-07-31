@@ -5105,7 +5105,7 @@ return __qmret(results)
     // :ckVtime / :ckVtimeFloor keys hold virtual times; ckIndex and the master
     // queue keep their timestamp score domain. The per-candidate serve body is a
     // verbatim copy of dequeueMessagesFromCkQueueTracked's, with the marked NEW
-    // lines added (tag advance on serve, ZREM ckVtime on GC).
+    // lines added (tag advance on serve, ZREM ckVtime on GC, floor advance from pass 1).
     this.redis.defineCommand("dequeueMessagesFromCkQueueVtimeTracked", {
       numberOfKeys: 13,
       lua: `
@@ -5182,7 +5182,7 @@ local attempted = {}
 
 -- Per-candidate serve. Body is dequeueMessagesFromCkQueueTracked's per-candidate
 -- block, verbatim, with the marked NEW lines added.
-local function tryServe(ckQueueName)
+local function tryServe(ckQueueName, mayRaiseFloor)
   attempted[ckQueueName] = true
   local fullQueueKey = keyPrefix .. ckQueueName
 
@@ -5229,8 +5229,10 @@ local function tryServe(ckQueueName)
           local weight = 1
           local tag = tonumber(redis.call('ZSCORE', ckVtimeKey, ckQueueName) or floor)
           if tag < floor then tag = floor end
-          -- Pass 1 walks in ascending tag order, so anything unvisited is above this.
-          if minServableTag == nil or tag < minServableTag then
+          -- Pass 1 only: it walks in ascending tag order, so anything it has not visited
+          -- sits above this. Pass 2 goes by message age, so its tag says nothing about the
+          -- entries it skipped and must not move the floor over them.
+          if mayRaiseFloor and (minServableTag == nil or tag < minServableTag) then
             minServableTag = tag
           end
           redis.call('ZADD', ckVtimeKey, tostring(tag + (quantum / weight)), ckQueueName)
@@ -5255,9 +5257,6 @@ local function tryServe(ckQueueName)
         redis.call('ZREM', ckVtimeKey, ckQueueName) -- NEW
       else
         redis.call('ZADD', ckIndexKey, any[2], ckQueueName)
-        -- Work but nothing ready (a nack backoff): not competing, so drop it from the fair
-        -- order rather than let it hoard credit. Rejoins at the floor when next served.
-        redis.call('ZREM', ckVtimeKey, ckQueueName)
       end
     end
   end
@@ -5267,7 +5266,7 @@ end
 local vtimeCandidates = redis.call('ZRANGE', ckVtimeKey, 0, window - 1)
 for _, ckQueueName in ipairs(vtimeCandidates) do
   if dequeuedCount >= actualMaxCount then break end
-  tryServe(ckQueueName)
+  tryServe(ckQueueName, true)
 end
 
 -- Pass 2: fill + discovery in age order (work conservation, mixed-deploy safety).
@@ -5279,7 +5278,7 @@ if dequeuedCount < actualMaxCount then
   for _, ckQueueName in ipairs(ckQueues) do
     if dequeuedCount >= actualMaxCount then break end
     if not attempted[ckQueueName] then
-      tryServe(ckQueueName)
+      tryServe(ckQueueName, false)
     end
   end
 end
