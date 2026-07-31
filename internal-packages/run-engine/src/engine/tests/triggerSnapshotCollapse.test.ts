@@ -253,4 +253,118 @@ describe("RunEngine trigger() execution snapshots", () => {
       }
     }
   );
+
+  containerTest(
+    "a resumed run still writes its own QUEUED snapshot",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_1237",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_collapse_4",
+            spanId: "s_collapse_4",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_collapse_4",
+          workerQueue: "main",
+        });
+        assertNonNullable(dequeued[0]);
+
+        await engine.startRunAttempt({
+          runId: dequeued[0].run.id,
+          snapshotId: dequeued[0].snapshot.id,
+        });
+
+        const waitpointResult = await engine.createManualWaitpoint({
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+        });
+
+        const blockedResult = await engine.blockRunWithWaitpoint({
+          runId: run.id,
+          waitpoints: waitpointResult.waitpoint.id,
+          projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
+        });
+
+        const checkpointResult = await engine.createCheckpoint({
+          runId: run.id,
+          snapshotId: blockedResult.id,
+          checkpoint: {
+            type: "DOCKER",
+            reason: "TEST_CHECKPOINT",
+            location: "test-location",
+            imageRef: "test-image-ref",
+          },
+        });
+        expect(checkpointResult.ok).toBe(true);
+
+        await engine.completeWaitpoint({ id: waitpointResult.waitpoint.id });
+        await setTimeout(500);
+
+        expect(await snapshotStatuses(prisma, run.id)).toEqual([
+          "QUEUED",
+          "PENDING_EXECUTING",
+          "EXECUTING",
+          "EXECUTING_WITH_WAITPOINTS",
+          "SUSPENDED",
+          "QUEUED",
+        ]);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 });
