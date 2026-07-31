@@ -1,6 +1,5 @@
 import { MagnifyingGlassIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations";
-import { format } from "date-fns";
 import { useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
@@ -77,19 +76,6 @@ function unreadFirst(chats: DashboardAgentChat[]): DashboardAgentChat[] {
  *  eight weeks, which is worse than "8w" — weeks are the coarsest useful unit. */
 const AGE_UNITS = ["w", "d", "h", "m"] as const;
 
-/**
- * "TUE, 11 AUG" — the date stamp on a row.
- *
- * A date, not an age: the list is read as a log of past conversations, and a
- * stamp is what lets two rows be compared. {@link chatAge} is still here for
- * anywhere an at-a-glance "how long ago" is the better answer.
- */
-export function chatDateStamp(lastMessageAt: string): string | undefined {
-  const at = new Date(lastMessageAt);
-  if (Number.isNaN(at.getTime())) return undefined;
-  return format(at, "EEE, d MMM").toUpperCase();
-}
-
 /** "2m", "3d", "8w" — the project's short duration style, one unit only. */
 export function chatAge(lastMessageAt: string, now: number = Date.now()): string | undefined {
   const at = Date.parse(lastMessageAt);
@@ -129,6 +115,7 @@ export function DashboardAgentHistoryMenu({
   // Deleting a chat is irreversible, so it goes through a confirm step. Holding
   // the whole chat lets the dialog name what's being deleted.
   const [pendingDelete, setPendingDelete] = useState<DashboardAgentChat | null>(null);
+  const now = Date.now();
 
   return (
     <>
@@ -141,7 +128,7 @@ export function DashboardAgentHistoryMenu({
           <AgentList>
             {unreadFirst(chats).map((chat) => {
               const process = chatProcess(chat, chat.id === thinkingChatId);
-              const stamp = chat.lastMessageAt ? chatDateStamp(chat.lastMessageAt) : undefined;
+              const age = chat.lastMessageAt ? chatAge(chat.lastMessageAt, now) : undefined;
               return (
                 <AgentListRow
                   key={chat.id}
@@ -150,7 +137,7 @@ export function DashboardAgentHistoryMenu({
                   // null keeps the leading slot so every title starts at the
                   // same x whether or not this chat has a status.
                   status={process ? <ProcessIcon process={process} /> : null}
-                  meta={stamp}
+                  meta={age}
                   variant={chat.id === currentChatId ? "selected" : "default"}
                   onSelect={() => onSelect(chat.id)}
                   action={

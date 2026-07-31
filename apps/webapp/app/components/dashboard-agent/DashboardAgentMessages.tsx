@@ -15,7 +15,6 @@ import {
   ChatPendingTool,
   ChatProgress,
   ChatText,
-  ChatToolRow,
   ChatTranscript,
   ChatTurn,
   ChatWakeSlot,
@@ -161,8 +160,8 @@ function withoutSupersededInvestigations(
  * dashboard's default size, and tool calls never show their mechanics — while
  * running they are a pending pill ("Reading the queue…"), and once they land
  * they leave NO row at all: the answer is the prose and the cards, not the
- * input/output plumbing. The one exception is a FAILED call, which keeps a pill
- * — a silent failure would read as the agent ignoring the question.
+ * input/output plumbing. The one exception is a FAILED call, which keeps its
+ * error row — a silent failure would read as the agent ignoring the question.
  * Citations are handled a level up, where a run of them can be grouped into one
  * row.
  */
@@ -177,7 +176,6 @@ function renderDashboardPart(
     url?: string;
     title?: string;
     state?: string;
-    errorText?: string;
   };
   const type = part.type as string;
 
@@ -192,20 +190,7 @@ function renderDashboardPart(
       if (options?.suppressPendingPill) return null;
       return <ChatPendingTool key={i} label={`${toolPendingLabel(type.slice(5))}…`} />;
     }
-    if (p.state === "output-error") {
-      // A failed call stays visible, but in the panel's own language: what the
-      // agent was doing and what came back, not the inspector's input/output
-      // tabs. The full text is on the row's title for the rare long error.
-      const errorText = p.errorText ?? "failed";
-      return (
-        <ChatToolRow
-          key={i}
-          tone="error"
-          label={toolPendingLabel(type.slice(5))}
-          detail={<span title={errorText}>{errorText}</span>}
-        />
-      );
-    }
+    if (p.state === "output-error") return renderPart(part, i);
     return null;
   }
 

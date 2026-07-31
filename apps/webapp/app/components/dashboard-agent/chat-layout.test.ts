@@ -97,25 +97,16 @@ describe("chat-layout enforcement", () => {
       }
     });
 
-    it("puts assistant text in a soft card of its own", () => {
-      // Boxed, but in the library's own surface — the shared inspector bubble
-      // brings its own spacing and would put a second layout owner in here.
-      expect(source).toContain('const SOFT_SURFACE = "border border-border-bright');
+    it("renders assistant text as prose, not as a card", () => {
+      // A box around every text answer made the whole transcript read as cards.
+      // Only ChatCardSlot content is boxed now, so nothing here may reintroduce
+      // the shared bubble.
       expect(source).not.toContain("ChatBubble");
     });
 
-    it("gives the user bubble the accent surface", () => {
-      expect(source).toMatch(/bg-indigo-\d/);
-    });
-
-    it("sets tool pills and progress in mono", () => {
-      expect(source).toContain('const MONO_TEXT = "font-mono');
-      // Both pills read as one family, so neither may restyle its own shape.
-      expect(source).toContain("const PILL =");
-      for (const component of ["ChatPendingTool", "ChatToolRow"]) {
-        const body = source.slice(source.indexOf(`export function ${component}(`));
-        expect(body.slice(0, body.indexOf("\n}\n")), component).toContain("PILL");
-      }
+    it("gives the user bubble a grey surface, not the accent", () => {
+      expect(source).toContain("bg-background-raised");
+      expect(source).not.toMatch(/bg-indigo-\d/);
     });
 
     it("documents the composition rules", () => {

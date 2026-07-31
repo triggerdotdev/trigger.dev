@@ -21,12 +21,7 @@ import {
   DemoWatchChips,
   type DemoItem,
 } from "~/components/dashboard-agent/demo";
-import { DashboardAgentComposer } from "~/components/dashboard-agent/DashboardAgentComposer";
 import { DashboardAgentContextBanner } from "~/components/dashboard-agent/DashboardAgentContextBanner";
-import {
-  DashboardAgentHistoryMenu,
-  type DashboardAgentChat,
-} from "~/components/dashboard-agent/DashboardAgentHistory";
 import { DashboardAgentMessages } from "~/components/dashboard-agent/DashboardAgentMessages";
 import { DashboardAgentSuggestedPrompts } from "~/components/dashboard-agent/DashboardAgentSuggestedPrompts";
 import { InvestigationCard } from "~/components/dashboard-agent/InvestigationCard";
@@ -65,8 +60,9 @@ const PANEL = "w-[380px]";
 /**
  * The canvas is the chat panel's own background (`DashboardAgentPanel` uses
  * `bg-background-bright`), so each state is judged on the surface it ships on
- * rather than against a darker page. The transcript's own surfaces — a text
- * answer, a tool pill, a chip — sit one step above it, exactly as in the panel.
+ * rather than against a darker page. Anything that shares that colour — a card's
+ * header strip, a pending pill, a chip — reads by its border here, exactly as it
+ * does in the panel.
  */
 const CANVAS = "bg-background-bright";
 
@@ -369,74 +365,6 @@ function PromptsHarness({
           dismissedIds={dismissedIds}
         />
       </div>
-    </div>
-  );
-}
-
-/**
- * The history dropdown's rows, in the states the menu can be in: the open chat,
- * a chat with a turn in flight, an unread wake, an investigation, and a plain
- * old one. Fixture dates are fixed so the stamps don't move between screenshots.
- */
-const HISTORY_CHATS: DashboardAgentChat[] = [
-  {
-    id: "chat_open",
-    title: "Why is process-order failing?",
-    lastMessageAt: "2026-08-11T09:12:00Z",
-  },
-  {
-    id: "chat_thinking",
-    title: "Health report for production",
-    lastMessageAt: "2026-08-11T08:40:00Z",
-  },
-  {
-    id: "chat_unread",
-    title: "Watch that TypeError",
-    lastMessageAt: "2026-08-10T22:05:00Z",
-    hasUnreadWake: true,
-    hasActiveWatch: true,
-  },
-  {
-    id: "chat_investigating",
-    title: "What changed in the last deploy?",
-    lastMessageAt: "2026-08-09T14:30:00Z",
-    hasOpenInvestigation: true,
-  },
-  { id: "chat_plain", title: "How do retries work?", lastMessageAt: "2026-08-04T11:00:00Z" },
-];
-
-/** The menu on its popover surface, at the width the header dropdown gives it. */
-function HistoryHarness() {
-  return (
-    <div className={cn(PANEL_FRAME, "overflow-hidden")}>
-      <DashboardAgentHistoryMenu
-        chats={HISTORY_CHATS}
-        currentChatId="chat_open"
-        thinkingChatId="chat_thinking"
-        onSelect={noop}
-        onDelete={noop}
-      />
-    </div>
-  );
-}
-
-/** The composer as the panel mounts it: the field, its pill, and the context chip. */
-function ComposerHarness({
-  value = "",
-  isStreaming = false,
-}: {
-  value?: string;
-  isStreaming?: boolean;
-}) {
-  return (
-    <div className={PANEL_FRAME}>
-      <DashboardAgentComposer
-        value={value}
-        onChange={noop}
-        onSubmit={noop}
-        onStop={noop}
-        isStreaming={isStreaming}
-      />
     </div>
   );
 }
@@ -832,25 +760,6 @@ const STATES: Record<string, React.ReactNode> = {
   // The same chat whose pending pill is shown above, but with the call landed:
   // the tool row is gone entirely — only the prose (and any cards) remain.
   "messages-tool-completed": <MessageHarness chatId={demoId("docs-answer")} />,
-  // The one tool state that still leaves a row: what the agent was doing, in a
-  // pill with an error dot, and what came back.
-  "messages-tool-failed": (
-    <div className={PANEL_FRAME}>
-      <DashboardAgentMessages
-        messages={[
-          demoFixtures.assistantMessage("failed-tool", [
-            demoFixtures.failedToolPart(
-              "run_query",
-              { query: "SELECT count() FROM task_runs" },
-              "Unknown table 'task_run' — did you mean 'task_runs'?",
-              "failed-query"
-            ),
-          ]),
-        ]}
-        activity={null}
-      />
-    </div>
-  ),
   "messages-error-retry": <MessageHarness chatId={demoId("base-error-retry")} withError />,
   // Two turns only: the resumed chat's third turn is a live `chart` block, and
   // the real AgentChart has no environment to query outside a project route.
@@ -886,11 +795,6 @@ const STATES: Record<string, React.ReactNode> = {
       currentPage="Run detail"
     />
   ),
-
-  // --- Panel chrome -------------------------------------------------------
-  "history-list": <HistoryHarness />,
-  "composer-idle": <ComposerHarness value="Why did that run fail?" />,
-  "composer-streaming": <ComposerHarness isStreaming />,
 };
 
 // ---------------------------------------------------------------------------

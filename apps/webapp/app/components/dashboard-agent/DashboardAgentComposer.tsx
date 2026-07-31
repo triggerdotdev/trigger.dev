@@ -3,9 +3,6 @@ import { useEffect, useRef } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { cn } from "~/utils/cn";
 
-/** The circular icon button that sits inside the field, on the right. */
-const SEND_BUTTON = "size-7 shrink-0 rounded-full p-0";
-
 export function DashboardAgentComposer({
   value,
   onChange,
@@ -42,9 +39,7 @@ export function DashboardAgentComposer({
     // gradient in `ChatTranscript`'s scroller edge is for.
     <div className="flex shrink-0 flex-col gap-1.5 bg-background-bright px-3 pb-3 pt-1">
       {context}
-      {/* One pill: the field and its send button share a fully rounded border, so
-          the composer reads as a single thing to type into. */}
-      <div className="rounded-3xl border border-border-bright bg-background-hover p-1 pl-3 transition focus-within:border-border-brighter">
+      <div className="rounded-md border border-border-bright bg-background-bright p-1 transition focus-within:border-border-brighter">
         <div className="flex items-end gap-1">
           {/* One text line tall at rest (matches the button height), grows with
               content up to the cap. rows={1} + field-sizing-content do the work. */}
@@ -62,7 +57,7 @@ export function DashboardAgentComposer({
             placeholder="Type a message…"
             aria-label="Message the dashboard agent"
             className={cn(
-              "max-h-[40vh] flex-1 resize-none border-0 bg-transparent py-1 text-sm leading-6 text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:outline-hidden focus:ring-0"
+              "max-h-[40vh] flex-1 resize-none border-0 bg-transparent px-1.5 py-0.5 text-sm leading-6 text-text-bright placeholder-text-dimmed outline-hidden ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control field-sizing-content focus:outline-hidden focus:ring-0"
             )}
           />
           {isStreaming ? (
@@ -70,7 +65,7 @@ export function DashboardAgentComposer({
             // destructive action.
             <Button
               variant="minimal/small"
-              className={SEND_BUTTON}
+              className="aspect-square h-6 p-1"
               aria-label="Stop generating"
               tooltip="Stop generating"
               onClick={onStop}
@@ -78,8 +73,8 @@ export function DashboardAgentComposer({
             />
           ) : (
             <Button
-              variant="secondary/small"
-              className={SEND_BUTTON}
+              variant="primary/small"
+              className="aspect-square h-6 p-1"
               aria-label="Send"
               tooltip="Send"
               onClick={onSubmit}

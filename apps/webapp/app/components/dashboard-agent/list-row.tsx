@@ -5,12 +5,7 @@
  * thing: a selectable row with an optional hover action. Keeping the row and
  * list styling here is what makes the panel read as one system instead of two
  * lists that drifted apart.
- *
- * The row is dashed, mono and slightly darker than the panel — the same language
- * the transcript's tool pills use, so a list reads as a record of things rather
- * than as a stack of buttons.
  */
-import { ChevronRightIcon } from "@heroicons/react/20/solid";
 import type { ComponentType, ReactNode } from "react";
 import { cn } from "~/utils/cn";
 
@@ -28,36 +23,16 @@ export type AgentListRowVariant = "default" | "promoted" | "selected";
 
 const ROW_VARIANTS: Record<AgentListRowVariant, string> = {
   default:
-    "border-grid-bright bg-background-dimmed/60 text-text-dimmed hover:bg-background-hover hover:text-text-bright",
-  promoted: "border-indigo-500/40 bg-indigo-500/10 text-text-bright hover:bg-indigo-500/20",
-  selected: "border-border-bright bg-background-hover text-text-bright",
+    "border-grid-bright bg-background-bright/40 text-text-dimmed hover:border-border-bright hover:text-text-bright",
+  promoted: "border-indigo-500/40 bg-indigo-500/5 text-text-bright hover:border-indigo-500/60",
+  selected: "border-border-bright bg-background-bright text-text-bright",
 };
-
-/**
- * - `row` — a full-width row in a stack: dashed, rounded, one line high.
- * - `pill` — the same row, fully rounded, for a list that reads as chips.
- */
-export type AgentListRowShape = "row" | "pill";
-
-const ROW_SHAPES: Record<AgentListRowShape, string> = {
-  row: "rounded-lg",
-  pill: "rounded-full",
-};
-
-/**
- * Mono, lightly tracked: the panel's lists name things (a chat, a question the
- * agent can answer) rather than speak, so they are set like labels, not prose.
- */
-const ROW_TYPE = "font-mono text-xs tracking-wide";
 
 export function AgentListRow({
   label,
   meta,
   status,
-  icon: Icon,
-  chevron = false,
   variant = "default",
-  shape = "row",
   unread = false,
   onSelect,
   action,
@@ -71,12 +46,7 @@ export function AgentListRow({
    * still working in. Sits before {@link meta}, inside the row's own button.
    */
   status?: ReactNode;
-  /** Leading icon for what kind of row this is, e.g. a prompt's `</>`. */
-  icon?: ComponentType<{ className?: string }>;
-  /** Trailing chevron, for a row that reads as "go on then". */
-  chevron?: boolean;
   variant?: AgentListRowVariant;
-  shape?: AgentListRowShape;
   /**
    * Something happened here the user hasn't seen. Brightens the label and adds
    * the same indigo dot the launcher uses, so the two read as one signal.
@@ -92,9 +62,7 @@ export function AgentListRow({
         type="button"
         onClick={onSelect}
         className={cn(
-          "flex min-w-0 flex-1 items-center gap-2 border border-dashed px-3 py-2 text-left outline-hidden transition focus-custom",
-          ROW_TYPE,
-          ROW_SHAPES[shape],
+          "flex min-w-0 flex-1 items-center gap-2 rounded-md border px-3 py-2 text-left text-sm outline-hidden transition focus-custom",
           ROW_VARIANTS[variant],
           unread && "text-text-bright"
         )}
@@ -102,7 +70,6 @@ export function AgentListRow({
         {status ? (
           <span className="flex w-4 shrink-0 items-center justify-center">{status}</span>
         ) : null}
-        {Icon ? <Icon className="size-3.5 shrink-0 text-text-faint" /> : null}
         {unread ? (
           <>
             <span aria-hidden className="size-2 shrink-0 rounded-full bg-indigo-500" />
@@ -110,10 +77,7 @@ export function AgentListRow({
           </>
         ) : null}
         <span className="line-clamp-1 min-w-0 flex-1">{label}</span>
-        {meta ? <span className="shrink-0 text-text-faint">{meta}</span> : null}
-        {chevron ? (
-          <ChevronRightIcon aria-hidden className="size-3.5 shrink-0 text-text-faint" />
-        ) : null}
+        {meta ? <span className="shrink-0 text-xs text-text-faint">{meta}</span> : null}
       </button>
       {action}
     </li>
