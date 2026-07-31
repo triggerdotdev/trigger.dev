@@ -19,7 +19,10 @@ const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const PERIOD_PATTERN = /^\d{1,4}[mhd]$/;
 
 /** Queue metrics are retained for 30 days, so a longer window can only ever render empty. */
-const MAX_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+export const QUEUE_METRICS_RETENTION_DAYS = 30;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_PERIOD_MS = QUEUE_METRICS_RETENTION_DAYS * DAY_MS;
 
 function isPeriod(value: string | undefined | null): value is string {
   if (typeof value !== "string" || !PERIOD_PATTERN.test(value)) return false;
@@ -77,4 +80,28 @@ export function resolveQueueMetricsPeriod({
   if (isPeriod(period)) return period;
   if (from || to) return null;
   return defaultPeriod;
+}
+
+/**
+ * Hold a period inside a day budget (the org's plan query period). A remembered period longer than
+ * the plan allows becomes the plan's maximum, so the picker shows the window the data covers.
+ */
+export function clampQueueMetricsPeriod(period: string, maxPeriodDays: number): string {
+  const ms = parse(period);
+  if (typeof ms === "number" && ms > 0 && ms <= maxPeriodDays * DAY_MS) return period;
+  return `${maxPeriodDays}d`;
+}
+
+/**
+ * Pull a window forward to the earliest time the org's plan can query, the same clip `executeQuery`
+ * applies to every metric query. Queue-metric queries that go straight to ClickHouse (the queues
+ * list table, the concurrency-keys endpoint) have to apply it themselves, otherwise a hand-typed
+ * `?period=` reaches further back than the plan allows.
+ */
+export function clipQueueMetricsWindow(
+  window: { from: Date; to: Date },
+  maxPeriodDays: number
+): { from: Date; to: Date } {
+  const earliest = new Date(Date.now() - maxPeriodDays * DAY_MS);
+  return { from: window.from < earliest ? earliest : window.from, to: window.to };
 }

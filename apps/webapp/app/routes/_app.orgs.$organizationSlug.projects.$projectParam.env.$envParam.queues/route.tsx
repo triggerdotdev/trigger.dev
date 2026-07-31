@@ -104,10 +104,13 @@ import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { QueueAllocationPresenter } from "~/presenters/v3/QueueAllocationPresenter.server";
 import {
   QUEUE_METRICS_DEFAULT_PERIOD,
+  clampQueueMetricsPeriod,
+  clipQueueMetricsWindow,
   queueMetricsPeriodFromRequest,
   resolveQueueMetricsPeriod,
   useRememberQueueMetricsPeriod,
 } from "~/components/queues/queueMetricsPeriod";
+import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),
@@ -147,8 +150,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     Object.fromEntries(url.searchParams)
   );
 
-  const defaultPeriod = queueMetricsPeriodFromRequest(request);
-
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
     throw new Response(undefined, {
@@ -168,6 +169,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Per-org gate for the metrics UI. When off, this org gets the classic Queues page and
   // no metrics query fires.
   const queueMetricsUiEnabled = await canAccessQueueMetricsUi({ userId, organizationSlug });
+
+  const maxPeriodDays = await queueMetricsMaxPeriodDays(environment.organizationId);
+  const defaultPeriod = clampQueueMetricsPeriod(
+    queueMetricsPeriodFromRequest(request),
+    maxPeriodDays
+  );
 
   try {
     const queueListPresenter = new QueueListPresenter();
@@ -200,12 +207,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         const queueNames = queues.queues.map((q) =>
           q.type === "task" ? `task/${q.name}` : q.name
         );
-        const timeRange = timeFilterFromTo({
-          period: resolveQueueMetricsPeriod({ period, from, to, defaultPeriod }) ?? undefined,
-          from: parseFiniteInt(from),
-          to: parseFiniteInt(to),
-          defaultPeriod,
-        });
+        const timeRange = clipQueueMetricsWindow(
+          timeFilterFromTo({
+            period: resolveQueueMetricsPeriod({ period, from, to, defaultPeriod }) ?? undefined,
+            from: parseFiniteInt(from),
+            to: parseFiniteInt(to),
+            defaultPeriod,
+          }),
+          maxPeriodDays
+        );
         const queueMetrics =
           queueNames.length > 0
             ? await presenter.getQueueListMetrics({
@@ -246,6 +256,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       allocation,
       queueMetricsUiEnabled,
       defaultPeriod,
+      maxPeriodDays,
     });
   } catch (error) {
     console.error(error);
@@ -370,6 +381,7 @@ function QueuesWithMetricsView() {
     metrics,
     allocation,
     defaultPeriod,
+    maxPeriodDays,
   } = useTypedLoaderData<typeof loader>();
 
   const metricsByQueue = metrics?.byQueue ?? {};
@@ -385,10 +397,6 @@ function QueuesWithMetricsView() {
   const project = useProject();
   const env = useEnvironment();
   const plan = useCurrentPlan();
-  // Queue metrics are retained for 30 days in ClickHouse, so cap the picker there even for
-  // plans whose query-period limit was raised above it — a longer window would render empty.
-  const planPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
-  const maxPeriodDays = Math.min(planPeriodDays ?? 30, 30);
 
   // The header tiles fetch client-side with the same period/from/to the TimeFilter writes.
   const { value } = useSearchParams();
@@ -487,6 +495,7 @@ function QueuesWithMetricsView() {
             </div>
             <div className="flex items-center gap-1.5">
               <TimeFilter
+                period={timeRange.period ?? undefined}
                 defaultPeriod={defaultPeriod}
                 labelName="Period"
                 maxPeriodDays={maxPeriodDays}

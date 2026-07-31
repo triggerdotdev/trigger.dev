@@ -54,7 +54,6 @@ import type {
   ConcurrencyKeyRow,
   ConcurrencyKeysResponse,
 } from "~/routes/resources.queues.concurrency-keys";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { requireUserId } from "~/services/session.server";
 import { docsPath, EnvironmentParamSchema, v3RunsPath } from "~/utils/pathBuilder";
@@ -67,10 +66,12 @@ import {
   QueuePauseResumeButton,
 } from "~/components/queues/QueueControls";
 import {
+  clampQueueMetricsPeriod,
   queueMetricsPeriodFromRequest,
   resolveQueueMetricsPeriod,
   useRememberQueueMetricsPeriod,
 } from "~/components/queues/queueMetricsPeriod";
+import { queueMetricsMaxPeriodDays } from "~/components/queues/queueMetricsPeriod.server";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -110,6 +111,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const queue = retrieve.queue;
   const fullName = queue.type === "task" ? `task/${queue.name}` : queue.name;
 
+  const maxPeriodDays = await queueMetricsMaxPeriodDays(environment.organizationId);
+
   const [ckBreakdown, oldestQueuedAt] = await Promise.all([
     engine.concurrencyKeyBreakdown(environment, fullName, { limit: CK_LIVE_LIMIT }),
     // Enqueue time of the oldest run still waiting in the queue right now (any queue, keyed or
@@ -138,7 +141,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     oldestQueuedAt: oldestQueuedAt ?? null,
     loadedAt: Date.now(),
     backPath: url.pathname.replace(/\/[^/]+$/, ""),
-    defaultPeriod: queueMetricsPeriodFromRequest(request),
+    defaultPeriod: clampQueueMetricsPeriod(queueMetricsPeriodFromRequest(request), maxPeriodDays),
+    maxPeriodDays,
     ids: {
       organizationId: environment.organizationId,
       projectId: environment.projectId,
@@ -216,12 +220,8 @@ export default function Page() {
     backPath,
     ids,
     defaultPeriod,
+    maxPeriodDays,
   } = useTypedLoaderData<typeof loader>();
-  const plan = useCurrentPlan();
-  // Queue metrics are retained for 30 days in ClickHouse, so cap the picker there even for
-  // plans whose query-period limit was raised above it — a longer window would render empty.
-  const planPeriodDays = plan?.v3Subscription?.plan?.limits?.queryPeriodDays?.number;
-  const maxPeriodDays = Math.min(planPeriodDays ?? 30, 30);
 
   const { value, replace } = useSearchParams();
   const timeRange: TimeRangeParams = {
@@ -295,6 +295,7 @@ export default function Page() {
               />
             ) : null}
             <TimeFilter
+              period={timeRange.period ?? undefined}
               defaultPeriod={defaultPeriod}
               labelName="Period"
               maxPeriodDays={maxPeriodDays}
