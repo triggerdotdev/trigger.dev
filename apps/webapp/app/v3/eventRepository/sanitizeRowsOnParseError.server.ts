@@ -232,10 +232,12 @@ export const DEFAULT_MAX_POISON_STRIPS = 1;
  *   2. On a parse error, `sanitizeRows` losslessly repairs what it can in place
  *      (lone UTF-16 surrogates, out-of-range integers) and retries once.
  *   3. If the sanitizer can't help, follow ClickHouse's `at row N` hint to the
- *      un-ingestable row and re-insert with that row's JSON column(s) emptied
- *      via `stripJsonColumns`, up to `maxPoisonStrips` rows. Each stripped run
- *      still lands (keeps its terminal status); only its un-ingestable JSON is
- *      lost. `insertSync` disables parallel parsing so `at row N` is reliable.
+ *      un-ingestable row and re-insert with the caller-selected JSON column(s)
+ *      emptied via `stripJsonColumns`, up to `maxPoisonStrips` rows. Each
+ *      stripped run still lands (keeps its terminal status); only the emptied
+ *      content is lost. A row the caller's strip cannot make ingestable is
+ *      reported again, makes no progress, and falls through to step 4.
+ *      `insertSync` disables parallel parsing so `at row N` is reliable.
  *   4. Cost bound: once `maxPoisonStrips` rows have been stripped and the batch
  *      STILL fails (or the failing row can't be located), stop stripping and
  *      land the batch with one `allow_errors` insert — the stripped rows and

@@ -205,8 +205,9 @@ export class RunsReplicationService {
   private _recoveryCapHits = 0;
 
   /**
-   * Counts rows that landed with their un-ingestable JSON column(s) stripped
-   * (the run kept its status, only the output/payload content was lost).
+   * Counts rows that landed with their un-ingestable `output` emptied (the run
+   * kept its status, only the output content was lost; it still reads from
+   * Postgres on the run detail page).
    */
   private _rowsStripped = 0;
 
@@ -1603,9 +1604,18 @@ function landedRowCount(groupSize: number, outcome: JsonParseRecoveryOutcome): n
 
 const STRIPPED_JSON: { data: unknown } = { data: undefined };
 
+/**
+ * Empties `output`, the run JSON that in practice exceeds what ClickHouse can
+ * ingest (a large or deeply nested task return value). `error` is deliberately
+ * left alone: emptying it while keeping `error_fingerprint` would let the row
+ * match the error materialized views with no error content, and since those
+ * views pick their display columns with `any()` over the fingerprint group, one
+ * stripped run could retitle every run sharing that fingerprint. A run whose
+ * `error` is itself un-ingestable therefore makes no progress here and falls
+ * through to the `allow_errors` bail, which skips just that row.
+ */
 function stripTaskRunJsonColumns(row: TaskRunInsertArray): TaskRunInsertArray {
   const stripped = [...row] as TaskRunInsertArray;
   stripped[TASK_RUN_INDEX.output] = STRIPPED_JSON;
-  stripped[TASK_RUN_INDEX.error] = STRIPPED_JSON;
   return stripped;
 }
