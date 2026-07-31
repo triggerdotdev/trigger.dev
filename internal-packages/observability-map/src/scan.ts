@@ -68,41 +68,75 @@ function calleeName(expr: ts.Expression): string | null {
   return null;
 }
 
-/**
- * Functions on a `handler` property of an object argument, e.g. `createSSELoader({ handler })` and
- * the per-method `{ POST: { handler } }` map. Only `handler` counts: the surrounding config also
- * holds lambdas (`findResource`, `authorization.resource`) that are not the entry-point body.
- */
-function collectNamedHandlers(object: ts.ObjectLiteralExpression, out: EntryFunction[]): void {
-  for (const property of object.properties) {
-    if (!ts.isPropertyAssignment(property) || !property.name) continue;
-    const value = unwrap(property.initializer);
-    if (ts.isObjectLiteralExpression(value)) {
-      collectNamedHandlers(value, out);
-      continue;
+const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+
+function propertyName(property: ts.ObjectLiteralElementLike): string | null {
+  if (!property.name) return null;
+  if (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+    return property.name.text;
+  return null;
+}
+
+/** `methods: { POST: { handler } }`, the per-method shape of `createMultiMethodApiRoute`. */
+function collectMethodHandlers(methods: ts.ObjectLiteralExpression, out: EntryFunction[]): void {
+  for (const method of methods.properties) {
+    const name = propertyName(method);
+    if (!name || !HTTP_METHODS.has(name)) continue;
+    if (!ts.isPropertyAssignment(method)) continue;
+    const config = unwrap(method.initializer);
+    if (!ts.isObjectLiteralExpression(config)) continue;
+    for (const property of config.properties) {
+      if (!ts.isPropertyAssignment(property) || propertyName(property) !== "handler") continue;
+      const value = unwrap(property.initializer);
+      if (isEntryFunction(value)) out.push(value);
     }
-    const name =
-      ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
-        ? property.name.text
-        : null;
-    if (name === "handler" && isEntryFunction(value)) out.push(value);
   }
 }
 
-/** Every function passed as an argument anywhere in a call chain, e.g. the builder's handler. */
-function collectHandlerFunctions(expr: ts.Expression, out: EntryFunction[]): void {
-  const target = unwrap(expr);
-  if (ts.isCallExpression(target)) {
-    for (const arg of target.arguments) {
-      const unwrapped = unwrap(arg);
-      if (isEntryFunction(unwrapped)) out.push(unwrapped);
-      else if (ts.isObjectLiteralExpression(unwrapped)) collectNamedHandlers(unwrapped, out);
+/**
+ * The handler on an object argument, in the two shapes the route builders use: `handler` at the
+ * top level of the config (`createSSELoader({ handler })`) and `methods.POST.handler`. Matching by
+ * name at any depth would pick up an unrelated config callback that happens to be called
+ * `handler`, as well as the sibling lambdas (`findResource`, `authorization.resource`) that are
+ * not the entry-point body.
+ */
+function collectNamedHandlers(object: ts.ObjectLiteralExpression, out: EntryFunction[]): void {
+  for (const property of object.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const name = propertyName(property);
+    const value = unwrap(property.initializer);
+    if (name === "handler" && isEntryFunction(value)) out.push(value);
+    if (name === "methods" && ts.isObjectLiteralExpression(value)) {
+      collectMethodHandlers(value, out);
     }
-    collectHandlerFunctions(target.expression, out);
-    return;
   }
-  if (ts.isPropertyAccessExpression(target) || ts.isElementAccessExpression(target)) {
-    collectHandlerFunctions(target.expression, out);
+}
+
+/** The innermost call of a chain: the `createLoaderApiRoute(...)` in `createLoaderApiRoute(...).withCors(...)`. */
+function rootCall(call: ts.CallExpression): ts.CallExpression {
+  let current = call;
+  for (;;) {
+    let next = unwrap(current.expression);
+    while (ts.isPropertyAccessExpression(next) || ts.isElementAccessExpression(next)) {
+      next = unwrap(next.expression);
+    }
+    if (ts.isCallExpression(next)) {
+      current = next;
+      continue;
+    }
+    return current;
+  }
+}
+
+/**
+ * The handler functions passed to a builder call. Only the root call of a chain is read: a
+ * callback given to a decorator further along the chain (`.withCors(cb)`) is not the route body.
+ */
+function collectHandlerFunctions(call: ts.CallExpression, out: EntryFunction[]): void {
+  for (const arg of rootCall(call).arguments) {
+    const unwrapped = unwrap(arg);
+    if (isEntryFunction(unwrapped)) out.push(unwrapped);
+    else if (ts.isObjectLiteralExpression(unwrapped)) collectNamedHandlers(unwrapped, out);
   }
 }
 
@@ -248,6 +282,30 @@ function collectLocalDeclarations(sf: ts.SourceFile): LocalDeclarations {
   return locals;
 }
 
+/**
+ * Top-level functions by name, for resolving a body that delegates its work to a same-file helper
+ * (`export async function loader({ request }) { return proxyToPostHog(request); }`).
+ */
+function collectLocalFunctions(sf: ts.SourceFile): Map<string, EntryFunction> {
+  const functions = new Map<string, EntryFunction>();
+
+  for (const statement of sf.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
+      functions.set(statement.name.text, statement);
+      continue;
+    }
+    if (!ts.isVariableStatement(statement)) continue;
+
+    for (const decl of statement.declarationList.declarations) {
+      if (!decl.initializer || !ts.isIdentifier(decl.name)) continue;
+      const value = unwrap(decl.initializer);
+      if (isEntryFunction(value)) functions.set(decl.name.text, value);
+    }
+  }
+
+  return functions;
+}
+
 export function scanFile(fileName: string, source: string): EntryPoint | null {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
 
@@ -340,20 +398,41 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
   let hasTryCatch = false;
   const calleeNames: string[] = [];
 
-  for (const fn of target.functions) {
+  const localFunctions = collectLocalFunctions(sf);
+  // A body that delegates to a same-file helper does the work in that helper, so the helper's
+  // statements, try/catch and callees belong to the entry point. One hop only: a helper's own
+  // helpers are not followed, and the visited set stops a cycle and any double counting.
+  const visited = new Set<EntryFunction>(target.functions);
+  const helpers: EntryFunction[] = [];
+
+  const walkBody = (fn: EntryFunction, followHelpers: boolean) => {
     statementCount += countFunctionStatements(fn);
 
-    if (!fn.body) continue;
+    if (!fn.body) return;
     const visit = (node: ts.Node) => {
       if (ts.isTryStatement(node)) hasTryCatch = true;
       if (ts.isCallExpression(node)) {
         const cn = calleeName(node.expression);
         if (cn) calleeNames.push(cn);
+
+        if (followHelpers) {
+          const callee = unwrap(node.expression);
+          if (ts.isIdentifier(callee)) {
+            const helper = localFunctions.get(callee.text);
+            if (helper && !visited.has(helper)) {
+              visited.add(helper);
+              helpers.push(helper);
+            }
+          }
+        }
       }
       ts.forEachChild(node, visit);
     };
     visit(fn.body);
-  }
+  };
+
+  for (const fn of target.functions) walkBody(fn, true);
+  for (const helper of helpers) walkBody(helper, false);
 
   return {
     fileName,
@@ -383,12 +462,19 @@ export function scanDirectory(dir: string): {
   const parseFailures: string[] = [];
 
   const scan = (absolutePath: string, relativeName: string) => {
+    let ep: EntryPoint | null;
     try {
-      const ep = scanFile(relativeName, readFileSync(absolutePath, "utf8"));
-      if (ep) entryPoints.push(ep);
-    } catch {
-      parseFailures.push(relativeName);
+      ep = scanFile(relativeName, readFileSync(absolutePath, "utf8"));
+    } catch (error) {
+      // Only a genuinely malformed source is a parse failure. An unreadable file or a bug in the
+      // scanner must not be laundered into the same bucket, or a non-zero count means nothing.
+      if (error instanceof ParseFailureError) {
+        parseFailures.push(`${relativeName}: ${error.diagnostic}`);
+        return;
+      }
+      throw error;
     }
+    if (ep) entryPoints.push(ep);
   };
 
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

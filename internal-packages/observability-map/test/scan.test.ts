@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { scanDirectory, scanFile } from "../src/scan.js";
+import { ParseFailureError, scanDirectory, scanFile } from "../src/scan.js";
 
 const LOADER = `
 import { json } from "@remix-run/server-runtime";
@@ -122,6 +122,69 @@ describe("scanFile: named export clauses", () => {
     expect(ep!.calleeNames).not.toContain("lookup");
   });
 
+  it("counts the per-method `methods.POST.handler` bodies", () => {
+    const ep = scanFile(
+      "api.v1.prompts.$slug.override.ts",
+      `
+      const { action, loader } = createMultiMethodApiRoute({
+        params: ParamsSchema,
+        methods: {
+          POST: {
+            body: CreateBody,
+            handler: async ({ body }) => {
+              const created = await create(body);
+              return json(created);
+            },
+          },
+          DELETE: {
+            handler: async ({ params }) => {
+              return json({ ok: true });
+            },
+          },
+        },
+      });
+      export { action, loader };
+      `
+    );
+    expect(ep!.statementCount).toBe(3);
+    expect(ep!.calleeNames).toContain("create");
+  });
+
+  it("ignores a nested config callback that happens to be named `handler`", () => {
+    const ep = scanFile(
+      "api.v1.named-collision.ts",
+      `
+      export const loader = build({
+        onError: {
+          handler: async () => {
+            const a = 1;
+            const b = 2;
+            const c = 3;
+            return null;
+          },
+        },
+        handler: async () => json({}),
+      });
+      `
+    );
+    expect(ep!.statementCount).toBe(1);
+  });
+
+  it("ignores a callback passed to a decorator further along the builder chain", () => {
+    const ep = scanFile(
+      "api.v1.chained.ts",
+      `
+      export const loader = createLoaderApiRoute({}, async () => json({})).withCors(async () => {
+        const a = 1;
+        const b = 2;
+        return a + b;
+      });
+      `
+    );
+    expect(ep!.loaderInitializerCallee).toBe("createLoaderApiRoute");
+    expect(ep!.statementCount).toBe(1);
+  });
+
   it("detects an action-only route", () => {
     const ep = scanFile(
       "api.v1.action-only.ts",
@@ -181,7 +244,125 @@ describe("scanFile: statement counting", () => {
       }
       `
     );
-    expect(ep!.statementCount).toBeGreaterThan(4);
+    // try (1) + 3 in the try block + 2 in the catch block
+    expect(ep!.statementCount).toBe(6);
+  });
+
+  it("counts a same-file helper the body delegates to", () => {
+    const ep = scanFile(
+      "ph.$.ts",
+      `
+      async function proxyToPostHog(request) {
+        const url = new URL(request.url);
+        try {
+          const upstream = await fetch(url);
+          return new Response(upstream.body);
+        } catch (e) {
+          logger.error(e);
+          return new Response(null, { status: 502 });
+        }
+      }
+      export async function loader({ request }) {
+        return proxyToPostHog(request);
+      }
+      export async function action({ request }) {
+        return proxyToPostHog(request);
+      }
+      `
+    );
+    // loader (1) + action (1) + helper: const url, try (1) + 2 + 2
+    expect(ep!.statementCount).toBe(8);
+    expect(ep!.hasTryCatch).toBe(true);
+    expect(ep!.calleeNames).toContain("proxyToPostHog");
+    expect(ep!.calleeNames).toContain("fetch");
+  });
+
+  it("counts a shared helper once when both the loader and the action delegate to it", () => {
+    const ep = scanFile(
+      "shared.ts",
+      `
+      function work() {
+        const a = 1;
+        const b = 2;
+        return a + b;
+      }
+      export async function loader() { return work(); }
+      export async function action() { return work(); }
+      `
+    );
+    // loader (1) + action (1) + helper (3), the helper counted once
+    expect(ep!.statementCount).toBe(5);
+  });
+
+  it("follows a delegating helper one hop only", () => {
+    const ep = scanFile(
+      "two-hop.ts",
+      `
+      function deep() {
+        const a = 1;
+        const b = 2;
+        const c = 3;
+        return a + b + c;
+      }
+      function shallow() {
+        return deep();
+      }
+      export async function loader() { return shallow(); }
+      `
+    );
+    // loader (1) + shallow (1). `deep` is a second hop and is not counted.
+    expect(ep!.statementCount).toBe(2);
+  });
+
+  it("terminates on a recursive helper", () => {
+    const ep = scanFile(
+      "recursive.ts",
+      `
+      function recurse(n) {
+        if (n <= 0) return 0;
+        return recurse(n - 1);
+      }
+      export async function loader() { return recurse(3); }
+      `
+    );
+    // loader (1) + recurse: if (1) + return (1) + return (1)
+    expect(ep!.statementCount).toBe(4);
+  });
+
+  it("does not count an imported helper it cannot resolve", () => {
+    const ep = scanFile(
+      "imported.ts",
+      `
+      import { proxy } from "./proxy.server";
+      export async function loader({ request }) {
+        return proxy(request);
+      }
+      `
+    );
+    expect(ep!.statementCount).toBe(1);
+    expect(ep!.hasTryCatch).toBe(false);
+  });
+
+  it("does not count a same-file function the body never calls", () => {
+    const ep = scanFile(
+      "unused-helper.ts",
+      `
+      function unrelated() {
+        try {
+          const a = 1;
+          const b = 2;
+          return a + b;
+        } catch (e) {
+          return null;
+        }
+      }
+      export async function loader() {
+        return json({});
+      }
+      `
+    );
+    expect(ep!.statementCount).toBe(1);
+    expect(ep!.hasTryCatch).toBe(false);
   });
 
   it("counts statements nested in if/for/while/switch blocks", () => {
@@ -285,7 +466,7 @@ describe("scanFile: parse failures", () => {
   it("throws on a malformed source rather than returning a clean entry point", () => {
     expect(() =>
       scanFile("broken.ts", `export async function loader() { const a = ; return json(`)
-    ).toThrow();
+    ).toThrow(ParseFailureError);
   });
 
   it("does not throw on a well-formed tsx route", () => {
@@ -339,7 +520,41 @@ describe("scanDirectory", () => {
     const { entryPoints, parseFailures } = scanDirectory(dir);
 
     expect(entryPoints).toEqual([]);
-    expect(parseFailures).toEqual(["broken.ts"]);
+    expect(parseFailures).toHaveLength(1);
+    // The file name, then the diagnostic that made it a failure.
+    expect(parseFailures[0]).toMatch(/^broken\.ts: \S/);
+  });
+
+  // root ignores the mode bits, so the unreadable file would read fine.
+  it.skipIf(process.getuid?.() === 0)(
+    "rethrows an error that is not a parse failure instead of counting it as one",
+    () => {
+      const unreadable = join(dir, "unreadable.ts");
+      writeFileSync(unreadable, `export async function loader() { return json({}); }`);
+      chmodSync(unreadable, 0o000);
+
+      try {
+        expect(() => scanDirectory(dir)).toThrow(/EACCES|EPERM/);
+      } finally {
+        chmodSync(unreadable, 0o600);
+      }
+    }
+  );
+
+  it("skips a non-route file inside a route directory", () => {
+    mkdirSync(join(dir, "nested.route"));
+    writeFileSync(
+      join(dir, "nested.route", "route.tsx"),
+      `export async function loader() { return json({}); }`
+    );
+    writeFileSync(
+      join(dir, "nested.route", "loaders.server.ts"),
+      `export async function loader() { return json({}); }`
+    );
+
+    const { entryPoints } = scanDirectory(dir);
+
+    expect(entryPoints.map((ep) => ep.fileName)).toEqual(["nested.route/route.tsx"]);
   });
 
   it("scans a route file whose name ends in .test.ts but skips .d.ts", () => {
