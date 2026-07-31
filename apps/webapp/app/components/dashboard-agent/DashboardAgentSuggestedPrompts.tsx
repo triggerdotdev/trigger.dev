@@ -1,6 +1,7 @@
 import { SparklesIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { AgentPageContext, SuggestedPrompt } from "@internal/dashboard-agent-contracts";
 import { useCallback, useMemo, useState } from "react";
+import { BetaBadge } from "~/components/FeatureBadges";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { AgentList, AgentListRow, AgentListRowAction } from "./list-row";
 import {
@@ -67,7 +68,10 @@ export function DashboardAgentSuggestedPrompts({
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-4">
       <div className="flex flex-col items-center gap-1.5 text-center">
-        <SparklesIcon className="size-6 text-indigo-500" />
+        <div className="flex items-center gap-1.5">
+          <SparklesIcon className="size-6 text-indigo-500" />
+          <BetaBadge />
+        </div>
         <Paragraph variant="small" className="text-text-dimmed">
           Ask about your runs, errors, or how Trigger.dev works.
         </Paragraph>
