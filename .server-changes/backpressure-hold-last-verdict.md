@@ -3,4 +3,4 @@ area: supervisor
 type: fix
 ---
 
-Self-hosted Kubernetes deployments no longer resume pulling work as soon as the safety check becomes unreadable. It now holds its last decision for a grace period while the check recovers.
+When an internal safety check briefly becomes unreadable, the platform now holds its last decision for a short grace period instead of immediately resuming, reducing the risk of piling on more work during a partial outage.
