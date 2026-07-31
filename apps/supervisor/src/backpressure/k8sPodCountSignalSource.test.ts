@@ -1,48 +1,41 @@
 import { describe, it, expect } from "vitest";
 import { K8sPodCountSignalSource } from "./k8sPodCountSignalSource.js";
-import { createPodCountFetcher } from "../clients/kubernetes.js";
-import type { K8sApi } from "../clients/kubernetes.js";
+import { podCountFromList, withTimeout } from "../clients/kubernetes.js";
 
-function apiReturning(list: unknown): K8sApi {
-  return { core: { listNamespacedPod: async () => list } } as unknown as K8sApi;
-}
-
-describe("createPodCountFetcher", () => {
-  it("returns items.length when the list is not truncated", async () => {
-    const fetch = createPodCountFetcher(
-      apiReturning({ items: [{}], metadata: {} }),
-      "v4-runs",
-      1000
-    );
-    expect(await fetch()).toBe(1);
+describe("podCountFromList", () => {
+  it("returns items.length when the list is not truncated", () => {
+    expect(podCountFromList({ items: [{}], metadata: {} })).toBe(1);
   });
 
-  it("returns zero for an empty namespace", async () => {
-    const fetch = createPodCountFetcher(apiReturning({ items: [], metadata: {} }), "v4-runs", 1000);
-    expect(await fetch()).toBe(0);
+  it("returns zero for an empty namespace", () => {
+    expect(podCountFromList({ items: [], metadata: {} })).toBe(0);
   });
 
-  it("adds remainingItemCount when the list is truncated", async () => {
+  it("adds remainingItemCount when the list is truncated", () => {
     const list = { items: [{}], metadata: { _continue: "tok", remainingItemCount: 24492 } };
-    const fetch = createPodCountFetcher(apiReturning(list), "v4-runs", 1000);
-    expect(await fetch()).toBe(24493);
+    expect(podCountFromList(list)).toBe(24493);
   });
 
-  it("throws when truncated but remainingItemCount is absent", async () => {
+  it("throws when truncated but remainingItemCount is absent", () => {
     const list = { items: [{}], metadata: { _continue: "tok" } };
-    const fetch = createPodCountFetcher(apiReturning(list), "v4-runs", 1000);
-    await expect(fetch()).rejects.toThrow(/remainingItemCount/);
+    expect(() => podCountFromList(list)).toThrow(/remainingItemCount/);
   });
 
-  it("throws when truncated but remainingItemCount is negative", async () => {
+  it("throws when truncated but remainingItemCount is negative", () => {
     const list = { items: [{}], metadata: { _continue: "tok", remainingItemCount: -1 } };
-    const fetch = createPodCountFetcher(apiReturning(list), "v4-runs", 1000);
-    await expect(fetch()).rejects.toThrow(/remainingItemCount/);
+    expect(() => podCountFromList(list)).toThrow(/remainingItemCount/);
+  });
+});
+
+describe("withTimeout", () => {
+  it("rejects once the deadline passes", async () => {
+    await expect(withTimeout(new Promise(() => {}), 10, "pod count list")).rejects.toThrow(
+      /timed out/
+    );
   });
 
-  it("rejects when the list hangs past the timeout", async () => {
-    const api = { core: { listNamespacedPod: () => new Promise(() => {}) } } as unknown as K8sApi;
-    await expect(createPodCountFetcher(api, "v4-runs", 10)()).rejects.toThrow(/timed out/);
+  it("passes a value through when it settles first", async () => {
+    await expect(withTimeout(Promise.resolve(7), 1000, "pod count list")).resolves.toBe(7);
   });
 });
 

@@ -70,38 +70,61 @@ export function createPodCountFetcher(
   timeoutMs: number
 ): () => Promise<number> {
   const serverTimeoutSeconds = Math.max(1, Math.floor(timeoutMs / 1000));
+  let pending: Promise<unknown> | undefined;
 
   return async () => {
-    const list = await withTimeout(
-      api.core.listNamespacedPod({
-        namespace,
-        limit: 1,
-        timeoutSeconds: serverTimeoutSeconds,
-      }),
-      timeoutMs,
-      "pod count list"
-    );
-
-    if (!list.metadata?._continue) {
-      return list.items.length; // not truncated, so this is all of them
+    if (pending) {
+      throw new Error("pod count list still in flight from a previous tick");
     }
 
-    const remaining = list.metadata.remainingItemCount;
-    if (typeof remaining !== "number" || !Number.isFinite(remaining) || remaining < 0) {
-      throw new Error("pod list truncated but remainingItemCount absent or invalid");
-    }
+    const request = api.core.listNamespacedPod({
+      namespace,
+      limit: 1,
+      timeoutSeconds: serverTimeoutSeconds,
+    });
 
-    return list.items.length + remaining;
+    pending = request
+      .catch(() => {})
+      .finally(() => {
+        pending = undefined;
+      });
+
+    return podCountFromList(await withTimeout(request, timeoutMs, "pod count list"));
   };
 }
 
 /**
- * withTimeout rejects if `promise` outlives `timeoutMs`, so a hung request cannot
- * freeze the caller. A backstop only: the k8s client threads no AbortSignal through
- * to fetch, so callers must also bound the request server-side (`timeoutSeconds`),
- * or an abandoned request would stay open. The timer is cleared either way.
+ * podCountFromList turns a `limit=1` pod list into a population.
+ *
+ * `remainingItemCount` is only set when the list is truncated, so `_continue` is the
+ * truncation signal: absent means the returned page is the whole collection and its
+ * length is already the answer. Truncated without a usable estimate is unknowable, so
+ * it throws rather than guessing a low number the brake would act on.
  */
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, what: string): Promise<T> {
+export function podCountFromList(list: {
+  items: unknown[];
+  metadata?: { _continue?: string; remainingItemCount?: number };
+}): number {
+  if (!list.metadata?._continue) {
+    return list.items.length;
+  }
+
+  const remaining = list.metadata.remainingItemCount;
+  if (typeof remaining !== "number" || !Number.isFinite(remaining) || remaining < 0) {
+    throw new Error("pod list truncated but remainingItemCount absent or invalid");
+  }
+
+  return list.items.length + remaining;
+}
+
+/**
+ * withTimeout rejects if `promise` outlives `timeoutMs`, so a hung request cannot
+ * freeze the caller. It cannot cancel: the k8s client threads no AbortSignal through to
+ * fetch, so an abandoned request keeps running. Callers must therefore also bound the
+ * request server-side (`timeoutSeconds`) and refuse to start a second one while the
+ * first is pending, or a blackholed connection accumulates one socket per attempt.
+ */
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, what: string): Promise<T> {
   let timer: NodeJS.Timeout;
   const deadline = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(
