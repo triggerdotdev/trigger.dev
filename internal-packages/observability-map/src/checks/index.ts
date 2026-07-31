@@ -9,4 +9,3 @@ export type Check = { id: string; run: (ep: EntryPoint) => CheckResult };
 /** audit-trail is scored separately, see score.ts. */
 export const CHECKS: Check[] = [errorClassification, authBoundary, requestContext, auditTrail];
 export const SCORED_CHECK_IDS = ["error-classification", "auth-boundary", "request-context"];
-export { usesBuilder, BUILDERS } from "./errorClassification.js";

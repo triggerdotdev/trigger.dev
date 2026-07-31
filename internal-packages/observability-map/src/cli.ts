@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanDirectory } from "./scan.js";
 import { buildReport, scoreEntry } from "./score.js";
+import { routePathOf } from "./adapters/remix.js";
 import { renderTerminal } from "./report/terminal.js";
 import { renderJson } from "./report/json.js";
 
@@ -25,7 +26,36 @@ function findRepoRoot(startDir: string): string {
   throw new Error("could not find repo root (no pnpm-workspace.yaml in any parent directory)");
 }
 
-export function main(argv: string[]): number {
+/** Where output goes. Injectable so the tests can read it without spawning a process. */
+export type Io = { out: (s: string) => void; err: (s: string) => void };
+
+const processIo: Io = {
+  out: (s) => process.stdout.write(s),
+  err: (s) => process.stderr.write(s),
+};
+
+/**
+ * Entry points matching what the user typed, by file name or by route path, exact first.
+ *
+ * Route paths matter because they are what the report prints: `map /api/v1/token` used to exit 1
+ * because only the file name was matched, so the identifier on screen was not one you could paste
+ * back in.
+ */
+function findMatches(entryPoints: { fileName: string }[], target: string) {
+  const asPath = target.startsWith("/") ? target : `/${target}`;
+  const asFile = target.replace(/^\//, "");
+
+  const exact = entryPoints.filter(
+    (e) => e.fileName === target || routePathOf(e.fileName) === asPath
+  );
+  if (exact.length > 0) return exact;
+
+  return entryPoints.filter(
+    (e) => e.fileName.startsWith(asFile) || routePathOf(e.fileName).startsWith(asPath)
+  );
+}
+
+export function main(argv: string[], io: Io = processIo): number {
   const args = argv.slice(2);
   const asJson = args.includes("--json");
   const noWrite = args.includes("--no-write");
@@ -36,32 +66,42 @@ export function main(argv: string[]): number {
   const { entryPoints, parseFailures } = scanDirectory(routesDir);
 
   if (target) {
-    const match = entryPoints.find(
-      (e) => e.fileName === target || e.fileName.startsWith(target.replace(/^\//, ""))
-    );
-    if (!match) {
-      process.stderr.write(`no entry point matching "${target}"\n`);
+    const matches = findMatches(entryPoints, target);
+    if (matches.length === 0) {
+      io.err(`no entry point matching "${target}"\n`);
       return 1;
     }
-    const scored = scoreEntry(match);
+    if (matches.length > 1) {
+      const others = matches.slice(1, 4).map((m) => routePathOf(m.fileName));
+      const rest = matches.length - 1 - others.length;
+      io.err(
+        `"${target}" matches ${matches.length} entry points, showing the first. ` +
+          `Others: ${others.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}\n`
+      );
+    }
+    const scored = scoreEntry(matches[0]!);
     const measuredNote = scored.measured ? "" : "  (not measured: no applicable checks)";
-    process.stdout.write(
+    io.out(
       `${scored.routePath}  ${scored.score}/100${measuredNote}\n${scored.fileName}\n\nCHECKS\n`
     );
     for (const c of scored.checks) {
       const mark = c.status === "pass" ? "PASS" : c.status === "fail" ? "FAIL" : "n/a ";
-      process.stdout.write(`  ${mark}  ${c.id}${c.detail ? `  (${c.detail})` : ""}\n`);
+      io.out(`  ${mark}  ${c.id}${c.detail ? `  (${c.detail})` : ""}\n`);
     }
     return 0;
   }
 
   const report = buildReport(entryPoints, parseFailures);
-  process.stdout.write(asJson ? renderJson(report) : renderTerminal(report));
-  process.stdout.write("\n");
+  io.out(asJson ? renderJson(report) : renderTerminal(report));
+  io.out("\n");
   if (!noWrite) {
     writeFileSync(resolve(repoRoot, "observability-map.json"), renderJson(report));
   }
   return 0;
 }
 
-process.exitCode = main(process.argv);
+// Only when run as a program. Importing the module, which the tests do, must not scan the tree or
+// write a report.
+const invokedDirectly =
+  process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) process.exitCode = main(process.argv);

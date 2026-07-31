@@ -136,3 +136,73 @@ describe("renderJson", () => {
     expect(Array.isArray(parsed.entries)).toBe(true);
   });
 });
+
+describe("rendering honestly when there is nothing to say", () => {
+  // I4. mean([]) returned 100, so a family with nothing measured rendered a full green bar.
+  it("renders a family with nothing measured as not measured, not as 100", () => {
+    const trivial = scanFile(
+      "resources.health.ts",
+      `export const loader = () => new Response("ok");`
+    )!;
+    const out = renderTerminal(buildReport([trivial], []));
+    const line = out.split("\n").find((l) => l.includes("resources"))!;
+    expect(line).not.toMatch(/100/);
+    expect(line).toMatch(/not measured/i);
+  });
+
+  it("renders the global score as not measured when nothing was measured", () => {
+    const trivial = scanFile(
+      "resources.health.ts",
+      `export const loader = () => new Response("ok");`
+    )!;
+    expect(renderTerminal(buildReport([trivial], []))).toMatch(/score not measured/i);
+  });
+
+  // I11. The audit sentence was printed unconditionally, including when the figure said otherwise.
+  it("does not claim no audit helper exists when one is in use", () => {
+    const audited = scanFile(
+      "api.v1.auth.tokens.ts",
+      `import { auditLog } from "~/services/audit.server";
+       import { prisma } from "~/db.server";
+       export async function action() {
+         const token = await prisma.token.create({ data: {} });
+         await auditLog("token.created", { tokenId: token.id });
+         return json(token);
+       }`
+    )!;
+    const out = renderTerminal(buildReport([audited], []));
+    expect(out).toContain("1 of 1");
+    expect(out).not.toContain("No audit helper exists");
+  });
+
+  it("says nothing about audit when no sensitive mutation was found", () => {
+    const plain = scanFile(
+      "resources.things.ts",
+      `import { prisma } from "~/db.server";
+       export async function loader() { return prisma.thing.findMany(); }`
+    )!;
+    expect(renderTerminal(buildReport([plain], []))).not.toMatch(/AUDIT/);
+  });
+
+  // I5. "already solid" counted entries that are clean because they do nothing, alongside entries
+  // nothing applied to, in one flattering number.
+  it("separates entries that passed from entries nothing applied to", () => {
+    const clean = scanFile(
+      "api.v1.clean.ts",
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) { logger.error("failed", { environmentId: params.envId, error }); throw error; }
+       }`
+    )!;
+    const trivial = scanFile(
+      "resources.health.ts",
+      `export const loader = () => new Response("ok");`
+    )!;
+    const out = renderTerminal(buildReport([clean, trivial], []));
+    expect(out).not.toMatch(/already solid/i);
+    expect(out).toMatch(/1 passed every applicable check/i);
+    expect(out).toMatch(/1 had none to apply/i);
+  });
+});

@@ -1,9 +1,13 @@
 import type { MapReport, ScoredEntry } from "../score.js";
 import { SCORED_CHECK_IDS } from "../checks/index.js";
 
-const bar = (score: number) => {
+const NOT_MEASURED = "not measured".padEnd(15);
+
+/** A bar and a figure, or a plain "not measured" where there is no figure to draw. */
+const gauge = (score: number | null) => {
+  if (score === null) return NOT_MEASURED;
   const filled = Math.round(score / 10);
-  return "▰".repeat(filled) + "▱".repeat(10 - filled);
+  return `${"▰".repeat(filled)}${"▱".repeat(10 - filled)} ${String(score).padStart(3)}`;
 };
 
 /**
@@ -19,28 +23,36 @@ const scoredFailures = (e: ScoredEntry) =>
 export function renderTerminal(report: MapReport): string {
   const lines: string[] = [];
 
+  const headline = report.global === null ? "score not measured" : `score ${report.global}/100`;
   lines.push(
-    `score ${report.global}/100   ${report.measured} measured, ${report.unmeasured} unmeasured of ${report.entries.length} entry points`
+    `${headline}   ${report.measured} measured, ${report.unmeasured} unmeasured of ${report.entries.length} entry points`
   );
   lines.push("");
   lines.push("COVERAGE");
   for (const [family, stats] of Object.entries(report.byFamily).sort((a, b) => b[1].n - a[1].n)) {
     lines.push(
-      `  ${family.padEnd(12)} ${bar(stats.mean)} ${String(stats.mean).padStart(3)}   ${stats.measured}/${stats.n} entry points`
+      `  ${family.padEnd(12)} ${gauge(stats.mean)}   ${stats.measured}/${stats.n} entry points`
     );
   }
   lines.push(
-    `  ${"sensitive".padEnd(12)} ${bar(report.sensitiveCohort.mean)} ${String(
-      report.sensitiveCohort.mean
-    ).padStart(3)}   ${report.sensitiveCohort.measured}/${report.sensitiveCohort.n} entry points`
+    `  ${"sensitive".padEnd(12)} ${gauge(report.sensitiveCohort.mean)}   ${
+      report.sensitiveCohort.measured
+    }/${report.sensitiveCohort.n} entry points`
   );
 
-  lines.push("");
   const { sensitiveMutations, withAudit } = report.auditGap;
-  lines.push(
-    `AUDIT   ${withAudit} of ${sensitiveMutations} sensitive mutations record an actor. ` +
-      `No audit helper exists in the webapp.`
-  );
+  if (sensitiveMutations > 0) {
+    lines.push("");
+    // The closing sentence is a claim about the codebase, so it is only made when the figure in
+    // front of it supports it. It was printed unconditionally, including next to a non-zero count.
+    const gap =
+      withAudit === 0
+        ? " No audit helper exists in the webapp."
+        : ` ${sensitiveMutations - withAudit} without one.`;
+    lines.push(
+      `AUDIT   ${withAudit} of ${sensitiveMutations} sensitive mutations record an actor.${gap}`
+    );
+  }
 
   if (report.suppressions.checks > 0) {
     const { entries, checks } = report.suppressions;
@@ -78,7 +90,12 @@ export function renderTerminal(report: MapReport): string {
   }
 
   lines.push("");
-  lines.push(`already solid: ${report.entries.length - worst.length}`);
+  // Not one flattering number: an entry with nothing applicable is not the same as an entry that
+  // passed, and lumping them together counted routes as solid for doing nothing.
+  const clean = report.entries.filter((e) => e.measured && scoredFailures(e).length === 0).length;
+  lines.push(
+    `no findings: ${clean} passed every applicable check, ${report.unmeasured} had none to apply`
+  );
   if (report.parseFailures.length > 0) {
     lines.push(`parse failures (excluded from the score): ${report.parseFailures.join(", ")}`);
   }

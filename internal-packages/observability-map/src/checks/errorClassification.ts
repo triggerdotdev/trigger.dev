@@ -13,7 +13,7 @@ const ID = "error-classification";
  * authenticate, so counting it here would hand two routes a free pass on `auth-boundary`.
  * `createHybridActionApiRoute`, which the design named, exists nowhere in the tree.
  */
-export const BUILDERS = new Set([
+const BUILDERS = new Set([
   "createLoaderApiRoute",
   "createActionApiRoute",
   "createLoaderPATApiRoute",
@@ -33,7 +33,7 @@ export const BUILDERS = new Set([
  * than a second absolute threshold, so it holds for a three-statement route and a fifty-statement
  * one alike.
  */
-export function isParseGuard(clause: CatchEvidence, ep: EntryPoint): boolean {
+function isParseGuard(clause: CatchEvidence, ep: EntryPoint): boolean {
   return clause.guardsParse && clause.tryStatementCount * 2 < ep.statementCount;
 }
 
@@ -51,7 +51,7 @@ export function isParseGuard(clause: CatchEvidence, ep: EntryPoint): boolean {
  * effort side work that logs and carries on, and all four are non-sensitive so they sort to the
  * bottom of the fix list. See the task 5 report; switching is one limb in this function.
  */
-export function accountedFor(clause: CatchEvidence, ep: EntryPoint): boolean {
+function accountedFor(clause: CatchEvidence, ep: EntryPoint): boolean {
   return clause.rethrows || clause.branches || isParseGuard(clause, ep);
 }
 

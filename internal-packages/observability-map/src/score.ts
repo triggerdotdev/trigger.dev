@@ -24,15 +24,16 @@ export type ScoredEntry = {
 };
 
 export type MapReport = {
-  global: number;
+  /** Null when no entry point had an applicable scored check: an absent figure, not a perfect one. */
+  global: number | null;
   /** Entry points with at least one applicable scored check, i.e. those `global` is averaged over. */
   measured: number;
   /** Entry points every scored check reported not-applicable for; excluded from `global`. */
   unmeasured: number;
   /** Suppressions in force: how many entry points carry one, and how many scored checks in total. */
   suppressions: { entries: number; checks: number };
-  byFamily: Record<string, { n: number; measured: number; mean: number }>;
-  sensitiveCohort: { n: number; measured: number; mean: number };
+  byFamily: Record<string, { n: number; measured: number; mean: number | null }>;
+  sensitiveCohort: { n: number; measured: number; mean: number | null };
   auditGap: { sensitiveMutations: number; withAudit: number };
   entries: ScoredEntry[];
   parseFailures: string[];
@@ -77,8 +78,12 @@ export function scoreEntry(ep: EntryPoint): ScoredEntry {
   };
 }
 
-const mean = (xs: number[]) =>
-  xs.length === 0 ? 100 : Math.round(xs.reduce((a, b) => a + b, 0) / xs.length);
+/**
+ * Null for an empty group rather than 100. A family nothing was measured in has no score, and
+ * rendering the absence as a full green bar said the opposite of what the data said.
+ */
+const mean = (xs: number[]): number | null =>
+  xs.length === 0 ? null : Math.round(xs.reduce((a, b) => a + b, 0) / xs.length);
 
 /**
  * `n` is every entry point in the group; `mean` is taken over the measured subset only, so an
@@ -86,7 +91,11 @@ const mean = (xs: number[]) =>
  * is reported alongside so a reader can tell a family scoring high because it is clean apart from
  * a family scoring high because most of it was never measured.
  */
-function groupStats(entries: ScoredEntry[]): { n: number; measured: number; mean: number } {
+function groupStats(entries: ScoredEntry[]): {
+  n: number;
+  measured: number;
+  mean: number | null;
+} {
   const measuredEntries = entries.filter((e) => e.measured);
   return {
     n: entries.length,

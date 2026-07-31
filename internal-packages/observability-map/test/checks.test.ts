@@ -64,7 +64,7 @@ describe("error-classification", () => {
     expect(r.status).toBe("fail");
   });
 
-  // Restored from the brief: `catchBranches` sees the `instanceof` and the `if`.
+  // Restored from the brief: the clause branches, on the `instanceof` and the `if`.
   it("passes a raw route whose catch branches on the error", () => {
     const r = run(
       "error-classification",
@@ -135,7 +135,8 @@ describe("error-classification", () => {
   });
 
   // A narrow guard around one operation classifies an expected failure without needing to branch
-  // or rethrow. `catchesNarrowly` is what tells it apart from a handler-wide catch.
+  // or rethrow. Guarding a parse over a small part of the body is what tells it apart from a
+  // handler-wide catch.
   it("passes a narrow guard around a single parse", () => {
     const r = run(
       "error-classification",
@@ -153,7 +154,8 @@ describe("error-classification", () => {
   });
 
   // False positive fixture for the narrow rule: a narrow parse guard must not launder the broad
-  // handler catch sitting next to it. `catchesNarrowly` is false when any guarded try is broad.
+  // handler catch sitting next to it. Clauses are judged one at a time, so the broad one still
+  // counts against the entry point.
   it("still fails when a narrow guard sits beside a handler-wide swallow", () => {
     const r = run(
       "error-classification",
