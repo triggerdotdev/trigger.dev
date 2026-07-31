@@ -5225,6 +5225,13 @@ local function tryServe(ckQueueName)
         redis.call('ZREM', ckVtimeKey, ckQueueName) -- NEW
       else
         redis.call('ZADD', ckIndexKey, any[2], ckQueueName)
+        -- The variant has work but none of it is ready yet (a nack backoff, say), so it
+        -- is not competing for service and must not hold the floor down. While it sat in
+        -- ckVtime its low tag pinned the floor, and new keys register at the floor, so a
+        -- key arriving later started far below the established ones and took every pass-1
+        -- slot until it caught up. It re-registers at the floor of the day on its next
+        -- enqueue/nack, or when pass 2 serves it after its head becomes ready.
+        redis.call('ZREM', ckVtimeKey, ckQueueName)
       end
     end
   end
