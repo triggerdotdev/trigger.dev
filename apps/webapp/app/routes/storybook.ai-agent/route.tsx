@@ -878,8 +878,18 @@ function AgentOrb({
       typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     if (reduced) {
-      drawFrame(ctx, dpr, 0, 0, cfg);
-      return;
+      // No animation, but a controlled amount (the scrubber) is a static pose,
+      // so still honour it and repaint when it changes.
+      const paint = () => {
+        const amount = controlledRef.current ?? (activeRef.current ? 1 : 0);
+        amountRef.current = amount;
+        drawFrame(ctx, dpr, amount, 0, cfg);
+      };
+      wakeRef.current = paint;
+      paint();
+      return () => {
+        wakeRef.current = () => {};
+      };
     }
 
     let raf = 0;
@@ -1157,10 +1167,19 @@ function AgentLogoMorph({
     const reduced =
       typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduced) {
-      setLogo(0);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, size, size);
-      return;
+      // Same as the orb: freeze the animation, but still render a controlled
+      // amount so the scrubber keeps working.
+      const paint = () => {
+        const amount = controlledRef.current ?? (activeRef.current ? 1 : 0);
+        amountRef.current = amount;
+        setLogo(amount);
+        drawLogoMorphFrame(ctx, dpr, amount, 0, cfg);
+      };
+      wakeRef.current = paint;
+      paint();
+      return () => {
+        wakeRef.current = () => {};
+      };
     }
 
     let raf = 0;
