@@ -1139,6 +1139,19 @@ importers:
         specifier: 6.0.1
         version: 6.0.1
 
+  internal-packages/observability-map:
+    dependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
+
   internal-packages/otlp-importer:
     dependencies:
       long:
