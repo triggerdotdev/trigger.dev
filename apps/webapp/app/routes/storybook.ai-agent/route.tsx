@@ -101,7 +101,7 @@ function DotMatrixTab() {
           ] as [ButtonVariant, number, string][]
         ).map(([variant, matrixSize, label]) => (
           <div key={variant} className="flex flex-col items-center gap-2">
-            <AskOttoButton variant={variant} matrixSize={matrixSize} />
+            <AskAiButton variant={variant} matrixSize={matrixSize} />
             <div className="text-[10px] uppercase tracking-wide text-text-dimmed">{label}</div>
           </div>
         ))}
@@ -112,7 +112,7 @@ function DotMatrixTab() {
       <div className="flex flex-wrap items-center gap-6 rounded-md border border-grid-bright bg-background-bright px-6 py-5">
         {[14, 15, 16].map((s) => (
           <div key={s} className="flex flex-col items-center gap-2">
-            <AskOttoButton variant="ask-ai/small" matrixSize={s} />
+            <AskAiButton variant="ask-ai/small" matrixSize={s} />
             <div className="text-[10px] uppercase tracking-wide text-text-dimmed">{s}px icon</div>
           </div>
         ))}
@@ -191,7 +191,7 @@ function DotMatrixTab() {
   );
 }
 
-function AskOttoButton({ variant, matrixSize }: { variant: ButtonVariant; matrixSize: number }) {
+function AskAiButton({ variant, matrixSize }: { variant: ButtonVariant; matrixSize: number }) {
   const [active, setActive] = useState(false);
   const timeout = useRef<ReturnType<typeof setTimeout>>();
 
@@ -219,7 +219,7 @@ function AskOttoButton({ variant, matrixSize }: { variant: ButtonVariant; matrix
         />
       }
     >
-      Ask Otto
+      Ask AI
     </Button>
   );
 }
