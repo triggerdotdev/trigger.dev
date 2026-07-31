@@ -208,7 +208,6 @@ function AskAiButton({ variant, matrixSize }: { variant: ButtonVariant; matrixSi
     <Button
       variant={variant}
       onClick={trigger}
-      className="cursor-pointer"
       LeadingIcon={
         <AgentDotMatrix
           size={matrixSize}
@@ -240,7 +239,6 @@ function FaceButton({ name }: { name: DotShapeName }) {
     <Button
       variant="ask-ai/small"
       onClick={trigger}
-      className="cursor-pointer"
       LeadingIcon={
         <AgentDotMatrix
           size={16}

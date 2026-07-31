@@ -119,7 +119,7 @@ const theme = {
   "ask-ai": {
     textColor: "text-text-bright transition group-disabled/button:text-text-dimmed/80",
     button:
-      "bg-secondary border border-[#41FF54]/25 group-hover/button:bg-surface-control group-hover/button:border-[#41FF54]/40 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:pointer-events-none",
+      "cursor-pointer bg-secondary border border-[#41FF54]/25 group-hover/button:bg-surface-control group-hover/button:border-[#41FF54]/40 group-disabled/button:bg-secondary group-disabled/button:opacity-60 group-disabled/button:cursor-default group-disabled/button:pointer-events-none",
     shortcut:
       "border-text-dimmed/40 text-text-dimmed group-hover/button:text-text-bright group-hover/button:border-text-dimmed",
     icon: "text-text-bright",
