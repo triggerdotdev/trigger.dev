@@ -44,6 +44,7 @@ services:
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8030}
       LOGIN_ORIGIN: ${LOGIN_ORIGIN:-http://localhost:8030}
       API_ORIGIN: ${API_ORIGIN:-http://localhost:8030}
+      RUNTIME_API_ORIGIN: ${RUNTIME_API_ORIGIN:-}
       ELECTRIC_ORIGIN: http://electric:3000
       # Realtime streams v2, backed by the bundled s2-lite service. This powers
       # AI-agent token streaming and run streams. Point the endpoint at a hosted

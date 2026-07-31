@@ -1157,6 +1157,10 @@ async function resolveOverridableOtelDevVariables(
 function resolveProdApiOrigin(runtimeEnvironment: RuntimeEnvironmentForEnvRepo): string {
   const publicOrigin = env.API_ORIGIN ?? env.APP_ORIGIN;
 
+  if (env.RUNTIME_API_ORIGIN) {
+    return env.RUNTIME_API_ORIGIN;
+  }
+
   if (!env.INTERNAL_API_ORIGIN) {
     return publicOrigin;
   }
@@ -1190,7 +1194,7 @@ async function resolveBuiltInProdVariables(
       // Deliberately not switched by internalApiOriginEnabled: streams are
       // long-lived connections served on their own path.
       key: "TRIGGER_STREAM_URL",
-      value: env.STREAM_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN,
+      value: env.RUNTIME_API_ORIGIN ?? env.STREAM_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN,
     },
     {
       key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
