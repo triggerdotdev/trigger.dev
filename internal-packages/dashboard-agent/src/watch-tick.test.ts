@@ -55,6 +55,7 @@ function watchRow(overrides: Partial<Watch> = {}): Watch {
     expiresAt: new Date("2026-01-01T13:00:00.000Z"),
     lastCheckedAt: null,
     firedAt: null,
+    deliveryClaimedAt: null,
     deliveredAt: null,
     cancelledAt: null,
     lastResult: null,
@@ -71,6 +72,8 @@ function fakeStore(row: Watch) {
   const calls = {
     claims: [] as unknown[],
     transition: [] as unknown[],
+    deliveryClaims: [] as unknown[],
+    released: [] as unknown[],
     delivered: [] as unknown[],
     checks: [] as unknown[],
   };
@@ -85,7 +88,24 @@ function fakeStore(row: Watch) {
         return null;
       }
       row.tickCount = params.generation;
-      row.lastCheckedAt = NOW;
+      // Deliberately NOT lastCheckedAt: a claim is not an observation.
+      return { ...row };
+    },
+    claimWatchDelivery: async (params) => {
+      calls.deliveryClaims.push(params);
+      const stale =
+        row.deliveryStatus === "delivering" &&
+        (row.deliveryClaimedAt ?? row.createdAt).getTime() <= params.staleBefore.getTime();
+      if (row.deliveryStatus !== "pending" && !stale) return null;
+      row.deliveryStatus = "delivering";
+      row.deliveryClaimedAt = NOW;
+      return { ...row };
+    },
+    releaseWatchDelivery: async (params) => {
+      calls.released.push(params);
+      if (row.deliveryStatus !== "delivering") return null;
+      row.deliveryStatus = "pending";
+      row.deliveryClaimedAt = null;
       return { ...row };
     },
     transitionWatchCondition: async (params) => {
@@ -100,7 +120,7 @@ function fakeStore(row: Watch) {
     },
     markWatchDelivered: async (params) => {
       calls.delivered.push(params);
-      if (row.deliveryStatus !== "pending") return null;
+      if (row.deliveryStatus !== "pending" && row.deliveryStatus !== "delivering") return null;
       row.deliveryStatus = "delivered";
       row.deliveredAt = NOW;
       return { ...row };
@@ -337,9 +357,11 @@ describe("runWatchTick", () => {
 
     await expect(runWatchTick(PAYLOAD, d)).rejects.toThrow("session append failed");
 
-    // The row is terminal with the delivery still owed, and nothing was marked.
+    // The row is terminal with the delivery still owed, and nothing was marked. The
+    // failed append gave the claim back, so the retry doesn't have to wait it out.
     expect(row.status).toBe("fired");
     expect(row.deliveryStatus).toBe("pending");
+    expect(calls.released).toEqual([{ id: "watch_1" }]);
     expect(calls.delivered).toHaveLength(0);
     expect(appends).toHaveLength(0);
 
@@ -349,6 +371,80 @@ describe("runWatchTick", () => {
     expect(calls.transition).toHaveLength(1);
     expect(appends).toHaveLength(1);
     expect(row.deliveryStatus).toBe("delivered");
+  });
+
+  it("two concurrent invocations of the same generation wake the chat exactly once", async () => {
+    // The tick claim is resumable, so two invocations that own the same generation
+    // can both pass it, both see the condition satisfied, and both reach the
+    // delivery — one as the transition's winner, the other finding terminal + owed.
+    // Only the delivery claim keeps that from being two wakes.
+    const { store, calls, row } = fakeStore(watchRow({ tickCount: 3 }));
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied", facts: { runs: 1 } } }));
+    const { appends, deliver } = fakeDeliver();
+    const { reschedule } = fakeReschedule();
+    const { notified, notifyFired } = fakeNotifyFired();
+    const d = deps({ store, fetch, deliver, reschedule, notifyFired });
+
+    const outcomes = (
+      await Promise.all([runWatchTick(payloadFor(4), d), runWatchTick(payloadFor(4), d)])
+    ).map((result) => result.outcome);
+
+    // BOTH reached the delivery — that is the race — and only one got the claim.
+    expect(calls.deliveryClaims).toHaveLength(2);
+    // ONE wake, one delivery mark, one alert.
+    expect(appends).toHaveLength(1);
+    expect(calls.delivered).toEqual([{ id: "watch_1" }]);
+    expect(notified).toEqual(["watch_1"]);
+    // One of them resolved the row; the other found the delivery already taken.
+    expect(calls.transition).toHaveLength(2);
+    expect(outcomes).toContain("fired");
+    expect(outcomes).toContain("already_delivering");
+    expect(row).toMatchObject({ status: "fired", deliveryStatus: "delivered" });
+  });
+
+  it("a live delivery claim is left alone, and a dead one is recovered", async () => {
+    // A deliverer that claimed the wake and died leaves the row `delivering`. While
+    // the claim is fresh it is somebody's to hold; once it is stale nothing else
+    // will ever wake the chat, so the next invocation takes it.
+    const fresh = fakeStore(
+      watchRow({
+        status: "fired",
+        deliveryStatus: "delivering",
+        deliveryClaimedAt: NOW,
+        firedAt: NOW,
+      })
+    );
+    const { fetch } = fakeFetch(() => ({ body: { result: "satisfied" } }));
+    const { reschedule } = fakeReschedule();
+    const live = fakeDeliver();
+
+    expect(
+      await runWatchTick(
+        { ...payloadFor(0), deliverOnly: true },
+        deps({ store: fresh.store, fetch, deliver: live.deliver, reschedule })
+      )
+    ).toEqual({ outcome: "already_delivering" });
+    expect(live.appends).toHaveLength(0);
+    expect(fresh.row.deliveryStatus).toBe("delivering");
+
+    const dead = fakeStore(
+      watchRow({
+        status: "fired",
+        deliveryStatus: "delivering",
+        deliveryClaimedAt: new Date(NOW.getTime() - 60 * 60 * 1000),
+        firedAt: NOW,
+      })
+    );
+    const recovered = fakeDeliver();
+
+    expect(
+      await runWatchTick(
+        { ...payloadFor(0), deliverOnly: true },
+        deps({ store: dead.store, fetch, deliver: recovered.deliver, reschedule })
+      )
+    ).toEqual({ outcome: "delivered_only" });
+    expect(recovered.appends).toHaveLength(1);
+    expect(dead.row.deliveryStatus).toBe("delivered");
   });
 
   it("a terminal, already-delivered watch does nothing at all", async () => {
@@ -651,6 +747,8 @@ describe("runWatchTick", () => {
       getWatch: async () => null,
       claimWatchTick: async () => null,
       transitionWatchCondition: async () => null,
+      claimWatchDelivery: async () => null,
+      releaseWatchDelivery: async () => null,
       markWatchDelivered: async () => null,
       recordWatchCheck: async () => null,
     };

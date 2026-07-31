@@ -12,6 +12,14 @@
  *  - a resolved row whose wake never reached the chat (`deliveryStatus = pending`),
  *    i.e. an outcome the user was promised and never got.
  *
+ * The two halves have different dependencies, and that split is load-bearing:
+ * finalizing a watch needs nothing but the database and the authorization checks,
+ * while handing a wake over needs a configured agent project to hand it to. So the
+ * finalization ALWAYS runs — a configuration that disappeared after the watches
+ * were created (a rotated secret, a rollback) must not freeze every row as `active`
+ * forever, holding the chat's watch slots. What can't be handed over is simply left
+ * owed, and the delivery half picks it up when the configuration returns.
+ *
  * It runs in the WEBAPP, not in the agent project, because finalizing a watch is
  * an authorization decision: the initiating user is re-authorized against the
  * watch's immutable project/environment, a user who lost access gets the watch
@@ -22,19 +30,17 @@
  * the watcher task as a delivery-only invocation.
  *
  * Everything is guarded rather than coordinated: the transition is conditional on
- * `active`, the delivery mark on `pending`, and the wake's action id is stable, so
- * the sweep racing a live tick resolves to exactly one winner and a re-run is a
- * no-op.
+ * `active`, the wake is claimed atomically before it is appended, and the action id
+ * is stable — so the sweep racing a live tick resolves to exactly one winner, and a
+ * re-run is a no-op.
  */
 
 import {
   cancelWatch,
   listExpiredActiveWatches,
   listWatchesAwaitingDelivery,
-  markWatchDelivered,
   transitionWatchCondition,
   type Watch,
-  type WatchAwaitingDelivery,
 } from "@internal/dashboard-agent-db";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
@@ -90,8 +96,11 @@ export type WatchSweepResult = {
   undelivered: number;
   /** Wakes handed back to the watcher task. */
   redelivered: number;
-  /** Inline outcomes the turn had already narrated: marked, not re-narrated. */
-  narrated: number;
+  /**
+   * Outcomes that were decided but couldn't be handed over, because the agent
+   * project isn't configured. They stay owed for the next sweep.
+   */
+  deliveryDeferred: number;
   failed: number;
 };
 
@@ -101,17 +110,17 @@ export type WatchSweepDeps = {
   /** Overdue `active` rows. */
   listOverdue?: (params: { now: Date; limit: number }) => Promise<Watch[]>;
   /** Resolved rows whose wake is still owed. */
-  listAwaitingDelivery?: (params: {
-    olderThan: Date;
-    limit: number;
-  }) => Promise<WatchAwaitingDelivery[]>;
+  listAwaitingDelivery?: (params: { olderThan: Date; limit: number }) => Promise<Watch[]>;
   /** Re-authorization of the watch's initiating user. */
   authorize?: (watch: Watch) => Promise<WatchAuthorization>;
   /** The environment readers the final check runs against. */
   checkDeps?: (environment: AuthenticatedEnvironment, now: Date) => WatchCheckDeps;
   /** Hand the wake back to the watcher task. Must throw if it can't be scheduled. */
   deliver?: (watch: Watch) => Promise<void>;
-  /** Skips the whole sweep when the agent isn't set up on this installation. */
+  /**
+   * Whether there is an agent project to hand wakes to. Gates the delivery half
+   * only — finalization never depends on it.
+   */
   configured?: () => boolean;
 };
 
@@ -186,15 +195,19 @@ function resolutionFor(
  * it was created with, and a cancellation is never narrated. Only then does the
  * final check read anything, so the watch gets the same last look a tick past the
  * deadline would have given it.
+ *
+ * `canDeliver: false` stops at the resolution: the row is terminal with its wake
+ * owed, which is exactly the state the delivery half recovers.
  */
 export async function finalizeOverdueWatch(
   watch: Watch,
-  deps: WatchSweepDeps = {}
+  deps: WatchSweepDeps & { canDeliver?: boolean } = {}
 ): Promise<WatchFinalizeOutcome> {
   const now = deps.now?.() ?? new Date();
   const authorize = deps.authorize ?? defaultAuthorize;
   const buildCheckDeps = deps.checkDeps ?? watchCheckDeps;
   const deliver = deps.deliver ?? scheduleWatchDelivery;
+  const canDeliver = deps.canDeliver ?? true;
 
   const authorization = await authorize(watch);
   if (!authorization.ok) {
@@ -242,46 +255,27 @@ export async function finalizeOverdueWatch(
   }
 
   // The wake itself. Throws if it can't be scheduled, which leaves the row
-  // terminal + pending — recovered by the delivery half of the next sweep.
-  await deliver(transitioned);
+  // terminal with its delivery owed — recovered by the delivery half of the next
+  // sweep, same as when there is no agent project to hand it to at all.
+  if (canDeliver) await deliver(transitioned);
   return resolution.status;
 }
 
 /**
- * Recover ONE owed wake.
+ * Recover ONE owed wake: hand it to the watcher task, whatever left it owed — a
+ * delivery that failed, a deliverer that died mid-append, or an outcome that was
+ * resolved inline by the turn that created the watch.
  *
- * Two kinds of row land here. Most are a delivery that failed: the wake is simply
- * handed to the watcher task again (the action id is stable, so a wake that did
- * land is not narrated twice). The other kind is an outcome that was resolved
- * INLINE — a watch that was already true when it was created, narrated by the turn
- * that created it — and for those the delivery is only marked once that turn's
- * persistence proves the narration exists. A message persisted after the watch
- * resolved is that proof; without one the turn died before saying anything, so the
- * wake is delivered like any other.
+ * Unconditional on purpose. This sweep cannot tell whether the user was already
+ * told: every proof available here (the chat's last message time above all) is
+ * moved by a question, an error turn, or another watch's wake, so acting on it
+ * loses outcomes. Whether the wake needs prose is decided where the transcript can
+ * actually be read — the agent's wake narration skips it when the turn that created
+ * the watch already answered inline, and the delivery is marked either way.
  */
-export async function recoverWatchDelivery(
-  row: WatchAwaitingDelivery,
-  deps: WatchSweepDeps = {}
-): Promise<"narrated" | "redelivered"> {
+export async function recoverWatchDelivery(watch: Watch, deps: WatchSweepDeps = {}): Promise<void> {
   const deliver = deps.deliver ?? scheduleWatchDelivery;
-  const { watch, chatLastMessageAt } = row;
-
-  const resolvedAt = watch.firedAt ?? watch.lastCheckedAt;
-  const narratedInline =
-    (watch.lastResult as { narratedInline?: unknown } | null)?.narratedInline === true;
-
-  if (
-    narratedInline &&
-    resolvedAt &&
-    chatLastMessageAt &&
-    chatLastMessageAt.getTime() >= resolvedAt.getTime()
-  ) {
-    await markWatchDelivered(dashboardAgentDb, { id: watch.id });
-    return "narrated";
-  }
-
   await deliver(watch);
-  return "redelivered";
 }
 
 /**
@@ -312,13 +306,20 @@ export async function sweepDashboardAgentWatches(
     alreadyResolved: 0,
     undelivered: 0,
     redelivered: 0,
-    narrated: 0,
+    deliveryDeferred: 0,
     failed: 0,
   };
 
-  // No agent on this installation means no watches, and no way to deliver a wake
-  // even if there were — don't touch the store at all.
-  if (!configured()) return result;
+  // Whether there is an agent project to hand a wake to. It gates the hand-off
+  // only: the rows themselves still have to be finalized, or a configuration that
+  // vanished after the watches were created would leave every one of them active
+  // and holding a slot forever.
+  const canDeliver = configured();
+  if (!canDeliver) {
+    logger.warn(
+      "Dashboard agent watch sweep: the agent isn't configured, so wakes can't be delivered — finalizing only"
+    );
+  }
 
   const overdue = await listOverdue({
     now: new Date(now.getTime() - WATCH_EXPIRY_GRACE_MS),
@@ -328,11 +329,15 @@ export async function sweepDashboardAgentWatches(
 
   for (const watch of overdue) {
     try {
-      const outcome = await finalizeOverdueWatch(watch, { ...deps, now: () => now });
+      const outcome = await finalizeOverdueWatch(watch, { ...deps, now: () => now, canDeliver });
       if (outcome === "fired") result.fired++;
       else if (outcome === "expired") result.expired++;
       else if (outcome === "cancelled") result.cancelled++;
       else result.alreadyResolved++;
+      // Resolved, but nothing carried the wake away: it stays owed.
+      if (!canDeliver && (outcome === "fired" || outcome === "expired")) {
+        result.deliveryDeferred++;
+      }
     } catch (error) {
       result.failed++;
       logger.error("Dashboard agent watch sweep: failed to finalize a watch", {
@@ -342,23 +347,26 @@ export async function sweepDashboardAgentWatches(
     }
   }
 
-  const owed = await listAwaitingDelivery({
-    olderThan: new Date(now.getTime() - WATCH_DELIVERY_GRACE_MS),
-    limit,
-  });
-  result.undelivered = owed.length;
+  // The delivery half. Skipped wholesale without an agent project — the rows keep
+  // their owed wake and the next configured sweep recovers them.
+  if (canDeliver) {
+    const owed = await listAwaitingDelivery({
+      olderThan: new Date(now.getTime() - WATCH_DELIVERY_GRACE_MS),
+      limit,
+    });
+    result.undelivered = owed.length;
 
-  for (const row of owed) {
-    try {
-      const outcome = await recoverWatchDelivery(row, deps);
-      if (outcome === "narrated") result.narrated++;
-      else result.redelivered++;
-    } catch (error) {
-      result.failed++;
-      logger.error("Dashboard agent watch sweep: failed to recover a wake", {
-        watchId: row.watch.id,
-        error,
-      });
+    for (const watch of owed) {
+      try {
+        await recoverWatchDelivery(watch, deps);
+        result.redelivered++;
+      } catch (error) {
+        result.failed++;
+        logger.error("Dashboard agent watch sweep: failed to recover a wake", {
+          watchId: watch.id,
+          error,
+        });
+      }
     }
   }
 

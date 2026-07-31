@@ -188,8 +188,12 @@ export const investigations = dashboardAgentSchema.table(
 
 /** `active` is the only non-terminal status; the other three are immutable. */
 export type WatchStatus = "active" | "fired" | "expired" | "cancelled";
-/** `not_required` while active and for every cancelled outcome — only fired/expired notify. */
-export type WatchDeliveryStatus = "not_required" | "pending" | "delivered";
+/**
+ * `not_required` while active and for every cancelled outcome — only fired/expired
+ * notify. `delivering` is the in-flight claim: one deliverer at a time, so two
+ * concurrent invocations can't both wake the chat (see `claimWatchDelivery`).
+ */
+export type WatchDeliveryStatus = "not_required" | "pending" | "delivering" | "delivered";
 export type WatchCancelReason = "user" | "access_revoked" | "chat_deleted";
 
 /**
@@ -240,6 +244,9 @@ export const watches = dashboardAgentSchema.table(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
     firedAt: timestamp("fired_at", { withTimezone: true }),
+    // When the current deliverer claimed the wake. A claim older than the
+    // delivery grace is treated as abandoned and may be re-claimed.
+    deliveryClaimedAt: timestamp("delivery_claimed_at", { withTimezone: true }),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     // The last check's output; on fire/expire it's the payload the notification uses.
@@ -263,11 +270,12 @@ export const watches = dashboardAgentSchema.table(
       .where(sql`${t.status} = 'active'`),
     // Sweep: active watches due to be checked / past their expiry.
     index("watches_status_expires_idx").on(t.status, t.expiresAt),
-    // The other half of the sweep: resolved watches whose wake is still owed.
-    // Partial, because "owed" is a handful of rows at any moment.
+    // The other half of the sweep: resolved watches whose wake is still owed —
+    // never claimed, or claimed by a deliverer that died mid-flight. Partial,
+    // because "owed" is a handful of rows at any moment.
     index("watches_pending_delivery_idx")
       .on(t.firedAt, t.lastCheckedAt)
-      .where(sql`${t.deliveryStatus} = 'pending'`),
+      .where(sql`${t.deliveryStatus} in ('pending', 'delivering')`),
   ]
 );
 

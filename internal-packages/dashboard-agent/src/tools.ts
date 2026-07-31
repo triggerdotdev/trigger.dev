@@ -1587,8 +1587,14 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
         // Already true at creation time: there is nothing to wait for, so the
         // model must answer now instead of promising a message later.
+        //
+        // `watchId` travels with the outcome on purpose: this result, once
+        // persisted next to the answer, is the proof that THIS watch's outcome
+        // reached the user — the backstop that would otherwise post the outcome as
+        // a wake reads it and stays quiet (see `hasInlineWatchNarration`).
         if (data?.immediate) {
           return {
+            watchId: data.watchId,
             immediate: data.immediate,
             watching: false,
             note: "The condition already holds, so no watch is running. Answer now.",

@@ -357,14 +357,14 @@ export async function createDashboardAgentWatch(params: {
  * Resolve a watch whose outcome is being reported in the SAME response that
  * created it — the condition was already true when the user asked.
  *
- * The delivery is left `pending` and marked `narratedInline`, NOT marked delivered
- * here. The caller is the notification, but only if the turn survives: a completed
- * tool call renders nothing, so the outcome the user actually sees is the
- * assistant's message about it, and a turn that dies after the tool result and
- * before that message leaves the user with nothing. The watch sweep closes the row
- * out either way — it marks the delivery once the turn's persistence proves the
- * narration exists, and wakes the chat with the outcome when it doesn't (see
- * `dashboardAgentWatchSweep.server.ts`).
+ * The delivery is left owed, NOT marked delivered here. The caller is the
+ * notification, but only if the turn survives: a completed tool call renders
+ * nothing, so the outcome the user actually sees is the assistant's message about
+ * it, and a turn that dies after the tool result and before that message leaves the
+ * user with nothing. So the row stays owed and the sweep hands the outcome over as a
+ * wake like any other; the agent's narration is what decides prose is unnecessary,
+ * because it can see whether this watch's outcome is already in the transcript
+ * (`hasInlineWatchNarration`).
  *
  * `narrate: false` is for the one outcome there is nothing to narrate later (the
  * first tick couldn't be scheduled): the row is closed out immediately, so no wake
@@ -380,7 +380,7 @@ async function resolveWatchInline(
   const transitioned = await transitionWatchCondition(dashboardAgentDb, {
     id: watchId,
     status,
-    lastResult: { result: outcome.result, facts: outcome.facts, narratedInline: narrate },
+    lastResult: { result: outcome.result, facts: outcome.facts },
   });
   if (!transitioned) return status;
 

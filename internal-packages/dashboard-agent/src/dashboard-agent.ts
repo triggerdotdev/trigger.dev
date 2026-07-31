@@ -411,6 +411,44 @@ function wakePrompt(action: WatchWakeAction): string {
 }
 
 /**
+ * Did the turn that CREATED this watch already tell the user its outcome?
+ *
+ * A watch whose condition was already true is resolved inline by the host and
+ * answered in the same turn, so its wake is delivered later only as a backstop —
+ * and it must not repeat an answer the user already has. The proof has to be
+ * specific to this watch and durable, so it is read out of the persisted
+ * transcript: a completed `schedule_watch` call that returned an immediate outcome
+ * FOR THIS WATCH, followed by assistant prose in that message or a later one. The
+ * chat's own "last message" watermark proves nothing — a question, an error turn,
+ * or another watch's wake moves it too.
+ *
+ * Anything short of the pair means no narration exists (the turn died before it,
+ * or wrote nothing), and the wake narrates normally.
+ */
+export function hasInlineWatchNarration(uiMessages: UIMessage[], watchId: string): boolean {
+  const resolvedAt = uiMessages.findIndex(
+    (message) =>
+      message.role === "assistant" &&
+      message.parts.some((part) => {
+        if (part.type !== "tool-schedule_watch") return false;
+        const output = (part as { output?: { watchId?: unknown; immediate?: unknown } }).output;
+        return output?.watchId === watchId && output.immediate !== undefined;
+      })
+  );
+  if (resolvedAt === -1) return false;
+
+  return uiMessages
+    .slice(resolvedAt)
+    .some(
+      (message) =>
+        message.role === "assistant" &&
+        message.parts.some(
+          (part) => part.type === "text" && (part as { text?: string }).text?.trim()
+        )
+    );
+}
+
+/**
  * Narrate one wake, exactly once.
  *
  * Streams so the panel shows it arriving live, then writes it into both places a
@@ -436,6 +474,17 @@ async function narrateWatchWake(args: {
       chatId,
       watchId: action.watchId,
       actionId: action.id,
+    });
+    return;
+  }
+
+  // The other way this outcome can already have been told: the turn that created
+  // the watch answered it inline. One telling per outcome, so the wake is silent
+  // here — the delivery is still marked, which closes the row out.
+  if (hasInlineWatchNarration(uiMessages, action.watchId)) {
+    logger.info("dashboard-agent watch outcome was narrated inline; skipping the wake", {
+      chatId,
+      watchId: action.watchId,
     });
     return;
   }

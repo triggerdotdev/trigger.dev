@@ -532,6 +532,15 @@ export function isTerminalWatchStatus(status: string): boolean {
   return status === "fired" || status === "expired" || status === "cancelled";
 }
 
+/**
+ * A wake that still has to reach its chat: never claimed, or claimed by a
+ * deliverer that hasn't marked it delivered (yet, or ever). Whether the claim is
+ * still someone's to hold is {@link claimWatchDelivery}'s call, not this one's.
+ */
+export function isWatchDeliveryOwed(status: string): boolean {
+  return status === "pending" || status === "delivering";
+}
+
 export type CreateWatchResult =
   | { ok: true; watch: Watch }
   | { ok: false; error: "limit_reached"; activeCount: number }
@@ -1012,8 +1021,65 @@ export async function cancelActiveWatchesForChat(
 }
 
 /**
- * #13 The outcome notification went out. Guarded on `pending` so a retried
- * delivery can't send twice or reset `deliveredAt`.
+ * How long a `delivering` claim is respected before the wake is considered
+ * abandoned and may be claimed again. Longer than a delivery takes (seconds), so
+ * the only rows it releases are ones whose deliverer really died.
+ */
+export const WATCH_DELIVERY_CLAIM_STALE_MS = 5 * 60 * 1000;
+
+/**
+ * #13 Claim the right to deliver a resolved watch's wake — the atomic gate that
+ * makes "exactly one wake" true even with two deliverers running at once.
+ *
+ * A stable action id dedups a wake only through a read-then-write on the
+ * transcript, which two concurrent appends can interleave through. So the claim
+ * lives here instead: `pending → delivering` in one statement, and only the row it
+ * returns may append. The loser gets `null` and delivers nothing.
+ *
+ * A claim is not a lease that has to be renewed: {@link releaseWatchDelivery}
+ * hands it back when the append fails, and a claim left behind by a deliverer that
+ * died is re-claimable once it is older than `staleBefore` — otherwise a crash
+ * between the claim and `markWatchDelivered` would strand the wake forever.
+ */
+export async function claimWatchDelivery(
+  db: DashboardAgentDb,
+  params: { id: string; staleBefore: Date }
+): Promise<Watch | null> {
+  const rows = await db
+    .update(watches)
+    .set({ deliveryStatus: "delivering", deliveryClaimedAt: sql`now()` })
+    .where(
+      and(
+        eq(watches.id, params.id),
+        sql`(${watches.deliveryStatus} = 'pending' or (${watches.deliveryStatus} = 'delivering' and coalesce(${watches.deliveryClaimedAt}, ${watches.createdAt}) <= ${params.staleBefore.toISOString()}::timestamptz))`
+      )
+    )
+    .returning();
+  return rows[0] ?? null;
+}
+
+/**
+ * #13 Give a delivery claim back, after an append that failed: the wake is owed
+ * again, so the invocation's own retry (or another deliverer) can pick it up
+ * without waiting out the stale window. Guarded on `delivering`, so it can never
+ * un-deliver a wake that landed.
+ */
+export async function releaseWatchDelivery(
+  db: DashboardAgentDb,
+  params: { id: string }
+): Promise<Watch | null> {
+  const rows = await db
+    .update(watches)
+    .set({ deliveryStatus: "pending", deliveryClaimedAt: null })
+    .where(and(eq(watches.id, params.id), eq(watches.deliveryStatus, "delivering")))
+    .returning();
+  return rows[0] ?? null;
+}
+
+/**
+ * #13 The outcome notification went out. Guarded on an owed delivery (`pending` or
+ * this invocation's `delivering` claim) so a retried delivery can't send twice or
+ * reset `deliveredAt`.
  */
 export async function markWatchDelivered(
   db: DashboardAgentDb,
@@ -1022,7 +1088,9 @@ export async function markWatchDelivered(
   const rows = await db
     .update(watches)
     .set({ deliveryStatus: "delivered", deliveredAt: sql`now()` })
-    .where(and(eq(watches.id, params.id), eq(watches.deliveryStatus, "pending")))
+    .where(
+      and(eq(watches.id, params.id), inArray(watches.deliveryStatus, ["pending", "delivering"]))
+    )
     .returning();
   return rows[0] ?? null;
 }
@@ -1047,6 +1115,13 @@ export async function markWatchDelivered(
  * generation, and the watch would sit active and unchecked until its deadline.
  *
  * Guarded on `active` too: a terminal watch is never ticked again.
+ *
+ * Deliberately does NOT touch `lastCheckedAt`: claiming a generation is not an
+ * observation, and a claim whose check then failed to run would otherwise date the
+ * watch's last observation to it — the expiry narration reports that timestamp as
+ * "last observed". `lastCheckedAt` is written only where a result is written with
+ * it ({@link recordWatchCheck}, {@link transitionWatchCondition}), so the timestamp
+ * and the observation it belongs to always agree.
  */
 export async function claimWatchTick(
   db: DashboardAgentDb,
@@ -1054,7 +1129,7 @@ export async function claimWatchTick(
 ): Promise<Watch | null> {
   const rows = await db
     .update(watches)
-    .set({ tickCount: params.generation, lastCheckedAt: sql`now()` })
+    .set({ tickCount: params.generation })
     .where(
       and(
         eq(watches.id, params.id),
@@ -1094,18 +1169,6 @@ export async function recordWatchCheck(
   return rows[0] ?? null;
 }
 
-/** A terminal watch whose wake never reached its chat, with the chat's watermark. */
-export interface WatchAwaitingDelivery {
-  watch: Watch;
-  /**
-   * The chat's last persisted message time. The inline-resolution path (a watch
-   * that was already true when it was created) is narrated by the turn that
-   * created it, so a message persisted AFTER the watch resolved is the proof that
-   * narration happened — see the sweep in the webapp.
-   */
-  chatLastMessageAt: Date | null;
-}
-
 /**
  * #13 Sweep: terminal watches whose delivery is still owed.
  *
@@ -1121,6 +1184,10 @@ export interface WatchAwaitingDelivery {
  * only rows that have been owed for a while are recovered, and the recovery can't
  * race the path that is still mid-delivery.
  *
+ * A row mid-delivery (`delivering`) is owed too, but only once its claim is older
+ * than the same window: that is a deliverer that died between claiming the wake and
+ * marking it delivered, and nothing else would ever pick it up.
+ *
  * Deleted chats are excluded — there is nowhere to deliver a wake in a
  * conversation the user can no longer open (deleting a chat cancels its active
  * watches, so this only ever skips one that resolved just before the delete).
@@ -1128,23 +1195,24 @@ export interface WatchAwaitingDelivery {
 export async function listWatchesAwaitingDelivery(
   db: DashboardAgentDb,
   params: { olderThan: Date; limit?: number }
-): Promise<WatchAwaitingDelivery[]> {
+): Promise<Watch[]> {
+  const olderThan = sql`${params.olderThan.toISOString()}::timestamptz`;
   const rows = await db
-    .select({ watch: watches, chatLastMessageAt: chats.lastMessageAt })
+    .select({ watch: watches })
     .from(watches)
     .innerJoin(chats, eq(chats.id, watches.chatId))
     .where(
       and(
         inArray(watches.status, ["fired", "expired"]),
-        eq(watches.deliveryStatus, "pending"),
+        sql`(${watches.deliveryStatus} = 'pending' or (${watches.deliveryStatus} = 'delivering' and coalesce(${watches.deliveryClaimedAt}, ${watches.createdAt}) <= ${olderThan}))`,
         isNull(chats.deletedAt),
-        sql`coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) <= ${params.olderThan.toISOString()}::timestamptz`
+        sql`coalesce(${watches.firedAt}, ${watches.lastCheckedAt}) <= ${olderThan}`
       )
     )
     .orderBy(sql`coalesce(${watches.firedAt}, ${watches.lastCheckedAt})`)
     .limit(params.limit ?? 100);
 
-  return rows.map((row) => ({ watch: row.watch, chatLastMessageAt: row.chatLastMessageAt }));
+  return rows.map((row) => row.watch);
 }
 
 /**

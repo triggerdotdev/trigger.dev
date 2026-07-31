@@ -12,6 +12,7 @@
 import {
   cancelWatch,
   chatExists,
+  claimWatchTick,
   countUnreadWatchWakes,
   createChat,
   createDashboardAgentDb,
@@ -21,6 +22,7 @@ import {
   listUnreadWatchWakes,
   markWatchDelivered,
   persistMessages,
+  recordWatchCheck,
   transitionWatchCondition,
   type DashboardAgentDb,
   type DashboardAgentDbClient,
@@ -355,11 +357,11 @@ describe("createDashboardAgentWatch", () => {
       expect(ticks).toBe(0);
 
       const row = await getWatch(ctx.agentDb, { id: result.watchId });
-      // Narrated in this very response — but the delivery is only CLOSED once that
-      // narration is durable, so the row stays pending and marked `narratedInline`
-      // for the sweep to finish (a turn that dies must still reach the user).
+      // Narrated in this very response — but the delivery stays owed, so a turn
+      // that dies before saying anything still reaches the user: the sweep hands the
+      // outcome over as a wake, and the agent decides it needs no prose.
       expect(row).toMatchObject({ status: "fired", deliveryStatus: "pending" });
-      expect(row?.lastResult).toMatchObject({ narratedInline: true });
+      expect(row?.lastResult).toMatchObject({ result: "satisfied" });
     }
   );
 
@@ -1017,13 +1019,53 @@ describe("the watch sweep", () => {
       const later = new Date(Date.now() + WATCH_DELIVERY_GRACE_MS + 60_000);
       const result = await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered, now: later }));
 
-      expect(result).toMatchObject({ undelivered: 1, redelivered: 1, narrated: 0 });
+      expect(result).toMatchObject({ undelivered: 1, redelivered: 1 });
       expect(delivered).toEqual([created.watchId]);
     }
   );
 
   postgresTest(
-    "an inline outcome the turn did narrate is closed out without a second telling",
+    "a deliverer that died mid-delivery is recovered, but a fresh claim is left alone",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "sweep");
+      await seedChat(seeded);
+      const watchId = await overdueWatch(seeded);
+
+      await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }));
+
+      // The watcher claimed the wake and hasn't marked it delivered. The outcome is
+      // old enough to be past the delivery grace, but a fresh claim is somebody's to
+      // hold — the sweep must not take it away.
+      await ctx.prisma.$executeRawUnsafe(
+        `update trigger_dashboard_agent.watches
+         set delivery_status = 'delivering',
+             delivery_claimed_at = now(),
+             last_checked_at = now() - interval '1 hour'
+         where id = $1`,
+        watchId
+      );
+      expect(await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: [] }))).toMatchObject({
+        undelivered: 0,
+      });
+
+      // The claim is stale: that deliverer died, and nothing else will ever pick the
+      // wake up — so the sweep does.
+      await ctx.prisma.$executeRawUnsafe(
+        `update trigger_dashboard_agent.watches
+         set delivery_claimed_at = now() - interval '1 hour' where id = $1`,
+        watchId
+      );
+      const recovered: string[] = [];
+      expect(
+        await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered: recovered }))
+      ).toMatchObject({ undelivered: 1, redelivered: 1, failed: 0 });
+      expect(recovered).toEqual([watchId]);
+    }
+  );
+
+  postgresTest(
+    "an unrelated message after an inline outcome is not proof it was narrated",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seed(prisma, "sweep");
@@ -1036,40 +1078,65 @@ describe("the watch sweep", () => {
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      // The turn completed and persisted its transcript — that is the proof the
-      // user was told, so the sweep marks the delivery instead of waking the chat.
+      // The turn died before narrating the outcome, and the user then typed
+      // something else entirely. That moves the chat's last-message watermark
+      // without telling anybody what the watch found, so the wake is still owed.
       await persistMessages(ctx.agentDb, {
         chatId: "chat_1",
-        messages: [{ id: "m1", role: "assistant" }],
+        messages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "what happened?" }] }],
       });
 
       const delivered: string[] = [];
       const later = new Date(Date.now() + WATCH_DELIVERY_GRACE_MS + 60_000);
       const result = await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered, now: later }));
 
-      expect(result).toMatchObject({ undelivered: 1, narrated: 1, redelivered: 0 });
-      expect(delivered).toEqual([]);
+      expect(result).toMatchObject({ undelivered: 1, redelivered: 1 });
+      expect(delivered).toEqual([created.watchId]);
+      // Still owed until the wake actually lands — the watcher task marks it.
       expect(await getWatch(ctx.agentDb, { id: created.watchId })).toMatchObject({
-        deliveryStatus: "delivered",
+        deliveryStatus: "pending",
       });
     }
   );
 
   postgresTest(
-    "does nothing at all when the agent isn't configured",
+    "finalizes overdue watches even with no agent to deliver to, and delivers once it's back",
     async ({ prisma, postgresContainer }) => {
       await boot(prisma, postgresContainer.getConnectionUri());
       const seeded = await seed(prisma, "sweep");
       await seedChat(seeded);
-      await overdueWatch(seeded);
+      const watchId = await overdueWatch(seeded);
 
+      // The configuration vanished after the watch was created (a rotated secret, a
+      // rollback). The row must still be finalized, or it holds a watch slot and
+      // blocks re-asking forever.
       const delivered: string[] = [];
-      const result = await sweepDashboardAgentWatches({
+      const unconfigured = await sweepDashboardAgentWatches({
         ...sweepDeps({ seeded, delivered }),
         configured: () => false,
       });
 
-      expect(result).toMatchObject({ overdue: 0, undelivered: 0, failed: 0 });
+      expect(unconfigured).toMatchObject({
+        overdue: 1,
+        expired: 1,
+        deliveryDeferred: 1,
+        undelivered: 0,
+        redelivered: 0,
+        failed: 0,
+      });
+      expect(delivered).toEqual([]);
+      expect(await getWatch(ctx.agentDb, { id: watchId })).toMatchObject({
+        status: "expired",
+        deliveryStatus: "pending",
+      });
+
+      // Configured again: the outcome the user was promised is handed over.
+      const later = new Date(Date.now() + WATCH_DELIVERY_GRACE_MS + 60_000);
+      const restored = await sweepDashboardAgentWatches(
+        sweepDeps({ seeded, delivered, now: later })
+      );
+      expect(restored).toMatchObject({ undelivered: 1, redelivered: 1, failed: 0 });
+      expect(delivered).toEqual([watchId]);
     }
   );
 
@@ -1098,6 +1165,34 @@ describe("the watch sweep", () => {
       expect(
         await sweepDashboardAgentWatches(sweepDeps({ seeded, delivered, now: later }))
       ).toMatchObject({ overdue: 1, expired: 1 });
+    }
+  );
+});
+
+describe("the tick claim", () => {
+  postgresTest(
+    "claiming a generation is not an observation: only a recorded check stamps one",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "claim");
+      await seedChat(seeded);
+      const created = await create({ seeded });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      // A claim whose check then never ran must leave no trace of an observation —
+      // the expiry narration reports `lastCheckedAt` as when the watch was last
+      // looked at, and a failed claim's timestamp would be a lie.
+      const claimed = await claimWatchTick(ctx.agentDb, { id: created.watchId, generation: 1 });
+      expect(claimed).toMatchObject({ tickCount: 1, lastCheckedAt: null, lastResult: null });
+
+      // The check that did run writes the pair together.
+      await recordWatchCheck(ctx.agentDb, { id: created.watchId, lastResult: { pending: 4 } });
+      const row = await getWatch(ctx.agentDb, { id: created.watchId });
+      expect(row?.lastCheckedAt).toBeInstanceOf(Date);
+      expect(row?.lastResult).toMatchObject({ pending: 4 });
+      // And the claim is still the only writer of the counter.
+      expect(row?.tickCount).toBe(1);
     }
   );
 });

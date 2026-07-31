@@ -336,6 +336,87 @@ describe("watch wake narration", () => {
     expect(calls.persistMessages).toHaveLength(1);
   });
 
+  /**
+   * A history snapshot, as the agent reads it at boot. The wakes below run as
+   * continuation runs, which is how a real wake arrives: minutes after the turn
+   * that created the watch, on a run that boots from this snapshot.
+   */
+  function snapshotOf(messages: UIMessage[]) {
+    return { version: 1 as const, savedAt: Date.now(), messages };
+  }
+
+  /**
+   * The turn that created the watch, as it lands in the transcript: the
+   * `schedule_watch` call that came back with an immediate outcome, and the answer
+   * the model wrote from it.
+   */
+  function inlineTurn(options: { narrated: boolean }): UIMessage[] {
+    return [
+      { id: "u1", role: "user", parts: [{ type: "text", text: "tell me when it drains" }] },
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-schedule_watch",
+            toolCallId: "call_1",
+            state: "output-available",
+            input: {},
+            output: { watchId: "watch_1", immediate: { result: "satisfied" }, watching: false },
+          },
+          ...(options.narrated
+            ? [{ type: "text" as const, text: "It's already drained — 0 pending." }]
+            : []),
+        ],
+      },
+    ] as unknown as UIMessage[];
+  }
+
+  it("an outcome the creating turn already answered inline is not told a second time", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_inline",
+      clientData: CLIENT_DATA,
+      continuation: true,
+      snapshot: snapshotOf(inlineTurn({ narrated: true })),
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("should never run")]));
+      },
+    });
+
+    // The wake is delivered anyway — the host can't tell whether the turn survived —
+    // so the narration is where the transcript decides. It already holds this
+    // watch's outcome, so the wake says nothing and the row just closes out.
+    const wake = await harness.sendAction(WAKE);
+    expect(collectText(wake.chunks)).toBe("");
+    expect(calls.persistMessages).toHaveLength(0);
+  });
+
+  it("an inline outcome whose turn died before answering is narrated by the wake", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_inline_lost",
+      clientData: CLIENT_DATA,
+      continuation: true,
+      // The turn persisted the tool result but never the answer, and the user then
+      // typed something else — which moves the chat's last-message time without
+      // telling anyone what the watch found.
+      snapshot: snapshotOf([
+        ...inlineTurn({ narrated: false }),
+        { id: "u2", role: "user", parts: [{ type: "text", text: "what happened?" }] },
+      ] as unknown as UIMessage[]),
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
+      },
+    });
+
+    const wake = await harness.sendAction(WAKE);
+    expect(collectText(wake.chunks)).toBe("The backlog drained — 0 pending now.");
+    expect(calls.persistMessages).toHaveLength(1);
+  });
+
   it("a different outcome on the same watch is a different wake", async () => {
     const { store, calls } = fakeStore();
     harness = mockChatAgent(dashboardAgent, {

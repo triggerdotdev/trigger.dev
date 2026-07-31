@@ -1,11 +1,15 @@
 import {
+  claimWatchDelivery,
   claimWatchTick,
   createDashboardAgentDb,
   getWatch,
   isTerminalWatchStatus,
+  isWatchDeliveryOwed,
   markWatchDelivered,
   recordWatchCheck,
+  releaseWatchDelivery,
   transitionWatchCondition,
+  WATCH_DELIVERY_CLAIM_STALE_MS,
   type DashboardAgentDbClient,
   type PersistedWatchSpec,
   type Watch,
@@ -46,9 +50,15 @@ import type { WatchWakeAction } from "./dashboard-agent";
  * - The terminal transition is atomic and one-way (`active` → fired/expired,
  *   delivery `pending`), and `markWatchDelivered` happens ONLY after the session
  *   append is acknowledged. Anything failing before that ack throws, so the
- *   platform retries the invocation; the retry finds terminal + pending and
- *   performs the delivery alone — which is why the terminal branch runs BEFORE
+ *   platform retries the invocation; the retry finds terminal + an owed delivery
+ *   and performs the delivery alone — which is why the terminal branch runs BEFORE
  *   the claim.
+ * - The wake itself is claimed atomically (`pending` → `delivering`) and only the
+ *   claim's winner appends. Two invocations that both get past the tick claim — a
+ *   resumable generation makes that possible — then race on the terminal
+ *   transition, and the loser re-reads a row whose delivery is still owed; without
+ *   the delivery claim they would BOTH wake the chat, since the action id dedups
+ *   only through a read-then-write on the transcript.
  */
 
 /** What the webapp triggers on creation, and what a tick re-triggers on itself. */
@@ -85,6 +95,10 @@ export type WatchTickStore = {
     status: "fired" | "expired";
     lastResult?: Record<string, unknown> | null;
   }): Promise<Watch | null>;
+  /** Take the wake. Only the row this returns may be appended to the chat. */
+  claimWatchDelivery(params: { id: string; staleBefore: Date }): Promise<Watch | null>;
+  /** Hand the wake back after a failed append, so the retry can re-claim it. */
+  releaseWatchDelivery(params: { id: string }): Promise<Watch | null>;
   markWatchDelivered(params: { id: string }): Promise<Watch | null>;
   recordWatchCheck(params: {
     id: string;
@@ -98,7 +112,14 @@ export type WatchTickStore = {
  * append + mark sequence.
  */
 export type WatchDeliveryDeps = {
-  store: Pick<WatchTickStore, "getWatch" | "transitionWatchCondition" | "markWatchDelivered">;
+  store: Pick<
+    WatchTickStore,
+    | "getWatch"
+    | "transitionWatchCondition"
+    | "claimWatchDelivery"
+    | "releaseWatchDelivery"
+    | "markWatchDelivered"
+  >;
   /** Append the wake to the chat's `in` stream. Must throw if the append fails. */
   deliver: (args: { chatId: string; action: WatchWakeAction; watch: Watch }) => Promise<void>;
   /**
@@ -107,6 +128,7 @@ export type WatchDeliveryDeps = {
    * the wake in the chat is the delivery that matters.
    */
   notifyFired: (watchId: string) => Promise<void>;
+  now?: () => Date;
 };
 
 export type WatchTickDeps = WatchDeliveryDeps & {
@@ -118,7 +140,6 @@ export type WatchTickDeps = WatchDeliveryDeps & {
     payload: WatchTickPayload,
     options: { delay: string; idempotencyKey: string }
   ) => Promise<unknown>;
-  now?: () => Date;
 };
 
 /** What one tick did, for the run's output and the tests. */
@@ -126,6 +147,9 @@ export type WatchTickOutcome =
   | "missing"
   | "already_terminal"
   | "delivered_only"
+  // The wake is owed but another invocation holds the delivery claim, so this one
+  // must not append: exactly one wake reaches the chat.
+  | "already_delivering"
   // The row has moved past the generation this invocation carries: a late
   // duplicate whose successor already ran.
   | "stale"
@@ -244,11 +268,8 @@ function firedFacts(facts: Record<string, unknown> | undefined): Record<string, 
  * Facts for an expiry. When the FINAL check came back `unavailable` the watch
  * still expires — but the narration must not claim the thing didn't happen, so
  * the facts say the condition couldn't be verified at expiry and carry the last
- * observation we do have (`lastResult` from the last successful check).
- *
- * `observed` overrides where that observation is read from: claiming a generation
- * stamps `lastCheckedAt`, so a tick must pass the row as it was BEFORE its claim or
- * the narration would date the last observation to this failed check.
+ * observation we do have: the row's `lastCheckedAt` / `lastResult` pair, which is
+ * only ever written together, by the check that observed it.
  */
 export function expiredFacts(
   watch: Watch,
@@ -256,10 +277,8 @@ export function expiredFacts(
     verified: boolean;
     reason: string;
     facts?: Record<string, unknown>;
-    observed?: Watch;
   }
 ): Record<string, unknown> {
-  const observed = args.observed ?? watch;
   return {
     verified: args.verified,
     reason: args.reason,
@@ -268,8 +287,8 @@ export function expiredFacts(
     ...(args.verified
       ? (args.facts ?? {})
       : {
-          lastObservedAt: observed.lastCheckedAt?.toISOString(),
-          lastObservation: observed.lastResult,
+          lastObservedAt: watch.lastCheckedAt?.toISOString(),
+          lastObservation: watch.lastResult,
         }),
   };
 }
@@ -289,31 +308,60 @@ function wakeAction(watch: Watch, facts: Record<string, unknown>): WatchWakeActi
 }
 
 /**
- * Wake the chat, then mark the delivery. Idempotent: `markWatchDelivered` is
- * guarded on `pending`, and the action id is stable, so a retried invocation
- * that re-appends is deduped by the agent instead of narrating twice.
+ * Wake the chat, then mark the delivery. Returns whether THIS call delivered.
  *
- * Deliberately NOT try/caught — a failed append must fail the invocation so the
- * platform retries it, and the retry lands on terminal + pending and delivers
- * only.
+ * The claim is the gate: `pending → delivering` in one statement, so of two
+ * deliverers racing on the same resolved row exactly one appends and the other
+ * returns false. The stable action id is still the second line of defence, but it
+ * dedups only through a read-then-write on the transcript, which two concurrent
+ * appends can interleave through — so it can't be the first.
+ *
+ * A failed append gives the claim back and rethrows: the invocation fails, the
+ * platform retries it, and the retry re-claims immediately instead of waiting out
+ * the stale window. A deliverer that dies without releasing leaves a `delivering`
+ * row, which the sweep recovers once the claim is stale.
  */
-async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promise<void> {
-  const facts = (watch.lastResult ?? {}) as Record<string, unknown>;
-  await deps.deliver({ chatId: watch.chatId, action: wakeAction(watch, facts), watch });
-  await deps.store.markWatchDelivered({ id: watch.id });
+async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promise<boolean> {
+  const now = deps.now?.() ?? new Date();
+  const claimed = await deps.store.claimWatchDelivery({
+    id: watch.id,
+    staleBefore: new Date(now.getTime() - WATCH_DELIVERY_CLAIM_STALE_MS),
+  });
+
+  if (!claimed) {
+    logger.info("dashboard-agent watch wake is already being delivered; skipping", {
+      watchId: watch.id,
+    });
+    return false;
+  }
+
+  const facts = (claimed.lastResult ?? {}) as Record<string, unknown>;
+  try {
+    await deps.deliver({
+      chatId: claimed.chatId,
+      action: wakeAction(claimed, facts),
+      watch: claimed,
+    });
+  } catch (error) {
+    await deps.store.releaseWatchDelivery({ id: claimed.id });
+    throw error;
+  }
+  await deps.store.markWatchDelivered({ id: claimed.id });
 
   // The alerts the user configured, after the wake and outside its failure path:
   // the chat is the delivery this task guarantees, an alert is an extra.
-  if (watch.status === "fired") {
+  if (claimed.status === "fired") {
     try {
-      await deps.notifyFired(watch.id);
+      await deps.notifyFired(claimed.id);
     } catch (error) {
       logger.warn("dashboard-agent watch: the fired notification failed", {
-        watchId: watch.id,
+        watchId: claimed.id,
         error: (error as Error).message,
       });
     }
   }
+
+  return true;
 }
 
 /**
@@ -336,11 +384,16 @@ export async function resolveAndDeliver(
   });
 
   if (!transitioned) {
-    // Someone else resolved it. Deliver only if that outcome is still undelivered.
+    // Someone else resolved it. Deliver only if that outcome is still owed — and
+    // only if the delivery claim is ours to take.
     const current = await deps.store.getWatch({ id: watch.id });
-    if (current && isTerminalWatchStatus(current.status) && current.deliveryStatus === "pending") {
-      await deliverWake(deps, current);
-      return { outcome: "delivered_only" };
+    if (
+      current &&
+      isTerminalWatchStatus(current.status) &&
+      isWatchDeliveryOwed(current.deliveryStatus)
+    ) {
+      const delivered = await deliverWake(deps, current);
+      return { outcome: delivered ? "delivered_only" : "already_delivering" };
     }
     return { outcome: "already_terminal" };
   }
@@ -366,9 +419,9 @@ export async function runWatchTick(
   // this is the path a retried invocation takes after a crash between the
   // transition and the append.
   if (isTerminalWatchStatus(watch.status)) {
-    if (watch.deliveryStatus === "pending") {
-      await deliverWake(deps, watch);
-      return { outcome: "delivered_only" };
+    if (isWatchDeliveryOwed(watch.deliveryStatus)) {
+      const delivered = await deliverWake(deps, watch);
+      return { outcome: delivered ? "delivered_only" : "already_delivering" };
     }
     return { outcome: "already_terminal" };
   }
@@ -436,7 +489,7 @@ export async function runWatchTick(
       deps,
       claimed,
       "expired",
-      expiredFacts(claimed, { verified: false, reason: "unverified_at_expiry", observed: watch })
+      expiredFacts(claimed, { verified: false, reason: "unverified_at_expiry" })
     );
   }
 
@@ -560,6 +613,8 @@ export const watchTick = task({
         getWatch: (params) => getWatch(db, params),
         claimWatchTick: (params) => claimWatchTick(db, params),
         transitionWatchCondition: (params) => transitionWatchCondition(db, params),
+        claimWatchDelivery: (params) => claimWatchDelivery(db, params),
+        releaseWatchDelivery: (params) => releaseWatchDelivery(db, params),
         markWatchDelivered: (params) => markWatchDelivered(db, params),
         recordWatchCheck: (params) => recordWatchCheck(db, params),
       },
