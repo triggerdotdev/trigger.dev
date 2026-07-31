@@ -1,6 +1,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { EntryPoint } from "./types.js";
 import { scanDirectory } from "./scan.js";
 import { buildReport, scoreEntry } from "./score.js";
 import { routePathOf } from "./adapters/remix.js";
@@ -41,7 +42,7 @@ const processIo: Io = {
  * because only the file name was matched, so the identifier on screen was not one you could paste
  * back in.
  */
-function findMatches(entryPoints: { fileName: string }[], target: string) {
+function findMatches(entryPoints: EntryPoint[], target: string): EntryPoint[] {
   const asPath = target.startsWith("/") ? target : `/${target}`;
   const asFile = target.replace(/^\//, "");
 

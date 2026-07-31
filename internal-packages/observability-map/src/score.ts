@@ -114,7 +114,7 @@ export function buildReport(eps: EntryPoint[], parseFailures: string[]): MapRepo
   const entries = eps.map(scoreEntry);
   const measuredEntries = entries.filter((e) => e.measured);
 
-  const byFamily: Record<string, { n: number; measured: number; mean: number }> = {};
+  const byFamily: MapReport["byFamily"] = {};
   for (const family of new Set(entries.map((e) => e.family))) {
     byFamily[family] = groupStats(entries.filter((e) => e.family === family));
   }
@@ -127,7 +127,7 @@ export function buildReport(eps: EntryPoint[], parseFailures: string[]): MapRepo
   // gap that is the same everywhere, and bury the routes that have their own, fixable problems.
   const contextChecks = entries
     .map((e) => e.checks.find((c) => c.id === "request-context"))
-    .filter((c) => c !== undefined && c.status !== "not-applicable");
+    .filter((c): c is CheckResult => c !== undefined && c.status !== "not-applicable");
 
   const auditApplicable = entries.filter((e) =>
     e.checks.some((c) => c.id === "audit-trail" && c.status !== "not-applicable")
