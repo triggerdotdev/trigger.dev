@@ -5162,7 +5162,10 @@ end
 
 local window = actualMaxCount * windowMultiplier
 
--- Monotonic floor, advanced to the minimum stored virtual-time tag
+-- Floor only ever rises, by two independent routes: to the lowest tag on record (repairs
+-- a floor that was lost while ckVtime survived), and to the lowest tag actually servable
+-- this call (minServableTag). The second route matters because an unservable variant
+-- keeps a stale low tag, which left the first route unable to advance at all.
 local floor = tonumber(redis.call('GET', ckVtimeFloorKey) or '0')
 local minEntry = redis.call('ZRANGE', ckVtimeKey, 0, 0, 'WITHSCORES')
 if #minEntry > 0 then
@@ -5171,6 +5174,7 @@ if #minEntry > 0 then
     floor = minTag
   end
 end
+local minServableTag = nil
 
 local results = {}
 local dequeuedCount = 0
@@ -5225,6 +5229,10 @@ local function tryServe(ckQueueName)
           local weight = 1
           local tag = tonumber(redis.call('ZSCORE', ckVtimeKey, ckQueueName) or floor)
           if tag < floor then tag = floor end
+          -- Pass 1 walks in ascending tag order, so anything unvisited is above this.
+          if minServableTag == nil or tag < minServableTag then
+            minServableTag = tag
+          end
           redis.call('ZADD', ckVtimeKey, tostring(tag + (quantum / weight)), ckQueueName)
         end
       else
@@ -5247,12 +5255,8 @@ local function tryServe(ckQueueName)
         redis.call('ZREM', ckVtimeKey, ckQueueName) -- NEW
       else
         redis.call('ZADD', ckIndexKey, any[2], ckQueueName)
-        -- The variant has work but none of it is ready yet (a nack backoff, say), so it
-        -- is not competing for service and must not hold the floor down. While it sat in
-        -- ckVtime its low tag pinned the floor, and new keys register at the floor, so a
-        -- key arriving later started far below the established ones and took every pass-1
-        -- slot until it caught up. It re-registers at the floor of the day on its next
-        -- enqueue/nack, or when pass 2 serves it after its head becomes ready.
+        -- Work but nothing ready (a nack backoff): not competing, so drop it from the fair
+        -- order rather than let it hoard credit. Rejoins at the floor when next served.
         redis.call('ZREM', ckVtimeKey, ckQueueName)
       end
     end
@@ -5281,6 +5285,9 @@ if dequeuedCount < actualMaxCount then
 end
 
 -- NEW: persist floor and refresh TTLs
+if minServableTag ~= nil and minServableTag > floor then
+  floor = minServableTag
+end
 redis.call('SET', ckVtimeFloorKey, tostring(floor), 'EX', stateTtl)
 if redis.call('EXISTS', ckVtimeKey) == 1 then
   redis.call('EXPIRE', ckVtimeKey, stateTtl)
