@@ -13,6 +13,7 @@ import {
   type DashboardAgentDbClient,
   type PersistedWatchSpec,
   type Watch,
+  type WatchDeliveryClaim,
 } from "@internal/dashboard-agent-db";
 import type { WatchCheckResult } from "@internal/dashboard-agent-contracts";
 import { logger, sessions, task, tasks } from "@trigger.dev/sdk";
@@ -58,7 +59,9 @@ import type { WatchWakeAction } from "./dashboard-agent";
  *   resumable generation makes that possible — then race on the terminal
  *   transition, and the loser re-reads a row whose delivery is still owed; without
  *   the delivery claim they would BOTH wake the chat, since the action id dedups
- *   only through a read-then-write on the transcript.
+ *   only through a read-then-write on the transcript. The claim is fenced by a
+ *   token, so releasing it and marking it delivered can only ever be done by the
+ *   deliverer that still holds it.
  */
 
 /** What the webapp triggers on creation, and what a tick re-triggers on itself. */
@@ -95,11 +98,15 @@ export type WatchTickStore = {
     status: "fired" | "expired";
     lastResult?: Record<string, unknown> | null;
   }): Promise<Watch | null>;
-  /** Take the wake. Only the row this returns may be appended to the chat. */
-  claimWatchDelivery(params: { id: string; staleBefore: Date }): Promise<Watch | null>;
+  /**
+   * Take the wake. Only the row this returns may be appended to the chat, and only
+   * while the returned `claimId` is still the row's — that token fences the two
+   * writes below.
+   */
+  claimWatchDelivery(params: { id: string; staleBefore: Date }): Promise<WatchDeliveryClaim | null>;
   /** Hand the wake back after a failed append, so the retry can re-claim it. */
-  releaseWatchDelivery(params: { id: string }): Promise<Watch | null>;
-  markWatchDelivered(params: { id: string }): Promise<Watch | null>;
+  releaseWatchDelivery(params: { id: string; claimId: string }): Promise<Watch | null>;
+  markWatchDelivered(params: { id: string; claimId: string }): Promise<Watch | null>;
   recordWatchCheck(params: {
     id: string;
     lastResult?: Record<string, unknown> | null;
@@ -320,21 +327,26 @@ function wakeAction(watch: Watch, facts: Record<string, unknown>): WatchWakeActi
  * platform retries it, and the retry re-claims immediately instead of waiting out
  * the stale window. A deliverer that dies without releasing leaves a `delivering`
  * row, which the sweep recovers once the claim is stale.
+ *
+ * Both of those writes carry the claim's `claimId`, so they only ever touch the
+ * claim this call owns: a deliverer that hung long enough to be taken over comes
+ * back to a row holding a different token, and its release and its mark do nothing.
  */
 async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promise<boolean> {
   const now = deps.now?.() ?? new Date();
-  const claimed = await deps.store.claimWatchDelivery({
+  const claim = await deps.store.claimWatchDelivery({
     id: watch.id,
     staleBefore: new Date(now.getTime() - WATCH_DELIVERY_CLAIM_STALE_MS),
   });
 
-  if (!claimed) {
+  if (!claim) {
     logger.info("dashboard-agent watch wake is already being delivered; skipping", {
       watchId: watch.id,
     });
     return false;
   }
 
+  const { watch: claimed, claimId } = claim;
   const facts = (claimed.lastResult ?? {}) as Record<string, unknown>;
   try {
     await deps.deliver({
@@ -343,10 +355,10 @@ async function deliverWake(deps: WatchDeliveryDeps, watch: Watch): Promise<boole
       watch: claimed,
     });
   } catch (error) {
-    await deps.store.releaseWatchDelivery({ id: claimed.id });
+    await deps.store.releaseWatchDelivery({ id: claimed.id, claimId });
     throw error;
   }
-  await deps.store.markWatchDelivered({ id: claimed.id });
+  await deps.store.markWatchDelivered({ id: claimed.id, claimId });
 
   // The alerts the user configured, after the wake and outside its failure path:
   // the chat is the delivery this task guarantees, an alert is an extra.

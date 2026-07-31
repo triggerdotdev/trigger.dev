@@ -247,6 +247,11 @@ export const watches = dashboardAgentSchema.table(
     // When the current deliverer claimed the wake. A claim older than the
     // delivery grace is treated as abandoned and may be re-claimed.
     deliveryClaimedAt: timestamp("delivery_claimed_at", { withTimezone: true }),
+    // WHICH deliverer holds the claim — the fencing token. Written fresh on every
+    // claim (including a stale takeover), and required by the release / delivered
+    // marks, so a deliverer that comes back from the dead can't release or complete
+    // the claim that replaced its own.
+    deliveryClaimId: text("delivery_claim_id"),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     // The last check's output; on fire/expire it's the payload the notification uses.

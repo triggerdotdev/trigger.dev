@@ -56,6 +56,7 @@ function watchRow(overrides: Partial<Watch> = {}): Watch {
     lastCheckedAt: null,
     firedAt: null,
     deliveryClaimedAt: null,
+    deliveryClaimId: null,
     deliveredAt: null,
     cancelledAt: null,
     lastResult: null,
@@ -66,9 +67,10 @@ function watchRow(overrides: Partial<Watch> = {}): Watch {
 
 // A store over one row, guarded exactly like the real queries: the generation
 // claim only lands on an `active` row still on the previous generation, the
-// condition transition only applies to an `active` row, and the delivery mark only
-// to a `pending` delivery.
+// condition transition only applies to an `active` row, and the release / delivered
+// marks only to the claim whose fencing token the row still carries.
 function fakeStore(row: Watch) {
+  let claimSeq = 0;
   const calls = {
     claims: [] as unknown[],
     transition: [] as unknown[],
@@ -97,15 +99,20 @@ function fakeStore(row: Watch) {
         row.deliveryStatus === "delivering" &&
         (row.deliveryClaimedAt ?? row.createdAt).getTime() <= params.staleBefore.getTime();
       if (row.deliveryStatus !== "pending" && !stale) return null;
+      const claimId = `wdc_${++claimSeq}`;
       row.deliveryStatus = "delivering";
       row.deliveryClaimedAt = NOW;
-      return { ...row };
+      row.deliveryClaimId = claimId;
+      return { watch: { ...row }, claimId };
     },
     releaseWatchDelivery: async (params) => {
       calls.released.push(params);
-      if (row.deliveryStatus !== "delivering") return null;
+      // Fenced: only the deliverer whose token the row still holds may release it.
+      if (row.deliveryStatus !== "delivering" || row.deliveryClaimId !== params.claimId)
+        return null;
       row.deliveryStatus = "pending";
       row.deliveryClaimedAt = null;
+      row.deliveryClaimId = null;
       return { ...row };
     },
     transitionWatchCondition: async (params) => {
@@ -120,7 +127,9 @@ function fakeStore(row: Watch) {
     },
     markWatchDelivered: async (params) => {
       calls.delivered.push(params);
-      if (row.deliveryStatus !== "pending" && row.deliveryStatus !== "delivering") return null;
+      // Same fence: a mark from a taken-over deliverer completes nothing.
+      if (row.deliveryStatus !== "delivering" || row.deliveryClaimId !== params.claimId)
+        return null;
       row.deliveryStatus = "delivered";
       row.deliveredAt = NOW;
       return { ...row };
@@ -279,8 +288,8 @@ describe("runWatchTick", () => {
       facts: { verified: true, status: "COMPLETED", durationMs: 4200 },
       note: "tell me when the receipt run finishes",
     });
-    // Delivery is marked only after the append.
-    expect(calls.delivered).toEqual([{ id: "watch_1" }]);
+    // Delivery is marked only after the append, and under the claim's own token.
+    expect(calls.delivered).toEqual([{ id: "watch_1", claimId: "wdc_1" }]);
     // And the webapp is told once, so the configured alerts go out.
     expect(notified).toEqual(["watch_1"]);
   });
@@ -361,7 +370,7 @@ describe("runWatchTick", () => {
     // failed append gave the claim back, so the retry doesn't have to wait it out.
     expect(row.status).toBe("fired");
     expect(row.deliveryStatus).toBe("pending");
-    expect(calls.released).toEqual([{ id: "watch_1" }]);
+    expect(calls.released).toEqual([{ id: "watch_1", claimId: "wdc_1" }]);
     expect(calls.delivered).toHaveLength(0);
     expect(appends).toHaveLength(0);
 
@@ -393,7 +402,7 @@ describe("runWatchTick", () => {
     expect(calls.deliveryClaims).toHaveLength(2);
     // ONE wake, one delivery mark, one alert.
     expect(appends).toHaveLength(1);
-    expect(calls.delivered).toEqual([{ id: "watch_1" }]);
+    expect(calls.delivered).toEqual([{ id: "watch_1", claimId: "wdc_1" }]);
     expect(notified).toEqual(["watch_1"]);
     // One of them resolved the row; the other found the delivery already taken.
     expect(calls.transition).toHaveLength(2);

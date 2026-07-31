@@ -418,34 +418,39 @@ function wakePrompt(action: WatchWakeAction): string {
  * and it must not repeat an answer the user already has. The proof has to be
  * specific to this watch and durable, so it is read out of the persisted
  * transcript: a completed `schedule_watch` call that returned an immediate outcome
- * FOR THIS WATCH, followed by assistant prose in that message or a later one. The
- * chat's own "last message" watermark proves nothing — a question, an error turn,
- * or another watch's wake moves it too.
+ * FOR THIS WATCH, and assistant prose that follows it IN THE SAME assistant
+ * message. That is exactly how a completed turn persists — one assistant message
+ * whose parts are the tool call and then the answer written from its result.
  *
- * Anything short of the pair means no narration exists (the turn died before it,
+ * Both halves of "follows it in the same message" are load-bearing:
+ *
+ * - A LATER message proves nothing about this watch. The user can ask anything at
+ *   all afterwards, and the answer to that question would otherwise pass as the
+ *   telling of an outcome that was never told. Same class of mistake as reading the
+ *   chat's "last message" watermark, which a question, an error turn, or another
+ *   watch's wake all move.
+ * - Text BEFORE the tool part in the message was written without the outcome in
+ *   hand (it is what the model said on its way to calling the tool), so it can't be
+ *   the answer either.
+ *
+ * Anything short of that pair means no narration exists (the turn died before it,
  * or wrote nothing), and the wake narrates normally.
  */
 export function hasInlineWatchNarration(uiMessages: UIMessage[], watchId: string): boolean {
-  const resolvedAt = uiMessages.findIndex(
-    (message) =>
-      message.role === "assistant" &&
-      message.parts.some((part) => {
-        if (part.type !== "tool-schedule_watch") return false;
-        const output = (part as { output?: { watchId?: unknown; immediate?: unknown } }).output;
-        return output?.watchId === watchId && output.immediate !== undefined;
-      })
-  );
-  if (resolvedAt === -1) return false;
+  return uiMessages.some((message) => {
+    if (message.role !== "assistant") return false;
 
-  return uiMessages
-    .slice(resolvedAt)
-    .some(
-      (message) =>
-        message.role === "assistant" &&
-        message.parts.some(
-          (part) => part.type === "text" && (part as { text?: string }).text?.trim()
-        )
-    );
+    const resolvedAt = message.parts.findIndex((part) => {
+      if (part.type !== "tool-schedule_watch") return false;
+      const output = (part as { output?: { watchId?: unknown; immediate?: unknown } }).output;
+      return output?.watchId === watchId && output.immediate !== undefined;
+    });
+    if (resolvedAt === -1) return false;
+
+    return message.parts
+      .slice(resolvedAt + 1)
+      .some((part) => part.type === "text" && (part as { text?: string }).text?.trim());
+  });
 }
 
 /**

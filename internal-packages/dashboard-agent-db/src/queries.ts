@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, ne, sql, isNull } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
-import { generateInvestigationId, generateWatchId } from "./ids.js";
+import { generateInvestigationId, generateWatchDeliveryClaimId, generateWatchId } from "./ids.js";
 import {
   chats,
   chatSessions,
@@ -1027,6 +1027,17 @@ export async function cancelActiveWatchesForChat(
  */
 export const WATCH_DELIVERY_CLAIM_STALE_MS = 5 * 60 * 1000;
 
+/** A delivery claim: the row as claimed, plus the token that owns the claim. */
+export interface WatchDeliveryClaim {
+  watch: Watch;
+  /**
+   * The fencing token. {@link releaseWatchDelivery} and {@link markWatchDelivered}
+   * only act while the row still carries it, so a claim that has been taken over
+   * can't be released or completed by its previous owner.
+   */
+  claimId: string;
+}
+
 /**
  * #13 Claim the right to deliver a resolved watch's wake — the atomic gate that
  * makes "exactly one wake" true even with two deliverers running at once.
@@ -1040,14 +1051,22 @@ export const WATCH_DELIVERY_CLAIM_STALE_MS = 5 * 60 * 1000;
  * hands it back when the append fails, and a claim left behind by a deliverer that
  * died is re-claimable once it is older than `staleBefore` — otherwise a crash
  * between the claim and `markWatchDelivered` would strand the wake forever.
+ *
+ * Every claim writes a NEW `deliveryClaimId`, which is what makes the takeover
+ * safe: the status alone can't say WHOSE claim is in the row, so a deliverer that
+ * hung past the stale window and then woke up would otherwise release (or complete)
+ * the claim that replaced it, and a third deliverer would append in parallel with
+ * the second. The token is required by both of those writes, so the old owner's
+ * calls are no-ops.
  */
 export async function claimWatchDelivery(
   db: DashboardAgentDb,
   params: { id: string; staleBefore: Date }
-): Promise<Watch | null> {
+): Promise<WatchDeliveryClaim | null> {
+  const claimId = generateWatchDeliveryClaimId();
   const rows = await db
     .update(watches)
-    .set({ deliveryStatus: "delivering", deliveryClaimedAt: sql`now()` })
+    .set({ deliveryStatus: "delivering", deliveryClaimedAt: sql`now()`, deliveryClaimId: claimId })
     .where(
       and(
         eq(watches.id, params.id),
@@ -1055,41 +1074,69 @@ export async function claimWatchDelivery(
       )
     )
     .returning();
-  return rows[0] ?? null;
+  const watch = rows[0];
+  return watch ? { watch, claimId } : null;
 }
 
 /**
  * #13 Give a delivery claim back, after an append that failed: the wake is owed
  * again, so the invocation's own retry (or another deliverer) can pick it up
- * without waiting out the stale window. Guarded on `delivering`, so it can never
- * un-deliver a wake that landed.
+ * without waiting out the stale window.
+ *
+ * Fenced on `claimId`: only the deliverer that still holds the claim releases it,
+ * so a late release from a taken-over owner can't hand somebody else's in-flight
+ * claim back to `pending`. Guarded on `delivering` too, so it can never un-deliver
+ * a wake that landed.
  */
 export async function releaseWatchDelivery(
   db: DashboardAgentDb,
-  params: { id: string }
+  params: { id: string; claimId: string }
 ): Promise<Watch | null> {
   const rows = await db
     .update(watches)
-    .set({ deliveryStatus: "pending", deliveryClaimedAt: null })
-    .where(and(eq(watches.id, params.id), eq(watches.deliveryStatus, "delivering")))
+    .set({ deliveryStatus: "pending", deliveryClaimedAt: null, deliveryClaimId: null })
+    .where(
+      and(
+        eq(watches.id, params.id),
+        eq(watches.deliveryClaimId, params.claimId),
+        eq(watches.deliveryStatus, "delivering")
+      )
+    )
     .returning();
   return rows[0] ?? null;
 }
 
 /**
- * #13 The outcome notification went out. Guarded on an owed delivery (`pending` or
- * this invocation's `delivering` claim) so a retried delivery can't send twice or
- * reset `deliveredAt`.
+ * #13 The outcome notification went out, so the row is closed out.
+ *
+ * Two callers, two guards:
+ *
+ * - A deliverer that claimed the wake passes its `claimId`, and the mark lands only
+ *   while the row still carries that claim. A stale takeover replaced the token, so
+ *   the old owner's late mark can't complete the new owner's delivery.
+ * - The one path that never claims (an outcome resolved inline with nothing to
+ *   narrate later) passes no `claimId` and marks a `pending` row. Deliberately not
+ *   `delivering`: an unfenced mark must not be able to finish a claim it doesn't own.
+ *
+ * Either way a repeat is a no-op, so a retried delivery can't reset `deliveredAt`.
  */
 export async function markWatchDelivered(
   db: DashboardAgentDb,
-  params: { id: string }
+  params: { id: string; claimId?: string }
 ): Promise<Watch | null> {
   const rows = await db
     .update(watches)
     .set({ deliveryStatus: "delivered", deliveredAt: sql`now()` })
     .where(
-      and(eq(watches.id, params.id), inArray(watches.deliveryStatus, ["pending", "delivering"]))
+      and(
+        eq(watches.id, params.id),
+        params.claimId
+          ? and(
+              eq(watches.deliveryClaimId, params.claimId),
+              eq(watches.deliveryStatus, "delivering")
+            )
+          : eq(watches.deliveryStatus, "pending")
+      )
     )
     .returning();
   return rows[0] ?? null;

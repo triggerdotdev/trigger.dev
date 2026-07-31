@@ -12,6 +12,7 @@
 import {
   cancelWatch,
   chatExists,
+  claimWatchDelivery,
   claimWatchTick,
   countUnreadWatchWakes,
   createChat,
@@ -23,7 +24,9 @@ import {
   markWatchDelivered,
   persistMessages,
   recordWatchCheck,
+  releaseWatchDelivery,
   transitionWatchCondition,
+  WATCH_DELIVERY_CLAIM_STALE_MS,
   type DashboardAgentDb,
   type DashboardAgentDbClient,
   type Watch,
@@ -1193,6 +1196,138 @@ describe("the tick claim", () => {
       expect(row?.lastResult).toMatchObject({ pending: 4 });
       // And the claim is still the only writer of the counter.
       expect(row?.tickCount).toBe(1);
+    }
+  );
+});
+
+// The delivery claim's fencing token. The status alone can't say WHOSE claim is in
+// the row, and a deliverer that hangs past the stale window is taken over — so
+// without the token its release would hand the new owner's claim back to `pending`
+// (a third deliverer then appends in parallel with the second) and its late mark
+// would close out a delivery it never made.
+describe("the delivery claim", () => {
+  /** A resolved watch with its wake owed, and the current staleness cutoff. */
+  async function firedWatch(seeded: Seeded) {
+    const created = await create({ seeded });
+    expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("the watch wasn't created");
+    const transitioned = await transitionWatchCondition(ctx.agentDb, {
+      id: created.watchId,
+      status: "fired",
+      lastResult: { result: "satisfied", facts: { verified: true } },
+    });
+    expect(transitioned).toMatchObject({ deliveryStatus: "pending" });
+    return created.watchId;
+  }
+
+  function staleBefore() {
+    return new Date(Date.now() - WATCH_DELIVERY_CLAIM_STALE_MS);
+  }
+
+  /** Age the claim past the stale window, i.e. the deliverer that holds it died. */
+  async function ageClaim(watchId: string) {
+    await ctx.prisma.$executeRawUnsafe(
+      `update trigger_dashboard_agent.watches
+       set delivery_claimed_at = now() - interval '1 hour' where id = $1`,
+      watchId
+    );
+  }
+
+  postgresTest(
+    "a stale takeover makes the old owner's release a no-op, and the new owner delivers once",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "claim-fence");
+      await seedChat(seeded);
+      const watchId = await firedWatch(seeded);
+
+      // A claims and hangs.
+      const a = await claimWatchDelivery(ctx.agentDb, { id: watchId, staleBefore: staleBefore() });
+      expect(a).not.toBeNull();
+      if (!a) return;
+
+      // Five minutes later B takes the abandoned claim over, on a NEW token.
+      await ageClaim(watchId);
+      const b = await claimWatchDelivery(ctx.agentDb, { id: watchId, staleBefore: staleBefore() });
+      expect(b).not.toBeNull();
+      if (!b) return;
+      expect(b.claimId).not.toBe(a.claimId);
+
+      // A wakes up, its append fails, and it releases — the claim it releases is no
+      // longer its own, so nothing moves. Without the token this would put the row
+      // back to `pending` while B is still appending.
+      expect(
+        await releaseWatchDelivery(ctx.agentDb, { id: watchId, claimId: a.claimId })
+      ).toBeNull();
+      expect(await getWatch(ctx.agentDb, { id: watchId })).toMatchObject({
+        deliveryStatus: "delivering",
+        deliveryClaimId: b.claimId,
+      });
+
+      // So C finds a claim that is fresh and somebody's to hold, and delivers nothing.
+      expect(
+        await claimWatchDelivery(ctx.agentDb, { id: watchId, staleBefore: staleBefore() })
+      ).toBeNull();
+
+      // B is the only deliverer, and its mark closes the row out exactly once.
+      expect(
+        await markWatchDelivered(ctx.agentDb, { id: watchId, claimId: b.claimId })
+      ).toMatchObject({ deliveryStatus: "delivered" });
+      expect(await markWatchDelivered(ctx.agentDb, { id: watchId, claimId: b.claimId })).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "a late delivered-mark from the old owner completes nothing",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "claim-late");
+      await seedChat(seeded);
+      const watchId = await firedWatch(seeded);
+
+      const a = await claimWatchDelivery(ctx.agentDb, { id: watchId, staleBefore: staleBefore() });
+      expect(a).not.toBeNull();
+      if (!a) return;
+      await ageClaim(watchId);
+      const b = await claimWatchDelivery(ctx.agentDb, { id: watchId, staleBefore: staleBefore() });
+      expect(b).not.toBeNull();
+      if (!b) return;
+
+      // A's append landed somewhere long ago (or never); either way its mark must not
+      // finish B's delivery, which would leave the wake never appended and the row
+      // closed. Nor may the unfenced mark — the inline path's — touch a live claim.
+      expect(await markWatchDelivered(ctx.agentDb, { id: watchId, claimId: a.claimId })).toBeNull();
+      expect(await markWatchDelivered(ctx.agentDb, { id: watchId })).toBeNull();
+      expect(await getWatch(ctx.agentDb, { id: watchId })).toMatchObject({
+        deliveryStatus: "delivering",
+        deliveredAt: null,
+      });
+
+      // B still owns the delivery and can still complete it.
+      expect(
+        await markWatchDelivered(ctx.agentDb, { id: watchId, claimId: b.claimId })
+      ).toMatchObject({ deliveryStatus: "delivered" });
+    }
+  );
+
+  postgresTest(
+    "the inline path marks a pending delivery without a claim",
+    async ({ prisma, postgresContainer }) => {
+      await boot(prisma, postgresContainer.getConnectionUri());
+      const seeded = await seed(prisma, "claim-inline");
+      await seedChat(seeded);
+      const watchId = await firedWatch(seeded);
+
+      // The one caller that never claims: an outcome resolved inline with nothing to
+      // narrate later. It closes out an owed, unclaimed row — and only that.
+      expect(await markWatchDelivered(ctx.agentDb, { id: watchId })).toMatchObject({
+        deliveryStatus: "delivered",
+      });
+      expect(await markWatchDelivered(ctx.agentDb, { id: watchId })).toBeNull();
+      // A delivered wake can't be re-claimed either.
+      expect(
+        await claimWatchDelivery(ctx.agentDb, { id: watchId, staleBefore: staleBefore() })
+      ).toBeNull();
     }
   );
 });

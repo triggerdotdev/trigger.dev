@@ -346,17 +346,25 @@ describe("watch wake narration", () => {
   }
 
   /**
-   * The turn that created the watch, as it lands in the transcript: the
-   * `schedule_watch` call that came back with an immediate outcome, and the answer
-   * the model wrote from it.
+   * The turn that created the watch, as it lands in the transcript: ONE assistant
+   * message whose parts are the `schedule_watch` call that came back with an
+   * immediate outcome and then the answer the model wrote from it. The SDK keys a
+   * whole turn (all steps) to one assistant message id, so that ordering is what a
+   * completed turn really looks like.
+   *
+   * `preamble` is the text a model sometimes writes on its way TO the tool call —
+   * before the outcome exists, so it can't be the answer to it.
    */
-  function inlineTurn(options: { narrated: boolean }): UIMessage[] {
+  function inlineTurn(options: { narrated: boolean; preamble?: boolean }): UIMessage[] {
     return [
       { id: "u1", role: "user", parts: [{ type: "text", text: "tell me when it drains" }] },
       {
         id: "a1",
         role: "assistant",
         parts: [
+          ...(options.preamble
+            ? [{ type: "text" as const, text: "Let me check the queue first." }]
+            : []),
           {
             type: "tool-schedule_watch",
             toolCallId: "call_1",
@@ -406,6 +414,52 @@ describe("watch wake narration", () => {
         ...inlineTurn({ narrated: false }),
         { id: "u2", role: "user", parts: [{ type: "text", text: "what happened?" }] },
       ] as unknown as UIMessage[]),
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
+      },
+    });
+
+    const wake = await harness.sendAction(WAKE);
+    expect(collectText(wake.chunks)).toBe("The backlog drained — 0 pending now.");
+    expect(calls.persistMessages).toHaveLength(1);
+  });
+
+  it("a later answer to a different question is not proof the outcome was told", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_inline_unrelated",
+      clientData: CLIENT_DATA,
+      continuation: true,
+      // The creating turn died before it answered. The user then asked something
+      // else and got an answer — about that something else. It says nothing about
+      // what the watch found, so the wake is still the only telling of it.
+      snapshot: snapshotOf([
+        ...inlineTurn({ narrated: false }),
+        { id: "u2", role: "user", parts: [{ type: "text", text: "how many runs failed?" }] },
+        { id: "a2", role: "assistant", parts: [{ type: "text", text: "Three runs failed." }] },
+      ] as unknown as UIMessage[]),
+      setupLocals: ({ set }) => {
+        set(dashboardAgentStoreKey, store);
+        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
+      },
+    });
+
+    const wake = await harness.sendAction(WAKE);
+    expect(collectText(wake.chunks)).toBe("The backlog drained — 0 pending now.");
+    expect(calls.persistMessages).toHaveLength(1);
+  });
+
+  it("text written before the tool call is not the answer to its outcome", async () => {
+    const { store, calls } = fakeStore();
+    harness = mockChatAgent(dashboardAgent, {
+      chatId: "chat_inline_preamble",
+      clientData: CLIENT_DATA,
+      continuation: true,
+      // The turn wrote its lead-in, called the tool, and then died. The prose is in
+      // the same message as the tool part but BEFORE it, so it was written without
+      // the outcome in hand.
+      snapshot: snapshotOf(inlineTurn({ narrated: false, preamble: true })),
       setupLocals: ({ set }) => {
         set(dashboardAgentStoreKey, store);
         set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
