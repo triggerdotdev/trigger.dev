@@ -153,11 +153,28 @@ function guardsParse(tryBlock: ts.Block): boolean {
   return found;
 }
 
+/** Whether some node in the tree rooted at `node` matches `predicate`. */
+function someNode(node: ts.Node, predicate: (n: ts.Node) => boolean): boolean {
+  if (predicate(node)) return true;
+  return ts.forEachChild(node, (child) => someNode(child, predicate)) === true;
+}
+
 function containsInstanceOf(node: ts.Node): boolean {
-  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword) {
-    return true;
-  }
-  return ts.forEachChild(node, containsInstanceOf) === true;
+  return someNode(
+    node,
+    (n) => ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword
+  );
+}
+
+/** Whether `node` reads the given catch binding anywhere, e.g. `e` in `e instanceof X` or `error.code`. */
+function referencesBinding(node: ts.Node, bindingName: string): boolean {
+  return someNode(node, (n) => ts.isIdentifier(n) && n.text === bindingName);
+}
+
+/** The catch binding's name, or null for a bindingless `catch { ... }` or a destructured one. */
+function catchBindingName(clause: ts.CatchClause): string | null {
+  const decl = clause.variableDeclaration;
+  return decl && ts.isIdentifier(decl.name) ? decl.name.text : null;
 }
 
 /**
@@ -177,10 +194,17 @@ function selectsAnErrorPath(node: ts.ConditionalExpression): boolean {
 function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branches: boolean } {
   let rethrows = false;
   let branches = false;
+  const bindingName = catchBindingName(clause);
 
   const visit = (node: ts.Node) => {
     if (ts.isThrowStatement(node)) rethrows = true;
-    if (ts.isIfStatement(node) || ts.isSwitchStatement(node)) branches = true;
+    if (
+      bindingName !== null &&
+      ((ts.isIfStatement(node) && referencesBinding(node.expression, bindingName)) ||
+        (ts.isSwitchStatement(node) && referencesBinding(node.expression, bindingName)))
+    ) {
+      branches = true;
+    }
     if (ts.isConditionalExpression(node) && selectsAnErrorPath(node)) branches = true;
     ts.forEachChild(node, visit);
   };

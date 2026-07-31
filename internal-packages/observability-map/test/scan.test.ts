@@ -1289,3 +1289,101 @@ describe("scanFile: branches ignores the error-stringifying ternary", () => {
     expect(ep!.catches[0]!.branches).toBe(true);
   });
 });
+
+describe("scanFile: branches requires the if/switch condition to examine the error", () => {
+  it("does not set branches for an `if` on an unrelated variable", () => {
+    const ep = scanFile(
+      "retry-count.ts",
+      `
+      export async function action({ request }) {
+        let attempt = 0;
+        try {
+          return json(await load(request));
+        } catch (e) {
+          if (attempt > 3) return json({}, { status: 503 });
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("sets branches for an `if` whose condition references the caught error", () => {
+    const ep = scanFile(
+      "branch-if-e.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (e) {
+          if (e instanceof ApiError) return json({}, { status: e.status });
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(true);
+  });
+
+  it("sets branches for a `switch` on a property of the caught error", () => {
+    const ep = scanFile(
+      "branch-switch-error-code.ts",
+      `
+      export async function loader({ request }) {
+        try {
+          return json(await load(request));
+        } catch (error) {
+          switch (error.code) {
+            case "P2025":
+              return json({}, { status: 404 });
+            default:
+              return json({}, { status: 500 });
+          }
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(true);
+  });
+
+  it("does not set branches for a `switch` on an unrelated discriminant", () => {
+    const ep = scanFile(
+      "branch-switch-unrelated.ts",
+      `
+      export async function action({ request }) {
+        const mode = "strict";
+        try {
+          return json(await load(request));
+        } catch (error) {
+          switch (mode) {
+            case "strict":
+              return json({}, { status: 400 });
+            default:
+              return json({}, { status: 500 });
+          }
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("cannot set branches for a bindingless catch, even with an `if` inside it", () => {
+    const ep = scanFile(
+      "bindingless-if.ts",
+      `
+      export async function loader({ request }) {
+        let attempt = 0;
+        try {
+          return json(await load(request));
+        } catch {
+          if (attempt > 3) return json({}, { status: 503 });
+          return json({}, { status: 500 });
+        }
+      }
+      `
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+});
