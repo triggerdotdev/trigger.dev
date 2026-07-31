@@ -9,7 +9,11 @@ function apiReturning(list: unknown): K8sApi {
 
 describe("createPodCountFetcher", () => {
   it("returns items.length when the list is not truncated", async () => {
-    const fetch = createPodCountFetcher(apiReturning({ items: [{}], metadata: {} }), "v4-runs", 1000);
+    const fetch = createPodCountFetcher(
+      apiReturning({ items: [{}], metadata: {} }),
+      "v4-runs",
+      1000
+    );
     expect(await fetch()).toBe(1);
   });
 

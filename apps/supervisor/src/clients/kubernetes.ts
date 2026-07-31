@@ -94,7 +94,10 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, what: string): P
   return Promise.race([
     promise,
     new Promise<never>((_resolve, reject) => {
-      setTimeout(() => reject(new Error(`${what} timed out after ${timeoutMs}ms`)), timeoutMs).unref();
+      setTimeout(
+        () => reject(new Error(`${what} timed out after ${timeoutMs}ms`)),
+        timeoutMs
+      ).unref();
     }),
   ]);
 }
