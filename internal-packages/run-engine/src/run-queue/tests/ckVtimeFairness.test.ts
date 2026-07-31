@@ -93,7 +93,15 @@ function makeMessage(overrides: Partial<InputPayload> = {}): InputPayload {
   };
 }
 
-type ScenarioMessage = { runId: string; ck: string; timestamp: number };
+type ScenarioMessage = {
+  runId: string;
+  ck: string;
+  timestamp: number;
+  // Enqueued at the top of this step instead of before step 0, for late arrivals.
+  enqueueAtStep?: number;
+  // Head never becomes ready during the run, so it is not expected to drain.
+  neverReady?: boolean;
+};
 
 type Scenario = {
   name: string;
@@ -138,7 +146,7 @@ async function runScenario(
     };
     await queue.updateEnvConcurrencyLimits(env);
 
-    for (const msg of scenario.messages) {
+    const enqueue = async (msg: ScenarioMessage) => {
       await queue.enqueueMessage({
         env,
         message: makeMessage({
@@ -149,13 +157,18 @@ async function runScenario(
         workerQueue: env.id,
         skipDequeueProcessing: true,
       });
+    };
+
+    for (const msg of scenario.messages) {
+      if (msg.enqueueAtStep === undefined) await enqueue(msg);
     }
 
     const shard = testOptions.keys.masterQueueShardForEnvironment(env.id, 2);
-    const total = scenario.messages.length;
+    const total = scenario.messages.filter((m) => !m.neverReady).length;
 
     const remaining = new Map<string, number>();
     for (const m of scenario.messages) {
+      if (m.neverReady) continue;
       remaining.set(m.ck, (remaining.get(m.ck) ?? 0) + 1);
     }
 
@@ -165,6 +178,10 @@ async function runScenario(
     let drainStep = -1;
 
     for (let step = 0; step < scenario.maxSteps && serves.length < total; step++) {
+      for (const msg of scenario.messages) {
+        if (msg.enqueueAtStep === step) await enqueue(msg);
+      }
+
       // evaluated before the dequeue: does this step have cross-key contention?
       let keysWithBacklog = 0;
       for (const count of remaining.values()) {
@@ -221,10 +238,11 @@ function firstServeStep(result: ScenarioResult, matches: (ck: string) => boolean
 
 // No loss and no double-serve, in both runs.
 function assertConservation(scenario: Scenario, on: ScenarioResult, off: ScenarioResult) {
-  expect(on.serves.length).toBe(scenario.messages.length);
-  expect(off.serves.length).toBe(scenario.messages.length);
-  expect(new Set(on.serves.map((s) => s.messageId)).size).toBe(scenario.messages.length);
-  expect(new Set(off.serves.map((s) => s.messageId)).size).toBe(scenario.messages.length);
+  const expected = scenario.messages.filter((m) => !m.neverReady).length;
+  expect(on.serves.length).toBe(expected);
+  expect(off.serves.length).toBe(expected);
+  expect(new Set(on.serves.map((s) => s.messageId)).size).toBe(expected);
+  expect(new Set(off.serves.map((s) => s.messageId)).size).toBe(expected);
 }
 
 function debugLog(name: string, data: Record<string, unknown>) {
@@ -526,6 +544,73 @@ describe("CK virtual-time fairness on the real batched dequeue path", () => {
 
       expect(on.drainStep).toBeGreaterThanOrEqual(0);
       expect(on.drainStep).toBe(off.drainStep);
+    }
+  );
+
+  redisTest(
+    "ckStalledNewcomer: a stalled variant does not let a late arrival starve the incumbents",
+    { timeout: 120_000 },
+    async ({ redisContainer }) => {
+      // The case the other five scenarios cannot express: a variant that is registered but
+      // never servable (its head stays in the future, which is what a nack backoff leaves
+      // behind) used to freeze the virtual-time floor, so the late arrival registered far
+      // below the incumbents and took every fair-pass slot until it caught up.
+      const t0 = Date.now() - 100_000;
+      const messages: ScenarioMessage[] = [];
+
+      messages.push({
+        runId: "stalled-0",
+        ck: "stalled",
+        timestamp: Date.now() + 60 * 60 * 1000,
+        neverReady: true,
+      });
+
+      for (let k = 0; k < 3; k++) {
+        for (let i = 0; i < 40; i++) {
+          messages.push({ runId: `inc-${k}-${i}`, ck: `incumbent-${k}`, timestamp: t0 + i });
+        }
+      }
+
+      // Arrives once the incumbents have advanced well past the stalled variant's tag.
+      for (let i = 0; i < 20; i++) {
+        messages.push({
+          runId: `late-${i}`,
+          ck: "latecomer",
+          timestamp: t0 + 5_000 + i,
+          enqueueAtStep: 30,
+        });
+      }
+
+      const scenario: Scenario = {
+        name: "ckStalledNewcomer",
+        messages,
+        envConcurrencyLimit: 1,
+        holdSteps: 0,
+        maxSteps: 600,
+      };
+
+      const on = await runScenario(redisContainer, scenario, true);
+      const off = await runScenario(redisContainer, scenario, false);
+
+      assertConservation(scenario, on, off);
+
+      // Over the 20 steps after it lands, the latecomer must not monopolise service.
+      const windowServes = (r: ScenarioResult) =>
+        r.serves.filter((s) => s.step >= 30 && s.step < 50);
+      const onWindow = windowServes(on);
+      const onLate = onWindow.filter((s) => s.ck === "latecomer").length;
+
+      debugLog("ckStalledNewcomer", {
+        onWindowTotal: onWindow.length,
+        onLate,
+        offLate: windowServes(off).filter((s) => s.ck === "latecomer").length,
+      });
+
+      // Four keys compete in that window, so a fair share is a quarter of it. Before the
+      // floor fix the latecomer took 12 of 20 here; it now takes its 5.
+      const fairShare = Math.ceil(onWindow.length / 4);
+      expect(onWindow.length).toBeGreaterThan(0);
+      expect(onLate).toBeLessThanOrEqual(fairShare + 2);
     }
   );
 });
