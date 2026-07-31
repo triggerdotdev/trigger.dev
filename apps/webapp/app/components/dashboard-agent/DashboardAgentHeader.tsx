@@ -30,6 +30,7 @@ export function DashboardAgentHeader({
   currentChatId,
   thinkingChatId,
   onNewChat,
+  showNewChat,
   onOpenHistory,
   onSelectChat,
   onDeleteChat,
@@ -43,6 +44,8 @@ export function DashboardAgentHeader({
   currentChatId: string;
   thinkingChatId?: string | null;
   onNewChat: () => void;
+  /** Hidden on a blank draft — "new chat" from a new chat is a no-op. */
+  showNewChat: boolean;
   /** Opening the dropdown is the moment to refresh the list. */
   onOpenHistory: () => void;
   onSelectChat: (chatId: string) => void;
@@ -90,15 +93,17 @@ export function DashboardAgentHeader({
       </Popover>
 
       <div className="flex shrink-0 items-center gap-0.5">
-        <Button
-          variant="minimal/small"
-          className="aspect-square h-6 p-1"
-          aria-label="New chat"
-          tooltip="New chat"
-          shortcut={NEW_CHAT_SHORTCUT}
-          onClick={onNewChat}
-          LeadingIcon={<PlusIcon className="size-4 text-text-dimmed" />}
-        />
+        {showNewChat && (
+          <Button
+            variant="minimal/small"
+            className="aspect-square h-6 p-1"
+            aria-label="New chat"
+            tooltip="New chat"
+            shortcut={NEW_CHAT_SHORTCUT}
+            onClick={onNewChat}
+            LeadingIcon={<PlusIcon className="size-4 text-text-dimmed" />}
+          />
+        )}
         {/* Esc is handled by the panel (only while focus is inside it), so the
             key is shown here rather than registered as a global shortcut. */}
         <Button

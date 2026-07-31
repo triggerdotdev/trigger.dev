@@ -485,6 +485,7 @@ export function DashboardAgentPanel({
         currentChatId={active?.chatId ?? ""}
         thinkingChatId={thinkingChatId}
         onNewChat={newChat}
+        showNewChat={active !== null}
         onOpenHistory={loadHistory}
         onSelectChat={switchChat}
         onDeleteChat={deleteChat}

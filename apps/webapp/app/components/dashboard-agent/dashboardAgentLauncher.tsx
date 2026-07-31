@@ -50,8 +50,13 @@ export function DashboardAgentLauncher() {
   }
 
   const { open, setOpen, unreadWakes } = agent;
-  // Only meaningful while closed: an open panel shows the wake itself.
-  const hasUnread = !open && unreadWakes > 0;
+  // The open panel has its own Close button and Esc — a second toggle in the
+  // page header would just be noise.
+  if (open) {
+    return null;
+  }
+
+  const hasUnread = unreadWakes > 0;
 
   return (
     <SimpleTooltip
@@ -60,25 +65,22 @@ export function DashboardAgentLauncher() {
       disableHoverableContent
       content={
         <span className="flex items-center">
-          {open ? "Close chat" : "Open chat"}
+          Open chat
           <ShortcutKey shortcut={TOGGLE_PANEL_SHORTCUT} variant="medium" />
         </span>
       }
       button={
         <button
           type="button"
-          aria-label={hasUnread ? "Open chat, unread updates" : open ? "Close chat" : "Open chat"}
-          aria-pressed={open}
-          onClick={() => setOpen(!open)}
+          aria-label={hasUnread ? "Ask Trigger, unread updates" : "Ask Trigger"}
+          onClick={() => setOpen(true)}
           className={cn(
             "relative flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-text-bright transition",
-            open
-              ? "border-border-brighter bg-background-hover"
-              : "border-border-bright bg-background-bright hover:border-border-brighter"
+            "border-border-bright bg-background-bright hover:border-border-brighter"
           )}
         >
           <ChatBubbleLeftRightIcon className="size-3.5 text-indigo-500" />
-          Chat
+          Ask Trigger
           {hasUnread && (
             <span
               // Ringed so the dot reads on the header background as well as the button.
