@@ -29,6 +29,24 @@ describe("renderTerminal", () => {
     expect(out).toContain("/api/v1/auth/tokens");
   });
 
+  it("surfaces suppressions so laundering is visible rather than silent", () => {
+    const suppressed = scanFile(
+      "api.v1.d.ts",
+      `// obs-map-disable-next-line error-classification -- deliberate, see ticket
+       import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return await prisma.thing.findMany(); } catch (e) { return null; }
+       }`
+    )!;
+    const out = renderTerminal(buildReport([suppressed], []));
+    expect(out).toMatch(/suppress/i);
+    expect(out).toContain("1");
+  });
+
+  it("does not mention suppressions when there are none", () => {
+    expect(renderTerminal(report())).not.toMatch(/suppress/i);
+  });
+
   it("surfaces parse failures so the denominator is not silently wrong", () => {
     expect(renderTerminal(report())).toContain("broken.ts");
   });

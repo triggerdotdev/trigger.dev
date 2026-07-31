@@ -42,6 +42,16 @@ export function renderTerminal(report: MapReport): string {
       `No audit helper exists in the webapp.`
   );
 
+  if (report.suppressions.checks > 0) {
+    const { entries, checks } = report.suppressions;
+    lines.push(
+      `SUPPRESSED   ${checks} check${checks === 1 ? "" : "s"} across ${entries} entry point${
+        entries === 1 ? "" : "s"
+      }, each with a reason on the record. A suppression removes a finding from this list, ` +
+        `it does not raise a score.`
+    );
+  }
+
   const worst = report.entries
     .filter((e) => scoredFailures(e).length > 0)
     .sort(

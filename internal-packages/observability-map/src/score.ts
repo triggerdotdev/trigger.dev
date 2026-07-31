@@ -17,6 +17,8 @@ export type ScoredEntry = {
    * default cannot inflate a figure nobody checked.
    */
   measured: boolean;
+  /** Scored checks a comment in the source suppressed, in `SCORED_CHECK_IDS` order. */
+  suppressed: string[];
   /** Passed over applicable, across scored checks only. 100 when nothing applies. */
   score: number;
 };
@@ -27,6 +29,8 @@ export type MapReport = {
   measured: number;
   /** Entry points every scored check reported not-applicable for; excluded from `global`. */
   unmeasured: number;
+  /** Suppressions in force: how many entry points carry one, and how many scored checks in total. */
+  suppressions: { entries: number; checks: number };
   byFamily: Record<string, { n: number; measured: number; mean: number }>;
   sensitiveCohort: { n: number; measured: number; mean: number };
   auditGap: { sensitiveMutations: number; withAudit: number };
@@ -36,19 +40,25 @@ export type MapReport = {
 
 export function scoreEntry(ep: EntryPoint): ScoredEntry {
   const suppressed = suppressedChecks(ep.source);
-  const checks = CHECKS.map((c) => {
-    const result = c.run(ep);
-    const reason = suppressed.get(c.id);
-    // A suppression always lands on not-applicable, never on pass: suppressing a check must remove
-    // it from the score, not launder it into a point in the entry's favor.
+  const raw = CHECKS.map((c) => c.run(ep));
+  const checks = raw.map((result) => {
+    const reason = suppressed.get(result.id);
     return reason
-      ? { id: c.id, status: "not-applicable" as const, detail: `suppressed: ${reason}` }
+      ? { id: result.id, status: "not-applicable" as const, detail: `suppressed: ${reason}` }
       : result;
   });
 
-  const scored = checks.filter((c) => SCORED_CHECK_IDS.includes(c.id));
-  const applicable = scored.filter((c) => c.status !== "not-applicable");
-  const passed = applicable.filter((c) => c.status === "pass").length;
+  const scored = raw.filter((c) => SCORED_CHECK_IDS.includes(c.id));
+  const ratio = (of: CheckResult[]) => {
+    const applicable = of.filter((c) => c.status !== "not-applicable");
+    if (applicable.length === 0) return 100;
+    return Math.round(
+      (applicable.filter((c) => c.status === "pass").length / applicable.length) * 100
+    );
+  };
+
+  const visible = scored.filter((c) => !suppressed.has(c.id));
+  const applicable = visible.filter((c) => c.status !== "not-applicable");
 
   return {
     fileName: ep.fileName,
@@ -56,8 +66,14 @@ export function scoreEntry(ep: EntryPoint): ScoredEntry {
     family: familyOf(ep.fileName),
     sensitive: classifySensitivity(ep).sensitive,
     checks,
+    suppressed: scored.filter((c) => suppressed.has(c.id)).map((c) => c.id),
+    // Suppressing a check takes it out of the numerator and the denominator, and the result is
+    // capped by what the entry would have scored unsuppressed. Otherwise removing a failing check
+    // shrinks the denominator and the ratio climbs, which is how 33 became 50 became 100: the
+    // suppression comment laundered the finding into a point. What a suppression buys is removal
+    // from the worklist, with a reason on the record. It cannot buy a better number.
     measured: applicable.length > 0,
-    score: applicable.length === 0 ? 100 : Math.round((passed / applicable.length) * 100),
+    score: Math.min(ratio(visible), ratio(scored)),
   };
 }
 
@@ -98,10 +114,16 @@ export function buildReport(eps: EntryPoint[], parseFailures: string[]): MapRepo
     e.checks.some((c) => c.id === "audit-trail" && c.status !== "not-applicable")
   );
 
+  const suppressing = entries.filter((e) => e.suppressed.length > 0);
+
   return {
     global: mean(measuredEntries.map((e) => e.score)),
     measured: measuredEntries.length,
     unmeasured: entries.length - measuredEntries.length,
+    suppressions: {
+      entries: suppressing.length,
+      checks: suppressing.reduce((n, e) => n + e.suppressed.length, 0),
+    },
     byFamily,
     sensitiveCohort: groupStats(sensitive),
     auditGap: {

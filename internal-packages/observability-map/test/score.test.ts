@@ -73,6 +73,57 @@ ${BUSY_AND_FAILING}`;
     );
   });
 
+  // I1. `score = passed / applicable` meant removing a failing check from the denominator raised
+  // the entry's score, so suppression laundered findings into points. A suppression buys removal
+  // from the worklist, never a better number.
+  it("does not raise the score when a failing check is suppressed", () => {
+    const source = `import { requireUserId } from "~/services/session.server";
+import { prisma } from "~/db.server";
+export async function action({ request }) {
+  const userId = await requireUserId(request);
+  try { return await prisma.token.create({ data: { userId } }); }
+  catch (error) { return null; }
+}`;
+    const plain = scoreEntry(scanFile("api.v1.auth.tokens.ts", source)!);
+    const suppressed = scoreEntry(
+      scanFile(
+        "api.v1.auth.tokens.ts",
+        `// obs-map-disable-next-line error-classification -- deliberate, see ticket
+${source}`
+      )!
+    );
+
+    expect(plain.checks.find((c) => c.id === "error-classification")!.status).toBe("fail");
+    expect(suppressed.checks.find((c) => c.id === "error-classification")!.status).toBe(
+      "not-applicable"
+    );
+    expect(suppressed.score).toBeLessThanOrEqual(plain.score);
+  });
+
+  it("records which scored checks were suppressed", () => {
+    const suppressed = scoreEntry(
+      scanFile(
+        "api.v1.b.ts",
+        `// obs-map-disable-next-line error-classification -- health probe
+// obs-map-disable-next-line request-context -- nothing to name here
+${BUSY_AND_FAILING}`
+      )!
+    );
+    expect(suppressed.suppressed).toEqual(["error-classification", "request-context"]);
+  });
+
+  it("does not let an entry whose every scored check is suppressed read as measured", () => {
+    const suppressed = scoreEntry(
+      scanFile(
+        "api.v1.b.ts",
+        `// obs-map-disable-next-line error-classification -- health probe
+// obs-map-disable-next-line request-context -- nothing to name here
+${BUSY_AND_FAILING}`
+      )!
+    );
+    expect(suppressed.measured).toBe(false);
+  });
+
   it("marks an entry point with nothing applicable as unmeasured, scored 100", () => {
     const scored = scoreEntry(scanFile("resources.health.ts", TRIVIAL)!);
     expect(scored.checks.every((c) => c.status === "not-applicable")).toBe(true);
@@ -87,6 +138,21 @@ ${BUSY_AND_FAILING}`;
 });
 
 describe("buildReport", () => {
+  it("counts suppressions so laundering is visible in the report", () => {
+    const report = buildReport(
+      [
+        scanFile(
+          "api.v1.b.ts",
+          `// obs-map-disable-next-line error-classification -- health probe
+${BUSY_AND_FAILING}`
+        )!,
+        scanFile("api.v1.c.ts", BUSY_AND_FAILING)!,
+      ],
+      []
+    );
+    expect(report.suppressions).toEqual({ entries: 1, checks: 1 });
+  });
+
   it("reports the audit gap separately from the score", () => {
     // A sensitive mutation with no audit record, but nothing else wrong: the audit gap is reported
     // as its own figure and must not pull the score down with it.
