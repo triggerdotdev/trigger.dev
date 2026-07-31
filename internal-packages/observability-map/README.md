@@ -67,12 +67,14 @@ rather than celebrating.
 
 `audit-trail` fails 19 of 19, and `request-context` fails 391 of 412. Printing either one per route
 would bury the route-specific findings under the same sentence repeated hundreds of times, so both
-are reported as a figure: the `AUDIT` and `CONTEXT` lines. 333 entry points fail nothing except
-`request-context` and appear only in that figure, which leaves 67 in the fix list. An entry that
-fails `request-context` *and* something else keeps both findings and stays in the list, so
-`/account/tokens` still shows the whole picture.
+are reported as a figure: the `AUDIT` and `CONTEXT` lines. 329 entry points fail nothing except
+`request-context` and appear only in that figure, which leaves 71 in the fix list. An entry that
+fails `request-context` *and* another scored check keeps both findings and stays in the list, so
+`/account/tokens` still shows the whole picture. `audit-trail` does not count as "another" for this
+purpose: it is already a headline, so a route failing only `request-context` and `audit-trail`
+collapses too (13 do today, all sensitive, which is most of the 18 below).
 
-18 of those 333 are sensitive, including `/admin/impersonate`, the API-key regeneration route and
+18 of those 329 are sensitive, including `/admin/impersonate`, the API-key regeneration route and
 four envvars routes, so the `CONTEXT` line says how many. Read them out of
 `observability-map.json`, where every entry keeps its full check results, rather than assuming the
 list is the whole story.
