@@ -4,7 +4,7 @@ Scores every webapp entry point on whether it could explain itself during an inc
 the ones worth fixing. An entry point is a Remix `loader` or `action` under
 `apps/webapp/app/routes`, 427 of them at the time of writing.
 
-The number it prints today is 19 out of 100. That is not a bug, and the rest of this file is mostly
+The number it prints today is 18 out of 100. That is not a bug, and the rest of this file is mostly
 about why you should believe it.
 
 ## Running it
@@ -20,7 +20,7 @@ suppresses. The single-route mode takes either the route path the report prints 
 the file name (`api.v1.token.ts`). An exact match wins over the routes it is a prefix of, and an
 ambiguous prefix warns and names the alternatives rather than silently picking one.
 
-## What 19 means
+## What 18 means
 
 It is the mean score of the 412 entry points that had at least one applicable check, where an
 entry's score is the share of its applicable checks that passed. It is low because the webapp does
@@ -30,9 +30,18 @@ route and the request id and nothing about whose request it was.
 
 The score was 76 until we stopped crediting routes for the error handling they do not do. Emptying
 every catch clause in the tree used to score it 100, which meant the metric paid you for deleting
-error handling. Now removing the catches takes 19 down to 8, and removing the logs as well takes it
-to 2. If you change this package, keep that property: mutate the tree to remove error handling and
-check the score falls.
+error handling.
+
+Two invariants hold now, and both are asserted in `test/score.test.ts` rather than measured once:
+
+- **Removing error handling must not raise the score.** Deleting every catch clause takes 18 to 8,
+  and deleting the logs as well takes it to 2.
+- **Adding error handling that does nothing must not raise the score.** Wrapping every body in
+  `try { ... } catch (e) { throw e }` leaves it at 18, with no entry moving in either direction.
+  That mutation used to be worth 27 points across the tree, because a rethrow-only clause counted
+  as a pass while no catch at all was not-applicable, and the two are observationally identical.
+
+If you change this package, check both directions still hold.
 
 So the number is deliberately unflattering, and one platform change would move most of it. Nothing
 central attaches a tenant: `logger` pushes `{ requestId, path, host, method }` onto every line
@@ -43,8 +52,9 @@ rather than celebrating.
 
 ## The four checks
 
-- **error-classification**: does every catch clause decide what it caught, by rethrowing, by
-  branching on the error, or by guarding a parse it can answer for.
+- **error-classification**: does every catch clause decide what it caught, by branching on the
+  error or by guarding a parse it can answer for. A clause that only rethrows decides nothing and
+  is read as though there were no catch, so it neither passes nor fails.
 - **auth-boundary**: does a route handling credentials, tokens, billing or impersonation check who
   is asking.
 - **request-context**: when this entry point's failure is reported, is the tenant named.
@@ -61,6 +71,11 @@ are reported as a figure: the `AUDIT` and `CONTEXT` lines. 333 entry points fail
 `request-context` and appear only in that figure, which leaves 67 in the fix list. An entry that
 fails `request-context` *and* something else keeps both findings and stays in the list, so
 `/account/tokens` still shows the whole picture.
+
+18 of those 333 are sensitive, including `/admin/impersonate`, the API-key regeneration route and
+four envvars routes, so the `CONTEXT` line says how many. Read them out of
+`observability-map.json`, where every entry keeps its full check results, rather than assuming the
+list is the whole story.
 
 `request-context` is still scored, unlike `audit-trail`. The gap it measures is real and the score
 is meant to show it. Only the presentation collapses.
@@ -94,11 +109,17 @@ support.
 ## Suppression
 
 ```ts
-// obs-map-disable-next-line auth-boundary -- public by design, see ADR 12
+// obs-map-disable auth-boundary -- public by design, see ADR 12
 ```
 
 The reason is mandatory: a suppression without one is ignored. The directive is read from comments
-only, line by line, so a string literal quoting it does not switch a check off.
+only, so a string literal quoting it does not switch a check off.
+
+It applies to the whole entry point, not to the line under it. It was called
+`obs-map-disable-next-line`, which was untrue in a way that mattered: a directive on the last line
+of a file switched a check off for everything above it. Genuine line scoping is not available,
+because a finding is attached to an entry point and carries no line number to match against, so the
+name was corrected instead. The old spelling is not honoured, and there is a test saying so.
 
 A suppression cannot raise a score. The suppressed check leaves the numerator and the denominator,
 and the result is capped by what the entry would have scored unsuppressed, so suppressing a failing
@@ -112,11 +133,16 @@ Read these before trusting a specific verdict.
 
 - **One hop, same file only.** If a loader delegates to a helper in the same file, that helper's
   statements, catches and calls count as the route's. A helper's own helpers do not, and nothing
-  imported from another module is ever opened. Most of what a route does is behind an import, which
-  is why `auth-boundary` applies to 26 entry points rather than 427.
+  imported from another module is ever opened. `auth-boundary` applies to 23 entry points: it gates
+  on sensitivity first, which is 26 routes, and the one-hop limit accounts for the other 3, which
+  hand their work to an imported helper and are reported as unverified rather than unguarded.
 - **Loggers are matched by spelling.** A call counts as logging when the callee reads `logger.*` or
   `log.*`. An aliased logger, one wrapped in a helper, or `console.error` is invisible, so a route
   can be reported as recording nothing while it records plenty.
+- **A catch that logs and rethrows reads as though it only rethrows.** The clause evidence cannot
+  say whether a clause does anything besides rethrow, so `error-classification` withholds credit
+  rather than granting it. Crediting it would reopen the free-points path a single `logger.error`
+  line wide.
 - **Only the first object-literal argument is read** for identifier fields, and only its property
   names. `logger.error("failed", ctx)` where `ctx` is a variable contributes nothing, and neither
   does a second object.

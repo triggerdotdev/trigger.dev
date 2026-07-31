@@ -3,26 +3,26 @@ import { suppressedChecks } from "../src/suppression.js";
 describe("suppressedChecks", () => {
   it("reads a suppression with its reason", () => {
     const m = suppressedChecks(
-      `// obs-map-disable-next-line error-classification -- liveness probe, deliberately silent
+      `// obs-map-disable error-classification -- liveness probe, deliberately silent
        export async function loader() { return { ok: true }; }`
     );
     expect(m.get("error-classification")).toBe("liveness probe, deliberately silent");
   });
 
   it("ignores a suppression with no reason", () => {
-    const m = suppressedChecks(`// obs-map-disable-next-line error-classification`);
+    const m = suppressedChecks(`// obs-map-disable error-classification`);
     expect(m.size).toBe(0);
   });
 
   it("ignores a suppression whose reason is only whitespace", () => {
-    const m = suppressedChecks(`// obs-map-disable-next-line error-classification --    `);
+    const m = suppressedChecks(`// obs-map-disable error-classification --    `);
     expect(m.size).toBe(0);
   });
 
   it("reads several suppressions in one file", () => {
     const m = suppressedChecks(
-      `// obs-map-disable-next-line error-classification -- liveness probe
-       // obs-map-disable-next-line request-context -- no identifiers exist here
+      `// obs-map-disable error-classification -- liveness probe
+       // obs-map-disable request-context -- no identifiers exist here
        export async function loader() { return { ok: true }; }`
     );
     expect(m.size).toBe(2);
@@ -36,7 +36,7 @@ describe("suppressedChecks", () => {
 
   it("does not carry a reason across lines", () => {
     const m = suppressedChecks(
-      `// obs-map-disable-next-line error-classification
+      `// obs-map-disable error-classification
        // some other comment -- with a dash
        export async function loader() { return 1; }`
     );
@@ -47,7 +47,7 @@ describe("suppressedChecks", () => {
   // merely quotes it, in a test fixture or an error message, silently suppressed a real check.
   it("ignores the directive inside a string literal", () => {
     const m = suppressedChecks(
-      `const example = "obs-map-disable-next-line error-classification -- not a real suppression";
+      `const example = "obs-map-disable error-classification -- not a real suppression";
        export async function loader() { return 1; }`
     );
     expect(m.size).toBe(0);
@@ -55,7 +55,7 @@ describe("suppressedChecks", () => {
 
   it("reads the directive from a block comment", () => {
     const m = suppressedChecks(
-      `/* obs-map-disable-next-line auth-boundary -- public by design, see ADR 12 */
+      `/* obs-map-disable auth-boundary -- public by design, see ADR 12 */
        export async function loader() { return 1; }`
     );
     expect(m.get("auth-boundary")).toBe("public by design, see ADR 12");
@@ -64,7 +64,7 @@ describe("suppressedChecks", () => {
   it("reads the directive from a jsdoc line", () => {
     const m = suppressedChecks(
       `/**
-        * obs-map-disable-next-line request-context -- nothing tenant-scoped here
+        * obs-map-disable request-context -- nothing tenant-scoped here
         */
        export async function loader() { return 1; }`
     );
@@ -73,9 +73,20 @@ describe("suppressedChecks", () => {
 
   it("ignores code that happens to follow a comment on the same line", () => {
     const m = suppressedChecks(
-      `const x = 1; // obs-map-disable-next-line error-classification -- fine
+      `const x = 1; // obs-map-disable error-classification -- fine
        export async function loader() { return x; }`
     );
     expect(m.get("error-classification")).toBe("fine");
+  });
+
+  // The directive was called `-next-line` while applying to the whole entry point, so a comment on
+  // the last line of a file switched a check off for everything above it. Renamed rather than
+  // scoped, because a finding has no line number to scope it to. The old spelling is not honoured.
+  it("does not honour the old -next-line spelling", () => {
+    const m = suppressedChecks(
+      `// obs-map-disable-next-line error-classification -- stale directive
+       export async function loader() { return 1; }`
+    );
+    expect(m.size).toBe(0);
   });
 });

@@ -1,4 +1,8 @@
+import { existsSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
 import { main, type Io } from "../src/cli.js";
+
+const REPORT_FILE = resolve(__dirname, "../../../observability-map.json");
 
 const capture = () => {
   const out: string[] = [];
@@ -51,10 +55,17 @@ describe("map <target>", () => {
 });
 
 describe("map", () => {
+  // The flag is the only thing standing between a test run and a file written into the repo root,
+  // so the test has to check the file, not just the exit code.
   it("renders the whole report without writing when asked not to", () => {
+    const existedBefore = existsSync(REPORT_FILE);
+    if (existedBefore) rmSync(REPORT_FILE);
+
     const r = run("--no-write");
+
     expect(r.code).toBe(0);
     expect(r.out).toContain("COVERAGE");
     expect(r.out).toContain("FIX FIRST");
+    expect(existsSync(REPORT_FILE)).toBe(false);
   });
 });

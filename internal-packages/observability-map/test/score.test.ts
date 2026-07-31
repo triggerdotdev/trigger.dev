@@ -54,7 +54,7 @@ describe("scoreEntry", () => {
   });
 
   it("counts a suppressed check as not-applicable", () => {
-    const suppressed = `// obs-map-disable-next-line error-classification -- health probe
+    const suppressed = `// obs-map-disable error-classification -- health probe
 ${RAW}`;
     const scored = scoreEntry(scanFile("api.v1.b.ts", suppressed)!);
     const ec = scored.checks.find((c) => c.id === "error-classification")!;
@@ -65,12 +65,16 @@ ${RAW}`;
     // error-classification would fail here; auth-boundary is not-applicable (not sensitive).
     // Suppressing the only applicable scored check must not be indistinguishable from an entry
     // point nothing applies to: it is still reported, just not scored on that axis.
-    const suppressed = `// obs-map-disable-next-line error-classification -- health probe
+    const suppressed = `// obs-map-disable error-classification -- health probe
 ${BUSY_AND_FAILING}`;
     const scored = scoreEntry(scanFile("api.v1.c.ts", suppressed)!);
     expect(scored.checks.find((c) => c.id === "error-classification")!.status).toBe(
       "not-applicable"
     );
+    // The point of the test, which it did not previously assert: request-context still applies, so
+    // the entry is still measured and still counted in the mean.
+    expect(scored.checks.find((c) => c.id === "request-context")!.status).toBe("fail");
+    expect(scored.measured).toBe(true);
   });
 
   // I1. `score = passed / applicable` meant removing a failing check from the denominator raised
@@ -88,7 +92,7 @@ export async function action({ request }) {
     const suppressed = scoreEntry(
       scanFile(
         "api.v1.auth.tokens.ts",
-        `// obs-map-disable-next-line error-classification -- deliberate, see ticket
+        `// obs-map-disable error-classification -- deliberate, see ticket
 ${source}`
       )!
     );
@@ -104,8 +108,8 @@ ${source}`
     const suppressed = scoreEntry(
       scanFile(
         "api.v1.b.ts",
-        `// obs-map-disable-next-line error-classification -- health probe
-// obs-map-disable-next-line request-context -- nothing to name here
+        `// obs-map-disable error-classification -- health probe
+// obs-map-disable request-context -- nothing to name here
 ${BUSY_AND_FAILING}`
       )!
     );
@@ -116,8 +120,8 @@ ${BUSY_AND_FAILING}`
     const suppressed = scoreEntry(
       scanFile(
         "api.v1.b.ts",
-        `// obs-map-disable-next-line error-classification -- health probe
-// obs-map-disable-next-line request-context -- nothing to name here
+        `// obs-map-disable error-classification -- health probe
+// obs-map-disable request-context -- nothing to name here
 ${BUSY_AND_FAILING}`
       )!
     );
@@ -167,7 +171,7 @@ describe("buildReport", () => {
       [
         scanFile(
           "api.v1.b.ts",
-          `// obs-map-disable-next-line error-classification -- health probe
+          `// obs-map-disable error-classification -- health probe
 ${BUSY_AND_FAILING}`
         )!,
         scanFile("api.v1.c.ts", BUSY_AND_FAILING)!,

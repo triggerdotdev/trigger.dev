@@ -32,15 +32,14 @@ describe("renderTerminal", () => {
   it("surfaces suppressions so laundering is visible rather than silent", () => {
     const suppressed = scanFile(
       "api.v1.d.ts",
-      `// obs-map-disable-next-line error-classification -- deliberate, see ticket
+      `// obs-map-disable error-classification -- deliberate, see ticket
        import { prisma } from "~/db.server";
        export async function loader() {
          try { return await prisma.thing.findMany(); } catch (e) { return null; }
        }`
     )!;
     const out = renderTerminal(buildReport([suppressed], []));
-    expect(out).toMatch(/suppress/i);
-    expect(out).toContain("1");
+    expect(out).toMatch(/SUPPRESSED\s+1 check across 1 entry point/);
   });
 
   it("does not mention suppressions when there are none", () => {
@@ -118,7 +117,11 @@ describe("renderTerminal", () => {
       buildReport([sensitiveThirtyThree, sensitiveZero, notSensitiveZero, sensitiveAuditOnly], [])
     );
 
-    const fixFirst = out.slice(out.indexOf("FIX FIRST"), out.indexOf("already solid"));
+    // Slice to the end of the list, not to a string the I5 fix deleted: `indexOf` returned -1 for
+    // "already solid" and the assertions were quietly running against the whole tail.
+    const listEnd = out.indexOf("no findings:");
+    expect(listEnd).toBeGreaterThan(-1);
+    const fixFirst = out.slice(out.indexOf("FIX FIRST"), listEnd);
     const idxZero = fixFirst.indexOf("api.v1.envvars.ts");
     const idxThirtyThree = fixFirst.indexOf("api.v1.auth.tokens.ts");
     const idxNotSensitive = fixFirst.indexOf("resources.busy.ts");
@@ -236,6 +239,22 @@ describe("collapsing the house-style finding", () => {
   it("reports the gap as a headline figure instead", () => {
     const out = renderTerminal(buildReport([namesNobody()], []));
     expect(out).toMatch(/CONTEXT\s+0 of 1 entry points name a tenant on a failure path/);
+  });
+
+  // NEW-3. 18 of the collapsed entries are sensitive, including /admin/impersonate and the envvars
+  // routes, so the line has to say a reader should go and look at them.
+  it("says how many of the collapsed entries are sensitive", () => {
+    const sensitiveAndSilent = scanFile(
+      "api.v1.auth.jwt.ts",
+      `import { requireUserId } from "~/services/session.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ request }) {
+         const userId = await requireUserId(request);
+         return prisma.token.findMany({ where: { userId } });
+       }`
+    )!;
+    const out = renderTerminal(buildReport([sensitiveAndSilent], []));
+    expect(out).toMatch(/1 appears? only here[^\n]*1 of them sensitive/i);
   });
 
   it("says how many entries the collapse took out of the list", () => {

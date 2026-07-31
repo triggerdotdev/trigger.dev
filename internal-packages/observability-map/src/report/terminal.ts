@@ -68,12 +68,14 @@ export function renderTerminal(report: MapReport): string {
 
   const { applicable, naming } = report.contextGap;
   if (applicable > 0) {
-    const collapsed = report.entries.filter(contextOnly).length;
+    const collapsed = report.entries.filter(contextOnly);
+    const sensitive = collapsed.filter((e) => e.sensitive).length;
     lines.push("");
     lines.push(
       `CONTEXT   ${naming} of ${applicable} entry points name a tenant on a failure path.` +
-        (collapsed > 0
-          ? ` ${collapsed} appear${collapsed === 1 ? "s" : ""} only here, not in the list below.`
+        (collapsed.length > 0
+          ? ` ${collapsed.length} appear${collapsed.length === 1 ? "s" : ""} only here, ` +
+            `${sensitive} of them sensitive, in the JSON rather than the list below.`
           : "")
     );
   }
