@@ -69,9 +69,15 @@ export function createPodCountFetcher(
   namespace: string,
   timeoutMs: number
 ): () => Promise<number> {
+  const serverTimeoutSeconds = Math.max(1, Math.floor(timeoutMs / 1000));
+
   return async () => {
     const list = await withTimeout(
-      api.core.listNamespacedPod({ namespace, limit: 1 }),
+      api.core.listNamespacedPod({
+        namespace,
+        limit: 1,
+        timeoutSeconds: serverTimeoutSeconds,
+      }),
       timeoutMs,
       "pod count list"
     );
@@ -89,15 +95,21 @@ export function createPodCountFetcher(
   };
 }
 
-/** Rejects if `promise` outlives `timeoutMs`, so a hung request cannot freeze the caller. */
+/**
+ * withTimeout rejects if `promise` outlives `timeoutMs`, so a hung request cannot
+ * freeze the caller. A backstop only: the k8s client threads no AbortSignal through
+ * to fetch, so callers must also bound the request server-side (`timeoutSeconds`),
+ * or an abandoned request would stay open. The timer is cleared either way.
+ */
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, what: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_resolve, reject) => {
-      setTimeout(
-        () => reject(new Error(`${what} timed out after ${timeoutMs}ms`)),
-        timeoutMs
-      ).unref();
-    }),
-  ]);
+  let timer: NodeJS.Timeout;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${what} timed out after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+    timer.unref();
+  });
+
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
 }
