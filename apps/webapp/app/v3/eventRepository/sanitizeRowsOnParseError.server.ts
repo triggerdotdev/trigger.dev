@@ -82,6 +82,26 @@ export function parseRowNumberFromError(errorMessage: string): number | null {
 }
 
 /**
+ * Extracts the failing-row index for the strip loop, where a wrong answer empties
+ * an innocent row's JSON instead of the poison one.
+ *
+ * ClickHouse reports the position as a parenthesised `(at row N)` suffix, but the
+ * same message embeds a snippet of the offending row's own data ahead of it
+ * (`Cannot parse JSON object here: {...}: (while reading ...): (at row N)`), so a
+ * task whose output merely contains the text `at row 7` would otherwise win the
+ * match. Requiring the parentheses and taking the LAST occurrence keeps the
+ * server's own suffix authoritative, since user data appears before it.
+ *
+ * Returns `null` when no parenthesised position is present; the caller treats
+ * that as "row not locatable" and bails to the skip insert rather than guessing.
+ */
+export function parseStrippableRowNumber(errorMessage: string): number | null {
+  const matches = [...errorMessage.matchAll(/\(at row (\d+)\)/g)];
+  if (matches.length === 0) return null;
+  return Number.parseInt(matches[matches.length - 1][1], 10);
+}
+
+/**
  * Walks `value` recursively and replaces any string leaf that contains a
  * lone UTF-16 surrogate with `INVALID_UTF16_SENTINEL`. Mutates objects
  * and arrays in place; primitives are returned unchanged.
@@ -328,7 +348,7 @@ export async function insertWithLimitedStrip<T extends object>(params: {
         break;
       }
 
-      const hint = parseRowNumberFromError(rawErrorMessage(parseError));
+      const hint = parseStrippableRowNumber(rawErrorMessage(parseError));
       const index = hint === null ? -1 : hint - 1;
 
       if (index < 0 || index >= working.length || stripped[index]) {
@@ -341,7 +361,25 @@ export async function insertWithLimitedStrip<T extends object>(params: {
       rowsStripped += 1;
     }
 
-    const insertResult = await insertAllowingBadRows(working);
+    const [skipError, insertResult] = await tryInsertAllowingBadRows(
+      insertAllowingBadRows,
+      working
+    );
+
+    if (skipError) {
+      return wholeBatchDropped({
+        rows,
+        contextLabel,
+        logger,
+        logContext,
+        rowsStripped,
+        capped: true,
+        bailReason,
+        firstMessage,
+        skipError,
+      });
+    }
+
     const dropped = droppedRowCount(insertResult, working.length, hasMaterializedViews);
 
     logger.warn("Landed the batch via allow_errors and skipped the remaining un-ingestable rows", {
@@ -365,6 +403,69 @@ export async function insertWithLimitedStrip<T extends object>(params: {
       bailReason,
     };
   }
+}
+
+/**
+ * Runs the `allow_errors` skip insert, separating the two ways it can fail.
+ *
+ * A surviving `Cannot parse JSON object` is deterministic: the same bytes will
+ * fail again, so it is returned for the caller to swallow and count. Anything
+ * else (a connection drop, a server restart) is transient and rethrown so the
+ * caller's retry layer still gets its chance.
+ */
+async function tryInsertAllowingBadRows<T extends object>(
+  insertAllowingBadRows: (rows: T[]) => Promise<unknown>,
+  rows: T[]
+): Promise<[unknown, undefined] | [undefined, unknown]> {
+  try {
+    return [undefined, await insertAllowingBadRows(rows)];
+  } catch (error) {
+    if (!isClickHouseJsonParseError(error)) throw error;
+    return [error, undefined];
+  }
+}
+
+/**
+ * Reports a batch that could not land even with `allow_errors`, without throwing.
+ *
+ * Handing a deterministic parse failure back to the caller's retry layer only
+ * burns the whole recovery again on bytes that cannot change, and in the event
+ * repository a terminal throw also skips the scheduler's queue-depth decrement,
+ * leaking a counter that feeds its load-shedding and memory-pressure decisions.
+ * Counting the batch as wholly dropped keeps both layers honest instead.
+ */
+function wholeBatchDropped<T extends object>(params: {
+  rows: T[];
+  contextLabel: string;
+  logger: JsonParseRecoveryLogger;
+  logContext?: Record<string, unknown>;
+  rowsStripped: number;
+  capped: boolean;
+  bailReason?: RecoveryBailReason;
+  firstMessage: string;
+  skipError: unknown;
+}): JsonParseRecoveryOutcome {
+  const { rows, contextLabel, logger, logContext, rowsStripped, capped, bailReason } = params;
+
+  logger.warn("Dropped the whole batch: ClickHouse rejected it even with allow_errors", {
+    ...logContext,
+    contextLabel,
+    bailReason,
+    batchSize: rows.length,
+    rowsStripped,
+    rowsDropped: rows.length,
+    clickhouseError: params.firstMessage.split("\n")[0],
+    skipInsertError: errorMessage(params.skipError).split("\n")[0],
+  });
+
+  return {
+    kind: "recovered",
+    rowsStripped,
+    rowsDropped: rows.length,
+    rowsDroppedExact: true,
+    capped,
+    bailReason,
+  };
 }
 
 function writtenRowCount(insertResult: unknown): number | null {
@@ -472,7 +573,21 @@ export async function insertWithBadRowSkip<T extends object>(params: {
       }
     }
 
-    const insertResult = await insertAllowingBadRows(rows);
+    const [skipError, insertResult] = await tryInsertAllowingBadRows(insertAllowingBadRows, rows);
+
+    if (skipError) {
+      return wholeBatchDropped({
+        rows,
+        contextLabel,
+        logger,
+        logContext,
+        rowsStripped: 0,
+        capped: false,
+        firstMessage,
+        skipError,
+      });
+    }
+
     const dropped = droppedRowCount(insertResult, rows.length, hasMaterializedViews);
 
     logger.warn(

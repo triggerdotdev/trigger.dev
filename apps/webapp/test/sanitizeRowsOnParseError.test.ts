@@ -5,6 +5,7 @@ import {
   insertWithLimitedStrip,
   isClickHouseJsonParseError,
   parseRowNumberFromError,
+  parseStrippableRowNumber,
   sanitizeRows,
   sanitizeUnknownInPlace,
 } from "~/v3/eventRepository/sanitizeRowsOnParseError.server";
@@ -103,6 +104,37 @@ describe("parseRowNumberFromError", () => {
 
   it("returns the first match when multiple `at row N` substrings exist", () => {
     expect(parseRowNumberFromError("at row 1, oops also at row 2")).toBe(1);
+  });
+});
+
+describe("parseStrippableRowNumber", () => {
+  it("reads the parenthesised position ClickHouse appends", () => {
+    expect(
+      parseStrippableRowNumber(
+        "Cannot parse JSON object here: { ... }: (while reading the value of key attributes): (at row 1942)\n: While executing ParallelParsingBlockInputFormat."
+      )
+    ).toBe(1942);
+  });
+
+  it("ignores an `at row N` that appears inside the offending row's own data", () => {
+    const withDecoyInPayload =
+      'Cannot parse JSON object here: {"output":{"dbError":"syntax error at row 7"}}: (while reading the value of key output): (at row 3)';
+
+    expect(parseStrippableRowNumber(withDecoyInPayload)).toBe(3);
+    expect(parseRowNumberFromError(withDecoyInPayload)).toBe(7);
+  });
+
+  it("takes the last parenthesised position when the payload fakes that form too", () => {
+    expect(
+      parseStrippableRowNumber(
+        'Cannot parse JSON object here: {"msg":"failed (at row 99)"}: (at row 4)'
+      )
+    ).toBe(4);
+  });
+
+  it("returns null when no parenthesised position is present, so the caller bails", () => {
+    expect(parseStrippableRowNumber("Cannot parse JSON object here: {...}: at row 5")).toBeNull();
+    expect(parseStrippableRowNumber("Cannot parse JSON object, no position at all")).toBeNull();
   });
 });
 
@@ -515,6 +547,98 @@ describe("insertWithLimitedStrip", () => {
       })
     ).rejects.toThrow("Connection refused");
   });
+
+  it("strips the row ClickHouse pointed at, not one named by the payload's own text", async () => {
+    const landed: FakeRow[] = [];
+    const insertSync = async (rows: FakeRow[]) => {
+      const badIndex = rows.findIndex((r) => r.poison);
+      if (badIndex >= 0) {
+        throw new Error(
+          `Cannot parse JSON object here: {"output":"failed at row 1"}: (at row ${badIndex + 1})`
+        );
+      }
+      landed.push(...rows);
+      return { summary: { written_rows: String(rows.length) } };
+    };
+    const insertAllowingBadRows = async (rows: FakeRow[]) => {
+      const good = rows.filter((r) => !r.poison);
+      landed.push(...good);
+      return { summary: { written_rows: String(good.length) } };
+    };
+
+    const outcome = await insertWithLimitedStrip({
+      rows: [clean(0), clean(1), { id: 2, poison: true }],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      insertAllowingBadRows,
+      stripJsonColumns: (row) => ({ ...row, poison: false, stripped: true }),
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 1,
+      rowsDropped: 0,
+      rowsDroppedExact: true,
+      capped: false,
+    });
+    expect(landed.map((r) => r.id).sort((a, b) => a - b)).toEqual([0, 1, 2]);
+    expect(landed.find((r) => r.id === 2)?.stripped).toBe(true);
+    expect(landed.filter((r) => r.id !== 2).every((r) => !r.stripped)).toBe(true);
+  });
+
+  it("counts the batch as dropped instead of throwing when even allow_errors is rejected", async () => {
+    const insertSync = async () => {
+      throw parseErrorAtRow(1);
+    };
+    let allowCalls = 0;
+    const insertAllowingBadRows = async () => {
+      allowCalls += 1;
+      throw new Error("Cannot parse JSON object here: {...}: (at row 1)");
+    };
+
+    const outcome = await insertWithLimitedStrip({
+      rows: [clean(0), { id: 1, poison: true }],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert: insertSync,
+      insertSync,
+      insertAllowingBadRows,
+      stripJsonColumns: (row) => row,
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 1,
+      rowsDropped: 2,
+      rowsDroppedExact: true,
+      capped: true,
+      bailReason: "strip_budget_spent",
+    });
+    expect(allowCalls).toBe(1);
+  });
+
+  it("rethrows a transient failure of the allow_errors insert so the retry layer still runs", async () => {
+    const insertSync = async () => {
+      throw parseErrorAtRow(1);
+    };
+    const insertAllowingBadRows = async () => {
+      throw new Error("Connection refused");
+    };
+
+    await expect(
+      insertWithLimitedStrip({
+        rows: [clean(0), { id: 1, poison: true }],
+        contextLabel: "test",
+        logger: silentLogger,
+        insert: insertSync,
+        insertSync,
+        insertAllowingBadRows,
+        stripJsonColumns: (row) => row,
+      })
+    ).rejects.toThrow("Connection refused");
+  });
 });
 
 /**
@@ -710,6 +834,53 @@ describe("insertWithBadRowSkip", () => {
         logger: silentLogger,
         insert,
         insertAllowingBadRows: insert,
+      })
+    ).rejects.toThrow("Connection refused");
+  });
+
+  it("counts the batch as dropped instead of throwing when even allow_errors is rejected", async () => {
+    const insert = async () => {
+      throw parseErrorAtRow(1);
+    };
+    let allowCalls = 0;
+    const insertAllowingBadRows = async () => {
+      allowCalls += 1;
+      throw new Error("Cannot parse JSON object here: {...}: (at row 1)");
+    };
+
+    const outcome = await insertWithBadRowSkip({
+      rows: [clean(0), { id: 1, poison: true }, clean(2)],
+      contextLabel: "test",
+      logger: silentLogger,
+      insert,
+      insertAllowingBadRows,
+    });
+
+    expect(outcome).toEqual({
+      kind: "recovered",
+      rowsStripped: 0,
+      rowsDropped: 3,
+      rowsDroppedExact: true,
+      capped: false,
+    });
+    expect(allowCalls).toBe(1);
+  });
+
+  it("rethrows a transient failure of the allow_errors insert so the retry layer still runs", async () => {
+    const insert = async () => {
+      throw parseErrorAtRow(1);
+    };
+    const insertAllowingBadRows = async () => {
+      throw new Error("Connection refused");
+    };
+
+    await expect(
+      insertWithBadRowSkip({
+        rows: [clean(0), { id: 1, poison: true }],
+        contextLabel: "test",
+        logger: silentLogger,
+        insert,
+        insertAllowingBadRows,
       })
     ).rejects.toThrow("Connection refused");
   });
