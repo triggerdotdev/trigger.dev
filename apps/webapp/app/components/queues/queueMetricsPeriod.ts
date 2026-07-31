@@ -97,11 +97,16 @@ export function clampQueueMetricsPeriod(period: string, maxPeriodDays: number): 
  * applies to every metric query. Queue-metric queries that go straight to ClickHouse (the queues
  * list table, the concurrency-keys endpoint) have to apply it themselves, otherwise a hand-typed
  * `?period=` reaches further back than the plan allows.
+ *
+ * A range that ends before the plan's earliest queryable time collapses to an empty window rather
+ * than an inverted one, which is what the enforced lower bound in `executeQuery` yields for the
+ * same request: no rows.
  */
 export function clipQueueMetricsWindow(
   window: { from: Date; to: Date },
   maxPeriodDays: number
 ): { from: Date; to: Date } {
   const earliest = new Date(Date.now() - maxPeriodDays * DAY_MS);
-  return { from: window.from < earliest ? earliest : window.from, to: window.to };
+  const from = window.from < earliest ? earliest : window.from;
+  return { from, to: window.to < from ? from : window.to };
 }
