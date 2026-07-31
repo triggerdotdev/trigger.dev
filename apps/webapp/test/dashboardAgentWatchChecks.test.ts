@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkWatch,
   type WatchCheckDeps,
+  type WatchErrorRecurrence,
   type WatchRunRow,
 } from "~/services/dashboardAgentWatchChecks";
 import type { WatchSpec } from "@internal/dashboard-agent-contracts";
@@ -120,7 +121,10 @@ describe("run_start", () => {
     expect(outcome.facts.queueWaitReliable).toBe(false);
   });
 
-  it("flags a stale queuedAt on a resumed run rather than trusting it", async () => {
+  // A resume/retry doesn't restamp queuedAt, so the leftover value is not this
+  // attempt's queue entry — it must not be measured from, let alone worded as
+  // queue latency.
+  it("does not measure a resumed run's wait from its stale queuedAt", async () => {
     const outcome = await check(
       runStart,
       deps({
@@ -130,7 +134,25 @@ describe("run_start", () => {
     );
 
     expect(outcome.facts.queueWaitReliable).toBe(false);
-    expect(outcome.facts.waitBasis).toBe("queued_at");
+    expect(outcome.facts.waitBasis).toBe("created_at");
+    // 11:55 -> 12:00, not 11:50 -> 12:00, and never called a queue wait.
+    expect(outcome.facts.waitMs).toBe(5 * 60_000);
+    expect(outcome.facts.waitLabel).toBe("waiting to resume; time from creation: 5m");
+  });
+
+  it("says retry, not resume, for a run waiting on a retry", async () => {
+    const outcome = await check(
+      runStart,
+      deps({
+        readRun: async () =>
+          run({
+            status: "RETRYING_AFTER_FAILURE",
+            queuedAt: new Date("2026-07-27T11:50:00.000Z"),
+          }),
+      })
+    );
+
+    expect(outcome.facts.waitLabel).toBe("waiting to retry; time from creation: 5m");
   });
 
   it("is terminal_unsatisfied when the run reached a terminal status without starting", async () => {
@@ -202,7 +224,7 @@ describe("backlog_drain", () => {
   it("is satisfied at depth 0", async () => {
     const outcome = await check(
       backlogDrain,
-      deps({ readQueueDepth: async () => ({ depth: 0, source: "live_queue" }) })
+      deps({ readQueueDepth: async () => ({ depth: 0, source: "live_queue", current: true }) })
     );
 
     expect(outcome.result).toBe("satisfied");
@@ -212,11 +234,57 @@ describe("backlog_drain", () => {
   it("is pending while runs are still queued", async () => {
     const outcome = await check(
       backlogDrain,
-      deps({ readQueueDepth: async () => ({ depth: 42, source: "queue_metrics" }) })
+      deps({
+        readQueueDepth: async () => ({ depth: 42, source: "queue_metrics", current: true }),
+      })
     );
 
     expect(outcome.result).toBe("pending");
     expect(outcome.facts.depth).toBe(42);
+  });
+
+  // The one mistake this watch must never make: an analytics bucket that was
+  // empty minutes ago says nothing about the runs queued since.
+  it("is unavailable — never drained — when a zero comes from a stale bucket", async () => {
+    const asOf = new Date("2026-07-27T11:50:00.000Z");
+    const outcome = await check(
+      backlogDrain,
+      deps({
+        readQueueDepth: async () => ({
+          depth: 0,
+          source: "queue_metrics",
+          current: false,
+          asOf,
+        }),
+      })
+    );
+
+    expect(outcome.result).toBe("unavailable");
+    expect(outcome.facts).toMatchObject({
+      reason: "depth_stale",
+      depth: 0,
+      depthAsOf: asOf.toISOString(),
+      depthApproximate: true,
+    });
+  });
+
+  // A stale non-zero depth is still evidence the queue wasn't empty — reported,
+  // and marked as the approximation it is.
+  it("stays pending on a stale non-zero depth, marked approximate", async () => {
+    const outcome = await check(
+      backlogDrain,
+      deps({
+        readQueueDepth: async () => ({
+          depth: 7,
+          source: "queue_metrics",
+          current: false,
+          asOf: new Date("2026-07-27T11:50:00.000Z"),
+        }),
+      })
+    );
+
+    expect(outcome.result).toBe("pending");
+    expect(outcome.facts).toMatchObject({ depth: 7, depthApproximate: true });
   });
 
   it("is terminal_unsatisfied when the queue doesn't exist", async () => {
@@ -253,26 +321,81 @@ describe("backlog_drain", () => {
   });
 });
 
+function recurrence(overrides: Partial<WatchErrorRecurrence> = {}): WatchErrorRecurrence {
+  return {
+    occurredAt: new Date("2026-07-27T11:30:00.000Z"),
+    occurredAtPrecision: "minute",
+    countSince: 3,
+    countApproximate: false,
+    lastSeenAt: new Date("2026-07-27T11:45:00.000Z"),
+    ...overrides,
+  };
+}
+
 describe("error_recurrence", () => {
   it("is satisfied on the first occurrence after `since`", async () => {
-    const occurredAt = new Date("2026-07-27T11:30:00.000Z");
     const outcome = await check(
       errorRecurrence,
-      deps({ readErrorRecurrence: async () => ({ occurredAt, countSince: 3 }) })
+      deps({ readErrorRecurrence: async () => recurrence() })
+    );
+
+    expect(outcome.result).toBe("satisfied");
+    expect(outcome.facts).toMatchObject({
+      occurredAt: "2026-07-27T11:30:00.000Z",
+      occurredAtPrecision: "minute",
+      countSince: 3,
+      countApproximate: false,
+      since: SINCE.toISOString(),
+    });
+  });
+
+  // The creation-minute case: the count can't be split, so it's a lower bound and
+  // the facts say so rather than quoting a number the data can't support.
+  it("carries the precision of an occurrence in the watch's creation minute", async () => {
+    const occurredAt = new Date("2026-07-27T11:00:40.000Z");
+    const outcome = await check(
+      errorRecurrence,
+      deps({
+        readErrorRecurrence: async () =>
+          recurrence({
+            occurredAt,
+            occurredAtPrecision: "exact",
+            countSince: 1,
+            countApproximate: true,
+            lastSeenAt: occurredAt,
+          }),
+      })
     );
 
     expect(outcome.result).toBe("satisfied");
     expect(outcome.facts).toMatchObject({
       occurredAt: occurredAt.toISOString(),
-      countSince: 3,
-      since: SINCE.toISOString(),
+      occurredAtPrecision: "exact",
+      countSince: 1,
+      countApproximate: true,
     });
   });
 
-  it("is pending while nothing has recurred", async () => {
+  it("is pending when the error has never been seen at all", async () => {
     const outcome = await check(errorRecurrence, deps({ readErrorRecurrence: async () => null }));
     expect(outcome.result).toBe("pending");
-    expect(outcome.facts.countSince).toBe(0);
+    expect(outcome.facts).toMatchObject({ countSince: 0, lastSeenAt: null });
+  });
+
+  // Seen before the watch, not since: still pending, and the facts carry when it
+  // was last seen so the narration can say that instead of just "nothing".
+  it("is pending when the error was last seen before `since`", async () => {
+    const lastSeenAt = new Date("2026-07-27T10:30:00.000Z");
+    const outcome = await check(
+      errorRecurrence,
+      deps({
+        readErrorRecurrence: async () =>
+          recurrence({ occurredAt: null, occurredAtPrecision: null, countSince: 0, lastSeenAt }),
+      })
+    );
+
+    expect(outcome.result).toBe("pending");
+    expect(outcome.facts).toMatchObject({ countSince: 0, lastSeenAt: lastSeenAt.toISOString() });
   });
 
   it("passes the watch's `since` to the reader, not the clock", async () => {

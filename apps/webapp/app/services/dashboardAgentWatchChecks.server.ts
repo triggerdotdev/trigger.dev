@@ -10,7 +10,8 @@
  *     same seam the queue pages and the waiting-run module use — with the
  *     ClickHouse depth series as fallback.
  *   - queue existence: ONE Postgres `TaskQueue` point-read.
- *   - error recurrence: ClickHouse `error_occurrences_v1` only.
+ *   - error recurrence: ClickHouse `errors_v1` for WHETHER it recurred (millisecond
+ *     `last_seen`), plus the per-minute `error_occurrences_v1` rollup for the count.
  *   - health: the existing health report (loader + interpreter), unchanged.
  *
  * Readers THROW on failure rather than swallowing it, because `checkWatch` turns a
@@ -69,16 +70,32 @@ export async function watchQueueExists(environmentId: string, queueName: string)
 /** How far back the ClickHouse depth fallback looks when the live counter is down. */
 const DEPTH_FALLBACK_MINUTES = 10;
 const DEPTH_FALLBACK_BUCKET_SECONDS = 60;
+/**
+ * How far behind `now` the newest analytics bucket may END and still be read as
+ * "the queue right now". One bucket of slack: anything older leaves a gap the
+ * rollup hasn't covered, and runs queued in that gap would be invisible.
+ */
+const DEPTH_FRESH_TOLERANCE_MS = DEPTH_FALLBACK_BUCKET_SECONDS * 1000;
 
 function formatClickhouseDateTime(date: Date): string {
   return date.toISOString().slice(0, 19).replace("T", " ");
 }
 
+/** ClickHouse renders DateTime without a zone; the column is UTC. */
+function parseClickhouseDateTime(value: string): Date {
+  return new Date(`${value.replace(" ", "T")}Z`);
+}
+
 /**
  * Current pending count for one queue. The live run-queue counter is the truth
  * ("is it drained RIGHT NOW"); ClickHouse is the fallback and reports the most
- * recent bucket's PEAK depth, which can only over-report — so a fallback zero
- * still means "nothing was queued in that bucket", never a false drain.
+ * recent bucket's PEAK depth, which can only over-report within that bucket.
+ *
+ * The fallback carries `current`, and it is false unless the newest bucket
+ * actually reaches the present: a rollup that's minutes behind may hold an empty
+ * bucket while runs piled up after it, and reading that as "drained" is the one
+ * mistake this watch must never make. `checkBacklogDrain` turns a stale zero into
+ * `unavailable`.
  */
 export async function readWatchQueueDepth(
   environment: AuthenticatedEnvironment,
@@ -87,7 +104,7 @@ export async function readWatchQueueDepth(
 ): Promise<WatchQueueDepth | null> {
   const live = await engine.lengthOfQueue(environment, queueName).catch(() => null);
   if (typeof live === "number" && Number.isFinite(live)) {
-    return { depth: live, source: "live_queue" };
+    return { depth: live, source: "live_queue", current: true, asOf: now };
   }
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
@@ -114,18 +131,66 @@ export async function readWatchQueueDepth(
 
   // Newest bucket wins — the closest thing the rollup has to "now".
   const newest = rows.reduce((best, row) => (row.bucket > best.bucket ? row : best), rows[0]!);
-  return { depth: newest.depth, source: "queue_metrics" };
+  const bucketEnd = new Date(parseClickhouseDateTime(newest.bucket).getTime() + bucketMs);
+  const current = bucketEnd.getTime() >= now.getTime() - DEPTH_FRESH_TOLERANCE_MS;
+
+  return { depth: newest.depth, source: "queue_metrics", current, asOf: bucketEnd };
+}
+
+const MINUTE_MS = 60_000;
+
+type OrganizationClickhouse = Awaited<
+  ReturnType<typeof clickhouseFactory.getClickhouseForOrganization>
+>;
+
+/**
+ * The fingerprint's most recent occurrence, at MILLISECOND precision, from the
+ * `errors_v1` aggregate (`max(last_seen)` over every task that produced it).
+ *
+ * This is what makes "has it come back?" answerable exactly. The per-minute
+ * `error_occurrences_v1` rollup can only place an error in a minute, and the
+ * minute a watch is created in holds BOTH the error that prompted the watch and
+ * any recurrence seconds later — so the rollup alone can neither confirm nor deny
+ * a recurrence in that first minute.
+ */
+async function readErrorLastSeen(
+  clickhouse: OrganizationClickhouse,
+  environment: AuthenticatedEnvironment,
+  fingerprint: string
+): Promise<Date | null> {
+  const builder = clickhouse.errors.activeErrorsSinceQueryBuilder();
+  builder.where("organization_id = {organizationId: String}", {
+    organizationId: environment.organizationId,
+  });
+  builder.where("project_id = {projectId: String}", { projectId: environment.projectId });
+  builder.where("environment_id = {environmentId: String}", { environmentId: environment.id });
+  builder.where("error_fingerprint = {fingerprint: String}", { fingerprint });
+  builder.groupBy("environment_id, task_identifier, error_fingerprint");
+
+  const [error, rows] = await builder.execute();
+  if (error) throw error;
+  if (!rows || rows.length === 0) return null;
+
+  let lastSeenMs = 0;
+  for (const row of rows) {
+    const ms = Number(row.last_seen);
+    if (Number.isFinite(ms) && ms > lastSeenMs) lastSeenMs = ms;
+  }
+
+  return lastSeenMs > 0 ? new Date(lastSeenMs) : null;
 }
 
 /**
- * The first occurrence of an error fingerprint after `since`, from the per-minute
- * `error_occurrences_v1` rollup.
+ * What we know about an error fingerprint relative to `since`, from two reads that
+ * each answer what only they can:
  *
- * Buckets are filtered with `minute > since`, i.e. STRICTLY after, so an
- * occurrence in the same minute the watch was created can't be read as a
- * recurrence. That under-counts by at most the creation minute — the conservative
- * direction, since a watch must never fire on the error that prompted it.
- * `occurredAt` is therefore minute-granular by construction.
+ *   - `errors_v1` decides WHETHER it recurred, to the millisecond. An occurrence
+ *     40 seconds after the watch was created is a recurrence, and rounding the
+ *     window up to the next minute used to lose it entirely.
+ *   - `error_occurrences_v1` supplies HOW MANY and, for minutes after the creation
+ *     minute, when. Its creation-minute bucket can't be split between the original
+ *     error and a recurrence, so those occurrences only make `countSince` a lower
+ *     bound (`countApproximate`) — never a claim.
  */
 export async function readWatchErrorRecurrence(
   environment: AuthenticatedEnvironment,
@@ -137,6 +202,21 @@ export async function readWatchErrorRecurrence(
     "logs"
   );
 
+  const lastSeenAt = await readErrorLastSeen(clickhouse, environment, fingerprint);
+  // Never seen in this environment at all.
+  if (!lastSeenAt) return null;
+
+  const notRecurred: WatchErrorRecurrence = {
+    occurredAt: null,
+    occurredAtPrecision: null,
+    countSince: 0,
+    countApproximate: false,
+    lastSeenAt,
+  };
+  if (lastSeenAt.getTime() <= since.getTime()) return notRecurred;
+
+  // Something landed after `since`. The rollup fills in the count and the minute.
+  const sinceMinuteMs = Math.floor(since.getTime() / MINUTE_MS) * MINUTE_MS;
   const queryBuilder = clickhouse.errors.createOccurrencesQueryBuilder("INTERVAL 1 MINUTE");
   queryBuilder.where("organization_id = {organizationId: String}", {
     organizationId: environment.organizationId,
@@ -144,7 +224,9 @@ export async function readWatchErrorRecurrence(
   queryBuilder.where("project_id = {projectId: String}", { projectId: environment.projectId });
   queryBuilder.where("environment_id = {environmentId: String}", { environmentId: environment.id });
   queryBuilder.where("error_fingerprint = {fingerprint: String}", { fingerprint });
-  queryBuilder.where("minute > toStartOfMinute(fromUnixTimestamp64Milli({sinceMs: Int64}))", {
+  // The creation minute is INCLUDED — its occurrences are what the old
+  // `minute > since` filter dropped.
+  queryBuilder.where("minute >= toStartOfMinute(fromUnixTimestamp64Milli({sinceMs: Int64}))", {
     sinceMs: since.getTime(),
   });
   queryBuilder.groupBy("error_fingerprint, bucket_epoch");
@@ -152,16 +234,34 @@ export async function readWatchErrorRecurrence(
 
   const [error, rows] = await queryBuilder.execute();
   if (error) throw error;
-  if (!rows || rows.length === 0) return null;
 
-  let earliest = rows[0]!.bucket_epoch;
-  let countSince = 0;
-  for (const row of rows) {
-    if (row.bucket_epoch < earliest) earliest = row.bucket_epoch;
-    countSince += row.count;
+  let earliestAfterMs: number | null = null;
+  let countAfter = 0;
+  let creationMinuteCount = 0;
+
+  for (const row of rows ?? []) {
+    const bucketMs = row.bucket_epoch * 1000;
+    if (bucketMs <= sinceMinuteMs) {
+      creationMinuteCount += row.count;
+      continue;
+    }
+    countAfter += row.count;
+    if (earliestAfterMs === null || bucketMs < earliestAfterMs) earliestAfterMs = bucketMs;
   }
 
-  return { occurredAt: new Date(earliest * 1000), countSince };
+  // The earliest time we can PROVE an occurrence at: a bucket that starts after
+  // the creation minute, or — when the only evidence is in that minute, or the
+  // rollup hasn't caught up — the exact `last_seen`.
+  const useBucket = earliestAfterMs !== null && earliestAfterMs < lastSeenAt.getTime();
+
+  return {
+    occurredAt: useBucket ? new Date(earliestAfterMs!) : lastSeenAt,
+    occurredAtPrecision: useBucket ? "minute" : "exact",
+    // At least the one `errors_v1` proved, even if the rollup lags behind it.
+    countSince: Math.max(1, countAfter),
+    countApproximate: creationMinuteCount > 0,
+    lastSeenAt,
+  };
 }
 
 const HEALTH_SEVERITIES = new Set<string>(["ok", "warn", "crit"]);

@@ -41,16 +41,38 @@ export type WatchRunRow = {
 };
 
 export type WatchQueueDepth = {
-  /** Current pending count for the queue. */
+  /** Pending count for the queue, as of `asOf`. */
   depth: number;
   source: "live_queue" | "queue_metrics";
+  /**
+   * Whether the reading describes the queue RIGHT NOW. A live counter always
+   * does; an analytics bucket only does while it's fresh enough to cover the
+   * present. A stale reading can never answer "drained" — see
+   * `checkBacklogDrain`.
+   */
+  current: boolean;
+  /** What instant the reading describes, when it isn't the live counter. */
+  asOf?: Date;
 };
 
-/** The first occurrence of the watched error after the watch's `since`, if any. */
+/** What we know about the watched error's occurrences relative to `since`. */
 export type WatchErrorRecurrence = {
-  occurredAt: Date;
-  /** Occurrences counted in the same window. */
+  /**
+   * The earliest occurrence PROVEN to be after `since`, or null when nothing has
+   * recurred. Null with a `lastSeenAt` means "seen before, not since".
+   */
+  occurredAt: Date | null;
+  /** How precisely `occurredAt` is known: to the millisecond, or to its minute. */
+  occurredAtPrecision: "exact" | "minute" | null;
+  /** Occurrences after `since`. A LOWER BOUND when `countApproximate`. */
   countSince: number;
+  /**
+   * True when `countSince` can't be split exactly — occurrences in the minute
+   * the watch was created can't be told apart from the error that prompted it.
+   */
+  countApproximate: boolean;
+  /** The fingerprint's most recent occurrence, whenever it was. */
+  lastSeenAt: Date | null;
 };
 
 export type WatchHealthSeverity = "ok" | "warn" | "crit";
@@ -73,7 +95,10 @@ export type WatchCheckDeps = {
   queueExists: (queue: string) => Promise<boolean>;
   /** Current pending count, live run-queue first with a ClickHouse fallback. */
   readQueueDepth: (queue: string) => Promise<WatchQueueDepth | null>;
-  /** First occurrence of `fingerprint` strictly after `since`, plus the count. */
+  /**
+   * What's known about `fingerprint` relative to `since`. `null` means the
+   * fingerprint has no occurrences at all in this environment.
+   */
   readErrorRecurrence: (fingerprint: string, since: Date) => Promise<WatchErrorRecurrence | null>;
   /** The health report's current verdict for the watch's environment. */
   readHealth: () => Promise<WatchHealthSnapshot | null>;
@@ -129,9 +154,14 @@ function formatMs(ms: number): string {
 export type WatchWaitBasis = "queued_at" | "delay_until" | "created_at";
 
 /**
- * The wait a run has accumulated, with the ONLY label the data supports:
- * `queuedAt` present -> a real queue wait; a future `delayUntil` -> a schedule,
- * not latency; otherwise time from creation, said out loud.
+ * The wait a run has accumulated, with the ONLY label the data supports: a
+ * `queuedAt` that belongs to THIS attempt -> a real queue wait; a future
+ * `delayUntil` -> a schedule, not latency; otherwise time from creation, said out
+ * loud.
+ *
+ * A resumed/retried/paused run's `queuedAt` is a leftover from the first enqueue,
+ * so it is not measured from at all: a number that isn't this attempt's queue
+ * wait must never be worded as one, even with a flag next to it.
  */
 export function describeRunWait(
   run: WatchRunRow,
@@ -140,13 +170,13 @@ export function describeRunWait(
   waitMs: number | null;
   waitBasis: WatchWaitBasis;
   waitLabel: string;
-  /** False when `queuedAt` can't be read as this attempt's queue wait. */
+  /** True only when the wait IS this attempt's queue wait. */
   queueWaitReliable: boolean;
 } {
   const queueWaitReliable = run.queuedAt !== null && !STALE_QUEUED_AT_STATUSES.has(run.status);
   const end = run.startedAt ?? now;
 
-  if (run.queuedAt) {
+  if (run.queuedAt && queueWaitReliable) {
     const waitMs = Math.max(0, end.getTime() - run.queuedAt.getTime());
     return {
       waitMs,
@@ -165,11 +195,16 @@ export function describeRunWait(
     };
   }
 
+  // Either there is no `queuedAt`, or the one we have belongs to an earlier
+  // attempt. Both fall back to the run's age, and say that's what it is.
   const waitMs = Math.max(0, end.getTime() - run.createdAt.getTime());
+  const resumeOrRetry = run.queuedAt !== null;
   return {
     waitMs,
     waitBasis: "created_at",
-    waitLabel: `time from creation: ${formatMs(waitMs)}`,
+    waitLabel: resumeOrRetry
+      ? `waiting to ${run.status === "RETRYING_AFTER_FAILURE" ? "retry" : "resume"}; time from creation: ${formatMs(waitMs)}`
+      : `time from creation: ${formatMs(waitMs)}`,
     queueWaitReliable,
   };
 }
@@ -256,6 +291,11 @@ export async function checkRunFinished(
  * backlog_drain — satisfied when the queue's current pending count is 0. A queue
  * that no longer exists can never drain in an observable sense, so that's
  * `terminal_unsatisfied`; a depth we can't read is `unavailable`, never "drained".
+ *
+ * A zero needs a reading that describes NOW (`current`): a stale analytics bucket
+ * that happened to be empty says nothing about the runs queued after it, so it's
+ * `unavailable` too. A stale NON-zero depth is still worth reporting — the queue
+ * demonstrably wasn't empty — and is marked approximate.
  */
 export async function checkBacklogDrain(
   spec: Extract<WatchSpec, { kind: "backlog_drain" }>,
@@ -277,7 +317,18 @@ export async function checkBacklogDrain(
     return { result: "unavailable", facts: { queue: spec.queue, reason: "depth_unavailable" } };
   }
 
-  const facts = { queue: spec.queue, depth: depth.depth, depthSource: depth.source };
+  const facts = {
+    queue: spec.queue,
+    depth: depth.depth,
+    depthSource: depth.source,
+    depthAsOf: depth.asOf?.toISOString() ?? null,
+    depthApproximate: !depth.current,
+  };
+
+  if (depth.depth === 0 && !depth.current) {
+    return { result: "unavailable", facts: { ...facts, reason: "depth_stale" } };
+  }
+
   return { result: depth.depth === 0 ? "satisfied" : "pending", facts };
 }
 
@@ -291,9 +342,13 @@ export function normalizeErrorFingerprint(fingerprint: string): string {
 }
 
 /**
- * error_recurrence — satisfied on the first occurrence strictly after the
- * server-set `since`. `since` is never caller-set, so the model can't backdate
- * the window and make a pre-existing error look like a recurrence.
+ * error_recurrence — satisfied on the first occurrence proven to be after the
+ * server-set `since`. `since` is never caller-set, so the model can't backdate the
+ * window and make a pre-existing error look like a recurrence.
+ *
+ * The facts carry the PRECISION of what they claim (`occurredAtPrecision`,
+ * `countApproximate`) and, when nothing recurred, when the error was last seen —
+ * so the wake narration can't assert more than the data supports.
  */
 export async function checkErrorRecurrence(
   spec: Extract<WatchSpec, { kind: "error_recurrence" }>,
@@ -305,7 +360,13 @@ export async function checkErrorRecurrence(
   const base = { fingerprint, since: input.since.toISOString() };
 
   if (!recurrence) {
-    return { result: "pending", facts: { ...base, countSince: 0 } };
+    return { result: "pending", facts: { ...base, countSince: 0, lastSeenAt: null } };
+  }
+
+  const lastSeenAt = recurrence.lastSeenAt?.toISOString() ?? null;
+
+  if (!recurrence.occurredAt) {
+    return { result: "pending", facts: { ...base, countSince: 0, lastSeenAt } };
   }
 
   return {
@@ -313,7 +374,10 @@ export async function checkErrorRecurrence(
     facts: {
       ...base,
       occurredAt: recurrence.occurredAt.toISOString(),
+      occurredAtPrecision: recurrence.occurredAtPrecision,
       countSince: recurrence.countSince,
+      countApproximate: recurrence.countApproximate,
+      lastSeenAt,
     },
   };
 }
