@@ -166,15 +166,27 @@ export type TriggerConfig = {
   logLevel?: LogLevel;
 
   /**
+   * The maximum duration in compute-time **seconds** that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
+   *
+   * Minimum value is 5 seconds.
+   *
+   * Setting this value will affect all tasks in the project. You can override it on a per-task basis.
+   *
+   * @see https://trigger.dev/docs/tasks/overview#maxcomputeseconds-option
+   */
+  maxComputeSeconds?: number;
+
+  /**
    * The maximum duration in compute-time seconds that a task run is allowed to run. If the task run exceeds this duration, it will be stopped.
    *
    * Minimum value is 5 seconds
    *
    * Setting this value will effect all tasks in the project.
    *
+   * @deprecated Use `maxComputeSeconds` instead — same semantics, clearer unit. If both are set, `maxComputeSeconds` wins.
    * @see https://trigger.dev/docs/tasks/overview#maxduration-option
    */
-  maxDuration: number;
+  maxDuration?: number;
 
   /**
    * Set a default time-to-live (TTL) for all task runs in the project. If a run is not executed within this time, it will be removed from the queue and never execute.
