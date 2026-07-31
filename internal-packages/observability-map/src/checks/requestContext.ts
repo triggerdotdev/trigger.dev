@@ -1,4 +1,5 @@
 import type { CheckResult, EntryPoint, LogCall } from "../types.js";
+import { isTrivial } from "../triviality.js";
 
 const ID = "request-context";
 
@@ -25,18 +26,31 @@ function failurePathLogs(ep: EntryPoint): LogCall[] {
  * is not attributed either and gets no free pass here. An incident tells you which route and which
  * request; whose environment it was is only ever in the fields the route passes itself.
  *
- * Applicable only where the route reports a failure itself, meaning it logs from inside a catch. A
- * route that rethrows silently has handed the report to Sentry and there is nothing here to
- * inspect. That gate has a perverse edge, noted in the task 5 report: deleting a log line moves a
- * route from fail to not-applicable.
+ * Applicability turns on whether the route keeps its own failures, never on whether it logs. The
+ * first version made a route not-applicable when it had no failure-path log, which excused the very
+ * thing the check exists to find and meant deleting a log line took a route out of the report.
+ * Every non-trivial entry point is now judged:
+ *
+ * - no catch at all: pass. The error reaches the central handler, which is the intended path in
+ *   this codebase, and the tenant it does not name there is a platform-level gap reported once
+ *   rather than against each of 222 routes.
+ * - a catch: the route decided the outcome itself, so it has to say whose failure it was.
+ *
+ * Deleting a log call can then only make a verdict worse or leave it alone, and adding a catch
+ * without a report is a regression the check reports, which is the direction the incentive should
+ * run in. The one move that still improves a verdict is deleting the try/catch outright, and that
+ * hands the error back to the central handler, which `error-classification` also treats as correct.
  */
 export const requestContext = {
   id: ID,
   run(ep: EntryPoint): CheckResult {
-    const logs = failurePathLogs(ep);
-    if (logs.length === 0) {
-      return { id: ID, status: "not-applicable", detail: "reports no failure of its own" };
+    if (isTrivial(ep)) {
+      return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
+    if (!ep.hasTryCatch) {
+      return { id: ID, status: "pass", detail: "hands its failures to the central handler" };
+    }
+    const logs = failurePathLogs(ep);
     const named = logs.find((l) => l.fields.some((f) => IDENTIFIER_FIELD.test(f)));
     if (named) {
       const fields = named.fields.filter((f) => IDENTIFIER_FIELD.test(f));
@@ -45,7 +59,10 @@ export const requestContext = {
     return {
       id: ID,
       status: "fail",
-      detail: "logs its failure without naming an environment, project, organization, run or user",
+      detail:
+        logs.length === 0
+          ? "keeps its failures and records nothing about whose they were"
+          : "logs its failure without naming an environment, project, organization, run or user",
     };
   },
 };

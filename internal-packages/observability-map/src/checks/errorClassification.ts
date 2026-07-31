@@ -24,6 +24,12 @@ export const BUILDERS = new Set([
   "dashboardAction",
 ]);
 
+/**
+ * A parse: `await request.json()`, `JSON.parse(raw)`. The dot matters, it keeps Remix's `json({})`
+ * response helper out. Matched against `calleeTexts`, which carries the whole callee path.
+ */
+const PARSE_CALL = /(^|\.)JSON\.parse$|\.json$/;
+
 export function usesBuilder(ep: EntryPoint): boolean {
   return (
     (ep.loaderInitializerCallee !== null && BUILDERS.has(ep.loaderInitializerCallee)) ||
@@ -43,6 +49,16 @@ export function usesBuilder(ep: EntryPoint): boolean {
  * false means every catch in the entry point takes the same way out whatever was thrown. The
  * asymmetry that buys: one good catch alongside one swallow reads as a pass. This check misses
  * those rather than inventing them.
+ *
+ * `catchesNarrowly` excuses the guard that wraps one operation and answers for that operation:
+ * `try { body = await request.json() } catch { 400 }` neither branches nor rethrows and does not
+ * need to. On its own it excuses too much, because a one-statement try around an awaited service
+ * call is exactly as narrow as one around a parse: applied unencumbered it passes
+ * `try { await service.call(run) } catch { 500 }`, and it passes the design's own swallow fixture,
+ * `try { return await prisma.thing.findMany() } catch { return null }`. So the exemption also asks
+ * that the body parse something, which is the idiom the exemption was justified by. Over the real
+ * tree that combination clears the nine verbatim `request.json()` guards and holds back the four
+ * hand-read findings, see the task 5 report.
  */
 export const errorClassification = {
   id: ID,
@@ -50,12 +66,16 @@ export const errorClassification = {
     if (isTrivial(ep)) {
       return { id: ID, status: "not-applicable", detail: "trivial route" };
     }
-    if (ep.hasTryCatch && !ep.catchRethrows && !ep.catchBranches) {
+    const guardsAParse = ep.catchesNarrowly && ep.calleeTexts.some((t) => PARSE_CALL.test(t));
+    if (ep.hasTryCatch && !ep.catchRethrows && !ep.catchBranches && !guardsAParse) {
       return {
         id: ID,
         status: "fail",
         detail: "catches its errors and takes one way out regardless of what was thrown",
       };
+    }
+    if (guardsAParse) {
+      return { id: ID, status: "pass", detail: "guards a parse, not the handler" };
     }
     if (ep.catchRethrows || ep.catchBranches) {
       return { id: ID, status: "pass", detail: "the catch distinguishes what it caught" };

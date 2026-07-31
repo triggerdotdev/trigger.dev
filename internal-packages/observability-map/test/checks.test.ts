@@ -132,6 +132,47 @@ describe("error-classification", () => {
     expect(r.status).toBe("not-applicable");
   });
 
+  // A narrow guard around one operation classifies an expected failure without needing to branch
+  // or rethrow. `catchesNarrowly` is what tells it apart from a handler-wide catch.
+  it("passes a narrow guard around a single parse", () => {
+    const r = run(
+      "error-classification",
+      "resources.timezone.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         let data;
+         try { data = await request.json(); }
+         catch { return json({ error: "Invalid JSON" }, { status: 400 }); }
+         const saved = await prisma.preference.create({ data });
+         return json({ saved });
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  // False positive fixture for the narrow rule: a narrow parse guard must not launder the broad
+  // handler catch sitting next to it. `catchesNarrowly` is false when any guarded try is broad.
+  it("still fails when a narrow guard sits beside a handler-wide swallow", () => {
+    const r = run(
+      "error-classification",
+      "api.v1.thing.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         let data;
+         try { data = await request.json(); }
+         catch { return json({ error: "Invalid JSON" }, { status: 400 }); }
+         try {
+           const thing = await prisma.thing.create({ data });
+           const audit = await prisma.audit.create({ data: { thing: thing.id } });
+           return json({ thing, audit });
+         } catch (error) {
+           return json({ error: "Something went wrong" }, { status: 500 });
+         }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
   // False positive fixture: the only try/catch in the file belongs to the component.
   it("does not flag a route whose try/catch is in the React component", () => {
     const r = run(
@@ -313,7 +354,7 @@ describe("request-context", () => {
     expect(r.status).toBe("fail");
   });
 
-  it("is not applicable to a route that logs nothing on its failure path", () => {
+  it("passes a route that hands its failures to the central handler", () => {
     const r = run(
       "request-context",
       "api.v1.q.ts",
@@ -324,10 +365,10 @@ describe("request-context", () => {
          return json(await prisma.thing.findMany({ where: { environmentId: auth.environment.id } }));
        }`
     );
-    expect(r.status).toBe("not-applicable");
+    expect(r.status).toBe("pass");
   });
 
-  it("is not applicable when the only log sits outside the catch", () => {
+  it("fails a route that catches but only names an identifier outside the catch", () => {
     const r = run(
       "request-context",
       "api.v1.q.ts",
@@ -338,7 +379,45 @@ describe("request-context", () => {
          try { return await prisma.thing.findMany(); } catch (e) { throw e; }
        }`
     );
-    expect(r.status).toBe("not-applicable");
+    expect(r.status).toBe("fail");
+  });
+
+  // A route that catches and reports nothing at all is the case the log-based applicability gate
+  // used to excuse. It is a finding, not an exemption.
+  it("fails a route that catches and reports nothing", () => {
+    const r = run(
+      "request-context",
+      "api.v1.q.ts",
+      `import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return await prisma.thing.findMany(); }
+         catch (error) { return json({ error: "Internal Server Error" }, { status: 500 }); }
+       }`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  // The incentive fixture pair. The two routes differ by one line, the log call, and nothing else.
+  // Deleting that line must never improve the verdict or drop the route out of the report.
+  it("never improves a verdict when the log call is deleted", () => {
+    const body = (log: string) =>
+      `import { logger } from "~/services/logger.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ params }) {
+         try { return await prisma.thing.findMany(); }
+         catch (error) { ${log} throw error; }
+       }`;
+
+    const withLog = run(
+      "request-context",
+      "api.v1.q.ts",
+      body(`logger.error("failed", { environmentId: params.envId, error });`)
+    );
+    const withoutLog = run("request-context", "api.v1.q.ts", body(""));
+
+    expect(withLog.status).toBe("pass");
+    expect(withoutLog.status).toBe("fail");
+    expect(withoutLog.status).not.toBe("not-applicable");
   });
 
   // False positive fixture: the component logs every identifier there is, inside its own catch.
