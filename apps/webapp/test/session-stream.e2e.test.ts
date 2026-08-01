@@ -12,6 +12,7 @@
  */
 import { randomBytes } from "crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { SessionStreamInstance } from "@trigger.dev/core/v3";
 import type { SessionStreamTestServer } from "@internal/testcontainers/webapp";
 import { startSessionStreamTestServer } from "@internal/testcontainers/webapp";
 import { seedTestEnvironment } from "./helpers/seedTestEnvironment";
@@ -65,7 +66,16 @@ async function setupSession() {
     basin: server.s2.basin,
     streamName,
   });
-  return { addressingKey, token, producer, baseUrl: server.webapp.baseUrl };
+  return { addressingKey, token, producer, streamName, baseUrl: server.webapp.baseUrl };
+}
+
+function readableFrom<T>(chunks: T[]): ReadableStream<T> {
+  return new ReadableStream<T>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+      controller.close();
+    },
+  });
 }
 
 describe("session stream e2e", () => {
@@ -223,6 +233,55 @@ describe("session stream e2e", () => {
     expect(result!.status).toBe(200);
     expect(result!.sessionSettled).toBe("true");
     expect(result!.closedMs).toBeLessThan(8_000);
+  });
+
+  /**
+   * E10 head-start handover: the resume cursor the S2 stream writer reports
+   * from `wait()` must point AT the last record it wrote, not one past it.
+   * `chat.ln`'s warm process drains step 1 to `session.out`, hands that
+   * cursor to the agent's resume subscribe, and the read proxy resumes from
+   * `cursor + 1`. S2's append `end` is exclusive (last seq + 1), so if the
+   * writer reports `end` the agent's first post-handover record is skipped.
+   */
+  it("E10 head-start handover cursor does not skip the first post-handover record", async () => {
+    const { addressingKey, token, producer, streamName, baseUrl } = await setupSession();
+
+    const writer = new SessionStreamInstance<{ n: number }>({
+      apiClient: undefined as never,
+      baseUrl,
+      sessionId: addressingKey,
+      io: "out",
+      source: readableFrom([{ n: 0 }, { n: 1 }]),
+      initializeSession: async () => ({
+        headers: {
+          "x-s2-access-token": "ignored",
+          "x-s2-basin": server.s2.basin,
+          "x-s2-stream-name": streamName,
+          "x-s2-endpoint": server.s2.endpoint,
+        },
+      }),
+    });
+
+    const { lastEventId } = await writer.wait();
+    expect(lastEventId).toBeDefined();
+
+    const agentSeq = await producer.appendData({ n: 2 }, "agent-0");
+
+    const { parts } = await collectSessionOut({
+      baseUrl,
+      addressingKey,
+      token,
+      lastEventId,
+      until: (p) => p.some((x) => x.chunk != null),
+      maxMs: 15_000,
+    });
+
+    const dataChunks = parts
+      .filter((p) => p.chunk != null)
+      .map((p) => (p.chunk as { n: number }).n);
+
+    expect(dataChunks).toEqual([2]);
+    expect(parts.map((p) => Number(p.id))).toContain(agentSeq);
   });
 
   it("E11 in/append delivers the record on the .in channel", async () => {
