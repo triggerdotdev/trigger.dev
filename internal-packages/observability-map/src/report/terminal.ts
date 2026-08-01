@@ -17,7 +17,7 @@ const gauge = (score: number | null) => {
  * of the fixable, route-specific gaps the list exists to surface. That gap is reported once, as
  * `AUDIT`, below.
  */
-const scoredFailures = (e: ScoredEntry) =>
+export const scoredFailures = (e: ScoredEntry) =>
   e.checks.filter((c) => SCORED_CHECK_IDS.includes(c.id) && c.status === "fail");
 
 /**
@@ -27,10 +27,39 @@ const scoredFailures = (e: ScoredEntry) =>
  * An entry that fails something else as well stays in the list with all of its findings, so a
  * route like `/account/tokens` still shows the request-context gap alongside the rest.
  */
-const contextOnly = (e: ScoredEntry) => {
+export const contextOnly = (e: ScoredEntry) => {
   const failures = scoredFailures(e);
   return failures.length === 1 && failures[0]!.id === "request-context";
 };
+
+/** The AUDIT figure, shared with `prComment.ts` so both renderers say the same thing. Null when
+ * there is nothing to report, i.e. no sensitive mutation exists. */
+export function auditLine(report: MapReport): string | null {
+  const { sensitiveMutations, withAudit } = report.auditGap;
+  if (sensitiveMutations === 0) return null;
+  // The closing sentence is a claim about the codebase, so it is only made when the figure in
+  // front of it supports it. It was printed unconditionally, including next to a non-zero count.
+  const gap =
+    withAudit === 0
+      ? " No audit helper exists in the webapp."
+      : ` ${sensitiveMutations - withAudit} without one.`;
+  return `AUDIT   ${withAudit} of ${sensitiveMutations} sensitive mutations record an actor.${gap}`;
+}
+
+/** The CONTEXT figure, shared with `prComment.ts`. Null when nothing is applicable. */
+export function contextLine(report: MapReport): string | null {
+  const { applicable, naming } = report.contextGap;
+  if (applicable === 0) return null;
+  const collapsed = report.entries.filter(contextOnly);
+  const sensitive = collapsed.filter((e) => e.sensitive).length;
+  return (
+    `CONTEXT   ${naming} of ${applicable} entry points name a tenant on a failure path.` +
+    (collapsed.length > 0
+      ? ` ${collapsed.length} appear${collapsed.length === 1 ? "s" : ""} only here, ` +
+        `${sensitive} of them sensitive, in the JSON rather than the list below.`
+      : "")
+  );
+}
 
 export function renderTerminal(report: MapReport): string {
   const lines: string[] = [];
@@ -52,32 +81,16 @@ export function renderTerminal(report: MapReport): string {
     }/${report.sensitiveCohort.n} entry points`
   );
 
-  const { sensitiveMutations, withAudit } = report.auditGap;
-  if (sensitiveMutations > 0) {
+  const audit = auditLine(report);
+  if (audit) {
     lines.push("");
-    // The closing sentence is a claim about the codebase, so it is only made when the figure in
-    // front of it supports it. It was printed unconditionally, including next to a non-zero count.
-    const gap =
-      withAudit === 0
-        ? " No audit helper exists in the webapp."
-        : ` ${sensitiveMutations - withAudit} without one.`;
-    lines.push(
-      `AUDIT   ${withAudit} of ${sensitiveMutations} sensitive mutations record an actor.${gap}`
-    );
+    lines.push(audit);
   }
 
-  const { applicable, naming } = report.contextGap;
-  if (applicable > 0) {
-    const collapsed = report.entries.filter(contextOnly);
-    const sensitive = collapsed.filter((e) => e.sensitive).length;
+  const context = contextLine(report);
+  if (context) {
     lines.push("");
-    lines.push(
-      `CONTEXT   ${naming} of ${applicable} entry points name a tenant on a failure path.` +
-        (collapsed.length > 0
-          ? ` ${collapsed.length} appear${collapsed.length === 1 ? "s" : ""} only here, ` +
-            `${sensitive} of them sensitive, in the JSON rather than the list below.`
-          : "")
-    );
+    lines.push(context);
   }
 
   if (report.suppressions.checks > 0) {

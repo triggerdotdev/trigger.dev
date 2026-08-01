@@ -1,5 +1,6 @@
-import { existsSync, rmSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { main, type Io } from "../src/cli.js";
 
 const REPORT_FILE = resolve(__dirname, "../../../observability-map.json");
@@ -67,5 +68,33 @@ describe("map", () => {
     expect(r.out).toContain("COVERAGE");
     expect(r.out).toContain("FIX FIRST");
     expect(existsSync(REPORT_FILE)).toBe(false);
+  });
+});
+
+describe("map --routes=<dir>", () => {
+  it("scans the directory it names instead of the repo's routes tree", () => {
+    const dir = mkdtempSync(join(tmpdir(), "obs-map-routes-"));
+    writeFileSync(
+      join(dir, "resources.only.ts"),
+      `export const loader = () => new Response("ok");`
+    );
+
+    const r = run("--routes=" + dir, "--json", "--no-write");
+
+    expect(r.code).toBe(0);
+    const parsed = JSON.parse(r.out);
+    expect(parsed.entries).toHaveLength(1);
+    expect(parsed.entries[0].fileName).toBe("resources.only.ts");
+
+    rmSync(dir, { recursive: true });
+  });
+
+  it("exits 1 with a message when the directory does not exist", () => {
+    const dir = join(tmpdir(), "obs-map-routes-does-not-exist");
+    const r = run("--routes=" + dir);
+
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("not a readable directory");
+    expect(r.out).toBe("");
   });
 });

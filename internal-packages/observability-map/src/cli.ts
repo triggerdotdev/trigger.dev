@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { EntryPoint } from "./types.js";
@@ -63,7 +63,25 @@ export function main(argv: string[], io: Io = processIo): number {
   const target = args.find((a) => !a.startsWith("--"));
 
   const repoRoot = findRepoRoot(dirname(fileURLToPath(import.meta.url)));
-  const routesDir = resolve(repoRoot, DEFAULT_ROUTES);
+  const routesFlag = args.find((a) => a.startsWith("--routes="));
+
+  let routesDir: string;
+  if (routesFlag) {
+    routesDir = resolve(process.cwd(), routesFlag.slice("--routes=".length));
+    let isDir = false;
+    try {
+      isDir = statSync(routesDir).isDirectory();
+    } catch {
+      isDir = false;
+    }
+    if (!isDir) {
+      io.err(`--routes: not a readable directory: ${routesDir}\n`);
+      return 1;
+    }
+  } else {
+    routesDir = resolve(repoRoot, DEFAULT_ROUTES);
+  }
+
   const { entryPoints, parseFailures } = scanDirectory(routesDir);
 
   if (target) {

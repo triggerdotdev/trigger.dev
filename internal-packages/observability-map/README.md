@@ -20,6 +20,13 @@ suppresses. The single-route mode takes either the route path the report prints 
 the file name (`api.v1.token.ts`). An exact match wins over the routes it is a prefix of, and an
 ambiguous prefix warns and names the alternatives rather than silently picking one.
 
+## CI
+
+A PR that touches `apps/webapp/app/routes` or this package gets a sticky comment scanning head
+against the PR's merge base, with the score, what changed, and the current fix list. It is
+report-only: nothing here fails the build or blocks a merge, and the gate stays deferred until a
+later phase decides to add one. See `.github/workflows/observability-map.yml`.
+
 ## What 17 means
 
 It is the mean score of the 412 entry points that had at least one applicable check, where an
