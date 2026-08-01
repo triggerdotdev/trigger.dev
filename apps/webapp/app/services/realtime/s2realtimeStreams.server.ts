@@ -193,7 +193,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         "X-S2-Basin": this.basin,
         "X-S2-Flush-Interval-Ms": this.flushIntervalMs.toString(),
         "X-S2-Max-Retries": this.maxRetries.toString(),
-        ...(this.endpoint ? { "X-S2-Endpoint": this.endpoint } : {}),
+        "X-S2-Endpoint": this.baseUrl,
       },
     };
   }

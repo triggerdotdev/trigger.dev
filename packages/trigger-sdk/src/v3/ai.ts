@@ -6068,7 +6068,9 @@ function chatAgent<
          * in-flight `.in` message dispatches it as the first turn. The recovery
          * block already advanced the `.in` cursor past the recovered message,
          * so the preload wait below would otherwise strand it (the run would
-         * sit waiting for a "first message" that already arrived).
+         * sit waiting for a "first message" that already arrived). `onPreload`
+         * is a one-time start-of-run hook and is deliberately not re-run on a
+         * recovered/continuation turn.
          */
         let dispatchedRecoveredFirstTurn = false;
         if (preloaded && bootInjectedQueue.length > 0) {
