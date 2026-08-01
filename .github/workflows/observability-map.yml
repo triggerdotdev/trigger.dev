@@ -50,39 +50,9 @@ jobs:
           pnpm --filter @internal/observability-map exec vitest run \
             test/mutationCorpus.test.ts --testTimeout=120000 --disable-console-intercept
 
-  # The package has one deliberate test against the live route tree
-  # (internal-packages/observability-map/test/integration.test.ts), and this workflow already
-  # triggers on exactly the paths that can break it. Running just this package here is what keeps
-  # a webapp-only pull request from merging a renamed route green and leaving the failure for main
-  # or for the next unrelated internal-packages pull request. Unlike the report job below, this one
-  # is meant to be able to fail, and it runs for fork pull requests because it needs no token.
-  unit-tests:
-    name: 🧪 Package tests
-    runs-on: warp-ubuntu-latest-x64-4x
-    steps:
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: ⎔ Setup pnpm
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
-        with:
-          version: 10.33.2
-
-      - name: ⎔ Setup node
-        uses: WarpBuilds/setup-node@bc639b444d583175926b588962199c247d23e8d3 # v6
-        with:
-          node-version: 24.18.0
-          cache: "pnpm"
-
-      - name: 📥 Download deps
-        run: pnpm install --frozen-lockfile
-
-      - name: 🧪 Run the package tests
-        run: pnpm --filter @internal/observability-map run test
-
+  # The package's own tests are NOT run here. They gate through pr_checks.yml, which is the only
+  # workflow the all-checks aggregate can see, so a job in this file would report a result nobody
+  # is required to wait for. See unit-tests-observability-map.yml and the obsmap filter.
   report:
     runs-on: warp-ubuntu-latest-x64-4x
     # Only this job comments, so only this job gets the write.

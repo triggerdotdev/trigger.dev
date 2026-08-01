@@ -22,11 +22,15 @@ import { SCORED_CHECK_IDS } from "../src/checks/index.js";
  * survive routes being added, renamed and deleted, and they are the only things a fixture tree
  * cannot tell us, since a fixture only contains shapes somebody thought to write down.
  *
- * What runs this for a webapp pull request is the `unit-tests` job in
- * `.github/workflows/observability-map.yml`, which already triggers on `apps/webapp/app/routes/**`
- * and runs this package alone. Widening `pr_checks.yml`'s `internal` filter to those paths was
- * tried and reverted: it ran all eighteen internal packages, twelve shards with postgres,
- * clickhouse, redis and electric, to protect this one test.
+ * What runs this for a webapp pull request is `.github/workflows/unit-tests-observability-map.yml`,
+ * called from `pr_checks.yml` behind an `obsmap` paths filter covering this package and
+ * `apps/webapp/app/routes/**`, and listed in the `all-checks` aggregate so it actually gates.
+ *
+ * Two shapes were tried and rejected on the way here. Widening `pr_checks.yml`'s `internal` filter
+ * to those paths ran all eighteen internal packages, twelve shards with postgres, clickhouse,
+ * redis and electric, to protect this one test. Putting the job in `observability-map.yml`
+ * instead was targeted but gated nothing, because `all-checks` needs an explicit list of jobs and
+ * cannot see another workflow.
  */
 const ROUTES = resolve(__dirname, "../../../apps/webapp/app/routes");
 
@@ -106,6 +110,54 @@ describe("the report workflow's two readers of the comment lookup", () => {
     const lookup = steps().find((step) => step.includes('startswith("<!-- observability-map'))!;
     expect(lookup).toBeDefined();
     expect(lookup).toContain("exit }'");
+  });
+});
+
+/**
+ * The gating half of the same problem. A test job that nothing waits for is decoration, and the
+ * first attempt at this was exactly that: a job inside `observability-map.yml`, which reads well
+ * and gates nothing, because `pr_checks.yml`'s `all-checks` aggregate needs an explicit list of
+ * jobs and cannot see another workflow.
+ *
+ * Text checks again, over two workflow files. They catch the wiring coming apart, not whether
+ * GitHub agrees, which only a pull request can answer.
+ */
+describe("the package's tests are wired into the gate", () => {
+  const PR_CHECKS = resolve(__dirname, "../../../.github/workflows/pr_checks.yml");
+  const REUSABLE = resolve(
+    __dirname,
+    "../../../.github/workflows/unit-tests-observability-map.yml"
+  );
+
+  function read(path: string): string {
+    if (!existsSync(path)) throw new Error(`workflow is missing: ${path}`);
+    return readFileSync(path, "utf8");
+  }
+
+  it("calls the reusable workflow from pr_checks behind a filter of its own", () => {
+    const text = read(PR_CHECKS);
+    expect(text).toContain("uses: ./.github/workflows/unit-tests-observability-map.yml");
+    expect(text).toContain("if: needs.changes.outputs.obsmap == 'true'");
+    expect(read(REUSABLE)).toContain("workflow_call");
+  });
+
+  it("watches the live route tree as well as the package itself", () => {
+    const filter = read(PR_CHECKS).split("            obsmap:")[1]!.split("            cli:")[0]!;
+    expect(filter).toContain("'internal-packages/observability-map/**'");
+    expect(filter).toContain("'apps/webapp/app/routes/**'");
+  });
+
+  it("is in the all-checks needs list, or it gates nothing", () => {
+    const needs = read(PR_CHECKS).split("    needs:").pop()!.split("    if: always()")[0]!;
+    expect(needs).toContain("- obsmap");
+  });
+
+  it("does not also run the same suite in the report workflow", () => {
+    const reportWorkflow = readFileSync(
+      resolve(__dirname, "../../../.github/workflows/observability-map.yml"),
+      "utf8"
+    );
+    expect(reportWorkflow).not.toContain("run test");
   });
 });
 
