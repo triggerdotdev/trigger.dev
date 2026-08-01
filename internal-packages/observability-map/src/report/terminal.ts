@@ -56,7 +56,7 @@ export function contextLine(report: MapReport): string | null {
     `CONTEXT   ${naming} of ${applicable} entry points name a tenant on a failure path.` +
     (collapsed.length > 0
       ? ` ${collapsed.length} appear${collapsed.length === 1 ? "s" : ""} only here, ` +
-        `${sensitive} of them sensitive, in the JSON rather than the list below.`
+        `${sensitive} of them sensitive, in the JSON rather than the fix list.`
       : "")
   );
 }
