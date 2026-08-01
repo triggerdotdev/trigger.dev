@@ -1,7 +1,8 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { scanDirectory } from "../src/scan.js";
+import { scanDirectory, scanFile } from "../src/scan.js";
 import { buildReport } from "../src/score.js";
+import { SCORED_CHECK_IDS } from "../src/checks/index.js";
 
 const ROUTES = resolve(__dirname, "../../../apps/webapp/app/routes");
 
@@ -43,5 +44,25 @@ describe("scanning the real webapp routes", () => {
     expect(report.global).toBeGreaterThanOrEqual(0);
     expect(report.global).toBeLessThanOrEqual(100);
     expect(Object.keys(report.byFamily).length).toBeGreaterThan(1);
+  });
+
+  // A1, exhaustive: every scored check suppressed on every real route, zero behavioural change.
+  // The old measured-from-visible logic took this global from 17 to 33 and measured from 412 to
+  // 176, because every entry whose only applicable checks were suppressed dropped out of the
+  // mean. Measured must not move: every entry point that had something applicable still does.
+  it("suppressing every scored check on every real route does not raise the global", () => {
+    if (!existsSync(ROUTES)) return;
+    const { entryPoints, parseFailures } = scanDirectory(ROUTES);
+    const before = buildReport(entryPoints, parseFailures);
+
+    const directive = SCORED_CHECK_IDS.map(
+      (id) => `// obs-map-disable ${id} -- exhaustive sweep\n`
+    ).join("");
+    const suppressed = entryPoints.map((ep) => scanFile(ep.fileName, directive + ep.source)!);
+    const after = buildReport(suppressed, parseFailures);
+
+    expect(after.measured).toBe(before.measured);
+    expect(after.unmeasured).toBe(before.unmeasured);
+    expect(after.global).not.toBeGreaterThan(before.global!);
   });
 });

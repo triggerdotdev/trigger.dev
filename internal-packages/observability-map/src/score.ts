@@ -11,7 +11,9 @@ export type ScoredEntry = {
   sensitive: boolean;
   checks: CheckResult[];
   /**
-   * Whether at least one scored check (`SCORED_CHECK_IDS`, so never `audit-trail`) was applicable.
+   * Whether at least one scored check (`SCORED_CHECK_IDS`, so never `audit-trail`) was applicable
+   * before suppression. A fully-suppressed entry stays measured, at its capped score, so a
+   * suppression cannot buy removal from every mean by way of removal from this one.
    * `false` means nothing was measured here: the 100 in `score` is a vacuous default, not a
    * finding, and `buildReport` excludes an unmeasured entry from every mean it computes so that
    * default cannot inflate a figure nobody checked.
@@ -65,7 +67,11 @@ export function scoreEntry(ep: EntryPoint): ScoredEntry {
   };
 
   const visible = scored.filter((c) => !suppressed.has(c.id));
-  const applicable = visible.filter((c) => c.status !== "not-applicable");
+  // Pre-suppression: an entry whose only applicable check gets suppressed still had something to
+  // measure, and must stay in the denominator at its capped score rather than vanish as if nothing
+  // ever applied. `unmeasured` is reserved for entries with no applicable check at all, suppression
+  // or no suppression.
+  const scoredApplicable = scored.filter((c) => c.status !== "not-applicable");
 
   return {
     fileName: ep.fileName,
@@ -79,7 +85,7 @@ export function scoreEntry(ep: EntryPoint): ScoredEntry {
     // shrinks the denominator and the ratio climbs, which is how 33 became 50 became 100: the
     // suppression comment laundered the finding into a point. What a suppression buys is removal
     // from the worklist, with a reason on the record. It cannot buy a better number.
-    measured: applicable.length > 0,
+    measured: scoredApplicable.length > 0,
     score: Math.min(ratio(visible), ratio(scored)),
   };
 }

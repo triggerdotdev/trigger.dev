@@ -116,7 +116,11 @@ ${BUSY_AND_FAILING}`
     expect(suppressed.suppressed).toEqual(["error-classification", "request-context"]);
   });
 
-  it("does not let an entry whose every scored check is suppressed read as measured", () => {
+  // A1. `measured` reads pre-suppression applicability. Before the fix it read `visible`
+  // (post-suppression) applicability, so suppressing an entry's only applicable checks flipped
+  // `measured` to false and dropped the entry, still failing, out of the global mean, every family
+  // mean and the sensitive cohort. `unmeasured` stays for entries nothing was ever applicable to.
+  it("still reads as measured when every applicable scored check is suppressed", () => {
     const suppressed = scoreEntry(
       scanFile(
         "api.v1.b.ts",
@@ -125,7 +129,8 @@ ${BUSY_AND_FAILING}`
 ${BUSY_AND_FAILING}`
       )!
     );
-    expect(suppressed.measured).toBe(false);
+    expect(suppressed.measured).toBe(true);
+    expect(suppressed.score).toBe(0);
   });
 
   it("marks an entry point with nothing applicable as unmeasured, scored 100", () => {
@@ -218,6 +223,52 @@ ${BUSY_AND_FAILING}`
     expect(family.n).toBe(2);
     expect(family.measured).toBe(1);
     expect(family.mean).toBe(scoreEntry(busy).score);
+  });
+});
+
+// A1. `measured` used to read post-suppression (`visible`) applicability, so suppressing an
+// entry's only applicable checks removed it from the global mean, every family mean and the
+// sensitive cohort, rather than keeping it at its capped score. That is how a suppression with no
+// behavioural change moved the global from 17 to 33 tree-wide.
+describe("A1: a suppression cannot raise the global", () => {
+  it("scoring 100 and 0, suppressing every check on the failing entry leaves the global at 50", () => {
+    const passing = scanFile("api.v1.auth.tokens.ts", CLEAN)!;
+    const failing = scanFile("api.v1.busy.ts", BUSY_AND_FAILING)!;
+
+    const before = buildReport([passing, failing], []);
+    expect(before.global).toBe(50);
+
+    const failingSuppressed = scanFile(
+      "api.v1.busy.ts",
+      `// obs-map-disable error-classification -- silence
+// obs-map-disable request-context -- silence
+${BUSY_AND_FAILING}`
+    )!;
+    const after = buildReport([passing, failingSuppressed], []);
+
+    expect(after.global).toBe(50);
+    expect(after.measured).toBe(2);
+  });
+
+  it("suppressing a passing check does not raise the score either", () => {
+    // error-classification branches on the error (pass); request-context never names a tenant
+    // (fail). Not sensitive, so auth-boundary sits out.
+    const source = `import { prisma } from "~/db.server";
+export async function loader() {
+  try { return await prisma.thing.findMany(); }
+  catch (e) { if (e instanceof Error) return null; throw e; }
+}`;
+    const plain = scoreEntry(scanFile("api.v1.mixed.ts", source)!);
+    expect(plain.checks.find((c) => c.id === "error-classification")!.status).toBe("pass");
+
+    const suppressed = scoreEntry(
+      scanFile(
+        "api.v1.mixed.ts",
+        `// obs-map-disable error-classification -- silence a pass
+${source}`
+      )!
+    );
+    expect(suppressed.score).toBeLessThanOrEqual(plain.score);
   });
 });
 
