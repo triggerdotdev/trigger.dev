@@ -21,10 +21,18 @@ import { MUTATIONS } from "./mutations.js";
  *   punctuation, e.g. `jsx text is content, not a comment`. That is what a test title looks like
  *   and what a code sample does not.
  *
- * What is NOT checked: a reference written without backticks, a test title of fewer than
- * `MINIMUM_TITLE_WORDS` words (`throw e` and `new URL` are code, and telling a short title from
- * short code needs more than punctuation), and anything outside `src/`. A docstring can still name
- * a nonexistent short test. The kebab half is the half that has actually failed.
+ * What is NOT checked, and each of these is a place a bad reference can still hide:
+ *
+ * - a reference written without backticks.
+ * - a test title of fewer than `MINIMUM_TITLE_WORDS` words. `throw e` and `new URL` are code, and
+ *   telling a short title from short code needs more than punctuation.
+ * - a comment with no node after it. `commentText` collects leading ranges only, so a comment on
+ *   the last line of a block or at the end of a file is never scanned at all. Every docstring in
+ *   this package precedes a declaration, which is why the collector was written that way, and it
+ *   is a coverage hole rather than a design choice.
+ * - anything outside `src/`, including the docstrings in this file and in `mutations.ts`.
+ *
+ * The kebab half is the half that has actually failed.
  */
 
 const SRC = resolve(__dirname, "../src");

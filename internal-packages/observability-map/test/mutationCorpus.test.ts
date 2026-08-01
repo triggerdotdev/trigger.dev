@@ -39,17 +39,20 @@ const ENABLED = process.env.OBS_MAP_MUTATION_CORPUS === "1";
  * Where a corpus entry goes when the tool does not defend it. `it.fails` keeps the entry running,
  * so closing the hole later turns this file red until the entry is moved back out deliberately.
  *
- * `dead-branch-after-if-true` wraps a catch clause's body in `if (true) { ... }` and writes an
- * error test after it. The test can never run, and it takes the tree from 15 to 23 and raises 68
- * routes. Nothing in the scanner evaluates a condition, so `definitelyExits` cannot see that the
- * wrapper always exits, and the two ways to make it see are both worse than the hole. Folding the
- * literal `true` starts the same list an earlier round lost with `false`, where every spelling
- * nobody thought of pays. Cutting the branch credit at the first statement that MIGHT exit is
- * sound and folding-free, and it was measured: it takes the tree from 15 to 6 and accuses 78 real
- * routes, because `catch (e) { if (rare) return null; if (e instanceof X) return y; }` is an
- * ordinary shape. See the round A fix 3 report.
+ * `dead-classifying-try-with-call` is the shape `dead-classifying-try` only looked like it closed.
+ * `canRaise` accepts any call at all, so `try { String(0); }` reads as a clause guarding real work
+ * and takes the tree from 15 to 42, raising 224 routes, exactly as `try { 0; }` did before it was
+ * refused. Telling an inert call from one that can throw needs types the scanner does not have.
+ * The docstrings in `scan.ts`, `types.ts` and `errorClassification.ts` say the rule refuses
+ * `try { 0; }` and is defeated by one call, rather than claiming the family is closed.
+ *
+ * `dead-branch-after-if-true` used to be listed here on a measurement that was wrong. See the round
+ * A fix 3 report; the short version is that the rejected alternative was implemented with the exit
+ * flag raised before each statement's own branch check, which makes every deciding statement refuse
+ * itself. Raising it after is byte-identical on the real tree and closes the shape, so the entry is
+ * defended now and the `if (true)` family needed no condition folding after all.
  */
-const KNOWN_GAPS = new Set<string>(["dead-branch-after-if-true"]);
+const KNOWN_GAPS = new Set<string>(["dead-classifying-try-with-call"]);
 
 type SourceFile = { relativeName: string; source: string };
 
@@ -229,9 +232,13 @@ describeCorpus("mutation corpus over the real route tree", () => {
    * at the head of the clause, so all 260 count, and this threshold is what would notice if a later
    * change quietly took that back.
    *
-   * The guard the design asked for, verdict movement, cannot be used: a defended mutation moves no
-   * verdict anywhere, and that is precisely what "defended" means, so requiring movement would fail
-   * every entry that works. Site count is the reachable version of the same intent.
+   * The guard the design asked for, verdict movement, cannot be used, though not for the reason an
+   * earlier version of this comment gave. Plenty of defended entries move verdicts hard:
+   * `delete-every-catch` takes the tree from 15 to 2 and `dead-throw-after-switch` to 6. The
+   * narrower true reason is that the IDEAL defended shape is one the scanner is blind to, and those
+   * move nothing at all: `dead-if-false` and the ten entries beside it are defended precisely
+   * because the tree comes out identical. Requiring movement would fail exactly the entries that
+   * work best. Site count is the reachable version of the same intent.
    */
   const MINIMUM_FILES_TOUCHED = 20;
   const MINIMUM_SITES_TOUCHED = 40;

@@ -40,7 +40,7 @@ every catch clause in the tree used to score it 100, which meant the metric paid
 error handling.
 
 The property behind that is now a test corpus rather than a claim. `test/mutationCorpus.test.ts`
-applies 39 semantics-preserving or handling-deleting rewrites to the whole route tree in a temp copy
+applies 40 semantics-preserving or handling-deleting rewrites to the whole route tree in a temp copy
 and asserts three things for each: the published global does not rise, the mean over the routes
 measured in both runs does not rise, and for a semantics-preserving rewrite no individual route's
 score rises or drops out of the measured set. Every laundering shape a reviewer has found on this
@@ -53,13 +53,17 @@ not pay you for adding error handling that does nothing either.
 
 The rewrites come in two directions and both matter. A subtractive one takes real signal away or
 moves it about: delete the catches, wrap the body, merge the statements. An additive one puts fake
-signal in: a classifying catch over a try that cannot throw, a test whose two arms are the same, a
+signal in: a classifying catch over a try that does nothing, a test whose two arms are the same, a
 rethrow that can never run. The corpus had only the subtractive half for a while, and the two
 largest holes ever found here were both additive.
 
-The honest statement is "these 38 rewrites are defended, here they are, and here is the one that is
-not", not "unpaddable". One entry, `dead-branch-after-if-true`, runs as an expected failure with the
-residual written out beside it. The corpus takes about four minutes, so it is gated behind
+One of those is still open and the corpus says so. A catch over `try { 0; }` is refused, but
+`canRaise` accepts any call, so `try { String(0); }` reads as real error handling and pays the same
+224 routes. Telling an inert call from one that can throw needs types the scanner does not have.
+
+The honest statement is "these 39 rewrites are defended, here they are, and here is the one that is
+not", not "unpaddable". One entry, `dead-classifying-try-with-call`, runs as an expected failure
+with the residual written out beside it. The corpus takes about four minutes, so it is gated behind
 `OBS_MAP_MUTATION_CORPUS=1` and run as its
 own CI job rather than in `pnpm test`. If you change this package, run it:
 

@@ -649,6 +649,26 @@ export const MUTATIONS: Mutation[] = [
     },
   },
   {
+    id: "dead-classifying-try-with-call",
+    kind: "preserving",
+    what: "prepend a classifying try/catch over a try block whose only work is an inert call",
+    apply(fileName, source) {
+      const sf = parse(fileName, source);
+      const edits: Edit[] = [];
+      for (const body of entryBodies(sf)) {
+        edits.push(
+          insert(
+            body.getStart() + 1,
+            "\ntry { String(0); } catch (obsMapDead) {" +
+              " if (obsMapDead instanceof Error) { return new Response(null, { status: 400 }); }" +
+              " throw obsMapDead; }\n"
+          )
+        );
+      }
+      return applyEdits(source, edits);
+    },
+  },
+  {
     id: "same-arms-ternary",
     kind: "preserving",
     what: "rewrite a catch's return value as a ternary on the error with identical arms",
@@ -802,6 +822,7 @@ export const MUTATIONS: Mutation[] = [
  */
 export const ADDITIVE_IDS = [
   "dead-classifying-try",
+  "dead-classifying-try-with-call",
   "same-arms-ternary",
   "dead-throw-after-block",
   "dead-throw-after-do",
