@@ -80,6 +80,56 @@ kubectl port-forward svc/trigger-webapp 3040:3030 -n trigger
 kubectl logs -n trigger deployment/trigger-webapp | grep -A1 "magic link"
 ```
 
+## Upgrading
+
+`helm upgrade` keeps generated secrets, PVCs, and datastore volumes, so most upgrades need no preparation. These chart versions are the exceptions.
+
+### 4.5.6: two new required secret keys
+
+The webapp now reads `PROVIDER_SECRET` and `COORDINATOR_SECRET`. When you supply `secrets.existingSecret` the chart generates nothing and reads every key from your Secret, so both keys must exist there before you upgrade. Inline `secrets.*` values are ignored while `existingSecret` is set.
+
+Add them with two fresh 32-character hex values:
+
+```bash
+kubectl patch secret my-trigger-secrets -n trigger --type merge -p \
+  "{\"stringData\":{\"PROVIDER_SECRET\":\"$(openssl rand -hex 16)\",\"COORDINATOR_SECRET\":\"$(openssl rand -hex 16)\"}}"
+```
+
+The chart checks your Secret in a pre-upgrade hook and aborts with the list of missing keys, leaving the running release untouched. Without that check a missing key surfaces as a `CreateContainerConfigError` partway through the webapp rollout.
+
+<Note>
+  GitOps tools that render with `helm template` have no cluster access, so the check is
+  skipped and a missing key still reaches the rollout. Verify the keys yourself before syncing.
+</Note>
+
+### 4.5.6: ClickHouse credentials moved
+
+The bundled ClickHouse password moved out of the subchart-generated Secret and into the chart-managed datastore Secret:
+
+|        | Up to 4.5.5            | 4.5.6 and later             |
+| ------ | ---------------------- | --------------------------- |
+| Secret | `<release>-clickhouse` | `trigger-datastore`         |
+| Key    | `admin-password`       | `clickhouse-admin-password` |
+
+The webapp and the ClickHouse server both read the new location, so the upgrade itself needs no action. Repoint anything outside the chart that reads the old Secret — a maintenance CronJob, a Grafana datasource, an external secret sync:
+
+```bash
+kubectl get secret trigger-datastore -n trigger \
+  -o jsonpath='{.data.clickhouse-admin-password}' | base64 -d
+```
+
+The same move applies to the bundled PostgreSQL (`postgres-password`) and MinIO (`minio-root-user`, `minio-root-password`).
+
+### Bitnami ClickHouse to the official image
+
+The bundled ClickHouse runs the official `clickhouse/clickhouse-server` image instead of the Bitnami subchart. The chart adopts your existing data volume automatically, with three caveats covered under [ClickHouse](#clickhouse) in external services: rendering without cluster access, pinned Bitnami image tags, and storage that doesn't support `fsGroup`.
+
+<Note>
+  The data volume is `ReadWriteOnce`, so during the upgrade the new ClickHouse pod may sit in
+  `ContainerCreating` with a multi-attach warning for a minute while the old pod still holds the
+  volume. This clears itself once the old pod is removed later in the same upgrade - don't abort.
+</Note>
+
 ## Configuration
 
 Most values map directly to the environment variables documented in the [webapp](/self-hosting/env/webapp) and [supervisor](/self-hosting/env/supervisor) environment variable overview.
@@ -138,8 +188,9 @@ secrets:
 # - PROVIDER_SECRET
 # - COORDINATOR_SECRET
 # - MANAGED_WORKER_SECRET
-# - OBJECT_STORE_ACCESS_KEY_ID
-# - OBJECT_STORE_SECRET_ACCESS_KEY
+# Plus s3-auth-access-key-id and s3-auth-secret-access-key if you deploy the
+# bundled MinIO with s3.auth.existingSecret cleared. The chart lists any keys
+# it can't find and fails the install before touching a running release.
 secrets:
   enabled: false
   existingSecret: "your-existing-secret"
@@ -279,6 +330,37 @@ redis:
 
 #### ClickHouse
 
+<Note>Trigger.dev requires ClickHouse 25.8 or newer.</Note>
+
+<Note>
+  When upgrading from a chart version that bundled ClickHouse via the Bitnami subchart, the chart
+  automatically adopts the existing data volume, so no manual migration is needed. If you render
+  manifests without cluster access (for example with GitOps tools that use `helm template`), set
+  `clickhouse.persistence.existingClaim` to the old PVC name
+  (`data-<release>-clickhouse-shard0-0`) to keep your data — auto-detection can't run there, and
+  skipping this starts ClickHouse on a fresh empty volume. If that happened, your old data is
+  still on the old PVC: delete the ClickHouse StatefulSet with `--cascade=orphan` (its volume
+  configuration is immutable), set `existingClaim`, and sync again. If you render without cluster
+  access, pin `clickhouse.persistence.existingClaim` for good once the volume is adopted: a later
+  render where the lookup can't see the PVC would otherwise try to re-add `volumeClaimTemplates`,
+  which the API server rejects on an existing StatefulSet.
+</Note>
+
+<Note>
+  If you pinned `clickhouse.image` to a Bitnami repository or tag in your values, update it to
+  the official `clickhouse/clickhouse-server` image — Bitnami tags don't exist there. The
+  bundled ClickHouse is single-node: the old Bitnami subchart keys (`shards`, `replicaCount`,
+  `keeper`) are no longer supported, so use an external ClickHouse for clustered setups.
+</Note>
+
+<Note>
+  When a volume is adopted from the Bitnami-based chart, a one-time init container fixes its
+  ownership for the non-root ClickHouse server. This runs automatically on `helm upgrade` (and
+  when you set `clickhouse.persistence.existingClaim`), so storage that doesn't support `fsGroup`
+  ownership changes (NFS, hostPath, local-path) works without manual steps. Set
+  `clickhouse.volumePermissions.enabled: true` to force it in other cases.
+</Note>
+
 **Direct configuration:**
 
 ```yaml
@@ -286,10 +368,17 @@ clickhouse:
   deploy: false
   external:
     host: "my-clickhouse.example.com"
-    port: 8123
+    httpPort: 8123
     username: "my-username"
     password: "my-password"
 ```
+
+<Note>
+  An inline external `username`/`password` is percent-encoded into the connection URL for you, so
+  store the **raw** value - special characters like `@ : / %` are handled automatically. If you
+  previously percent-encoded the password by hand to work around this, switch back to the raw value.
+  (Credentials from `existingSecret` are injected at runtime and are unaffected.)
+</Note>
 
 **Using existing secrets (recommended):**
 
@@ -298,7 +387,7 @@ clickhouse:
   deploy: false
   external:
     host: "my-clickhouse.example.com"
-    port: 8123
+    httpPort: 8123
     username: "my-username"
     existingSecret: "clickhouse-credentials"
     # existingSecretKey: "clickhouse-password" # default (optional)
