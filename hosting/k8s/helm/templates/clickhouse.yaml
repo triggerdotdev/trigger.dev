@@ -78,7 +78,7 @@ spec:
         - name: volume-permissions
           image: "{{ .Values.global.imageRegistry | default .Values.clickhouse.volumePermissions.image.registry }}/{{ .Values.clickhouse.volumePermissions.image.repository }}:{{ .Values.clickhouse.volumePermissions.image.tag }}"
           imagePullPolicy: {{ .Values.clickhouse.volumePermissions.image.pullPolicy }}
-          command: ["sh", "-c", "chown -R 101:101 /var/lib/clickhouse"]
+          command: ["sh", "-c", "chown -R {{ .Values.clickhouse.securityContext.runAsUser | default 101 }}:{{ .Values.clickhouse.securityContext.runAsGroup | default 101 }} /var/lib/clickhouse"]
           securityContext:
             runAsUser: 0
             runAsNonRoot: false

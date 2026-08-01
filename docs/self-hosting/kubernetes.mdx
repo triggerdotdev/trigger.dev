@@ -124,6 +124,12 @@ The same move applies to the bundled PostgreSQL (`postgres-password`) and MinIO 
 
 The bundled ClickHouse runs the official `clickhouse/clickhouse-server` image instead of the Bitnami subchart. The chart adopts your existing data volume automatically, with three caveats covered under [ClickHouse](#clickhouse) in external services: rendering without cluster access, pinned Bitnami image tags, and storage that doesn't support `fsGroup`.
 
+<Note>
+  The data volume is `ReadWriteOnce`, so during the upgrade the new ClickHouse pod may sit in
+  `ContainerCreating` with a multi-attach warning for a minute while the old pod still holds the
+  volume. This clears itself once the old pod is removed later in the same upgrade - don't abort.
+</Note>
+
 ## Configuration
 
 Most values map directly to the environment variables documented in the [webapp](/self-hosting/env/webapp) and [supervisor](/self-hosting/env/supervisor) environment variable overview.
