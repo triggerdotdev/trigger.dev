@@ -70,6 +70,8 @@ export function getRealtimeStreamInstance(
       basin: resolvedBasin,
       accessToken: env.REALTIME_STREAMS_S2_ACCESS_TOKEN ?? "",
       endpoint: env.REALTIME_STREAMS_S2_ENDPOINT,
+      accountUrl: env.REALTIME_STREAMS_S2_ACCOUNT_URL,
+      basinUrl: env.REALTIME_STREAMS_S2_BASIN_URL,
       skipAccessTokens: env.REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS === "true",
       streamPrefix: streamPrefixFor(environment, resolvedBasin),
       logLevel: env.REALTIME_STREAMS_S2_LOG_LEVEL,
