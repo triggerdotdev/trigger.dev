@@ -133,9 +133,7 @@ export async function findCurrentWorkerDeployment({
       environmentId,
       type,
     },
-    orderBy: {
-      id: "desc",
-    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     select: {
       id: true,
       imageReference: true,
