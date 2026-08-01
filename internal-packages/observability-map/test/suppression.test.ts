@@ -92,9 +92,8 @@ describe("suppressedChecks", () => {
 
   // A2. `indexOf("//")` against the raw text found the marker inside a string literal too, so a
   // string that merely quotes the directive granted a suppression nobody wrote and silenced a real
-  // check. Reading genuine comment ranges from the TypeScript scanner closes both shapes: the
-  // scanner consumes a string or template literal as one token and never emits comment trivia for
-  // what is inside it.
+  // check. Reading comment ranges off the parsed source closes this: a string literal is one node
+  // with its own span, never trivia, so a directive inside it is content, not a comment.
   it("does not suppress from a directive quoted inside a string literal", () => {
     const m = suppressedChecks(
       `const msg = "see // obs-map-disable error-classification -- because reasons";
@@ -117,5 +116,72 @@ describe("suppressedChecks", () => {
         "export async function loader() { return 1; }"
     );
     expect(m.size).toBe(0);
+  });
+
+  // I3. A standalone `ts.createScanner` has no parser state, so it still granted two suppressions
+  // nobody wrote: it never rescans a template as a continuation after a `${...}` substitution, so
+  // text after the `}` reads as ordinary code and a `//` in it is a real comment to the scanner;
+  // and a scanner created in `LanguageVariant.Standard` has no JSX context, so a `//` inside JSX
+  // text reads as a line comment mid-URL. Reading comments off the actual parsed tree closes both:
+  // a template's literal segments and a JSX text node are real nodes, never trivia.
+  it("does not suppress from a directive after a template substitution", () => {
+    const m = suppressedChecks(
+      "const msg = `${name} // obs-map-disable error-classification -- via substitution`;\n" +
+        "export async function loader() { return 1; }"
+    );
+    expect(m.size).toBe(0);
+  });
+
+  it("does not suppress from a directive inside JSX text", () => {
+    const m = suppressedChecks(
+      `export default function Page() {
+         return <p>docs at https://example.com obs-map-disable error-classification -- x</p>;
+       }`,
+      "route.tsx"
+    );
+    expect(m.size).toBe(0);
+  });
+
+  // Extra inputs beyond the brief's two, exercising the same "not a real parse position" mechanism
+  // differently: a second substitution, and a string literal nested inside a JSX expression
+  // container, which is a different node kind again from either hole above.
+  it("does not suppress from a directive after a second template substitution", () => {
+    const m = suppressedChecks(
+      "const msg = `${a}${b} // obs-map-disable auth-boundary -- nested substitution`;\n" +
+        "export async function loader() { return 1; }"
+    );
+    expect(m.size).toBe(0);
+  });
+
+  it("does not suppress from a directive inside a string literal nested in a JSX expression container", () => {
+    const m = suppressedChecks(
+      `export default function Page() {
+         return <p>{"see // obs-map-disable request-context -- nested string"}</p>;
+       }`,
+      "route.tsx"
+    );
+    expect(m.size).toBe(0);
+  });
+
+  // Positive control: a genuine directive still works in a .tsx file, and a directive after a
+  // template with no substitution (already covered above) is not the only shape that must survive.
+  it("still reads a genuine directive in a .tsx file", () => {
+    const m = suppressedChecks(
+      `// obs-map-disable error-classification -- liveness probe
+       export default function Page() { return <p>hi</p>; }`,
+      "route.tsx"
+    );
+    expect(m.get("error-classification")).toBe("liveness probe");
+  });
+
+  // Regression control: a generic arrow function is only unambiguous when the file is parsed as
+  // plain TypeScript, not TSX (`<T>` would otherwise start a JSX element). A .ts file must still
+  // parse sanely and keep reading a genuine trailing comment correctly.
+  it("still reads a genuine directive beside a generic arrow function in a .ts file", () => {
+    const m = suppressedChecks(
+      "const identity = <T,>(x: T): T => x; // obs-map-disable auth-boundary -- generic helper\n" +
+        "export async function loader() { return identity(1); }"
+    );
+    expect(m.get("auth-boundary")).toBe("generic helper");
   });
 });

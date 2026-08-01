@@ -48,7 +48,7 @@ export type MapReport = {
 };
 
 export function scoreEntry(ep: EntryPoint): ScoredEntry {
-  const suppressed = suppressedChecks(ep.source);
+  const suppressed = suppressedChecks(ep.source, ep.fileName);
   const raw = CHECKS.map((c) => c.run(ep));
   const checks = raw.map((result) => {
     const reason = suppressed.get(result.id);
