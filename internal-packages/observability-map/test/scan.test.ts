@@ -1,6 +1,6 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { ParseFailureError, scanDirectory, scanFile } from "../src/scan.js";
 
 const LOADER = `
@@ -492,6 +492,49 @@ describe("scanFile: parse failures", () => {
     expect(() =>
       scanFile("broken.ts", `export async function loader() { const a = ; return json(`)
     ).toThrow(ParseFailureError);
+  });
+
+  // B8. The detection used to read `sf.parseDiagnostics`, an internal property. These are the
+  // shapes that prove the public route through `ts.Program` still sees a malformed file.
+  it("throws on an unclosed jsx element in a tsx route", () => {
+    expect(() =>
+      scanFile(
+        "broken.route.tsx",
+        `export async function loader() { return json({}); }
+         export default function Page() { return <div className="x">hi</span>; }`
+      )
+    ).toThrow(ParseFailureError);
+  });
+
+  it("throws on an unterminated template literal", () => {
+    expect(() =>
+      scanFile("broken.ts", `export async function loader() { return \`unterminated; }`)
+    ).toThrow(ParseFailureError);
+  });
+
+  it("throws on a stray closing brace after a complete function", () => {
+    expect(() =>
+      scanFile("broken.ts", `export async function loader() { return json({}); } }`)
+    ).toThrow(ParseFailureError);
+  });
+
+  it("names the diagnostic rather than reporting a bare failure", () => {
+    try {
+      scanFile("broken.ts", `export async function loader() { const a = ; }`);
+      expect.unreachable("scanFile should have thrown");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ParseFailureError);
+      expect((error as ParseFailureError).diagnostic.length).toBeGreaterThan(0);
+    }
+  });
+
+  // The change from `sf.parseDiagnostics` to a program-backed lookup is invisible to every test
+  // above: both spellings find the same malformed files today. What a compiler upgrade can break
+  // is the private one, and only a source-level guard can fail for that.
+  it("reads its diagnostics through public typescript api rather than a private field", () => {
+    const source = readFileSync(resolve(__dirname, "../src/scan.ts"), "utf8");
+    expect(source).not.toContain("parseDiagnostics");
+    expect(source).toContain("getSyntacticDiagnostics");
   });
 
   it("does not throw on a well-formed tsx route", () => {

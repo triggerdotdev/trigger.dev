@@ -891,15 +891,47 @@ function collectLocalFunctions(sf: ts.SourceFile): Map<string, EntryFunction> {
   return functions;
 }
 
+/**
+ * Compiler options for the throwaway program below. `noLib` and `noResolve` keep it from going to
+ * disk: nothing here needs a type, only the syntax the parser already produced.
+ */
+const SYNTAX_ONLY_OPTIONS: ts.CompilerOptions = { noLib: true, noResolve: true, allowJs: true };
+
+/**
+ * Syntactic diagnostics for an already-parsed source file, through `ts.Program` rather than off
+ * the diagnostics array the parser hangs on the source file, which is internal and which the
+ * compiler is free to rename. The whole parse-failure discipline rests on this, and an undetected
+ * parse failure shrinks the denominator and inflates the score, so it must not be the kind of
+ * thing a compiler upgrade can switch off silently.
+ *
+ * The host hands the program the `sf` we already have, so this does not parse the source a second
+ * time. The cost is the program machinery around it, and it is not free: a full scan of the real
+ * route tree went from about 850ms to about 1450ms, measured over five runs of each. A slower
+ * scan of a tool that runs once a pull request is the cheaper of the two prices.
+ */
+function syntacticDiagnostics(sf: ts.SourceFile): readonly ts.Diagnostic[] {
+  const host: ts.CompilerHost = {
+    getSourceFile: (name) => (name === sf.fileName ? sf : undefined),
+    getDefaultLibFileName: () => "lib.d.ts",
+    writeFile: () => {},
+    getCurrentDirectory: () => "",
+    getCanonicalFileName: (name) => name,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => "\n",
+    fileExists: (name) => name === sf.fileName,
+    readFile: () => undefined,
+  };
+  return ts.createProgram([sf.fileName], SYNTAX_ONLY_OPTIONS, host).getSyntacticDiagnostics(sf);
+}
+
 export function scanFile(fileName: string, source: string): EntryPoint | null {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
 
   // `createSourceFile` recovers from malformed input instead of throwing, so the diagnostics are
   // the only signal that a file did not parse.
-  const parseDiagnostics = (sf as ts.SourceFile & { parseDiagnostics?: ts.Diagnostic[] })
-    .parseDiagnostics;
-  if (parseDiagnostics && parseDiagnostics.length > 0) {
-    const first = parseDiagnostics[0]!;
+  const diagnostics = syntacticDiagnostics(sf);
+  if (diagnostics.length > 0) {
+    const first = diagnostics[0]!;
     throw new ParseFailureError(fileName, ts.flattenDiagnosticMessageText(first.messageText, " "));
   }
 
