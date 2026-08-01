@@ -342,15 +342,6 @@ export function reportFooterStyle(code: string): ReportFooterStyle {
 }
 
 /**
- * The footer's recovery-watch offer, which no report emits as a footer entry —
- * the card adds it. Two codes because it is phrased two ways: as an addendum to
- * actions the user was just given, and as the only thing on offer when the
- * report has nothing for them to do.
- */
-export const FOOTER_WATCH_CODE = "watch_recovery";
-export const FOOTER_WATCH_ONLY_CODE = "watch_recovery_only";
-
-/**
  * A dimmed line that accompanies a row entry — prose the old sentence footer
  * carried around the control, kept as a note under the row.
  */

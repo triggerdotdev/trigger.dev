@@ -1,5 +1,5 @@
 import { Logger } from "@trigger.dev/core/logger";
-import { CronSchema, Worker as RedisWorker } from "@trigger.dev/redis-worker";
+import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { DeliverEmailSchema } from "emails";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -11,7 +11,6 @@ import {
   runAttioUserSync,
   runAttioWorkspaceSync,
 } from "~/services/attio.server";
-import { sweepDashboardAgentWatches } from "~/services/dashboardAgentWatchSweep.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
@@ -136,18 +135,6 @@ function initializeWorker() {
           maxAttempts: 5,
         },
       },
-      // The dashboard agent's watch backstop: expire what is overdue (through the
-      // same authorization a check goes through) and re-deliver wakes that never
-      // reached their chat. See dashboardAgentWatchSweep.server.ts.
-      "dashboardAgent.sweepWatches": {
-        schema: CronSchema,
-        visibilityTimeoutMs: 60_000 * 5,
-        cron: "*/5 * * * *",
-        jitterInMs: 30_000,
-        retry: {
-          maxAttempts: 1,
-        },
-      },
     },
     concurrency: {
       workers: env.COMMON_WORKER_CONCURRENCY_WORKERS,
@@ -202,12 +189,6 @@ function initializeWorker() {
       processBulkAction: async ({ payload }) => {
         const service = new BulkActionService();
         await service.process(payload.bulkActionId);
-      },
-      "dashboardAgent.sweepWatches": async () => {
-        const result = await sweepDashboardAgentWatches();
-        if (result.overdue > 0 || result.undelivered > 0) {
-          logger.debug("Dashboard agent watch sweep", result);
-        }
       },
     },
   });

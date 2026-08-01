@@ -1,1 +1,0 @@
-CREATE INDEX "watches_pending_delivery_idx" ON "trigger_dashboard_agent"."watches" USING btree ("fired_at","last_checked_at") WHERE "trigger_dashboard_agent"."watches"."delivery_status" = 'pending';

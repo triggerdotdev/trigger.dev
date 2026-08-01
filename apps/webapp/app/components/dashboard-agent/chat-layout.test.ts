@@ -90,7 +90,6 @@ describe("chat-layout enforcement", () => {
         "ChatToolRow",
         "ChatNote",
         "ChatStatusLine",
-        "ChatWakeSlot",
         "ChatActionsRow",
       ]) {
         expect(source, name).toContain(`export function ${name}(`);

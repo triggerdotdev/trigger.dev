@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 
 /**
- * Friendly ids for rows this package creates itself (`inv_…`, `watch_…`).
+ * Friendly ids for rows this package creates itself (`inv_…`).
  *
  * Same shape as the platform's `generateFriendlyId` — `prefix_` + 21 chars of the
  * lowercase alphanumeric alphabet with look-alikes (`0`, `l`) removed — but
@@ -19,6 +19,3 @@ export function generateId(prefix: string, size: number = SIZE): string {
 }
 
 export const generateInvestigationId = () => generateId("inv");
-export const generateWatchId = () => generateId("watch");
-/** Fencing token for one wake-delivery claim (`wdc_…`). */
-export const generateWatchDeliveryClaimId = () => generateId("wdc");

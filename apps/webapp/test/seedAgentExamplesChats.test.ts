@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { wakeRefFromMessageId } from "~/components/dashboard-agent/WakeBanner";
 import { resolveTriggerUri, type TriggerUriScope } from "~/services/resolveTriggerUri.server";
 import { buildAgentExampleChats, type AgentExamplesWorld } from "../seed-agent-examples-chats.mjs";
 
@@ -120,32 +119,6 @@ describe("agent example transcripts", () => {
       // Without a string `generatedAt` the adapter rejects the block and the card
       // degrades to a plain tool row.
       expect(typeof vm.generatedAt, chat).toBe("string");
-    }
-  });
-
-  it("stores every wake narration under a wake message id", () => {
-    // A wake is spotted by its id, not by its parts, so an ordinary `msg_` id
-    // would render as an answer to a question nobody asked — no banner.
-    const wakes = chats.flatMap((chat) =>
-      chat.messages
-        .map((message) => ({ chat: chat.slug, ref: wakeRefFromMessageId(message.id) }))
-        .filter((entry) => entry.ref !== null)
-    );
-    expect(wakes.map((entry) => entry.ref!.outcome)).toEqual(
-      expect.arrayContaining(["fired", "expired"])
-    );
-
-    // Only an assistant turn can be a wake, and every conversation is started by
-    // the user — an assistant message in first position has no turn to belong to.
-    for (const entry of wakes) {
-      const chat = chats.find((candidate) => candidate.slug === entry.chat)!;
-      const message = chat.messages.find(
-        (candidate) => wakeRefFromMessageId(candidate.id)?.watchId === entry.ref!.watchId
-      )!;
-      expect(message.role, `${entry.chat}/${message.id}`).toBe("assistant");
-    }
-    for (const chat of chats) {
-      expect(chat.messages[0]!.role, `${chat.slug} opens`).toBe("user");
     }
   });
 

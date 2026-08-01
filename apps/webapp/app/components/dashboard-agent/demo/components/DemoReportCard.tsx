@@ -20,8 +20,6 @@ import type {
 } from "~/presenters/v3/reports/report-view-model";
 import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import {
-  FOOTER_WATCH_CODE,
-  FOOTER_WATCH_ONLY_CODE,
   ReportBody,
   ReportCard,
   ReportFindingLine,
@@ -316,27 +314,6 @@ export function DemoReportCard({
       node: <ReportFooterAction onClick={() => onAction?.(label, url)}>{label}</ReportFooterAction>,
     };
   });
-
-  // Same offer the shipped card makes when there is something to recover from.
-  if (severity !== "ok") {
-    const offersControl = vm.footer.some((entry) => {
-      const style = reportFooterStyle(entry.code);
-      return style === "action" || style === "docs";
-    });
-    const label = offersControl ? "Watch recovery" : "watch it recover";
-    const watchItem = {
-      code: offersControl ? FOOTER_WATCH_CODE : FOOTER_WATCH_ONLY_CODE,
-      node: <ReportFooterAction onClick={() => onAction?.(label)}>{label}</ReportFooterAction>,
-    };
-    // In the actions list the watch joins the buttons before the "or do
-    // nothing" prose; in the stale sentence it stays last.
-    const noteIndex = footerItems.findIndex((item) => reportFooterStyle(item.code) === "note");
-    if (offersControl && noteIndex !== -1) {
-      footerItems.splice(noteIndex, 0, watchItem);
-    } else {
-      footerItems.push(watchItem);
-    }
-  }
 
   // Docs the report cites — demo mode has no host to resolve `trigger://` URIs,
   // so only real URLs.

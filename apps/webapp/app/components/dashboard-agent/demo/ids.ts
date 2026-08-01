@@ -5,7 +5,7 @@
  *
  * Two conventions, on purpose:
  *
- * 1. **Our own namespace** (chats, investigations, watches) uses the literal
+ * 1. **Our own namespace** (chats, investigations) uses the literal
  *    `demo:` prefix, so `isDemoChatId` answers "this id is a fixture, never
  *    talk to the server about it".
  * 2. **Resource ids** (runs, queues, errors, deployments, source shas) keep
@@ -26,7 +26,7 @@ export const DEMO_ID_PREFIX = "demo:";
 /** The marker every demo id — ours or resource-shaped — must contain. */
 export const DEMO_MARKER = "demo";
 
-/** `demo:` + the rest. Use for chats, investigations and watches. */
+/** `demo:` + the rest. Use for chats and investigations. */
 export function demoId(rest: string): string {
   return `${DEMO_ID_PREFIX}${rest}`;
 }

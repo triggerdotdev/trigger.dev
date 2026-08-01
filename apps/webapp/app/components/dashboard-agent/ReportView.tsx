@@ -40,7 +40,6 @@ import { healthMessages } from "~/presenters/v3/reports/health/health-messages";
 import { type ReportMessages } from "~/presenters/v3/reports/report-messages";
 import { reportIsTrustworthy } from "./report-block-adapter";
 import {
-  FOOTER_WATCH_CODE,
   ReportBody,
   ReportCard,
   ReportFindingLine,
@@ -63,9 +62,6 @@ import {
 } from "./report-sparkline";
 
 export type ResolvedUri = { label: string; url: string };
-
-/** How often a recovery watch polls, and how long it lives. Aggregate conditions floor at 5m. */
-const RECOVERY_WATCH = { checkEveryMinutes: 5, maxHours: 6 } as const;
 
 // --- messages ---------------------------------------------------------------
 
@@ -489,22 +485,6 @@ export function ReportView({
     .filter((finding) => finding.read !== undefined)
     .map((finding) => fillTokens(messages.readMessage(finding.read!), tokens));
 
-  // "Tell me when this recovers" — only offered when there is something to
-  // recover from, and only for the health report, whose watch kind exists.
-  const recoveryWatch: AgentIntent | null =
-    vm.title === "health" && (severity === "warn" || severity === "crit")
-      ? {
-          kind: "watch",
-          spec: {
-            kind: "health_recovery",
-            report: "health",
-            fromSeverity: severity,
-            note: `${vm.scope} health back to normal`,
-            ...RECOVERY_WATCH,
-          },
-        }
-      : null;
-
   // Links a footer action already speaks for aren't repeated as reading matter.
   const footerLinkKeys = new Set(vm.footer.map((entry) => entry.link).filter(Boolean));
 
@@ -521,25 +501,6 @@ export function ReportView({
       pagePath: pagePaths?.[entry.code],
     }),
   }));
-
-  if (recoveryWatch && onIntent) {
-    const watchItem: ReportFooterItem = {
-      code: FOOTER_WATCH_CODE,
-      node: (
-        <ReportFooterAction onClick={() => onIntent(recoveryWatch)}>
-          Watch recovery
-        </ReportFooterAction>
-      ),
-    };
-    // The watch joins the other buttons in the row, BEFORE the trailing
-    // "or do nothing" prose.
-    const noteIndex = footerItems.findIndex((item) => reportFooterStyle(item.code) === "note");
-    if (noteIndex !== -1) {
-      footerItems.splice(noteIndex, 0, watchItem);
-    } else {
-      footerItems.push(watchItem);
-    }
-  }
 
   // Resources the report cites, resolved to dashboard links by the host. Cited,
   // not offered — so a text link (our docs still get the docs button).

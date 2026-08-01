@@ -1,3 +1,0 @@
-DROP INDEX "trigger_dashboard_agent"."watches_pending_delivery_idx";--> statement-breakpoint
-ALTER TABLE "trigger_dashboard_agent"."watches" ADD COLUMN "delivery_claimed_at" timestamp with time zone;--> statement-breakpoint
-CREATE INDEX "watches_pending_delivery_idx" ON "trigger_dashboard_agent"."watches" USING btree ("fired_at","last_checked_at") WHERE "trigger_dashboard_agent"."watches"."delivery_status" in ('pending', 'delivering');

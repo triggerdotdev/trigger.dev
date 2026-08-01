@@ -18,9 +18,9 @@ import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 // signed-in user and inject it into the turn's metadata server-side. The token
 // reaches the agent without ever touching the browser, and minting stays tied
 // to the user's own session (no shared-secret backdoor). The token is scoped to
-// the environment in this URL, which is what the agent's write-ish endpoints
-// (watches, watch alerts) bind to — so a turn can only ever act in the
-// environment the user is actually looking at.
+// the environment in this URL, which is what the agent's environment-bound
+// endpoints read — so a turn can only ever act in the environment the user is
+// actually looking at.
 //
 // The append body is `{ kind, payload: { metadata, ... } }`; we add the token
 // (plus the API origin and the server-vouched project ref + env) to

@@ -23,8 +23,6 @@ export type GalleryGroup =
   | "investigation"
   | "report"
   | "chart"
-  | "watches"
-  | "wakes"
   | "prompts"
   | "intents"
   | "messages"
@@ -51,8 +49,6 @@ export const GALLERY_GROUPS: { group: GalleryGroup; label: string }[] = [
   { group: "investigation", label: "Investigation card" },
   { group: "report", label: "Report card" },
   { group: "chart", label: "Chart card" },
-  { group: "watches", label: "Watch chips" },
-  { group: "wakes", label: "Wake banners" },
   { group: "prompts", label: "Suggested prompts" },
   { group: "intents", label: "Intent bubbles" },
   { group: "messages", label: "Message-level states" },
@@ -204,26 +200,6 @@ export const MANIFEST: GallerySection[] = [
   },
   { sectionId: "chart-empty", title: "Empty — no data to display", group: "chart" },
 
-  // --- Watch chips ---------------------------------------------------------
-  { sectionId: "watches-active", title: "Active — cancellable", group: "watches" },
-  { sectionId: "watches-fired", title: "Fired", group: "watches" },
-  { sectionId: "watches-expired", title: "Expired", group: "watches" },
-  { sectionId: "watches-cancelled", title: "Cancelled", group: "watches" },
-  { sectionId: "watches-all-states", title: "All four states in one row", group: "watches" },
-  { sectionId: "watches-live", title: "The panel's own chips (real component)", group: "watches" },
-
-  // --- Wake banners --------------------------------------------------------
-  // A wake narration through the production renderer: the banner plus the prose
-  // the agent wrote, as the panel shows them.
-  { sectionId: "wake-fired-good-news", title: "Fired — good news", group: "wakes" },
-  { sectionId: "wake-fired-attention", title: "Fired — needs attention", group: "wakes" },
-  { sectionId: "wake-expired", title: "Expired — no answer", group: "wakes" },
-  {
-    sectionId: "wake-unknown-watch",
-    title: "Fired, watch not in hand — kind-agnostic",
-    group: "wakes",
-  },
-
   // --- Suggested prompts ---------------------------------------------------
   { sectionId: "prompts-default", title: "Default set, no page context", group: "prompts" },
   {
@@ -263,7 +239,6 @@ export const MANIFEST: GallerySection[] = [
     group: "intents",
   },
   { sectionId: "intent-navigate-run", title: "Navigate — one run", group: "intents" },
-  { sectionId: "intent-watch", title: "Watch started", group: "intents" },
   { sectionId: "intent-ask", title: "Ask — follow-up handed back", group: "intents" },
   {
     sectionId: "intent-rejected-propose-fix",

@@ -20,8 +20,6 @@ import { tool, type ToolSet } from "ai";
 import {
   askSupportSchema,
   correlateVersionSchema,
-  createAlertSchema,
-  deleteAlertSchema,
   getCurrentPageSchema,
   getDeploySchema,
   getErrorSchema,
@@ -30,7 +28,6 @@ import {
   getReportSchema,
   getRunSchema,
   getRunTraceSchema,
-  listAlertsSchema,
   listDeploysSchema,
   listEnvironmentsSchema,
   listErrorsSchema,
@@ -40,7 +37,6 @@ import {
   navigateToSchema,
   renderViewSchema,
   runQuerySchema,
-  scheduleWatchSchema,
   searchDocsSchema,
 } from "./tool-schemas";
 import { buildRepoTools, type RepoSnapshot } from "./repo-tools";
@@ -73,8 +69,7 @@ export type DashboardAgentToolContext = {
   // The dashboard path the user is on, passed as context to ask_support.
   currentPage?: string;
   // The chat this turn belongs to, supplied by dashboard-agent.ts (the same seam
-  // the investigations capability comes through). A watch belongs to a chat: it
-  // is guardrailed per chat and its wake is delivered back into this one.
+  // the investigations capability comes through).
   chatId?: string;
   // Structured view of the same page, when the host could classify it. Read by
   // get_current_page so the agent can resolve "this run" without asking.
@@ -539,51 +534,6 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     return withEnvJwt((jwt) => apiGet(origin, path, jwt), unauthorizedGet);
   }
 
-  /**
-   * One request to the watch-alerts routes, as the user (delegated token).
-   *
-   * Failures come back as `{ error }` in the model's own terms — including the
-   * 403, whose `reason` says whether the plan or the feature flag denied it, so
-   * the model can relay that instead of inventing a cause.
-   */
-  async function alertsRequest(
-    method: "GET" | "POST" | "DELETE",
-    path: string,
-    body?: unknown
-  ): Promise<{ data: unknown } | { error: string }> {
-    let res: Response;
-    try {
-      res = await fetch(`${origin}${path}`, {
-        method,
-        headers: {
-          Authorization: `Bearer ${userActorToken!}`,
-          Accept: "application/json",
-          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-        },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      });
-    } catch (error) {
-      return { error: `Couldn't reach the alerts API: ${(error as Error).message}` };
-    }
-
-    const data = (await res.json().catch(() => undefined)) as
-      | { error?: string; reason?: string }
-      | undefined;
-
-    if (res.status === 403) {
-      return {
-        error:
-          data?.reason === "plan"
-            ? "Email alerts aren't available on this plan. Tell the user that, and that watch fires still show in the dashboard."
-            : "Email alerts aren't enabled here. Tell the user that, and that watch fires still show in the dashboard.",
-      };
-    }
-    if (!res.ok) {
-      return { error: data?.error ?? `The alerts API failed (status ${res.status}).` };
-    }
-    return { data };
-  }
-
   // Run-SHA pinning: ask the webapp for a snapshot pinned to a specific run's
   // deployed commit (it mints the scoped token + signed URL server-side). null
   // means the file tools fall back to the default tracked-branch snapshot.
@@ -922,15 +872,6 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         },
       });
     }
-
-    actions.push({
-      kind: "watch_recurrence",
-      label: "Watch for a repeat",
-      intent: {
-        kind: "ask",
-        prompt: "Watch for this happening again and tell me if it recurs.",
-      },
-    });
 
     const errorUri = cited.find((evidence) => evidence.kind === "error")?.uri;
     if (errorUri) {
@@ -1512,156 +1453,6 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         } catch (error) {
           return { error: `Couldn't build a link for that: ${(error as Error).message}` };
         }
-      },
-    }),
-
-    // The one tool that schedules future work. The host owns everything the
-    // model shouldn't: the tenancy snapshot, the watch token, the periodic
-    // checks, and the guardrails (≤3 per chat, no duplicate on the same thing,
-    // 24h ceiling). The model composes the spec and gets back either the created
-    // watch or — when the condition already holds — the immediate outcome.
-    schedule_watch: tool({
-      ...scheduleWatchSchema,
-      execute: async ({ watch }) => {
-        if (!hasAuth) return NO_AUTH;
-        if (!ctx.chatId) {
-          return { error: "This turn isn't attached to a chat, so a watch can't be scheduled." };
-        }
-        let res: Response;
-        try {
-          res = await fetch(`${origin}/api/v1/dashboard-agent/watches`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${userActorToken!}`,
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-            body: JSON.stringify({ spec: watch, chatId: ctx.chatId }),
-          });
-        } catch (error) {
-          return { error: `Couldn't schedule the watch: ${(error as Error).message}` };
-        }
-
-        const data = (await res.json().catch(() => undefined)) as
-          | {
-              watchId?: string;
-              identity?: string;
-              status?: string;
-              expiresAt?: string;
-              /** Whether a fire would already reach the user outside the chat. */
-              emailAlerts?: "subscribed" | "none" | "unavailable";
-              immediate?: { result?: string; facts?: unknown };
-              existingId?: string;
-              error?: string;
-              code?: string;
-            }
-          | undefined;
-
-        if (!res.ok) {
-          switch (data?.code) {
-            case "limit_reached":
-              return {
-                error:
-                  "This chat already has the maximum of 3 active watches. Cancel one of them before adding another.",
-              };
-            case "duplicate":
-              return {
-                error: `That's already being watched in this chat${
-                  (data.existingId ?? data.watchId)
-                    ? ` (watch ${data.existingId ?? data.watchId})`
-                    : ""
-                }, so nothing new was scheduled. Tell the user the existing watch covers it.`,
-              };
-            case "invalid_target":
-              return {
-                error:
-                  data.error ??
-                  "That thing can't be watched — check the run id, queue, or error group is right.",
-              };
-            default:
-              return {
-                error: data?.error ?? `Couldn't schedule the watch (status ${res.status}).`,
-              };
-          }
-        }
-
-        // Already true at creation time: there is nothing to wait for, so the
-        // model must answer now instead of promising a message later.
-        //
-        // `watchId` travels with the outcome on purpose: this result, once
-        // persisted next to the answer, is the proof that THIS watch's outcome
-        // reached the user — the backstop that would otherwise post the outcome as
-        // a wake reads it and stays quiet (see `hasInlineWatchNarration`).
-        if (data?.immediate) {
-          return {
-            watchId: data.watchId,
-            immediate: data.immediate,
-            watching: false,
-            note: "The condition already holds, so no watch is running. Answer now.",
-          };
-        }
-
-        return {
-          watchId: data?.watchId,
-          identity: data?.identity,
-          status: data?.status ?? "active",
-          expiresAt: data?.expiresAt,
-          checkEveryMinutes: watch.checkEveryMinutes,
-          note: watch.note,
-          watching: true,
-          // Decides whether the confirmation may offer an email alert: only
-          // "none" leaves something to offer.
-          emailAlerts: data?.emailAlerts ?? "none",
-        };
-      },
-    }),
-
-    // Watch alerts. Project-level subscriptions, so they authenticate as the user
-    // with the delegated token (the same lane as watch creation) — not the env
-    // JWT. Every call carries the chat id: the API scopes its authorization
-    // through the chat, exactly like watch creation does.
-    list_alerts: tool({
-      ...listAlertsSchema,
-      execute: async () => {
-        if (!hasAuth) return NO_AUTH;
-        if (!ctx.chatId) return { error: "No chat is available to read alerts from." };
-        const result = await alertsRequest(
-          "GET",
-          `/api/v1/dashboard-agent/alerts?chatId=${encodeURIComponent(ctx.chatId)}`
-        );
-        if ("error" in result) return result;
-        const alerts = (result.data as { alerts?: unknown } | undefined)?.alerts;
-        return { alerts: Array.isArray(alerts) ? alerts : [] };
-      },
-    }),
-
-    create_alert: tool({
-      ...createAlertSchema,
-      execute: async ({ email }) => {
-        if (!hasAuth) return NO_AUTH;
-        if (!ctx.chatId) return { error: "No chat is available to create an alert from." };
-        const result = await alertsRequest("POST", "/api/v1/dashboard-agent/alerts", {
-          chatId: ctx.chatId,
-          channel: "email",
-          ...(email ? { email } : {}),
-        });
-        if ("error" in result) return result;
-        return { created: true, alert: (result.data as { alert?: unknown } | undefined)?.alert };
-      },
-    }),
-
-    delete_alert: tool({
-      ...deleteAlertSchema,
-      execute: async ({ alertId }) => {
-        if (!hasAuth) return NO_AUTH;
-        if (!ctx.chatId) return { error: "No chat is available to change alerts from." };
-        const result = await alertsRequest(
-          "DELETE",
-          `/api/v1/dashboard-agent/alerts/${encodeURIComponent(alertId)}`,
-          { chatId: ctx.chatId }
-        );
-        if ("error" in result) return result;
-        return { deleted: true, alertId };
       },
     }),
   };

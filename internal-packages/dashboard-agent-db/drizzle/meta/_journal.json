@@ -29,27 +29,6 @@
       "when": 1785320232281,
       "tag": "0003_famous_champions",
       "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1785511915186,
-      "tag": "0004_moaning_omega_sentinel",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1785518300333,
-      "tag": "0005_aspiring_unus",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1785527453164,
-      "tag": "0006_wooden_hex",
-      "breakpoints": true
     }
   ]
 }

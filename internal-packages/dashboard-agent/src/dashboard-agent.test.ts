@@ -274,233 +274,6 @@ describe("dashboardAgent (mock harness)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Watch wakes — an action, not a turn
-// ---------------------------------------------------------------------------
-
-describe("watch wake narration", () => {
-  let harness: MockChatAgentHarness | undefined;
-
-  afterEach(async () => {
-    await harness?.close();
-    harness = undefined;
-  });
-
-  const WAKE = {
-    type: "watch.fired" as const,
-    id: "watch:watch_1:fired",
-    watchId: "watch_1",
-    identity: "backlog_drain:task/send-receipt",
-    spec: {
-      kind: "backlog_drain",
-      queue: "task/send-receipt",
-      checkEveryMinutes: 5,
-      maxHours: 2,
-      note: "tell me when the backlog drains",
-    },
-    facts: { pending: 0, peakPending: 412, drainedAt: "2026-01-01T12:40:00.000Z" },
-  };
-
-  it("narrates the wake once and persists it, and a redelivered wake narrates nothing", async () => {
-    const { store, calls } = fakeStore();
-    harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_wake",
-      clientData: CLIENT_DATA,
-      setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
-      },
-    });
-
-    const first = await harness.sendAction(WAKE);
-    expect(collectText(first.chunks)).toBe("The backlog drained — 0 pending now.");
-
-    // The streamed message carries the SAME id the read-model copy is persisted
-    // under — the panel merges live stream and loaded history by message id, so
-    // two ids for one narration would render it twice.
-    const startChunk = first.chunks.find(
-      (chunk) => (chunk as { type?: string }).type === "start"
-    ) as { messageId?: string } | undefined;
-    expect(startChunk?.messageId).toBe("wake:watch:watch_1:fired");
-
-    // An action is not a turn: no turn persistence ran, but the narration is in
-    // the display read-model under an id derived from the action.
-    expect(calls.persistTurn).toHaveLength(0);
-    expect(calls.persistMessages).toHaveLength(1);
-    const persisted = (calls.persistMessages[0] as { messages: UIMessage[] }).messages;
-    expect(persisted).toHaveLength(1);
-    expect(persisted[0]).toMatchObject({ id: "wake:watch:watch_1:fired", role: "assistant" });
-
-    // Same action id again (the watcher retried after appending): deduped.
-    const second = await harness.sendAction(WAKE);
-    expect(collectText(second.chunks)).toBe("");
-    expect(calls.persistMessages).toHaveLength(1);
-  });
-
-  /**
-   * A history snapshot, as the agent reads it at boot. The wakes below run as
-   * continuation runs, which is how a real wake arrives: minutes after the turn
-   * that created the watch, on a run that boots from this snapshot.
-   */
-  function snapshotOf(messages: UIMessage[]) {
-    return { version: 1 as const, savedAt: Date.now(), messages };
-  }
-
-  /**
-   * The turn that created the watch, as it lands in the transcript: ONE assistant
-   * message whose parts are the `schedule_watch` call that came back with an
-   * immediate outcome and then the answer the model wrote from it. The SDK keys a
-   * whole turn (all steps) to one assistant message id, so that ordering is what a
-   * completed turn really looks like.
-   *
-   * `preamble` is the text a model sometimes writes on its way TO the tool call —
-   * before the outcome exists, so it can't be the answer to it.
-   */
-  function inlineTurn(options: { narrated: boolean; preamble?: boolean }): UIMessage[] {
-    return [
-      { id: "u1", role: "user", parts: [{ type: "text", text: "tell me when it drains" }] },
-      {
-        id: "a1",
-        role: "assistant",
-        parts: [
-          ...(options.preamble
-            ? [{ type: "text" as const, text: "Let me check the queue first." }]
-            : []),
-          {
-            type: "tool-schedule_watch",
-            toolCallId: "call_1",
-            state: "output-available",
-            input: {},
-            output: { watchId: "watch_1", immediate: { result: "satisfied" }, watching: false },
-          },
-          ...(options.narrated
-            ? [{ type: "text" as const, text: "It's already drained — 0 pending." }]
-            : []),
-        ],
-      },
-    ] as unknown as UIMessage[];
-  }
-
-  it("an outcome the creating turn already answered inline is not told a second time", async () => {
-    const { store, calls } = fakeStore();
-    harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_inline",
-      clientData: CLIENT_DATA,
-      continuation: true,
-      snapshot: snapshotOf(inlineTurn({ narrated: true })),
-      setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("should never run")]));
-      },
-    });
-
-    // The wake is delivered anyway — the host can't tell whether the turn survived —
-    // so the narration is where the transcript decides. It already holds this
-    // watch's outcome, so the wake says nothing and the row just closes out.
-    const wake = await harness.sendAction(WAKE);
-    expect(collectText(wake.chunks)).toBe("");
-    expect(calls.persistMessages).toHaveLength(0);
-  });
-
-  it("an inline outcome whose turn died before answering is narrated by the wake", async () => {
-    const { store, calls } = fakeStore();
-    harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_inline_lost",
-      clientData: CLIENT_DATA,
-      continuation: true,
-      // The turn persisted the tool result but never the answer, and the user then
-      // typed something else — which moves the chat's last-message time without
-      // telling anyone what the watch found.
-      snapshot: snapshotOf([
-        ...inlineTurn({ narrated: false }),
-        { id: "u2", role: "user", parts: [{ type: "text", text: "what happened?" }] },
-      ] as unknown as UIMessage[]),
-      setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
-      },
-    });
-
-    const wake = await harness.sendAction(WAKE);
-    expect(collectText(wake.chunks)).toBe("The backlog drained — 0 pending now.");
-    expect(calls.persistMessages).toHaveLength(1);
-  });
-
-  it("a later answer to a different question is not proof the outcome was told", async () => {
-    const { store, calls } = fakeStore();
-    harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_inline_unrelated",
-      clientData: CLIENT_DATA,
-      continuation: true,
-      // The creating turn died before it answered. The user then asked something
-      // else and got an answer — about that something else. It says nothing about
-      // what the watch found, so the wake is still the only telling of it.
-      snapshot: snapshotOf([
-        ...inlineTurn({ narrated: false }),
-        { id: "u2", role: "user", parts: [{ type: "text", text: "how many runs failed?" }] },
-        { id: "a2", role: "assistant", parts: [{ type: "text", text: "Three runs failed." }] },
-      ] as unknown as UIMessage[]),
-      setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
-      },
-    });
-
-    const wake = await harness.sendAction(WAKE);
-    expect(collectText(wake.chunks)).toBe("The backlog drained — 0 pending now.");
-    expect(calls.persistMessages).toHaveLength(1);
-  });
-
-  it("text written before the tool call is not the answer to its outcome", async () => {
-    const { store, calls } = fakeStore();
-    harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_inline_preamble",
-      clientData: CLIENT_DATA,
-      continuation: true,
-      // The turn wrote its lead-in, called the tool, and then died. The prose is in
-      // the same message as the tool part but BEFORE it, so it was written without
-      // the outcome in hand.
-      snapshot: snapshotOf(inlineTurn({ narrated: false, preamble: true })),
-      setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("The backlog drained — 0 pending now.")]));
-      },
-    });
-
-    const wake = await harness.sendAction(WAKE);
-    expect(collectText(wake.chunks)).toBe("The backlog drained — 0 pending now.");
-    expect(calls.persistMessages).toHaveLength(1);
-  });
-
-  it("a different outcome on the same watch is a different wake", async () => {
-    const { store, calls } = fakeStore();
-    harness = mockChatAgent(dashboardAgent, {
-      chatId: "chat_wake_two",
-      clientData: CLIENT_DATA,
-      setupLocals: ({ set }) => {
-        set(dashboardAgentStoreKey, store);
-        set(dashboardAgentModelKey, mockModel([textStep("first"), textStep("second")]));
-      },
-    });
-
-    await harness.sendAction(WAKE);
-    await harness.sendAction({
-      ...WAKE,
-      type: "watch.expired",
-      id: "watch:watch_2:expired",
-      watchId: "watch_2",
-      facts: { verified: false, reason: "unverified_at_expiry" },
-    });
-
-    expect(calls.persistMessages).toHaveLength(2);
-    const latest = (calls.persistMessages[1] as { messages: UIMessage[] }).messages;
-    expect(latest.map((m) => m.id)).toEqual([
-      "wake:watch:watch_1:fired",
-      "wake:watch:watch_2:expired",
-    ]);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Replayed tool-input sanitizing
 // ---------------------------------------------------------------------------
 
@@ -655,8 +428,6 @@ describe("buildDashboardAgentTools", () => {
       [
         "ask_support",
         "correlate_version",
-        "create_alert",
-        "delete_alert",
         "get_current_page",
         "get_deploy",
         "get_error",
@@ -665,7 +436,6 @@ describe("buildDashboardAgentTools", () => {
         "get_report",
         "get_run",
         "get_run_trace",
-        "list_alerts",
         "list_deploys",
         "list_environments",
         "list_errors",
@@ -675,7 +445,6 @@ describe("buildDashboardAgentTools", () => {
         "navigate_to",
         "run_query",
         "render_view",
-        "schedule_watch",
         "search_docs",
       ].sort()
     );
@@ -1085,11 +854,7 @@ describe("buildDashboardAgentTools", () => {
 
     const grounded = await renderInvestigation(tools, concludedWithSource);
     const actions = grounded.blocks[0].capabilities.actions;
-    expect(actions.map((a: { kind: string }) => a.kind)).toEqual([
-      "show_code",
-      "watch_recurrence",
-      "view_similar",
-    ]);
+    expect(actions.map((a: { kind: string }) => a.kind)).toEqual(["show_code", "view_similar"]);
     expect(actions[0].intent.kind).toBe("ask");
     // The ask is a propose-a-change request, not another explanation: a fenced
     // diff, the minimal change, anchored path:line@sha, with the dirty caveat.
@@ -1100,7 +865,7 @@ describe("buildDashboardAgentTools", () => {
     expect(prompt).toMatch(/dirty tree|branch head/i);
     expect(prompt).toMatch(/don't restate the investigation/i);
     // The follow-up that navigates points at the canonical error URI.
-    expect(actions[2].intent).toEqual({
+    expect(actions[1].intent).toEqual({
       kind: "navigate",
       target: "trigger://proj_abc/env_abc/error/error_c4b4a797397a9c43",
     });
@@ -1131,7 +896,6 @@ describe("buildDashboardAgentTools", () => {
     });
     expect(output.blocks[0].capabilities.actions.map((a: { kind: string }) => a.kind)).toEqual([
       "ask_follow_up",
-      "watch_recurrence",
       "view_similar",
     ]);
   });
@@ -1300,152 +1064,6 @@ describe("buildDashboardAgentTools", () => {
       yAxisColumns: ["runs"],
     };
     await expect(renderView.execute({ blocks: [chart] }, {})).resolves.toEqual({ blocks: [chart] });
-  });
-
-  // -------------------------------------------------------------------------
-  // schedule_watch: the one tool that schedules future work
-  // -------------------------------------------------------------------------
-
-  const WATCH_CTX = {
-    userActorToken: "uat_token",
-    apiOrigin: "http://localhost:3030",
-    chatId: "chat_1",
-  };
-
-  const RUN_WATCH = {
-    kind: "run_finished" as const,
-    runId: "run_a1",
-    checkEveryMinutes: 1 as const,
-    maxHours: 2,
-    note: "tell me when the receipt run finishes",
-  };
-
-  // Runs schedule_watch against a stubbed global fetch and hands back both the
-  // tool's result and the request the host would have received.
-  async function scheduleWatch(
-    response: { status?: number; body: unknown },
-    input: unknown = { watch: RUN_WATCH },
-    ctx: Record<string, unknown> = WATCH_CTX
-  ) {
-    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
-    const original = globalThis.fetch;
-    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
-      requests.push({ url: String(url), init });
-      return new Response(JSON.stringify(response.body), {
-        status: response.status ?? 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }) as typeof fetch;
-    try {
-      const tools = buildDashboardAgentTools(ctx);
-      const scheduleTool = tools.schedule_watch as {
-        inputSchema: { parse: (input: unknown) => unknown };
-        execute: (input: unknown, opts: unknown) => Promise<any>;
-      };
-      const result = await scheduleTool.execute(scheduleTool.inputSchema.parse(input), {});
-      return { result, requests };
-    } finally {
-      globalThis.fetch = original;
-    }
-  }
-
-  it("schedule_watch posts the spec and the chat id as the user, and reports the created watch", async () => {
-    const { result, requests } = await scheduleWatch({
-      body: {
-        watchId: "watch_1",
-        identity: "run_finished:run_a1",
-        status: "active",
-        expiresAt: "2026-01-01T14:00:00.000Z",
-        emailAlerts: "none",
-      },
-    });
-
-    expect(requests).toHaveLength(1);
-    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/watches");
-    expect(requests[0]?.init?.method).toBe("POST");
-    // The delegated user token — a watch is created with exactly the access of
-    // the user who asked for it.
-    expect((requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
-      "Bearer uat_token"
-    );
-    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
-      spec: RUN_WATCH,
-      chatId: "chat_1",
-    });
-
-    expect(result).toMatchObject({
-      watchId: "watch_1",
-      identity: "run_finished:run_a1",
-      status: "active",
-      expiresAt: "2026-01-01T14:00:00.000Z",
-      checkEveryMinutes: 1,
-      watching: true,
-      // What the model needs to decide whether to offer an email alert.
-      emailAlerts: "none",
-    });
-  });
-
-  it("schedule_watch passes the alert state through, and defaults to none when the host omits it", async () => {
-    for (const state of ["subscribed", "unavailable"] as const) {
-      const { result } = await scheduleWatch({
-        body: { watchId: "watch_1", status: "active", emailAlerts: state },
-      });
-      expect(result.emailAlerts).toBe(state);
-    }
-
-    // An older host that doesn't send the field must not read as "already
-    // subscribed" — the offer is the safe default.
-    const legacy = await scheduleWatch({ body: { watchId: "watch_1", status: "active" } });
-    expect(legacy.result.emailAlerts).toBe("none");
-  });
-
-  it("schedule_watch surfaces the limit and the duplicate as friendly text, naming the existing watch", async () => {
-    const limit = await scheduleWatch({
-      status: 400,
-      body: { error: "too many", code: "limit_reached" },
-    });
-    expect(limit.result.error).toContain("3 active watches");
-
-    const duplicate = await scheduleWatch({
-      status: 409,
-      body: { error: "already watching", code: "duplicate", existingId: "watch_existing" },
-    });
-    expect(duplicate.result.error).toContain("watch_existing");
-    expect(duplicate.result.error).toContain("already being watched");
-  });
-
-  it("schedule_watch reports an immediate outcome instead of a running watch", async () => {
-    const { result } = await scheduleWatch({
-      body: { immediate: { result: "satisfied", facts: { status: "COMPLETED" } } },
-    });
-    expect(result.watching).toBe(false);
-    expect(result.immediate).toEqual({ result: "satisfied", facts: { status: "COMPLETED" } });
-  });
-
-  it("schedule_watch fails closed with no chat and rejects a cadence the contract floors", async () => {
-    const noChat = await scheduleWatch({ body: {} }, { watch: RUN_WATCH }, {
-      userActorToken: "uat_token",
-      apiOrigin: "http://localhost:3030",
-    } as Record<string, unknown>);
-    expect(typeof noChat.result.error).toBe("string");
-    expect(noChat.requests).toHaveLength(0);
-
-    // Aggregate conditions are floored at 5 minutes by the contract's schema, so
-    // an over-eager watch never reaches the host.
-    await expect(
-      scheduleWatch(
-        { body: {} },
-        {
-          watch: {
-            kind: "backlog_drain",
-            queue: "task/x",
-            checkEveryMinutes: 1,
-            maxHours: 1,
-            note: "n",
-          },
-        }
-      )
-    ).rejects.toThrow();
   });
 
   // The env-JWT exchange is a webapp request plus DB work, so it is paid for once
@@ -1625,136 +1243,5 @@ describe("buildDashboardAgentTools", () => {
 
     expect(first.page).toEqual({ kind: "queue", name: "email" });
     expect(second.page).toEqual({ kind: "run", runId: "run_2" });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Watch alert tools — project-level subscriptions, as the user
-// ---------------------------------------------------------------------------
-
-describe("watch alert tools", () => {
-  const ALERT_CTX = {
-    userActorToken: "uat_token",
-    apiOrigin: "http://localhost:3030",
-    projectRef: "proj_abc",
-    environmentName: "prod",
-    chatId: "chat_alerts",
-  };
-
-  // Runs one alert tool against a stubbed global fetch, handing back the tool's
-  // result and the request the webapp would have received.
-  async function callAlertTool(
-    name: string,
-    input: unknown,
-    response: { status?: number; body: unknown },
-    ctx: Record<string, unknown> = ALERT_CTX
-  ) {
-    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
-    const original = globalThis.fetch;
-    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
-      requests.push({ url: String(url), init });
-      return new Response(JSON.stringify(response.body), {
-        status: response.status ?? 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }) as typeof fetch;
-    try {
-      const tools = buildDashboardAgentTools(ctx);
-      const tool = tools[name] as {
-        inputSchema: { parse: (input: unknown) => unknown };
-        execute: (input: unknown, opts: unknown) => Promise<any>;
-      };
-      const result = await tool.execute(tool.inputSchema.parse(input), {});
-      return { result, requests };
-    } finally {
-      globalThis.fetch = original;
-    }
-  }
-
-  it("list_alerts reads the project's subscriptions as the user", async () => {
-    const alerts = [{ id: "alert_1", type: "EMAIL", label: "k***@trigger.dev", enabled: true }];
-    const { result, requests } = await callAlertTool("list_alerts", {}, { body: { alerts } });
-
-    expect(requests).toHaveLength(1);
-    expect(requests[0]?.url).toBe(
-      "http://localhost:3030/api/v1/dashboard-agent/alerts?chatId=chat_alerts"
-    );
-    expect(requests[0]?.init?.method).toBe("GET");
-    expect((requests[0]?.init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
-      "Bearer uat_token"
-    );
-    expect(result).toEqual({ alerts });
-  });
-
-  it("create_alert posts the email channel and reports the created alert", async () => {
-    const { result, requests } = await callAlertTool(
-      "create_alert",
-      { email: "someone@example.com" },
-      { body: { ok: true, alert: { id: "alert_2", type: "EMAIL" } } }
-    );
-
-    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts");
-    expect(requests[0]?.init?.method).toBe("POST");
-    expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({
-      chatId: "chat_alerts",
-      channel: "email",
-      email: "someone@example.com",
-    });
-    expect(result).toEqual({ created: true, alert: { id: "alert_2", type: "EMAIL" } });
-
-    // No email given: the host defaults to the user's account email, so the body
-    // carries only the chat scope and the channel.
-    const noEmail = await callAlertTool("create_alert", {}, { body: { ok: true } });
-    expect(JSON.parse(String(noEmail.requests[0]?.init?.body))).toEqual({
-      chatId: "chat_alerts",
-      channel: "email",
-    });
-  });
-
-  it("create_alert relays a 403 with the reason the host gave", async () => {
-    const plan = await callAlertTool(
-      "create_alert",
-      {},
-      { status: 403, body: { error: "denied", reason: "plan" } }
-    );
-    expect(plan.result.error).toContain("aren't available on this plan");
-    expect(plan.result.error).toContain("dashboard");
-
-    const flag = await callAlertTool(
-      "create_alert",
-      {},
-      { status: 403, body: { error: "denied", reason: "flag" } }
-    );
-    expect(flag.result.error).toContain("aren't enabled here");
-  });
-
-  it("delete_alert deletes by id and surfaces a failure as text", async () => {
-    const { result, requests } = await callAlertTool(
-      "delete_alert",
-      { alertId: "alert_1" },
-      { body: { ok: true } }
-    );
-    expect(requests[0]?.url).toBe("http://localhost:3030/api/v1/dashboard-agent/alerts/alert_1");
-    expect(requests[0]?.init?.method).toBe("DELETE");
-    expect(result).toEqual({ deleted: true, alertId: "alert_1" });
-
-    const missing = await callAlertTool(
-      "delete_alert",
-      { alertId: "alert_gone" },
-      { status: 404, body: { error: "No such alert." } }
-    );
-    expect(missing.result.error).toBe("No such alert.");
-  });
-
-  it("the alert tools fail closed with no delegated token, without hitting the network", async () => {
-    for (const [name, input] of [
-      ["list_alerts", {}],
-      ["create_alert", {}],
-      ["delete_alert", { alertId: "alert_1" }],
-    ] as const) {
-      const { result, requests } = await callAlertTool(name, input, { body: {} }, {});
-      expect(typeof result.error).toBe("string");
-      expect(requests).toHaveLength(0);
-    }
   });
 });

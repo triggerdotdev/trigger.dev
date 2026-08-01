@@ -17,13 +17,11 @@ import {
   ChatText,
   ChatTranscript,
   ChatTurn,
-  ChatWakeSlot,
 } from "./chat-layout";
 import { toolPendingLabel } from "./tool-labels";
 import { reportBlockFromToolPart } from "./report-block-adapter";
 import type { ResolvedUri } from "./ReportView";
 import { ViewBlocks } from "./view-catalog";
-import { findWakeWatch, WakeBanner, wakeRefFromMessageId, type WakeWatch } from "./WakeBanner";
 
 // "thinking" — the turn is submitted but nothing has come back yet.
 // "working" — the turn is streaming: text, or (more often) tool calls, which can
@@ -50,13 +48,6 @@ export type DashboardAgentMessagesProps = {
   resolveUri?: (uri: string) => ResolvedUri | null;
   /** Host-resolved dashboard paths for settings-page footer actions. */
   pagePaths?: Record<string, string>;
-  /**
-   * The chat's watches, when the host has them. A wake message names the watch
-   * it came from, so this is what lets its banner say *what* was being watched
-   * and colour the outcome by kind. Without it a wake still gets a banner, in
-   * kind-agnostic wording.
-   */
-  watches?: WakeWatch[];
 };
 
 // The shared MessageBubble renders `step-start` parts as a dashed "step"
@@ -249,21 +240,18 @@ function userText(message: UIMessage): string {
 
 // Renders one message as one turn. A user turn is the accent bubble; assistant
 // parts go through the panel's own renderer, and a card-producing part
-// (render_view / get_report) becomes a catalog card instead of a tool row. A
-// wake — an assistant turn nobody asked for — keeps the same body under a banner.
+// (render_view / get_report) becomes a catalog card instead of a tool row.
 const DashboardAgentTurn = memo(function DashboardAgentTurn({
   message,
   onIntent,
   resolveUri,
   pagePaths,
-  watches,
   investigationWinners,
 }: {
   message: UIMessage;
   onIntent?: (intent: AgentIntent) => void;
   resolveUri?: (uri: string) => ResolvedUri | null;
   pagePaths?: Record<string, string>;
-  watches?: WakeWatch[];
   /** See {@link winningInvestigationOccurrences}. */
   investigationWinners?: Map<string, string>;
 }) {
@@ -341,24 +329,6 @@ const DashboardAgentTurn = memo(function DashboardAgentTurn({
     body.push(renderDashboardPart(part, i, { suppressPendingPill: hasLiveInvestigationCard }));
   }
 
-  // A wake narration is identified by the message id the agent wrote it under,
-  // so nothing about the parts has to change: same prose, with a banner above it
-  // saying the watch — not the user — started this turn.
-  const wake = wakeRefFromMessageId(message.id);
-  if (wake) {
-    return (
-      <ChatTurn>
-        <ChatWakeSlot
-          banner={
-            <WakeBanner outcome={wake.outcome} watch={findWakeWatch(watches, wake.watchId)} />
-          }
-        >
-          {body}
-        </ChatWakeSlot>
-      </ChatTurn>
-    );
-  }
-
   return <ChatTurn>{body}</ChatTurn>;
 });
 
@@ -376,7 +346,6 @@ export function DashboardAgentTurns({
   onIntent,
   resolveUri,
   pagePaths,
-  watches,
 }: DashboardAgentMessagesProps) {
   // One status line at a time: a tool's own progress beats the generic activity.
   const showActivity = activity !== null && !hasToolProgressLine(messages);
@@ -398,7 +367,6 @@ export function DashboardAgentTurns({
           onIntent={onIntent}
           resolveUri={resolveUri}
           pagePaths={pagePaths}
-          watches={watches}
           investigationWinners={investigationWinners}
         />
       ))}

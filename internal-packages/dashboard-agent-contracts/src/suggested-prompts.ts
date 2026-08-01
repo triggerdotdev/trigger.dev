@@ -25,7 +25,7 @@ export type SuggestedPrompt = z.infer<typeof suggestedPromptSchema>;
 
 /**
  * Never show more than this many chips at once: the promoted slot plus the four
- * slots the host's resolver fills (investigate, watch, explain, docs).
+ * slots the host's resolver fills (investigate, explain, docs).
  */
 export const SUGGESTED_PROMPT_CAP = 5;
 

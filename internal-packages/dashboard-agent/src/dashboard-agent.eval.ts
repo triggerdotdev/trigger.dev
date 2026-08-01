@@ -267,16 +267,6 @@ const FIXTURES: Record<string, unknown> = {
       pullRequestTitle: "Batch the receipt sends",
     },
   },
-  // A scheduled watch, as the host returns it: the id, the thing it watches, and
-  // when it gives up. No immediate outcome, so the answer must promise a message.
-  schedule_watch: {
-    watchId: "watch_eval1",
-    identity: "run_finished:run_a1",
-    status: "active",
-    expiresAt: "2026-01-02T01:00:00.000Z",
-    checkEveryMinutes: 1,
-    watching: true,
-  },
   search_docs: {
     results:
       "batchTrigger() triggers many runs of the same task in one call. It takes an array of payloads and returns a batch handle; use batchTriggerAndWait() inside a task to wait for all of them.",
@@ -636,12 +626,9 @@ const TOOL_CASES: Array<{ question: string; expect: string | string[] }> = [
   { question: "How do I use batchTrigger?", expect: "search_docs" },
   { question: "How deep is the email queue?", expect: "get_queue" },
   { question: "What was deployed recently?", expect: "list_deploys" },
-  // M6: "tell me when" is a watch, never a poll.
-  // Named id on purpose: "this run" would legitimately open on get_current_page.
-  { question: "Tell me when run run_a1 finishes.", expect: "schedule_watch" },
 ];
 
-// 21 cases; tolerate ~3 misses. A single nondeterministic miss shouldn't red the
+// 20 cases; tolerate ~3 misses. A single nondeterministic miss shouldn't red the
 // suite, a trend should.
 const TOOL_SELECTION_THRESHOLD = 0.83;
 

@@ -24,4 +24,3 @@ export { DemoIntentBubble, DemoNote } from "./components/DemoIntentBubble";
 export { DemoInvestigationCard } from "./components/DemoInvestigationCard";
 export { DemoReportCard } from "./components/DemoReportCard";
 export { DemoSuggestedPromptsRow } from "./components/DemoSuggestedPromptsRow";
-export { DemoWatchChips } from "./components/DemoWatchChips";

@@ -10,7 +10,6 @@
  */
 import { isExecutableIntent, type AgentIntent } from "@internal/dashboard-agent-contracts";
 import { DEMO_WORLD, demoRunUri } from "../ids";
-import { demoBacklogDrainWatch } from "./watches";
 
 export type DemoIntent = {
   intent: AgentIntent;
@@ -53,14 +52,8 @@ export const demoNavigateToRun = demoIntent(
 
 /** Hand a follow-up question back into the conversation. */
 export const demoAskIntent = demoIntent(
-  { kind: "ask", prompt: "Do you want me to watch the retry and tell you when it finishes?" },
+  { kind: "ask", prompt: "Do you want me to compare this run against a healthy one?" },
   "Asked a follow-up"
-);
-
-/** Start a watch. */
-export const demoWatchIntent = demoIntent(
-  { kind: "watch", spec: demoBacklogDrainWatch.spec },
-  `Watching ${DEMO_WORLD.backlogQueue} · checking every 5 min for up to 6h`
 );
 
 /**
@@ -77,6 +70,5 @@ export const demoIntents = {
   navigateToFailedRuns: demoNavigateToFailedRuns,
   navigateToRun: demoNavigateToRun,
   ask: demoAskIntent,
-  watch: demoWatchIntent,
   proposeFix: demoProposeFixIntent,
 } as const;

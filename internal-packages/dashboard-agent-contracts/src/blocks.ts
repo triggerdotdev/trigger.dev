@@ -605,8 +605,6 @@ export const INVESTIGATION_CAPABILITIES_VERSION = 1;
 export const investigationActionKindSchema = z.enum([
   /** Open the cited source location in the conversation. Concluded cards only. */
   "show_code",
-  /** Watch for the same failure happening again. */
-  "watch_recurrence",
   /** Go look at the other runs that hit this. */
   "view_similar",
   /** Keep asking about this investigation. */

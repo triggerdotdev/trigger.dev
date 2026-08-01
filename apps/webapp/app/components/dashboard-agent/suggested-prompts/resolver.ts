@@ -5,8 +5,8 @@
  *
  * 1. `promoted` — the product-chosen chip, when one is configured.
  * 2. `investigate` — when the page or its signals make one relevant.
- * 3. `watch` — when there's something worth watching (a waiting run, a saturated
- *    queue, a recurring error).
+ * 3. `status` — when the page has something live worth asking about (a waiting
+ *    run, a saturated queue, a recurring error).
  * 4. `explain` — the evergreen explain/find/show question. Always present.
  * 5. `docs` — a doc-flavored question. Always present, always last.
  *

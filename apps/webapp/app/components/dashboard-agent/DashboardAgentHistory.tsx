@@ -7,40 +7,31 @@ import { FormButtons } from "~/components/primitives/FormButtons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { AgentList, AgentListRow, AgentListRowAction } from "./list-row";
-import type { WatchChip } from "./WatchChips";
 
 // Date fields arrive as strings over the loader's JSON.
 export type DashboardAgentChat = {
   id: string;
   title: string;
   lastMessageAt: string | null;
-  /** The chat's active watches, for the panel's chip row. */
-  watches?: WatchChip[];
-  /** A watch resolved in this chat and the user hasn't opened it since. */
-  hasUnreadWake?: boolean;
-  /** The chat holds at least one active watch. */
-  hasActiveWatch?: boolean;
   /** The chat's latest investigation is still `in_progress`. */
   hasOpenInvestigation?: boolean;
 };
 
 /** Something is running in this chat. One per row, most immediate first. */
-type ChatProcess = "thinking" | "investigating" | "watching";
+type ChatProcess = "thinking" | "investigating";
 
 const PROCESS_LABELS: Record<ChatProcess, string> = {
   thinking: "Agent is thinking",
   investigating: "Investigation in progress",
-  watching: "Watch active",
 };
 
 /**
  * `thinking` outranks the rest: a turn in flight is the thing that's about to
- * change, an investigation or a watch just sits there.
+ * change, an investigation just sits there.
  */
 function chatProcess(chat: DashboardAgentChat, isThinking: boolean): ChatProcess | null {
   if (isThinking) return "thinking";
   if (chat.hasOpenInvestigation) return "investigating";
-  if (chat.hasActiveWatch) return "watching";
   return null;
 }
 
@@ -53,22 +44,9 @@ function ProcessIcon({ process }: { process: ChatProcess }) {
       {process === "investigating" ? (
         <MagnifyingGlassIcon className="size-3.5" />
       ) : (
-        // Thinking and watching both spin — "something is going on here"; the
-        // hover title says which.
         <Spinner className="size-3.5" />
       )}
     </span>
-  );
-}
-
-/**
- * Chats with an unread wake go to the top — a watch that fired is the reason to
- * open the panel at all. Everything else keeps the server's order (pinned first,
- * then most recent), so this is a stable sort on one key.
- */
-function unreadFirst(chats: DashboardAgentChat[]): DashboardAgentChat[] {
-  return [...chats].sort(
-    (a, b) => Number(b.hasUnreadWake ?? false) - Number(a.hasUnreadWake ?? false)
   );
 }
 
@@ -92,8 +70,8 @@ export function chatAge(lastMessageAt: string, now: number = Date.now()): string
 
 /**
  * The chat list, as the body of the header's title dropdown. Rows keep the
- * panel's list language (unread dot, process icon, hover delete) — only the
- * container changed from a full panel view to a popover menu.
+ * panel's list language (process icon, hover delete) — only the container
+ * changed from a full panel view to a popover menu.
  */
 export function DashboardAgentHistoryMenu({
   chats,
@@ -126,14 +104,13 @@ export function DashboardAgentHistoryMenu({
           </Paragraph>
         ) : (
           <AgentList>
-            {unreadFirst(chats).map((chat) => {
+            {chats.map((chat) => {
               const process = chatProcess(chat, chat.id === thinkingChatId);
               const age = chat.lastMessageAt ? chatAge(chat.lastMessageAt, now) : undefined;
               return (
                 <AgentListRow
                   key={chat.id}
                   label={chat.title}
-                  unread={chat.hasUnreadWake ?? false}
                   // null keeps the leading slot so every title starts at the
                   // same x whether or not this chat has a status.
                   status={process ? <ProcessIcon process={process} /> : null}
