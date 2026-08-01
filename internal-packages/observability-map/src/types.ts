@@ -21,6 +21,10 @@ export type CatchEvidence = {
    * has already returned.
    */
   rethrows: boolean;
+  /** A `throw` is reached on that same straight-line path, whether or not it is the only way out.
+   * `rethrows` is this AND no reachable `return`. Kept separately so a verdict can say what is true
+   * of a clause that both throws and returns. */
+  throws: boolean;
   /**
    * The clause picks what to do from what it caught, on that same straight-line path: an `if` or
    * `switch` whose condition references the caught error binding AND at least one of whose arms
@@ -41,9 +45,10 @@ export type CatchEvidence = {
   guardsParse: boolean;
   /**
    * The guarded region does something that could raise at all: a call, a construction, an `await`,
-   * a member access, a `throw`, an iteration, an `instanceof`. A clause whose try block cannot
-   * raise is unreachable, so it is not error handling and `error-classification` reads no evidence
-   * off it. See `canRaise` in `scan.ts` for what is not on that list.
+   * a member access, a `throw`, an iteration, an `instanceof`. False means `try { 0; }` and little
+   * else: any call counts, including one that cannot throw, so `try { String(0); }` reads as true.
+   * See `canRaise` in `scan.ts` for both directions of that, including the destructuring
+   * declaration it misses.
    */
   guardCanRaise: boolean;
   /**

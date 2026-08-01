@@ -196,13 +196,20 @@ function canRaise(node: ts.Node): boolean {
  * to 42 and raised 224 routes, which is more than every other shape found on this branch put
  * together. `dead-classifying-try` in the mutation corpus is the tree-scale version.
  *
- * The alternative considered was proving unreachability the other way round, by ruling out every
- * expression that could throw. It is the same predicate read backwards and it fails the same way,
- * so the cheaper direction won: ask what the block DOES, and require it to do something. The
- * residual is what `canRaise` does not list. A temporal-dead-zone read (`try { const x = later; }`),
- * a coercion that raises (`try { const x = 1 + someSymbol; }`) and a `delete` on a frozen object are
- * all treated as unable to raise. None is expressible as a preserving rewrite of a real route, and
- * all of them would need types the scanner does not have.
+ * What this refuses is `try { 0; }` and nothing cleverer. `canRaise` accepts ANY call, member
+ * access or `in`, and none of those has to be able to throw, so one inert call defeats the rule:
+ * `try { String(0); } catch (e) { if (e instanceof Error) { return json(x, { status: 400 }); } throw
+ * e; }` reads as classification and takes the tree back to 15 to 42, exactly as `try { 0; }` did.
+ * `dead-classifying-try-with-call` in the mutation corpus is that shape, running as an expected
+ * failure. Telling a call that can throw from one that cannot needs types the scanner does not have,
+ * so the rule closes the shape found rather than the family it belongs to. Read the docstrings that
+ * point here as "refuses `try { 0; }`", never as "an unreachable catch cannot be credited".
+ *
+ * The list also misses things that CAN raise, which is the safe direction, and the misses matter
+ * because a real clause can be dropped by one: a destructuring declaration (`const { a } = undefined`
+ * throws), a temporal-dead-zone read (`try { const x = later; }`), a coercion that raises
+ * (`try { const x = 1 + someSymbol; }`) and a `delete` on a frozen object all read as unable to
+ * raise.
  *
  * Nested function bodies are skipped throughout: a callback written inside the try is not work the
  * try is guarding on this pass through. A `throw` inside one is not either, which is deliberate.
@@ -479,10 +486,22 @@ function selectsADistinctPath(statement: ts.IfStatement | ts.SwitchStatement): b
  * `catch (e) { if (e instanceof Response) return e; throw e; }`, which passes on its branch instead.
  * That is the direction to be wrong in, since the reverse hands out points.
  */
-function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branches: boolean } {
+function catchClauseEvidence(clause: ts.CatchClause): {
+  rethrows: boolean;
+  throws: boolean;
+  branches: boolean;
+} {
   let rethrows = false;
   let returns = false;
   let branches = false;
+  // Set once a statement the walk has already passed could have left the clause. An error test
+  // after one of those is dead code, so it decides nothing. Raised at the END of each statement,
+  // after that statement's own branch check: a deciding statement contains an exit by definition,
+  // so raising it first makes every such statement refuse itself, which was measured at 78 routes
+  // losing their pass and the tree dropping from 15 to 6. This ordering leaves the real-tree report
+  // and all 240 clauses' evidence byte-identical. The tests are the cases in `dead throw written
+  // after something that already exited`.
+  let exited = false;
   const bindingName = catchBindingName(clause);
 
   const walk = (statements: readonly ts.Statement[]) => {
@@ -494,10 +513,12 @@ function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branc
     for (const statement of reachableStatements(statements)) {
       if (ts.isThrowStatement(statement)) {
         rethrows = true;
+        exited = true;
         continue;
       }
       if (ts.isBlock(statement)) {
         walk(statement.statements);
+        if (containsExit(statement)) exited = true;
         continue;
       }
       // A `do` body runs before its condition is ever read, so it is on the straight-line path
@@ -505,36 +526,38 @@ function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branc
       if (ts.isDoStatement(statement)) {
         const body = statement.statement;
         walk(ts.isBlock(body) ? body.statements : [body]);
+        if (containsExit(statement)) exited = true;
         continue;
       }
       // Any other reachable statement that could return means throwing is not the only way out.
       // Read here rather than over the whole clause so a `return` the walk has already cut as dead
       // does not count, which is what a `do { throw e; } while (false); return null;` produces.
       if (containsReturn(statement)) returns = true;
-      if (bindingName === null || shadowed) continue;
 
-      if (
-        (ts.isIfStatement(statement) || ts.isSwitchStatement(statement)) &&
-        referencesBinding(statement.expression, bindingName) &&
-        selectsADistinctPath(statement)
-      ) {
-        branches = true;
-        continue;
-      }
-      if (
-        (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) &&
-        statement.expression !== undefined
-      ) {
-        const value = unwrap(statement.expression);
-        if (ts.isConditionalExpression(value) && selectsAnErrorPath(value, bindingName)) {
+      if (bindingName !== null && !shadowed && !exited) {
+        if (
+          (ts.isIfStatement(statement) || ts.isSwitchStatement(statement)) &&
+          referencesBinding(statement.expression, bindingName) &&
+          selectsADistinctPath(statement)
+        ) {
           branches = true;
+        } else if (
+          (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) &&
+          statement.expression !== undefined
+        ) {
+          const value = unwrap(statement.expression);
+          if (ts.isConditionalExpression(value) && selectsAnErrorPath(value, bindingName)) {
+            branches = true;
+          }
         }
       }
+
+      if (containsExit(statement)) exited = true;
     }
   };
   walk(clause.block.statements);
 
-  return { rethrows: rethrows && !returns, branches };
+  return { rethrows: rethrows && !returns, throws: rethrows, branches };
 }
 
 /**
@@ -1008,6 +1031,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
           const clause = catchClauseEvidence(node.catchClause);
           catches.push({
             rethrows: clause.rethrows,
+            throws: clause.throws,
             branches: clause.branches,
             ...guardedWork(node.tryBlock),
             tryStatementCount,

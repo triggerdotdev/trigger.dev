@@ -603,6 +603,66 @@ describe("error-classification", () => {
     expect(r.status).toBe("pass");
   });
 
+  // I3. "Takes one way out regardless of what was thrown" is false of a clause that throws for
+  // some errors, and the strengthened `rethrows` makes such a clause a swallow by this check's
+  // definition: it decides nothing about the error, but it does not send everything the same way
+  // either. 16 clauses in the tree flipped `rethrows` this round and every one was eligible for the
+  // false wording. Whether `fail` is the right verdict for them is a separate question, parked.
+  it("does not accuse a clause that throws of taking one way out", () => {
+    const r = run(
+      "error-classification",
+      "mixed.ts",
+      `import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return json(await prisma.thing.findMany()); }
+         catch (e) { if (rare) { return null; } throw e; }
+       }`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("without looking at what was thrown");
+    expect(r.detail).not.toContain("one way out");
+  });
+
+  it("still says one way out for a clause that never throws", () => {
+    const r = run(
+      "error-classification",
+      "swallow.ts",
+      `import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return json(await prisma.thing.findMany()); }
+         catch (e) { logger.error(e); return null; }
+       }`
+    );
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("one way out");
+  });
+
+  // I4. A route that owns a real classifying catch must never be told it owns none. `canRaise` does
+  // not list destructuring, and `const { a } = undefined` throws, so the owned catch dropped out of
+  // `reachable`; with the callback branch ordered off `reachable` the route was then accused of
+  // having all its error handling in a callback, which was simply false.
+  it("does not accuse a route that owns a catch of owning none", () => {
+    const r = run(
+      "error-classification",
+      "owned.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const items = await prisma.item.findMany();
+         await Promise.all(
+           items.map(async (item) => {
+             try { await processItem(item); } catch { return null; }
+           })
+         );
+         try { const { a } = undefined; } catch (e) {
+           if (e instanceof TypeError) { return new Response(null, { status: 400 }); }
+           throw e;
+         }
+         return json({ ok: true });
+       }`
+    );
+    expect(r.detail).not.toContain("callback the route does not own");
+  });
+
   // C2. A single-element array cannot iterate, so `[0].map(async () => { whole body })` is not a
   // per-item boundary and the route's own catch is found where it always was. Before this, the
   // wrapper deleted the route's catches and took a swallow from fail to not-applicable.

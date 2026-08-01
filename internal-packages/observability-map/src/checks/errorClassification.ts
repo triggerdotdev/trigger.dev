@@ -152,13 +152,23 @@ export function usesBuilder(ep: EntryPoint): boolean {
  * `Promise.all([0].map(async () => { ... }))` did. It fails instead. The precision cost is a route
  * that genuinely only handles errors per item, which now fails rather than sitting out.
  *
- * A clause whose try block cannot raise is read as no clause at all, `guardCanRaise` on the
- * evidence. It is not error handling, and crediting one was the largest hole ever found here:
- * prepending `try { 0; } catch (e) { if (e instanceof Error) { return json(x, { status: 400 }); }
- * throw e; }` to every body took the tree from 15 to 42 and raised 224 routes, because the 261
- * routes that catch nothing were sitting at not-applicable and a dead clause moved each of them to
- * pass. Dropping it here rather than in the scan keeps the evidence honest about what is written
- * and puts the judgement where the other judgements are.
+ * A clause whose try block holds nothing that could raise is read as no clause at all,
+ * `guardCanRaise` on the evidence. Prepending `try { 0; } catch (e) { if (e instanceof Error) {
+ * return json(x, { status: 400 }); } throw e; }` to every body took the tree from 15 to 42 and
+ * raised 224 routes, because the 261 routes that catch nothing were sitting at not-applicable and a
+ * dead clause moved each of them to pass.
+ *
+ * What that refuses is `try { 0; }`, and it is defeated by one inert call: `try { String(0); }`
+ * reads as classification and pays the same 224 routes, because `canRaise` accepts any call at all.
+ * The rule closes the shape that was found, not the family, and telling an inert call from a
+ * throwing one needs types the scanner does not have. `dead-classifying-try-with-call` in the
+ * mutation corpus is the open shape, running as an expected failure.
+ *
+ * The filter also has to run BEFORE nothing. Ordering the callback branch off `reachable` rather
+ * than `ep.catches` accused a route that owns a real classifying catch of owning none, whenever
+ * `canRaise` missed what that catch guarded: a destructuring declaration is not on its list, so
+ * `try { const { a } = undefined; } catch (e) { ... }` beside a per-item `.map` catch failed with
+ * "its only error handling sits in a callback the route does not own", which was simply untrue.
  */
 export const errorClassification = {
   id: ID,
@@ -171,13 +181,24 @@ export const errorClassification = {
     if (swallowed.length > 0) {
       const which =
         reachable.length > 1 ? ` (${swallowed.length} of ${reachable.length} catches)` : "";
+      // "One way out" is only true of a clause that never throws. A clause holding a `throw` that
+      // is not its only exit is a swallow by this check's definition (it decides nothing about the
+      // error) and it is NOT one way out, so saying so was a false accusation. 16 clauses in the
+      // tree changed `rethrows` from true to false this round and every one of them would have
+      // been eligible for it.
+      const everyWayOut = swallowed.every((c) => !c.throws);
       return {
         id: ID,
         status: "fail",
-        detail: `catches its errors and takes one way out regardless of what was thrown${which}`,
+        detail: everyWayOut
+          ? `catches its errors and takes one way out regardless of what was thrown${which}`
+          : `catches its errors and chooses what to do without looking at what was thrown${which}`,
       };
     }
-    if (reachable.length === 0 && ep.callbackCatches > 0) {
+    // Read off `ep.catches`, not `reachable`: a route that owns a catch owns one, whether or not
+    // `canRaise` could see what it guarded. Ordering this off `reachable` turned every `canRaise`
+    // miss on a route that also has a per-item catch into an accusation that was flatly false.
+    if (ep.catches.length === 0 && ep.callbackCatches > 0) {
       return {
         id: ID,
         status: "fail",

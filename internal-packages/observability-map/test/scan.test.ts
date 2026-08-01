@@ -754,16 +754,26 @@ describe("scanFile: catch clause evidence", () => {
       });
     }
 
-    // The same six wrappers on the branches side, which is what pins `definitelyExits` itself: the
-    // no-return rule above says nothing about branch credit, so only the cut sees these. An error
-    // test written after a construct that already returned is dead code and must not read as the
-    // clause deciding anything.
+    // The same wrappers on the branches side, plus three the rethrow list has no use for. An error
+    // test written after a statement that could already have left the clause is dead code and must
+    // not read as the clause deciding anything.
     //
-    // `an if (true)` is absent from this list on purpose. Nothing here evaluates a condition, so
-    // the cut cannot see that the wrapper always exits, and the error test after it is still
-    // credited. That residual is `dead-branch-after-if-true` in the mutation corpus, which runs as
-    // an expected failure with the two rejected alternatives written out beside it.
-    const BRANCH_EXITED = EXITED.filter(([label]) => label !== "an if (true)");
+    // This asks a weaker question than `definitelyExits` does, and on purpose: "could this have
+    // exited", not "must it have". That is why `if (true)`, a labelled block, a `for...of` and a
+    // `while` are all on the list even though none of them is guaranteed to run its body. Nothing
+    // here evaluates a condition, and none of these needs one evaluated.
+    //
+    // The ordering is the whole trick and it is easy to get backwards. The flag is raised at the
+    // END of each statement, after that statement's own branch check. Raising it first makes every
+    // deciding statement refuse itself, because `if (e instanceof X) return y` contains an exit by
+    // definition; that variant was measured and it takes the tree from 15 to 6 and accuses 78
+    // routes. This one leaves the real-tree report and all 240 clauses' evidence byte-identical.
+    const BRANCH_EXITED: Array<[string, string]> = [
+      ...EXITED,
+      ["a labelled block", "outer: { return null; }"],
+      ["a for...of that returns", "for (const q of items) { return q; }"],
+      ["a while that returns", "while (go) { return null; }"],
+    ];
 
     for (const [label, wrapped] of BRANCH_EXITED) {
       it(`does not credit an error test written after ${label}`, () => {
@@ -780,6 +790,24 @@ describe("scanFile: catch clause evidence", () => {
         expect(ep!.catches[0]!.branches).toBe(false);
       });
     }
+
+    // The precision this gives up, pinned so it is a decision and not a surprise: a conditional
+    // exit before the error test also stops the credit, because the walk cannot tell a guard that
+    // usually falls through from one that always leaves. No clause in the route tree is this shape,
+    // which is why the report is byte-identical, but one could be written tomorrow.
+    it("does not credit an error test written after a conditional return", () => {
+      const ep = scanFile(
+        "x.ts",
+        `export async function loader() {
+           try { return await prisma.thing.findMany(); }
+           catch (e) {
+             if (rare) { return null; }
+             if (e instanceof Error) { return json({ a: 1 }); }
+           }
+         }`
+      );
+      expect(ep!.catches[0]!.branches).toBe(false);
+    });
 
     it("still credits an error test with nothing exiting before it", () => {
       const ep = scanFile(
@@ -1250,6 +1278,7 @@ describe("scanFile: per-catch evidence", () => {
     expect(ep!.catches[0]).toEqual({
       rethrows: false,
       branches: false,
+      throws: false,
       guardsParse: true,
       awaitsOnlyParse: true,
       guardCanRaise: true,
@@ -1353,6 +1382,7 @@ describe("scanFile: per-catch evidence", () => {
     expect(ep!.catches[0]).toEqual({
       rethrows: false,
       branches: false,
+      throws: false,
       guardsParse: false,
       awaitsOnlyParse: false,
       guardCanRaise: true,
