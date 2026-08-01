@@ -1579,3 +1579,98 @@ describe("scanFile: branches requires a genuine read of the binding, not a looka
     expect(ep!.catches[0]!.branches).toBe(true);
   });
 });
+
+// I5. The shadow check only fired inside `referencesBinding`'s own top-down search from an
+// if/switch's condition, so it only caught shadowing NESTED inside that condition, exactly what
+// the tests above exercise. A shadowing scope that instead WRAPS the if (a for-of loop, a nested
+// catch with the same name) was invisible, because nothing walked up from the if to notice it.
+// catchClauseEvidence now tracks shadowing as it descends, the same way `inCallback` tracks a
+// callback boundary: once a scope re-declares the binding, everything nested inside stays shadowed.
+describe("scanFile: a binding shadowed by an enclosing scope, not just a nested one", () => {
+  const swallow = (mutation: string) => `
+    export async function loader() {
+      try {
+        return await prisma.thing.findMany();
+      } catch (error) {
+        ${mutation}
+        return null;
+      }
+    }
+  `;
+
+  it("does not credit an if inside a for...of loop that re-declares the binding", () => {
+    const ep = scanFile(
+      "x.ts",
+      swallow("for (const error of errors) { if (error.code === 1) { doThing(); } }")
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit an if inside a for...in loop that re-declares the binding", () => {
+    const ep = scanFile(
+      "x.ts",
+      swallow("for (const error in errorsByKey) { if (error) { doThing(); } }")
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit an if inside a classic for loop that re-declares the binding", () => {
+    const ep = scanFile(
+      "x.ts",
+      swallow("for (let error = 0; error < 10; error++) { if (error) { doThing(); } }")
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit an if inside a nested catch clause with the same binding name", () => {
+    const ep = scanFile(
+      "x.ts",
+      swallow("try { doWork(); } catch (error) { if (error) { doThing(); } }")
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit an if inside a block whose own destructured const shadows the binding", () => {
+    const ep = scanFile(
+      "x.ts",
+      swallow(`
+        if (attempt > 0) {
+          const { error } = computeSomething();
+          if (error) { doThing(); }
+        }
+      `)
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit an if reading a destructured parameter inside the if's own condition", () => {
+    const ep = scanFile(
+      "x.ts",
+      swallow("if (items.some(({ error }) => error > 0)) { doThing(); }")
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  it("does not credit an if shadowed by an array-destructured declaration", () => {
+    const ep = scanFile(
+      "x.ts",
+      swallow("const [error] = getErrors();\n        if (error) { doThing(); }")
+    );
+    expect(ep!.catches[0]!.branches).toBe(false);
+  });
+
+  // Positive controls: a genuine reference to the real binding must still be credited, including
+  // through an enclosing loop whose OWN variable has a different name.
+  it("still credits an if that genuinely reads the outer binding directly", () => {
+    const ep = scanFile("x.ts", swallow("if (error instanceof Error) { doThing(); }"));
+    expect(ep!.catches[0]!.branches).toBe(true);
+  });
+
+  it("still credits an if inside a for...of loop with a different loop variable", () => {
+    const ep = scanFile(
+      "x.ts",
+      swallow("for (const item of items) { if (error.code === item) { doThing(); } }")
+    );
+    expect(ep!.catches[0]!.branches).toBe(true);
+  });
+});

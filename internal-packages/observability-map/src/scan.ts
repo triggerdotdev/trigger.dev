@@ -159,6 +159,21 @@ function containsInstanceOf(node: ts.Node): boolean {
   );
 }
 
+/**
+ * Whether a binding name pattern declares `target`, recursively: a plain `error`, a destructured
+ * `{ error }` (shorthand) or `{ code: error }` (renamed), an array pattern `[error]`, and any of
+ * those nested inside another. A destructured parameter or declaration re-declares the name just as
+ * completely as a plain one does, so a shadow check that only recognised `ts.isIdentifier` missed
+ * every destructured shape, function parameters and variable declarations alike.
+ */
+function bindingDeclares(name: ts.BindingName, target: string): boolean {
+  if (ts.isIdentifier(name)) return name.text === target;
+  for (const element of name.elements) {
+    if (!ts.isOmittedExpression(element) && bindingDeclares(element.name, target)) return true;
+  }
+  return false;
+}
+
 /** Whether `name` is declared by a var/let/const, function or class statement directly in this
  * statement list. Not recursive: a nested block's own declarations are handled when the walk
  * reaches that block. */
@@ -168,14 +183,26 @@ function declaresInScope(statements: readonly ts.Statement[], name: string): boo
     if (ts.isClassDeclaration(statement) && statement.name?.text === name) return true;
     if (
       ts.isVariableStatement(statement) &&
-      statement.declarationList.declarations.some(
-        (d) => ts.isIdentifier(d.name) && d.name.text === name
-      )
+      statement.declarationList.declarations.some((d) => bindingDeclares(d.name, name))
     ) {
       return true;
     }
   }
   return false;
+}
+
+/** Whether a `for`/`for...of`/`for...in` loop's own declared variable is `name`, so its body
+ * shadows the rest of the enclosing scope for that name. */
+function declaresLoopVariable(
+  node: ts.ForStatement | ts.ForOfStatement | ts.ForInStatement,
+  name: string
+): boolean {
+  const initializer = node.initializer;
+  return (
+    initializer !== undefined &&
+    ts.isVariableDeclarationList(initializer) &&
+    initializer.declarations.some((d) => bindingDeclares(d.name, name))
+  );
 }
 
 /**
@@ -184,8 +211,9 @@ function declaresInScope(statements: readonly ts.Statement[], name: string): boo
  * binding's text without reading it: the property side of a member expression (`fallback.error`)
  * and an object literal key (`{ error: true }`), both excluded by checking which side of the
  * parent node the identifier sits on. A name re-declared in a nested scope, as a function or catch
- * parameter or as a var/let/const/function/class in a block, refers to that declaration instead,
- * so the walk stops at the boundary that re-declares it rather than crediting the outer binding.
+ * parameter (including a destructured one) or as a var/let/const/function/class in a block, refers
+ * to that declaration instead, so the walk stops at the boundary that re-declares it rather than
+ * crediting the outer binding.
  */
 function referencesBinding(node: ts.Node, bindingName: string): boolean {
   if (ts.isIdentifier(node) && node.text === bindingName) {
@@ -197,14 +225,14 @@ function referencesBinding(node: ts.Node, bindingName: string): boolean {
 
   if (
     ts.isFunctionLike(node) &&
-    node.parameters.some((p) => ts.isIdentifier(p.name) && p.name.text === bindingName)
+    node.parameters.some((p) => bindingDeclares(p.name, bindingName))
   ) {
     return false;
   }
 
   if (ts.isCatchClause(node)) {
     const decl = node.variableDeclaration;
-    if (decl && ts.isIdentifier(decl.name) && decl.name.text === bindingName) return false;
+    if (decl && bindingDeclares(decl.name, bindingName)) return false;
   }
 
   if (ts.isBlock(node) && declaresInScope(node.statements, bindingName)) return false;
@@ -291,40 +319,68 @@ function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branc
   let branches = false;
   const bindingName = catchBindingName(clause);
 
-  const visit = (node: ts.Node) => {
+  // `shadowed` is true once the walk has passed a scope that re-declares `bindingName`: a nested
+  // catch clause with the same name, a `for`/`for...of`/`for...in` loop declaring it, or a block
+  // that does (reusing the same `declaresInScope` a bare block already checks). From there on, an
+  // `if`/`switch` that references the name textually is referencing the SHADOWING declaration, not
+  // this clause's own binding, so it must not count as this clause deciding anything. Never reset
+  // back to false, the same rule `inCallback` follows: once shadowed, everything nested inside is
+  // still shadowed.
+  const visit = (node: ts.Node, shadowed: boolean) => {
     if (ts.isFunctionLike(node)) return;
 
+    if (bindingName !== null && ts.isCatchClause(node)) {
+      const decl = node.variableDeclaration;
+      const shadowsHere = decl !== undefined && bindingDeclares(decl.name, bindingName);
+      ts.forEachChild(node, (child) => visit(child, shadowed || shadowsHere));
+      return;
+    }
+
+    if (
+      bindingName !== null &&
+      (ts.isForStatement(node) || ts.isForOfStatement(node) || ts.isForInStatement(node)) &&
+      declaresLoopVariable(node, bindingName)
+    ) {
+      visit(node.statement, true);
+      return;
+    }
+
     if (ts.isBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node)) {
-      for (const statement of reachableStatements(node.statements)) visit(statement);
+      const shadowedHere =
+        shadowed || (bindingName !== null && declaresInScope(node.statements, bindingName));
+      for (const statement of reachableStatements(node.statements)) visit(statement, shadowedHere);
       return;
     }
 
     if (ts.isThrowStatement(node)) rethrows = true;
     if (
+      !shadowed &&
       bindingName !== null &&
       ((ts.isIfStatement(node) && referencesBinding(node.expression, bindingName)) ||
         (ts.isSwitchStatement(node) && referencesBinding(node.expression, bindingName)))
     ) {
       branches = true;
     }
-    if (ts.isConditionalExpression(node) && selectsAnErrorPath(node, bindingName)) branches = true;
+    if (!shadowed && ts.isConditionalExpression(node) && selectsAnErrorPath(node, bindingName)) {
+      branches = true;
+    }
 
     // A statically-false condition makes the guarded statement dead code: it can set `branches`
     // above (the clause still decided to test the error, even if the arm never runs), but nothing
     // inside it can set `rethrows` or a nested `branches`, so it is not visited at all.
     if (ts.isIfStatement(node)) {
-      if (!isFalsyLiteral(node.expression)) visit(node.thenStatement);
-      if (node.elseStatement) visit(node.elseStatement);
+      if (!isFalsyLiteral(node.expression)) visit(node.thenStatement, shadowed);
+      if (node.elseStatement) visit(node.elseStatement, shadowed);
       return;
     }
     if (ts.isWhileStatement(node)) {
-      if (!isFalsyLiteral(node.expression)) visit(node.statement);
+      if (!isFalsyLiteral(node.expression)) visit(node.statement, shadowed);
       return;
     }
 
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => visit(child, shadowed));
   };
-  visit(clause.block);
+  visit(clause.block, false);
 
   return { rethrows, branches };
 }
