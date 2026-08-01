@@ -80,6 +80,50 @@ kubectl port-forward svc/trigger-webapp 3040:3030 -n trigger
 kubectl logs -n trigger deployment/trigger-webapp | grep -A1 "magic link"
 ```
 
+## Upgrading
+
+`helm upgrade` keeps generated secrets, PVCs, and datastore volumes, so most upgrades need no preparation. These chart versions are the exceptions.
+
+### 4.5.6: two new required secret keys
+
+The webapp now reads `PROVIDER_SECRET` and `COORDINATOR_SECRET`. When you supply `secrets.existingSecret` the chart generates nothing and reads every key from your Secret, so both keys must exist there before you upgrade. Inline `secrets.*` values are ignored while `existingSecret` is set.
+
+Add them with two fresh 32-character hex values:
+
+```bash
+kubectl patch secret my-trigger-secrets -n trigger --type merge -p \
+  "{\"stringData\":{\"PROVIDER_SECRET\":\"$(openssl rand -hex 16)\",\"COORDINATOR_SECRET\":\"$(openssl rand -hex 16)\"}}"
+```
+
+The chart checks your Secret in a pre-upgrade hook and aborts with the list of missing keys, leaving the running release untouched. Without that check a missing key surfaces as a `CreateContainerConfigError` partway through the webapp rollout.
+
+<Note>
+  GitOps tools that render with `helm template` have no cluster access, so the check is
+  skipped and a missing key still reaches the rollout. Verify the keys yourself before syncing.
+</Note>
+
+### 4.5.6: ClickHouse credentials moved
+
+The bundled ClickHouse password moved out of the subchart-generated Secret and into the chart-managed datastore Secret:
+
+|        | Up to 4.5.5            | 4.5.6 and later             |
+| ------ | ---------------------- | --------------------------- |
+| Secret | `<release>-clickhouse` | `trigger-datastore`         |
+| Key    | `admin-password`       | `clickhouse-admin-password` |
+
+The webapp and the ClickHouse server both read the new location, so the upgrade itself needs no action. Repoint anything outside the chart that reads the old Secret — a maintenance CronJob, a Grafana datasource, an external secret sync:
+
+```bash
+kubectl get secret trigger-datastore -n trigger \
+  -o jsonpath='{.data.clickhouse-admin-password}' | base64 -d
+```
+
+The same move applies to the bundled PostgreSQL (`postgres-password`) and MinIO (`minio-root-user`, `minio-root-password`).
+
+### Bitnami ClickHouse to the official image
+
+The bundled ClickHouse runs the official `clickhouse/clickhouse-server` image instead of the Bitnami subchart. The chart adopts your existing data volume automatically, with three caveats covered under [ClickHouse](#clickhouse) in external services: rendering without cluster access, pinned Bitnami image tags, and storage that doesn't support `fsGroup`.
+
 ## Configuration
 
 Most values map directly to the environment variables documented in the [webapp](/self-hosting/env/webapp) and [supervisor](/self-hosting/env/supervisor) environment variable overview.
@@ -138,8 +182,9 @@ secrets:
 # - PROVIDER_SECRET
 # - COORDINATOR_SECRET
 # - MANAGED_WORKER_SECRET
-# - OBJECT_STORE_ACCESS_KEY_ID
-# - OBJECT_STORE_SECRET_ACCESS_KEY
+# Plus s3-auth-access-key-id and s3-auth-secret-access-key if you deploy the
+# bundled MinIO with s3.auth.existingSecret cleared. The chart lists any keys
+# it can't find and fails the install before touching a running release.
 secrets:
   enabled: false
   existingSecret: "your-existing-secret"
