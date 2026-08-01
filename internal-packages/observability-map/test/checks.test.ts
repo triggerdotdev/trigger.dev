@@ -340,6 +340,31 @@ describe("error-classification", () => {
     );
     expect(r.status).toBe("not-applicable");
   });
+
+  // A7. A per-item error boundary inside a `.map()` callback used to be judged as the route's own
+  // catch. The route's own visible body catches nothing, so it is not-applicable, not a pass or a
+  // fail on the strength of a swallow one level of nesting away.
+  it("is not applicable to a route whose only catch is inside a Promise.all(items.map(...)) callback", () => {
+    const r = run(
+      "error-classification",
+      "batch.process.ts",
+      `import { prisma } from "~/db.server";
+       export async function action({ request }) {
+         const items = await prisma.item.findMany();
+         await Promise.all(
+           items.map(async (item) => {
+             try {
+               await processItem(item);
+             } catch {
+               return null;
+             }
+           })
+         );
+         return json({ ok: true });
+       }`
+    );
+    expect(r.status).toBe("not-applicable");
+  });
 });
 
 describe("auth-boundary", () => {

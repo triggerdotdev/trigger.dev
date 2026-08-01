@@ -631,10 +631,21 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     statementCount += enclosingStatementCount;
 
     if (!fn.body) return;
-    const visit = (node: ts.Node, inCatch: boolean) => {
+    // `inCallback` is true once the walk has entered an inline function (`.map((item) => { ... })`),
+    // never reset back to false: a callback nested inside another callback is still a callback.
+    // `calleeNames` and `logCalls` keep descending in there regardless, which is what lets
+    // `isTrivial` see work a short statement count hides. A try/catch does not: it is not part of
+    // this body's own statement list, and `countStatement` already stops at a nested function
+    // boundary, so counting it here let `tryStatementCount` exceed the entry point's whole
+    // `statementCount` and judged a per-item error boundary as though it were the route's own.
+    const visit = (node: ts.Node, inCatch: boolean, inCallback: boolean) => {
+      if (ts.isFunctionLike(node)) {
+        ts.forEachChild(node, (child) => visit(child, inCatch, true));
+        return;
+      }
       if (ts.isTryStatement(node)) {
         hasTryCatch = true;
-        if (node.catchClause) {
+        if (node.catchClause && !inCallback) {
           const tryStatementCount = countStatements(node.tryBlock.statements);
           const clause = catchClauseEvidence(node.catchClause);
           catches.push({
@@ -648,7 +659,7 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
       }
 
       if (ts.isCatchClause(node)) {
-        ts.forEachChild(node, (child) => visit(child, true));
+        ts.forEachChild(node, (child) => visit(child, true, inCallback));
         return;
       }
 
@@ -678,9 +689,9 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
           }
         }
       }
-      ts.forEachChild(node, (child) => visit(child, inCatch));
+      ts.forEachChild(node, (child) => visit(child, inCatch, inCallback));
     };
-    visit(fn.body, false);
+    visit(fn.body, false, false);
   };
 
   for (const fn of target.functions) walkBody(fn, true);

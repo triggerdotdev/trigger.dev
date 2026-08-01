@@ -798,6 +798,37 @@ describe("scanFile: catch clause evidence", () => {
     expect(ep!.hasTryCatch).toBe(false);
     expect(ep!.catches).toEqual([]);
   });
+
+  // A7. The catch collector descended into inline callbacks while `countStatement`, by design,
+  // does not, so a per-item error boundary inside a `.map()` was judged as the route's own catch
+  // and `tryStatementCount` could exceed the entry point's whole `statementCount`. Fixed by not
+  // descending into inline callbacks for catch evidence either, the smaller change: it matches the
+  // existing statement-counting decision rather than reopening the over-counting a callback walk
+  // was fixed for earlier. `calleeNames` and `logCalls` still descend, unchanged, which is what lets
+  // `isTrivial` see work a short statement count hides.
+  it("does not attribute a catch inside an inline callback (Promise.all(items.map(...))) to the route", () => {
+    const ep = scanFile(
+      "batch.process.ts",
+      `
+      export async function action({ request }) {
+        const items = await loadItems(request);
+        await Promise.all(
+          items.map(async (item) => {
+            try {
+              await processItem(item);
+            } catch {
+              return null;
+            }
+          })
+        );
+        return json({ ok: true });
+      }
+      `
+    );
+    expect(ep!.catches).toEqual([]);
+    // A try/catch appeared somewhere in the body, which is still a real signal for triviality.
+    expect(ep!.hasTryCatch).toBe(true);
+  });
 });
 
 describe("scanFile: log calls", () => {
