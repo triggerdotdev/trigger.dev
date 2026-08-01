@@ -20,7 +20,24 @@ const report = () =>
     ["broken.ts"]
   );
 
+/** The FIX FIRST section, with the index asserted rather than assumed. `indexOf` returns -1 for a
+ * section that is not there, and `slice(-1)` is the last character of the report, which every
+ * `not.toContain` below would pass against. */
+function sliceFixFirst(out: string): string {
+  const start = out.indexOf("FIX FIRST");
+  expect(start).toBeGreaterThan(-1);
+  const end = out.indexOf("no findings:");
+  expect(end).toBeGreaterThan(start);
+  return out.slice(start, end);
+}
+
 describe("renderTerminal", () => {
+  // The guard has to be able to fail, or it is decoration in a file whose own comment warns about
+  // exactly this trap.
+  it("refuses to slice a report with no fix list rather than returning its last character", () => {
+    expect(() => sliceFixFirst("a report with neither section in it")).toThrow();
+  });
+
   it("shows the global score, the audit gap and the fix list", () => {
     const out = renderTerminal(report());
     expect(out).toContain("COVERAGE");
@@ -119,9 +136,7 @@ describe("renderTerminal", () => {
 
     // Slice to the end of the list, not to a string the I5 fix deleted: `indexOf` returned -1 for
     // "already solid" and the assertions were quietly running against the whole tail.
-    const listEnd = out.indexOf("no findings:");
-    expect(listEnd).toBeGreaterThan(-1);
-    const fixFirst = out.slice(out.indexOf("FIX FIRST"), listEnd);
+    const fixFirst = sliceFixFirst(out);
     const idxZero = fixFirst.indexOf("api.v1.envvars.ts");
     const idxThirtyThree = fixFirst.indexOf("api.v1.auth.tokens.ts");
     const idxNotSensitive = fixFirst.indexOf("resources.busy.ts");
@@ -232,7 +247,9 @@ describe("collapsing the house-style finding", () => {
   // single finding repeated. Same reasoning that keeps audit-trail out of the list.
   it("keeps an entry whose only finding is request-context out of the fix list", () => {
     const out = renderTerminal(buildReport([namesNobody()], []));
-    const fixFirst = out.slice(out.indexOf("FIX FIRST"));
+    // Guarded for the same reason as the slice above: an absent section makes `indexOf` return -1,
+    // `slice(-1)` yields the last character, and the negative assertion passes for the wrong reason.
+    const fixFirst = sliceFixFirst(out);
     expect(fixFirst).not.toContain("api.v1.silent.ts");
   });
 
@@ -264,9 +281,48 @@ describe("collapsing the house-style finding", () => {
 
   it("still lists request-context when the entry fails something else too", () => {
     const out = renderTerminal(buildReport([namesNobodyAndSwallows()], []));
-    const fixFirst = out.slice(out.indexOf("FIX FIRST"));
+    const fixFirst = sliceFixFirst(out);
     expect(fixFirst).toContain("api.v1.auth.tokens.ts");
     expect(fixFirst).toContain("request-context");
     expect(fixFirst).toContain("error-classification");
+  });
+});
+
+// B6. A stderr warning is the minimum; the terminal report is where someone would notice.
+describe("reporting a suppression that names no check", () => {
+  const typo = (fileName: string) =>
+    scanFile(
+      fileName,
+      `// obs-map-disable eror-classification -- typo
+       import { prisma } from "~/db.server";
+       export async function loader() {
+         try { return await prisma.thing.findMany(); } catch (e) { return null; }
+       }`
+    )!;
+
+  it("names the file and the bad id", () => {
+    const out = renderTerminal(buildReport([typo("api.v1.a.ts")], []));
+    expect(out).toContain("UNKNOWN SUPPRESSION");
+    expect(out).toContain("api.v1.a.ts");
+    expect(out).toContain("eror-classification");
+  });
+
+  it("lists the ids that would have worked", () => {
+    const out = renderTerminal(buildReport([typo("api.v1.a.ts")], []));
+    expect(out).toContain("error-classification, auth-boundary, request-context, audit-trail");
+  });
+
+  it("does not report the finding as suppressed", () => {
+    const out = renderTerminal(buildReport([typo("api.v1.a.ts")], []));
+    expect(out).not.toMatch(/SUPPRESSED\s+\d/);
+  });
+
+  it("reports one line per file rather than one for the run", () => {
+    const out = renderTerminal(buildReport([typo("api.v1.a.ts"), typo("api.v1.b.ts")], []));
+    expect(out.split("\n").filter((l) => l.startsWith("UNKNOWN SUPPRESSION"))).toHaveLength(2);
+  });
+
+  it("says nothing when every directive named a real check", () => {
+    expect(renderTerminal(report())).not.toContain("UNKNOWN SUPPRESSION");
   });
 });
