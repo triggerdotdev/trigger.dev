@@ -175,10 +175,12 @@ function MetricsLayoutMain({ children, scroll }: { children: ReactNode; scroll: 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {filters}
+      {/* overflow-x-clip: without it `overflow-y-auto` promotes x to auto and wide content drags
+          the charts sideways. Wide children must scroll in their own container. */}
       <div
         className={
           scroll === "page"
-            ? "flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto py-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
+            ? "flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overflow-x-clip py-2.5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control"
             : "flex min-h-0 flex-1 flex-col overflow-hidden"
         }
       >
@@ -286,7 +288,7 @@ function MetricsLayoutFilters({
   return (
     <div
       className={cn(
-        "flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-dimmed pl-2.5 pr-3",
+        "flex h-10 shrink-0 items-center justify-between gap-2 border-b border-grid-dimmed px-2",
         className
       )}
     >

@@ -181,7 +181,7 @@ type TableCellBasicProps = {
 type TableHeaderCellProps = TableCellBasicProps & {
   hiddenLabel?: boolean;
   tooltip?: ReactNode;
-  /** Extra class merged onto the tooltip content — e.g. widen it past the default max-width. */
+  /** Extra class merged onto the tooltip content. */
   tooltipContentClassName?: string;
   disableTooltipHoverableContent?: boolean;
   /**

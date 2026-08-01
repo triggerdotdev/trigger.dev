@@ -28,6 +28,7 @@ import {
   DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
+import { TitleBar } from "~/components/primitives/TitleBar";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
@@ -292,31 +293,15 @@ export default function Page() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="scheduled-task-main" min="300px">
             <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
-              {/* Top bar — title on the left; actions + TimeFilter + pagination on the right.
-                  h-10 matches the right-hand sidebar header height. */}
-              <div className="flex min-h-10 items-center gap-2 border-b border-grid-dimmed bg-background-bright py-2 pl-3 pr-2">
-                <Header2>Runs</Header2>
+              <div className="flex min-h-10 items-center gap-2 border-b border-grid-dimmed bg-background-bright px-2 py-2">
+                <TimeFilter defaultPeriod="7d" labelName="Runs" />
                 <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-                  <CreateScheduleButton
-                    isAtLimit={isAtLimit}
-                    limits={limits}
-                    canUpgrade={canUpgrade}
-                    canPurchaseSchedules={scheduleList?.canPurchaseSchedules ?? false}
-                    extraSchedules={scheduleList?.extraSchedules ?? 0}
-                    maxScheduleQuota={scheduleList?.maxScheduleQuota ?? 0}
-                    planScheduleLimit={scheduleList?.planScheduleLimit ?? 0}
-                    schedulePricing={scheduleList?.schedulePricing ?? null}
-                    onCreate={openCreateSchedule}
-                    disabled={isCreatingSchedule}
-                  />
-                  {newRunsCount > 0 ? (
-                    <NewRunsButton count={newRunsCount} onClick={() => showNewRunsRef.current()} />
-                  ) : null}
-                  <TimeFilter defaultPeriod="7d" labelName="Runs" />
                   <LinkButton
                     variant="secondary/small"
                     to={v3RunsPath(organization, project, environment, filters)}
                     LeadingIcon={RunsIcon}
+                    // -7px halves the icon's default 6px of space on each side.
+                    leadingIconClassName="-mx-[7px]"
                   >
                     View all runs
                   </LinkButton>
@@ -335,11 +320,18 @@ export default function Page() {
                   >
                     Bulk replay…
                   </LinkButton>
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={runList} errorElement={null}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
+                  <CreateScheduleButton
+                    isAtLimit={isAtLimit}
+                    limits={limits}
+                    canUpgrade={canUpgrade}
+                    canPurchaseSchedules={scheduleList?.canPurchaseSchedules ?? false}
+                    extraSchedules={scheduleList?.extraSchedules ?? 0}
+                    maxScheduleQuota={scheduleList?.maxScheduleQuota ?? 0}
+                    planScheduleLimit={scheduleList?.planScheduleLimit ?? 0}
+                    schedulePricing={scheduleList?.schedulePricing ?? null}
+                    onCreate={openCreateSchedule}
+                    disabled={isCreatingSchedule}
+                  />
                 </div>
               </div>
 
@@ -363,23 +355,39 @@ export default function Page() {
 
                 {/* Runs table */}
                 <ResizablePanel id="scheduled-task-content" min="160px">
-                  <div className="h-full overflow-hidden">
-                    <Suspense fallback={<TableLoading />}>
-                      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-                        {(list) =>
-                          list ? (
-                            <TaskRunsList
-                              list={list}
-                              taskSlug={task.slug}
-                              onNewRunsCountChange={setNewRunsCount}
-                              showNewRunsRef={showNewRunsRef}
-                            />
-                          ) : (
-                            <TableLoading />
-                          )
-                        }
-                      </TypedAwait>
-                    </Suspense>
+                  <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+                    {/* -mt-px absorbs the spare pixel below the handle's rule, centring the title. */}
+                    <TitleBar title="Runs" className="-mt-px">
+                      {newRunsCount > 0 ? (
+                        <NewRunsButton
+                          count={newRunsCount}
+                          onClick={() => showNewRunsRef.current()}
+                        />
+                      ) : null}
+                      <Suspense fallback={null}>
+                        <TypedAwait resolve={runList} errorElement={null}>
+                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                        </TypedAwait>
+                      </Suspense>
+                    </TitleBar>
+                    <div className="min-h-0 overflow-hidden">
+                      <Suspense fallback={<TableLoading />}>
+                        <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+                          {(list) =>
+                            list ? (
+                              <TaskRunsList
+                                list={list}
+                                taskSlug={task.slug}
+                                onNewRunsCountChange={setNewRunsCount}
+                                showNewRunsRef={showNewRunsRef}
+                              />
+                            ) : (
+                              <TableLoading />
+                            )
+                          }
+                        </TypedAwait>
+                      </Suspense>
+                    </div>
                   </div>
                 </ResizablePanel>
               </ResizablePanelGroup>
