@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { scanDirectory } from "../src/scan.js";
 import { buildReport } from "../src/score.js";
-import { MUTATIONS, type Mutation } from "./mutations.js";
+import { ADDITIVE_IDS, MUTATIONS, type Mutation } from "./mutations.js";
 
 /**
  * The tree-scale mutation corpus.
@@ -36,13 +36,20 @@ const ROUTES = resolve(__dirname, "../../../apps/webapp/app/routes");
 const ENABLED = process.env.OBS_MAP_MUTATION_CORPUS === "1";
 
 /**
- * Where a corpus entry goes when the tool does not defend it. Empty as of round A fix 2: all 30
- * entries hold. When a reviewer finds a shape that cannot be defended, add it to the corpus and
- * name it here rather than leaving it out, and write down why in the round's report. `it.fails`
- * keeps such an entry running, so closing the hole later turns this file red until the entry is
- * moved back out deliberately.
+ * Where a corpus entry goes when the tool does not defend it. `it.fails` keeps the entry running,
+ * so closing the hole later turns this file red until the entry is moved back out deliberately.
+ *
+ * `dead-branch-after-if-true` wraps a catch clause's body in `if (true) { ... }` and writes an
+ * error test after it. The test can never run, and it takes the tree from 15 to 23 and raises 68
+ * routes. Nothing in the scanner evaluates a condition, so `definitelyExits` cannot see that the
+ * wrapper always exits, and the two ways to make it see are both worse than the hole. Folding the
+ * literal `true` starts the same list an earlier round lost with `false`, where every spelling
+ * nobody thought of pays. Cutting the branch credit at the first statement that MIGHT exit is
+ * sound and folding-free, and it was measured: it takes the tree from 15 to 6 and accuses 78 real
+ * routes, because `catch (e) { if (rare) return null; if (e instanceof X) return y; }` is an
+ * ordinary shape. See the round A fix 3 report.
  */
-const KNOWN_GAPS = new Set<string>([]);
+const KNOWN_GAPS = new Set<string>(["dead-branch-after-if-true"]);
 
 type SourceFile = { relativeName: string; source: string };
 
@@ -169,15 +176,20 @@ function commonMean(baseline: Measurement, after: Measurement): { before: number
   return n === 0 ? { before: 0, after: 0 } : { before: sumBefore / n, after: sumAfter / n };
 }
 
-function mutate(files: SourceFile[], mutation: Mutation): { files: SourceFile[]; changed: number } {
+function mutate(
+  files: SourceFile[],
+  mutation: Mutation
+): { files: SourceFile[]; changed: number; sites: number } {
   let changed = 0;
+  let sites = 0;
   const out = files.map((file) => {
-    const source = mutation.apply(file.relativeName, file.source);
-    if (source === null || source === file.source) return file;
+    const result = mutation.apply(file.relativeName, file.source);
+    if (result === null || result.source === file.source) return file;
     changed++;
-    return { relativeName: file.relativeName, source };
+    sites += result.sites;
+    return { relativeName: file.relativeName, source: result.source };
   });
-  return { files: out, changed };
+  return { files: out, changed, sites };
 }
 
 const describeCorpus = ENABLED && existsSync(ROUTES) ? describe : describe.skip;
@@ -185,6 +197,15 @@ const describeCorpus = ENABLED && existsSync(ROUTES) ? describe : describe.skip;
 describeCorpus("mutation corpus over the real route tree", () => {
   const files = ENABLED && existsSync(ROUTES) ? readTree(ROUTES) : [];
   const baseline = ENABLED && existsSync(ROUTES) ? measure(files) : null;
+
+  it("covers the additive direction, not only the subtractive one", () => {
+    // Every corpus entry once removed or restructured real signal, and none added fake signal. The
+    // two largest holes ever found here lived in that blind spot, so the class is asserted rather
+    // than left to whoever edits the list next.
+    const ids = new Set(MUTATIONS.map((m) => m.id));
+    expect(ADDITIVE_IDS.filter((id) => !ids.has(id))).toEqual([]);
+    expect(ADDITIVE_IDS.length).toBeGreaterThanOrEqual(8);
+  });
 
   it("has a baseline worth mutating", () => {
     expect(baseline).not.toBeNull();
@@ -197,26 +218,42 @@ describeCorpus("mutation corpus over the real route tree", () => {
   });
 
   /**
-   * The number of files a mutation must touch before its result means anything. A mutation that
-   * silently matched nothing would otherwise "pass" by leaving the tree alone, which is the exact
-   * failure mode that let earlier rounds believe a shape was defended.
+   * How much a mutation must reach before its result means anything. A mutation that silently
+   * matched nothing would otherwise "pass" by leaving the tree alone, which is the exact failure
+   * mode that let earlier rounds believe a shape was defended.
+   *
+   * Sites, not only files, and sites are what the threshold is really on. A file count says a
+   * rewrite touched a file, not that it reached anything inside it: eleven entries reported 172
+   * files while landing in a position that mattered for 26 of the tree's 260 catch clauses, because
+   * the splice went after statements that had already returned. `prependToEveryCatch` now splices
+   * at the head of the clause, so all 260 count, and this threshold is what would notice if a later
+   * change quietly took that back.
+   *
+   * The guard the design asked for, verdict movement, cannot be used: a defended mutation moves no
+   * verdict anywhere, and that is precisely what "defended" means, so requiring movement would fail
+   * every entry that works. Site count is the reachable version of the same intent.
    */
   const MINIMUM_FILES_TOUCHED = 20;
+  const MINIMUM_SITES_TOUCHED = 40;
 
   for (const mutation of MUTATIONS) {
     const run = KNOWN_GAPS.has(mutation.id) ? it.fails : it;
 
     run(`${mutation.kind}: ${mutation.what} (${mutation.id})`, () => {
-      const { files: mutated, changed } = mutate(files, mutation);
+      const { files: mutated, changed, sites } = mutate(files, mutation);
       expect(changed).toBeGreaterThanOrEqual(MINIMUM_FILES_TOUCHED);
+      expect(sites).toBeGreaterThanOrEqual(MINIMUM_SITES_TOUCHED);
 
       const after = measure(mutated);
 
-      // A mutation that stops the tree parsing, or that hides most of the routes from the scanner,
-      // has not tested the property: whatever the score does afterwards is measuring a different
-      // tree. Both guards fail loudly rather than letting such a mutation report a pass.
+      // A mutation that stops the tree parsing, or that hides a route from the scanner, has not
+      // tested the property: whatever the score does afterwards is measuring a different tree. The
+      // route guard is exact rather than tolerant, because a route the mutated scan cannot see is
+      // one `risesIn` and `commonMean` both skip, and a rewrite that makes a route unscannable is
+      // itself a finding.
       expect(after.parseFailures).toBe(baseline!.parseFailures);
-      expect(after.entryPoints).toBeGreaterThanOrEqual(baseline!.entryPoints - 5);
+      expect(after.entryPoints).toBe(baseline!.entryPoints);
+      expect([...baseline!.perEntry.keys()].filter((f) => !after.perEntry.has(f))).toEqual([]);
 
       const rises = risesIn(baseline!, after);
       const common = commonMean(baseline!, after);
@@ -224,7 +261,7 @@ describeCorpus("mutation corpus over the real route tree", () => {
         `[corpus] ${mutation.id}: global ${baseline!.global} -> ${after.global} ` +
           `(mean ${baseline!.exactMean.toFixed(3)} -> ${after.exactMean.toFixed(3)}, ` +
           `common mean ${common.before.toFixed(3)} -> ${common.after.toFixed(3)}, ` +
-          `measured ${baseline!.measured} -> ${after.measured}, files ${changed}, ` +
+          `measured ${baseline!.measured} -> ${after.measured}, files ${changed}, sites ${sites}, ` +
           `routes raised ${rises.length})` +
           rises
             .slice(0, 3)

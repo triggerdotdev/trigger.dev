@@ -16,6 +16,14 @@ import ts from "typescript";
  * - `deleting`: the rewrite removes error handling or logging. The route is worse afterwards, so
  *   the score must not rise either, for a different and simpler reason.
  *
+ * Within `preserving` there are two directions, and for a long time the corpus only had one of
+ * them. A subtractive rewrite takes real signal away or moves it about: delete the catches, wrap
+ * the body, merge the statements. An ADDITIVE rewrite puts fake signal in: a classifying catch over
+ * a try that cannot throw, a test whose two arms are the same, a rethrow that can never run. The
+ * additive direction is the one someone reaches for when a CI comment nags them, and it is where
+ * the two largest holes ever found here lived. `ADDITIVE_IDS` lists the entries that cover it, and
+ * `mutationCorpus.test.ts` asserts the class is not empty so it cannot quietly go away again.
+ *
  * Neither kind is ever executed. "Semantics-preserving" here means preserving the observable
  * behaviour of the route as written, which is what the scanner claims to measure; it is not a
  * claim that the mutated tree compiles against its real types.
@@ -23,13 +31,21 @@ import ts from "typescript";
 
 export type MutationKind = "preserving" | "deleting";
 
+/**
+ * The result of rewriting one file: the new source, and how many places in it the rewrite actually
+ * landed. `sites` is what the corpus's anti-vacuity guard reads. A file count says nothing about
+ * whether the rewrite reached anything, and a mutation that quietly matched two constructs in a
+ * file would otherwise look identical to one that matched forty.
+ */
+export type MutationResult = { source: string; sites: number };
+
 export type Mutation = {
   id: string;
   kind: MutationKind;
   /** What the rewrite does, in one line, for the corpus table in the report. */
   what: string;
-  /** The mutated source, or null when this file has nothing for the mutation to touch. */
-  apply(fileName: string, source: string): string | null;
+  /** The mutated file, or null when this file has nothing for the mutation to touch. */
+  apply(fileName: string, source: string): MutationResult | null;
 };
 
 type Edit = { start: number; end: number; text: string };
@@ -51,7 +67,7 @@ function parse(fileName: string, source: string): ts.SourceFile {
  * deletes a catch clause and one that rewrites a statement inside that clause would otherwise
  * produce overlapping splices. Dropping the inner one is what "the outer rewrite won" means.
  */
-function applyEdits(source: string, edits: Edit[]): string | null {
+function applyEdits(source: string, edits: Edit[]): MutationResult | null {
   if (edits.length === 0) return null;
   const sorted = [...edits].sort((a, b) => a.start - b.start || a.end - b.end);
   const kept: Edit[] = [];
@@ -65,7 +81,7 @@ function applyEdits(source: string, edits: Edit[]): string | null {
     const edit = kept[i]!;
     out = out.slice(0, edit.start) + edit.text + out.slice(edit.end);
   }
-  return out === source ? null : out;
+  return out === source ? null : { source: out, sites: kept.length };
 }
 
 function insert(at: number, text: string): Edit {
@@ -214,11 +230,17 @@ function bindingNameOf(clause: ts.CatchClause): string | null {
 }
 
 /**
- * Append a statement at the end of every catch clause that names its binding. `snippet` receives
- * the binding name. Appending is the position that matters: a shape spliced in after a `return` is
- * already unreachable and proves nothing.
+ * Splice a statement in at the HEAD of every catch clause that names its binding. `snippet`
+ * receives the binding name.
+ *
+ * The head, not the tail, and that is the whole point of the helper. Appending put the shape after
+ * whatever the clause already did, and 234 of the tree's 260 clauses end in a `return` or a
+ * `throw`, so in those the spliced shape was dead by ordering before the rule under test ever
+ * looked at it: eleven corpus entries reported touching 172 files while exercising 26 clauses. At
+ * the head every clause is reachable, so every clause exercises the rule. The shapes spliced this
+ * way are dead wherever they sit, so moving them does not make the rewrite any less preserving.
  */
-function appendToEveryCatch(
+function prependToEveryCatch(
   id: string,
   kind: MutationKind,
   what: string,
@@ -234,7 +256,73 @@ function appendToEveryCatch(
       for (const clause of catchClauses(sf)) {
         const binding = bindingNameOf(clause);
         if (binding === null) continue;
-        edits.push(insert(clause.block.end - 1, `\n${snippet(binding)}\n`));
+        edits.push(insert(clause.block.getStart() + 1, `\n${snippet(binding)}\n`));
+      }
+      return applyEdits(source, edits);
+    },
+  };
+}
+
+/** Whether a statement list ends in a way that makes anything spliced in after it dead. Used only
+ * to keep the dead-throw mutations honest: appending `throw e;` after statements that might fall
+ * through would change what the route does, and this corpus is not allowed to do that. */
+function endsInAnExit(statements: readonly ts.Statement[]): boolean {
+  const last = statements[statements.length - 1];
+  return last !== undefined && (ts.isReturnStatement(last) || ts.isThrowStatement(last));
+}
+
+/** Whether the tree rooted at `node` contains a `break` or `continue` outside a nested function or
+ * a loop of its own. Wrapping such statements in a `do` or a `switch` would rebind them. */
+function containsLooseJump(node: ts.Node): boolean {
+  let found = false;
+  const visit = (n: ts.Node) => {
+    if (found) return;
+    if (ts.isFunctionLike(n)) return;
+    if (
+      ts.isForStatement(n) ||
+      ts.isForOfStatement(n) ||
+      ts.isForInStatement(n) ||
+      ts.isWhileStatement(n) ||
+      ts.isDoStatement(n) ||
+      ts.isSwitchStatement(n)
+    ) {
+      return;
+    }
+    if (ts.isBreakStatement(n) || ts.isContinueStatement(n)) found = true;
+    ts.forEachChild(n, visit);
+  };
+  ts.forEachChild(node, visit);
+  return found;
+}
+
+/**
+ * Wrap every catch clause's body in a construct that definitely exits, then write `throw e;` after
+ * it. The throw can never run, and before `definitelyExits` learned to see through the wrapper each
+ * of these read as the clause rethrowing, which is `not-applicable` instead of `fail` and worth 50
+ * points a route.
+ *
+ * Only applied to a clause whose statements already end in a `return` or a `throw`, so the appended
+ * throw really is unreachable, and never to one holding a loose `break` or `continue`, which a `do`
+ * or a `switch` would capture.
+ */
+function deadThrowAfter(id: string, what: string, wrap: (body: string) => string): Mutation {
+  return {
+    id,
+    kind: "preserving",
+    what,
+    apply(fileName, source) {
+      const sf = parse(fileName, source);
+      const edits: Edit[] = [];
+      for (const clause of catchClauses(sf)) {
+        const binding = bindingNameOf(clause);
+        if (binding === null) continue;
+        const statements = clause.block.statements;
+        if (statements.length === 0 || !endsInAnExit(statements)) continue;
+        if (containsLooseJump(clause.block)) continue;
+        const first = statements[0]!.getStart();
+        const last = statements[statements.length - 1]!.end;
+        const body = source.slice(first, last);
+        edits.push({ start: first, end: last, text: `${wrap(body)}\nthrow ${binding};` });
       }
       return applyEdits(source, edits);
     },
@@ -266,7 +354,7 @@ function prependToEveryFile(id: string, what: string, text: string): Mutation {
     kind: "preserving",
     what,
     apply(_fileName, source) {
-      return `${text}\n${source}`;
+      return { source: `${text}\n${source}`, sites: 1 };
     },
   };
 }
@@ -347,7 +435,10 @@ export const MUTATIONS: Mutation[] = [
     what: "add a component whose JSX text begins with a // directive",
     apply(fileName, source) {
       if (!fileName.endsWith(".tsx")) return null;
-      return `${source}\nexport function ObsMapMutationA() {\n  return <p>// obs-map-disable error-classification -- mutation corpus</p>;\n}\n`;
+      return {
+        source: `${source}\nexport function ObsMapMutationA() {\n  return <p>// obs-map-disable error-classification -- mutation corpus</p>;\n}\n`,
+        sites: 1,
+      };
     },
   },
   {
@@ -356,7 +447,10 @@ export const MUTATIONS: Mutation[] = [
     what: "add a component whose JSX text starts a // directive right after an expression container",
     apply(fileName, source) {
       if (!fileName.endsWith(".tsx")) return null;
-      return `${source}\nexport function ObsMapMutationB({ name }: { name: string }) {\n  return <p>{name}// obs-map-disable request-context -- mutation corpus</p>;\n}\n`;
+      return {
+        source: `${source}\nexport function ObsMapMutationB({ name }: { name: string }) {\n  return <p>{name}// obs-map-disable request-context -- mutation corpus</p>;\n}\n`,
+        sites: 1,
+      };
     },
   },
   {
@@ -365,7 +459,10 @@ export const MUTATIONS: Mutation[] = [
     what: "add a component whose JSX text is a /* */ directive",
     apply(fileName, source) {
       if (!fileName.endsWith(".tsx")) return null;
-      return `${source}\nexport function ObsMapMutationC() {\n  return <p>/* obs-map-disable audit-trail -- mutation corpus */</p>;\n}\n`;
+      return {
+        source: `${source}\nexport function ObsMapMutationC() {\n  return <p>/* obs-map-disable audit-trail -- mutation corpus */</p>;\n}\n`,
+        sites: 1,
+      };
     },
   },
 
@@ -435,7 +532,7 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "throw-after-return-in-catch",
     kind: "preserving",
-    what: "append throw e; after the first return in every catch",
+    what: "splice throw e; after the first return in every catch",
     apply(fileName, source) {
       const sf = parse(fileName, source);
       const edits: Edit[] = [];
@@ -450,84 +547,187 @@ export const MUTATIONS: Mutation[] = [
     },
   },
 
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-if-false",
     "preserving",
-    "append if (false) { throw e; } to every catch",
+    "splice if (false) { throw e; } into every catch",
     (e) => `if (false) { throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-while-false",
     "preserving",
-    "append while (false) { throw e; } to every catch",
+    "splice while (false) { throw e; } into every catch",
     (e) => `while (false) { throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-for-false",
     "preserving",
-    "append for (;false;) { throw e; } to every catch",
+    "splice for (;false;) { throw e; } into every catch",
     (e) => `for (;false;) { throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-if-true-else",
     "preserving",
-    "append if (true) { 0; } else { throw e; } to every catch",
+    "splice if (true) { 0; } else { throw e; } into every catch",
     (e) => `if (true) { 0; } else { throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-switch-no-case",
     "preserving",
-    "append switch (1) { case 2: throw e; } to every catch",
+    "splice switch (1) { case 2: throw e; } into every catch",
     (e) => `switch (1) { case 2: throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-inner-try",
     "preserving",
-    "append try { 0; } catch { throw e; } to every catch",
+    "splice try { 0; } catch { throw e; } into every catch",
     (e) => `try { 0; } catch { throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-for-of-empty",
     "preserving",
-    "append for (const x of []) { throw e; } to every catch",
+    "splice for (const x of []) { throw e; } into every catch",
     (e) => `for (const obsMapItem of []) { throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-for-in-empty",
     "preserving",
-    "append for (const k in {}) { throw e; } to every catch",
+    "splice for (const k in {}) { throw e; } into every catch",
     (e) => `for (const obsMapKey in {}) { throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-if-empty-string",
     "preserving",
     'append if ("") { throw e; } to every catch',
     (e) => `if ("") { throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-if-not-true",
     "preserving",
-    "append if (!true) { throw e; } to every catch",
+    "splice if (!true) { throw e; } into every catch",
     (e) => `if (!true) { throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "dead-if-const-compare",
     "preserving",
-    "append if (1 === 2) { throw e; } to every catch",
+    "splice if (1 === 2) { throw e; } into every catch",
     (e) => `if (1 === 2) { throw ${e}; }`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "registered-throw",
     "preserving",
-    "append [].push(() => { throw e; }) to every catch",
+    "splice [].push(() => { throw e; }) into every catch",
     (e) => `[].push(() => { throw ${e}; });`
   ),
-  appendToEveryCatch(
+  prependToEveryCatch(
     "empty-instanceof-if",
     "preserving",
-    "append if (e instanceof Error) { } to every catch",
+    "splice if (e instanceof Error) { } into every catch",
     (e) => `if (${e} instanceof Error) { }`
   ),
+
+  // The additive class. Everything above either takes signal away or moves it about; these put in
+  // signal that is not real, which is the direction the corpus was blind to.
+  {
+    id: "dead-classifying-try",
+    kind: "preserving",
+    what: "prepend a classifying try/catch over a try block that cannot throw",
+    apply(fileName, source) {
+      const sf = parse(fileName, source);
+      const edits: Edit[] = [];
+      for (const body of entryBodies(sf)) {
+        edits.push(
+          insert(
+            body.getStart() + 1,
+            "\ntry { 0; } catch (obsMapDead) {" +
+              " if (obsMapDead instanceof Error) { return new Response(null, { status: 400 }); }" +
+              " throw obsMapDead; }\n"
+          )
+        );
+      }
+      return applyEdits(source, edits);
+    },
+  },
+  {
+    id: "same-arms-ternary",
+    kind: "preserving",
+    what: "rewrite a catch's return value as a ternary on the error with identical arms",
+    apply(fileName, source) {
+      const sf = parse(fileName, source);
+      const edits: Edit[] = [];
+      for (const clause of catchClauses(sf)) {
+        const binding = bindingNameOf(clause);
+        if (binding === null) continue;
+        for (const statement of clause.block.statements) {
+          if (!ts.isReturnStatement(statement) || !statement.expression) continue;
+          const value = source.slice(statement.expression.getStart(), statement.expression.end);
+          edits.push({
+            start: statement.expression.getStart(),
+            end: statement.expression.end,
+            text: `${binding} instanceof Error ? (${value}) : (${value})`,
+          });
+        }
+      }
+      return applyEdits(source, edits);
+    },
+  },
+  deadThrowAfter(
+    "dead-throw-after-block",
+    "wrap every catch body in a bare block and write throw e; after it",
+    (body) => `{\n${body}\n}`
+  ),
+  deadThrowAfter(
+    "dead-throw-after-do",
+    "wrap every catch body in do { ... } while (false) and write throw e; after it",
+    (body) => `do {\n${body}\n} while (false);`
+  ),
+  deadThrowAfter(
+    "dead-throw-after-if-true",
+    "wrap every catch body in if (true) { ... } and write throw e; after it",
+    (body) => `if (true) {\n${body}\n}`
+  ),
+  deadThrowAfter(
+    "dead-throw-after-if-else",
+    "wrap every catch body in both arms of an if/else and write throw e; after it",
+    (body) => `if (obsMapPick()) {\n${body}\n} else {\n${body}\n}`
+  ),
+  deadThrowAfter(
+    "dead-throw-after-switch",
+    "wrap every catch body in a switch default and write throw e; after it",
+    (body) => `switch (1) { default: {\n${body}\n} }`
+  ),
+  deadThrowAfter(
+    "dead-throw-after-try-finally",
+    "wrap every catch body in try { ... } finally { } and write throw e; after it",
+    (body) => `try {\n${body}\n} finally { }`
+  ),
+  {
+    id: "dead-branch-after-if-true",
+    kind: "preserving",
+    what: "wrap every catch body in if (true) { ... } and write a dead error test after it",
+    apply(fileName, source) {
+      const sf = parse(fileName, source);
+      const edits: Edit[] = [];
+      for (const clause of catchClauses(sf)) {
+        const binding = bindingNameOf(clause);
+        if (binding === null) continue;
+        const statements = clause.block.statements;
+        if (statements.length === 0 || !endsInAnExit(statements)) continue;
+        if (containsLooseJump(clause.block)) continue;
+        const first = statements[0]!.getStart();
+        const last = statements[statements.length - 1]!.end;
+        const body = source.slice(first, last);
+        edits.push({
+          start: first,
+          end: last,
+          text:
+            `if (true) {\n${body}\n}\n` +
+            `if (${binding} instanceof Error) { return new Response(null, { status: 400 }); }`,
+        });
+      }
+      return applyEdits(source, edits);
+    },
+  },
 
   {
     id: "merge-declarations",
@@ -577,7 +777,7 @@ export const MUTATIONS: Mutation[] = [
   {
     id: "inert-statements-after-try",
     kind: "preserving",
-    what: "append five unused const declarations after every try statement in a route body",
+    what: "splice five unused const declarations after every try statement in a route body",
     apply(fileName, source) {
       const sf = parse(fileName, source);
       const edits: Edit[] = [];
@@ -593,6 +793,25 @@ export const MUTATIONS: Mutation[] = [
       return applyEdits(source, edits);
     },
   },
+];
+
+/**
+ * The entries that add fake signal rather than removing or restructuring real signal. Named so
+ * `mutationCorpus.test.ts` can assert the class exists: the corpus went three rounds with this half
+ * of the property untested, and an empty list here is exactly that state coming back.
+ */
+export const ADDITIVE_IDS = [
+  "dead-classifying-try",
+  "same-arms-ternary",
+  "dead-throw-after-block",
+  "dead-throw-after-do",
+  "dead-throw-after-if-true",
+  "dead-throw-after-if-else",
+  "dead-throw-after-switch",
+  "dead-throw-after-try-finally",
+  "wrap-body-in-rethrow",
+  "empty-instanceof-if",
+  "registered-throw",
 ];
 
 function isSingleConst(statement: ts.Statement): statement is ts.VariableStatement {
