@@ -636,6 +636,67 @@ describe("scanFile: catch clause evidence", () => {
     expect(ep!.catches[0]!.branches).toBe(false);
   });
 
+  // C2. `reachableStatements` only handled dead code from statement ordering (A4), not a
+  // statically-false condition, and `catchClauseEvidence`'s walk descended into every function
+  // body unconditionally, so a throw or an error test merely REGISTERED in a callback the clause
+  // constructs (never executed as part of the clause's own synchronous handling) was credited to
+  // it. All four shapes below must leave a plain swallow (`catch (e) { return null; }`) inert.
+  describe("dead and deferred code inside a catch does not count as evidence", () => {
+    const swallow = (mutation: string) => `
+      export async function loader() {
+        try {
+          return await prisma.thing.findMany();
+        } catch (e) {
+          ${mutation}
+          return null;
+        }
+      }
+    `;
+
+    it("is inert as a baseline with no mutation", () => {
+      const ep = scanFile("x.ts", swallow(""));
+      expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
+    });
+
+    it("does not set rethrows for a throw inside a statically-false if", () => {
+      const ep = scanFile("x.ts", swallow("if (false) { throw e; }"));
+      expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
+    });
+
+    it("does not set rethrows for a throw inside a statically-false while", () => {
+      const ep = scanFile("x.ts", swallow("while (false) { throw e; }"));
+      expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
+    });
+
+    it("does not set rethrows for a throw merely registered in a constructed callback", () => {
+      const ep = scanFile("x.ts", swallow("queue.push(() => { throw e; });"));
+      expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
+    });
+
+    it("does not set branches for an error test merely registered in a constructed callback", () => {
+      const ep = scanFile(
+        "x.ts",
+        swallow("queue.push(() => { if (e instanceof Error) { doThing(); } });")
+      );
+      expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
+    });
+
+    // Extra input beyond the brief's four, exercising the same "merely registered" mechanism with
+    // a different callback-taking call, to check the fix is not scoped to `.push` specifically.
+    it("does not set rethrows for a throw registered in a setTimeout callback", () => {
+      const ep = scanFile("x.ts", swallow("setTimeout(() => { throw e; }, 0);"));
+      expect(ep!.catches[0]).toMatchObject({ rethrows: false, branches: false });
+    });
+
+    // Positive control: a do/while runs its body at least once regardless of the trailing
+    // condition, so a throw in one is genuinely unconditional and must still register. This checks
+    // the while(false) fix was not implemented broadly enough to swallow a real rethrow too.
+    it("still sets rethrows for a throw in a do/while, which runs its body once regardless", () => {
+      const ep = scanFile("x.ts", swallow("do { throw e; } while (false);"));
+      expect(ep!.catches[0]!.rethrows).toBe(true);
+    });
+  });
+
   it("leaves both flags false when the catch only returns", () => {
     const ep = scanFile(
       "swallow.ts",
@@ -799,35 +860,139 @@ describe("scanFile: catch clause evidence", () => {
     expect(ep!.catches).toEqual([]);
   });
 
-  // A7. The catch collector descended into inline callbacks while `countStatement`, by design,
-  // does not, so a per-item error boundary inside a `.map()` was judged as the route's own catch
-  // and `tryStatementCount` could exceed the entry point's whole `statementCount`. Fixed by not
-  // descending into inline callbacks for catch evidence either, the smaller change: it matches the
-  // existing statement-counting decision rather than reopening the over-counting a callback walk
-  // was fixed for earlier. `calleeNames` and `logCalls` still descend, unchanged, which is what lets
-  // `isTrivial` see work a short statement count hides.
-  it("does not attribute a catch inside an inline callback (Promise.all(items.map(...))) to the route", () => {
-    const ep = scanFile(
-      "batch.process.ts",
-      `
-      export async function action({ request }) {
-        const items = await loadItems(request);
-        await Promise.all(
-          items.map(async (item) => {
+  // A7 / C1. The first fix stopped at ANY function-like node, purely lexical, which correctly
+  // excludes a per-item `.map()` boundary but also deletes the route's own catch when the whole
+  // body is wrapped in a single-shot callback: `trace(async () => { ...whole body... })`,
+  // `mutateWithFallback({ pgMutation: async (t) => {...} })`, `new ReadableStream({ start: async (c)
+  // => {...} })`. All three invoke their callback exactly once, as the route's own continuation.
+  // The real distinction is per-item iteration versus everything else, so only a callback passed to
+  // `map`/`forEach`/`filter`/`reduce`/`reduceRight`/`flatMap`/`some`/`every` is a boundary now.
+  describe("inline single-shot wrappers are attributed to the route", () => {
+    it("attributes a catch wrapped in trace(async () => {...})", () => {
+      const ep = scanFile(
+        "x.ts",
+        `
+        export async function action({ request }) {
+          return trace("update", async () => {
             try {
-              await processItem(item);
+              await doWork(request);
+              return json({ ok: true });
+            } catch {
+              return json({ error: "failed" }, { status: 500 });
+            }
+          });
+        }
+        `
+      );
+      expect(ep!.catches).toHaveLength(1);
+    });
+
+    it("attributes a catch inside a pgMutation callback passed as an object property", () => {
+      const ep = scanFile(
+        "x.ts",
+        `
+        export async function action({ request }) {
+          const outcome = await mutateWithFallback({
+            pgMutation: async (taskRun) => {
+              try {
+                await doWork(taskRun);
+              } catch {
+                return json({ error: "Internal Server Error" }, { status: 500 });
+              }
+            },
+          });
+          return outcome;
+        }
+        `
+      );
+      expect(ep!.catches).toHaveLength(1);
+    });
+
+    it("attributes a catch inside new ReadableStream({ start })", () => {
+      const ep = scanFile(
+        "x.ts",
+        `
+        export async function action({ request }) {
+          const stream = new ReadableStream({
+            async start(controller) {
+              try {
+                await doWork(controller);
+              } catch {
+                controller.error("failed");
+              }
+            },
+          });
+          return new Response(stream);
+        }
+        `
+      );
+      expect(ep!.catches).toHaveLength(1);
+    });
+  });
+
+  describe("per-item iteration callbacks are not attributed to the route", () => {
+    it("does not attribute a catch inside items.map(...)", () => {
+      const ep = scanFile(
+        "x.ts",
+        `
+        export async function action({ request }) {
+          const items = await load(request);
+          return items.map((item) => {
+            try {
+              return process(item);
             } catch {
               return null;
             }
-          })
-        );
-        return json({ ok: true });
-      }
-      `
-    );
-    expect(ep!.catches).toEqual([]);
-    // A try/catch appeared somewhere in the body, which is still a real signal for triviality.
-    expect(ep!.hasTryCatch).toBe(true);
+          });
+        }
+        `
+      );
+      expect(ep!.catches).toEqual([]);
+    });
+
+    it("does not attribute a catch inside Promise.all(items.map(...))", () => {
+      const ep = scanFile(
+        "batch.process.ts",
+        `
+        export async function action({ request }) {
+          const items = await loadItems(request);
+          await Promise.all(
+            items.map(async (item) => {
+              try {
+                await processItem(item);
+              } catch {
+                return null;
+              }
+            })
+          );
+          return json({ ok: true });
+        }
+        `
+      );
+      expect(ep!.catches).toEqual([]);
+      // A try/catch appeared somewhere in the body, which is still a real signal for triviality.
+      expect(ep!.hasTryCatch).toBe(true);
+    });
+
+    it("does not attribute a catch inside items.forEach(...)", () => {
+      const ep = scanFile(
+        "x.ts",
+        `
+        export async function action({ request }) {
+          const items = await load(request);
+          items.forEach((item) => {
+            try {
+              process(item);
+            } catch {
+              return;
+            }
+          });
+          return json({ ok: true });
+        }
+        `
+      );
+      expect(ep!.catches).toEqual([]);
+    });
   });
 });
 

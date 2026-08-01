@@ -260,17 +260,45 @@ function reachableStatements(statements: readonly ts.Statement[]): readonly ts.S
   return index === -1 ? statements : statements.slice(0, index + 1);
 }
 
-/** What a catch clause does with the error, beyond the fact that it caught one. */
+/**
+ * A literal that is always falsy: `false`, `null`, `undefined`, `0`. Not general constant folding,
+ * on purpose: `!true`, `1 === 2` and a reference to a `const` declared elsewhere are not covered, so
+ * `if (false) { throw e; }` and `while (false) { throw e; }` are recognised as dead and nothing more
+ * elaborate is claimed to be.
+ */
+function isFalsyLiteral(expr: ts.Expression): boolean {
+  if (expr.kind === ts.SyntaxKind.FalseKeyword || expr.kind === ts.SyntaxKind.NullKeyword) {
+    return true;
+  }
+  if (ts.isIdentifier(expr) && expr.text === "undefined") return true;
+  return ts.isNumericLiteral(expr) && expr.text === "0";
+}
+
+/**
+ * What a catch clause does with the error, beyond the fact that it caught one.
+ *
+ * Stops at every function-like node, not only an iteration callback (contrast `walkBody`'s
+ * boundary, which lets a route's own single-shot wrapper, `trace(async () => {...})`,
+ * `mutateWithFallback({ pgMutation })`, `new ReadableStream({ start })`, through so the route's own
+ * catch is found at all). Here the walk is already inside a catch clause that `walkBody` decided
+ * belongs to the route; anything the clause does by constructing a further callback,
+ * `queue.push(() => { throw e; })`, a `.then`, a `setTimeout`, is deferred work the clause merely
+ * registers, not a decision it makes on its own execution. Both walks refuse a per-item iteration
+ * callback; this one refuses every other kind of callback too, for that reason.
+ */
 function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branches: boolean } {
   let rethrows = false;
   let branches = false;
   const bindingName = catchBindingName(clause);
 
   const visit = (node: ts.Node) => {
+    if (ts.isFunctionLike(node)) return;
+
     if (ts.isBlock(node) || ts.isCaseClause(node) || ts.isDefaultClause(node)) {
       for (const statement of reachableStatements(node.statements)) visit(statement);
       return;
     }
+
     if (ts.isThrowStatement(node)) rethrows = true;
     if (
       bindingName !== null &&
@@ -280,11 +308,54 @@ function catchClauseEvidence(clause: ts.CatchClause): { rethrows: boolean; branc
       branches = true;
     }
     if (ts.isConditionalExpression(node) && selectsAnErrorPath(node, bindingName)) branches = true;
+
+    // A statically-false condition makes the guarded statement dead code: it can set `branches`
+    // above (the clause still decided to test the error, even if the arm never runs), but nothing
+    // inside it can set `rethrows` or a nested `branches`, so it is not visited at all.
+    if (ts.isIfStatement(node)) {
+      if (!isFalsyLiteral(node.expression)) visit(node.thenStatement);
+      if (node.elseStatement) visit(node.elseStatement);
+      return;
+    }
+    if (ts.isWhileStatement(node)) {
+      if (!isFalsyLiteral(node.expression)) visit(node.statement);
+      return;
+    }
+
     ts.forEachChild(node, visit);
   };
   visit(clause.block);
 
   return { rethrows, branches };
+}
+
+/**
+ * Array methods that invoke their callback once per element, never once as a whole. The one
+ * structural signal that separates a per-item boundary (`items.map((item) => { try {...} })`, a
+ * fresh catch for every element) from a route's own body expressed through one more layer of
+ * function nesting (`trace(async () => {...})`, `mutateWithFallback({ pgMutation: async (t) =>
+ * {...} })`, `new ReadableStream({ start: async (c) => {...} })`), all of which invoke their
+ * callback exactly once, as the route's own continuation.
+ */
+const ITERATION_METHODS = new Set([
+  "map",
+  "forEach",
+  "filter",
+  "reduce",
+  "reduceRight",
+  "flatMap",
+  "some",
+  "every",
+]);
+
+/** Whether the function-like `node` is the callback argument of a call to one of
+ * `ITERATION_METHODS`, e.g. the arrow function in `items.map((item) => ...)`. */
+function isIterationCallback(node: ts.Node): boolean {
+  const parent = node.parent;
+  if (!parent || !ts.isCallExpression(parent)) return false;
+  if (!parent.arguments.includes(node as ts.Expression)) return false;
+  const callee = unwrap(parent.expression);
+  return ts.isPropertyAccessExpression(callee) && ITERATION_METHODS.has(callee.name.text);
 }
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
@@ -631,16 +702,22 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     statementCount += enclosingStatementCount;
 
     if (!fn.body) return;
-    // `inCallback` is true once the walk has entered an inline function (`.map((item) => { ... })`),
-    // never reset back to false: a callback nested inside another callback is still a callback.
-    // `calleeNames` and `logCalls` keep descending in there regardless, which is what lets
-    // `isTrivial` see work a short statement count hides. A try/catch does not: it is not part of
-    // this body's own statement list, and `countStatement` already stops at a nested function
-    // boundary, so counting it here let `tryStatementCount` exceed the entry point's whole
+    // `inCallback` is true once the walk has entered a per-item iteration callback
+    // (`items.map((item) => { ... })`), never reset back to false: nesting deeper inside one is
+    // still inside it. `calleeNames` and `logCalls` keep descending regardless, which is what lets
+    // `isTrivial` see work a short statement count hides. A try/catch does not: a per-item catch is
+    // not part of this body's own statement list, and `countStatement` already stops at a nested
+    // function boundary, so counting it here let `tryStatementCount` exceed the entry point's whole
     // `statementCount` and judged a per-item error boundary as though it were the route's own.
+    //
+    // Only an iteration callback is a boundary, not every function-like node: a route's own body
+    // wrapped in `trace(async () => {...})`, `mutateWithFallback({ pgMutation: async (t) => {...} })`
+    // or `new ReadableStream({ start: async (c) => {...} })` still runs exactly once, as the route's
+    // own continuation one layer of nesting away, and its catch is the route's own error handling.
     const visit = (node: ts.Node, inCatch: boolean, inCallback: boolean) => {
       if (ts.isFunctionLike(node)) {
-        ts.forEachChild(node, (child) => visit(child, inCatch, true));
+        const entersIterationCallback = inCallback || isIterationCallback(node);
+        ts.forEachChild(node, (child) => visit(child, inCatch, entersIterationCallback));
         return;
       }
       if (ts.isTryStatement(node)) {
