@@ -345,9 +345,11 @@ redis:
 </Note>
 
 <Note>
-  On storage that doesn't support `fsGroup` ownership changes (for example NFS or hostPath), set
-  `clickhouse.volumePermissions.enabled: true` so a one-time init container fixes the data
-  volume's ownership for the non-root ClickHouse server.
+  When a volume is adopted from the Bitnami-based chart, a one-time init container fixes its
+  ownership for the non-root ClickHouse server. This runs automatically on `helm upgrade` (and
+  when you set `clickhouse.persistence.existingClaim`), so storage that doesn't support `fsGroup`
+  ownership changes (NFS, hostPath, local-path) works without manual steps. Set
+  `clickhouse.volumePermissions.enabled: true` to force it in other cases.
 </Note>
 
 **Direct configuration:**

@@ -68,7 +68,12 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.clickhouse.volumePermissions.enabled }}
+      {{- /* Adopting a volume from the Bitnami-based chart (auto-detected or an
+             explicit existingClaim) means the data is owned by the old uid. On
+             storage where fsGroup can't relabel it (hostPath, NFS, local-path),
+             the non-root server can't read it, so run the chown init container
+             automatically. Fresh installs create their own data and skip it. */}}
+      {{- if or .Values.clickhouse.volumePermissions.enabled $existingClaim }}
       initContainers:
         - name: volume-permissions
           image: "{{ .Values.global.imageRegistry | default .Values.clickhouse.volumePermissions.image.registry }}/{{ .Values.clickhouse.volumePermissions.image.repository }}:{{ .Values.clickhouse.volumePermissions.image.tag }}"
