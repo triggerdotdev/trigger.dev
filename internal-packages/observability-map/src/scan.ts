@@ -60,6 +60,34 @@ function rootCalleeName(call: ts.CallExpression): string | null {
   }
 }
 
+/**
+ * A dotted property path, `authentication.userId`, or null when the chain does not start from a
+ * plain identifier. Property accesses only: a call or an index anywhere in the chain gives null.
+ */
+function propertyPath(expr: ts.Expression): string | null {
+  const target = unwrap(expr);
+  if (ts.isIdentifier(target)) return target.text;
+  if (!ts.isPropertyAccessExpression(target)) return null;
+  const base = propertyPath(target.expression);
+  return base === null ? null : `${base}.${target.name.text}`;
+}
+
+/**
+ * Expressions that are the caller's own id, in the spellings the route tree uses:
+ * `userId: authentication.userId` under the API builders, `userId: user.id` under the dashboard
+ * builders, and the `authenticationResult` and `sessionAuth` variants. Read by `auth-scope` as
+ * evidence that the handler narrowed its query to whoever is asking.
+ *
+ * Anchored at both ends. The root has to be one of the auth bindings a builder hands the handler,
+ * and the last segment has to be an identity field, so `user.name` is not a scope and neither is
+ * `run.userId`, which is a resource's owner rather than the caller.
+ */
+const CALLER_ID_PATH =
+  /^(authentication|authenticationResult|auth|sessionAuth|user)(\.[A-Za-z0-9_$]+)*\.(userId|id|actor)$/;
+
+/** `ability.can(...)`, the RBAC gate written in the handler instead of in the builder options. */
+const ABILITY_CHECK = /(^|\.)ability\.(can|canSuper)$/;
+
 /** Callee as recorded in `calleeNames`: the identifier, or the property for a member call. */
 function calleeName(expr: ts.Expression): string | null {
   const target = unwrap(expr);
@@ -698,9 +726,38 @@ function collectHandlerFunctions(call: ts.CallExpression, out: EntryFunction[]):
   }
 }
 
-type Initializer = { callee: string | null; functions: EntryFunction[] };
+/** Literals a builder option can be given that mean it was not given: `apiBuilder.server.ts` gates
+ * every one of these behind `if (option)`. Written out because `authorization: undefined` reads as
+ * a declared gate to anything counting keys, and declaring one is what `auth-scope` credits. */
+function isDeclaredValue(property: ts.ObjectLiteralElementLike): boolean {
+  if (!ts.isPropertyAssignment(property)) return true;
+  const value = unwrap(property.initializer);
+  if (ts.isIdentifier(value) && value.text === "undefined") return false;
+  return value.kind !== ts.SyntaxKind.NullKeyword && value.kind !== ts.SyntaxKind.FalseKeyword;
+}
 
-const NO_INITIALIZER: Initializer = { callee: null, functions: [] };
+/**
+ * Top-level property names of every object-literal argument to the root call, e.g. `params`,
+ * `authorization`, `method`. Only the root call and only the top level: `authorization` on
+ * `createMultiMethodApiRoute` is declared once beside `methods` rather than per method
+ * (`apiBuilder.server.ts`), so nothing here needs to descend.
+ */
+function collectOptionKeys(call: ts.CallExpression): string[] {
+  const keys: string[] = [];
+  for (const arg of rootCall(call).arguments) {
+    const target = unwrap(arg);
+    if (!ts.isObjectLiteralExpression(target)) continue;
+    for (const property of target.properties) {
+      const name = propertyName(property);
+      if (name && isDeclaredValue(property)) keys.push(name);
+    }
+  }
+  return keys;
+}
+
+type Initializer = { callee: string | null; functions: EntryFunction[]; optionKeys: string[] };
+
+const NO_INITIALIZER: Initializer = { callee: null, functions: [], optionKeys: [] };
 
 /** Top-level `function x` / `const x = ...` declarations, keyed by binding name. */
 type LocalDeclarations = Map<string, ts.Expression | ts.FunctionDeclaration>;
@@ -713,12 +770,16 @@ function analyzeInitializer(
   if (!expr) return NO_INITIALIZER;
   const target = unwrap(expr);
 
-  if (isEntryFunction(target)) return { callee: null, functions: [target] };
+  if (isEntryFunction(target)) return { callee: null, functions: [target], optionKeys: [] };
 
   if (ts.isCallExpression(target)) {
     const functions: EntryFunction[] = [];
     collectHandlerFunctions(target, functions);
-    return { callee: rootCalleeName(target), functions };
+    return {
+      callee: rootCalleeName(target),
+      functions,
+      optionKeys: collectOptionKeys(target),
+    };
   }
 
   // `export const action = route.action` where `const route = createActionApiRoute(...)`, and the
@@ -737,7 +798,7 @@ function resolveLocal(name: string, locals: LocalDeclarations, seen: Set<string>
   seen.add(name);
   const local = locals.get(name);
   if (!local) return NO_INITIALIZER;
-  if (ts.isFunctionDeclaration(local)) return { callee: null, functions: [local] };
+  if (ts.isFunctionDeclaration(local)) return { callee: null, functions: [local], optionKeys: [] };
   return analyzeInitializer(local, locals, seen);
 }
 
@@ -833,6 +894,8 @@ type EntryTarget = {
   hasAction: boolean;
   loaderInitializerCallee: string | null;
   actionInitializerCallee: string | null;
+  loaderBuilderOptions: string[];
+  actionBuilderOptions: string[];
   functions: Set<EntryFunction>;
 };
 
@@ -950,16 +1013,26 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     hasAction: false,
     loaderInitializerCallee: null,
     actionInitializerCallee: null,
+    loaderBuilderOptions: [],
+    actionBuilderOptions: [],
     functions: new Set(),
   };
 
+  // The option keys travel with the callee they came from, so a second declaration cannot lend its
+  // options to the first one's builder.
   const record = (name: string, initializer: Initializer) => {
     if (name === "loader") {
       target.hasLoader = true;
-      target.loaderInitializerCallee ??= initializer.callee;
+      if (target.loaderInitializerCallee === null) {
+        target.loaderInitializerCallee = initializer.callee;
+        target.loaderBuilderOptions = initializer.optionKeys;
+      }
     } else {
       target.hasAction = true;
-      target.actionInitializerCallee ??= initializer.callee;
+      if (target.actionInitializerCallee === null) {
+        target.actionInitializerCallee = initializer.callee;
+        target.actionBuilderOptions = initializer.optionKeys;
+      }
     }
     for (const fn of initializer.functions) target.functions.add(fn);
   };
@@ -974,16 +1047,32 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     if (ts.isFunctionDeclaration(statement) && statement.name && isExported(statement)) {
       const name = statement.name.text;
       if (name === "loader" || name === "action") {
-        record(name, { callee: null, functions: [statement] });
+        record(name, { callee: null, functions: [statement], optionKeys: [] });
       }
       continue;
     }
 
     if (ts.isVariableStatement(statement) && isExported(statement)) {
       for (const decl of statement.declarationList.declarations) {
-        if (!ts.isIdentifier(decl.name)) continue;
-        const name = decl.name.text;
-        if (name === "loader" || name === "action") {
+        if (ts.isIdentifier(decl.name)) {
+          const name = decl.name.text;
+          if (name === "loader" || name === "action") {
+            record(name, analyzeInitializer(decl.initializer, locals, new Set()));
+          }
+          continue;
+        }
+        // `export const { action, loader } = createActionApiRoute(...)`. Skipping a non-identifier
+        // binding name here produced no entry point at all for this shape: not a parse failure and
+        // not unmeasured, simply absent from the denominator. The two-step spelling
+        // (`const { action } = builder(...); export { action };`) already resolved, because
+        // `collectLocalDeclarations` reads the binding pattern and the export clause looks the name
+        // up there, so only the direct form was missing. The exported name is the ELEMENT name, so
+        // `{ loader: action }` exports an action and `{ action: internal }` exports neither.
+        if (!ts.isObjectBindingPattern(decl.name)) continue;
+        for (const element of decl.name.elements) {
+          if (!ts.isIdentifier(element.name)) continue;
+          const name = element.name.text;
+          if (name !== "loader" && name !== "action") continue;
           record(name, analyzeInitializer(decl.initializer, locals, new Set()));
         }
       }
@@ -1014,6 +1103,8 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
   let statementCount = 0;
   let hasTryCatch = false;
   let callbackCatches = 0;
+  let scopesByCaller = false;
+  let checksAbility = false;
   const catches: CatchEvidence[] = [];
   const calleeNames: string[] = [];
   const logCalls: LogCall[] = [];
@@ -1076,11 +1167,18 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
         return;
       }
 
+      if (ts.isPropertyAssignment(node)) {
+        const path = propertyPath(node.initializer);
+        if (path !== null && CALLER_ID_PATH.test(path)) scopesByCaller = true;
+      }
+
       if (ts.isCallExpression(node)) {
         const cn = calleeName(node.expression);
         if (cn) {
           const text = calleeText(node.expression) ?? cn;
           calleeNames.push(cn);
+
+          if (ABILITY_CHECK.test(text)) checksAbility = true;
 
           if (LOGGER_CALLEE.test(text)) {
             logCalls.push({
@@ -1117,6 +1215,16 @@ export function scanFile(fileName: string, source: string): EntryPoint | null {
     hasAction: target.hasAction,
     loaderInitializerCallee: target.loaderInitializerCallee,
     actionInitializerCallee: target.actionInitializerCallee,
+    loaderBuilderOptions: target.loaderBuilderOptions,
+    actionBuilderOptions: target.actionBuilderOptions,
+    // No handler function and no builder call: `export { action } from "./handler.server"` and
+    // `export const action = handleWebhook`. See `EntryPoint.delegating`.
+    delegating:
+      target.functions.size === 0 &&
+      target.loaderInitializerCallee === null &&
+      target.actionInitializerCallee === null,
+    scopesByCaller,
+    checksAbility,
     importedNames,
     calleeNames,
     hasTryCatch,

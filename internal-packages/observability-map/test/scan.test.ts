@@ -1988,3 +1988,226 @@ describe("a ternary on the error has to send its arms somewhere different", () =
     expect(ep!.catches[0]!.branches).toBe(false);
   });
 });
+
+// C4a. `export const { action, loader } = createActionApiRoute(...)` produced no entry point at
+// all: `scanFile` skipped a non-identifier binding name at the export site, so the route was
+// absent from the denominator rather than parsed, failed or unmeasured. The two-step spelling
+// already worked, because `collectLocalDeclarations` reads the binding pattern and the export
+// clause resolves through it, so exactly half the shape was wired.
+describe("scanFile: a destructured export declaration", () => {
+  const BUILDER = `import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";`;
+
+  it("finds an action destructured straight out of a builder call", () => {
+    const ep = scanFile(
+      "api.v1.things.ts",
+      `${BUILDER}
+       export const { action } = createActionApiRoute({ method: "POST" }, async () => json({}));`
+    );
+    expect(ep).not.toBeNull();
+    expect(ep!.hasAction).toBe(true);
+    expect(ep!.actionInitializerCallee).toBe("createActionApiRoute");
+  });
+
+  it("finds both halves of a destructured builder export", () => {
+    const ep = scanFile(
+      "api.v1.things.ts",
+      `${BUILDER}
+       export const { action, loader } = createActionApiRoute({}, async () => json({}));`
+    );
+    expect(ep!.hasAction).toBe(true);
+    expect(ep!.hasLoader).toBe(true);
+  });
+
+  it("finds an action destructured from a local the builder produced", () => {
+    const ep = scanFile(
+      "api.v1.things.ts",
+      `${BUILDER}
+       const route = createActionApiRoute({}, async () => json({}));
+       export const { action } = route;`
+    );
+    expect(ep).not.toBeNull();
+    expect(ep!.actionInitializerCallee).toBe("createActionApiRoute");
+  });
+
+  // The exported name is the element name, so a rename decides what this file exports.
+  it("reads the exported name rather than the property it came from", () => {
+    const renamed = scanFile(
+      "api.v1.things.ts",
+      `${BUILDER}
+       export const { loader: action } = createActionApiRoute({}, async () => json({}));`
+    );
+    expect(renamed!.hasAction).toBe(true);
+    expect(renamed!.hasLoader).toBe(false);
+
+    const hidden = scanFile(
+      "api.v1.things.ts",
+      `${BUILDER}
+       export const { action: internal } = createActionApiRoute({}, async () => json({}));`
+    );
+    expect(hidden).toBeNull();
+  });
+
+  it("counts the statements of a handler reached through the binding pattern", () => {
+    const ep = scanFile(
+      "api.v1.things.ts",
+      `${BUILDER}
+       export const { action } = createActionApiRoute({}, async ({ request }) => {
+         const body = await request.json();
+         const saved = await prisma.thing.create({ data: body });
+         return json(saved);
+       });`
+    );
+    expect(ep!.statementCount).toBe(3);
+  });
+});
+
+// C4b. A route whose body is in another module gives zero statements and zero callees, so the
+// triviality rule read it as a redirect stub and every check reported not-applicable for it. The
+// scan says so directly instead, and `score.ts` counts it apart from the routes nothing applied to.
+describe("scanFile: a route that delegates its body to another module", () => {
+  it("marks a re-export of an action from another module", () => {
+    const ep = scanFile("webhooks.v1.stripe.ts", `export { action } from "./handler.server";`);
+    expect(ep!.delegating).toBe(true);
+  });
+
+  it("marks an action aliased to an imported function", () => {
+    const ep = scanFile(
+      "webhooks.v1.stripe.ts",
+      `import { handleWebhook } from "./handler.server";
+       export const action = handleWebhook;`
+    );
+    expect(ep!.delegating).toBe(true);
+  });
+
+  it("marks a renamed re-export", () => {
+    const ep = scanFile(
+      "webhooks.v1.stripe.ts",
+      `export { handleWebhook as action } from "./handler.server";`
+    );
+    expect(ep!.delegating).toBe(true);
+  });
+
+  it("does not mark a route whose body is in the file", () => {
+    const ep = scanFile("api.v1.things.ts", LOADER);
+    expect(ep!.delegating).toBe(false);
+  });
+
+  it("does not mark a route wrapped in a builder, whose options are still readable", () => {
+    const ep = scanFile(
+      "api.v1.things.ts",
+      `import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+       import { handler } from "./handler.server";
+       export const action = createActionApiRoute({ method: "POST" }, handler);`
+    );
+    expect(ep!.delegating).toBe(false);
+  });
+
+  // Half a route in the file is still half a route to judge.
+  it("does not mark a route that delegates one export and writes the other", () => {
+    const ep = scanFile(
+      "api.v1.things.ts",
+      `export { action } from "./handler.server";
+       export async function loader() { return json({}); }`
+    );
+    expect(ep!.delegating).toBe(false);
+  });
+});
+
+// C1b. What `auth-scope` reads: the options a builder was given, whether the handler filters by
+// the caller's own id, and whether it runs the ability gate itself.
+describe("scanFile: the signals auth-scope reads", () => {
+  const PAT = `import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";`;
+
+  it("records the top-level option keys of the builder call", () => {
+    const ep = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const action = createActionPATApiRoute(
+         { method: "POST", authorization: { action: "manage", resource: { type: "org" } } },
+         async () => json({})
+       );`
+    );
+    expect(ep!.actionBuilderOptions).toEqual(["method", "authorization"]);
+  });
+
+  it("keeps the loader's options and the action's options apart", () => {
+    const ep = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({ authorization: {} }, async () => json({}));
+       export const action = createActionPATApiRoute({ method: "POST" }, async () => json({}));`
+    );
+    expect(ep!.loaderBuilderOptions).toEqual(["authorization"]);
+    expect(ep!.actionBuilderOptions).toEqual(["method"]);
+  });
+
+  it("sees a query filtered by the caller's id, in both builders' spellings", () => {
+    const api = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async ({ authentication }) => {
+         return json(await prisma.org.findMany({
+           where: { members: { some: { userId: authentication.userId } } },
+         }));
+       });`
+    );
+    expect(api!.scopesByCaller).toBe(true);
+
+    const dashboard = scanFile(
+      "_app.orgs.$slug.apikeys/route.tsx",
+      `import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+       export const loader = dashboardLoader({}, async ({ user }) => {
+         return json(await presenter.call({ userId: user.id, slug: "x" }));
+       });`
+    );
+    expect(dashboard!.scopesByCaller).toBe(true);
+  });
+
+  it("does not read a non-identity field off the caller as a scope", () => {
+    const ep = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async ({ user }) => {
+         return json(await prisma.org.findMany({ where: { title: user.name } }));
+       });`
+    );
+    expect(ep!.scopesByCaller).toBe(false);
+  });
+
+  // A resource's owner is not the caller.
+  it("does not read another object's userId as a scope", () => {
+    const ep = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async () => {
+         return json(await prisma.org.findMany({ where: { userId: run.userId } }));
+       });`
+    );
+    expect(ep!.scopesByCaller).toBe(false);
+  });
+
+  it("sees the ability gate run from the handler", () => {
+    const ep = scanFile(
+      "_app.orgs.$slug.settings.team/route.tsx",
+      `import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+       export const action = dashboardAction({}, async ({ ability, context }) => {
+         if (!ability.can("manage", { type: "members", id: context.organizationId })) {
+           throw new Response("Forbidden", { status: 403 });
+         }
+         return json({});
+       });`
+    );
+    expect(ep!.checksAbility).toBe(true);
+  });
+
+  it("does not read an unrelated can() as the ability gate", () => {
+    const ep = scanFile(
+      "api.v1.orgs.ts",
+      `${PAT}
+       export const loader = createActionPATApiRoute({}, async () => {
+         return json({ ok: features.can("x") });
+       });`
+    );
+    expect(ep!.checksAbility).toBe(false);
+  });
+});

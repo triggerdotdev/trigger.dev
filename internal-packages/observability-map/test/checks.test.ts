@@ -28,14 +28,20 @@ const COMPONENT = `
 `;
 
 describe("registry", () => {
-  it("holds the four checks, with audit-trail left out of the score", () => {
+  it("holds the five checks, with audit-trail left out of the score", () => {
     expect(CHECKS.map((c) => c.id)).toEqual([
       "error-classification",
       "auth-boundary",
+      "auth-scope",
       "request-context",
       "audit-trail",
     ]);
-    expect(SCORED_CHECK_IDS).toEqual(["error-classification", "auth-boundary", "request-context"]);
+    expect(SCORED_CHECK_IDS).toEqual([
+      "error-classification",
+      "auth-boundary",
+      "auth-scope",
+      "request-context",
+    ]);
   });
 });
 
@@ -842,21 +848,29 @@ describe("auth-boundary", () => {
   });
 
   // Possession of a valid signature is the auth boundary for a callback URL.
-  it("passes a sensitive callback guarded by a signature check", () => {
-    const r = run(
+  const signatureRoute = (guard: string) =>
+    run(
       "auth-boundary",
       "webhooks.v1.billing.$hash.ts",
-      `import { verifyWebhookSignature } from "~/services/webhooks.server";
+      `import { ${guard} } from "~/services/webhooks.server";
        import { prisma } from "~/db.server";
        export async function action({ request, params }) {
          const invoice = await prisma.invoice.findFirst({ where: { id: params.id } });
-         if (!verifyWebhookSignature(params.hash, invoice)) {
+         if (!${guard}(params.hash, invoice)) {
            return json({ error: "Invalid" }, { status: 401 });
          }
          return json({ ok: true });
        }`
     );
-    expect(r.status).toBe("pass");
+
+  it("passes a sensitive callback guarded by a signature check", () => {
+    expect(signatureRoute("verifyWebhook").status).toBe("pass");
+  });
+
+  // C1a. The accept-list is derived from the helpers this webapp has. `verifyWebhookSignature` is
+  // a plausible name that exists nowhere in it, and the pattern this list replaced passed it.
+  it("does not pass a signature guard the webapp does not have", () => {
+    expect(signatureRoute("verifyWebhookSignature").status).toBe("fail");
   });
 
   // False positive fixture: the guard sits one hop away, in a same-file helper.
@@ -1386,5 +1400,236 @@ describe("audit-trail", () => {
        }`
     );
     expect(r.status).toBe("pass");
+  });
+});
+
+// C1a. The guard list is names now, not a five-character prefix. Both directions matter: a real
+// helper must still clear a sensitive route, and a callee that merely starts the right way must
+// not.
+describe("auth-boundary: the guard accept-list", () => {
+  const sensitiveRoute = (guard: string) =>
+    run(
+      "auth-boundary",
+      "api.v1.orgs.$orgParam.members.ts",
+      `import { prisma } from "~/db.server";
+       export async function loader({ request, params }) {
+         const caller = await ${guard}(request);
+         const members = await prisma.orgMember.findMany({ where: { orgId: params.orgParam } });
+         return json({ members, caller });
+       }`
+    );
+
+  it.each(["requireUserId", "requireUser", "authenticateApiRequest", "authenticateSession"])(
+    "passes a sensitive route guarded by %s",
+    (guard) => {
+      expect(sensitiveRoute(guard).status).toBe("pass");
+    }
+  );
+
+  // The live case. `requireSsoEntitlement` is a plan check inside one route file, and the prefix
+  // pattern cleared the org SSO settings route on it.
+  it("does not pass a plan check that happens to start with require", () => {
+    const r = sensitiveRoute("requireSsoEntitlement");
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("no auth guard in the body");
+  });
+
+  // The two live shapes that made the non-throwing variants worth crediting. Both act on the
+  // answer, which is why they are on the list; a route that calls one and ignores it is the
+  // residual, stated on `GUARDS`.
+  it("passes an invite acceptance that resolves the caller and refuses a mismatch", () => {
+    const r = run(
+      "auth-boundary",
+      "invite-accept.tsx",
+      `import { getUser } from "~/services/session.server";
+       import { getInviteFromToken } from "~/models/member.server";
+       export async function loader({ request }) {
+         const user = await getUser(request);
+         const token = new URL(request.url).searchParams.get("token");
+         if (!user) return redirect("/login");
+         const invite = await getInviteFromToken({ token });
+         if (invite.email !== user.email) return redirect("/");
+         return redirect("/");
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  it("passes a login page that sends an already authenticated caller away", () => {
+    const r = run(
+      "auth-boundary",
+      "login._index/route.tsx",
+      `import { getUserId } from "~/services/session.server";
+       import { prisma } from "~/db.server";
+       export async function loader({ request }) {
+         const userId = await getUserId(request);
+         if (userId) return redirect("/");
+         const flags = await prisma.featureFlag.findMany();
+         return typedjson({ flags });
+       }`
+    );
+    expect(r.status).toBe("pass");
+  });
+
+  it("does not pass an invented require helper", () => {
+    expect(sensitiveRoute("requireValidParams").status).toBe("fail");
+    expect(sensitiveRoute("requireQueryParam").status).toBe("fail");
+  });
+
+  // `resolveAuthenticatedEnv` hydrates an environment record from its id. Ten routes call it and
+  // the /Authenticated/ pattern read every one of them as guarded.
+  it("does not pass a lookup whose name merely contains Authenticated", () => {
+    expect(sensitiveRoute("resolveAuthenticatedEnv").status).toBe("fail");
+    expect(sensitiveRoute("commitAuthenticatedSession").status).toBe("fail");
+  });
+});
+
+// C1b. A builder authenticates the request; it does not necessarily scope it. `authorization` is
+// optional on every one of them and the RBAC gate only runs when it is declared.
+describe("auth-scope", () => {
+  const patRoute = (options: string, body: string) =>
+    run(
+      "auth-scope",
+      "api.v1.orgs.$orgParam.members.ts",
+      `import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+       import { prisma } from "~/db.server";
+       export const action = createActionPATApiRoute(
+         { method: "POST"${options}},
+         async ({ authentication, params }) => {
+           ${body}
+           return json({ members });
+         }
+       );`
+    );
+
+  const UNSCOPED = `const members = await prisma.orgMember.findMany({
+             where: { organization: { slug: params.orgParam } },
+           });`;
+
+  it("fails a sensitive PAT route that authenticates and scopes nothing", () => {
+    const r = patRoute("", UNSCOPED);
+    expect(r.status).toBe("fail");
+    expect(r.detail).toContain("authenticated but not scoped to the caller");
+    expect(r.detail).toContain("createActionPATApiRoute");
+  });
+
+  it("passes when the builder declares the authorization gate", () => {
+    const r = patRoute(
+      `, authorization: { action: "read", resource: { type: "members" } }`,
+      UNSCOPED
+    );
+    expect(r.status).toBe("pass");
+    expect(r.detail).toContain("authorization gate");
+  });
+
+  it("passes when the handler filters by the caller's membership instead", () => {
+    const r = patRoute(
+      "",
+      `const members = await prisma.orgMember.findMany({
+         where: { organization: { slug: params.orgParam, members: { some: { userId: authentication.userId } } } },
+       });`
+    );
+    expect(r.status).toBe("pass");
+    expect(r.detail).toContain("caller's identity");
+  });
+
+  it("passes when the handler runs the ability gate itself", () => {
+    const r = run(
+      "auth-scope",
+      "_app.orgs.$slug.settings.team/route.tsx",
+      `import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+       import { prisma } from "~/db.server";
+       export const action = dashboardAction({ params: Params }, async ({ ability, params }) => {
+         if (!ability.can("manage", { type: "members" })) throw new Response(null, { status: 403 });
+         const members = await prisma.orgMember.findMany({ where: { slug: params.slug } });
+         return json({ members });
+       });`
+    );
+    expect(r.status).toBe("pass");
+    expect(r.detail).toContain("ability gate");
+  });
+
+  // A file whose loader is gated and whose action is not is not a gated route.
+  it("fails when only one of two builder exports declares the gate", () => {
+    const r = run(
+      "auth-scope",
+      "api.v1.orgs.$orgParam.members.ts",
+      `import { createActionPATApiRoute, createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+       import { prisma } from "~/db.server";
+       export const loader = createLoaderPATApiRoute(
+         { authorization: { action: "read", resource: { type: "members" } } },
+         async ({ params }) => json(await prisma.orgMember.findMany({ where: { slug: params.orgParam } }))
+       );
+       export const action = createActionPATApiRoute({ method: "POST" }, async ({ params }) =>
+         json(await prisma.orgMember.deleteMany({ where: { slug: params.orgParam } }))
+       );`
+    );
+    expect(r.status).toBe("fail");
+  });
+
+  it("is not applicable to a route that is not sensitive", () => {
+    const r = run(
+      "auth-scope",
+      "api.v1.runs.ts",
+      `import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+       import { prisma } from "~/db.server";
+       export const action = createActionApiRoute({ method: "POST" }, async ({ params }) =>
+         json(await prisma.taskRun.findMany({ where: { id: params.id } }))
+       );`
+    );
+    expect(r.status).toBe("not-applicable");
+    expect(r.detail).toBe("not sensitive");
+  });
+
+  it("is not applicable to a sensitive route with no builder to read options from", () => {
+    const r = run(
+      "auth-scope",
+      "api.v1.orgs.$orgParam.members.ts",
+      `import { requireUserId } from "~/services/session.server";
+       import { prisma } from "~/db.server";
+       export async function action({ request, params }) {
+         await requireUserId(request);
+         return json(await prisma.orgMember.deleteMany({ where: { slug: params.orgParam } }));
+       }`
+    );
+    expect(r.status).toBe("not-applicable");
+    expect(r.detail).toContain("no route builder");
+  });
+
+  // A builder-wrapped route is never trivial, so the sensitive routes that sit out for having
+  // nothing in the body sit out here for having no builder instead.
+  it("is not applicable to a trivial sensitive route with no builder", () => {
+    const r = run(
+      "auth-scope",
+      "orgs.$organizationSlug.team.ts",
+      `import { redirect } from "@remix-run/server-runtime";
+       export async function loader({ params }) { return redirect(teamPath(params.slug)); }`
+    );
+    expect(r.status).toBe("not-applicable");
+    expect(r.detail).toContain("no route builder");
+  });
+});
+
+// The cheapest way to launder auth-scope would be to write the option and give it nothing, which
+// the builder's own `if (authorization)` treats as absent.
+describe("auth-scope: an option declared as nothing is not declared", () => {
+  const withValue = (value: string) =>
+    run(
+      "auth-scope",
+      "api.v1.orgs.$orgParam.members.ts",
+      `import { createActionPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+       import { prisma } from "~/db.server";
+       export const action = createActionPATApiRoute(
+         { method: "POST", authorization: ${value} },
+         async ({ params }) => json(await prisma.orgMember.findMany({ where: { slug: params.orgParam } }))
+       );`
+    );
+
+  it.each(["undefined", "null", "false"])("fails on authorization: %s", (value) => {
+    expect(withValue(value).status).toBe("fail");
+  });
+
+  it("passes on a real one, so the rule is about the value and not the key", () => {
+    expect(withValue(`{ action: "read", resource: { type: "members" } }`).status).toBe("pass");
   });
 });

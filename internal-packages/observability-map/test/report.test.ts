@@ -309,7 +309,9 @@ describe("reporting a suppression that names no check", () => {
 
   it("lists the ids that would have worked", () => {
     const out = renderTerminal(buildReport([typo("api.v1.a.ts")], []));
-    expect(out).toContain("error-classification, auth-boundary, request-context, audit-trail");
+    expect(out).toContain(
+      "error-classification, auth-boundary, auth-scope, request-context, audit-trail"
+    );
   });
 
   it("does not report the finding as suppressed", () => {
@@ -324,5 +326,61 @@ describe("reporting a suppression that names no check", () => {
 
   it("says nothing when every directive named a real check", () => {
     expect(renderTerminal(report())).not.toContain("UNKNOWN SUPPRESSION");
+  });
+});
+
+// C4b. A delegating route must not read as a clean bill of health. It is surfaced the way a parse
+// failure is, because it shrinks the denominator the same way.
+describe("reporting a route whose body is in another module", () => {
+  const delegated = () =>
+    buildReport(
+      [
+        scanFile("webhooks.v1.stripe.ts", `export { action } from "./handler.server";`)!,
+        scanFile(
+          "api.v1.a.ts",
+          `import { prisma } from "~/db.server";
+           export async function loader() { return prisma.thing.findMany(); }`
+        )!,
+      ],
+      []
+    );
+
+  it("names the route and says nothing was checked", () => {
+    const out = renderTerminal(delegated());
+    expect(out).toContain("DELEGATED");
+    expect(out).toContain("webhooks.v1.stripe.ts");
+    expect(out).toContain("nothing here was checked");
+  });
+
+  it("separates it from the entries nothing applied to, in the headline", () => {
+    expect(renderTerminal(delegated())).toContain("1 measured, 0 unmeasured, 1 delegated of 2");
+  });
+
+  it("carries the file names into the JSON", () => {
+    expect(JSON.parse(renderJson(delegated())).delegating).toEqual(["webhooks.v1.stripe.ts"]);
+  });
+
+  it("says nothing when every route keeps its body", () => {
+    expect(renderTerminal(report())).not.toContain("DELEGATED");
+  });
+});
+
+// C5. What the composite is made of, disclosed on screen rather than folded into a weight.
+describe("reporting what the score is made of", () => {
+  it("gives a line per check with applicability, passes and worth", () => {
+    const out = renderTerminal(report());
+    expect(out).toContain("CHECKS");
+    expect(out).toMatch(
+      /request-context\s+\d+ applicable,\s+\d+ pass,\s+\d+ sole, global without it/
+    );
+  });
+
+  it("marks the check that does not feed the score", () => {
+    expect(renderTerminal(report())).toMatch(/audit-trail\s+.*not in the score/);
+  });
+
+  it("carries the same figures into the JSON", () => {
+    const parsed = JSON.parse(renderJson(report()));
+    expect(parsed.checkContributions.map((c: { id: string }) => c.id)).toContain("auth-scope");
   });
 });

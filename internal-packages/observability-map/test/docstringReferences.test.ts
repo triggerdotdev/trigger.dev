@@ -48,6 +48,8 @@ const NOT_A_TEST_NAME = new Set([
   // The worked example of a mistyped check id in `suppression.ts`. A misspelling of a check id is
   // the thing being described, so it names no test by construction.
   "eror-classification",
+  // A route path segment quoted in `sensitivity.ts`, part of the vocabulary that file is about.
+  "session-duration",
 ]);
 
 /** A backticked phrase this long or longer, with no code punctuation, is read as a test title. */

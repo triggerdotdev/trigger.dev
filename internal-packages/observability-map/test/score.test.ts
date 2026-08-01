@@ -427,3 +427,137 @@ export async function loader() {
     expect(scored.checks.find((c) => c.id === "error-classification")!.status).toBe("pass");
   });
 });
+
+// C4b. A route whose body is in another module used to be scored as if it were a redirect stub:
+// zero statements, zero callees, `isTrivial` true, every check not-applicable, and a placeholder
+// 100 that no mean ever used. The tool said nothing about it at all, so moving a body into a
+// `.server.ts` file silently deleted the route from the metric.
+describe("a route that delegates its body to another module", () => {
+  const DELEGATED = `export { action } from "./handler.server";`;
+  const entry = () => scoreEntry(scanFile("webhooks.v1.stripe.ts", DELEGATED)!);
+
+  it("reports every check as not-applicable for the reason that is true", () => {
+    const e = entry();
+    expect(e.rawChecks.every((c) => c.status === "not-applicable")).toBe(true);
+    expect(new Set(e.rawChecks.map((c) => c.detail))).toEqual(
+      new Set(["delegates its body to another module"])
+    );
+  });
+
+  it("is not measured, and says so on the entry", () => {
+    const e = entry();
+    expect(e.delegating).toBe(true);
+    expect(e.measured).toBe(false);
+  });
+
+  // request-context would otherwise fail it for leaving its failures to the central handler, which
+  // is an accusation about a body this file does not contain.
+  it("is not accused of anything the scanner cannot see", () => {
+    expect(entry().rawChecks.find((c) => c.id === "request-context")!.status).toBe(
+      "not-applicable"
+    );
+  });
+
+  it("is counted apart from the entries nothing happened to apply to", () => {
+    const r = buildReport(
+      [scanFile("webhooks.v1.stripe.ts", DELEGATED)!, scanFile("@.ts", TRIVIAL)!],
+      []
+    );
+    expect(r.delegating).toEqual(["webhooks.v1.stripe.ts"]);
+    expect(r.unmeasured).toBe(1);
+    expect(r.measured).toBe(0);
+  });
+
+  it("cannot raise the global, since it is in no mean", () => {
+    const withDelegate = buildReport(
+      [scanFile("api.v1.b.ts", BUSY_AND_FAILING)!, scanFile("webhooks.v1.stripe.ts", DELEGATED)!],
+      []
+    );
+    const without = buildReport([scanFile("api.v1.b.ts", BUSY_AND_FAILING)!], []);
+    expect(withDelegate.global).toBe(without.global);
+  });
+});
+
+// C5. The composite is disclosed rather than weighted: the reader gets applicability, pass rate,
+// how many entries rest on one check alone, and what the global would be without each check.
+describe("per-check contribution", () => {
+  const r = () =>
+    buildReport(
+      [
+        scanFile("api.v1.a.ts", BUSY_AND_FAILING)!,
+        scanFile("api.v1.b.ts", RAW)!,
+        scanFile("@.ts", TRIVIAL)!,
+      ],
+      []
+    );
+
+  it("has one row per check, in registry order", () => {
+    expect(r().checkContributions.map((c) => c.id)).toEqual([
+      "error-classification",
+      "auth-boundary",
+      "auth-scope",
+      "request-context",
+      "audit-trail",
+    ]);
+  });
+
+  it("counts applicability and passes off the pre-suppression results", () => {
+    const context = r().checkContributions.find((c) => c.id === "request-context")!;
+    expect(context.applicable).toBe(2);
+    expect(context.passed).toBe(0);
+  });
+
+  // `RAW` has no catch, so request-context is the only scored check that applies to it.
+  it("counts the entries that rest on one check alone", () => {
+    const rows = r().checkContributions;
+    expect(rows.find((c) => c.id === "request-context")!.sole).toBe(1);
+    expect(rows.find((c) => c.id === "error-classification")!.sole).toBe(0);
+  });
+
+  it("says what the global would be without each scored check", () => {
+    const report = r();
+    expect(report.global).toBe(0);
+    const errors = report.checkContributions.find((c) => c.id === "error-classification")!;
+    expect(errors.scored).toBe(true);
+    expect(errors.globalWithout).toBe(0);
+  });
+
+  it("gives no without-figure for a check that is not in the score", () => {
+    const audit = r().checkContributions.find((c) => c.id === "audit-trail")!;
+    expect(audit.scored).toBe(false);
+    expect(audit.globalWithout).toBeNull();
+  });
+
+  // Taking the only applicable check away leaves nothing measured, which is an absence and not a
+  // perfect score.
+  it("gives a null without-figure when nothing would be left measured", () => {
+    const only = buildReport([scanFile("api.v1.b.ts", RAW)!], []);
+    expect(
+      only.checkContributions.find((c) => c.id === "request-context")!.globalWithout
+    ).toBeNull();
+  });
+});
+
+// C4b, stated as the property rather than as a shape. Moving a body into a `.server.ts` file is an
+// ordinary refactor: it must not delete the route from the metric silently. The corpus cannot hold
+// this one, because its per-route assertion reads "dropped out of the measured set" as a rise, and
+// dropping out is the correct outcome here. What is forbidden is dropping out QUIETLY.
+describe("refactoring a body out of the route file", () => {
+  const BEFORE = `import { prisma } from "~/db.server";
+export async function action() {
+  try { return await prisma.thing.create({ data: {} }); } catch (e) { return null; }
+}`;
+  const AFTER = `export { action } from "./handler.server";`;
+
+  it("leaves the mean, and is reported instead of being dropped", () => {
+    const before = buildReport([scanFile("webhooks.v1.stripe.ts", BEFORE)!], []);
+    const after = buildReport([scanFile("webhooks.v1.stripe.ts", AFTER)!], []);
+
+    expect(before.measured).toBe(1);
+    expect(before.global).toBe(0);
+    expect(after.measured).toBe(0);
+    expect(after.global).toBeNull();
+    expect(after.delegating).toEqual(["webhooks.v1.stripe.ts"]);
+    expect(after.unmeasured).toBe(0);
+  });
+});

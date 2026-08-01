@@ -2,8 +2,10 @@ import type { MapReport, ScoredEntry } from "../score.js";
 import { SCORED_CHECK_IDS } from "../checks/index.js";
 import {
   auditLine,
+  checkContributionLines,
   contextLine,
   contextOnly,
+  delegatedLines,
   scoredFailures,
   unknownSuppressionLines,
 } from "./terminal.js";
@@ -213,6 +215,11 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
  * at head that did not at base, the parse failure count, the unknown suppression warnings, and the
  * audit and context gaps.
  *
+ * `delegating` and `checkContributions` are compared outright rather than through the per-entry
+ * loop. Both are rendered, and both can move while every entry keeps its score: a check going from
+ * applicable-and-passing to not-applicable leaves an entry at 100 and changes what the CHECKS block
+ * says about it.
+ *
  * The per-entry suppression set and the two gaps are the half that was missing, and it ran the
  * dangerous way. Suppressing an already-failing check moves no score, no measured flag and no new
  * failure, so a pull request whose entire purpose was to silence findings posted nothing, while a
@@ -238,6 +245,8 @@ export function hasDelta(head: MapReport, base: MapReport | null): boolean {
   if (!same(head.unknownSuppressions, base.unknownSuppressions)) return true;
   if (!same(head.auditGap, base.auditGap)) return true;
   if (!same(head.contextGap, base.contextGap)) return true;
+  if (!same(head.delegating, base.delegating)) return true;
+  if (!same(head.checkContributions, base.checkContributions)) return true;
 
   const baseByFile = new Map(base.entries.map((e) => [e.fileName, e]));
   const headFiles = new Set(head.entries.map((e) => e.fileName));
@@ -305,12 +314,21 @@ export function renderPrComment(head: MapReport, base: MapReport | null): string
   if (audit) lines.push(audit);
   const context = contextLine(head);
   if (context) lines.push(context);
+  const delegated = delegatedLines(head);
+  lines.push(...delegated);
   const unknown = unknownSuppressionLines(head);
   lines.push(...unknown.slice(0, MAX_UNKNOWN_SUPPRESSION_LINES));
   if (unknown.length > MAX_UNKNOWN_SUPPRESSION_LINES) {
     lines.push(`and ${unknown.length - MAX_UNKNOWN_SUPPRESSION_LINES} more files with unknown ids`);
   }
-  if (audit || context || unknown.length > 0) lines.push("");
+  if (audit || context || delegated.length > 0 || unknown.length > 0) lines.push("");
+
+  const contributions = checkContributionLines(head);
+  if (contributions.length > 0) {
+    lines.push("<details><summary>What the score is made of</summary>", "", "```");
+    lines.push(...contributions);
+    lines.push("```", "", "</details>", "");
+  }
 
   lines.push(
     "Report only, nothing here gates the merge. The rules and their reasons: " +

@@ -9,6 +9,13 @@ export type ScoredEntry = {
   routePath: string;
   family: Family;
   sensitive: boolean;
+  /**
+   * The route's body is in another module (`EntryPoint.delegating`), so every check here reads
+   * not-applicable for that reason and the entry is never measured. Carried separately from
+   * `measured` because "we could not see it" and "nothing happened to apply" are different facts
+   * and the report has to be able to say which.
+   */
+  delegating: boolean;
   /** Post-suppression: a suppressed check reads `not-applicable` here, with the reason in
    * `detail`. This is the display view; every denominator below reads `rawChecks` instead, so a
    * suppression is never invisible to a published figure just because its check is not scored. */
@@ -38,13 +45,50 @@ export type ScoredEntry = {
   score: number;
 };
 
+/**
+ * What one check contributes to the composite, so a reader can see what the global is made of.
+ *
+ * The four-check framing presents a composite the number is not: `request-context` applies to
+ * nearly every entry point and the rest apply to a minority, so most entries score 0 or 100 on one
+ * boolean. Disclosed rather than weighted, deliberately. Weighting was rejected in the design
+ * because a coefficient nobody can explain invites argument about the number instead of the
+ * finding, and that reasoning has not changed.
+ */
+export type CheckContribution = {
+  id: string;
+  /** Entry points the check was applicable to, pre-suppression. */
+  applicable: number;
+  /** Of those, how many passed. */
+  passed: number;
+  /** Whether the check feeds `global` at all. `audit-trail` does not, see `buildReport`. */
+  scored: boolean;
+  /** Entry points where this was the ONLY applicable scored check, so their score is this check's
+   * verdict and nothing else. Zero for a check that is not scored. */
+  sole: number;
+  /** The global recomputed with this check taken out of the score, so the difference from `global`
+   * is what the check is worth. Null when the check is not scored, and null when taking it out
+   * would leave nothing measured. */
+  globalWithout: number | null;
+};
+
 export type MapReport = {
   /** Null when no entry point had an applicable scored check: an absent figure, not a perfect one. */
   global: number | null;
   /** Entry points with at least one applicable scored check, i.e. those `global` is averaged over. */
   measured: number;
-  /** Entry points every scored check reported not-applicable for; excluded from `global`. */
+  /** Entry points every scored check reported not-applicable for; excluded from `global`. Counts
+   * only routes the scanner could read: a delegating one is in `delegating` instead. */
   unmeasured: number;
+  /**
+   * Routes whose body is in another module, by file name. Excluded from `global` for the same
+   * reason a parse failure is, and reported for the same reason: the denominator is smaller than
+   * the entry point count and nothing about these routes has been checked. Moving a body into a
+   * `.server.ts` file is an ordinary refactor, and without this it silently deletes the route from
+   * the metric while the route reads as having nothing to fix.
+   */
+  delegating: string[];
+  /** Per-check applicability, pass rate and worth, in `CHECKS` order. */
+  checkContributions: CheckContribution[];
   /** Suppressions in force: how many entry points carry one, and how many scored checks in total. */
   suppressions: { entries: number; checks: number };
   /** Suppression directives naming no check, per file, so a typo is reported rather than dropped. */
@@ -62,9 +106,23 @@ export type MapReport = {
   parseFailures: string[];
 };
 
+/**
+ * What every check reports for a route whose body is in another module. Applied here rather than in
+ * each check, because it is a fact about what the scan could see and not about any one question:
+ * the file holds no handler function and no builder call, so there is nothing for a check to read
+ * and no check may claim a verdict. `request-context` would otherwise fail such a route for leaving
+ * its failures to the central handler, an accusation about a body this file does not contain.
+ */
+const DELEGATED_CHECKS = (): CheckResult[] =>
+  CHECKS.map((c) => ({
+    id: c.id,
+    status: "not-applicable" as const,
+    detail: "delegates its body to another module",
+  }));
+
 export function scoreEntry(ep: EntryPoint): ScoredEntry {
   const { byId: suppressed, unknown } = parseSuppressions(ep.source, ep.fileName);
-  const raw = CHECKS.map((c) => c.run(ep));
+  const raw = ep.delegating ? DELEGATED_CHECKS() : CHECKS.map((c) => c.run(ep));
   const checks = raw.map((result) => {
     const reason = suppressed.get(result.id);
     return reason
@@ -89,6 +147,7 @@ export function scoreEntry(ep: EntryPoint): ScoredEntry {
     routePath: routePathOf(ep.fileName),
     family: familyOf(ep.fileName),
     sensitive: classifySensitivity(ep).sensitive,
+    delegating: ep.delegating,
     checks,
     rawChecks: raw,
     suppressed: raw.filter((c) => suppressed.has(c.id)).map((c) => c.id),
@@ -127,6 +186,50 @@ function groupStats(entries: ScoredEntry[]): {
   };
 }
 
+/**
+ * The global as it would read with `omitted` taken out of the scored set, so the difference from
+ * the published global is what that check is worth. Recomputed from `rawChecks` the same way
+ * `scoreEntry` computes a score, minus the suppression cap: a suppression can only lower an entry's
+ * score, and lowering both figures by the same rule would leave the difference between them saying
+ * something about suppressions rather than about the check.
+ */
+function globalWithout(entries: ScoredEntry[], omitted: string): number | null {
+  const scores: number[] = [];
+  for (const e of entries) {
+    const applicable = e.rawChecks.filter(
+      (c) => SCORED_CHECK_IDS.includes(c.id) && c.id !== omitted && c.status !== "not-applicable"
+    );
+    if (applicable.length === 0) continue;
+    const passed = applicable.filter((c) => c.status === "pass").length;
+    scores.push(Math.round((passed / applicable.length) * 100));
+  }
+  return mean(scores);
+}
+
+function checkContributions(entries: ScoredEntry[]): CheckContribution[] {
+  return CHECKS.map((check) => {
+    const results = entries
+      .map((e) => e.rawChecks.find((c) => c.id === check.id))
+      .filter((c): c is CheckResult => c !== undefined && c.status !== "not-applicable");
+    const scored = SCORED_CHECK_IDS.includes(check.id);
+    return {
+      id: check.id,
+      applicable: results.length,
+      passed: results.filter((c) => c.status === "pass").length,
+      scored,
+      sole: scored
+        ? entries.filter((e) => {
+            const applicable = e.rawChecks.filter(
+              (c) => SCORED_CHECK_IDS.includes(c.id) && c.status !== "not-applicable"
+            );
+            return applicable.length === 1 && applicable[0]!.id === check.id;
+          }).length
+        : 0,
+      globalWithout: scored ? globalWithout(entries, check.id) : null,
+    };
+  });
+}
+
 export function buildReport(eps: EntryPoint[], parseFailures: string[]): MapReport {
   const entries = eps.map(scoreEntry);
   const measuredEntries = entries.filter((e) => e.measured);
@@ -159,7 +262,9 @@ export function buildReport(eps: EntryPoint[], parseFailures: string[]): MapRepo
   return {
     global: mean(measuredEntries.map((e) => e.score)),
     measured: measuredEntries.length,
-    unmeasured: entries.length - measuredEntries.length,
+    unmeasured: entries.filter((e) => !e.measured && !e.delegating).length,
+    delegating: entries.filter((e) => e.delegating).map((e) => e.fileName),
+    checkContributions: checkContributions(entries),
     suppressions: {
       entries: suppressing.length,
       checks: suppressing.reduce((n, e) => n + e.suppressed.length, 0),

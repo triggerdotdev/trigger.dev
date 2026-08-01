@@ -537,3 +537,38 @@ describe("hasDelta", () => {
     expect(hasDelta(head, one("api.v1.a.ts", cleanSource))).toBe(true);
   });
 });
+
+// C4b and C5. Both are rendered, so both have to move `hasDelta`, and neither is reachable through
+// the per-entry score comparison the loop makes.
+describe("hasDelta: the figures round C added", () => {
+  const one = (name: string, source: string) => buildReport([scanFile(name, source)!], []);
+  const delegated = `export { action } from "./handler.server";`;
+
+  it("is true when a route started delegating its body", () => {
+    const head = one("webhooks.v1.stripe.ts", delegated);
+    const base = one("webhooks.v1.stripe.ts", brokenSource);
+    expect(head.delegating).toEqual(["webhooks.v1.stripe.ts"]);
+    expect(hasDelta(head, base)).toBe(true);
+  });
+
+  // The shape the per-entry loop cannot see: the score stays where it was and what the score is
+  // made of changed underneath it.
+  it("is true when a check stopped applying without moving any entry's score", () => {
+    const head = one("api.v1.auth.tokens.ts", cleanSource);
+    const base = one("api.v1.auth.tokens.ts", cleanSource);
+    const contribution = base.checkContributions.find((c) => c.id === "auth-boundary")!;
+    contribution.applicable = contribution.applicable + 1;
+    expect(head.entries[0]!.score).toBe(base.entries[0]!.score);
+    expect(hasDelta(head, base)).toBe(true);
+  });
+
+  it("says the comment renders the delegated line it is comparing", () => {
+    const head = one("webhooks.v1.stripe.ts", delegated);
+    expect(renderPrComment(head, null)).toContain("DELEGATED");
+  });
+
+  it("says the comment renders the check contributions it is comparing", () => {
+    const head = one("api.v1.auth.tokens.ts", cleanSource);
+    expect(renderPrComment(head, null)).toContain("What the score is made of");
+  });
+});

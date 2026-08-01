@@ -1,0 +1,171 @@
+import ts from "typescript";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { GUARDS } from "../src/checks/authBoundary.js";
+import { ANTICIPATED_SEGMENTS, SENSITIVE_SEGMENTS, SENSITIVE_SYMBOLS } from "../src/sensitivity.js";
+
+/**
+ * Every name and every path segment the tool matches on must exist in the codebase it is pointed
+ * at.
+ *
+ * This is the test the last round did not have, and the cost of not having it was measured: half of
+ * `SENSITIVE_SYMBOLS` named nothing. `Set.has` is exact, so `setImpersonation`, `createJWT`,
+ * `signJWT` and `updateEnvVars` matched no route in the tree, while `startImpersonation`, the real
+ * escalation, was absent from the list. Nothing failed, nothing was reported, and the symbol half
+ * of the classifier was quietly doing almost nothing. `auth-boundary`'s guard list has the same
+ * failure mode with a worse consequence, since a guard name that resolves to nothing turns into a
+ * route that can never pass rather than a route that can never fail.
+ *
+ * What is checked:
+ *
+ * - every guard name and every sensitive symbol is DECLARED somewhere under one of `ROOTS`. A
+ *   declaration is a function, class, interface, type, enum or variable name, or a member name on a
+ *   class, interface or object literal. Members count because several guards are reached through an
+ *   object: `rbac.authenticateSession`, `authenticator.isAuthenticated`, and `calleeName` in
+ *   `scan.ts` records the property for a member call, so that is the form the check sees.
+ * - every sensitive path segment appears as a segment of a real route file name.
+ *
+ * What is NOT checked, and each is a place a wrong entry can still hide:
+ *
+ * - that the declaration found is the one meant. `authenticateAdmin` is a local helper inside
+ *   `admin.api.v1.platform-notifications.ts`; a second route declaring its own no-op function of
+ *   that name would be credited by `auth-boundary`. Names cannot carry that guarantee, and the
+ *   alternative, a module-resolving import graph, is a different kind of analysis from anything
+ *   else in this package.
+ * - that a guard actually guards. `resolveAuthenticatedEnv` declares fine and authenticates
+ *   nothing, which is why it is not on the list; keeping it off is a hand-read judgement this test
+ *   cannot make.
+ * - anything outside `ROOTS`.
+ */
+
+const REPO = resolve(__dirname, "../../..");
+
+/**
+ * Where a guard or a sensitive symbol may be declared. The webapp first, then the two packages it
+ * authenticates through: `packages/plugins` declares the RBAC controller interface the dashboard
+ * and PAT builders call, and `internal-packages/rbac` declares its fallback and the user-actor
+ * token verifier that three routes import directly.
+ */
+const ROOTS = [
+  resolve(REPO, "apps/webapp/app"),
+  resolve(REPO, "packages/plugins/src"),
+  resolve(REPO, "internal-packages/rbac/src"),
+];
+
+/**
+ * The one dependency that declares a guard the webapp calls: `authenticator.authenticate` and
+ * `authenticator.isAuthenticated` are remix-auth's, and the login surface is built on them. Named
+ * as a file rather than waved through on a list, so the two names are resolved rather than
+ * asserted.
+ */
+const EXTERNAL_DECLARATIONS = [
+  resolve(REPO, "apps/webapp/node_modules/remix-auth/build/authenticator.d.ts"),
+];
+
+const ROUTES = resolve(REPO, "apps/webapp/app/routes");
+
+function walkFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) walkFiles(path, out);
+    else if (/\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts")) out.push(path);
+  }
+  return out;
+}
+
+function declaredNames(): Set<string> {
+  const names = new Set<string>();
+  const addBinding = (name: ts.BindingName) => {
+    if (ts.isIdentifier(name)) {
+      names.add(name.text);
+      return;
+    }
+    for (const element of name.elements) {
+      if (!ts.isOmittedExpression(element)) addBinding(element.name);
+    }
+  };
+
+  const files = [...ROOTS.flatMap((root) => walkFiles(root)), ...EXTERNAL_DECLARATIONS];
+  for (const file of files) {
+    const sf = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, false);
+    const visit = (node: ts.Node) => {
+      if (ts.isVariableDeclaration(node) || ts.isParameter(node)) addBinding(node.name);
+      else if (
+        (ts.isFunctionDeclaration(node) ||
+          ts.isClassDeclaration(node) ||
+          ts.isInterfaceDeclaration(node) ||
+          ts.isTypeAliasDeclaration(node) ||
+          ts.isEnumDeclaration(node)) &&
+        node.name
+      ) {
+        names.add(node.name.text);
+      } else if (
+        (ts.isMethodDeclaration(node) ||
+          ts.isMethodSignature(node) ||
+          ts.isPropertyDeclaration(node) ||
+          ts.isPropertySignature(node) ||
+          ts.isPropertyAssignment(node) ||
+          ts.isShorthandPropertyAssignment(node)) &&
+        node.name &&
+        ts.isIdentifier(node.name)
+      ) {
+        names.add(node.name.text);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
+  return names;
+}
+
+/** Every dot-separated piece of every route name, flat file or directory, e.g. `billing-limits`. */
+function routeSegments(): Set<string> {
+  const segments = new Set<string>();
+  for (const entry of readdirSync(ROUTES, { withFileTypes: true })) {
+    for (const part of entry.name.replace(/\.tsx?$/, "").split(".")) {
+      segments.add(part.replace(/_+$/, ""));
+    }
+  }
+  return segments;
+}
+
+describe("the names the tool matches on exist in the webapp", () => {
+  const declared = declaredNames();
+  const segments = routeSegments();
+
+  it("found a codebase to check against", () => {
+    expect(declared.size).toBeGreaterThan(5000);
+    expect(segments.size).toBeGreaterThan(100);
+  });
+
+  it("every sensitive symbol is declared somewhere", () => {
+    expect(SENSITIVE_SYMBOLS.filter((s) => !declared.has(s))).toEqual([]);
+  });
+
+  it("every auth guard is declared somewhere", () => {
+    expect([...GUARDS].filter((g) => !declared.has(g))).toEqual([]);
+  });
+
+  it("every sensitive path segment names a real route segment", () => {
+    const live = SENSITIVE_SEGMENTS.filter((s) => !ANTICIPATED_SEGMENTS.includes(s));
+    expect(live.filter((s) => !segments.has(s))).toEqual([]);
+  });
+
+  // The escape hatch is only worth having while it is small and honest about itself.
+  it("every anticipated segment really does name nothing yet", () => {
+    expect(ANTICIPATED_SEGMENTS.filter((s) => segments.has(s))).toEqual([]);
+  });
+
+  // The checker has to be able to fail. These run the same predicates over the names the last round
+  // shipped, which is what the test exists to have caught.
+  it("would reject the symbols that named nothing", () => {
+    for (const dead of ["setImpersonation", "createJWT", "signJWT", "updateEnvVars"]) {
+      expect(declared.has(dead)).toBe(false);
+    }
+  });
+
+  it("would reject a guard name and a path segment that name nothing", () => {
+    expect(declared.has("requireNothingAtAll")).toBe(false);
+    expect(segments.has("no-such-route-segment")).toBe(false);
+  });
+});

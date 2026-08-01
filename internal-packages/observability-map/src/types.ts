@@ -82,6 +82,40 @@ export type EntryPoint = {
   /** Callee name when `loader`/`action` is assigned from a call, e.g. a route builder. */
   loaderInitializerCallee: string | null;
   actionInitializerCallee: string | null;
+  /**
+   * Top-level keys of the object literals passed to that call, e.g. `["params", "authorization"]`.
+   * Empty when the export has no initializer call, and empty when the call takes no object
+   * literal, so an empty array is "nothing declared here" rather than "no builder".
+   */
+  loaderBuilderOptions: string[];
+  actionBuilderOptions: string[];
+  /**
+   * The route declares a loader or an action, and the scan resolved neither a handler function nor
+   * a builder call for any of them: `export { action } from "./handler.server"`,
+   * `export const action = handleWebhook`. Nothing about the request handling is in this file, so
+   * every check reports not-applicable and `buildReport` counts the entry point separately from
+   * the ones nothing happened to apply to. Those are different facts: a redirect stub genuinely has
+   * nothing to instrument, a delegating route has work the scanner cannot see.
+   *
+   * A route that delegates one export and writes the other in the file is NOT delegating by this
+   * definition, and is judged on the half that is visible.
+   */
+  delegating: boolean;
+  /**
+   * Some object-literal property in the loader/action body is assigned the caller's own id, the
+   * `where: { members: { some: { userId: authentication.userId } } }` and
+   * `presenter.call({ userId: user.id })` shapes. Read by `auth-scope` as evidence that the handler
+   * narrowed its work to whoever is asking. See `CALLER_ID_PATH` in `scan.ts` for the exact
+   * expressions. Property assignments only: a value read out into a local first
+   * (`const { userId } = authentication`) is not seen.
+   */
+  scopesByCaller: boolean;
+  /**
+   * The body calls `ability.can(...)` or `ability.canSuper(...)`: the RBAC gate written in the
+   * handler rather than declared in the builder options. Several dashboard routes do this on
+   * purpose, because which ability a request needs depends on the intent it carries.
+   */
+  checksAbility: boolean;
   /** Named and default imports, file-wide. */
   importedNames: string[];
   /** Names of functions called inside the loader/action bodies, or in a same-file helper they call. */

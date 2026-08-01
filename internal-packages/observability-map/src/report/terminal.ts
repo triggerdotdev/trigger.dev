@@ -79,12 +79,52 @@ export function contextLine(report: MapReport): string | null {
   );
 }
 
+/**
+ * The DELEGATED lines, shared with `prComment.ts`. Empty when every route's body is in its own
+ * file. Worded as a shortfall rather than a note: these routes left the denominator and no check
+ * looked at any of them.
+ */
+export function delegatedLines(report: MapReport): string[] {
+  if (report.delegating.length === 0) return [];
+  const n = report.delegating.length;
+  return [
+    `DELEGATED   ${n} route${n === 1 ? "" : "s"} keep${n === 1 ? "s" : ""} the body in another ` +
+      `module, so nothing here was checked and ${n === 1 ? "it is" : "they are"} out of the score: ` +
+      report.delegating.join(", "),
+  ];
+}
+
+/**
+ * The CHECKS block: what the composite is made of. `sole` is the figure that says most, since an
+ * entry only one scored check applies to scores 0 or 100 on that one boolean.
+ */
+export function checkContributionLines(report: MapReport): string[] {
+  if (report.checkContributions.every((c) => c.applicable === 0)) return [];
+  const width = Math.max(...report.checkContributions.map((c) => c.id.length));
+  return [
+    "CHECKS",
+    ...report.checkContributions.map((c) => {
+      const worth = !c.scored
+        ? "not in the score"
+        : c.globalWithout === null
+          ? "nothing left measured without it"
+          : `global without it ${c.globalWithout}`;
+      return (
+        `  ${c.id.padEnd(width)}  ${String(c.applicable).padStart(3)} applicable, ` +
+        `${String(c.passed).padStart(3)} pass, ${String(c.sole).padStart(3)} sole, ${worth}`
+      );
+    }),
+  ];
+}
+
 export function renderTerminal(report: MapReport): string {
   const lines: string[] = [];
 
   const headline = report.global === null ? "score not measured" : `score ${report.global}/100`;
+  const delegatedCount =
+    report.delegating.length > 0 ? `, ${report.delegating.length} delegated` : "";
   lines.push(
-    `${headline}   ${report.measured} measured, ${report.unmeasured} unmeasured of ${report.entries.length} entry points`
+    `${headline}   ${report.measured} measured, ${report.unmeasured} unmeasured${delegatedCount} of ${report.entries.length} entry points`
   );
   lines.push("");
   lines.push("COVERAGE");
@@ -99,6 +139,12 @@ export function renderTerminal(report: MapReport): string {
     }/${report.sensitiveCohort.n} entry points`
   );
 
+  const contributions = checkContributionLines(report);
+  if (contributions.length > 0) {
+    lines.push("");
+    lines.push(...contributions);
+  }
+
   const audit = auditLine(report);
   if (audit) {
     lines.push("");
@@ -109,6 +155,12 @@ export function renderTerminal(report: MapReport): string {
   if (context) {
     lines.push("");
     lines.push(context);
+  }
+
+  const delegated = delegatedLines(report);
+  if (delegated.length > 0) {
+    lines.push("");
+    lines.push(...delegated);
   }
 
   const unknown = unknownSuppressionLines(report);

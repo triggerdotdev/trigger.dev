@@ -13,7 +13,7 @@ const ID = "error-classification";
  * authenticate, so counting it here would hand two routes a free pass on `auth-boundary`.
  * `createHybridActionApiRoute`, which the design named, exists nowhere in the tree.
  */
-const BUILDERS = new Set([
+export const BUILDERS = new Set([
   "createLoaderApiRoute",
   "createActionApiRoute",
   "createLoaderPATApiRoute",
